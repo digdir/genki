@@ -32,7 +32,8 @@ export const useSessionTimer = (
       if (renewed) onRenewed(renewed);
       else setWarnAt(expiresAt);
     };
-    const warn = after(expiresAt - warnBeforeMs - now(), () => void renew());
+    const lifetime = expiresAt - now();
+    const warn = after(Math.max(lifetime - warnBeforeMs, lifetime / 2), () => void renew());
     const end = after(expiresAt - now(), () => active && onExpired());
     return () => {
       active = false;

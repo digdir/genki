@@ -208,6 +208,36 @@ describe('operator login with Ansattporten', () => {
     expect(api.calls.some((call) => call.path === '/api/mock/ansattporten/token')).toBe(false);
   });
 
+  it('takes the authorize and end-session endpoints from the identity provider metadata', async () => {
+    const api = liveApi();
+    const withMetadata: typeof fetch = async (input, init) =>
+      String(input) === `${issuer}/.well-known/openid-configuration`
+        ? Response.json({
+            issuer,
+            authorization_endpoint: 'https://login.example/authorize',
+            end_session_endpoint: 'https://login.example/logout',
+          })
+        : api.fetch(input, init);
+    const c = client(withMetadata);
+    const url = await startLogin(c);
+    expect(url.origin + url.pathname).toBe('https://login.example/authorize');
+
+    await c.auth.logout();
+    expect(c.visited.at(-1)).toMatch('https://login.example/logout?client_id=local-console');
+  });
+
+  it('treats a 404 from the operator routes as no operator role', async () => {
+    const api = liveApi();
+    const notOperator: typeof fetch = async (input, init) =>
+      String(input).endsWith('/operator/tenants')
+        ? new Response('Not found', { status: 404 })
+        : api.fetch(input, init);
+    const c = client(notOperator);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+    await c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`));
+    expect(c.auth.current()?.roles).toEqual([]);
+  });
+
   it('clears the session on logout and sends the browser to the end-session endpoint', async () => {
     const api = liveApi();
     const c = client(api.fetch);

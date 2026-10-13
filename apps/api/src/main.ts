@@ -562,6 +562,19 @@ if (mock) {
   });
 }
 
-serve({ fetch: app.fetch, port }, (info) => {
+const logRequests = process.env.LOG_REQUESTS === 'true';
+const fetchHandler: typeof app.fetch = logRequests
+  ? async (request, ...rest) => {
+      const response = await app.fetch(request, ...rest);
+      log('request', {
+        method: request.method,
+        path: new URL(request.url).pathname,
+        status: response.status,
+      });
+      return response;
+    }
+  : app.fetch;
+
+serve({ fetch: fetchHandler, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });

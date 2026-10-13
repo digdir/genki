@@ -305,10 +305,10 @@ const Portal = ({
           name={session.name}
           live={live}
           onLogout={() => {
-            void auth.logout().then(() => setSession(undefined));
+            void auth.logout(true).then(() => setSession(undefined));
           }}
           onSwitchOrg={() => {
-            void auth.logout().then(() => setSession(undefined));
+            void auth.logout(true).then(() => setSession(undefined));
           }}
           onRecheck={async () => {
             const s = await auth.login();
@@ -333,7 +333,7 @@ const Portal = ({
             navigate(`/overview?org=${org.orgNumber}`);
         }}
         onLogout={() => {
-          void auth.logout().then(() => setSession(undefined));
+          void auth.logout(true).then(() => setSession(undefined));
         }}
         path={effective.path}
         unregistered={unregistered.has(organisation.orgNumber)}
