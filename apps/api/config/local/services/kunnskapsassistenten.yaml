@@ -1,0 +1,36 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: kunnskapsassistenten, name: Kunnskapsassistenten }
+spec:
+  purpose: Svar med kilder fra offentlige rapporter i Kudos
+  exampleQuestions:
+    - nb: Hva sier evalueringene om digital veiledning?
+      en: What do the evaluations say about digital guidance?
+    - nb: Hva står det i årsrapportene om ventetid på telefon?
+      en: What do the annual reports say about waiting times on the phone?
+  audience: [employees]
+  riskClass: limited
+  variants:
+    - id: default
+    - id: mini
+      title: { nb: Rask (GPT-5 mini), en: Fast (GPT-5 mini) }
+      model: foundry-openai/gpt-5-mini
+    - id: retrieve-only
+      title: { nb: Bare søk, en: Search only }
+      chat: false
+      strategy: { id: rag-single-shot, version: 1, config: { generate: false } }
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      budget: { searches: 4, reads: 6, readChars: 12000 }
+      temperature: 0.3
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos
+    reranker: colbert
+    retrieval: { maxPerDocument: 10, rerank: { enabled: true } }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { chat: true, mcp: true, openai: true, rest: true, a2a: true }

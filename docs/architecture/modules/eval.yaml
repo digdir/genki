@@ -1,0 +1,57 @@
+id: eval
+plane: services
+name: Evaluation
+note: Test sets · judges · gates
+icon: chart
+color: '#70d6a1'
+status: Library + strategy
+packages:
+  - '@genai/eval'
+summary: 'Evaluation runs as tasks: test sets, evaluators, calibrated judges and publishing gates.'
+description: An eval run invokes the service under test like any caller (ADR 0003). Scores and
+  feedback are kernel events. A judge blocks publishing only once it is calibrated against human
+  labels.
+responsibilities:
+  - Versioned test sets with locked splits
+  - Deterministic and model-based evaluators
+  - Publishing gates and feedback
+files:
+  - packages/eval/src/runner.ts
+  - packages/eval/src/evaluators.ts
+  - packages/eval/src/judges.ts
+  - packages/eval/src/gates.ts
+input: Test set + service version
+output: Scores, run report, gate verdict
+replaces:
+  - module: sweeps
+    how: Sweeps and evaluation, now part of the platform
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/eval/src/feedback.ts
+      imports: '@genai/contracts'
+  - to: port-knowledge
+    label: Search and fetch through the knowledge port
+    kind: call
+    target: call
+    witness:
+      file: packages/eval/src/scripts/kudos-live.ts
+      imports: '@genai/port-knowledge'
+  - to: providers-typesense
+    label: Typesense adapter for live runs
+    kind: call
+    target: call
+    witness:
+      file: packages/eval/src/scripts/kudos-live.ts
+      imports: '@genai/providers-typesense'
+contract:
+  - name: run config
+    file: packages/eval/src/strategy.ts
+    export: evalRunConfig
+  - name: score
+    file: packages/eval/src/schema.ts
+    export: score
+keywords: eval evaluation judge gate test set score feedback

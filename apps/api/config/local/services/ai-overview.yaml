@@ -1,0 +1,22 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: ai-overview, name: 'KI-oversikt' }
+spec:
+  purpose: 'Kort svar med kilder foran treffene, eller ingen oversikt når kildene ikke holder'
+  audience: [employees]
+  riskClass: limited
+  variants:
+    - id: default
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: step-flow
+    version: 1
+    config: { 'flow': 'ai-overview@1' }
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos
+    reranker: colbert
+    retrieval: { maxPerDocument: 10 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { mcp: true, openai: true, rest: true }

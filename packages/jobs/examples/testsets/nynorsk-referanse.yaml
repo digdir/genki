@@ -1,0 +1,62 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: nynorsk-referanse
+  name: Bokmål til nynorsk, referanseomsetjingar
+  version: 1
+spec:
+  service: nynorsk
+  provenance:
+    from: written for the platform
+    personalData: none
+    reviewed: false
+  cases:
+    - id: frist-soknad
+      split: train
+      input: Søknadsfristen er 1. mars. Hvis du ikke rekker fristen, kan du ikke få tilskudd i år.
+      expected:
+        referenceAnswer: Søknadsfristen er 1. mars. Viss du ikkje rekk fristen, kan du ikkje få tilskot i år.
+      grounding: answer-only
+      tags:
+        - nynorsk
+    - id: hva-du-ma-gjore
+      split: validation
+      input: Du må sende oss regnskapet før vi kan behandle søknaden din.
+      expected:
+        referenceAnswer: Du må sende oss rekneskapen før vi kan behandle søknaden din.
+      grounding: answer-only
+      tags:
+        - nynorsk
+    - id: hvordan-klage
+      split: holdout
+      input: Hvis du er uenig i vedtaket, kan du klage. Vi forklarer hvordan du gjør det nedenfor.
+      expected:
+        referenceAnswer: Dersom du er usamd i vedtaket, kan du klage. Vi forklarer korleis du gjer det nedanfor.
+      grounding: answer-only
+      tags:
+        - nynorsk
+    - id: hvem-kan-soke
+      split: train
+      input: Hvem kan søke? Alle kommuner og fylkeskommuner kan søke om midler fra ordningen.
+      expected:
+        referenceAnswer: Kven kan søkje? Alle kommunar og fylkeskommunar kan søkje om midlar frå ordninga.
+      grounding: answer-only
+      tags:
+        - nynorsk
+    - id: noe-mangler
+      split: validation
+      input: Det mangler noen opplysninger i søknaden. Jeg ber deg sende dem så snart som mulig.
+      expected:
+        referenceAnswer: Det manglar nokre opplysningar i søknaden. Eg ber deg sende dei så snart som mogleg.
+      grounding: answer-only
+      tags:
+        - nynorsk
+    - id: utbetaling
+      split: holdout
+      input: Vi betaler ut pengene når vi har fått rapporten. Det tar vanligvis to uker.
+      expected:
+        referenceAnswer: Vi betaler ut pengane når vi har fått rapporten. Det tek vanlegvis to veker.
+      grounding: answer-only
+      tags:
+        - nynorsk

@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../definitions"
+    },
+    {
+      "path": "../kernel"
+    },
+    {
+      "path": "../port-knowledge"
+    },
+    {
+      "path": "../port-model"
+    }
+  ]
+}

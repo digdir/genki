@@ -1,0 +1,68 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: compare-documents, name: Compare documents }
+spec:
+  purpose: Search two or more document types and compare what they say, with sources
+  recipe:
+    title:
+      nb: Sammenlign dokumenter
+      en: Compare documents
+    summary:
+      nb: Velg denne når svaret skal vise likheter og forskjeller mellom dokumenttyper, for eksempel tildelingsbrev og årsrapporter.
+      en: Pick this when the answer should show what document types agree and differ on, for example allocation letters and annual reports.
+  settings:
+    type: object
+    properties:
+      documentTypes:
+        type: array
+        items: { type: string }
+        minItems: 2
+        x-label: { nb: Dokumenttypene som sammenlignes, en: Document types to compare }
+        x-widget: multiselect
+        x-order: 1
+        x-options:
+          route: '/api/facets?tenant={datasetOwner}&dataset-config-key={datasetKey}&fields={documentField}'
+          items: fields.0.options
+          value: value
+      focus:
+        type: string
+        maxLength: 300
+        default: ''
+        x-label: { nb: Hva skal sammenlignes, en: What to compare }
+        x-help:
+          nb: For eksempel mål, resultater eller tall. Tomt betyr det spørsmålet gjelder.
+          en: For example goals, results or figures. Empty means what the question is about.
+        x-widget: textarea
+        x-order: 2
+      documentField:
+        type: string
+        default: type
+        x-label: { nb: Feltet som sier dokumenttypen, en: Field that holds the document type }
+        x-help:
+          nb: Navnet på feltet i datasettet. Endre bare hvis datasettet bruker et annet navn.
+          en: The name of the field in the dataset. Change it only if the dataset uses another name.
+        x-advanced: true
+        x-order: 3
+    required: [documentTypes]
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+      params:
+        inOrder: { field: '{{settings.documentField}}', values: '{{settings.documentTypes}}' }
+    - id: context
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+      params: { keepOrder: true, contextTopK: 16 }
+    - id: compare
+      block: synthesize@1
+      input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
+      params:
+        answerLength: medium
+        generationPrompt: "Compare what the numbered sources say. Name the document type of each source. First say where they agree, then where they differ. {{settings.focus}}\n\nSources:\n{context}\n\nQuestion: {question}"
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{compare.response}}'
+        chunks: '{{context.contextChunks}}'
+        citations: '{{compare.citations}}'

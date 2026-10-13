@@ -1,0 +1,252 @@
+[
+  {
+    "edn": "nil",
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "md5": "93b885adfe0da089cdf634904fd59f71"
+  },
+  {
+    "edn": "\"\"",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "md5": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  {
+    "edn": "\"hello\"",
+    "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    "md5": "5d41402abc4b2a76b9719d911017c592"
+  },
+  {
+    "edn": "\"Årsrapport æøå – 2025\"",
+    "sha256": "ec409b5f9928ce61bd3c750e3961438ad9a0e5aac7ba3c1bf3f257781dd0c915",
+    "md5": "d6ed22943447a972d0bba2dd9b407619"
+  },
+  {
+    "edn": "\"emoji 🙂\"",
+    "sha256": "9854908fbd5d4368773091d865ef53dc1ce9742ae93966885b0a1ce4d8c23351",
+    "md5": "3d53432872d9e97c73aaaa58dd7a166b"
+  },
+  {
+    "edn": ":a",
+    "sha256": "b5c5cc1fbe8fa86a78a89d5247010c2fbe05610ca1d5a9e9df8b40e63d675de6",
+    "md5": "66c06124682b005f256fe90e3325cf79"
+  },
+  {
+    "edn": ":chunks/strategy",
+    "sha256": "89e1c316447e4529257e22f761d00babd03ab53ebbe46232b9a39184f31f9eec",
+    "md5": "09e79bcf959ce75d7f2a56faea1ea84c"
+  },
+  {
+    "edn": "'sym",
+    "sha256": "8db4e789f1be6b394fd3ce59d8be800c94584cb9e529b86a45c9e4cdfa6b3652",
+    "md5": "a454b65aa3350f03803494130ee2270d"
+  },
+  {
+    "edn": "'ns/sym",
+    "sha256": "f5ffe47f026dd1d7b02504222669227aeafd111810573cc8afab5697d4953358",
+    "md5": "32cb9bddfacb30f964c1497b15655fa2"
+  },
+  {
+    "edn": "0",
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "md5": "93b885adfe0da089cdf634904fd59f71"
+  },
+  {
+    "edn": "1",
+    "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "md5": "55a54008ad1ba589aa210d2629c1df41"
+  },
+  {
+    "edn": "-1",
+    "sha256": "a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89",
+    "md5": "00594fd4f42ba43fc1ca0427a0576295"
+  },
+  {
+    "edn": "127",
+    "sha256": "620bfdaa346b088fb49998d92f19a7eaf6bfc2fb0aee015753966da1028cb731",
+    "md5": "83acb6e67e50e31db6ed341dd2de1595"
+  },
+  {
+    "edn": "128",
+    "sha256": "085edad400785fca7e7e90b1fac4beb776fc2beee5aa24352d5f39b5d57efcad",
+    "md5": "f23206ac61558fc3b5a2122865ae0770"
+  },
+  {
+    "edn": "255",
+    "sha256": "06eb7d6a69ee19e5fbdf749018d3d2abfa04bcbd1365db312eb86dc7169389b8",
+    "md5": "d07d34efac6328007ad67c7e0a985e00"
+  },
+  {
+    "edn": "256",
+    "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254",
+    "md5": "25daad3d9e60b45043a70c4ab7d3b1c6"
+  },
+  {
+    "edn": "-128",
+    "sha256": "76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71",
+    "md5": "8d39dd7eef115ea6975446ef4082951f"
+  },
+  {
+    "edn": "-129",
+    "sha256": "8f96c15501bef61baf5bd943201979595736b66b6a7e3b35c353729ab8d9a561",
+    "md5": "0f28d1b38d61f1a6eab346f5130d9818"
+  },
+  {
+    "edn": "65535",
+    "sha256": "7951f9866246942566985c82c9363da4674caa673f3c4f7919927330aba37404",
+    "md5": "6eab24985487b0d5dac761468d1c5a6c"
+  },
+  {
+    "edn": "9223372036854775807",
+    "sha256": "c624eebf5b9282431fc4e19c3c707a012275e198d3a077dcd36a7b74e4a804ad",
+    "md5": "bd5f6598b2d2cd7f130ba3e152116ff7"
+  },
+  {
+    "edn": "-9223372036854775808",
+    "sha256": "b1b0bee5378188f5250138bcce25855f2617f9c55b20b9628e13d367c47404a9",
+    "md5": "54409ea540dc450d53a86133d867c772"
+  },
+  {
+    "edn": "1.5",
+    "sha256": "430d595dc1ef65e95d4ebdc1c16a5b1dd745685e5b14bab114354489bd878b00",
+    "md5": "da09d821fab239bbab69f42b9472ef2b"
+  },
+  {
+    "edn": "0.0",
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "md5": "93b885adfe0da089cdf634904fd59f71"
+  },
+  {
+    "edn": "-0.0",
+    "sha256": "b1b0bee5378188f5250138bcce25855f2617f9c55b20b9628e13d367c47404a9",
+    "md5": "54409ea540dc450d53a86133d867c772"
+  },
+  {
+    "edn": "3.141592653589793",
+    "sha256": "61cde45ecde554e4dbd1f0cbd76e181eef24f8b848fc8539f8c9cc817f91015f",
+    "md5": "a622d6ffbfd31dd3e4c2d3b7ba5b7e23"
+  },
+  {
+    "edn": "1.0E300",
+    "sha256": "13d622a5bad5dfcd7f6891ae86382f36f3ddc5a587714d7ede60dffa131827d8",
+    "md5": "1dad88ffbfddd436aeb907b9f1619a83"
+  },
+  {
+    "edn": "true",
+    "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "md5": "55a54008ad1ba589aa210d2629c1df41"
+  },
+  {
+    "edn": "false",
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "md5": "93b885adfe0da089cdf634904fd59f71"
+  },
+  {
+    "edn": "\\a",
+    "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+    "md5": "0cc175b9c0f1b6a831c399e269772661"
+  },
+  {
+    "edn": "\\ø",
+    "sha256": "d48b452a88ac264c8b303ab6ecd9e7d12e38fa4b8cd21aa104b5b3acf83accf3",
+    "md5": "837d4938ec1d5836484d61218c11c6fe"
+  },
+  {
+    "edn": "[]",
+    "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1",
+    "md5": "3389dae361af79b04c9c8e7057f60cc6"
+  },
+  {
+    "edn": "[1 2 3]",
+    "sha256": "81915c04730317815f3bccf2ef50f162da5ced0943b932b98bebeb5e1037de1e",
+    "md5": "1d2e2d1393300a9c8f9263da537d3e69"
+  },
+  {
+    "edn": "[\"a\" [\"b\" nil]]",
+    "sha256": "e4cceca1f5968f1be248b1feb889b914483f4cc659d56dc4d35252fbce850e6c",
+    "md5": "9f4719de2d4d837e03b9169583f75ab9"
+  },
+  {
+    "edn": "'(1 2)",
+    "sha256": "2bf95b723534d6c83600d43ee61c5b666117c00c7ed38fe7040c621e71a551e7",
+    "md5": "e6dbc15041297a51caf8eafb07ff4004"
+  },
+  {
+    "edn": "#{}",
+    "sha256": "2f0fd1e89b8de1d57292742ec380ea47066e307ad645f5bc3adad8a06ff58608",
+    "md5": "f5a7e477cd3042b49a9085d62307cd28"
+  },
+  {
+    "edn": "#{1 2 3}",
+    "sha256": "6c944802816a2ded14279cc53ef3f4dc3229fefc9413cb71ff1c094b1e590f2f",
+    "md5": "1b94ff309865e6b471a93ba51832358e"
+  },
+  {
+    "edn": "#{\"a\" \"b\" \"c\"}",
+    "sha256": "d635b0a50ad25ca54de8ee8dca7546d4b70d4a6091eceee8f59d50f3a1c72cd1",
+    "md5": "e6514eac477c83790f1b361afe8c375d"
+  },
+  {
+    "edn": "#{:x :yy :zzz}",
+    "sha256": "60f52b55bee699b66a9f6275f06a4664eb8cdb42d387dbcc77eb7c7c194e1b83",
+    "md5": "fa4608f7ab1f7cadf74fc446ffffe08e"
+  },
+  {
+    "edn": "{}",
+    "sha256": "ab897fbdedfa502b2d839b6a56100887dccdc507555c282e59589e06300a62e2",
+    "md5": "ffe51d3e7d8297237588704eeddc6ab2"
+  },
+  {
+    "edn": "{:a 1}",
+    "sha256": "f4c5bdeef2d97d832c974763805c1a14acb21e11eb7d9c1588c4e0e37b496142",
+    "md5": "1796a4d503f0ffea4ec15195b2f7116f"
+  },
+  {
+    "edn": "{:a 1 :b 2}",
+    "sha256": "925c3790547603916e8a41a866caf478f1d6c1315654ab81a62ab210666f3a26",
+    "md5": "ecf282998ddfb1fe8130d4aadc46abe9"
+  },
+  {
+    "edn": "{:b 2 :a 1}",
+    "sha256": "925c3790547603916e8a41a866caf478f1d6c1315654ab81a62ab210666f3a26",
+    "md5": "ecf282998ddfb1fe8130d4aadc46abe9"
+  },
+  {
+    "edn": "{\"k\" [1 {:n nil}]}",
+    "sha256": "6930c006a6e2c3090d7435e16be09167c7043cd7e1eaafab04e94baf55c6be26",
+    "md5": "66c04a16e282ed7a857caae72fa1cf63"
+  },
+  {
+    "edn": "{:chunks/strategy \"markdown\" :chunks/hash-changer 2}",
+    "sha256": "b47465badc8af8463cd0eab6f09602fe97fe8e12423129b3b44bbccbc20add34",
+    "md5": "5365697af4f703ce1f07a0b71daaa96e"
+  },
+  {
+    "edn": "#uuid \"00000000-0000-0000-0000-000000000001\"",
+    "sha256": "b413f47d13ee2fe6c845b2ee141af81de858df4ec549a58b7970bb96645bc8d2",
+    "md5": "441077cc9e57554dd476bdfb8b8b8102"
+  },
+  {
+    "edn": "#uuid \"f81d4fae-7dec-11d0-a765-00a0c91e6bf6\"",
+    "sha256": "4cec65a2e4281720e0e44dacd5eded1c352dab088f832931f3198c196c350cec",
+    "md5": "1b33d98d51692de60dbc4b876b841be1"
+  },
+  {
+    "edn": "#inst \"2026-10-06T10:00:00.000Z\"",
+    "sha256": "cb2d10e042d74a4e0f85168cc4f0de6c96f30d9cf00886e8e5daa16bd03c5dcf",
+    "md5": "0fa4bd79234f7d91576cc5b940abb413"
+  },
+  {
+    "edn": "\"d42|0|Tildelingsbrev for 2025\"",
+    "sha256": "775afd95992e5751a4f6c922005efa854e7f43bf30678b17f299527d33b1864a",
+    "md5": "f4c7f40c4c9d1a845dcd467dda12d866"
+  },
+  {
+    "edn": "\"abc123def456|hva er tildelingsbrevet\"",
+    "sha256": "6618356c08ae49e876d2eb75e1d93e1fc865f1b3500f0f97884b4d611e87cb42",
+    "md5": "37866f6d7a03997a241318ed85bca155"
+  },
+  {
+    "edn": "\"https://kudos.dfo.no/dokument/123\"",
+    "sha256": "75d02a9adc7b72239d5bd33258fe7766fd8f88ede1125de431ebecb90be9c615",
+    "md5": "10999ffc4fb8e81d437ba42b600ab148"
+  }
+]

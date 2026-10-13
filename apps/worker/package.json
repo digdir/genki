@@ -1,0 +1,25 @@
+{
+  "name": "@genai/worker",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node dist/main.js",
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/composition": "0.0.0",
+    "@genai/contracts": "0.0.0",
+    "@genai/definitions": "0.0.0",
+    "@genai/jobs": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "@genai/port-blob": "0.0.0",
+    "@genai/providers-langfuse": "0.0.0",
+    "@genai/providers-postgres": "0.0.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@genai/port-model": "0.0.0"
+  }
+}

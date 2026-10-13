@@ -1,0 +1,348 @@
+[
+  {
+    "ref": "compare-documents@1",
+    "id": "compare-documents",
+    "version": 1,
+    "origin": "own",
+    "name": "Compare documents",
+    "title": {
+      "nb": "Sammenlign dokumenter",
+      "en": "Compare documents"
+    },
+    "summary": {
+      "nb": "Velg denne når svaret skal vise likheter og forskjeller mellom dokumenttyper, for eksempel tildelingsbrev og årsrapporter.",
+      "en": "Pick this when the answer should show what document types agree and differ on, for example allocation letters and annual reports."
+    },
+    "purpose": "Search two or more document types and compare what they say, with sources",
+    "settings": {
+      "type": "object",
+      "properties": {
+        "documentTypes": {
+          "type": "array",
+          "x-label": {
+            "nb": "Dokumenttypene som sammenlignes",
+            "en": "Document types to compare"
+          },
+          "x-widget": "multiselect",
+          "x-options": {
+            "route": "/api/facets?tenant={datasetOwner}&dataset-config-key={datasetKey}&fields={documentField}",
+            "value": "value",
+            "items": "fields.0.options"
+          },
+          "x-order": 1,
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2
+        },
+        "focus": {
+          "type": "string",
+          "x-label": {
+            "nb": "Hva skal sammenlignes",
+            "en": "What to compare"
+          },
+          "x-help": {
+            "nb": "For eksempel mål, resultater eller tall. Tomt betyr det spørsmålet gjelder.",
+            "en": "For example goals, results or figures. Empty means what the question is about."
+          },
+          "x-widget": "textarea",
+          "x-order": 2,
+          "default": "",
+          "maxLength": 300
+        },
+        "documentField": {
+          "type": "string",
+          "x-label": {
+            "nb": "Feltet som sier dokumenttypen",
+            "en": "Field that holds the document type"
+          },
+          "x-help": {
+            "nb": "Navnet på feltet i datasettet. Endre bare hvis datasettet bruker et annet navn.",
+            "en": "The name of the field in the dataset. Change it only if the dataset uses another name."
+          },
+          "x-order": 3,
+          "x-advanced": true,
+          "default": "type"
+        }
+      },
+      "required": ["documentTypes"]
+    },
+    "steps": [
+      {
+        "id": "retrieve",
+        "block": "retrieve@1",
+        "input": {
+          "query": "{{input.query}}",
+          "history": "{{input.history}}"
+        },
+        "params": {
+          "inOrder": {
+            "field": "{{settings.documentField}}",
+            "values": "{{settings.documentTypes}}"
+          }
+        }
+      },
+      {
+        "id": "context",
+        "block": "rerank@1",
+        "input": {
+          "query": "{{input.query}}",
+          "chunks": "{{retrieve.chunks}}"
+        },
+        "params": {
+          "keepOrder": true,
+          "contextTopK": 16
+        }
+      },
+      {
+        "id": "compare",
+        "block": "synthesize@1",
+        "input": {
+          "query": "{{input.query}}",
+          "contextDocs": "{{context.contextDocs}}"
+        },
+        "params": {
+          "answerLength": "medium",
+          "generationPrompt": "Compare what the numbered sources say. Name the document type of each source. First say where they agree, then where they differ. {{settings.focus}}\n\nSources:\n{context}\n\nQuestion: {question}"
+        }
+      },
+      {
+        "id": "answer",
+        "block": "answer@1",
+        "input": {
+          "text": "{{compare.response}}",
+          "chunks": "{{context.contextChunks}}",
+          "citations": "{{compare.citations}}"
+        }
+      }
+    ]
+  },
+  {
+    "ref": "answer-briefly-with-sources@1",
+    "id": "answer-briefly-with-sources",
+    "version": 1,
+    "origin": "own",
+    "name": "Answer briefly with sources",
+    "title": {
+      "nb": "Svar kort med kilder",
+      "en": "Answer briefly with sources"
+    },
+    "summary": {
+      "nb": "Velg denne når svaret skal være kort og hver påstand skal ha en kilde.",
+      "en": "Pick this when the answer should be short and every claim should have a source."
+    },
+    "purpose": "Search, rank the results and answer briefly with numbered sources",
+    "settings": {
+      "type": "object",
+      "properties": {
+        "answerLength": {
+          "type": "string",
+          "x-label": {
+            "nb": "Lengde på svaret",
+            "en": "Length of the answer"
+          },
+          "x-enumLabels": {
+            "short": {
+              "nb": "Kort",
+              "en": "Short"
+            },
+            "medium": {
+              "nb": "Middels",
+              "en": "Medium"
+            },
+            "long": {
+              "nb": "Langt",
+              "en": "Long"
+            }
+          },
+          "x-order": 1,
+          "enum": ["short", "medium", "long"],
+          "default": "short"
+        },
+        "maxSources": {
+          "type": "integer",
+          "x-label": {
+            "nb": "Flest kilder i grunnlaget",
+            "en": "Most sources in the basis"
+          },
+          "x-order": 2,
+          "default": 6,
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": []
+    },
+    "steps": [
+      {
+        "id": "retrieve",
+        "block": "retrieve@1",
+        "input": {
+          "query": "{{input.query}}",
+          "history": "{{input.history}}"
+        }
+      },
+      {
+        "id": "rerank",
+        "block": "rerank@1",
+        "input": {
+          "query": "{{input.query}}",
+          "chunks": "{{retrieve.chunks}}"
+        },
+        "params": {
+          "contextTopK": "{{settings.maxSources}}"
+        }
+      },
+      {
+        "id": "synthesize",
+        "block": "synthesize@1",
+        "input": {
+          "query": "{{input.query}}",
+          "contextDocs": "{{rerank.contextDocs}}"
+        },
+        "params": {
+          "answerLength": "{{settings.answerLength}}"
+        }
+      },
+      {
+        "id": "answer",
+        "block": "answer@1",
+        "input": {
+          "text": "{{synthesize.response}}",
+          "chunks": "{{rerank.contextChunks}}",
+          "citations": "{{synthesize.citations}}"
+        }
+      }
+    ]
+  },
+  {
+    "ref": "ordered-sources-answer@1",
+    "id": "ordered-sources-answer",
+    "version": 1,
+    "origin": "own",
+    "name": "Document types in order, then answer",
+    "title": {
+      "nb": "Søk i bestemte dokumenttyper i rekkefølge, så svar",
+      "en": "Search chosen document types in order, then answer"
+    },
+    "summary": {
+      "nb": "Velg denne når noen dokumenter skal veie tyngst, for eksempel årsrapporter før evalueringer.",
+      "en": "Pick this when some documents should count most, for example annual reports before evaluations."
+    },
+    "purpose": "Search the chosen document types one at a time and in order, then answer from what was found first",
+    "settings": {
+      "type": "object",
+      "properties": {
+        "documentTypes": {
+          "type": "array",
+          "x-label": {
+            "nb": "Dokumenttyper, i rekkefølge",
+            "en": "Document types, in order"
+          },
+          "x-help": {
+            "nb": "Kryss av i den rekkefølgen de skal søkes i. Ingen valgt betyr at alle typer søkes samtidig.",
+            "en": "Tick them in the order they should be searched. None ticked means all types are searched at once."
+          },
+          "x-widget": "multiselect",
+          "x-options": {
+            "route": "/api/facets?tenant={datasetOwner}&dataset-config-key={datasetKey}&fields={documentField}",
+            "value": "value",
+            "items": "fields.0.options"
+          },
+          "x-order": 1,
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "answerLength": {
+          "type": "string",
+          "x-label": {
+            "nb": "Lengde på svaret",
+            "en": "Length of the answer"
+          },
+          "x-enumLabels": {
+            "short": {
+              "nb": "Kort",
+              "en": "Short"
+            },
+            "medium": {
+              "nb": "Middels",
+              "en": "Medium"
+            },
+            "long": {
+              "nb": "Langt",
+              "en": "Long"
+            }
+          },
+          "x-order": 2,
+          "enum": ["short", "medium", "long"],
+          "default": "short"
+        },
+        "documentField": {
+          "type": "string",
+          "x-label": {
+            "nb": "Feltet som sier dokumenttypen",
+            "en": "Field that holds the document type"
+          },
+          "x-help": {
+            "nb": "Navnet på feltet i datasettet. Endre bare hvis datasettet bruker et annet navn.",
+            "en": "The name of the field in the dataset. Change it only if the dataset uses another name."
+          },
+          "x-order": 3,
+          "x-advanced": true,
+          "default": "type"
+        }
+      },
+      "required": []
+    },
+    "steps": [
+      {
+        "id": "retrieve",
+        "block": "retrieve@1",
+        "input": {
+          "query": "{{input.query}}",
+          "history": "{{input.history}}"
+        },
+        "params": {
+          "inOrder": {
+            "field": "{{settings.documentField}}",
+            "values": "{{settings.documentTypes}}"
+          }
+        }
+      },
+      {
+        "id": "context",
+        "block": "rerank@1",
+        "input": {
+          "query": "{{input.query}}",
+          "chunks": "{{retrieve.chunks}}"
+        },
+        "params": {
+          "keepOrder": true,
+          "contextTopK": 12
+        }
+      },
+      {
+        "id": "synthesize",
+        "block": "synthesize@1",
+        "input": {
+          "query": "{{input.query}}",
+          "contextDocs": "{{context.contextDocs}}"
+        },
+        "params": {
+          "answerLength": "{{settings.answerLength}}"
+        }
+      },
+      {
+        "id": "answer",
+        "block": "answer@1",
+        "input": {
+          "text": "{{synthesize.response}}",
+          "chunks": "{{context.contextChunks}}",
+          "citations": "{{synthesize.citations}}"
+        }
+      }
+    ]
+  }
+]

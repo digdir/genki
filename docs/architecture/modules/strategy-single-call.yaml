@@ -1,0 +1,40 @@
+id: strategy-single-call
+plane: runtime
+name: Single call
+note: One prompt, one answer
+icon: spark
+color: '#4ad3bb'
+status: Strategy plugin
+packages:
+  - '@genai/strategy-single-call'
+summary: 'The simplest strategy: render instructions, call the model once, return the text or fields.'
+description: Used for rewrite, classification and extraction jobs such as klarspråk. Its config is
+  validated by its own schema inside strategy.config.
+responsibilities:
+  - Render instructions and input
+  - One model call with optional JSON schema
+files:
+  - packages/strategy-single-call/src/index.ts
+input: Text or document parts
+output: Answer or structured fields
+replaces: []
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-single-call/src/index.ts
+      imports: '@genai/contracts'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-single-call/src/index.ts
+      imports: '@genai/port-model'
+contract:
+  - name: config
+    file: packages/strategy-single-call/src/index.ts
+    export: singleCallConfig
+keywords: single call strategy prompt rewrite classify

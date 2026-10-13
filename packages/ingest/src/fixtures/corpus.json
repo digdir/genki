@@ -1,0 +1,150 @@
+{
+  "chunking": [
+    {
+      "id": "kudos-legacy",
+      "file": "kudos-12345.txt",
+      "docNum": "12345",
+      "printer": "prn",
+      "strategy": "header-based",
+      "minimumLength": 333,
+      "maximumLength": 256000
+    },
+    {
+      "id": "kudos-crlf",
+      "file": "kudos-67890.txt",
+      "docNum": "67890",
+      "printer": "prn",
+      "strategy": "header-based",
+      "minimumLength": 333,
+      "maximumLength": 256000
+    },
+    {
+      "id": "kudos-fixed-width",
+      "file": "kudos-67890.txt",
+      "docNum": "67890",
+      "printer": "prn",
+      "strategy": "fixed-width",
+      "minimumLength": 1,
+      "maximumLength": 1000000,
+      "width": 173,
+      "overlap": 20
+    },
+    {
+      "id": "website",
+      "file": "website-about.txt",
+      "docNum": "LOC",
+      "location": "http://localhost:1313/nb/om/index.md",
+      "printer": "pr",
+      "strategy": "header-based",
+      "minimumLength": 333,
+      "maximumLength": 256000
+    },
+    {
+      "id": "folder-split",
+      "file": "folder-big.txt",
+      "docNum": "PATH",
+      "location": "/srv/corpus/nb/stor-seksjon.md",
+      "printer": "pr",
+      "strategy": "header-based",
+      "minimumLength": 100,
+      "maximumLength": 256000,
+      "splitMaxLength": 500,
+      "overlap": 80
+    },
+    {
+      "id": "stress-legacy",
+      "file": "kudos-12345.txt",
+      "docNum": "12345",
+      "printer": "prn",
+      "strategy": "header-based",
+      "minimumLength": 5,
+      "maximumLength": 256000
+    },
+    {
+      "id": "stress-crlf",
+      "file": "kudos-67890.txt",
+      "docNum": "67890",
+      "printer": "pr",
+      "strategy": "header-based",
+      "minimumLength": 5,
+      "maximumLength": 256000
+    },
+    {
+      "id": "stress-split-small",
+      "file": "folder-big.txt",
+      "docNum": "PATH",
+      "location": "/srv/corpus/nb/stor-seksjon.md",
+      "printer": "pr",
+      "strategy": "header-based",
+      "minimumLength": 5,
+      "maximumLength": 256000,
+      "splitMaxLength": 120,
+      "overlap": 30
+    },
+    {
+      "id": "repeat",
+      "file": "repeat.txt",
+      "docNum": "777",
+      "printer": "prn",
+      "strategy": "header-based",
+      "minimumLength": 5,
+      "maximumLength": 256000
+    }
+  ],
+  "phrases": {
+    "case": "kudos-legacy",
+    "perChunk": [
+      ["tildelingsbrev 2025", "Digitaliseringsdirektoratet prioriteringer", "", "  "],
+      ["sikkerhet og beredskap", "ID-porten Maskinporten"],
+      ["beholdninger driftsmateriell"],
+      ["beholdninger driftsmateriell", "kontantprinsippet"]
+    ]
+  },
+  "parser": [
+    "{\"phrases\": [\" Altinn 3, juni 2020 \", \"\", \"fellesløsninger\", 7]}",
+    "Her er søkefrasene:\n1. **keywords only**.\nfellesløsninger, ID-porten, digital samhandling",
+    "Resultat:\nfellesløsninger, ID-porten, digital samhandling\n- notat, med komma",
+    "kort, ok",
+    "[\"a\", \"b\"]",
+    "",
+    "{\"phrases\": \"ikke en liste\"}\nalfa beta, gamma delta"
+  ],
+  "collections": {
+    "legacyKudosPrefix": "KUDOS_preprod_v4_",
+    "pipeline": {
+      "prefix": "website_",
+      "config": {
+        "chunks/hash-changer": 1,
+        "chunks/strategy": {
+          "kw": "header-based"
+        },
+        "chunks/minimum-length": 333,
+        "chunks/maximum-length": 256000,
+        "chunks.fixed-width/width": 173,
+        "search-phrases/hash-changer": 1,
+        "search-phrases/model": "gpt-4o",
+        "search-phrases/fallback-model": {
+          "kw": "google/gemma-3-27b-it"
+        },
+        "documents/limit": 10,
+        "store/coll-prefix": "website_",
+        "base-url": "http://localhost:1313"
+      }
+    },
+    "pipelineNames": {
+      "config": {
+        "collection-prefix": "kudos_",
+        "source-type": {
+          "kw": "kudos"
+        },
+        "chunk-strategy": {
+          "kw": "header-based"
+        },
+        "chunk-minimum-length": 333,
+        "chunk-maximum-length": 256000,
+        "search-phrases-model": "gpt-4o",
+        "pipeline-name": "ignored"
+      }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+id: worker
+plane: composition
+name: Worker
+note: Triggers and batch jobs
+icon: pipeline
+color: '#a78bfa'
+status: App
+packages:
+  - '@genai/worker'
+summary: 'Runs services that start by themselves: folder triggers, schedules and batch companions.'
+description:
+  Builds its kernel through the shared composition runtime, so a triggered run uses the same
+  strategies, providers, guardrails, hooks, settings, cost limits and tracing as an API run. It
+  registers each published service with a batch companion when batch is on, and binds its triggers.
+  A document landing in a service folder is processed at once, as the agency system user. Without
+  DATABASE_URL it refuses to start, unless GENAI_DEV_MODE=true lets it use memory stores.
+responsibilities:
+  - Register every published service, whatever its strategy, and its triggers
+  - Run batch companions over folders
+  - Act only as the worker system user
+  - Record each trigger run and skip paused triggers
+  - Read published services from the definition store and re-bind triggers when they change
+  - Fire schedules from one worker at a time through a Postgres advisory lock
+files:
+  - apps/worker/src/main.ts
+  - apps/worker/src/worker.ts
+  - apps/worker/src/follow.ts
+  - apps/worker/src/boot-guard.ts
+input: Files in blob folders, schedules
+output: Results written back to blob storage
+replaces: []
+edges:
+  - to: composition
+    label: Builds its kernel through the shared runtime, so every strategy runs
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/composition'
+  - to: definitions
+    label: Runs with Definitions & settings
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/definitions'
+  - to: jobs
+    label: Runs with Jobs & triggers
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/worker.ts
+      imports: '@genai/jobs'
+  - to: kernel
+    label: Runs with Kernel + contracts
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/kernel'
+  - to: port-blob
+    label: Runs with Blob port
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/port-blob'
+  - to: providers-langfuse
+    label: Exports traces of triggered runs
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-langfuse'
+  - to: providers-postgres
+    label: Reads published services, records trigger runs, holds the leader lock
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-postgres'
+keywords: worker triggers batch schedule folder jobs

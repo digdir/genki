@@ -1,0 +1,38 @@
+import type { Translation } from '@genai/i18n';
+import type { tableOutput as source } from '../nb/setup-table';
+
+export const tableOutput = {
+  keyFormat: 'Use letters, digits, _ or -, at most 64 characters.',
+  keyTaken: 'The key "{key}" is already in use. Keys must be unique.',
+  valuesNeeded: 'Enter at least one allowed value when the type is fixed values.',
+  typeString: 'Text',
+  typeNumber: 'Number',
+  typeEnum: 'Fixed values',
+  kindDocument: 'From the document',
+  kindAssessment: 'Assessment',
+  moved: '"{name}" is now column {position}.',
+  removed: '"{name}" has been removed.',
+  newColumn: 'New column',
+  columns: 'Columns',
+  kindsHelp:
+    '"From the document" is a quote from the source. "Assessment" is an AI assessment and is always labelled. Every cell gets a source.',
+  empty: 'No columns here. The table gets its columns from the table step in the step flow.',
+  columnN: 'column {n}',
+  moveUpLabel: 'Move {name} up',
+  moveUp: 'Move up',
+  moveDownLabel: 'Move {name} down',
+  moveDown: 'Move down',
+  removeLabel: 'Remove {name}',
+  remove: 'Remove',
+  name: 'Name',
+  key: 'Key',
+  type: 'Type',
+  description: 'Description',
+  descriptionHelp: 'The model uses the description to fill in the column.',
+  kind: 'Kind',
+  values: 'Allowed values, comma separated',
+  rowKey: 'Identifies the row',
+  add: 'Add column',
+  saveAction: 'Save the columns in the table',
+  right: 'Manage services',
+} satisfies Translation<typeof source>;

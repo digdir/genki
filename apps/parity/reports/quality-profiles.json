@@ -1,0 +1,702 @@
+{
+  "profiles": ["phrase", "metadata", "content"],
+  "limit": 30,
+  "cases": 76,
+  "recall": {
+    "phrase": 0.03289473684210526,
+    "metadata": 0,
+    "content": 0.06578947368421052
+  },
+  "union": 0.10526315789473684,
+  "onlyFoundBy": {
+    "phrase": 3,
+    "metadata": 0,
+    "content": 5
+  },
+  "perCase": [
+    {
+      "id": "ka-kudos-001-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-002-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-003-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-004-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-005-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-006-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-007-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-008-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-009-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-010-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-011-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-012-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-013-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-014-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-015-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-016-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-017-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 1
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-018-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-019-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-020-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-021-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-022-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-023-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-024-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-025-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-026-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-027-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-028-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-029-comparison",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-030-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-031-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-032-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-033-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-034-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-035-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-036-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-037-comparison",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-038-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-039-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-040-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-041-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-042-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-043-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-044-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-045-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-046-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-047-comparison",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-048-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-049-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-050-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-051-comparison",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-052-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-053-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-054-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-055-comparison",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-056-factual",
+      "recall": {
+        "phrase": 1,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-057-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-058-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-059-factual",
+      "recall": {
+        "phrase": 1,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-060-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-061-comparison",
+      "recall": {
+        "phrase": 0.5,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-062-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 1
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-063-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 1
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-064-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-065-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 1
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-066-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-067-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 1
+      },
+      "union": 1
+    },
+    {
+      "id": "ka-kudos-068-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-069-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-070-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-071-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-072-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-073-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-074-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-075-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    },
+    {
+      "id": "ka-kudos-076-factual",
+      "recall": {
+        "phrase": 0,
+        "metadata": 0,
+        "content": 0
+      },
+      "union": 0
+    }
+  ]
+}

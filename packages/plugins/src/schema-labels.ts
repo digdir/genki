@@ -1,0 +1,88 @@
+const nb = {
+  kind: {
+    label: 'Type plug-in',
+    values: {
+      model: 'Modell',
+      embedding: 'Innbygging',
+      rerank: 'Omrangering',
+      knowledge: 'Søkemotor',
+      'tool-source': 'Verktøykilde',
+      blob: 'Fillager',
+      'step-block': 'Byggekloss for stegflyt',
+      hook: 'Krok',
+      agent: 'Agent',
+      evaluator: 'Vurdering',
+    },
+  },
+  contract: { label: 'Kontrakt', help: 'Type og hovedversjon, for eksempel model@1.' },
+  publisher: { label: 'Utgiver' },
+  origin: { label: 'Opphav', values: { builtin: 'Innebygd', external: 'Ekstern' } },
+  capabilities: { label: 'Egenskaper' },
+  dataLocation: {
+    label: 'Hvor data behandles',
+    values: { norway: 'Norge', eu: 'EU/EØS', global: 'Globalt' },
+  },
+  configSchema: { label: 'Skjema for oppsettet' },
+  secrets: { label: 'Hemmeligheter den trenger' },
+  hosts: { label: 'Verter den kan kontakte' },
+  root: { label: 'Mappe' },
+  url: { label: 'Adresse (URL)' },
+  secret: { label: 'Hemmelighet', help: 'En secret://-referanse, aldri selve nøkkelen.' },
+  tool: { label: 'Verktøy' },
+  searchPath: { label: 'Sti for søk' },
+  sendDimensions: { label: 'Send antall dimensjoner' },
+  defaultMaxTokens: { label: 'Lengste svar som standard (tokens)' },
+  tokenParam: { label: 'Parameter for lengste svar' },
+  maxInputLength: { label: 'Lengste tekst inn (tegn)' },
+};
+
+const en: Record<
+  keyof typeof nb,
+  { label: string; help?: string; values?: Record<string, string> }
+> = {
+  kind: {
+    label: 'Kind of plug-in',
+    values: {
+      model: 'Model',
+      embedding: 'Embedding',
+      rerank: 'Reranking',
+      knowledge: 'Search engine',
+      'tool-source': 'Tool source',
+      blob: 'File store',
+      'step-block': 'Step flow building block',
+      hook: 'Hook',
+      agent: 'Agent',
+      evaluator: 'Evaluator',
+    },
+  },
+  contract: { label: 'Contract', help: 'Kind and major version, for example model@1.' },
+  publisher: { label: 'Publisher' },
+  origin: { label: 'Origin', values: { builtin: 'Built in', external: 'External' } },
+  capabilities: { label: 'Capabilities' },
+  dataLocation: {
+    label: 'Where data is processed',
+    values: { norway: 'Norway', eu: 'EU/EEA', global: 'Global' },
+  },
+  configSchema: { label: 'Schema for the setup' },
+  secrets: { label: 'Secrets it needs' },
+  hosts: { label: 'Hosts it may contact' },
+  root: { label: 'Folder' },
+  url: { label: 'Address (URL)' },
+  secret: { label: 'Secret', help: 'A secret:// reference, never the key itself.' },
+  tool: { label: 'Tool' },
+  searchPath: { label: 'Search path' },
+  sendDimensions: { label: 'Send the number of dimensions' },
+  defaultMaxTokens: { label: 'Default longest answer (tokens)' },
+  tokenParam: { label: 'Parameter for the longest answer' },
+  maxInputLength: { label: 'Longest input text (characters)' },
+};
+
+export const pluginManifestSchemaLabels = {
+  nb,
+  en,
+  meta: {
+    configSchema: { 'x-widget': 'code' as const, 'x-advanced': true },
+    origin: { 'x-readOnly': true },
+    secret: { 'x-widget': 'secret' as const, 'x-sensitive': true },
+  },
+};

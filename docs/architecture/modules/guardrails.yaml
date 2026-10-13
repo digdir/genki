@@ -1,0 +1,52 @@
+id: guardrails
+plane: policy
+name: Guardrails
+note: PII · sources · language
+icon: shield
+color: '#ff8790'
+status: Plugin
+packages:
+  - '@genai/guardrails'
+summary: Named guardrails that wrap every strategy and are enforced, not just stored.
+description: pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and
+  human-approval, each with its own schema. The composition root wraps every service strategy with
+  them.
+responsibilities:
+  - Norwegian PII detection and redaction
+  - Require sources and language rules
+  - Language instructions: house style and service text per answer language, on answer calls only
+  - Human approval and refused topics
+files:
+  - packages/guardrails/src/strategy.ts
+  - packages/guardrails/src/pii.ts
+  - packages/guardrails/src/language.ts
+  - packages/guardrails/src/answer-language.ts
+  - packages/guardrails/src/schemas.ts
+input: Strategy input and output
+output: Allowed, redacted or refused result
+replaces:
+  - module: agents
+    how: Agent guardrails that were stored but not enforced
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/guardrails/src/log.ts
+      imports: '@genai/contracts'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/guardrails/src/model.ts
+      imports: '@genai/port-model'
+contract:
+  - name: pii-before-model
+    file: packages/guardrails/src/schemas.ts
+    export: piiBeforeModelConfig
+  - name: language
+    file: packages/guardrails/src/schemas.ts
+    export: languageConfig
+keywords: guardrails pii language sources approval refuse

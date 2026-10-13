@@ -1,0 +1,100 @@
+{
+  "apiVersion": "genai/v1",
+  "kind": "StepFlow",
+  "metadata": {
+    "tenant": "991825827",
+    "id": "redigert-flyt",
+    "name": "Redigert flyt",
+    "version": 1
+  },
+  "spec": {
+    "purpose": "Lager en tabell over dokumentene",
+    "input": {
+      "virksomheter": "liste"
+    },
+    "steps": [
+      {
+        "id": "finn",
+        "name": "Finn dokumentene",
+        "block": "documents@1",
+        "input": {
+          "filters": {
+            "orgs_short": "{{input.virksomheter}}"
+          }
+        },
+        "params": {
+          "limit": 20
+        },
+        "onError": "stop"
+      },
+      {
+        "id": "hver",
+        "name": "For hvert dokument",
+        "onError": "skip",
+        "forEach": {
+          "in": "steps.finn.documents",
+          "as": "dok",
+          "steps": [
+            {
+              "id": "les",
+              "name": "Les",
+              "block": "read-document@1",
+              "input": {
+                "document": "{{dok}}"
+              },
+              "params": {
+                "topK": 10
+              },
+              "onError": "stop"
+            },
+            {
+              "id": "ut",
+              "name": "Hent ut",
+              "block": "extract@1",
+              "input": {
+                "prompt": "Finn målene i {{dok.title}}.",
+                "chunks": "{{steps.les.chunks}}"
+              },
+              "params": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "goal": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["goal"]
+                }
+              },
+              "onError": "stop"
+            }
+          ]
+        }
+      },
+      {
+        "id": "tabell",
+        "name": "Tabell",
+        "block": "table@1",
+        "input": {
+          "items": "{{steps.hver}}",
+          "documents": "{{steps.finn.documents}}"
+        },
+        "params": {
+          "columns": [
+            {
+              "key": "doc",
+              "label": "Dokument",
+              "from": "document.title"
+            },
+            {
+              "key": "goal",
+              "label": "Mål",
+              "from": "goal"
+            }
+          ]
+        },
+        "onError": "stop"
+      }
+    ]
+  }
+}

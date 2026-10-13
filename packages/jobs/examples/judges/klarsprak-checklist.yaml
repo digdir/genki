@@ -1,0 +1,27 @@
+id: klarsprak-checklist
+version: '1'
+scale: { min: 1, max: 5 }
+criteria:
+  - id: meaning-preserved
+    description: The rewrite keeps every fact, deadline, amount, legal reference and required action from the original, and adds nothing.
+  - id: important-first
+    description: The most important information for the recipient (the decision or what they must do) comes first.
+  - id: plain-words
+    description: Everyday words instead of bureaucratic terms; necessary technical terms are explained.
+  - id: direct-and-active
+    description: Speaks to the recipient as "du" and uses active verbs that say who does what.
+  - id: structure
+    description: Short sentences and paragraphs, with lists where the original lists things.
+system: |
+  You assess rewrites of Norwegian public-sector letters against Språkrådet's plain-language checklist.
+  Judge each criterion on its own and do not reward length.
+  Reply with JSON only: {"scores": {"<criterion>": <integer>}, "rationale": "<one or two sentences>"}.
+template: |
+  Original text:
+  {{question}}
+
+  Rewrite to assess:
+  {{answer}}
+
+  Criteria, each scored from {{min}} to {{max}}:
+  {{criteria}}

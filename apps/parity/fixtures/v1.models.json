@@ -1,0 +1,112 @@
+{
+  "scenario": "v1.models",
+  "recordedAt": "2026-10-06T21:15:36.835Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v1/models",
+        "headers": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "object": "list",
+          "data": [
+            {
+              "id": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "General-purpose agentic retrieval assistant. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/agent-rag-agent",
+              "_mode": "agent-rag-graph-bundled",
+              "_default": true
+            },
+            {
+              "id": "builtin.agent-rag-agent__agent-rag-graph-faithful",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "General-purpose agentic retrieval assistant. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/agent-rag-agent",
+              "_mode": "agent-rag-graph-faithful"
+            },
+            {
+              "id": "builtin.ai-overview-agent__ai-overview",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Short, fully-cited overview answer presented ahead of the underlying results. Declines rather than answering when retrieval is thin. — AI Overview: Short synthesised answer with inline chunk-level citations, ahead of the underlying results. Declines rather than answering on thin retrieval. Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/ai-overview-agent",
+              "_mode": "ai-overview",
+              "_default": true
+            },
+            {
+              "id": "builtin.fact-checker-agent__fact-checker",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Verification-focused agent for checking claims against evidence. — Fact Checker: Verify claims against document evidence Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/fact-checker-agent",
+              "_mode": "fact-checker",
+              "_default": true
+            },
+            {
+              "id": "builtin.research-assistant-agent__agent-rag-graph-bundled",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Breadth-first retrieval with a synthesis-heavy answer, for questions that want a survey of the sources rather than a single fact. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/research-assistant-agent",
+              "_mode": "agent-rag-graph-bundled"
+            },
+            {
+              "id": "builtin.research-assistant-agent__agent-rag-graph-faithful",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Breadth-first retrieval with a synthesis-heavy answer, for questions that want a survey of the sources rather than a single fact. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/research-assistant-agent",
+              "_mode": "agent-rag-graph-faithful",
+              "_default": true
+            },
+            {
+              "id": "builtin.retrieve-only-agent__retrieve-only",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Diagnostic agent that returns retrieved and reranked evidence without generating an answer. — Retrieve Only: Retrieve and rerank evidence without generating an answer Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "builtin/retrieve-only-agent",
+              "_mode": "retrieve-only",
+              "_default": true
+            },
+            {
+              "id": "digdir.altinn-docs-tuned__agent-rag-graph-bundled",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Round-5-tuned retrieval for the altinn-docs corpus. Phrase-only weights with strategy caps; opt-in alternative to the general-purpose agent. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "digdir/altinn-docs-tuned",
+              "_mode": "agent-rag-graph-bundled"
+            },
+            {
+              "id": "digdir.altinn-docs-tuned__agent-rag-graph-faithful",
+              "object": "model",
+              "created": 1791321336,
+              "owned_by": "digdir-rag",
+              "description": "Round-5-tuned retrieval for the altinn-docs corpus. Phrase-only weights with strategy caps; opt-in alternative to the general-purpose agent. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+              "_agent_id": "digdir/altinn-docs-tuned",
+              "_mode": "agent-rag-graph-faithful",
+              "_default": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

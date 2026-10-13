@@ -1,0 +1,64 @@
+.diff-box {
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+  overflow: hidden;
+}
+
+.diff-head {
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--ds-color-neutral-surface-tinted);
+}
+
+.diff-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.diff-lines li {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.diff-lines li.add {
+  background: var(--ds-color-success-surface-tinted);
+}
+
+.diff-lines li.remove {
+  background: var(--ds-color-danger-surface-tinted);
+}
+
+.diff-op {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.add .diff-op {
+  color: var(--ds-color-success-text-default);
+}
+
+.remove .diff-op {
+  color: var(--ds-color-danger-text-default);
+}
+
+.diff-lines li.change ins {
+  text-decoration: none;
+  background: var(--ds-color-success-surface-tinted);
+  box-shadow: inset 0 -2px var(--ds-color-success-border-default);
+}
+
+.diff-lines li.change del {
+  background: var(--ds-color-danger-surface-tinted);
+}
+
+.change .diff-op {
+  color: var(--ds-color-info-text-default);
+}

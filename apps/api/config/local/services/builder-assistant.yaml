@@ -1,0 +1,15 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: builder-assistant, name: Byggeassistent }
+spec:
+  purpose: Foreslår endringer i tjenester og ferdigheter. Ingenting blir brukt før en person godtar det.
+  audience: [employees]
+  riskClass: minimal
+  input: { accepts: [application/json] }
+  output: { kind: answer }
+  strategy:
+    id: builder-assistant
+    version: 1
+    config: { instructions: prompts/builder-assistant.nb.md }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  evaluation: { testSets: [builder-assistant] }

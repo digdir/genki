@@ -1,0 +1,38 @@
+{
+  "scenario": "mcp.initialize-rejected",
+  "recordedAt": "2026-10-06T21:15:36.220Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 0,
+          "method": "initialize",
+          "params": {}
+        },
+        "headers": {}
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 0,
+          "error": {
+            "code": -32022,
+            "message": "This server implements MCP 2026-07-28 only, which has no `initialize` handshake. Send requests directly with an MCP-Protocol-Version header instead.",
+            "data": {
+              "supported": ["2026-07-28"],
+              "requested": "initialize (handshake-based revision)"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

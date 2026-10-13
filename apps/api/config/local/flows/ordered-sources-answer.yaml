@@ -1,0 +1,69 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata:
+  { tenant: '991825827', id: ordered-sources-answer, name: 'Document types in order, then answer' }
+spec:
+  purpose: Search the chosen document types one at a time and in order, then answer from what was found first
+  recipe:
+    title:
+      nb: Søk i bestemte dokumenttyper i rekkefølge, så svar
+      en: Search chosen document types in order, then answer
+    summary:
+      nb: Velg denne når noen dokumenter skal veie tyngst, for eksempel årsrapporter før evalueringer.
+      en: Pick this when some documents should count most, for example annual reports before evaluations.
+  settings:
+    type: object
+    properties:
+      documentTypes:
+        type: array
+        items: { type: string }
+        default: []
+        x-label: { nb: 'Dokumenttyper, i rekkefølge', en: 'Document types, in order' }
+        x-help:
+          nb: Kryss av i den rekkefølgen de skal søkes i. Ingen valgt betyr at alle typer søkes samtidig.
+          en: Tick them in the order they should be searched. None ticked means all types are searched at once.
+        x-widget: multiselect
+        x-order: 1
+        x-options:
+          route: '/api/facets?tenant={datasetOwner}&dataset-config-key={datasetKey}&fields={documentField}'
+          items: fields.0.options
+          value: value
+      answerLength:
+        type: string
+        enum: [short, medium, long]
+        default: short
+        x-label: { nb: Lengde på svaret, en: Length of the answer }
+        x-enumLabels:
+          short: { nb: Kort, en: Short }
+          medium: { nb: Middels, en: Medium }
+          long: { nb: Langt, en: Long }
+        x-order: 2
+      documentField:
+        type: string
+        default: type
+        x-label: { nb: Feltet som sier dokumenttypen, en: Field that holds the document type }
+        x-help:
+          nb: Navnet på feltet i datasettet. Endre bare hvis datasettet bruker et annet navn.
+          en: The name of the field in the dataset. Change it only if the dataset uses another name.
+        x-advanced: true
+        x-order: 3
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+      params:
+        inOrder: { field: '{{settings.documentField}}', values: '{{settings.documentTypes}}' }
+    - id: context
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+      params: { keepOrder: true, contextTopK: 12 }
+    - id: synthesize
+      block: synthesize@1
+      input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
+      params: { answerLength: '{{settings.answerLength}}' }
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{synthesize.response}}'
+        chunks: '{{context.contextChunks}}'
+        citations: '{{synthesize.citations}}'

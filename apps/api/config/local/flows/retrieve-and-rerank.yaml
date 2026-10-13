@@ -1,0 +1,16 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: retrieve-and-rerank, name: Retrieve and Rerank }
+spec:
+  purpose: Retrieve on the question as written and rerank, without planning or generating an answer
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}' }
+      params: { plan: false }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+    - id: answer
+      block: answer@1
+      input: { text: '', chunks: '{{rerank.contextChunks}}' }

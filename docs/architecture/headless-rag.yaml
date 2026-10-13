@@ -1,0 +1,18 @@
+- { id: api, name: Headless HTTP API, note: REST + OpenAI-compatible }
+- { id: mcp, name: MCP Gateway, note: JSON-RPC tools/call }
+- { id: admin, name: Admin Web UI, note: Electric v3 console }
+- { id: playground, name: Playground, note: Chat + deep diagnostics }
+- { id: auth, name: Authentication & ABAC, note: Identity + authorization }
+- { id: config, name: Config Resolution, note: Three rooted trees }
+- { id: scope, name: Execution Scope, note: Request-local context }
+- { id: setup, name: Setup & Portability, note: Bootstrap + import/export }
+- { id: skills, name: Skills Graph Runtime, note: Composable DAG execution }
+- { id: agents, name: Agentic ReAct Loop, note: Plan · act · observe }
+- { id: rag, name: RAG Core, note: Retrieve · rerank · synthesize }
+- { id: llm, name: LLM Integrations, note: Provider abstraction }
+- { id: sources, name: Source Loaders, note: Kudos · web · files }
+- { id: pipeline, name: Ingestion Pipelines, note: Load · chunk · enrich }
+- { id: typesense, name: Typesense Search, note: Per-pipeline indexes }
+- { id: data, name: Datahike / Postgres, note: System of record }
+- { id: sweeps, name: Sweeps & Evaluation, note: Quality feedback loop }
+- { id: telemetry, name: Telemetry & Utilities, note: Logs · status · diagnostics }

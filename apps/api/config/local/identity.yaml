@@ -1,0 +1,106 @@
+# Test data for mock Ansattporten and the mock Altinn PDP.
+devLogin:
+  employee: '01017012345'
+  operator: '02027012345'
+
+organisations:
+  - { orgno: '991825827', name: Digitaliseringsdirektoratet, unitType: ORGL, partyId: 500006 }
+  - { orgno: '405003309', name: Testdepartementet, unitType: ORGL, partyId: 500005 }
+  - { orgno: '889640782', name: Arbeids- og velferdsetaten, unitType: ORGL, partyId: 500010 }
+  - { orgno: '897069650', name: DDG Fitness AS, unitType: AS, partyId: 500000 }
+  - { orgno: '897069651', name: DDG Fitness Oslo, unitType: BEDR, partyId: 500001 }
+
+resourceNames:
+  urn:altinn:resource:digdir-genai-platform: Digdirs plattform for generativ KI
+
+# Rights are listed in apps/api/src/rights.ts; read stays because invoking a service asks for it.
+resourcePolicies:
+  urn:altinn:resource:digdir-genai-platform:
+    rules:
+      - roles: [DAGL, LEDE]
+        actions:
+          [
+            read,
+            write,
+            use-services,
+            manage-services,
+            manage-datasets,
+            register-building-blocks,
+            view-usage,
+          ]
+      - { accessPackages: ['urn:altinn:accesspackage:ki-tjenester'], actions: [read, use-services] }
+      - accessPackages: ['urn:altinn:accesspackage:ki-administrasjon']
+        actions:
+          [
+            read,
+            write,
+            use-services,
+            manage-services,
+            manage-datasets,
+            register-building-blocks,
+            view-usage,
+          ]
+
+persons:
+  - pid: '01017012345'
+    name: Kari Testansatt
+    userId: 20001
+    description: Fagansvarlig i Digdir med alle rettigheter, også Registrere byggeklosser
+    parties:
+      - orgno: '991825827'
+        accessPackages:
+          ['urn:altinn:accesspackage:ki-tjenester', 'urn:altinn:accesspackage:ki-administrasjon']
+
+  - pid: '02027012345'
+    name: Ola Drift
+    userId: 20002
+    description: Driftsoperatør i Digdir, ingen Altinn-rettigheter til tjenesten
+    operator: true
+    parties:
+      - { orgno: '991825827' }
+
+  - pid: '03037012345'
+    name: Ingrid Berg
+    userId: 20003
+    description: Daglig leder i Testdepartementet, administrerer datasett (ikke tjenester) i Digdir
+    parties:
+      - { orgno: '405003309', roles: [DAGL] }
+      - orgno: '991825827'
+        resources:
+          urn:altinn:resource:digdir-genai-platform:
+            [read, use-services, manage-datasets, view-usage]
+
+  - pid: '04047012345'
+    name: Erik Larsen
+    userId: 20004
+    description: Leder i NAV, regnskapsfører uten tilgang i DDG Fitness AS, bare Bruke tjenester i underenheten i Oslo
+    parties:
+      - { orgno: '889640782', roles: [LEDE] }
+      - { orgno: '897069650', roles: [REGNA] }
+      - { orgno: '897069651', accessPackages: ['urn:altinn:accesspackage:ki-tjenester'] }
+
+  - pid: '05057012345'
+    name: Hensynsløs Måke
+    userId: 20005
+    description: Ingen tilganger i Altinn
+    parties: []
+
+# Public SPA clients: PKCE S256, no client secret. They request the Altinn resource in authorization_details.
+clients:
+  - clientId: local-portal
+    redirectUris: ['http://localhost:5175/callback', 'http://localhost:5173/callback']
+    postLogoutRedirectUris: ['http://localhost:5175/', 'http://localhost:5173/']
+    audience: digdir:genai
+    tokenEndpointAuthMethod: none
+
+  - clientId: local-console
+    redirectUris: ['http://localhost:5174/callback']
+    postLogoutRedirectUris: ['http://localhost:5174/']
+    audience: digdir:genai
+    tokenEndpointAuthMethod: none
+
+  - clientId: local-workspace
+    redirectUris: ['http://localhost:5176/callback']
+    postLogoutRedirectUris: ['http://localhost:5176/']
+    audience: digdir:genai
+    tokenEndpointAuthMethod: none

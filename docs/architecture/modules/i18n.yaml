@@ -1,0 +1,28 @@
+id: i18n
+plane: services
+name: Languages
+note: Bokmål and English
+icon: setup
+color: '#70d6a1'
+status: Library
+packages:
+  - '@genai/i18n'
+summary: Typed message catalogues, locale negotiation and locale-aware formatting for every app and the API.
+description: Bokmål is the source catalogue and every other language is type-checked against it, so
+  a missing translation fails the build. Apps own namespaced catalogues per screen. The React part
+  holds the language state, sets the document language and offers the language choice for user
+  menus. The API negotiates Accept-Language and translates problem details at the boundary.
+responsibilities:
+  - Locales, Accept-Language and ui_locales negotiation
+  - Typed catalogues with interpolation, plurals and rich text
+  - Date, time, number, currency and relative time formatting
+  - Language state, language choice and catalogue checks
+files:
+  - packages/i18n/src/catalogue.ts
+  - packages/i18n/src/format.ts
+  - packages/i18n/src/locale.ts
+  - packages/i18n/src/react.tsx
+input: Message keys and values, Accept-Language
+output: Text in the person's language
+edges: []
+keywords: i18n language locale translation english bokmål nynorsk format

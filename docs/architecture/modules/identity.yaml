@@ -1,0 +1,66 @@
+id: identity
+plane: policy
+name: Identity & access
+note: Verify tokens · Altinn PDP
+icon: shield
+color: '#ff8790'
+status: Plugin
+packages:
+  - '@genai/identity'
+summary: Turns every caller into a Principal and asks Altinn whether it may act.
+description: Verifies Ansattporten, Maskinporten and Entra ID tokens against JWKS, bridges legacy
+  API keys as a ceiling (ADR 0008) and makes access decisions through an Altinn PDP. Ships mock
+  Ansattporten, Maskinporten and Altinn for local development and tests.
+responsibilities:
+  - Token verification and principal mapping
+  - Legacy API-key bridge
+  - Altinn authorization (mocked today)
+files:
+  - packages/identity/src/verify.ts
+  - packages/identity/src/authenticate.ts
+  - packages/identity/src/altinn.ts
+  - packages/identity/src/policy.ts
+  - packages/identity/src/mock-ansattporten.ts
+  - packages/identity/src/api-keys.ts
+input: Bearer token or API key
+output: Principal + policy decision
+replaces:
+  - module: auth
+    how: Authentication and ABAC, now national identity and Altinn
+edges:
+  - to: i18n
+    label: Mock login pages follow ui_locales
+    kind: call
+    target: call
+    witness:
+      file: packages/identity/src/mock-ansattporten-text.ts
+      imports: '@genai/i18n'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/identity/src/authenticate.ts
+      imports: '@genai/contracts'
+  - to: ansattporten
+    label: Employee tokens (mock issuer until live)
+    kind: mock
+    target: http
+    witness:
+      file: packages/identity/src/mock-ansattporten.ts
+      contains: createMockAnsattporten
+  - to: maskinporten
+    label: Machine tokens via JWKS
+    kind: mock
+    target: http
+    witness:
+      file: packages/identity/src/mock-maskinporten.ts
+      contains: createMockMaskinporten
+  - to: altinn
+    label: Access decisions (mock PDP until live)
+    kind: mock
+    target: http
+    witness:
+      file: packages/identity/src/altinn.ts
+      contains: createMockAltinnPdp
+keywords: identity auth ansattporten maskinporten altinn entra principal api key

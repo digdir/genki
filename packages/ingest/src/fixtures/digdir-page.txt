@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="nb">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tildelingsbrev og årsrapporter | Digdir</title>
+    <style>
+      .cookie-banner {
+        position: fixed;
+      }
+    </style>
+    <script>
+      window.dataLayer = [];
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Hopp til hovedinnhold</a>
+    <div id="cookie-consent" class="cookie-banner">
+      <p>Vi bruker informasjonskapsler for å forbedre nettstedet.</p>
+      <button>Godta alle</button>
+      <button>Kun nødvendige</button>
+    </div>
+    <header class="site-header">
+      <a href="/">Digitaliseringsdirektoratet</a>
+      <nav aria-label="Hovedmeny">
+        <ul>
+          <li><a href="/tjenester">Tjenester og verktøy</a></li>
+          <li><a href="/om-oss">Om oss</a></li>
+        </ul>
+      </nav>
+    </header>
+    <nav class="breadcrumbs" aria-label="Brødsmulesti">
+      <a href="/">Forsiden</a> / <a href="/om-oss">Om oss</a>
+    </nav>
+    <main id="main">
+      <article>
+        <h1>Tildelingsbrev   og årsrapporter</h1>
+        <p class="ingress">
+          Her finner du      tildelingsbrev
+          og årsrapporter for Digitaliseringsdirektoratet.
+        </p>
+
+
+
+        <h2>Tildelingsbrev 2025</h2>
+        <p>
+          Departementet stiller midler til disposisjon for direktoratet.&nbsp;Brevet beskriver mål
+          og styringsparametere.
+        </p>
+        <div class="share-buttons">
+          <span>Del siden</span>
+          <a href="https://www.facebook.com/sharer">Facebook</a>
+          <a href="https://www.linkedin.com/share">LinkedIn</a>
+        </div>
+      </article>
+      <aside>
+        <h2>Relatert innhold</h2>
+        <a href="/annet">Annet innhold</a>
+      </aside>
+    </main>
+    <footer>
+      <p>Digitaliseringsdirektoratet, postboks 1382 Vika, 0114 Oslo</p>
+      <a href="/personvern">Personvernerklæring</a>
+    </footer>
+  </body>
+</html>

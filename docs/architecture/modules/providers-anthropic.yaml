@@ -1,0 +1,45 @@
+id: providers-anthropic
+plane: providers
+name: anthropic-messages adapter
+note: Claude on Foundry
+icon: llm
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-anthropic'
+summary: The anthropic-messages wire protocol, used for Claude on Azure AI Foundry.
+description: Maps generic options such as reasoning and continuation to the Messages API. Available
+  with residency global (ADR 0021).
+responsibilities:
+  - anthropic-messages protocol
+  - Reasoning continuation passthrough
+files:
+  - packages/providers-anthropic/src/index.ts
+input: Port request
+output: Messages API call
+replaces:
+  - module: llm
+    how: Anthropic provider
+edges:
+  - to: plugins
+    label: Manifest and contract fixture
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-anthropic/src/contract.ts
+      imports: '@genai/plugins'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-anthropic/src/index.ts
+      imports: '@genai/port-model'
+  - to: azure-foundry
+    label: Messages API on Foundry
+    kind: http
+    target: http
+    witness:
+      file: packages/providers-anthropic/src/index.ts
+      contains: new Anthropic(
+keywords: anthropic claude provider messages

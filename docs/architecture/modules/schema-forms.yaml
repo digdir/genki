@@ -1,0 +1,35 @@
+id: schema-forms
+plane: consumers
+name: Schema forms
+note: One React renderer for JSON Schema forms
+icon: setup
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/schema-forms'
+summary: Renders a form from a JSON Schema in Designsystemet, in bokmål and English, for the portal and the console.
+description: A shared React renderer (ADR 0030) that turns a described JSON Schema into fields,
+  validates the values against it and shows labels and errors in the person's language. The portal
+  and the console use the same renderer, so a strategy or plugin parameter looks and behaves the
+  same in both.
+responsibilities:
+  - Render fields from a JSON Schema with Designsystemet components
+  - Validate values against the schema and show errors
+  - Labels and messages in bokmål and English
+files:
+  - packages/schema-forms/src/SchemaForm.tsx
+  - packages/schema-forms/src/schema.ts
+  - packages/schema-forms/src/validate.ts
+  - packages/schema-forms/src/widgets.tsx
+input: A JSON Schema, values and a locale
+output: A rendered form and validated values
+replaces: []
+edges:
+  - to: i18n
+    label: Locale and translated labels
+    kind: call
+    target: call
+    witness:
+      file: packages/schema-forms/src/schema.ts
+      imports: '@genai/i18n'
+keywords: schema forms json schema react renderer designsystemet

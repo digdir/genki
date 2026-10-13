@@ -1,0 +1,25 @@
+{
+  "name": "@genai/providers-documents",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/ingest": "0.0.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "devDependencies": {
+    "@genai/port-blob": "0.0.0"
+  }
+}

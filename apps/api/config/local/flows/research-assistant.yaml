@@ -1,0 +1,12 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: research-assistant, name: Research Assistant }
+spec:
+  purpose: Breadth-first retrieval with a synthesis-heavy answer, for questions that want a survey of the sources rather than a single fact.
+  steps:
+    - id: agent
+      block: agent@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+      params:
+        variant: "{{vars.variant ?? 'faithful'}}"
+        retrieval: { retrieveTopK: 150, rerank: { candidateK: 60 } }

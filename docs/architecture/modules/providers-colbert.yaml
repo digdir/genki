@@ -1,0 +1,50 @@
+id: providers-colbert
+plane: providers
+name: ColBERT adapter
+note: Rerank over HTTP
+icon: chart
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-colbert'
+summary: Rerank adapter for the ColBERT service.
+description: Posts query and candidates to the ColBERT endpoint, with a timeout (ADR 0017).
+responsibilities:
+  - ColBERT rerank call
+files:
+  - packages/providers-colbert/src/index.ts
+input: Query + candidates
+output: Scores
+replaces:
+  - module: rag
+    how: ColBERT client
+edges:
+  - to: plugins
+    label: Manifest and contract fixture
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-colbert/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-colbert/src/index.ts
+      imports: '@genai/kernel'
+  - to: port-rerank
+    label: Rerank through the rerank port
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-colbert/src/index.ts
+      imports: '@genai/port-rerank'
+  - to: colbert-service
+    label: Rerank request
+    kind: http
+    target: http
+    witness:
+      file: packages/providers-colbert/src/index.ts
+      contains: (endpoint.fetch ?? fetch)(endpoint.baseURL
+keywords: colbert rerank provider

@@ -1,0 +1,21 @@
+{
+  "name": "@genai/providers-postgres-source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/ingest": "0.0.0",
+    "pg": "^8.23.1"
+  }
+}

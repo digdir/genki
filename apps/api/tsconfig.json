@@ -1,0 +1,141 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/testkit.ts"],
+  "references": [
+    {
+      "path": "../../packages/composition"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/definitions"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/hooks"
+    },
+    {
+      "path": "../../packages/plugins"
+    },
+    {
+      "path": "../../packages/identity"
+    },
+    {
+      "path": "../../packages/strategy-single-call"
+    },
+    {
+      "path": "../../packages/adapter-mcp"
+    },
+    {
+      "path": "../../packages/adapter-a2a"
+    },
+    {
+      "path": "../../packages/adapter-openai"
+    },
+    {
+      "path": "../../packages/conversations"
+    },
+    {
+      "path": "../../packages/port-knowledge"
+    },
+    {
+      "path": "../../packages/port-model"
+    },
+    {
+      "path": "../../packages/port-rerank"
+    },
+    {
+      "path": "../../packages/port-tools"
+    },
+    {
+      "path": "../../packages/providers-anthropic"
+    },
+    {
+      "path": "../../packages/providers-colbert"
+    },
+    {
+      "path": "../../packages/providers-openai"
+    },
+    {
+      "path": "../../packages/providers-typesense"
+    },
+    {
+      "path": "../../packages/providers-postgres"
+    },
+    {
+      "path": "../../packages/providers-langfuse"
+    },
+    {
+      "path": "../../packages/retrieval"
+    },
+    {
+      "path": "../../packages/strategy-agent-loop"
+    },
+    {
+      "path": "../../packages/strategy-rag"
+    },
+    {
+      "path": "../../packages/adapter-rest"
+    },
+    {
+      "path": "../../packages/eval"
+    },
+    {
+      "path": "../../packages/guardrails"
+    },
+    {
+      "path": "../../packages/strategy-step-flow"
+    },
+    {
+      "path": "../../packages/strategy-remote"
+    },
+    {
+      "path": "../../packages/jobs"
+    },
+    {
+      "path": "../../packages/port-blob"
+    },
+    {
+      "path": "../../packages/providers-mcp-client"
+    },
+    {
+      "path": "../../packages/providers-a2a-client"
+    },
+    {
+      "path": "../../packages/providers-openapi-tools"
+    },
+    {
+      "path": "../../packages/ingest"
+    },
+    {
+      "path": "../../packages/port-embedding"
+    },
+    {
+      "path": "../../packages/providers-pgvector"
+    },
+    {
+      "path": "../../packages/providers-postgres-source"
+    },
+    {
+      "path": "../../packages/providers-typesense-writer"
+    },
+    {
+      "path": "../../packages/strategy-builder"
+    },
+    {
+      "path": "../../packages/providers-documents"
+    },
+    {
+      "path": "../../packages/i18n"
+    }
+  ]
+}

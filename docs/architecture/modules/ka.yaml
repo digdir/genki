@@ -1,0 +1,48 @@
+id: ka
+plane: consumers
+name: Kunnskapsassistenten
+note: A service with its own frontend
+icon: chat
+color: '#f1a46a'
+status: Consumer
+external: true
+summary: The first agency service on the platform. It keeps its own frontend and calls the platform
+  as any client would.
+description: >-
+  Kunnskapsassistenten (KA) is a service defined on the platform, not a part of it. Its frontend
+  calls MCP with the service's tool name (kunnskapsassistenten__default), /v1/models and the
+  conversation API with X-User-Id, so moving it from headless-rag to the platform changes the base
+  URL, key, tool name and agent id. Each variant of the service is one choice in the frontend's
+  picker. Facets for the filter come from GET /api/facets, and excerpts from
+  structuredContent.chunks[].content_markdown. KA is the 1:1 acceptance test for parity with
+  headless-rag, against the divergences in ADR 0017.
+files:
+  - docs/adr/0017-parity-scope-and-intentional-divergences.md
+  - apps/parity/src/checks.ts
+  - apps/parity/src/scenarios/mcp.ts
+input: Employee questions in the KA frontend
+output: Answers with sources, rendered by KA
+replaces: []
+edges:
+  - to: adapter-mcp
+    label: tools/call with the service's tool name, SSE progress
+    kind: http
+    target: http
+    witness:
+      file: docs/adr/0004-service-capability-and-version.md
+      contains: '`<service>__<variant>` unless the definition sets one'
+  - to: conversations
+    label: Thread history through the conversation API
+    kind: http
+    target: http
+    witness:
+      file: docs/adr/0017-parity-scope-and-intentional-divergences.md
+      contains: the conversation API
+  - to: adapter-rest
+    label: Facets for the filter UI
+    kind: http
+    target: http
+    witness:
+      file: packages/adapter-rest/src/index.ts
+      contains: app.get('/api/facets'
+keywords: ka kunnskapsassistenten consumer client frontend acceptance

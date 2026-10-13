@@ -1,0 +1,38 @@
+{
+  "scenario": "v1.unknown-model",
+  "recordedAt": "2026-10-06T21:15:36.891Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "body": {
+          "model": "no.such-agent__nothing",
+          "stream": false,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Hva sier evalueringene om digitalisering i staten?"
+            }
+          ]
+        },
+        "headers": {}
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": {
+            "message": "Agent not found: no/such-agent",
+            "type": "invalid_request_error",
+            "param": null,
+            "code": "agent_not_found"
+          }
+        }
+      }
+    }
+  ]
+}

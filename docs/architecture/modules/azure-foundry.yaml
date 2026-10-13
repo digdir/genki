@@ -1,0 +1,17 @@
+id: azure-foundry
+plane: external
+name: Azure AI Foundry
+note: 'Models: GPT, Claude'
+icon: llm
+color: '#607b88'
+status: External
+external: true
+summary: Model endpoints and deployment listings. Claude runs with residency global.
+description: Model endpoints and deployment listings. Claude runs with residency global.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: azure-foundry azure ai foundry external

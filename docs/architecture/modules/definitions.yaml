@@ -1,0 +1,49 @@
+id: definitions
+plane: runtime
+name: Definitions & settings
+note: Service YAML · layered config
+icon: config
+color: '#46d7c8'
+status: Core
+packages:
+  - '@genai/definitions'
+summary: The closed service-definition schema, layered settings with provenance, and the definition store.
+description: Validates Service and StepFlow definitions (ADR 0007), compiles each variant into a
+  capability, and resolves settings along platform, tenant, service version and call layers (ADR
+  0006).
+responsibilities:
+  - Validate and compile service definitions
+  - Resolve settings with provenance and locks
+  - Definition store interface
+files:
+  - packages/definitions/src/schema.ts
+  - packages/definitions/src/compile.ts
+  - packages/definitions/src/settings.ts
+  - packages/definitions/src/store.ts
+  - packages/definitions/src/settings-catalogue.ts
+input: Service definition YAML
+output: Compiled capabilities, resolved config
+replaces:
+  - module: config
+    how: Config resolution, now two axes with provenance
+  - module: setup
+    how: Import and export of definitions
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/definitions/src/compile.ts
+      imports: '@genai/contracts'
+contract:
+  - name: Skill
+    file: packages/definitions/src/schema.ts
+    export: skillDefinition
+  - name: Service
+    file: packages/definitions/src/schema.ts
+    export: serviceDefinition
+  - name: StepFlow
+    file: packages/definitions/src/schema.ts
+    export: stepFlowDefinition
+keywords: definitions settings config yaml schema publish version layers

@@ -1,0 +1,46 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: ai-overview, name: AI Overview }
+spec:
+  purpose: Short synthesised answer with inline chunk-level citations, ahead of the underlying results. Declines rather than answering on thin retrieval.
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+    - id: gate
+      block: evidence-gate@1
+      input: { chunks: '{{rerank.chunks}}', contextDocs: '{{rerank.contextDocs}}' }
+    - id: overview
+      switchOn: gate.sufficient
+      cases:
+        - when: true
+          steps:
+            - id: synthesize
+              block: synthesize@1
+              input: { query: '{{input.query}}', contextDocs: '{{gate.gatedContextDocs}}' }
+              params:
+                maxTokens: 400
+                generationPrompt: "Write an AI overview: a direct answer to the question, drawn only from the numbered sources below.\n\nRules:\n- At most three sentences. Aim for 60-80 words. Never exceed four sentences.\n- Start with the answer. No preamble, no restating the question, no \"based on the sources\".\n- Every sentence must carry at least one [N] citation.\n- Use only what the sources state. Do not add background the sources do not contain.\n- If the sources do not support a direct answer, reply with exactly INSUFFICIENT and nothing else. Do not guess, and do not answer partially.\n\nSources:\n{context}\n\nQuestion: {question}\n\nOverview:"
+    - id: finalize
+      block: overview-finalize@1
+      input:
+        sufficient: '{{gate.sufficient}}'
+        declineReason: '{{gate.reason}}'
+        response: '{{synthesize.response}}'
+        citations: '{{synthesize.citations}}'
+        citationIndex: '{{synthesize.citationIndex}}'
+        citationValidation: '{{synthesize.citationValidation}}'
+        insufficientContext: '{{synthesize.insufficientContext}}'
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{finalize.response}}'
+        chunks: '{{rerank.contextChunks}}'
+        citations: '{{finalize.citations}}'
+        meta:
+          overviewDeclined: '{{finalize.declined}}'
+          overviewDeclineReason: '{{finalize.declineReason}}'
+          evidence: '{{gate.summary}}'

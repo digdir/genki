@@ -1,0 +1,1166 @@
+{
+  "list": [
+    {
+      "kind": "Service",
+      "version": "v1",
+      "apiVersion": "genai/v1",
+      "title": {
+        "nb": "Tjeneste",
+        "en": "Service"
+      },
+      "href": "/schemas/Service%40v1",
+      "uses": [
+        {
+          "kind": "Strategy.single-call",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "single-call"
+          },
+          "title": {
+            "nb": "Ett steg",
+            "en": "One step"
+          },
+          "href": "/schemas/Strategy.single-call%401"
+        },
+        {
+          "kind": "Strategy.agent-loop",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "agent-loop"
+          },
+          "title": {
+            "nb": "Agent (søker selv)",
+            "en": "Agent (searches by itself)"
+          },
+          "href": "/schemas/Strategy.agent-loop%401"
+        },
+        {
+          "kind": "Strategy.rag-single-shot",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "rag-single-shot"
+          },
+          "title": {
+            "nb": "Ett søk og ett svar",
+            "en": "One search and one answer"
+          },
+          "href": "/schemas/Strategy.rag-single-shot%401"
+        },
+        {
+          "kind": "Strategy.step-flow",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "step-flow"
+          },
+          "title": {
+            "nb": "Fast stegflyt",
+            "en": "Fixed step flow"
+          },
+          "href": "/schemas/Strategy.step-flow%401"
+        },
+        {
+          "kind": "Strategy.remote-agent",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "remote-agent"
+          },
+          "title": {
+            "nb": "Egen motor",
+            "en": "Own engine"
+          },
+          "href": "/schemas/Strategy.remote-agent%401"
+        },
+        {
+          "kind": "Strategy.builder-assistant",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "builder-assistant"
+          },
+          "title": {
+            "nb": "Byggeassistenten",
+            "en": "The builder assistant"
+          },
+          "href": "/schemas/Strategy.builder-assistant%401"
+        },
+        {
+          "kind": "Strategy.optimiser",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "optimiser"
+          },
+          "title": {
+            "nb": "Forbedringsassistenten",
+            "en": "The improvement assistant"
+          },
+          "href": "/schemas/Strategy.optimiser%401"
+        }
+      ]
+    }
+  ],
+  "schemas": {
+    "/schemas/Strategy.single-call%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "enum": ["nb", "nn", "en"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536
+              }
+            }
+          ],
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt",
+          "x-right": "manage-services"
+        },
+        "languageInstructions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["nb", "nn", "en"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "x-label": {
+            "nb": "Tillegg per språk",
+            "en": "Additions per language"
+          },
+          "x-help": {
+            "nb": "Legges til instruksjonene når svaret skal være på dette språket.",
+            "en": "Added to the instructions when the answer is in this language."
+          },
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "x-label": {
+            "nb": "Eksempler",
+            "en": "Examples"
+          },
+          "x-advanced": true,
+          "x-widget": "list",
+          "x-right": "manage-services"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur",
+            "en": "Temperature"
+          },
+          "x-help": {
+            "nb": "Lav gir like svar, høy gir mer variasjon.",
+            "en": "Low gives similar answers, high gives more variety."
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "reasoning": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "x-label": {
+            "nb": "Hvor grundig modellen resonnerer",
+            "en": "How thoroughly the model reasons"
+          },
+          "x-enumLabels": {
+            "low": {
+              "nb": "Lite",
+              "en": "Little"
+            },
+            "medium": {
+              "nb": "Middels",
+              "en": "Medium"
+            },
+            "high": {
+              "nb": "Mye",
+              "en": "A lot"
+            }
+          },
+          "x-widget": "select",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.single-call@1",
+      "x-label": {
+        "nb": "Ett steg",
+        "en": "One step"
+      }
+    },
+    "/schemas/Strategy.agent-loop%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "enum": ["nb", "nn", "en"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536
+              }
+            }
+          ],
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt",
+          "x-right": "manage-services"
+        },
+        "languageInstructions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["nb", "nn", "en"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "x-label": {
+            "nb": "Tillegg per språk",
+            "en": "Additions per language"
+          },
+          "x-help": {
+            "nb": "Legges til instruksjonene når svaret skal være på dette språket.",
+            "en": "Added to the instructions when the answer is in this language."
+          },
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
+        "generationPrompt": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Ledetekst for svaret",
+            "en": "Prompt for the answer"
+          },
+          "x-help": {
+            "nb": "Tomt bruker den innebygde.",
+            "en": "Empty uses the built-in one."
+          },
+          "x-widget": "prompt",
+          "x-advanced": true,
+          "x-right": "manage-services"
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "searches": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest søk",
+                "en": "Most searches"
+              },
+              "x-widget": "number"
+            },
+            "reads": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest dokumenter som leses",
+                "en": "Most documents read"
+              },
+              "x-widget": "number"
+            },
+            "readChars": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest tegn som leses",
+                "en": "Most characters read"
+              },
+              "x-widget": "number"
+            }
+          },
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Budsjett per oppgave",
+            "en": "Budget per task"
+          },
+          "x-advanced": true,
+          "x-right": "manage-services"
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "x-label": {
+            "nb": "Flest runder",
+            "en": "Most rounds"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur mens agenten jobber",
+            "en": "Temperature while the agent works"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "synthesisTemperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur for svaret",
+            "en": "Temperature for the answer"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "synthesisMaxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "evaluatorTemperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur for egenvurderingen",
+            "en": "Temperature for the self-check"
+          },
+          "x-advanced": true,
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "noToolCallRetry": {
+          "type": "boolean",
+          "x-label": {
+            "nb": "Prøv igjen når modellen ikke bruker verktøy",
+            "en": "Try again when the model uses no tool"
+          },
+          "x-advanced": true,
+          "x-widget": "toggle",
+          "x-right": "manage-services"
+        },
+        "search": {
+          "type": "object",
+          "properties": {
+            "titleOverlapWeight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20,
+              "x-label": {
+                "nb": "Vekt på treff i tittelen",
+                "en": "Weight of matches in the title"
+              },
+              "x-widget": "number"
+            },
+            "strategyQuota": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "x-label": {
+                "nb": "Treff sikret per søkemåte",
+                "en": "Results kept per search method"
+              },
+              "x-widget": "number"
+            },
+            "autoReadTopK": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "x-label": {
+                "nb": "Dokumenter som leses automatisk",
+                "en": "Documents read automatically"
+              },
+              "x-widget": "number"
+            },
+            "displayLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "x-label": {
+                "nb": "Treff som vises til modellen",
+                "en": "Results shown to the model"
+              },
+              "x-widget": "number"
+            },
+            "snippets": {
+              "type": "boolean",
+              "x-label": {
+                "nb": "Vis utdrag i treffene",
+                "en": "Show excerpts in the results"
+              },
+              "x-widget": "toggle"
+            }
+          },
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Søk",
+            "en": "Search"
+          },
+          "x-advanced": true,
+          "x-right": "manage-services"
+        },
+        "ablate": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read-signal-eval",
+              "sufficiency-gate",
+              "grounding-gate",
+              "response-validation"
+            ]
+          },
+          "x-label": {
+            "nb": "Steg som slås av",
+            "en": "Steps turned off"
+          },
+          "x-help": {
+            "nb": "Bare for testing av kvalitet.",
+            "en": "Only for quality testing."
+          },
+          "x-enumLabels": {
+            "read-signal-eval": {
+              "nb": "Vurdering av det som er lest",
+              "en": "Assessment of what was read"
+            },
+            "sufficiency-gate": {
+              "nb": "Sjekk av om grunnlaget er nok",
+              "en": "Check that the basis is enough"
+            },
+            "grounding-gate": {
+              "nb": "Sjekk av at svaret har grunnlag",
+              "en": "Check that the answer is grounded"
+            },
+            "response-validation": {
+              "nb": "Kontroll av svaret",
+              "en": "Check of the answer"
+            }
+          },
+          "x-advanced": true,
+          "x-operator": true,
+          "x-widget": "multiselect"
+        }
+      },
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.agent-loop@1",
+      "x-label": {
+        "nb": "Agent (søker selv)",
+        "en": "Agent (searches by itself)"
+      }
+    },
+    "/schemas/Strategy.rag-single-shot%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "generate": {
+          "type": "boolean",
+          "x-label": {
+            "nb": "Skriv et svar",
+            "en": "Write an answer"
+          },
+          "x-help": {
+            "nb": "Av betyr at tjenesten bare søker.",
+            "en": "Off means the service only searches."
+          },
+          "x-widget": "toggle",
+          "x-right": "manage-services"
+        },
+        "topK": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "x-label": {
+            "nb": "Treff når den bare søker",
+            "en": "Results when it only searches"
+          },
+          "x-showIf": {
+            "field": "generate",
+            "equals": false
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "instructions": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "enum": ["nb", "nn", "en"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536
+              }
+            }
+          ],
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt",
+          "x-right": "manage-services"
+        },
+        "languageInstructions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["nb", "nn", "en"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "x-label": {
+            "nb": "Tillegg per språk",
+            "en": "Additions per language"
+          },
+          "x-help": {
+            "nb": "Legges til instruksjonene når svaret skal være på dette språket.",
+            "en": "Added to the instructions when the answer is in this language."
+          },
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
+        "generationPrompt": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Ledetekst for svaret",
+            "en": "Prompt for the answer"
+          },
+          "x-help": {
+            "nb": "Tomt bruker den innebygde.",
+            "en": "Empty uses the built-in one."
+          },
+          "x-widget": "prompt",
+          "x-advanced": true,
+          "x-right": "manage-services"
+        },
+        "synthesisTemperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur for svaret",
+            "en": "Temperature for the answer"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "synthesisMaxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "contextTopK": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "x-label": {
+            "nb": "Tekstbiter som grunnlag for svaret",
+            "en": "Text chunks the answer is based on"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "maxDocs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "x-label": {
+            "nb": "Flest dokumenter i svaret",
+            "en": "Most documents in the answer"
+          },
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "searches": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest søk",
+                "en": "Most searches"
+              },
+              "x-widget": "number"
+            },
+            "reads": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest dokumenter som leses",
+                "en": "Most documents read"
+              },
+              "x-widget": "number"
+            },
+            "readChars": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "x-label": {
+                "nb": "Flest tegn som leses",
+                "en": "Most characters read"
+              },
+              "x-widget": "number"
+            }
+          },
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Budsjett per oppgave",
+            "en": "Budget per task"
+          },
+          "x-advanced": true,
+          "x-right": "manage-services"
+        }
+      },
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.rag-single-shot@1",
+      "x-label": {
+        "nb": "Ett søk og ett svar",
+        "en": "One search and one answer"
+      }
+    },
+    "/schemas/Strategy.step-flow%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "flow": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.-]*@\\d+(\\.\\d+)*$",
+          "x-label": {
+            "nb": "Stegflyt",
+            "en": "Step flow"
+          },
+          "x-help": {
+            "nb": "En versjonert referanse, for eksempel saksoppslag-flyt@1.",
+            "en": "A versioned reference, for example case-lookup-flow@1."
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "vars": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Variabler",
+            "en": "Variables"
+          },
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
+        "settings": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Innstillinger for oppskriften",
+            "en": "Recipe settings"
+          },
+          "x-help": {
+            "nb": "Verdiene stegene leser som settings.<navn>.",
+            "en": "The values the steps read as settings.<name>."
+          },
+          "x-advanced": true,
+          "x-widget": "map",
+          "x-right": "manage-services"
+        },
+        "result": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Resultat fra steget",
+            "en": "Result from the step"
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "maxSteps": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "x-label": {
+            "nb": "Flest steg som kjøres",
+            "en": "Most steps run"
+          },
+          "x-advanced": true,
+          "x-widget": "number",
+          "x-right": "manage-services"
+        },
+        "languageInstructions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["nb", "nn", "en"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536
+          },
+          "x-label": {
+            "nb": "Tillegg per språk",
+            "en": "Additions per language"
+          },
+          "x-help": {
+            "nb": "Legges til instruksjonene når svaret skal være på dette språket.",
+            "en": "Added to the instructions when the answer is in this language."
+          },
+          "x-widget": "map",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["flow"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.step-flow@1",
+      "x-label": {
+        "nb": "Fast stegflyt",
+        "en": "Fixed step flow"
+      }
+    },
+    "/schemas/Strategy.remote-agent%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "x-label": {
+                "nb": "Adresse (URL)",
+                "en": "Address (URL)"
+              },
+              "x-widget": "text"
+            },
+            "protocol": {
+              "default": "http",
+              "type": "string",
+              "enum": ["http", "a2a"],
+              "x-label": {
+                "nb": "Protokoll",
+                "en": "Protocol"
+              },
+              "x-enumLabels": {
+                "http": {
+                  "nb": "HTTP",
+                  "en": "HTTP"
+                },
+                "a2a": {
+                  "nb": "A2A",
+                  "en": "A2A"
+                }
+              },
+              "x-widget": "select"
+            },
+            "residency": {
+              "type": "string",
+              "enum": ["norway", "eu", "global"],
+              "x-label": {
+                "nb": "Hvor data behandles",
+                "en": "Where data is processed"
+              },
+              "x-enumLabels": {
+                "norway": {
+                  "nb": "Norge",
+                  "en": "Norway"
+                },
+                "eu": {
+                  "nb": "EU/EØS",
+                  "en": "EU/EEA"
+                },
+                "global": {
+                  "nb": "Globalt",
+                  "en": "Global"
+                }
+              },
+              "x-widget": "select"
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "bearer",
+                      "x-label": {
+                        "nb": "Måte å logge på",
+                        "en": "How to sign in"
+                      },
+                      "x-enumLabels": {
+                        "bearer": {
+                          "nb": "Bærertoken",
+                          "en": "Bearer token"
+                        },
+                        "header": {
+                          "nb": "Egen header",
+                          "en": "Own header"
+                        }
+                      },
+                      "x-widget": "select"
+                    },
+                    "secret": {
+                      "type": "string",
+                      "pattern": "^secret:\\/\\/tenant\\/(\\d{9})\\/([a-z0-9][a-z0-9._-]*)$",
+                      "x-label": {
+                        "nb": "Hemmelighet",
+                        "en": "Secret"
+                      },
+                      "x-help": {
+                        "nb": "En secret://tenant/-referanse, aldri selve nøkkelen.",
+                        "en": "A secret://tenant/ reference, never the key itself."
+                      },
+                      "x-widget": "secret",
+                      "x-sensitive": true
+                    }
+                  },
+                  "required": ["kind", "secret"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "header",
+                      "x-label": {
+                        "nb": "Måte å logge på",
+                        "en": "How to sign in"
+                      },
+                      "x-enumLabels": {
+                        "bearer": {
+                          "nb": "Bærertoken",
+                          "en": "Bearer token"
+                        },
+                        "header": {
+                          "nb": "Egen header",
+                          "en": "Own header"
+                        }
+                      },
+                      "x-widget": "select"
+                    },
+                    "header": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9-]+$",
+                      "x-label": {
+                        "nb": "Header",
+                        "en": "Header"
+                      },
+                      "x-widget": "text"
+                    },
+                    "secret": {
+                      "type": "string",
+                      "pattern": "^secret:\\/\\/tenant\\/(\\d{9})\\/([a-z0-9][a-z0-9._-]*)$",
+                      "x-label": {
+                        "nb": "Hemmelighet",
+                        "en": "Secret"
+                      },
+                      "x-help": {
+                        "nb": "En secret://tenant/-referanse, aldri selve nøkkelen.",
+                        "en": "A secret://tenant/ reference, never the key itself."
+                      },
+                      "x-widget": "secret",
+                      "x-sensitive": true
+                    }
+                  },
+                  "required": ["kind", "header", "secret"],
+                  "additionalProperties": false
+                }
+              ],
+              "x-label": {
+                "nb": "Pålogging",
+                "en": "Sign-in"
+              }
+            },
+            "timeoutMs": {
+              "default": 120000,
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 600000,
+              "x-label": {
+                "nb": "Tidsavbrudd (millisekunder)",
+                "en": "Timeout (milliseconds)"
+              },
+              "x-advanced": true,
+              "x-widget": "number"
+            },
+            "maxResponseBytes": {
+              "default": 2097152,
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 10485760,
+              "x-label": {
+                "nb": "Største svar (byte)",
+                "en": "Largest response (bytes)"
+              },
+              "x-advanced": true,
+              "x-widget": "number"
+            }
+          },
+          "required": ["url", "residency"],
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Ekstern motor",
+            "en": "External engine"
+          },
+          "x-right": "manage-services"
+        },
+        "agent": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "x-label": {
+            "nb": "Registrert motor",
+            "en": "Registered engine"
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "send": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "history": {
+              "default": true,
+              "type": "boolean",
+              "x-label": {
+                "nb": "Samtalehistorikk",
+                "en": "Conversation history"
+              },
+              "x-widget": "toggle"
+            },
+            "maxMessages": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "x-label": {
+                "nb": "Flest meldinger i historikken",
+                "en": "Most messages in the history"
+              },
+              "x-widget": "number"
+            },
+            "identity": {
+              "default": "none",
+              "type": "string",
+              "enum": ["none", "subject"],
+              "x-label": {
+                "nb": "Hvem som spør",
+                "en": "Who is asking"
+              },
+              "x-enumLabels": {
+                "none": {
+                  "nb": "Ikke send",
+                  "en": "Do not send"
+                },
+                "subject": {
+                  "nb": "Send en anonym ID",
+                  "en": "Send an anonymous ID"
+                }
+              },
+              "x-widget": "select"
+            },
+            "metadata": {
+              "default": [],
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x-label": {
+                "nb": "Metadata som sendes med",
+                "en": "Metadata sent along"
+              },
+              "x-widget": "list"
+            }
+          },
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Hva som sendes til motoren",
+            "en": "What is sent to the engine"
+          },
+          "x-right": "manage-services"
+        }
+      },
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.remote-agent@1",
+      "x-label": {
+        "nb": "Egen motor",
+        "en": "Own engine"
+      }
+    },
+    "/schemas/Strategy.builder-assistant%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.builder-assistant@1",
+      "x-label": {
+        "nb": "Byggeassistenten",
+        "en": "The builder assistant"
+      }
+    },
+    "/schemas/Strategy.optimiser%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.optimiser@1",
+      "x-label": {
+        "nb": "Forbedringsassistenten",
+        "en": "The improvement assistant"
+      }
+    }
+  }
+}

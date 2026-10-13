@@ -1,0 +1,20 @@
+.variant-card {
+  padding: var(--ds-size-4);
+  border-radius: var(--ds-border-radius-md);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.variant-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--ds-size-3);
+  align-items: start;
+}
+
+.variant-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-3);
+  align-items: end;
+}

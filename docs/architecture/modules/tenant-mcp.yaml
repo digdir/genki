@@ -1,0 +1,17 @@
+id: tenant-mcp
+plane: external
+name: Tenant MCP servers
+note: Agency-provided tools
+icon: gateway
+color: '#607b88'
+status: External
+external: true
+summary: Agencies extend the platform with their own MCP servers, never with code inside it.
+description: Agencies extend the platform with their own MCP servers, never with code inside it.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: tenant-mcp tenant mcp servers external

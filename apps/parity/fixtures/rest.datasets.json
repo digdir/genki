@@ -1,0 +1,31 @@
+{
+  "scenario": "rest.datasets",
+  "recordedAt": "2026-10-06T21:15:36.969Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/datasets",
+        "headers": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "datasets": [
+            {
+              "id": "kudos",
+              "name": "Kudos",
+              "description": null,
+              "enabled?": true,
+              "status": "configured"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

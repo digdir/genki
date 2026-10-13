@@ -1,0 +1,117 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: klarsprak-brev
+  name: Klarspråk, brev og vedtak
+  version: 1
+spec:
+  service: klarsprak
+  provenance:
+    from: written for the platform
+    personalData: none
+    reviewed: false
+  cases:
+    - id: vedtak-tilskudd-innvilget
+      split: train
+      input: Det vises til Deres søknad om driftstilskudd mottatt 3. mars 2026. Søknaden er behandlet i henhold til forskrift om driftstilskudd § 4. Det er fattet vedtak om at søknaden innvilges med et beløp på kr 150 000. Tilskuddet vil bli utbetalt i to like terminer, henholdsvis 1. mai og 1. september. Det forutsettes at tilskuddet benyttes i samsvar med formålet, og at rapport innsendes innen 1. februar 2027.
+      expected:
+        referenceAnswer: 'Du får 150 000 kroner i driftstilskudd.
+
+
+          Vi har behandlet søknaden din fra 3. mars 2026 etter forskrift om driftstilskudd § 4.
+
+
+          Vi betaler ut pengene i to like deler, 1. mai og 1. september.
+
+
+          Dette må du gjøre:
+
+          - Bruk pengene til det du søkte om.
+
+          - Send oss en rapport innen 1. februar 2027.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev
+    - id: mangelbrev-dokumentasjon
+      split: validation
+      input: Ved gjennomgang av innsendt søknad er det konstatert at nødvendig dokumentasjon ikke er vedlagt. For at saken skal kunne realitetsbehandles, må regnskap for 2025 samt budsjett for 2026 være mottatt innen 14 dager fra dags dato. Dersom dokumentasjonen ikke foreligger innen fristen, vil søknaden bli avvist.
+      expected:
+        referenceAnswer: 'Vi mangler dokumenter for å behandle søknaden din.
+
+
+          Send oss dette innen 14 dager:
+
+          - regnskapet for 2025
+
+          - budsjettet for 2026
+
+
+          Hvis vi ikke får dokumentene innen fristen, kan vi ikke behandle søknaden, og vi avviser den.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev
+    - id: avslag-klagerett
+      split: holdout
+      input: Etter en helhetlig vurdering er det besluttet at søknaden avslås, da vilkårene i ordningens retningslinjer punkt 3.2 ikke anses oppfylt. Vedtaket kan påklages til departementet. Klagefristen er tre uker fra det tidspunkt vedtaket er mottatt. En eventuell klage skal fremsettes skriftlig og begrunnes.
+      expected:
+        referenceAnswer: 'Du får ikke tilskudd.
+
+
+          Vi har avslått søknaden din fordi du ikke oppfyller vilkårene i punkt 3.2 i retningslinjene for ordningen.
+
+
+          Du kan klage på vedtaket til departementet. Klagen må være skriftlig, og du må begrunne den. Fristen er tre uker fra du fikk dette brevet.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev
+    - id: varsel-tilbakebetaling
+      split: train
+      input: Det varsles herved om at det vurderes å fatte vedtak om tilbakebetaling av utbetalt tilskudd på kr 40 000, da rapport for tilskuddsåret 2025 ikke er mottatt. Eventuelle merknader til varselet bes oversendt innen 1. juni 2026.
+      expected:
+        referenceAnswer: 'Du kan måtte betale tilbake 40 000 kroner i tilskudd.
+
+
+          Vi har ikke fått rapporten din for 2025. Derfor vurderer vi å kreve tilbake pengene.
+
+
+          Hvis du vil si noe om dette før vi bestemmer oss, må du svare oss innen 1. juni 2026.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev
+    - id: innkalling-mote
+      split: validation
+      input: Det innkalles herved til oppstartsmøte vedrørende prosjektet. Møtet avholdes 12. mai 2026 kl. 10.00 i direktoratets lokaler. Det bes om bekreftelse på deltakelse innen 5. mai. Eventuelle forfall meldes snarest.
+      expected:
+        referenceAnswer: 'Vi inviterer deg til oppstartsmøte for prosjektet.
+
+
+          Når: 12. mai 2026 klokka 10.00
+
+          Hvor: i lokalene våre
+
+
+          Gi oss beskjed innen 5. mai om du kommer. Hvis du ikke kan komme, si fra så snart du kan.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev
+    - id: endring-saksbehandlingstid
+      split: holdout
+      input: Grunnet et betydelig antall innkomne søknader må det påregnes forlenget saksbehandlingstid. Forventet behandlingstid er per i dag inntil tolv uker. Henvendelser vedrørende status i den enkelte sak vil ikke kunne besvares før denne tid.
+      expected:
+        referenceAnswer: 'Det tar lengre tid enn vanlig før du får svar.
+
+
+          Vi har fått svært mange søknader. Nå kan det ta opptil tolv uker å behandle søknaden din.
+
+
+          Vi kan ikke svare på spørsmål om saken din før det har gått tolv uker.'
+      grounding: answer-only
+      tags:
+        - klarsprak
+        - brev

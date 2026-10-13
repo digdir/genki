@@ -1,0 +1,746 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: headless-rag-ue-42
+  name: headless-rag UE set (42)
+  version: 1
+spec:
+  corpus: digdir/public-docs
+  provenance:
+    from: digdir-headless-rag
+    files:
+      - server/test/fixtures/sweep/questions.edn
+      - server/test/fixtures/sweep/references.edn
+    imported: 2026-10-06
+    sourceIdentity: chunk-id
+    mapping: mapped to document + position against website_chunks_ab897fbdedfa on 2026-10-06
+  cases:
+    - id: ue-broker-01-filoverforing-tilstander
+      split: validation
+      input: Hvilke statuser kan en filoverføring i Altinn Formidling gå gjennom, fra den blir startet til filen er slettet?
+      expected:
+        sources:
+          - chunkId: 218bee00be34
+            document: d56b73485fd6
+            position: 3
+        answerPattern: (?i)initialisert|opplasting|publisert|bekreftet nedlastet
+        referenceAnswer: 'En filoverføring i Altinn Formidling går gjennom tilstandene i en endelig tilstandsmaskin: Initialisert → Opplasting pågår → Sjekk av opplasting → Publisert → Nedlastinger initiert → Alle bekreftet nedlastet → Slettet. I tillegg finnes to slutt-/feiltilstander: Avbrutt (bare mulig så lenge ingen nedlasting har startet) og Overføring feilet.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-broker
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-broker-02-slette-tid-tilgjengelig
+      split: train
+      input: How long does a file stay available for download in Altinn Broker, and how do I control when it gets deleted after recipients confirm?
+      expected:
+        sources:
+          - chunkId: 0127378417da
+            document: 479e27df943e
+            position: 0
+        answerPattern: (?i)FileTransferTimeToLive|PurgeFileTransferAfterAllRecipientsConfirmed|PurgeFileTransferGracePeriod|30 days
+        referenceAnswer: In Altinn Broker the sender controls availability via `FileTransferTimeToLive` (default 30 days, maximum 1 year). To have the file deleted once all required recipients have confirmed download, set `PurgeFileTransferAfterAllRecipientsConfirmed = true`; the `PurgeFileTransferGracePeriod` then controls how long the file stays available after confirmation before deletion (default 2 hours, maximum 24 hours).
+      grounding: sources-and-answer
+      tags:
+        - altinn-broker
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-broker-03-store-filer-virusskann
+      split: train
+      input: Can I send files larger than 2GB through Altinn Broker, and what is the maximum file size?
+      expected:
+        sources:
+          - chunkId: 462659d19025
+            document: f9c39f17a534
+            position: 0
+        answerPattern: (?i)2\s?GB|virus scan|1\.6\s?TB|pre-approved
+        referenceAnswer: 'Yes, but conditionally: Broker is restricted to 2 GB by default because of the virus scan, and you can send larger files only if the resource has virus scanning disabled (which requires pre-approval from Altinn). The theoretical maximum size is 1.6 TB (regularly benchmarked to 100 GB); equivalently the product supports up to ~1600 GB without virus scanning and up to 2 GB with it.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-broker
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-broker-04-overgang-a2-a3-forskjeller
+      split: train
+      input: What changes for consumers when an Altinn 2 Broker service is moved to Altinn 3, for example around receipts and virus scanning?
+      expected:
+        sources:
+          - chunkId: 7c0cab211f48
+            document: e960d2f402e0
+            position: 5
+        answerPattern: (?i)Receipt Id|virus.?scan|after upload|File List
+        referenceAnswer: 'For end users there is little technical difference between an Altinn 2 Broker service and one transitioned to Altinn 3, but consumers should review the docs for required code changes. Functionally, receipts will no longer have a Receipt Id, and (if enabled) manifest files will no longer have a File List. Virus scanning also changes: in Altinn 3 it is done after upload, so an uploaded file is not immediately available and only becomes available once the automatic virus scan completes. Getting receipts via the external Receipt SOAP endpoint is not supported.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-broker
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-broker-05-filstorrelse-grenser-multi
+      split: train
+      input: Hva er filstørrelsesgrensene i Altinn Broker med og uten virusskanning, hvorfor er standardgrensen 2 GB, og hva må til for å sende større filer?
+      expected:
+        sources:
+          - chunkId: 0127378417da
+            document: 479e27df943e
+            position: 0
+          - chunkId: 462659d19025
+            document: f9c39f17a534
+            position: 0
+        answerPattern: (?i)2\s?GB|virus|1[.,]?6\s?TB|1600\s?GB|pre-approved|forh[åa]ndsgodkjen
+        referenceAnswer: I Altinn Broker er standardgrensen 2 GB med virusskanning, og denne grensen skyldes nettopp begrensninger i virusskanningen. Uten virusskanning støttes langt større filer — opptil ca. 1600 GB (1,6 TB er den teoretiske maksgrensen, men det benchmarkes jevnlig bare til 100 GB). For å sende filer større enn 2 GB må ressursen ha virusskanning deaktivert, og slike ressurser må forhåndsgodkjennes av Altinn (Digdir).
+      grounding: sources-and-answer
+      tags:
+        - altinn-broker
+        - compound
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-events-01-abonnement-filtre
+      split: holdout
+      input: Når jeg oppretter et abonnement i Altinn Events, hvilke filtre kan jeg sette og hvorfor får jeg ingen hendelser hvis jeg setter typeFilter til en tom streng?
+      expected:
+        sources:
+          - chunkId: a7d7ed7a67e4
+            document: 99b415acaa9e
+            position: 1
+          - chunkId: 4aa2b0740446
+            document: 23a9d95b4a7b
+            position: 1
+        answerPattern: (?i)resourceFilter|subjectFilter|typeFilter|tom streng
+        referenceAnswer: Når du oppretter et abonnement i Altinn Events kan du sette `resourceFilter` (påkrevd; eksakt treff på ressursen, f.eks. `urn:altinn:resource:app_digdir_demoapp`, kan autofylles fra `source` for en gyldig Altinn Studio App-URL), `subjectFilter` (påkrevd med mindre du er tjenesteeier; eksakt treff på cloud-event-subjektet), samt valgfrie `sourceFilter`, `alternativeSubjectFilter` og `typeFilter`. Filtrene gjør et eksakt treff, så hvis du setter `typeFilter` til en tom streng matcher den ingen hendelsestype og du mottar ingen hendelser — utelat filteret hvis du ikke vil begrense på type.
+      grounding: sources-and-answer
+      tags:
+        - altinn-events
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+      needsReview: true
+    - id: ue-events-02-publisere-cloudevents
+      split: train
+      input: Hvordan publiserer jeg en egendefinert hendelse til Altinn Events, og hvilket Maskinporten-scope og format trengs?
+      expected:
+        sources:
+          - chunkId: 5ea03a5c4cbb
+            document: 771a2f1ad237
+            position: 1
+        answerPattern: (?i)POST /events|altinn:events\.publish|cloudevents|Ressursregister
+        referenceAnswer: Du publiserer en egendefinert (generisk) hendelse med `POST /events`, med innholdstype `application/cloudevents+json` og en Cloud Event serialisert som en JSON-streng i request body. API-et krever autentisering og Maskinporten-scopet `altinn:events.publish`. Cloud Event-en må ha id, type, source (URI) og en `resource` i formatet `urn:altinn:resource:[prop1].[prop2]`, og ressursen må være registrert i Altinn Ressursregister før hendelsen publiseres.
+      grounding: sources-and-answer
+      tags:
+        - altinn-events
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-events-03-polling-vs-webhook
+      split: validation
+      input: Kan jeg hente hendelser fra Altinn Events ved å polle et API i stedet for å bruke webhooks?
+      expected:
+        sources:
+          - chunkId: bd4ef5587250
+            document: ae894f1e7b46
+            position: 0
+        answerPattern: (?i)polling|Events API|webhooks|planlagte forespørsler
+        referenceAnswer: Ja — Events API tilbyr et HTTP API for planlagte forespørsler (querying) av de samme hendelsesdataene, så du kan hente hendelser ved å polle i stedet for å bruke webhooks. Men Altinn Events er designet spesifikt for å unngå polling, og webhooks/abonnement er den anbefalte måten å motta hendelser på; poll-API-et er først og fremst ment for å støtte gradvise, inkrementelle arkitekturmigrasjoner.
+      grounding: sources-and-answer
+      tags:
+        - altinn-events
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-studio-01-skjul-felt-uttrykk
+      split: holdout
+      input: Hvordan setter jeg opp en regel i Altinn Studio som skjuler «Send inn»-knappen når aldersfeltet er tomt eller under 18?
+      expected:
+        sources:
+          - chunkId: 5579a6f92633
+            document: 567750d54810
+            position: 3
+        answerPattern: (?i)logikkregel|underuttrykk|operand|skjul felt|mindre enn
+        referenceAnswer: 'I Altinn Studio lager du en logikkregel på «Send inn»-knappen og velger «Skjul felt dersom». Du bygger uttrykket med underuttrykk: ett underuttrykk der Første operand er datamodellfeltet `alder`, Operator er «er mindre enn» og Andre operand er tallet 18, og et annet underuttrykk som sjekker om feltet er tomt, koblet sammen med ELLER slik at knappen skjules hvis enten feltet er tomt eller verdien er under 18. Lagre underuttrykkene; knappen skjules når uttrykket evalueres til sant.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+      needsReview: true
+    - id: ue-studio-02-pdf-service-task
+      split: holdout
+      input: How do I add a step that generates a PDF in my app's process in Altinn Studio?
+      expected:
+        sources:
+          - chunkId: 673de6e9a85d
+            document: eacad0b6a864
+            position: 1
+        answerPattern: (?i)Arbeidsflyt|PDF service task|process\.bpmn|autoPdfTaskIds|layout set
+        referenceAnswer: In Altinn Studio, open the Arbeidsflyt (process) tab and drag-and-drop a PDF service task into the process where you want the PDF generated (often right after a data task). A configuration panel then opens where you choose between a standard PDF (based on selected previous tasks, shown in summary mode — this does not respect the `pdfLayoutName` configuration in Settings.json) or a custom PDF. Altinn Studio inserts a `serviceTask` (id `Pdf`, name `PDF`) into `App/config/process/process.bpmn`.
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+      needsReview: true
+    - id: ue-studio-03-datamodell-filer
+      split: train
+      input: Hvilke modellfiler genereres for en app-datamodell og hvor i repoet ligger de?
+      expected:
+        sources:
+          - chunkId: 3db5a48a99cd
+            document: 87044ee89679
+            position: 1
+        answerPattern: (?i)App/models|schema\.json|metadata\.json|\.cs|XSD
+        referenceAnswer: 'En app-datamodell har fire modellfiler, lagret i repoet under `App/models`: C#-datamodellen (`<model>.cs`, brukt av backend/API-er), JSON schema (`<model>.schema.json`, brukt på frontend for fortløpende validering og i datamodelleringsverktøyet), XSD (`<model>.XSD`, XML-format som kan lastes opp/ned for å generere de andre filene), og JSON-metadata (`<model>.metadata.json`, brukt av Altinn Studio for å generere `.cs`-filen; lagres ikke i appen og genereres ved behov).'
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-studio-04-non-repeating-group
+      split: train
+      input: How do I group several fields together in a form so I can apply the same dynamics to all of them at once?
+      expected:
+        sources:
+          - chunkId: f363a6c2c64f
+            document: 64bac155236b
+            position: 0
+        answerPattern: (?i)FormLayout\.json|Group|children|group component
+        referenceAnswer: Group several fields by adding a Group component in `FormLayout.json` with `type` `Group` and a `children` array listing the component IDs you want together. Once grouped, you can apply the same dynamics to all of them at once instead of configuring each field individually. You can do this manually in the file or via the group component in the Altinn Studio form editor.
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-studio-05-tekstressurser-sprak
+      split: holdout
+      input: Hvordan legger jeg til og oversetter tekster til flere språk i appen min i Altinn Studio?
+      expected:
+        sources:
+          - chunkId: e843f5ba3968
+            document: 98fbadea81d9
+            position: 3
+        answerPattern: (?i)Teksteditor|tekstn[øo]kkel|Ny tekst|spr[åa]k|oversett
+        referenceAnswer: Du redigerer og oversetter tekster i Altinn Studio enten via Altinn Studio Designer eller direkte i repository. I Designer går du til Tekst i toppmenyen for å se og redigere tekstressurser; «Ny tekst» oppretter en ressurs med en automatisk generert tekstnøkkel (kan endres med blyant-ikonet), og endringer lagres automatisk. I panelet til høyre velger du hvilke språk som vises i tabellen og legger til nye språk appen skal oversettes til. Du kan også legge til/redigere/oversette tekster for en enkelt komponent direkte fra skjemaeditoren («Lage»-fanen).
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-studio-06-options-kilder-kodeliste
+      split: train
+      input: Hvilke egenskaper kan jeg bruke for å koble en komponent til svaralternativer/kodelister, og hvilken vinner hvis flere er satt?
+      expected:
+        sources:
+          - chunkId: ad0da73c1f75
+            document: fe85e115aa05
+            position: 0
+        answerPattern: (?i)options|optionsId|source|forrang|svaralternativ
+        referenceAnswer: 'Du kobler en komponent til svaralternativer/kodelister med én av tre egenskaper: `options` (statiske svaralternativer definert per komponent), `optionsId` (statiske kodelister fra JSON-filer, dynamiske kodelister eller delte kodelister), eller `source` (kodelister fra datamodellen). Minst én må settes; hvis flere er satt er prioriteten motsatt av rekkefølgen over, slik at `source` har forrang over `optionsId`, som har forrang over `options`.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-studio-07-validering-uttrykk-fil
+      split: validation
+      input: Hvordan setter jeg opp egendefinert validering med uttrykk når det ikke kan gjøres i Studio Designer?
+      expected:
+        sources:
+          - chunkId: 59fc6201428d
+            document: 221250e04c48
+            position: 1
+        answerPattern: (?i)validation\.json|validations|definitions|uttrykk|datamodell
+        referenceAnswer: Validering med uttrykk kan foreløpig ikke konfigureres i Altinn Studio Designer, så du oppretter en egen fil ved siden av datamodellen med navnekonvensjonen `navn.validation.json` (f.eks. `skjema.validation.json` hvis datamodellen heter `skjema`), med `$schema`, `validations` og `definitions`. Reglene legges i `validations`-objektet der datamodell-stien (samme format som `dataModelBindings`) er nøkkelen og verdien er en liste med regler; hver regel har `message`, `severity` og en `condition` som er et dynamisk uttrykk som returnerer sant når feilen skal vises. Gjenbrukbare regler kan defineres under `definitions`.
+      grounding: sources-and-answer
+      tags:
+        - altinn-studio
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-corr-01-events-webhook-subscription
+      split: holdout
+      input: Hvordan setter jeg opp et webhook-abonnement for å motta hendelser fra Altinn Correspondence, og hvilke filtre må jeg bruke som mottaker?
+      expected:
+        sources:
+          - chunkId: f8eabe6d3ce3
+            document: 7a010952d7b4
+            position: 0
+        answerPattern: (?i)resourceFilter|subjectFilter|subscription|correspondencepublished
+        referenceAnswer: 'To receive events/webhooks from Altinn Correspondence you must set up a subscription for the resource, which configures the endpoint the events are delivered to. As a recipient you are required to set two filters: `resourceFilter` = `urn:altinn:resource:` + the Resource Id of the Correspondence resource, and `subjectFilter` = `urn:altinn:organization:identifier-no:{recipient orgnumber}`. Events follow the CloudEvent pattern (e.g. type `no.altinn.correspondence.correspondencepublished`).'
+      grounding: sources-and-answer
+      tags:
+        - altinn-correspondence
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-corr-02-transmission-group-dialog
+      split: validation
+      input: Hvordan kan jeg knytte en ny melding til en eksisterende dialog slik at relaterte instanser grupperes sammen?
+      expected:
+        sources:
+          - chunkId: 2f623a3a1547
+            document: eaa7903e19e2
+            position: 1
+        answerPattern: (?i)transmission|dialogId|externalReferences|DialogportenDialogId
+        referenceAnswer: Du knytter den nye meldingen til en eksisterende dialog ved å legge inn en ekstern referanse i `externalReferences` der `referenceValue` settes til `dialogId` for dialogen og `referenceType` settes til `DialogportenDialogId`; da grupperes relaterte instanser i samme dialog (transmission). Du kan eventuelt sette transmission-type med en egen ekstern referanse av `referenceType` `DialogportenTransmissionType` (verdi som `Information` eller `1`); hvis den ikke settes, er typen Information (1).
+      grounding: sources-and-answer
+      tags:
+        - altinn-correspondence
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-corr-03-system-til-system-nedlasting
+      split: validation
+      input: Vi mottar store mengder meldinger med vedlegg i Altinn - bør vi behandle dem manuelt i innboksen eller integrere mot API?
+      expected:
+        sources:
+          - chunkId: 939545886fa9
+            document: d8ceec8ede98
+            position: 1
+        answerPattern: (?i)system-til-system|integra|vedlegg|maskinelt|Dialogporten
+        referenceAnswer: For store volumer av meldinger med vedlegg bør dere integrere mot API (system-til-system) i stedet for å behandle dem manuelt i innboksen — GUI-innboksen er primært egnet for manuell behandling i mindre skala, mens effektiv håndtering av større mengder forutsetter integrasjon. Ved å integrere sak-/arkivsystemet mot Altinn via Dialogporten og tilhørende API-er kan dere automatisk oppdage og hente nye meldinger, laste ned meldinger og vedlegg maskinelt, og journalføre/arkivere direkte i eget fagsystem.
+      grounding: sources-and-answer
+      tags:
+        - altinn-correspondence
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-corr-04-notification-order-sms-window
+      split: validation
+      input: When a correspondence message triggers an SMS notification, at what time of day is the SMS actually sent, and when is a reminder sent if it stays unread?
+      expected:
+        sources:
+          - chunkId: 0af9eaceae9e
+            document: a960f8906327
+            position: 0
+        answerPattern: (?i)9:00 AM|5:00 PM|reminder|7 days|notification order
+        referenceAnswer: An SMS notification is only sent within the SMS window of 09:00–17:00 (9 AM–5 PM); if the send time falls outside that window it is sent the following day (email has no time window). If a reminder is enabled and the message stays unread, the reminder is sent after 7 days in production — but after 1 day in the test/staging environment.
+      grounding: sources-and-answer
+      tags:
+        - altinn-correspondence
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-notif-05-umiddelbar-varsling-otp
+      split: train
+      input: Vi trenger å sende en engangskode (OTP) til brukeren med en gang ved innlogging - finnes det en måte å sende et varsel øyeblikkelig på, døgnet rundt?
+      expected:
+        sources:
+          - chunkId: 046877b17d91
+            document: 5e8f2f62095c
+            position: 1
+        answerPattern: (?i)umiddelbar varsling|OTP|sendingTimePolicy|Anytime|shipmentId
+        referenceAnswer: 'Ja — bruk Umiddelbar varsling i Altinn Varsling, som sender meldinger øyeblikkelig til én mottaker (e-postadresse eller telefonnummer) og er laget nettopp for tidskritiske ting som en engangskode (OTP) ved innlogging. For å sende så raskt som mulig hele døgnet kan du utelate `requestedSendTime` og bruke `sendingTimePolicy` satt til `Anytime`. Tjenesten er semisynkron: API-et returnerer `201 Created` eller `200 OK` med `shipmentId` og `notificationOrderId`, mens leveringsstatus hentes asynkront (responskoden bekrefter bare at bestillingen ble registrert, ikke at leveringen lyktes).'
+      grounding: sources-and-answer
+      tags:
+        - altinn-notifications
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-notif-06-egendefinert-avsender-epost-dns
+      split: holdout
+      input: Hvordan kan jeg sette en egen e-postadresse som avsender på varsler via API-et, og hva må til for å ta i bruk et eget domene?
+      expected:
+        sources:
+          - chunkId: aa73725749c0
+            document: 286593dbb706
+            position: 3
+        answerPattern: (?i)senderEmailAddress|emailSettings|DNS|DKIM|verifiser
+        referenceAnswer: 'Du setter en egen e-postavsender ved å inkludere feltet `senderEmailAddress` i `emailSettings`-objektet i API-kallet når du bestiller varsler. For å ta i bruk et eget domene som avsenderadresse må domenet først gjennom en registrerings- og verifiseringsprosess: (1) tjenesteeier ber om registrering av domene/avsender, (2) Digdir registrerer domenet og utsteder verifiseringsnøkler, (3) tjenesteeier legger til DNS-poster (TXT, SPF, DKIM, DMARC), (4) Digdir verifiserer DNS-postene og kobler domenet, og (5) tjenesteeier kan bruke domenet i API-kall.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-notifications
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-notif-07-standard-avsender-sms-epost
+      split: holdout
+      input: Hvis jeg ikke konfigurerer noe eget, hvilken avsender vises på SMS og e-post som sendes gjennom Altinn Varsling?
+      expected:
+        sources:
+          - chunkId: 1ae507a826c4
+            document: 286593dbb706
+            position: 0
+        answerPattern: (?i)Altinn|noreply@altinn|avsender|SMS|epost
+        referenceAnswer: Uten egen konfigurasjon er standardavsenderen på SMS «Altinn» («Altinn-test» i testmiljøet), og på e-post `noreply@altinn` (`noreply-tt02@altinn.no` i testmiljøet og `noreply@altinn.cloud` i ytelsestestmiljøet).
+      grounding: sources-and-answer
+      tags:
+        - altinn-notifications
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-01-aktivitetslogg
+      split: train
+      input: Hva er aktivitetsloggen til en dialog i Dialogporten, og hvem fyller den ut?
+      expected:
+        sources:
+          - chunkId: 58d02570ed96
+            document: fd39a68c8de7
+            position: 0
+        answerPattern: (?i)aktivitetslogg|uforanderlig|tjenesteeier|tidsstemplede
+        referenceAnswer: Aktivitetsloggen i Dialogporten er en uforanderlig liste over tidsstemplede oppføringer som viser historikken gjennom en dialogs levetid, der hver oppføring er av en bestemt type (f.eks. opprettelse av dialogen, en melding fra tjenesteeier, innsendt data, en signatur eller betaling, eller at en forsendelse åpnes). Tjenesteeieren er ansvarlig for å fylle den ut, normalt i forbindelse med andre endringer i dialogen.
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-02-seen-log
+      split: validation
+      input: In Dialogporten, what exactly does it mean that a dialog has been 'seen' in the seen log, and does listing or searching dialogs count?
+      expected:
+        sources:
+          - chunkId: bf583073feb1
+            document: 7d5b35931f86
+            position: 0
+        answerPattern: (?i)seen log|requested from the API|search or list|automatically
+        referenceAnswer: In Dialogporten a dialog is 'seen' when a particular dialog ID has been requested from the API — the seen log is populated automatically and records who accessed a dialog at a given revision. It does not indicate whether the content was read or understood, attachments were downloaded, or actions were performed. Using the search or list API does not populate the seen log; entries are recorded per user per revision (only the first access by a given user for a given revision).
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-03-unauthorized-urls
+      split: train
+      input: What happens to the URLs of a Dialogporten action or transmission if the authenticated user is not authorized for it?
+      expected:
+        sources:
+          - chunkId: 7862f7d4c489
+            document: 3db194d20572
+            position: 3
+        answerPattern: (?i)isAuthorized|urn:dialogporten:unauthorized|replaced|authorization check
+        referenceAnswer: Dialogporten performs an authorization check against Altinn Authorization for each action and transmission, exposed via the `isAuthorized` flag (`true`/`false`). If `isAuthorized` is `false`, the URLs associated with that action or transmission are replaced with the special value `urn:dialogporten:unauthorized`.
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-04-activity-entity-fields
+      split: train
+      input: Which fields does a dialog activity entity contain in Dialogporten, and can an activity be tied to a specific transmission?
+      expected:
+        sources:
+          - chunkId: 8539ebbedd61
+            document: 936a9f105f64
+            position: 0
+        answerPattern: (?i)immutable timeline|createdAt|extendedType|transmissionId
+        referenceAnswer: 'A Dialogporten activity is an immutable timeline entry that contains: `id`, `createdAt`, `type`, an optional `extendedType`, an optional `transmissionId`, `performedBy`, and `description` (which is only populated for `Information` activities). Yes — an activity can be tied to a specific transmission via the optional `transmissionId` field.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-05-search-rest-graphql
+      split: validation
+      input: Hvilke protokoller støtter Dialogporten for å søke etter dialoger, og hvorfor får jeg mindre informasjon i søkeresultatet enn i detaljvisningen?
+      expected:
+        sources:
+          - chunkId: 584b5bfdcbb8
+            document: 4198cc665bec
+            position: 1
+        answerPattern: (?i)REST|GraphQL|detaljendepunkt|forskjellig
+        referenceAnswer: Dialogporten støtter både REST og GraphQL for å søke etter dialoger i sluttbruker-API-et, mens tjenesteeier-API-et støtter REST-søk med ekstra filtre. Du får mindre informasjon i søkeresultatet enn i detaljvisningen fordi datastrukturen som returneres i søk er forskjellig fra den som returneres fra detaljendepunktet — mer informasjon om dialogen og hvilken tilgang den autoriserte brukeren har til ulike deler av den er bare tilgjengelig i detaljvisningen.
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-06-skrivehandlinger
+      split: validation
+      input: Hva er skrivehandlinger i Dialogporten og hvordan lar de GUI-handlinger endre tilstand uten full sidenavigering?
+      expected:
+        sources:
+          - chunkId: a46f90022fde
+            document: 67fe7ac02e27
+            position: 0
+        answerPattern: (?i)skrivehandlinger|GUI-handlinger|tilstandsendrende|sidenavigering
+        referenceAnswer: Skrivehandlinger lar GUI-handlinger utføre tilstandsendrende operasjoner direkte fra nettleserbaserte sluttbrukersystemer uten behov for full sidenavigering, noe som gir en mer sammenhengende brukeropplevelse. Vanlige GUI-handlinger er som standard begrenset til leseoperasjoner (navigere til en side eller laste ned en fil via HTTP GET), mens skrivehandlinger gjør det mulig å utføre tilstandsendrende operasjoner — i motsetning til API-handlinger som uansett kan bruke alle HTTP-metoder og input/output-modeller.
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-dialog-07-webapi-sdk
+      split: holdout
+      input: Hvordan kan jeg programmatisk opprette og oppdatere dialoger selv når den automatiske synkroniseringen ikke gir nok kontroll?
+      expected:
+        sources:
+          - chunkId: 68a9ae627a18
+            document: 6ed96a9e4492
+            position: 2
+        answerPattern: (?i)WebAPI SDK|programmatisk|opprette og\s*oppdatere|finkornet
+        referenceAnswer: Når den automatiske synkroniseringen ikke gir nok kontroll, kan du bruke Dialogporten WebAPI SDK, som gir applikasjonen din programmatisk tilgang til Dialogporten slik at du selv kan opprette og oppdatere dialoger. Dette muliggjør finkornet håndtering av aktiviteter, forsendelser og synkronisering med Altinn Innboks.
+      grounding: sources-and-answer
+      tags:
+        - altinn-dialogporten
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-01-delegere-tilgangspakke-api
+      split: validation
+      input: Hvilket API-endepunkt og hvilke parametere bruker jeg for å delegere en tilgangspakke til en person via Access Management-API-et?
+      expected:
+        sources:
+          - chunkId: 6d1c5124b842
+            document: d42c77ed5fe8
+            position: 10
+        answerPattern: (?i)accesspackages|connections/accesspackages|partyUuid|packageId|delegere tilgangspakke
+        referenceAnswer: 'Du delegerer en tilgangspakke til en person med `POST` til `/accessmanagement/api/v1/enduser/connections/accesspackages` (test: `https://platform.tt02.altinn.no...`, produksjon: `https://platform.altinn.no...`). Spørreparametere er `party` (UUID, obligatorisk — partyUuid for parten) og valgfritt `to` (UUID — partyUuid for mottaker, alternativ til body), `packageId` (UUID) eller `package` (URN for tilgangspakken). Mottaker kan alternativt angis i body, f.eks. med `personIdentifier` og `lastName`.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-02-tilgangsliste-handlingsfilter
+      split: holdout
+      input: Hvordan kan jeg begrense at én tilgangsliste bare gir lesetilgang mens en annen gir både lese- og skrivetilgang på samme ressurs?
+      expected:
+        sources:
+          - chunkId: 92ccd3cd8025
+            document: 71a2362d8513
+            position: 4
+        answerPattern: (?i)handlingsfilter|actionFilters|resource-connections|read.*write|XACML
+        referenceAnswer: Bruk et handlingsfilter (`actionFilters`) når du kobler tilgangslisten til ressursen, via `PUT /access-lists/{owner}/{identifier}/resource-connections/{resourceIdentifier}`. Sett den ene listens `actionFilters` til kun `read` for lesetilgang, og den andres til `read` og `write` for lese- og skrivetilgang. En null eller tom `actionFilters` betyr at alle handlinger er tillatt, og handlingene må samsvare med handlingene i XACML-policyen.
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-03-validere-samtykketoken
+      split: train
+      input: Hvordan validerer jeg som tjenesteeier at et samtykketoken faktisk gir de rettighetene tjenesten min krever?
+      expected:
+        sources:
+          - chunkId: 20b17bd8ba74
+            document: 3ebbb2b28d8e
+            position: 0
+        answerPattern: (?i)consentRights|authorization_details|samtykke.?token|Maskinporten
+        referenceAnswer: Som tjenesteeier validerer du samtykketokenet ved å kontrollere at rettighetene i tokenet, under `consentRights`, samsvarer med de rettighetene tjenesten din krever. I Altinn 3 er samtykketokenet et vanlig Maskinporten-token som i tillegg inneholder feltet `authorization_details` (med `type` `urn:altinn:consent`), og det er dette feltet du bruker for å verifisere at nødvendig samtykke er gitt.
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-04-opprette-tilgangsliste-medlemmer
+      split: train
+      input: Hvordan oppretter jeg en ny tilgangsliste og legger til organisasjoner som medlemmer via API-et?
+      expected:
+        sources:
+          - chunkId: c95081d798ce
+            document: 71a2362d8513
+            position: 3
+        answerPattern: (?i)access-lists|members|PUT|POST|identifier-no
+        referenceAnswer: Opprett først listen med `PUT /access-lists/{owner}/{identifier}`, der `owner` er organisasjonskoden og `identifier` er en valgt ID, med en payload som inneholder `name` og `description`. Legg deretter til organisasjoner som medlemmer med `POST /access-lists/{owner}/{identifier}/members`, ett medlem om gangen, der medlemmet identifiseres i `data`-feltet, f.eks. `urn:altinn:organization:identifier-no:123456789`.
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-05-xacml-policy-regelstruktur
+      split: train
+      input: What does a XACML policy in Altinn describe, and what are the parts that make up each rule?
+      expected:
+        sources:
+          - chunkId: c28fc018e0d0
+            document: 9ed057e7daaa
+            position: 1
+        answerPattern: (?i)XACML|resource.*action.*subject|rule|access rules
+        referenceAnswer: 'A XACML policy in Altinn describes the access rules for an app created in Altinn Studio, a resource in the Altinn Resource Registry, or a correspondence/broker service in Altinn 3 (following the XACML 3.0 standard with a limited feature set). A policy consists of 1-to-many rules, and each rule has three parts: Resource (what the rule applies to), Action (e.g. read, write, sign), and Subject (who it applies to — a role, access group, organization number, or user). A rule can combine multiple resources, actions, and subjects.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-06-xacml-obligation-authlevel
+      split: holdout
+      input: How do I set the required authentication level for access in the XACML policy, and what is the default?
+      expected:
+        sources:
+          - chunkId: e246b621f86c
+            document: 0453a21f0b21
+            position: 4
+        answerPattern: (?i)obligation|authentication ?level|minimum-authenticationlevel|Maskinporten
+        referenceAnswer: You set the required authentication level as an Obligation in the XACML policy file, using an `ObligationExpression` with an `AttributeAssignmentExpression` for the category `urn:altinn:minimum-authenticationlevel` and an integer value. The default required authentication level is 2. If you set it to 4, you must also allow the service owner to interact through level-3 authentication, because Maskinporten is defined as level 3.
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-authz-07-bruker-typer-authorization
+      split: validation
+      input: What are the different types of users Altinn Authorization supports, and which ones can actually submit on behalf of a party in an app?
+      expected:
+        sources:
+          - chunkId: 8d82f06ea710
+            document: 8f46ae005cbe
+            position: 1
+        answerPattern: (?i)system ?user|service owner|organization|valid submitter|Maskinporten token
+        referenceAnswer: 'Altinn Authorization supports four user types: Users, Organization, Service owner, and System user. Of these, Users (who can represent other parties through party selection) and System users (which impersonate the system user with rights delegated from the customer) can effectively act/submit on behalf of a party in an app. Organizations are not valid submitters (an organization cannot submit on behalf of itself), and Service owners are also not valid submitters, though depending on the XACML policy they can start new instances and modify data in existing ones.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-authorization
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-sys-01-leverandorstyrt-og-forhold
+      split: train
+      input: Hvis systemleverandøren ber om flere tilganger i en systembruker-forespørsel, kan kunden godkjenne bare noen av dem?
+      expected:
+        sources:
+          - chunkId: 16049c347d69
+            document: 3ec63e860edb
+            position: 3
+        answerPattern: (?i)leverandørstyrt|OG-forhold|samtlige tilganger|godkjenne|én av tilgangene
+        referenceAnswer: 'Nei. Ved en leverandørstyrt opprettelse bygger forespørselen på et «OG-forhold»: sluttbrukeren (kunden) må ha myndighet til å delegere samtlige tilganger som leverandøren etterspør. Mangler brukeren myndighet for selv én av tilgangene, kan forespørselen ikke godkjennes i sin helhet — det er altså ikke mulig å godkjenne bare noen av tilgangene.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-systemuser
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-sys-02-systembrukertoken-pdp-autorisasjon
+      split: train
+      input: Hvilken verdi i systembrukertokenet trenger jeg for å autorisere tilgang mot Altinn PDP, og hvordan ser PDP-kallet ut?
+      expected:
+        sources:
+          - chunkId: '63528e131071'
+            document: 41f903b4aa3e
+            position: 3
+        answerPattern: (?i)systemuser_id|PDP|AccessSubject|urn:altinn:systemuser|Permit
+        referenceAnswer: Den sentrale verdien er `authorization_details[].systemuser_id` i systembrukertokenet — den unike ID-en for systembrukeren, og det er denne Altinn trenger for å autorisere tilgang (det er systembrukeren som har fått delegert tilgangene). Tokenet valideres som et standard Maskinporten-token, men inneholder i tillegg `authorization_details` med `type` `urn:altinn:systemuser` (samt `systemuser_org.id` for organisasjonen som opprettet systembrukeren). Tjenesteeier bruker `systemuser_id` som AccessSubject i kallet mot Altinn Autorisasjon (PDP) for å få et Permit/Deny-svar på tilgangen.
+      grounding: sources-and-answer
+      tags:
+        - altinn-systemuser
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+      needsReview: true
+    - id: ue-sys-03-brukerstyrt-vs-leverandorstyrt
+      split: holdout
+      input: Hva er forskjellen på at sluttbrukeren selv oppretter en systembruker i Altinn versus at leverandøren gjør det?
+      expected:
+        sources:
+          - chunkId: c61c1f46fe63
+            document: 3ec63e860edb
+            position: 2
+        answerPattern: (?i)brukerstyrt|leverandørstyrt|sluttbruker|forhåndsdefinerte tilgangene
+        referenceAnswer: Forskjellen er hvem som initierer opprettelsen og hvordan godkjenningen skjer. Ved brukerstyrt (sluttbrukerstyrt) opprettelse logger sluttbrukeren selv inn i Altinn, velger hvilket system systembrukeren skal opprettes for, og godkjenner de forhåndsdefinerte tilgangene systemet krever — systembrukeren opprettes da direkte uten at det genereres en separat forespørsel. Ved leverandørstyrt opprettelse er det sluttbrukersystem-leverandøren (SBSL) som sender en forespørsel til Altinn om å opprette systembrukeren, og sluttbrukeren må deretter godkjenne forespørselen i Altinn før systembrukeren opprettes.
+      grounding: sources-and-answer
+      tags:
+        - altinn-systemuser
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-api-04-instances-get-no-list
+      split: holdout
+      input: How do I fetch the metadata for a single app instance, and is there an endpoint to list all instances?
+      expected:
+        sources:
+          - chunkId: 9bce844fa9ba
+            document: 69ccc279de8b
+            position: 0
+        answerPattern: (?i)instanceOwnerPartyId|instanceGuid|listing|Storage API
+        referenceAnswer: "Fetch a single instance's metadata with the Get instance endpoint: `GET {org}/{appname}/instances/{instanceOwnerPartyId}/{instanceGuid}`, which returns the instance metadata document for that specific instance. The app API has no endpoint for listing instances; to list or query instances you must use the Storage API in the Platform, which has a query endpoint for that purpose."
+      grounding: sources-and-answer
+      tags:
+        - altinn-3-general
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-api-05-events-post-app-token
+      split: holdout
+      input: What authentication do I need to publish an app event via the Events POST /app endpoint, and what should the request body contain?
+      expected:
+        sources:
+          - chunkId: eab508bca469
+            document: 93530cba0f9e
+            position: 1
+          - chunkId: bdf5fc355e77
+            document: 90f11c1fe0b5
+            position: 1
+        answerPattern: (?i)POST /app|Platform Access Token|Cloud Event|AppCloudEventRequestModel
+        referenceAnswer: Publishing an app event via `POST /app` requires authentication and a Platform Access Token in the header. The request body must contain a Cloud Event formatted as an AppCloudEventRequestModel and serialized as a JSON string (Events sets the event's id and time itself). The event should include at least the event type, source (URI), the instanceOwner's party ID, and the cloud-event spec version, with the subject in the format `/party/{partyId}` (an alternative subject may also be included).
+      grounding: sources-and-answer
+      tags:
+        - altinn-3-general
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+    - id: ue-api-06-app-openapi-swagger-spec
+      split: train
+      input: Where do I find the app-specific OpenAPI spec that includes the datamodel schemas for a given Altinn 3 app?
+      expected:
+        sources:
+          - chunkId: 42186e0a3d24
+            document: e2aa5b3e74ef
+            position: 0
+        answerPattern: (?i)openapi|swagger|app.specifikk|apps\.altinn\.no|data typer
+        referenceAnswer: 'The app-specific OpenAPI/Swagger spec — the variant that includes the datamodel schemas for a given Altinn 3 app — is served in a browser at `{org}.apps.altinn.no/{org}/{app}/swagger`. From NuGet package version 8.6.0 onward there are two specs: a traditional autogenerated one (all APIs but no datatype info) and this app-specific one.'
+      grounding: sources-and-answer
+      tags:
+        - altinn-3-general
+        - hard
+      origin:
+        source: new
+        dataset: public-docs

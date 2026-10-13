@@ -1,0 +1,51 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata:
+  { tenant: '991825827', id: answer-briefly-with-sources, name: Answer briefly with sources }
+spec:
+  purpose: Search, rank the results and answer briefly with numbered sources
+  recipe:
+    title:
+      nb: Svar kort med kilder
+      en: Answer briefly with sources
+    summary:
+      nb: Velg denne når svaret skal være kort og hver påstand skal ha en kilde.
+      en: Pick this when the answer should be short and every claim should have a source.
+  settings:
+    type: object
+    properties:
+      answerLength:
+        type: string
+        enum: [short, medium, long]
+        default: short
+        x-label: { nb: Lengde på svaret, en: Length of the answer }
+        x-enumLabels:
+          short: { nb: Kort, en: Short }
+          medium: { nb: Middels, en: Medium }
+          long: { nb: Langt, en: Long }
+        x-order: 1
+      maxSources:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 6
+        x-label: { nb: Flest kilder i grunnlaget, en: Most sources in the basis }
+        x-order: 2
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+      params: { contextTopK: '{{settings.maxSources}}' }
+    - id: synthesize
+      block: synthesize@1
+      input: { query: '{{input.query}}', contextDocs: '{{rerank.contextDocs}}' }
+      params: { answerLength: '{{settings.answerLength}}' }
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{synthesize.response}}'
+        chunks: '{{rerank.contextChunks}}'
+        citations: '{{synthesize.citations}}'

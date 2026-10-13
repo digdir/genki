@@ -1,0 +1,17 @@
+# headless-rag digdir/altinn-docs-tuned: the agent loop with Round-5 phrase-only retrieval
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: altinn-docs-tuned, name: Altinn Docs Tuned }
+spec:
+  purpose: Round-5-tuned retrieval for the altinn-docs corpus. Phrase-only weights with strategy caps; opt-in alternative to the general-purpose agent.
+  steps:
+    - id: agent
+      block: agent@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+      params:
+        variant: "{{vars.variant ?? 'faithful'}}"
+        retrieval:
+          retrieveTopK: 100
+          strategies: [{ name: phrase, profiles: [phrase] }]
+          merge: { weights: { phrase: 1, content: 0, metadata: 0 }, caps: { phrase: 5 } }
+          rerank: { candidateK: 20 }

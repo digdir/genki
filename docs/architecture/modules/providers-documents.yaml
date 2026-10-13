@@ -1,0 +1,28 @@
+id: providers-documents
+plane: providers
+name: Document converter
+note: PDF and Word to text
+icon: chart
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-documents'
+summary: Local converter that turns PDF, Word, text and HTML files into markdown for ingestion.
+description: Reads the PDF text layer page by page and Word files through mammoth, in the platform's own process. Scanned PDFs without text are refused with a typed error so ingestion can skip them with a reason.
+responsibilities:
+  - PDF text layer to markdown
+  - Word to markdown
+  - Size limit and typed refusals
+files:
+  - packages/providers-documents/src/index.ts
+input: File bytes
+output: Markdown
+edges:
+  - to: ingest
+    label: Implements the ingest document converter
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-documents/src/index.ts
+      imports: '@genai/ingest'
+keywords: pdf docx word converter documents provider

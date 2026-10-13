@@ -1,0 +1,71 @@
+id: strategy-builder
+plane: runtime
+name: Builder assistant and optimiser
+note: Proposals, never changes
+icon: agent
+color: '#4ad3bb'
+status: Strategy plugin
+packages:
+  - '@genai/strategy-builder'
+summary: The builder assistant and the optimiser, two platform services that only propose changes to drafts.
+description: Both run as published Service definitions owned by the platform tenant, through the
+  kernel on the model the definition grants, with a token budget and the definition version as
+  provenance; each has its own test set in packages/eval/testsets. Every turn is a metered kernel task. The model gets tools to read the draft, list the
+  building blocks the tenant may use, ask questions and propose changes on the smallest rung that
+  works (configuration, connector, building block, platform change). Patches are applied to a copy
+  and validated against the definition schema; policy checks run independently of the model, and
+  nothing is ever applied to the draft (ADR 0020, 0023).
+responsibilities:
+  - Tool loop over the model port with bounded retries
+  - RFC 6902 patches validated against the definition schema
+  - Policy checks for models, residency, tools, datasets, secrets, risk confirmation and identity
+  - Test-case suggestions from documents sampled through the knowledge port
+  - Marks proposals the person cannot approve with the right they need
+  - The optimiser proposes new instructions only, and refuses ones that reference secrets
+files:
+  - packages/strategy-builder/src/assistant.ts
+  - packages/strategy-builder/src/strategy.ts
+  - packages/strategy-builder/src/policy.ts
+  - packages/strategy-builder/src/patch.ts
+  - packages/strategy-builder/src/validation.ts
+  - packages/strategy-builder/src/improvement.ts
+input: Message, draft and the building blocks the tenant may use
+output: Assistant turn with proposals, questions, rejections and policy refusals
+replaces: []
+edges:
+  - to: kernel
+    label: 'Kernel SPI: strategy, budget and events'
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-builder/src/strategy.ts
+      imports: '@genai/kernel'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-builder/src/assistant.ts
+      imports: '@genai/port-model'
+  - to: port-knowledge
+    label: Samples dataset documents through the knowledge port
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-builder/src/strategy.ts
+      imports: '@genai/port-knowledge'
+  - to: definitions
+    label: Validates proposed drafts against the definition schema
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-builder/src/validation.ts
+      imports: '@genai/definitions'
+contract:
+  - name: turn input
+    file: packages/strategy-builder/src/strategy.ts
+    export: builderTurnInput
+  - name: optimiser input
+    file: packages/strategy-builder/src/improvement.ts
+    export: optimiserInput
+keywords: builder assistant proposals patch policy byggeassistent forslag

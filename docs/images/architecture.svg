@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <title>genki architecture</title>
+  <style>
+    .t { fill: #ffffff; font-weight: 600; font-size: 19px; }
+    .s { fill: #ffffff; font-size: 13.5px; opacity: 0.92; }
+    .dark { fill: #1e2b3c; }
+    .lg { fill: #1e2b3c; font-size: 14px; }
+  </style>
+  <rect width="1200" height="700" fill="#ffffff"/>
+
+  <!-- Sign-in and access: existing shared solutions -->
+  <rect x="20" y="20" width="78" height="450" rx="4" fill="#7f7f7f"/>
+  <text class="t" transform="translate(56 245) rotate(-90)" text-anchor="middle">Sign-in</text>
+  <text class="s" transform="translate(76 245) rotate(-90)" text-anchor="middle">Ansattporten · Maskinporten · API keys</text>
+  <text class="s" transform="translate(92 245) rotate(-90)" text-anchor="middle" font-style="italic">mocked locally</text>
+  <rect x="108" y="20" width="78" height="450" rx="4" fill="#7f7f7f"/>
+  <text class="t" transform="translate(144 245) rotate(-90)" text-anchor="middle">Access</text>
+  <text class="s" transform="translate(164 245) rotate(-90)" text-anchor="middle">Altinn rights · platform rights · key policies</text>
+  <text class="s" transform="translate(180 245) rotate(-90)" text-anchor="middle" font-style="italic">Altinn mocked locally</text>
+
+  <!-- Interfaces -->
+  <rect x="206" y="20" width="676" height="92" rx="4" fill="#2e5f7f"/>
+  <text class="t" x="544" y="54" text-anchor="middle">Interfaces and channels</text>
+  <text class="s" x="544" y="78" text-anchor="middle">Workspace (employees) · Portal (agencies) · Console (Digdir) · your own frontend</text>
+  <text class="s" x="544" y="98" text-anchor="middle">OpenAI-compatible /v1 · MCP · REST · A2A</text>
+
+  <!-- AI services -->
+  <rect x="206" y="126" width="676" height="92" rx="4" fill="#5f9e3c"/>
+  <text class="t" x="544" y="160" text-anchor="middle">AI services, defined in configuration</text>
+  <text class="s" x="544" y="184" text-anchor="middle">Each service has variants and a way of working, for example Kunnskapsassistenten</text>
+  <text class="s" x="544" y="204" text-anchor="middle">Versioned definitions · tested before publishing · every change audited</text>
+
+  <!-- Kernel and ways of working -->
+  <rect x="206" y="232" width="676" height="112" rx="4" fill="#2e5f7f"/>
+  <text class="t" x="544" y="266" text-anchor="middle">Kernel and ways of working</text>
+  <text class="s" x="544" y="290" text-anchor="middle">Tasks with an append-only log · quotas and budgets · audit</text>
+  <text class="s" x="544" y="310" text-anchor="middle">Single call · search and answer · agent · step flow · own engine</text>
+  <text class="s" x="544" y="330" text-anchor="middle">Guardrails · hooks · quality runs and publishing gates</text>
+
+  <!-- Data and tools -->
+  <rect x="206" y="358" width="331" height="112" rx="4" fill="#2e5f7f"/>
+  <text class="t" x="371" y="392" text-anchor="middle">Data</text>
+  <text class="s" x="371" y="416" text-anchor="middle">Datasets on Typesense, pgvector,</text>
+  <text class="s" x="371" y="436" text-anchor="middle">Postgres, HTTP or MCP</text>
+  <text class="s" x="371" y="456" text-anchor="middle">Ingestion · reranking</text>
+  <rect x="551" y="358" width="331" height="112" rx="4" fill="#2e5f7f"/>
+  <text class="t" x="716" y="392" text-anchor="middle">Tools</text>
+  <text class="s" x="716" y="416" text-anchor="middle">Connections to MCP servers,</text>
+  <text class="s" x="716" y="436" text-anchor="middle">OpenAPI specs and A2A agents</text>
+  <text class="s" x="716" y="456" text-anchor="middle">Skills</text>
+
+  <!-- Application platform -->
+  <rect x="20" y="484" width="862" height="96" rx="4" fill="#7f7f7f"/>
+  <text class="t" x="451" y="520" text-anchor="middle">Application platform</text>
+  <text class="s" x="451" y="544" text-anchor="middle">Postgres with row-level security per organisation · API and worker in containers</text>
+  <rect x="300" y="556" width="302" height="16" rx="3" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text class="s" x="451" y="568.5" text-anchor="middle" font-size="12">Runs locally today · Azure setup written, parked</text>
+
+  <!-- Model routing -->
+  <rect x="902" y="20" width="92" height="560" rx="4" fill="#2e5f7f"/>
+  <text class="t" transform="translate(944 300) rotate(-90)" text-anchor="middle">Model routing</text>
+  <text class="s" transform="translate(966 300) rotate(-90)" text-anchor="middle">Catalogue · data residency · cost per token</text>
+
+  <!-- Models -->
+  <rect x="1010" y="20" width="62" height="560" rx="4" fill="#111111"/>
+  <text class="t" transform="translate(1047 300) rotate(-90)" text-anchor="middle">Models (inference)</text>
+  <rect x="1082" y="20" width="98" height="200" rx="4" fill="#111111"/>
+  <text class="t" transform="translate(1124 120) rotate(-90)" text-anchor="middle">Azure AI</text>
+  <text class="t" transform="translate(1148 120) rotate(-90)" text-anchor="middle">Foundry</text>
+  <text class="s" transform="translate(1168 120) rotate(-90)" text-anchor="middle">OpenAI · Claude</text>
+  <rect x="1082" y="230" width="98" height="150" rx="4" fill="#111111"/>
+  <text class="t" transform="translate(1128 305) rotate(-90)" text-anchor="middle">Local test</text>
+  <text class="t" transform="translate(1152 305) rotate(-90)" text-anchor="middle">model</text>
+  <rect x="1083" y="391" width="96" height="188" rx="4" fill="#ffffff" stroke="#111111" stroke-width="2" stroke-dasharray="6 4"/>
+  <text class="dark" font-weight="600" font-size="19" transform="translate(1124 485) rotate(-90)" text-anchor="middle">Norwegian</text>
+  <text class="dark" font-weight="600" font-size="19" transform="translate(1148 485) rotate(-90)" text-anchor="middle">models</text>
+  <text class="dark" font-size="13" transform="translate(1168 485) rotate(-90)" text-anchor="middle">planned</text>
+
+  <!-- Legend -->
+  <rect x="20" y="604" width="1160" height="76" rx="6" fill="none" stroke="#1e2b3c" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <rect x="44" y="626" width="26" height="26" fill="#7f7f7f"/>
+  <text class="lg" x="80" y="644">Existing solutions we build on</text>
+  <rect x="380" y="626" width="26" height="26" fill="#2e5f7f"/>
+  <text class="lg" x="416" y="644">Built in this platform</text>
+  <rect x="600" y="626" width="26" height="26" fill="#5f9e3c"/>
+  <text class="lg" x="636" y="644">Services</text>
+  <rect x="740" y="626" width="26" height="26" fill="#111111"/>
+  <text class="lg" x="776" y="644">External</text>
+  <rect x="880" y="626" width="26" height="26" fill="#ffffff" stroke="#111111" stroke-width="2" stroke-dasharray="5 3"/>
+  <text class="lg" x="916" y="644">Planned or parked</text>
+</svg>

@@ -1,0 +1,13 @@
+---
+title: Om Altinn
+linktitle: Altinn
+diataxis: diataxis_explanation
+---
+
+# Om Altinn
+
+Digitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.
+
+## Arkitektur
+
+Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året.

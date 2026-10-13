@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../kernel"
+    },
+    {
+      "path": "../conversations"
+    },
+    {
+      "path": "../definitions"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../providers-mcp-client"
+    },
+    {
+      "path": "../identity"
+    },
+    {
+      "path": "../jobs"
+    }
+  ]
+}

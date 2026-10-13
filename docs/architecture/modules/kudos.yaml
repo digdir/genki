@@ -1,0 +1,17 @@
+id: kudos
+plane: external
+name: Kudos
+note: Document source
+icon: source
+color: '#607b88'
+status: External
+external: true
+summary: Public document archive ingested into datasets.
+description: Public document archive ingested into datasets.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: kudos kudos external

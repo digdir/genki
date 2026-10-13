@@ -1,0 +1,17 @@
+id: altinn
+plane: external
+name: Altinn Autorisasjon
+note: Policy decision point
+icon: scope
+color: '#607b88'
+status: External
+external: true
+summary: Access decisions for principals acting for an organisation. Mocked PDP today.
+description: Access decisions for principals acting for an organisation. Mocked PDP today.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: altinn altinn autorisasjon external

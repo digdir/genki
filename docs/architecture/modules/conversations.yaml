@@ -1,0 +1,39 @@
+id: conversations
+plane: adapters
+name: Conversations
+note: Thread API + store
+icon: chat
+color: '#46d7c8'
+status: Adapter + store port
+packages:
+  - '@genai/conversations'
+summary: The conversation API KA uses today, keyed by tenant and full principal.
+description: CRUD on /api/conversations with an OpenAPI description. Threads are owned by tenant and
+  principal; X-User-Id is honoured for legacy keys and for service keys bound to a service, so a
+  frontend names its end users (ADR 0008). Stored in
+  memory or Postgres with row-level security.
+responsibilities:
+  - Conversation routes with OpenAPI schema
+  - Store interface with in-memory implementation
+  - Ownership by tenant and principal
+  - Messages keep a parent id; the active branch is the default list
+files:
+  - packages/conversations/src/routes.ts
+  - packages/conversations/src/store.ts
+  - packages/conversations/src/branches.ts
+input: Thread CRUD requests
+output: Threads and messages
+replaces:
+  - module: api
+    how: Conversation API
+  - module: data
+    how: Conversation and message entities
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/conversations/src/routes.ts
+      imports: '@genai/contracts'
+keywords: conversations threads messages history

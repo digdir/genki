@@ -1,0 +1,53 @@
+id: providers-typesense
+plane: providers
+name: Typesense reader
+note: Search-only client
+icon: search
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-typesense'
+summary: Knowledge adapter for Typesense that refuses anything but search.
+description: Searches and fetches documents with a timeout and asserts the client is search-only,
+  because the shared cluster serves production.
+responsibilities:
+  - Search and fetch
+  - Search-only guard
+files:
+  - packages/providers-typesense/src/index.ts
+  - packages/providers-typesense/src/client.ts
+input: Port query
+output: Typesense search
+replaces:
+  - module: typesense
+    how: Typesense search client
+edges:
+  - to: plugins
+    label: Manifest and read-only contract fake
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense/src/plugin.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense/src/client.ts
+      imports: '@genai/kernel'
+  - to: port-knowledge
+    label: Search and fetch through the knowledge port
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense/src/client.ts
+      imports: '@genai/port-knowledge'
+  - to: typesense-cluster
+    label: multi_search and document fetch
+    kind: http
+    target: http
+    witness:
+      file: packages/providers-typesense/src/client.ts
+      contains: await fetch(url
+keywords: typesense search provider

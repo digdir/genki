@@ -1,0 +1,102 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../contracts"
+    },
+    {
+      "path": "../definitions"
+    },
+    {
+      "path": "../eval"
+    },
+    {
+      "path": "../guardrails"
+    },
+    {
+      "path": "../hooks"
+    },
+    {
+      "path": "../i18n"
+    },
+    {
+      "path": "../identity"
+    },
+    {
+      "path": "../jobs"
+    },
+    {
+      "path": "../kernel"
+    },
+    {
+      "path": "../port-blob"
+    },
+    {
+      "path": "../port-embedding"
+    },
+    {
+      "path": "../port-knowledge"
+    },
+    {
+      "path": "../port-model"
+    },
+    {
+      "path": "../port-rerank"
+    },
+    {
+      "path": "../port-tools"
+    },
+    {
+      "path": "../providers-a2a-client"
+    },
+    {
+      "path": "../providers-anthropic"
+    },
+    {
+      "path": "../providers-colbert"
+    },
+    {
+      "path": "../providers-mcp-client"
+    },
+    {
+      "path": "../providers-openai"
+    },
+    {
+      "path": "../providers-openapi-tools"
+    },
+    {
+      "path": "../providers-pgvector"
+    },
+    {
+      "path": "../providers-typesense"
+    },
+    {
+      "path": "../providers-typesense-writer"
+    },
+    {
+      "path": "../retrieval"
+    },
+    {
+      "path": "../strategy-agent-loop"
+    },
+    {
+      "path": "../strategy-rag"
+    },
+    {
+      "path": "../strategy-remote"
+    },
+    {
+      "path": "../strategy-single-call"
+    },
+    {
+      "path": "../strategy-step-flow"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+id: providers-mcp-client
+plane: providers
+name: MCP client
+note: Tenant tools · egress guard
+icon: gateway
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-mcp-client'
+summary: Calls tenant-registered MCP servers through an isolated egress path.
+description: Connections are registered per tenant with a domain allowlist; the egress guard blocks
+  private and loopback addresses and limits size and time. Credentials are per connection, never the
+  user's token (ADR 0015).
+responsibilities:
+  - Connection registry
+  - Egress guard
+  - Tenant-scoped secrets
+files:
+  - packages/providers-mcp-client/src/client.ts
+  - packages/providers-mcp-client/src/egress.ts
+  - packages/providers-mcp-client/src/registry.ts
+input: Tool call
+output: Untrusted tool result
+replaces: []
+edges:
+  - to: plugins
+    label: Manifest and contract fixture
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-mcp-client/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-mcp-client/src/registry.ts
+      imports: '@genai/contracts'
+  - to: port-tools
+    label: Tool registry and tool calls
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-mcp-client/src/source.ts
+      imports: '@genai/port-tools'
+  - to: tenant-mcp
+    label: tools/call through the egress guard
+    kind: http
+    target: http
+    witness:
+      file: packages/providers-mcp-client/src/egress.ts
+      contains: httpsRequest
+contract:
+  - name: connection
+    file: packages/providers-mcp-client/src/registry.ts
+    export: connectionInput
+keywords: mcp client tenant tools egress secrets

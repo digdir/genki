@@ -1,0 +1,37 @@
+id: mcp-clients
+plane: consumers
+name: Open WebUI & MCP clients
+note: Existing integrations
+icon: api
+color: '#f1a46a'
+status: Consumer
+external: true
+summary: Clients that talk to the platform over MCP or the OpenAI-compatible API, the way they
+  talked to headless-rag, using the services' native names.
+description: Open WebUI, Copilot-style MCP clients and scripts are the other half of the parity
+  scope (ADR 0017). They reach published service variants through /v1 or MCP, authenticated with
+  Maskinporten tokens or bridged legacy API keys.
+responsibilities:
+  - List models on /v1/models and chat on /v1/chat/completions
+  - Discover and call tools over MCP
+files:
+  - docs/adr/0017-parity-scope-and-intentional-divergences.md
+input: Chat requests and tool calls
+output: Streamed answers and tool results
+replaces: []
+edges:
+  - to: adapter-openai
+    label: OpenAI-compatible chat and model listing
+    kind: http
+    target: http
+    witness:
+      file: docs/adr/0017-parity-scope-and-intentional-divergences.md
+      contains: Open WebUI
+  - to: adapter-mcp
+    label: MCP tools/list and tools/call
+    kind: http
+    target: http
+    witness:
+      file: docs/adr/0017-parity-scope-and-intentional-divergences.md
+      contains: MCP clients
+keywords: open webui mcp client openai compatible integration

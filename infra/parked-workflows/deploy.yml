@@ -1,0 +1,125 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [test, prod]
+        default: test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'test' }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: registry
+        run: |
+          server=$(az acr show --name "${{ vars.ACR_NAME }}" --query loginServer -o tsv)
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          az acr login --name "${{ vars.ACR_NAME }}"
+      - uses: docker/setup-buildx-action@v3
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - id: image
+        run: echo "ref=${{ steps.registry.outputs.server }}/genai-api@${{ steps.push.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  deploy-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: deploy
+        env:
+          PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
+          PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
+          DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+        run: |
+          url=$(az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "api-${{ github.run_id }}" \
+            --parameters infra/env/test.bicepparam \
+            --parameters image="${{ needs.build.outputs.image }}" appVersion="${{ github.sha }}" \
+            --query properties.outputs.apiUrl.value -o tsv)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: smoke
+        run: |
+          for _ in $(seq 1 20); do
+            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
+            sleep 15
+          done
+          echo "health check did not report ${{ github.sha }}"; exit 1
+
+  deploy-prod:
+    needs: [build, deploy-test]
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod' && vars.PROD_READY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: prod parameters exist
+        run: test -f infra/env/prod.bicepparam || { echo "infra/env/prod.bicepparam is not written yet"; exit 1; }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - env:
+          PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
+          PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
+          DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "api-${{ github.run_id }}" \
+            --parameters infra/env/prod.bicepparam \
+            --parameters image="${{ needs.build.outputs.image }}" appVersion="${{ github.sha }}"

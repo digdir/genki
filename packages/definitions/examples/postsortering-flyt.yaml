@@ -1,0 +1,25 @@
+# A reusable step flow: classify, then route by category
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '999888777', id: postsortering-flyt, name: Sortering av post }
+spec:
+  purpose: Klassifiser innkommende post og send den til riktig kø
+  steps:
+    - id: classify
+      block: classify@1
+      params: { labels: [tilskudd, klage, innsyn, annet] }
+    - id: route
+      switchOn: classify.label
+      cases:
+        - when: klage
+          steps: [{ id: to-complaints, block: route@1, params: { queue: klager } }]
+        - when: innsyn
+          steps: [{ id: to-access, block: route@1, params: { queue: innsyn } }]
+      else:
+        - {
+            id: to-general,
+            block: route@1,
+            params: { queue: post-generell },
+            onError: use-default,
+            default: { queue: manuell },
+          }

@@ -1,0 +1,54 @@
+id: strategy-remote
+plane: runtime
+name: Remote agent
+note: Your own agent answers the turn
+icon: gateway
+color: '#4ad3bb'
+status: Strategy plugin
+packages:
+  - '@genai/strategy-remote'
+summary: Hands a whole turn to an agent the team runs, over HTTP (remote-agent/v1) or A2A.
+description: Sends the question, earlier messages and the context the service agreed to share
+  through the egress guard, with a tenant secret as credential. The answer, sources, reported steps
+  and usage map into the kernel event stream and the task budget, so guardrails, hooks, audit, cost
+  caps, timeouts and cancel apply as for any other strategy. The endpoint declares its residency, and
+  publish refuses one wider than the service allows (ADR 0028).
+responsibilities:
+  - The remote-agent/v1 request and reply contract
+  - HTTP and A2A transports through the egress guard
+  - Map reported steps, sources and usage into events and budget
+files:
+  - packages/strategy-remote/src/index.ts
+  - packages/strategy-remote/src/contract.ts
+  - packages/strategy-remote/src/config.ts
+  - packages/strategy-remote/src/transport.ts
+input: Question, history and shared context
+output: Answer, sources and steps
+replaces: []
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-remote/src/index.ts
+      imports: '@genai/contracts'
+  - to: providers-mcp-client
+    label: Egress guard and tenant secrets
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-remote/src/transport.ts
+      imports: '@genai/providers-mcp-client'
+  - to: providers-a2a-client
+    label: A2A client for agents that speak A2A
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-remote/src/transport.ts
+      imports: '@genai/providers-a2a-client'
+contract:
+  - name: config
+    file: packages/strategy-remote/src/config.ts
+    export: remoteAgentConfig
+keywords: remote agent external bring your own a2a http

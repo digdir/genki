@@ -1,0 +1,39 @@
+id: providers-postgres-source
+plane: providers
+name: Postgres source reader
+note: Read-only connector
+icon: database
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-postgres-source'
+summary: Reads mapped rows from a tenant's own PostgreSQL database for connector datasets.
+description: Implements the row reader for level-2 connector mappings (ADR 0023, 0026). Every read
+  runs in a read-only transaction with a statement timeout and a row limit, checks the table and
+  columns against information_schema first, and builds SQL only from plain identifiers and bound
+  values, never from text a model wrote. The host passes the egress guard before it connects.
+responsibilities:
+  - Read-only, paged row reads
+  - Column and table checks
+  - Structured row filters as bound parameters
+files:
+  - packages/providers-postgres-source/src/reader.ts
+input: Connection, table query
+output: Rows
+replaces: []
+edges:
+  - to: ingest
+    label: Implements the row reader of the database source
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres-source/src/reader.ts
+      imports: '@genai/ingest'
+  - to: tenant-databases
+    label: Read-only SQL to the tenant's database
+    kind: sql
+    target: sql
+    witness:
+      file: packages/providers-postgres-source/src/reader.ts
+      contains: BEGIN TRANSACTION READ ONLY
+keywords: postgres connector source database read-only mapping

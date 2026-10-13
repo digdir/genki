@@ -1,0 +1,23 @@
+name: Feature
+description: Suggest a change or a new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: The need
+      description: Who needs this, and what they cannot do today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you suggest. Say whether it can be configuration or needs code, and which ADRs it touches.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered, including what works today.

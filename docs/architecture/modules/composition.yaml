@@ -1,0 +1,239 @@
+id: composition
+plane: composition
+name: Composition
+note: Shared kernel wiring
+icon: network
+color: '#a78bfa'
+status: Library
+packages:
+  - '@genai/composition'
+summary: Builds the kernel and its registries from config and stores, for the API and the worker alike.
+description: One runtime builder that both composition roots call. It builds the model, knowledge,
+  rerank, embedding and tool routers, wraps every service strategy in settings, guardrails, hooks and
+  document scope, applies the catalogs stored as config entries, compiles published services into
+  capabilities with the platform cost limits and quarantines the ones that fail. The API adds HTTP,
+  admin modules and platform strategies on top; the worker runs triggers on the same kernel.
+responsibilities:
+  - Build routers, ports, strategies, registry and kernel from catalogs, secrets and stores
+  - Wrap every service strategy in settings, guardrails, hooks and document scope
+  - Apply catalogs, guardrail rules, hooks and skills stored as config entries
+  - Compile published services into capabilities and quarantine invalid ones
+  - Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker
+  - Keep the config entry store, tenant secret vault and change feed contracts
+files:
+  - packages/composition/src/runtime.ts
+  - packages/composition/src/block-settings.ts
+  - packages/composition/src/catalog-registry.ts
+  - packages/composition/src/config-store.ts
+  - packages/composition/src/hook-runtime.ts
+  - packages/composition/src/settings-runtime.ts
+  - packages/composition/src/document-scope.ts
+  - packages/composition/src/boot-guard.ts
+input: Catalogs, secrets, definition and config stores, policy
+output: A kernel with every strategy registered, and the registries behind it
+replaces: []
+edges:
+  - to: port-model
+    label: Model router and catalog parsing
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/catalog-registry.ts
+      imports: '@genai/port-model'
+  - to: kernel
+    label: Kernel SPI and contracts
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/document-scope.ts
+      imports: '@genai/kernel'
+  - to: port-knowledge
+    label: Knowledge router and document scope
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/document-scope.ts
+      imports: '@genai/port-knowledge'
+  - to: providers-mcp-client
+    label: Composes tool sources and the egress guard
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/external-search.ts
+      imports: '@genai/providers-mcp-client'
+  - to: hooks
+    label: Wraps strategies with hooks
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/hook-runtime.ts
+      imports: '@genai/hooks'
+  - to: port-rerank
+    label: Rerank router
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/retrieval-ports.ts
+      imports: '@genai/port-rerank'
+  - to: retrieval
+    label: Retrieval pipeline for agent and RAG strategies
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/retrieval-ports.ts
+      imports: '@genai/retrieval'
+  - to: definitions
+    label: Compiles published services and settings
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/definitions'
+  - to: guardrails
+    label: Wraps strategies in guardrails
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/guardrails'
+  - to: jobs
+    label: Registers batch companions
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/jobs'
+  - to: port-blob
+    label: Blob port
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/port-blob'
+  - to: port-embedding
+    label: Embedding router
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/port-embedding'
+  - to: port-tools
+    label: Tool registry
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/port-tools'
+  - to: providers-a2a-client
+    label: Composes the A2A tool source
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-a2a-client'
+  - to: providers-anthropic
+    label: Composes the anthropic-messages adapter
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-anthropic'
+  - to: providers-colbert
+    label: Composes the ColBERT reranker
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-colbert'
+  - to: providers-openai
+    label: Composes the openai-chat adapter and embeddings
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-openai'
+  - to: providers-openapi-tools
+    label: Composes the OpenAPI tool source
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-openapi-tools'
+  - to: providers-pgvector
+    label: Composes the pgvector engine
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-pgvector'
+  - to: providers-typesense
+    label: Composes the Typesense search adapter
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-typesense'
+  - to: providers-typesense-writer
+    label: Composes the Typesense index writer
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/providers-typesense-writer'
+  - to: strategy-agent-loop
+    label: Registers Agent loop
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/strategy-agent-loop'
+  - to: strategy-rag
+    label: Registers RAG single-shot
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/strategy-rag'
+  - to: strategy-remote
+    label: Registers Remote agent
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/strategy-remote'
+  - to: strategy-single-call
+    label: Registers Single call
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/strategy-single-call'
+  - to: strategy-step-flow
+    label: Registers Step flow
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/runtime.ts
+      imports: '@genai/strategy-step-flow'
+  - to: eval
+    label: Gate registry
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/scoped-registry.ts
+      imports: '@genai/eval'
+  - to: identity
+    label: Override scope for call settings
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/settings-runtime.ts
+      imports: '@genai/identity'
+  - to: i18n
+    label: Locale type for user preferences
+    kind: call
+    target: call
+    witness:
+      file: packages/composition/src/user-preferences.ts
+      imports: '@genai/i18n'
+keywords: composition runtime kernel wiring registry catalog worker api

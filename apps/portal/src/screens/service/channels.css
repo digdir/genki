@@ -1,0 +1,150 @@
+.fe-channels .stack-xs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fe-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px 24px;
+}
+
+.fe-head > .stack-xs {
+  flex: 1 1 320px;
+}
+
+.fe-endpoints,
+.fe-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.fe-endpoint,
+.fe-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  gap: 4px 16px;
+}
+
+.fe-endpoints dt,
+.fe-facts dt {
+  font-weight: 600;
+}
+
+.fe-endpoints dd,
+.fe-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fe-endpoints dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.fe-cards,
+.fe-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  overflow: hidden;
+}
+
+.fe-cards > li,
+.fe-list > li {
+  padding: 16px;
+}
+
+.fe-cards > li + li,
+.fe-list > li + li {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.fe-list > li {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fe-list > li.revoked {
+  background: var(--ds-color-neutral-background-tinted);
+}
+
+.fe-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  gap: 12px 16px;
+}
+
+.fe-row-meta {
+  font-size: 14px;
+}
+
+.fe-form {
+  padding: 16px;
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.fe-field-md {
+  max-width: 480px;
+}
+
+.fe-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 24px;
+  border: 1px dashed var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-lg);
+}
+
+.fe-empty-title {
+  font-weight: 600;
+}
+
+.fe-secret {
+  overflow-wrap: anywhere;
+}
+
+.fe-snippet summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.fe-snippet pre {
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow-x: auto;
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-neutral-background-tinted);
+  font-size: 13px;
+}
+
+@media (max-width: 759px) {
+  .fe-endpoint,
+  .fe-facts > div,
+  .fe-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fe-override-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fe-override-item {
+  margin-inline-start: 28px;
+}

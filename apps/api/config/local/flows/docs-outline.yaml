@@ -1,0 +1,52 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: docs-outline, name: Docs Outline }
+spec:
+  purpose: Propose a structured outline for a new documentation page from the existing docs it should build on
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+    - id: outline
+      block: extract@1
+      input:
+        prompt: "You are drafting a documentation outline for an Altinn 3 doc page on https://docs.altinn.studio.\n\nTopic: {{input.query}}\n\nPropose a structured outline. Aim for 4-7 top-level sections. For each section, list any existing-doc page references that look directly relevant. If you noticed substantive overlaps or contradictions in the prior-art excerpts, surface them in consistency_notes."
+        chunks: '{{rerank.contextChunks}}'
+      params:
+        name: emitOutline
+        temperature: 0.2
+        schema:
+          type: object
+          properties:
+            title: { type: string, description: Suggested page title. }
+            sections:
+              type: array
+              description: Top-level sections in the proposed outline (4-7 typical).
+              items:
+                type: object
+                properties:
+                  heading: { type: string, description: Short section heading. }
+                  purpose:
+                    {
+                      type: string,
+                      description: 1-2 sentences on what this section covers and why.,
+                    }
+                  prior_art_pages:
+                    type: array
+                    items: { type: string }
+                    description: URLs or page slugs of existing docs that should be referenced. Empty if none.
+                required: [heading, purpose]
+            consistency_notes:
+              type: array
+              items: { type: string }
+              description: Plain-text notes about overlaps, contradictions, or duplication risks observed in the prior art. Empty if none.
+          required: [title, sections]
+    - id: answer
+      block: answer@1
+      input:
+        text: '{"outline": {{outline}}}'
+        chunks: '{{rerank.contextChunks}}'
+        meta: { outline: '{{outline}}' }

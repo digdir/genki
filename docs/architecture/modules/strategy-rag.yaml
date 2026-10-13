@@ -1,0 +1,51 @@
+id: strategy-rag
+plane: runtime
+name: RAG single-shot
+note: Retrieve, then answer once
+icon: rag
+color: '#4ad3bb'
+status: Strategy plugin
+packages:
+  - '@genai/strategy-rag'
+summary: Retrieve context for the question, then synthesise one cited answer.
+description: Uses the retrieval pipeline injected by the composition root and the agent-loop
+  citation helpers, so citations number documents the same way KA does.
+responsibilities:
+  - Retrieve with the configured pipeline
+  - Synthesise a cited answer
+files:
+  - packages/strategy-rag/src/index.ts
+input: Question + datasets
+output: Cited answer
+replaces:
+  - module: rag
+    how: Retrieve-then-synthesise mode
+  - module: skills
+    how: The retrieve-only graph variant
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-rag/src/index.ts
+      imports: '@genai/contracts'
+  - to: port-model
+    label: Uses the default output limit for answers
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-rag/src/index.ts
+      imports: '@genai/port-model'
+  - to: strategy-agent-loop
+    label: Shares prompts, citation numbering and the model session
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-rag/src/index.ts
+      imports: '@genai/strategy-agent-loop'
+contract:
+  - name: config
+    file: packages/strategy-rag/src/index.ts
+    export: ragConfig
+keywords: rag strategy retrieval synthesis citations

@@ -1,0 +1,54 @@
+id: providers-openapi-tools
+plane: providers
+name: OpenAPI tools
+note: REST operations as tools
+icon: gateway
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-openapi-tools'
+summary: Imports an OpenAPI 3.0 or 3.1 document and exposes the operations a tenant picks as tools.
+description: Reads the document from an upload or an address, resolves local references and builds a
+  JSON schema per operation from its parameters and body. Calls go through the egress guard with
+  an API key, a bearer token or an OAuth client credentials token from the vault. Only GET
+  operations are exposed until writes are turned on for the connection.
+responsibilities:
+  - OpenAPI parsing and schema generation
+  - Operation selection with writes off by default
+  - REST calls through the egress guard
+files:
+  - packages/providers-openapi-tools/src/document.ts
+  - packages/providers-openapi-tools/src/source.ts
+input: Tool call
+output: Untrusted tool result
+replaces: []
+edges:
+  - to: plugins
+    label: Manifest and contract fixture
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-openapi-tools/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-openapi-tools/src/source.ts
+      imports: '@genai/kernel'
+  - to: port-tools
+    label: Tool registry and tool calls
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-openapi-tools/src/source.ts
+      imports: '@genai/port-tools'
+  - to: providers-mcp-client
+    label: Connections, egress guard and tenant secrets
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-openapi-tools/src/source.ts
+      imports: '@genai/providers-mcp-client'
+keywords: openapi rest tools operations egress

@@ -1,0 +1,16 @@
+# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, GlobalStandard, Sweden Central, 2026-10-08
+models:
+  foundry-openai/gpt-4.1: { inputPerThousand: 0.019, outputPerThousand: 0.0762 }
+  foundry-openai/gpt-4.1-mini: { inputPerThousand: 0.0038, outputPerThousand: 0.0152 }
+  foundry-openai/gpt-4o-2m-tps: { inputPerThousand: 0.0238, outputPerThousand: 0.0952 }
+  foundry-openai/gpt-4o-mini-2m-tps: { inputPerThousand: 0.0014, outputPerThousand: 0.0057 }
+  foundry-openai/gpt-5: { inputPerThousand: 0.0119011, outputPerThousand: 0.0952085 }
+  foundry-openai/gpt-5-mini: { inputPerThousand: 0.0023802, outputPerThousand: 0.0190417 }
+  foundry-openai/gpt-oss-120b: { inputPerThousand: 0.0014, outputPerThousand: 0.0057 }
+  foundry-openai/o1-mini-2m-tps: { inputPerThousand: 0.0105, outputPerThousand: 0.0419 }
+  foundry-openai/o3: { inputPerThousand: 0.019, outputPerThousand: 0.0762 }
+  foundry-openai/o3-mini: { inputPerThousand: 0.0105, outputPerThousand: 0.0419 }
+  foundry-openai/o3-pro: { inputPerThousand: 0.1904, outputPerThousand: 0.7617 }
+  foundry-openai/o4-mini: { inputPerThousand: 0.0105, outputPerThousand: 0.0419 }
+  foundry/text-embedding-3-large: { inputPerThousand: 0.0012, outputPerThousand: 0 }
+  foundry/text-embedding-3-small: { inputPerThousand: 0.0002, outputPerThousand: 0 }

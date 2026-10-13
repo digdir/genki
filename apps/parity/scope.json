@@ -1,0 +1,13 @@
+{
+  "reason": "Parity covers what Kunnskapsassistenten calls. Other headless-rag agents are rebuilt later as their own services. Each capability has its headless-rag name (old) and the platform's native name (new).",
+  "capabilities": {
+    "agent": {
+      "old": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+      "new": "kunnskapsassistenten__default"
+    },
+    "probe": {
+      "old": "builtin.retrieve-only-agent__retrieve-only",
+      "new": "kunnskapsassistenten-retrieve-only__default"
+    }
+  }
+}

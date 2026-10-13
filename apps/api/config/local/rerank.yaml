@@ -1,0 +1,9 @@
+endpoints:
+  colbert:
+    engine: colbert
+    baseURL: ${COLBERT_API_URL}
+    auth: { kind: api-key, header: x-api-key, secret: secret://env/colbert-api-key }
+rerankers:
+  - id: colbert
+    endpoint: colbert
+    residency: norway

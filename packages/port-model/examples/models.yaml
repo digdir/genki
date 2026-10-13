@@ -1,0 +1,31 @@
+endpoints:
+  foundry-openai:
+    protocol: openai-chat
+    baseURL: https://example.openai.azure.com/openai/v1
+    auth: { kind: api-key, header: api-key, secret: secret://foundry/openai-key }
+  foundry-claude:
+    protocol: anthropic-messages
+    baseURL: https://example.services.ai.azure.com/anthropic
+    auth: { kind: token-provider, provider: entra }
+  aivar:
+    protocol: openai-chat
+    baseURL: https://aivar.example.no/v1
+    auth: { kind: bearer, secret: secret://aivar/key }
+models:
+  - id: foundry/gpt-4o
+    endpoint: foundry-openai
+    deployment: gpt-4o-prod
+    residency: norway
+    capabilities: [stream, tools, json-schema]
+  - id: foundry/claude-opus
+    endpoint: foundry-claude
+    deployment: claude-opus
+    residency: global
+    capabilities: [stream, tools, json-schema, reasoning]
+    options: { defaultMaxTokens: 8192 }
+  - id: aivar/borealis
+    endpoint: aivar
+    deployment: borealis
+    residency: norway
+    capabilities: [stream]
+    options: { tokenParam: max_tokens }

@@ -1,0 +1,25 @@
+{
+  "name": "@genai/strategy-remote",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "@genai/port-tools": "0.0.0",
+    "@genai/providers-a2a-client": "0.0.0",
+    "@genai/providers-mcp-client": "0.0.0",
+    "zod": "^4.6.5"
+  }
+}

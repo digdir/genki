@@ -1,0 +1,1248 @@
+{
+  "source": "packages/eval/testsets/ka-kudos-draft.yaml",
+  "status": "draft",
+  "cases": [
+    {
+      "id": "ka-kudos-001-factual",
+      "question": "Hvorfor var forbruket av Kunnskapsdepartementets tildeling til Forskningsrådet lavt i 2024?",
+      "tags": ["factual", "statusrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Det lave forbruket skyldtes hovedsakelig omleggingen av budsjettmodellen, som ga endret periodisering, i forbindelse med overgangen til bruttobudsjettering.",
+      "answerPattern": "(?i)budsjettmodell|periodisering|bruttobudsjettering",
+      "sources": [
+        {
+          "chunkId": "f0932e68f724",
+          "document": "377252",
+          "position": 437
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-002-factual",
+      "question": "Når ble Forskningsrådets regnskap for 2024 avsluttet, og hvordan var det tidligere år?",
+      "tags": ["factual", "statusrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Regnskapet for 2024 ble avsluttet 12. desember, mot 20. januar året etter i tidligere år.",
+      "answerPattern": "(?i)12\\.? desember",
+      "sources": [
+        {
+          "chunkId": "f0932e68f724",
+          "document": "377252",
+          "position": 437
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-003-factual",
+      "question": "Hvor mange oppdrag fra 2023 var fortsatt i arbeid hos Statens vegvesen ifølge årsrapporten for 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Fem oppdrag fra 2023 var fortsatt i arbeid.",
+      "answerPattern": "(?i)\\bfem\\b|\\b5\\b",
+      "sources": [
+        {
+          "chunkId": "ff37317cc50f",
+          "document": "420689",
+          "position": 256
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-004-factual",
+      "question": "Hva gikk oppdraget om arealregnskap (4-2023) til Statens vegvesen ut på, og hva var status?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Statens vegvesen skulle vurdere utvikling og innføring av arealregnskap for sine prosjekter, med frist 31. desember 2023. Arbeidet med ytterligere sikkerhet i beregningsgrunnlaget var igangsatt med en GIS-analyse for arealbruk.",
+      "answerPattern": "(?i)arealregnskap|GIS",
+      "sources": [
+        {
+          "chunkId": "ff37317cc50f",
+          "document": "420689",
+          "position": 256
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-005-factual",
+      "question": "Hvorfor takket noen familier nei til tilbud om barnehage og skole for utsatte barn under covid-19-pandemien?",
+      "tags": ["factual", "statusrapport", "year-2021"],
+      "grounding": "sources-and-answer",
+      "reference": "En del av forklaringen var bekymring for smitte. Utdanningsforbundet pekte også på at variasjon i tilbudet mellom kommuner kan ha gitt rom for stigmatisering og usikkerhet.",
+      "answerPattern": "(?i)smitte",
+      "sources": [
+        {
+          "chunkId": "dd7db6222404",
+          "document": "8110",
+          "position": 1153
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-006-factual",
+      "question": "Hva har vært prioritert i barneverns- og helsenemndene i 2024 og 2025 ifølge Prop. 1 S (2025–2026)?",
+      "tags": ["factual", "proposisjon-til-stortinget", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "At barn skal få delta og medvirke i saker i nemndene, særlig de yngste barna, og tilrettelegging for barnevennlige prosesser.",
+      "answerPattern": "(?i)medverknad|medvirkning|barnevennl",
+      "sources": [
+        {
+          "chunkId": "c3278da973f9",
+          "document": "416663",
+          "position": 159
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-007-factual",
+      "question": "Hvilken ordning i Barneverns- og helsenemnda evalueres i 2024–2025?",
+      "tags": ["factual", "proposisjon-til-stortinget", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Ordningen med samtaleprosess evalueres i 2024–2025.",
+      "answerPattern": "(?i)samtaleprosess",
+      "sources": [
+        {
+          "chunkId": "c3278da973f9",
+          "document": "416663",
+          "position": 159
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-008-factual",
+      "question": "Hvor mye ble satt av til å utarbeide planen(e) i tillegg nr. 1 til IMDis tildelingsbrev for 2023, og over hvilket kapittel?",
+      "tags": ["factual", "tildelingsbrev", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "0,5 millioner kroner over kap. 671 Bosetting av flyktninger og tiltak for innvandrere, post 21, med frist 31. mai 2023.",
+      "answerPattern": "(?i)0,5 mill|671",
+      "sources": [
+        {
+          "chunkId": "58508d181e9e",
+          "document": "414888",
+          "position": 9
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-009-factual",
+      "question": "Hvilke etater skal samordne og styrke den nettbaserte informasjonen til utenlandske arbeidstakere, ifølge tillegg nr. 1 til IMDis tildelingsbrev for 2023?",
+      "tags": ["factual", "tildelingsbrev", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Arbeidstilsynet, Arbeids- og velferdsetaten, Skatteetaten, Tolletaten og politiet, og IMDi bes etablere et samarbeid med disse etatene.",
+      "answerPattern": "(?i)Arbeidstilsynet|Skatteetaten|Tolletaten",
+      "sources": [
+        {
+          "chunkId": "58508d181e9e",
+          "document": "414888",
+          "position": 9
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-010-factual",
+      "question": "Hva vet vi lite om når det gjelder oppfølging av foreldre etter introduksjonsprogrammet, ifølge evalueringen av foreldrekurs ved høye ankomster?",
+      "tags": ["factual", "evaluering", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Vi vet forholdsvis lite om hvordan lokale myndigheter følger opp foreldre etter introduksjonsprogrammet, og begrenset om behovene for videre oppfølging.",
+      "answerPattern": "(?i)introduksjonsprogram",
+      "sources": [
+        {
+          "chunkId": "b2fbf73c5d88",
+          "document": "358013",
+          "position": 62
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-011-factual",
+      "question": "Hvilke temaer er nevnt for fagmøtene mellom departementet og Arbeidstilsynet i tildelingsbrevet for 2023?",
+      "tags": ["factual", "tildelingsbrev", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Årsrapport 2022 med måloppnåelse for mål 3.1–3.3 og rapportering av effekter, risikobildet, langsiktig utvikling og strategi, og bruk av FoU.",
+      "answerPattern": "(?i)risikobilde|FoU|måloppnåelse",
+      "sources": [
+        {
+          "chunkId": "5dab34842ff0",
+          "document": "32098",
+          "position": 28
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-012-factual",
+      "question": "Hva skal DSB gjøre i årsrapporten dersom fastsatte mål ikke nås, ifølge hovedinstruksen for 2024?",
+      "tags": ["factual", "instruks", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Direktoratet skal drøfte årsakene til at målene ikke er nådd.",
+      "answerPattern": "(?i)årsak",
+      "sources": [
+        {
+          "chunkId": "3ea43d443383",
+          "document": "90789",
+          "position": 22
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-013-factual",
+      "question": "Hvor stor var DSBs samlede tildeling på utgiftssiden i 2019?",
+      "tags": ["factual", "arsrapport", "year-2019"],
+      "grounding": "sources-and-answer",
+      "reference": "Om lag 1,7 milliarder kroner på utgiftssiden (og 760 millioner kroner på inntektssiden).",
+      "answerPattern": "(?i)1,7 (mrd|milliard)",
+      "sources": [
+        {
+          "chunkId": "1aea5456ac7a",
+          "document": "5124",
+          "position": 163
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-014-factual",
+      "question": "Hva gikk de øremerkede midlene i DSBs bevilgning for 2019 til?",
+      "tags": ["factual", "arsrapport", "year-2019"],
+      "grounding": "sources-and-answer",
+      "reference": "Etablering av fagskole for brann- og redningspersonell, samlokalisering av 110-sentralene og politiets operasjonssentraler (SAMLOK), og etterslep av materiell i Sivilforsvaret.",
+      "answerPattern": "(?i)fagskole|SAMLOK|Sivilforsvaret",
+      "sources": [
+        {
+          "chunkId": "1aea5456ac7a",
+          "document": "5124",
+          "position": 163
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-015-factual",
+      "question": "Hvor lenge kan Statsbygg innvilge utdanningspermisjon med lønn etter instruksen for 2020?",
+      "tags": ["factual", "instruks", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Inntil ett år, i samsvar med retningslinjene i Statens personalhåndbok og dekket innenfor eget budsjett.",
+      "answerPattern": "(?i)ett år|1 år",
+      "sources": [
+        {
+          "chunkId": "83a137aa753b",
+          "document": "8202",
+          "position": 16
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-016-factual",
+      "question": "Hvilke tre makroøkonomiske størrelser bruker Norges Bank for å tallfeste risiko i Pengepolitisk rapport 3/2025?",
+      "tags": ["factual", "statusrapport", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "BNP for Fastlands-Norge, konsumprisene og boligprisene.",
+      "answerPattern": "(?i)BNP|konsumpris|boligpris",
+      "sources": [
+        {
+          "chunkId": "a2d0012c6a5e",
+          "document": "405503",
+          "position": 28
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-017-factual",
+      "question": "Hvordan har risikoen for høy prisvekst utviklet seg ifølge Pengepolitisk rapport 3/2025?",
+      "tags": ["factual", "statusrapport", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Risikoen for høy prisvekst har kommet ned og nærmet seg sitt historiske gjennomsnitt.",
+      "answerPattern": "(?i)gjennomsnitt|kommet ned",
+      "sources": [
+        {
+          "chunkId": "a2d0012c6a5e",
+          "document": "405503",
+          "position": 28
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-018-factual",
+      "question": "Hva investerer tjenesteytende bedrifter i ifølge Norges Banks Regionalt nettverk i 2025?",
+      "tags": ["factual", "statusrapport", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Digitalisering og teknologiske løsninger for å automatisere arbeidsoppgaver, og noen planlegger nybygg for økt kapasitet, særlig innen reiseliv.",
+      "answerPattern": "(?i)digitalisering|automatiser",
+      "sources": [
+        {
+          "chunkId": "406780af6e42",
+          "document": "404048",
+          "position": 10
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-019-factual",
+      "question": "Hvor mange personer består konfliktrådets avdeling for IT og digitalisering av etter forsterkningen i 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Avdelingen består av totalt fire personer.",
+      "answerPattern": "(?i)\\bfire\\b|\\b4\\b",
+      "sources": [
+        {
+          "chunkId": "724d79e4a28d",
+          "document": "374755",
+          "position": 56
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-020-factual",
+      "question": "Hva gjorde konfliktrådet med IT-tjenestene sine i 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Konfliktrådet sluttførte flyttingen av alle IT-tjenester til sikre skytjenester, og flyttet drift, overvåkning og videreutvikling av Justishub-integrasjonen til leverandøren av saksbehandlingssystemet.",
+      "answerPattern": "(?i)sky|Justishub",
+      "sources": [
+        {
+          "chunkId": "724d79e4a28d",
+          "document": "374755",
+          "position": 56
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-021-factual",
+      "question": "Hvilke tre mål rapporterer konfliktrådet på i årsrapporten for 2021?",
+      "tags": ["factual", "arsrapport", "year-2021"],
+      "grounding": "sources-and-answer",
+      "reference": "Konflikter løses på lavest mulig nivå; ungdom og unge voksne lever et kriminalitetsfritt liv etter gjennomført straff; rettssikkerhet og rettslikhet for alle brukere av konfliktrådene.",
+      "answerPattern": "(?i)lavest mulig nivå|kriminalitetsfritt|rettssikkerhet",
+      "sources": [
+        {
+          "chunkId": "6de3ee56b72c",
+          "document": "22047",
+          "position": 0
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-022-factual",
+      "question": "Hvilke elever kan delta på Statpeds korte elevkurs innen syn i 2025 og 2026?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Elever med rett til opplæring i punktskrift i grunnskolen (opplæringsloven § 3-5), på inntil én uke årlig.",
+      "answerPattern": "(?i)punktskrift",
+      "sources": [
+        {
+          "chunkId": "29c512e8d300",
+          "document": "395988",
+          "position": 6
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-023-factual",
+      "question": "Hvem dekker reiseutgifter når kommuner søker elever inn på Statpeds elevkurs i 2025?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Departementet legger til grunn at kommunene dekker kostnader til reise og andre utgifter.",
+      "answerPattern": "(?i)kommun",
+      "sources": [
+        {
+          "chunkId": "29c512e8d300",
+          "document": "395988",
+          "position": 6
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-024-factual",
+      "question": "Hva anbefales om eksperimentet i Stimulab-prosjektet om livshendelsen alvorlig sykt barn?",
+      "tags": ["factual", "statusrapport", "year-2021"],
+      "grounding": "sources-and-answer",
+      "reference": "Eksperimentet bør gjentas i større skala og utvides til å realisere de individuelt tilpassede tjenestetilbudene, og det bør legges vekt på å styrke samhandlings- og brukermedvirkningskompetanse.",
+      "answerPattern": "(?i)større skala|samhandling",
+      "sources": [
+        {
+          "chunkId": "590ed76325f9",
+          "document": "351373",
+          "position": 34
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-025-factual",
+      "question": "Hva skal Medietilsynet redegjøre for i årsrapporten om Riksrevisjonens merknader, ifølge tildelingsbrevet for 2025?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Hvilke tiltak som er gjennomført for å følge opp Riksrevisjonens merknader.",
+      "answerPattern": "(?i)tiltak",
+      "sources": [
+        {
+          "chunkId": "59d83de8a988",
+          "document": "365835",
+          "position": 37
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-026-factual",
+      "question": "Hvilken dato er tildelingsbrevet til Medietilsynet for 2024 datert?",
+      "tags": ["factual", "tildelingsbrev", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "6. februar 2024.",
+      "answerPattern": "(?i)6\\.? februar",
+      "sources": [
+        {
+          "chunkId": "f0b22780aaf9",
+          "document": "90644",
+          "position": 0
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-027-factual",
+      "question": "Hvor store var Nasjonalbibliotekets samlede bevilgninger i 2023, inkludert overføringer fra året før?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "938 millioner kroner, hvorav 98 millioner på post 80 og 75 millioner til investeringer; i tillegg inntil 31 millioner på post 21.",
+      "answerPattern": "938",
+      "sources": [
+        {
+          "chunkId": "1123452172de",
+          "document": "82881",
+          "position": 58
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-028-factual",
+      "question": "Etter hvilken regnskapsstandard fører Nasjonalbiblioteket regnskap?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Statlig regnskapsstandard (SRS), og i tillegg kontantprinsippet.",
+      "answerPattern": "(?i)SRS|rekneskapsstandard|regnskapsstandard",
+      "sources": [
+        {
+          "chunkId": "1123452172de",
+          "document": "82881",
+          "position": 58
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-029-comparison",
+      "question": "Hva innebærer prinsippet om motsatt sammenstilling slik Nasjonalbiblioteket og Justervesenet beskriver det i årsrapportene for 2024?",
+      "tags": ["comparison", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Begge beskriver det likt: inntekt fra bevilgninger, tilskudd og overføringer resultatføres i takt med at aktivitetene utføres, i samme periode som kostnadene påløper. For bruttobudsjetterte virksomheter blir resultatet av periodens aktiviteter null.",
+      "answerPattern": "(?i)samme periode|null",
+      "sources": [
+        {
+          "chunkId": "d627a42cbfe6",
+          "document": "372370",
+          "position": 74
+        },
+        {
+          "chunkId": "f267010b32ef",
+          "document": "372014",
+          "position": 72
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-030-factual",
+      "question": "Hva var den enkleste måten å redusere konsekvensene på ved modellflyulykken på Rønneld modellflyplass i 2023, ifølge havarikommisjonen?",
+      "tags": ["factual", "statusrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Å forsikre seg om at ingen befinner seg i området der et modellfly kan skjære ut under avgang.",
+      "answerPattern": "(?i)området|skjære ut",
+      "sources": [
+        {
+          "chunkId": "cd9ffe48d3e4",
+          "document": "354782",
+          "position": 32
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-031-factual",
+      "question": "Hvilke faktorer kan ha bidratt til modellflyulykken på Rønneld modellflyplass i 2023?",
+      "tags": ["factual", "statusrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Misforståelser knyttet til de lokale sikkerhetsbestemmelsene, mulige språkutfordringer, og utilstrekkelig klarering av området langs rullebanen før slepet startet.",
+      "answerPattern": "(?i)misforståelse|språk|klarering",
+      "sources": [
+        {
+          "chunkId": "cd9ffe48d3e4",
+          "document": "354782",
+          "position": 32
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-032-factual",
+      "question": "Hvilke digitale tiltak tok Statens havarikommisjon i bruk eller startet i 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Oppgradert intranettløsning, elektronisk signering, og et arbeid med å vurdere om kunstig intelligens kan være nyttig i undersøkelsene.",
+      "answerPattern": "(?i)intranett|elektronisk signering|kunstig intelligens",
+      "sources": [
+        {
+          "chunkId": "ba6bcc1e1f73",
+          "document": "370040",
+          "position": 76
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-033-factual",
+      "question": "Hva var et viktig oppdrag fra Kunnskapsdepartementet til De nasjonale forskningsetiske komiteene i 2019?",
+      "tags": ["factual", "arsrapport", "year-2019"],
+      "grounding": "sources-and-answer",
+      "reference": "Oversettelse og tilrettelegging av ALLEAs European Code of Conduct for Research Integrity som felles forskningsetiske retningslinjer.",
+      "answerPattern": "(?i)ALLEA|Code of Conduct",
+      "sources": [
+        {
+          "chunkId": "c74481629c0e",
+          "document": "96397",
+          "position": 1
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-034-factual",
+      "question": "Hvilke temaer må forvaltningen arbeide med ifølge Digdir, slik Fiskeridirektoratet gjengir det i årsrapporten for 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Brukerorientering, digital teknologi, virksomhet og ledelse, økosystem, data og innovasjon.",
+      "answerPattern": "(?i)brukerorientering|økosystem|innovasjon",
+      "sources": [
+        {
+          "chunkId": "fb39449ea839",
+          "document": "356398",
+          "position": 176
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-035-factual",
+      "question": "Når er fristen for Fiskeridirektoratets årsrapport for 2024 ifølge tildelingsbrevet for 2025?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "1. mars 2025.",
+      "answerPattern": "(?i)1\\.? mars",
+      "sources": [
+        {
+          "chunkId": "3c9b2bde8d88",
+          "document": "336957",
+          "position": 29
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-036-factual",
+      "question": "Når er vårens etatsstyringsmøte for Fiskeridirektoratet i 2025?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "13. mai.",
+      "answerPattern": "(?i)13\\.? mai",
+      "sources": [
+        {
+          "chunkId": "3c9b2bde8d88",
+          "document": "336957",
+          "position": 29
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-037-comparison",
+      "question": "Hva tar etatsstyringsmøtene mellom Kunnskapsdepartementet og de statlige universitetene og høyskolene utgangspunkt i, og er dette endret mellom instruksen for 2023 og instruksen for 2024?",
+      "tags": ["comparison", "instruks", "year-2024", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "Møtene tar utgangspunkt i tildelingsbrev og årsrapport fra institusjonene og dreier seg i stor grad om utviklingsavtalen og prioriterte saker. Teksten er den samme i begge instruksene.",
+      "answerPattern": "(?i)tildelingsbrev|utviklingsavtale",
+      "sources": [
+        {
+          "chunkId": "45262b805155",
+          "document": "103632",
+          "position": 4
+        },
+        {
+          "chunkId": "b0f25dcbb003",
+          "document": "31910",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-038-factual",
+      "question": "Hvilke dokumenter er de mest sentrale i dialogen mellom Justis- og beredskapsdepartementet og Advokattilsynet?",
+      "tags": ["factual", "instruks", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Økonomi- og virksomhetsinstruksen, det årlige tildelingsbrevet, supplerende tildelingsbrev, periodiske rapporteringer, årsrapport og årsregnskap, og referater fra dialogmøter.",
+      "answerPattern": "(?i)tildelingsbrev|årsrapport|referat",
+      "sources": [
+        {
+          "chunkId": "967be40c7266",
+          "document": "326769",
+          "position": 11
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-039-factual",
+      "question": "Når skal Advokattilsynets risikovurdering av advokatbransjen sendes departementet?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Innen 31. desember 2025.",
+      "answerPattern": "(?i)31\\.? desember 2025",
+      "sources": [
+        {
+          "chunkId": "5a1737e27a9e",
+          "document": "376852",
+          "position": 9
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-040-factual",
+      "question": "Hvilke risikoer skal Advokattilsynets risikovurdering av advokatbransjen dekke?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Risiko knyttet til hvitvasking, terrorfinansiering og finansiering av spredning av masseødeleggelsesvåpen.",
+      "answerPattern": "(?i)hvitvasking|terrorfinansiering",
+      "sources": [
+        {
+          "chunkId": "5a1737e27a9e",
+          "document": "376852",
+          "position": 9
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-041-factual",
+      "question": "Hvilke samfunnsdrivere skal Justervesenet omstille virksomheten ut fra, ifølge tildelingsbrevet for 2025?",
+      "tags": ["factual", "tildelingsbrev", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Sentrale samfunnsdrivere som bærekraft og digitalisering, og endringer i etterspørselen etter enkelte tjenester.",
+      "answerPattern": "(?i)bærekraft|digitalisering",
+      "sources": [
+        {
+          "chunkId": "3e2b068645ae",
+          "document": "333983",
+          "position": 16
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-042-factual",
+      "question": "Hvilke av FNs bærekraftsmål retter Nidaros Domkirkes Restaureringsarbeider seg særlig mot?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Særlig mål 11.4 om vern av kultur- og naturarv og mål 12 om ansvarlig forbruk og produksjon; i tillegg mål 4.4 og 17.6–17.7.",
+      "answerPattern": "(?i)11\\.4|\\b12\\b",
+      "sources": [
+        {
+          "chunkId": "e945aeabe11c",
+          "document": "370450",
+          "position": 46
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-043-factual",
+      "question": "Hva er Riksrevisjonens mål med revisjonen av årsregnskapet til Nidaros Domkirkes Restaureringsarbeider for 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Å oppnå betryggende sikkerhet for at årsregnskapsoppstillingene som helhet ikke inneholder vesentlig feilinformasjon, og å avgi en revisjonsberetning med Riksrevisjonens konklusjon.",
+      "answerPattern": "(?i)betryggende sikkerhet|vesentlig feilinformasjon",
+      "sources": [
+        {
+          "chunkId": "baf15f72fea3",
+          "document": "385343",
+          "position": 61
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-044-factual",
+      "question": "Hva er Indigenous Navigator, som Samisk høgskole deltar i, og hvem finansierer prosjektet?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "En nettportal i et prosjekt med Samerådet og IWGIA, startet i 2022 og videreført ut 2025, finansiert av Nordisk ministerråd.",
+      "answerPattern": "(?i)Nordisk ministerråd|nettportal",
+      "sources": [
+        {
+          "chunkId": "e68f309eba4b",
+          "document": "354461",
+          "position": 50
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-045-factual",
+      "question": "Hvorfor frikjøpte Samisk høgskole en ansatt fra UiT i 2023?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "For å ferdigstille den overordnede ROS-analysen, som var forsinket på grunn av kapasitetsutfordringer. Den ansatte ble frikjøpt i 50 % stilling.",
+      "answerPattern": "(?i)ROS",
+      "sources": [
+        {
+          "chunkId": "647a4819938b",
+          "document": "87072",
+          "position": 11
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-046-factual",
+      "question": "Hvilke tre deler består Samisk høgskoles ledelsessystem for informasjonssikkerhet av?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Virksomhetsstyring og ledelse, etterlevelse, og kontroll og forbedring.",
+      "answerPattern": "(?i)etterlevelse|kontroll og forbedring",
+      "sources": [
+        {
+          "chunkId": "647a4819938b",
+          "document": "87072",
+          "position": 11
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-047-comparison",
+      "question": "Hvilke hovedmål rapporterer Statsforvalteren i Agder og Statsforvalteren i Vestfold og Telemark på i årsrapportene for 2024?",
+      "tags": ["comparison", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Begge rapporterer på de samme tre hovedmålene: nasjonal politikk er kjent og iverksatt, statlig virksomhet er godt samordnet på regionalt nivå, og rettssikkerhet er ivaretatt på en enhetlig måte.",
+      "answerPattern": "(?i)samordnet|rettssikkerhet",
+      "sources": [
+        {
+          "chunkId": "9c145daf477f",
+          "document": "350720",
+          "position": 0
+        },
+        {
+          "chunkId": "0d08b2e28f49",
+          "document": "350719",
+          "position": 0
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-048-factual",
+      "question": "Hvor mange kommuner hadde Statsforvalteren i Agder skjønnsamtaler med i 2020, og hvorfor ble møtene utvidet?",
+      "tags": ["factual", "arsrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Alle 25 kommunene i Agder. Møtene ble utvidet til 1,5 time for å ha god dialog om koronapandemiens innvirkning på hver kommune.",
+      "answerPattern": "(?i)\\b25\\b|1,5 time",
+      "sources": [
+        {
+          "chunkId": "bae98702c34c",
+          "document": "207683",
+          "position": 245
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-049-factual",
+      "question": "Hvor stor var realnedgangen i bevilgningen fra Kunnskapsdepartementet til NHH i 2024?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Omtrent 21 millioner kroner.",
+      "answerPattern": "(?i)21 mill",
+      "sources": [
+        {
+          "chunkId": "eaf5aedff9a4",
+          "document": "87063",
+          "position": 74
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-050-factual",
+      "question": "Hvilke tre satsingsområder prioriteres i NHHs strategi for 2022–2025?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Pådriver for bærekraftig verdiskapning, gjennomgripende internasjonalisering, og engasjement og samarbeid for felles mål.",
+      "answerPattern": "(?i)internasjonalisering|verdiskapning",
+      "sources": [
+        {
+          "chunkId": "eaf5aedff9a4",
+          "document": "87063",
+          "position": 74
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-051-comparison",
+      "question": "Hvordan regnskapsfører NHH og NMBU pensjonskostnadene til Statens pensjonskasse i årsrapportene for 2024?",
+      "tags": ["comparison", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Begge resultatfører arbeidsgiverandelen av pensjonspremien som pensjonskostnad, som om ordningen var en innskuddsplan, og balansefører ikke netto pensjonsforpliktelser.",
+      "answerPattern": "(?i)arbeidsgiverandel|innskuddsplan",
+      "sources": [
+        {
+          "chunkId": "75de2945c434",
+          "document": "354746",
+          "position": 79
+        },
+        {
+          "chunkId": "acfa36edf963",
+          "document": "355304",
+          "position": 96
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-052-factual",
+      "question": "Når vedtok styret ved Norges idrettshøgskole å starte en prosess for å utvikle og styrke IT-avdelingen?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "7. mars 2024.",
+      "answerPattern": "(?i)7\\.? mars",
+      "sources": [
+        {
+          "chunkId": "6470173c795f",
+          "document": "355465",
+          "position": 49
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-053-factual",
+      "question": "Hva vurderte Norges idrettshøgskole som det mest kritiske risikoelementet i 2022?",
+      "tags": ["factual", "arsrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "Forskningsdata. Høgskolens pressede økonomi ble også vurdert som en kritisk faktor.",
+      "answerPattern": "(?i)forskningsdata",
+      "sources": [
+        {
+          "chunkId": "016a1a0d1ca5",
+          "document": "33356",
+          "position": 18
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-054-factual",
+      "question": "Hvor mange møter og saker hadde medbestemmelsesapparatet på embetsnivå hos Statsforvalteren i Trøndelag i 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "8 møter og 40 saker.",
+      "answerPattern": "(?i)8 møter|40 saker",
+      "sources": [
+        {
+          "chunkId": "9614832d7ee7",
+          "document": "350739",
+          "position": 332
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-055-comparison",
+      "question": "Hvilke økonomiske utfordringer beskriver NLA Høgskolen i årsrapporten for 2015 sammenlignet med årsrapporten for 2024?",
+      "tags": ["comparison", "arsrapport", "year-2015", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "I 2015 var budsjettet stramt fordi lav produksjon av studiepoeng og publikasjonspoeng i 2014 ga lavere statstilskudd, med kutt i aktivitet som følge. I 2024 trekkes makroøkonomisk og politisk usikkerhet, søkertall og mindre årskull fram, og høgskolen har startet nye studieprogram for å bremse nedgangen i lærerutdanningene.",
+      "answerPattern": "(?i)studiepoeng|søkertall|årskull",
+      "sources": [
+        {
+          "chunkId": "9899d1d4f708",
+          "document": "96262",
+          "position": 31
+        },
+        {
+          "chunkId": "1ee1c5989f04",
+          "document": "354744",
+          "position": 41
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-056-factual",
+      "question": "Hvilket overskudd er budsjettet for 2016 satt opp med i NLA Høgskolens årsrapport for 2015?",
+      "tags": ["factual", "arsrapport", "year-2015"],
+      "grounding": "sources-and-answer",
+      "reference": "Et overskudd på 2 millioner kroner.",
+      "answerPattern": "(?i)2 million",
+      "sources": [
+        {
+          "chunkId": "9899d1d4f708",
+          "document": "96262",
+          "position": 31
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-057-factual",
+      "question": "Har Dronning Mauds Minne Høgskole mottatt henvendelser om sin oppfølging av likestillings- og diskrimineringslovverket, ifølge årsrapporten for 2020?",
+      "tags": ["factual", "arsrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Nei, høyskolen har ikke mottatt slike henvendelser fra eksterne eller interne instanser eller personer.",
+      "answerPattern": "(?i)ikke mottatt|ingen",
+      "sources": [
+        {
+          "chunkId": "a6b034c24252",
+          "document": "96241",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-058-factual",
+      "question": "Hvor mange vitenskapelig tilsatte sender Dronning Mauds Minne Høgskole årlig på praksis i barnehagen, ifølge årsrapporten for 2017?",
+      "tags": ["factual", "arsrapport", "year-2017"],
+      "grounding": "sources-and-answer",
+      "reference": "Omtrent 10 vitenskapelig tilsatte sendes årlig på en ukes praksis gjennom praksisstipend.",
+      "answerPattern": "(?i)\\b10\\b|praksisstipend",
+      "sources": [
+        {
+          "chunkId": "1ae3da94bc9a",
+          "document": "96259",
+          "position": 40
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-059-factual",
+      "question": "Hvor mye leverte den nordnorske leverandørindustrien til petroleumssektoren i 2020, og hvordan var utviklingen fra året før?",
+      "tags": ["factual", "statusrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "3,75 milliarder kroner, en nedgang på 4,5 prosent fra året før, med 1 716 årsverk knyttet til leveransene.",
+      "answerPattern": "(?i)3,75|4,5",
+      "sources": [
+        {
+          "chunkId": "b2dc086cf194",
+          "document": "48224",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-060-factual",
+      "question": "Hvilke petroleumsfelt i drift inngår i beregningen av ringvirkninger i Nord-Norge i Levert 2020?",
+      "tags": ["factual", "statusrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Norne, Skarv, Aasta Hansteen, Goliat og Hammerfest LNG.",
+      "answerPattern": "(?i)Norne|Goliat|Skarv",
+      "sources": [
+        {
+          "chunkId": "816396077123",
+          "document": "48228",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-061-comparison",
+      "question": "Hvor mange årsverk knyttes til petroleumsaktiviteten i Nord-Norge i 2020, målt som direkte leveranser og som ringvirkninger på landsbasis?",
+      "tags": ["comparison", "statusrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Leveransene fra den nordnorske leverandørindustrien utgjorde 1 716 årsverk, mens de samlede ringvirkningene av petroleumsproduksjonen i Nord-Norge var nærmere 7 600 årsverk på landsbasis.",
+      "answerPattern": "(?i)1[ .]?716|7[ .]?600",
+      "sources": [
+        {
+          "chunkId": "b2dc086cf194",
+          "document": "48224",
+          "position": 5
+        },
+        {
+          "chunkId": "816396077123",
+          "document": "48228",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-062-factual",
+      "question": "Hvor stort område ble krypsiv fjernet fra i Rysstadbassenget i juni 2020, og hvordan ble det gjort?",
+      "tags": ["factual", "statusrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Et område på cirka 670 meter langt og 60 meter bredt. Krypsivet ble klippet fra båt, og deretter ble elvebunnen harvet for å fjerne røttene.",
+      "answerPattern": "(?i)670|harv",
+      "sources": [
+        {
+          "chunkId": "8cbb631006af",
+          "document": "336777",
+          "position": 10
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-063-factual",
+      "question": "Hva kalte Askøy kommune stedsvandringene med seniorer i prosjektet om innbyggermedvirkning i boligsosiale tiltak?",
+      "tags": ["factual", "statusrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "SENIORTRÅKK.",
+      "answerPattern": "(?i)seniortråkk",
+      "sources": [
+        {
+          "chunkId": "c09a423ccf7e",
+          "document": "31786",
+          "position": 11
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-064-factual",
+      "question": "Hvor mange mål styrer organisasjonsutviklingsarbeidet ved radiologisk avdeling på Universitetssykehuset Nord-Norge?",
+      "tags": ["factual", "statusrapport", "year-2025"],
+      "grounding": "sources-and-answer",
+      "reference": "Elleve definerte mål.",
+      "answerPattern": "(?i)elleve|\\b11\\b",
+      "sources": [
+        {
+          "chunkId": "6cd3b9b0c2be",
+          "document": "409661",
+          "position": 19
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-065-factual",
+      "question": "Hva er Senter for pasientnær kunstig intelligens, og siden når har det vært i drift?",
+      "tags": ["factual", "strategi-plan", "year-2025", "year-2026"],
+      "grounding": "sources-and-answer",
+      "reference": "Et regionalt kompetansemiljø ved UNN for å fasilitere økt bruk av kunstig intelligens i Helse Nord, i drift siden 2021.",
+      "answerPattern": "(?i)2021|kompetansemiljø",
+      "sources": [
+        {
+          "chunkId": "0d353a2e1fb3",
+          "document": "353019",
+          "position": 0
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-066-factual",
+      "question": "Hva skal innbyggeren kunne gjøre i løsningen MinØk – Min økonomi i kommunen?",
+      "tags": ["factual", "statusrapport", "year-2021"],
+      "grounding": "sources-and-answer",
+      "reference": "Finne alle økonomiske forpliktelser til kommunen på ett sted, få komplett fakturaoversikt, betale, utsette og dele opp fakturaer, og enkelt kontakte kommunen ved behov.",
+      "answerPattern": "(?i)faktura|betal",
+      "sources": [
+        {
+          "chunkId": "9699fc1d1ad3",
+          "document": "348871",
+          "position": 36
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-067-factual",
+      "question": "Hvilke lokale undersøkelser anbefales videre utredet i forprosjektet om mobile spesialhelsetjenester på Helgeland?",
+      "tags": ["factual", "statusrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "Ultralyd og røntgen.",
+      "answerPattern": "(?i)ultralyd|røntgen",
+      "sources": [
+        {
+          "chunkId": "bf49e3a3376c",
+          "document": "49079",
+          "position": 16
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-068-factual",
+      "question": "Hva var målet med hovedaktivitetene i prosjektet Ung inkludering i Kongsvingerregionen?",
+      "tags": ["factual", "statusrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Økt deltakelse i arbeid eller utdanning, færre på stønader og færre unge uføre på sikt.",
+      "answerPattern": "(?i)arbeid eller utdanning|uføre|stønad",
+      "sources": [
+        {
+          "chunkId": "e20a0cef71fe",
+          "document": "95039",
+          "position": 55
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-069-factual",
+      "question": "Hvilke kvalitetsindikatorer fikk en større revisjon i Nasjonalt kvalitetsindikatorsystem i 2022?",
+      "tags": ["factual", "statusrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "To indikatorer som måler oppfølging av risiko for underernæring, for beboere på institusjon og for mottakere av hjemmetjenester.",
+      "answerPattern": "(?i)underernæring",
+      "sources": [
+        {
+          "chunkId": "a62634a9fb27",
+          "document": "413459",
+          "position": 13
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-070-factual",
+      "question": "Hvilket medisinsk kvalitetsregister vil Helsedirektoratet samarbeide med for å etablere nye kvalitetsindikatorer, ifølge NKI-årsrapporten for 2021?",
+      "tags": ["factual", "statusrapport", "year-2021"],
+      "grounding": "sources-and-answer",
+      "reference": "Det nasjonale medisinske kvalitetsregisteret for MS.",
+      "answerPattern": "(?i)\\bMS\\b",
+      "sources": [
+        {
+          "chunkId": "a44c0cba23b3",
+          "document": "413435",
+          "position": 22
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-071-factual",
+      "question": "Hva gjenstår i det regionale programmet FRESK ifølge Nordlandssykehusets strategiske utviklingsplan?",
+      "tags": ["factual", "strategi-plan", "year-2023", "year-2024", "year-2025", "year-2026"],
+      "grounding": "sources-and-answer",
+      "reference": "Innføring av elektronisk kurve og pleieplan.",
+      "answerPattern": "(?i)kurve|pleieplan",
+      "sources": [
+        {
+          "chunkId": "0df02bde76a7",
+          "document": "49236",
+          "position": 97
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-072-factual",
+      "question": "Hva avhenger risikoen for vekking av flystøy av, ifølge rapporten om støysoner for helikopterlandingsplassen ved Nordlandssykehuset i Bodø?",
+      "tags": ["factual", "statusrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "Hvor høyt støynivå man utsettes for (maksimumsnivå) og hvor mange støyhendelser man utsettes for i løpet av natten.",
+      "answerPattern": "(?i)maksimumsnivå|antall",
+      "sources": [
+        {
+          "chunkId": "f61abb1ff45f",
+          "document": "49168",
+          "position": 5
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-073-factual",
+      "question": "Hva har Stortinget gjort for å sikre menneskerettighetene i norsk rett, ifølge årsrapporten til Norges institusjon for menneskerettigheter for 2024?",
+      "tags": ["factual", "arsrapport", "year-2024"],
+      "grounding": "sources-and-answer",
+      "reference": "Stortinget har gitt menneskerettighetene forrang foran annen lovgivning og sikret dem i Grunnloven.",
+      "answerPattern": "(?i)forrang|Grunnlov",
+      "sources": [
+        {
+          "chunkId": "7657579dc7f4",
+          "document": "356698",
+          "position": 4
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-074-factual",
+      "question": "Hva viser kolonnen «samlet tildeling» i bevilgningsrapporteringen til Norges institusjon for menneskerettigheter?",
+      "tags": ["factual", "arsrapport", "year-2023"],
+      "grounding": "sources-and-answer",
+      "reference": "Hva virksomheten har fått stilt til disposisjon i tildelingsbrev for hver statskonto (kapittel/post).",
+      "answerPattern": "(?i)tildelingsbrev|disposisjon",
+      "sources": [
+        {
+          "chunkId": "0fef28b6d245",
+          "document": "87065",
+          "position": 159
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-075-factual",
+      "question": "Hvordan defineres gevinster i Stimulab-sluttrapporten Flere i arbeid (prosjekt 7)?",
+      "tags": ["factual", "statusrapport", "year-2022"],
+      "grounding": "sources-and-answer",
+      "reference": "Gevinstene er de positive effektene som kan følge av prosjektets foreslåtte tiltak, og som i hovedsak realiseres utenfor prosjektet, i linjen.",
+      "answerPattern": "(?i)positive effekt|linjen",
+      "sources": [
+        {
+          "chunkId": "fab99406b0ec",
+          "document": "350191",
+          "position": 56
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-076-factual",
+      "question": "Hvor omfattende bør intervjunotatene være i Stimulab-prosjektet Pasientens helsetjeneste i et helsefellesskap?",
+      "tags": ["factual", "statusrapport", "year-2020"],
+      "grounding": "sources-and-answer",
+      "reference": "Notatene bearbeides og anonymiseres, og bør til sammen ikke være mer enn 2–3 sider per intervju.",
+      "answerPattern": "(?i)2.?3 sider|anonymiser",
+      "sources": [
+        {
+          "chunkId": "b7f8b4d3a50f",
+          "document": "356496",
+          "position": 88
+        }
+      ]
+    },
+    {
+      "id": "ka-kudos-077-not-covered",
+      "question": "Hvor stor blir Statens vegvesens samlede tildeling i 2031?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-078-not-covered",
+      "question": "Hvor mange ansatte hadde konfliktrådet i 1985?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-079-not-covered",
+      "question": "Hva står i tildelingsbrevet til Statped for 2032?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-080-not-covered",
+      "question": "Hva blir Norges Banks styringsrente i desember 2030?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-081-not-covered",
+      "question": "Hvilke billettpriser gjelder for Hurtigruten sommeren 2026?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-082-not-covered",
+      "question": "Hvordan endret bemanningen hos Fylkesmannen i Agder seg fra 1950 til 1960?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-083-not-covered",
+      "question": "Hva er oppskriften på tradisjonell brunost?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    },
+    {
+      "id": "ka-kudos-084-not-covered",
+      "question": "Hvilke kampanjer kjører Vinmonopolet i julen 2025?",
+      "tags": ["not-covered"],
+      "grounding": "refusal-expected",
+      "reference": "Kildene i Kudos dekker ikke dette.",
+      "answerPattern": null,
+      "sources": []
+    }
+  ]
+}

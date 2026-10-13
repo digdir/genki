@@ -1,0 +1,46 @@
+name: Bug
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not report security vulnerabilities here; follow SECURITY.md. Leave out secrets and personal data.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Steps, the request or definition involved, and any log lines (with secrets removed).
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The commit on main you ran.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - API
+        - Portal
+        - Console
+        - Workspace
+        - Worker
+        - Local setup
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Dev mode on or off, Postgres or memory, and which integrations are configured.

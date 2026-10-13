@@ -1,0 +1,25 @@
+# Extract: read applications as they arrive and return fields
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '999888777', id: soknadsuthenting, name: Søknadsuthenting }
+spec:
+  purpose: Hent ut søker, organisasjonsnummer og beløp fra innkomne søknader, og flagg manglende vedlegg
+  riskClass: limited
+  input: { accepts: [application/pdf], ocr: true }
+  output:
+    kind: fields
+    fields:
+      - { name: applicant, type: string, description: Navn på søker }
+      - { name: orgNumber, type: string, description: Søkerens organisasjonsnummer }
+      - { name: amount, type: number, description: 'Beløpet det søkes om, i kroner' }
+      - { name: missingAttachments, type: list, description: Vedlegg som mangler }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/soknad.nb.md }
+  model: { primary: foundry/gpt-4o, residency: norway }
+  guardrails:
+    pii-out-of-log: { categories: [national-id, health] }
+  exposure: { rest: true }
+  triggers:
+    - { kind: document-arrives, folder: soknader/inn }

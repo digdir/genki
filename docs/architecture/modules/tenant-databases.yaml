@@ -1,0 +1,17 @@
+id: tenant-databases
+plane: external
+name: Tenant databases
+note: Agency systems
+icon: database
+color: '#607b88'
+status: External
+external: true
+summary: An agency's own case or archive database that a connector reads from.
+description: An agency's own case or archive database that a connector reads from, with a user that only has read access.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: tenant-databases agency database connector external

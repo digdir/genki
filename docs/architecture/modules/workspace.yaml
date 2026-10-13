@@ -1,0 +1,57 @@
+id: workspace
+plane: consumers
+name: Workspace
+note: Employee chat app
+icon: chat
+color: '#74a7ff'
+status: React app
+packages:
+  - '@genai/workspace'
+summary: The employee-facing chat over published services, with sources, approvals and feedback.
+description: A React app on Designsystemet where an employee signs in with Ansattporten, picks a
+  service and chats with it through the OpenAI-compatible API. It shows provenance, handles human
+  approval steps and sends feedback that becomes kernel feedback events.
+responsibilities:
+  - Sign in with Ansattporten and pick the acting organisation
+  - Chat over /v1 with streamed answers and sources
+  - Send feedback and show approval requests
+files:
+  - apps/workspace/src/App.tsx
+  - apps/workspace/src/api.ts
+  - apps/workspace/src/oidc.ts
+  - apps/workspace/src/Conversation.tsx
+input: Employee messages
+output: Chat requests, feedback
+replaces:
+  - module: playground
+    how: The chat half of the playground, for employees instead of developers
+edges:
+  - to: i18n
+    label: Language state and catalogues
+    kind: call
+    target: call
+    witness:
+      file: apps/workspace/src/App.tsx
+      imports: '@genai/i18n'
+  - to: adapter-openai
+    label: Chat completions and model list
+    kind: http
+    target: http
+    witness:
+      file: apps/workspace/src/api.ts
+      contains: /v1/chat/completions
+  - to: api
+    label: Feedback on an answer
+    kind: http
+    target: http
+    witness:
+      file: apps/workspace/src/api.ts
+      contains: /api/feedback
+  - to: ansattporten
+    label: OIDC sign-in with authorized parties
+    kind: http
+    target: http
+    witness:
+      file: apps/workspace/src/oidc.ts
+      contains: ansattporten
+keywords: workspace chat employee frontend react designsystemet feedback

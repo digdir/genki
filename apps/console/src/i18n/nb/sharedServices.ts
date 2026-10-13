@@ -1,0 +1,27 @@
+import { defineNamespace } from '@genai/i18n';
+
+export const sharedServices = defineNamespace({
+  title: 'Fellestjenester',
+  intro: 'Fellestjenestene Digdir drifter og alle virksomheter kan bruke.',
+  note: 'Tjenester som er delt med alle virksomheter, vises i alle virksomheters portal. En endring publiserer en ny versjon av tjenesten.',
+  reasonHint: 'Kreves for å endre delingen. Begrunnelsen lagres i revisjonsloggen.',
+  sharedAll: '{name} er nå delt med alle virksomheter.',
+  unsharedAll: '{name} er ikke lenger delt med alle.',
+  changeFailed: 'Kunne ikke endre delingen av {name}.',
+  loading: 'Henter tjenester',
+  noneTitle: 'Ingen tjenester ennå',
+  noneText: 'Når en virksomhet publiserer en tjeneste, kan du dele den herfra.',
+  tableLabel: 'Tjenester og deling',
+  colService: 'Tjeneste',
+  colOwner: 'Eier',
+  colVersion: 'Versjon',
+  colSharedWith: 'Delt med',
+  colChange: 'Endre',
+  sharingAll: 'Alle virksomheter',
+  sharingOwner: 'Bare eieren',
+  sharingSome: { one: '{count} virksomhet', other: '{count} virksomheter' },
+  stopSharingFor: 'Slutt å dele {name} med alle',
+  stopSharing: 'Slutt å dele',
+  shareFor: 'Del {name} med alle virksomheter',
+  share: 'Del med alle',
+});

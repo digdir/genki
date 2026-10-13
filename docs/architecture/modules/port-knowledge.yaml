@@ -1,0 +1,48 @@
+id: port-knowledge
+plane: ports
+name: Knowledge port
+note: search · fetch
+icon: database
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/port-knowledge'
+summary: Search and fetch over datasets, with grants checked and a timeout on every call.
+description:
+  'A router over a knowledge catalog maps datasets to endpoints and adapters, so Typesense
+  can be replaced (ADR 0001). A dataset can set links: kudos-legacy, which gives hits and documents
+  with a retired numeric Kudos id a Kudos title search as their url (publicSourceUrl in
+  @genai/contracts); other datasets keep their own url or none.'
+responsibilities:
+  - Dataset catalog
+  - Search and fetch with timeouts
+  - Optional document listing by filters or ids, for batch runs over a document set
+files:
+  - packages/port-knowledge/src/port.ts
+  - packages/port-knowledge/src/router.ts
+  - packages/port-knowledge/src/catalog.ts
+input: Query + filters
+output: Hits
+replaces:
+  - module: typesense
+    how: Search access, now behind a port
+edges:
+  - to: plugins
+    label: Runtime knowledge contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/port-knowledge/src/contract-suite.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/port-knowledge/src/adapter.ts
+      imports: '@genai/kernel'
+contract:
+  - name: catalog
+    file: packages/port-knowledge/src/catalog.ts
+    export: knowledgeCatalog
+keywords: knowledge port search fetch datasets

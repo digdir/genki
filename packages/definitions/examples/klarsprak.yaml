@@ -1,0 +1,24 @@
+# Rewrite: a shared capability Digdir offers every agency
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: klarsprak, name: Klarspråk }
+spec:
+  purpose: Skriv om tekst til klart språk etter Språkrådets sjekkliste, uten å endre meningen
+  riskClass: minimal
+  input: { accepts: [text/plain] }
+  output:
+    kind: fields
+    fields:
+      - { name: text, type: string, description: Teksten på klart språk }
+      - { name: changes, type: list, description: Hva som ble endret og hvorfor }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/klarsprak.nb.md }
+  model: { primary: foundry/gpt-4o, residency: norway }
+  guardrails:
+    language: { mode: same }
+  exposure: { rest: true, mcp: true }
+  availableTo: '*'
+  evaluation: { testSets: [klarsprak-brev], gates: [meaning-preserved] }
+  improve: { allow: [instructions, examples] }

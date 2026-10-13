@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/digdir/genki/blob/main/SECURITY.md
+    about: Never report a vulnerability in a public issue. Follow SECURITY.md to report it privately.

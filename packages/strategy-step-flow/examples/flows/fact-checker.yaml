@@ -1,0 +1,26 @@
+# headless-rag builtin/fact-checker: retrieve -> rerank -> verify
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: fact-checker, name: Fact Checker }
+spec:
+  purpose: Verify claims against document evidence
+  input: { claim: string }
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.claim ?? input.query}}' }
+      params: { plan: false }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.claim ?? input.query}}', chunks: '{{retrieve.chunks}}' }
+    - id: verify
+      block: synthesize@1
+      input: { query: '{{input.claim ?? input.query}}', contextDocs: '{{rerank.contextDocs}}' }
+      params:
+        generationPrompt: "Based on the evidence, verify if the following claim is true, false, or uncertain. Cite specific evidence.\n\nEvidence:\n{context}\n\nClaim: {question}\n\nVerification:"
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{verify.response}}'
+        chunks: '{{rerank.contextChunks}}'
+        citations: '{{verify.citations}}'

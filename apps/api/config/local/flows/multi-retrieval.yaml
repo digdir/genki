@@ -1,0 +1,14 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: multi-retrieval, name: Multi-Query Retrieval }
+spec:
+  purpose: Search with several queries and merge the results
+  input: { queries: array }
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query ?? input.queries.0}}', queries: '{{input.queries}}' }
+      params: { plan: false }
+    - id: answer
+      block: answer@1
+      input: { text: '', chunks: '{{retrieve.chunks}}' }

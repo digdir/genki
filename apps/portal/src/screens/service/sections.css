@@ -1,0 +1,33 @@
+.version-yaml {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  max-height: 420px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre;
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-neutral-background-tinted);
+}
+
+.test-run-result {
+  padding: 14px 16px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.test-run-result .pre-wrap {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.service-yaml-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+  resize: vertical;
+  tab-size: 2;
+}

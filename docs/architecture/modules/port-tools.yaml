@@ -1,0 +1,36 @@
+id: port-tools
+plane: ports
+name: Tool port
+note: Registry · versioned refs
+icon: setup
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/port-tools'
+summary: A registry of built-in and tenant tools, referenced as name@version.
+description: Tool results are untrusted content (ADR 0015). Sources plug in, such as the MCP client
+  for tenant-registered servers.
+responsibilities:
+  - Tool registry and sources
+  - Versioned tool references
+files:
+  - packages/port-tools/src/index.ts
+input: Tool ref + arguments
+output: Tool result
+replaces: []
+edges:
+  - to: plugins
+    label: Tool source contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/port-tools/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/port-tools/src/index.ts
+      imports: '@genai/contracts'
+keywords: tools port registry

@@ -1,0 +1,166 @@
+{
+  "scenario": "rest.conversations",
+  "recordedAt": "2026-10-06T21:20:59.177Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/conversations",
+        "headers": {
+          "X-User-Id": "parity-user"
+        },
+        "body": {
+          "agentId": "builtin/agent-rag-agent",
+          "title": "Paritet"
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "conversation": {
+            "id": "ZjC94KEc9MzNbYy7tQMTH",
+            "topic": "Paritet",
+            "agentId": "builtin/agent-rag-agent",
+            "userId": "parity-user",
+            "tags": [],
+            "created": 1791321658591
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/conversations",
+        "headers": {
+          "X-User-Id": "parity-user"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "conversations": [
+            {
+              "id": "ZjC94KEc9MzNbYy7tQMTH",
+              "topic": "Paritet",
+              "agentId": "builtin/agent-rag-agent",
+              "userId": "parity-user",
+              "tags": [],
+              "created": 1791321658591
+            }
+          ],
+          "total": 1,
+          "pageSize": 50,
+          "pageIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/conversations/ZjC94KEc9MzNbYy7tQMTH",
+        "headers": {
+          "X-User-Id": "parity-user"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "conversation": {
+            "id": "ZjC94KEc9MzNbYy7tQMTH",
+            "topic": "Paritet",
+            "agentId": "builtin/agent-rag-agent",
+            "userId": "parity-user",
+            "tags": [],
+            "created": 1791321658591
+          },
+          "messages": [
+            {
+              "id": "aoGZhnrmJFJD_tjqn2IrG",
+              "text": "You are a helpful assistant.",
+              "role": "system",
+              "created": 1791321658591,
+              "tags": [],
+              "filterValue": null,
+              "chunks": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/api/conversations/ZjC94KEc9MzNbYy7tQMTH",
+        "headers": {
+          "X-User-Id": "parity-user"
+        },
+        "body": {
+          "title": "Paritet, nytt navn"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "conversation": {
+            "id": "ZjC94KEc9MzNbYy7tQMTH",
+            "topic": "Paritet, nytt navn",
+            "agentId": "builtin/agent-rag-agent",
+            "userId": "parity-user",
+            "tags": [],
+            "created": 1791321658591
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/conversations/ZjC94KEc9MzNbYy7tQMTH",
+        "headers": {
+          "X-User-Id": "parity-user"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "success": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/conversations/ZjC94KEc9MzNbYy7tQMTH",
+        "headers": {
+          "X-User-Id": "parity-user"
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "Conversation not found"
+        }
+      }
+    }
+  ]
+}

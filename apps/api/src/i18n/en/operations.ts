@@ -1,0 +1,35 @@
+import type { Translation } from '@genai/i18n';
+import type { operations as source } from '../nb/operations.js';
+
+export const operations = {
+  minutes: '{minutes} min',
+  hours: '{hours} h',
+  hoursMinutes: '{hours} h {minutes} min',
+  database: 'Database',
+  databaseAnswered: 'Responded in {ms} ms.',
+  databaseDown: 'Not responding.',
+  models: 'Models: {endpoint}',
+  modelsInUse: '{enabled} of {total} models in use.',
+  runs: 'Runs',
+  ingestion: 'Ingestion',
+  ingestionUnavailable: 'Ingestion is not available.',
+  scheduledIngestion: 'Scheduled ingestion: {pipeline} · {dataset}',
+  ingestionFailed: 'The ingestion failed.',
+  runningIngestions: 'Ingestions running',
+  failedIngestions: 'Ingestions failed in the last 24 hours',
+  activeRuns: 'Runs in progress',
+  longestIngestion: 'Longest running ingestion',
+  switchChooseEngine: 'choose a search engine',
+  switchUnknownEngine: 'unknown search engine {to}',
+  switchSameEngine: 'The dataset already uses this search engine.',
+  switchWriteKeyRequired: 'Needs its own write key',
+  switchCannotWrite: 'The platform cannot write to this search engine.',
+  switchSharedStorage: 'The search engines share storage. Choose another search engine.',
+  switchMissingModel: 'The embedding model {model} is not set up on the platform.',
+  switchCopyNeedsSameModel:
+    'Copying needs the same embedding model. Now {current} is used, the new search engine uses {wanted}. Ingest again from the source.',
+  switchCannotRead: 'The platform cannot read the documents from the current search engine.',
+  switchNoPipeline: 'The dataset has no ingestion to run.',
+  switchBusy: 'A switch is already running ({id}).',
+  switchStalled: 'The transfer stopped. Start it again.',
+} satisfies Translation<typeof source>;

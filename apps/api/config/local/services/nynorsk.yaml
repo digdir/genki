@@ -1,0 +1,23 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: nynorsk, name: Bokmål til nynorsk }
+spec:
+  purpose: Omset tekst frå bokmål til nynorsk med same meining og tone
+  riskClass: minimal
+  input: { accepts: [text/plain] }
+  output:
+    kind: fields
+    fields:
+      - { name: text, type: string, description: Teksten på nynorsk }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/nynorsk.nn.md, temperature: 0 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { rest: true, mcp: true }
+  triggers:
+    - { kind: queue-message, queue: nynorsk }
+  batch: { enabled: true }
+  availableTo: '*'
+  evaluation: { testSets: [nynorsk-referanse], gates: [nynorsk-chrf] }
+  improve: { allow: [instructions, examples] }

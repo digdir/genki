@@ -1,0 +1,1848 @@
+[
+  {
+    "ref": "agent@1",
+    "name": "agent",
+    "version": "1",
+    "description": "Run the agent loop (search, read, answer) as one step",
+    "title": {
+      "nb": "La modellen søke selv",
+      "en": "Let the model search by itself"
+    },
+    "summary": {
+      "nb": "Lar modellen søke, lese og svare selv, som ett steg i flyten.",
+      "en": "Lets the model search, read and answer by itself, as one step in the flow."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["role", "text"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["query"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "variant": {
+          "default": "bundled",
+          "type": "string",
+          "enum": ["bundled", "faithful"],
+          "x-label": {
+            "nb": "Variant",
+            "en": "Variant"
+          },
+          "x-widget": "select"
+        },
+        "agent": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Tjeneste som søker selv i steget",
+            "en": "Service that searches by itself in the step"
+          },
+          "x-widget": "map"
+        },
+        "retrieval": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Overstyring av søket",
+            "en": "Search overrides"
+          },
+          "x-widget": "code",
+          "x-advanced": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": {}
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["parts", "text"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "answer@1",
+    "name": "answer",
+    "version": "1",
+    "description": "Shape the final answer: text with citations, plus the sources it drew on",
+    "title": {
+      "nb": "Lever svar med kilder",
+      "en": "Deliver the answer with sources"
+    },
+    "summary": {
+      "nb": "Setter sammen svaret og kildelisten som tjenesten leverer.",
+      "en": "Puts together the answer and the list of sources the service delivers."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": ["string", "null"]
+        },
+        "chunks": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "chunkId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["chunkId"],
+                "additionalProperties": {}
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "citations": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "number"
+                  },
+                  "chunkId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["index", "chunkId"],
+                "additionalProperties": {}
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": ["parts"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "approval@1",
+    "name": "approval",
+    "version": "1",
+    "description": "Pause the flow until a person answers, then continue with their answer",
+    "title": {
+      "nb": "Spør et menneske",
+      "en": "Ask a person"
+    },
+    "summary": {
+      "nb": "Stopper flyten til en person har svart, og fortsetter med svaret.",
+      "en": "Stops the flow until a person has answered, and continues with the answer."
+    },
+    "input": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Begrunnelse",
+            "en": "Reason"
+          },
+          "x-widget": "text"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Tekst til den som godkjenner",
+            "en": "Text for the person who approves"
+          },
+          "x-widget": "textarea"
+        }
+      },
+      "required": ["reason", "prompt"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        }
+      },
+      "required": ["approved"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "classify@1",
+    "name": "classify",
+    "version": "1",
+    "description": "Pick exactly one label for a text",
+    "title": {
+      "nb": "Klassifiser",
+      "en": "Classify"
+    },
+    "summary": {
+      "nb": "Velger nøyaktig én kategori for en tekst.",
+      "en": "Picks exactly one category for a text."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Systemledetekst",
+            "en": "System prompt"
+          },
+          "x-widget": "prompt"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur",
+            "en": "Temperature"
+          },
+          "x-widget": "number"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number"
+        },
+        "labels": {
+          "minItems": 2,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "x-label": {
+            "nb": "Kategorier",
+            "en": "Categories"
+          },
+          "x-widget": "list"
+        },
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Instruksjoner",
+            "en": "Instructions"
+          },
+          "x-help": {
+            "nb": "Én tekst for alle språk, eller én per språk.",
+            "en": "One text for every language, or one per language."
+          },
+          "x-widget": "prompt"
+        }
+      },
+      "required": ["labels"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": ["label", "reason"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "documents@1",
+    "name": "documents",
+    "version": "1",
+    "description": "List documents from the service's datasets by filters or ids, without generating",
+    "title": {
+      "nb": "Finn dokumenter",
+      "en": "Find documents"
+    },
+    "summary": {
+      "nb": "Lister dokumenter fra datasettene til tjenesten etter type, virksomhet, år eller id. Lager ingen tekst.",
+      "en": "Lists documents from the service's datasets by type, organisation, year or id. Writes no text."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Filter",
+            "en": "Filters"
+          },
+          "x-widget": "map"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "x-label": {
+            "nb": "Flest dokumenter",
+            "en": "Most documents"
+          },
+          "x-widget": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "publishedAt": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["documents"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "evidence-gate@1",
+    "name": "evidence-gate",
+    "version": "1",
+    "description": "Decide before any model call whether the evidence is thick enough for an overview",
+    "title": {
+      "nb": "Sjekk om grunnlaget holder",
+      "en": "Check whether the basis holds"
+    },
+    "summary": {
+      "nb": "Avgjør om det er nok gode kilder til å svare.",
+      "en": "Decides whether there are enough good sources to answer."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        },
+        "contextDocs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": ["content", "source"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["chunks", "contextDocs"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "minContextDocs": {
+          "default": 2,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Færrest dokumenter i grunnlaget",
+            "en": "Fewest documents in the basis"
+          },
+          "x-widget": "number"
+        },
+        "minSupportingChunks": {
+          "default": 2,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Færrest tekstbiter som støtter svaret",
+            "en": "Fewest text chunks that support the answer"
+          },
+          "x-widget": "number"
+        },
+        "supportScoreRatio": {
+          "default": 0.6,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "x-label": {
+            "nb": "Andel av beste poeng som regnes som støtte",
+            "en": "Share of the best score that counts as support"
+          },
+          "x-widget": "number"
+        },
+        "minDistinctDocuments": {
+          "default": 1,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Færrest ulike dokumenter",
+            "en": "Fewest different documents"
+          },
+          "x-widget": "number"
+        },
+        "minTopScore": {
+          "type": "number",
+          "x-label": {
+            "nb": "Laveste poeng for beste treff",
+            "en": "Lowest score for the best result"
+          },
+          "x-widget": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "sufficient": {
+          "type": "boolean"
+        },
+        "gatedContextDocs": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": ["sufficient", "gatedContextDocs"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "extract@1",
+    "name": "extract",
+    "version": "1",
+    "description": "Structured extraction: the model fills a JSON schema, citing the chunks each value came from; long inputs are read window by window and merged",
+    "title": {
+      "nb": "Hent ut opplysninger",
+      "en": "Extract information"
+    },
+    "summary": {
+      "nb": "Modellen fyller ut et skjema. Med tekstbiter som grunnlag får hver verdi kilden sin.",
+      "en": "The model fills in a schema. With text chunks as the basis, each value gets its source."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["prompt"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Systemledetekst",
+            "en": "System prompt"
+          },
+          "x-widget": "prompt"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur",
+            "en": "Temperature"
+          },
+          "x-widget": "number"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number"
+        },
+        "name": {
+          "default": "extraction",
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+          "x-label": {
+            "nb": "Navn",
+            "en": "Name"
+          },
+          "x-widget": "text"
+        },
+        "schema": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Skjema for det som hentes ut",
+            "en": "Schema for what is extracted"
+          },
+          "x-widget": "code"
+        },
+        "maxContextLength": {
+          "default": 24000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste grunnlag (tegn)",
+            "en": "Longest basis (characters)"
+          },
+          "x-widget": "number"
+        },
+        "maxWindows": {
+          "default": 6,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 40,
+          "x-label": {
+            "nb": "Flest tekstvinduer",
+            "en": "Most text windows"
+          },
+          "x-widget": "number"
+        },
+        "reasoning": {
+          "default": "low",
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "x-label": {
+            "nb": "Hvor grundig modellen resonnerer",
+            "en": "How thoroughly the model reasons"
+          },
+          "x-enumLabels": {
+            "low": {
+              "nb": "Lite",
+              "en": "Little"
+            },
+            "medium": {
+              "nb": "Middels",
+              "en": "Medium"
+            },
+            "high": {
+              "nb": "Mye",
+              "en": "A lot"
+            }
+          },
+          "x-widget": "select"
+        }
+      },
+      "required": ["schema"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "model@1",
+    "name": "model",
+    "version": "1",
+    "description": "One model call with a prompt; streams the answer when asked",
+    "title": {
+      "nb": "Spør språkmodellen",
+      "en": "Ask the language model"
+    },
+    "summary": {
+      "nb": "Ett kall til språkmodellen med en ledetekst. Kan strømme svaret.",
+      "en": "One call to the language model with a prompt. Can stream the answer."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["prompt"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Systemledetekst",
+            "en": "System prompt"
+          },
+          "x-widget": "prompt"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur",
+            "en": "Temperature"
+          },
+          "x-widget": "number"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number"
+        },
+        "stream": {
+          "default": false,
+          "type": "boolean",
+          "x-label": {
+            "nb": "Strøm svaret",
+            "en": "Stream the answer"
+          },
+          "x-widget": "toggle"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "overview-finalize@1",
+    "name": "overview-finalize",
+    "version": "1",
+    "description": "Suppress an overview that is declined, uncited or cites sources that do not exist",
+    "title": {
+      "nb": "Fullfør oversikten",
+      "en": "Finish the overview"
+    },
+    "summary": {
+      "nb": "Avslutter en oversikt, eller avslår når grunnlaget ikke holder.",
+      "en": "Finishes an overview, or declines when the basis does not hold."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "sufficient": {
+          "type": "boolean"
+        },
+        "declineReason": {
+          "type": ["string", "null"]
+        },
+        "response": {
+          "type": ["string", "null"]
+        },
+        "citations": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "citationIndex": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "citationValidation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "allValid": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["allValid"],
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "insufficientContext": {
+          "type": ["boolean", "null"]
+        }
+      },
+      "required": ["sufficient"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "response": {
+          "type": "string"
+        },
+        "declined": {
+          "type": "boolean"
+        }
+      },
+      "required": ["response", "declined"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "read-document@1",
+    "name": "read-document",
+    "version": "1",
+    "description": "Read one document's chunks, optionally reranked by a question and cut to the best",
+    "title": {
+      "nb": "Les ett dokument",
+      "en": "Read one document"
+    },
+    "summary": {
+      "nb": "Henter tekstbitene i ett dokument, og kan rangere dem etter et spørsmål og beholde de beste.",
+      "en": "Fetches the text chunks of one document, and can rank them by a question and keep the best."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["id"],
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": ["document"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "maxChunks": {
+          "default": 200,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2000,
+          "x-label": {
+            "nb": "Flest tekstbiter",
+            "en": "Most text chunks"
+          },
+          "x-widget": "number"
+        },
+        "topK": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Treff som hentes",
+            "en": "Results fetched"
+          },
+          "x-widget": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "string"
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["document", "chunks"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "rerank@1",
+    "name": "rerank",
+    "version": "1",
+    "description": "Rerank chunks and assemble the context the model reads",
+    "title": {
+      "nb": "Ranger treff",
+      "en": "Rank the results"
+    },
+    "summary": {
+      "nb": "Rangerer tekstbitene og setter sammen grunnlaget modellen leser.",
+      "en": "Ranks the text chunks and puts together the basis the model reads."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["query", "chunks"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "contextTopK": {
+          "default": 10,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Tekstbiter som grunnlag",
+            "en": "Text chunks used as the basis"
+          },
+          "x-widget": "number"
+        },
+        "maxContextLength": {
+          "default": 8000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste grunnlag (tegn)",
+            "en": "Longest basis (characters)"
+          },
+          "x-widget": "number"
+        },
+        "keepOrder": {
+          "default": false,
+          "type": "boolean",
+          "x-label": {
+            "nb": "Behold rekkefølgen fra søket",
+            "en": "Keep the order from the search"
+          },
+          "x-widget": "toggle"
+        },
+        "retrieval": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Overstyring av søket",
+            "en": "Search overrides"
+          },
+          "x-widget": "code",
+          "x-advanced": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        },
+        "contextDocs": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": ["chunks", "contextDocs"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "retrieve@1",
+    "name": "retrieve",
+    "version": "1",
+    "description": "Plan queries and retrieve chunks from the service dataset",
+    "title": {
+      "nb": "Søk",
+      "en": "Search"
+    },
+    "summary": {
+      "nb": "Planlegger søk og henter tekstbiter fra datasettene til tjenesten.",
+      "en": "Plans searches and fetches text chunks from the service's datasets."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["role", "text"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["query"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "default": true,
+          "type": "boolean",
+          "x-label": {
+            "nb": "Planlegg søket",
+            "en": "Plan the search"
+          },
+          "x-widget": "toggle"
+        },
+        "retrieval": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Overstyring av søket",
+            "en": "Search overrides"
+          },
+          "x-widget": "code",
+          "x-advanced": true
+        },
+        "inOrder": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "x-label": {
+                "nb": "Feltet i datasettet",
+                "en": "Field in the dataset"
+              },
+              "x-widget": "text"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "x-label": {
+                "nb": "Verdier, i rekkefølge",
+                "en": "Values, in order"
+              },
+              "x-widget": "list"
+            }
+          },
+          "required": ["field", "values"],
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Søk i disse verdiene, én om gangen og i rekkefølge",
+            "en": "Search these values, one at a time and in order"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              }
+            },
+            "required": ["chunkId"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["queries", "chunks"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "route@1",
+    "name": "route",
+    "version": "1",
+    "description": "Record which queue an item goes to",
+    "title": {
+      "nb": "Send til kø",
+      "en": "Send to a queue"
+    },
+    "summary": {
+      "nb": "Noterer hvilken kø saken skal til.",
+      "en": "Notes which queue the case goes to."
+    },
+    "input": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "queue": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Kø",
+            "en": "Queue"
+          },
+          "x-widget": "text"
+        }
+      },
+      "required": ["queue"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "queue": {
+          "type": "string"
+        }
+      },
+      "required": ["queue"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "synthesize@1",
+    "name": "synthesize",
+    "version": "1",
+    "description": "Answer from numbered context with [N] citations, as headless-rag synthesis does",
+    "title": {
+      "nb": "Skriv svar fra grunnlaget",
+      "en": "Write the answer from the basis"
+    },
+    "summary": {
+      "nb": "Skriver et svar med kildehenvisninger fra grunnlaget.",
+      "en": "Writes an answer with source references from the basis."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contextDocs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": ["content", "source"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["query", "contextDocs"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "generationPrompt": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Ledetekst for svaret",
+            "en": "Prompt for the answer"
+          },
+          "x-widget": "prompt"
+        },
+        "systemPrompt": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Systemledetekst",
+            "en": "System prompt"
+          },
+          "x-widget": "prompt"
+        },
+        "temperature": {
+          "default": 0.1,
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "x-label": {
+            "nb": "Temperatur",
+            "en": "Temperature"
+          },
+          "x-widget": "number"
+        },
+        "maxTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Lengste svar (tokens)",
+            "en": "Longest answer (tokens)"
+          },
+          "x-widget": "number"
+        },
+        "maxDocs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "x-label": {
+            "nb": "Flest dokumenter",
+            "en": "Most documents"
+          },
+          "x-widget": "number"
+        },
+        "answerLength": {
+          "type": "string",
+          "enum": ["short", "medium", "long"],
+          "x-label": {
+            "nb": "Lengde på svaret",
+            "en": "Length of the answer"
+          },
+          "x-enumLabels": {
+            "short": {
+              "nb": "Kort",
+              "en": "Short"
+            },
+            "medium": {
+              "nb": "Middels",
+              "en": "Medium"
+            },
+            "long": {
+              "nb": "Langt",
+              "en": "Long"
+            }
+          },
+          "x-widget": "select"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "response": {
+          "type": "string"
+        },
+        "citations": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": ["response", "citations"],
+      "additionalProperties": {}
+    }
+  },
+  {
+    "ref": "table@1",
+    "name": "table",
+    "version": "1",
+    "description": "Assemble loop results into a table where every cell carries its sources",
+    "title": {
+      "nb": "Lag tabell med kilder",
+      "en": "Make a table with sources"
+    },
+    "summary": {
+      "nb": "Setter sammen resultatene fra en løkke til en tabell der hver celle har kilden sin. Kan lastes ned som CSV.",
+      "en": "Puts the results of a loop together into a table where each cell has its source. Can be downloaded as CSV."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {}
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["items"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Tittel",
+            "en": "Title"
+          },
+          "x-widget": "text"
+        },
+        "rows": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Rader",
+            "en": "Rows"
+          },
+          "x-widget": "text"
+        },
+        "pair": {
+          "type": "object",
+          "properties": {
+            "primary": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-label": {
+                    "nb": "Felt",
+                    "en": "Field"
+                  },
+                  "x-widget": "text"
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-label": {
+                    "nb": "Verdi",
+                    "en": "Value"
+                  },
+                  "x-widget": "text"
+                }
+              },
+              "required": ["field", "value"],
+              "additionalProperties": false,
+              "x-label": {
+                "nb": "Rader som skal fylles",
+                "en": "Rows to fill"
+              }
+            },
+            "reported": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-label": {
+                    "nb": "Felt",
+                    "en": "Field"
+                  },
+                  "x-widget": "text"
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-label": {
+                    "nb": "Verdi",
+                    "en": "Value"
+                  },
+                  "x-widget": "text"
+                }
+              },
+              "required": ["field", "value"],
+              "additionalProperties": false,
+              "x-label": {
+                "nb": "Rader det fylles fra",
+                "en": "Rows to fill from"
+              }
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "x-label": {
+                "nb": "Kolonnen som sammenlignes",
+                "en": "Column that is compared"
+              },
+              "x-widget": "text"
+            },
+            "fill": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x-label": {
+                "nb": "Kolonner som fylles",
+                "en": "Columns that are filled"
+              },
+              "x-widget": "list"
+            },
+            "group": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "x-label": {
+                "nb": "Felt som må være like",
+                "en": "Fields that must match"
+              },
+              "x-widget": "list"
+            },
+            "threshold": {
+              "default": 0.35,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "x-label": {
+                "nb": "Laveste likhet",
+                "en": "Lowest similarity"
+              },
+              "x-widget": "number"
+            }
+          },
+          "required": ["primary", "reported", "key"],
+          "additionalProperties": false,
+          "x-label": {
+            "nb": "Koble rader",
+            "en": "Pair rows"
+          }
+        },
+        "columns": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+                "x-label": {
+                  "nb": "Nøkkel",
+                  "en": "Key"
+                },
+                "x-widget": "text"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "x-label": {
+                  "nb": "Overskrift",
+                  "en": "Heading"
+                },
+                "x-widget": "text"
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1,
+                "x-label": {
+                  "nb": "Hentes fra",
+                  "en": "Taken from"
+                },
+                "x-widget": "text"
+              }
+            },
+            "required": ["key", "label", "from"],
+            "additionalProperties": false
+          },
+          "x-label": {
+            "nb": "Kolonner",
+            "en": "Columns"
+          },
+          "x-widget": "list"
+        }
+      },
+      "required": ["columns"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "table"
+        },
+        "title": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": ["key", "label"],
+            "additionalProperties": false
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "document": {
+                "type": "string"
+              },
+              "cells": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "value": {},
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": ["value", "sources"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["cells"],
+            "additionalProperties": false
+          }
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "number"
+              }
+            },
+            "required": ["index"],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "required": ["kind", "columns", "rows", "skipped"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "template@1",
+    "name": "template",
+    "version": "1",
+    "description": "Render text from earlier steps with {{references}}",
+    "title": {
+      "nb": "Sett sammen tekst",
+      "en": "Put text together"
+    },
+    "summary": {
+      "nb": "Setter sammen tekst med verdier fra stegene før.",
+      "en": "Puts text together with values from the earlier steps."
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  },
+  {
+    "ref": "tool@1",
+    "name": "tool",
+    "version": "1",
+    "description": "Call one tool from a registered tool source and keep its result for later steps",
+    "title": {
+      "nb": "Kall et verktøy",
+      "en": "Call a tool"
+    },
+    "summary": {
+      "nb": "Kaller ett verktøy fra en registrert verktøykilde med verdier fra flyten, og gir resultatet videre til stegene etter.",
+      "en": "Calls one tool from a registered tool source with values from the flow, and passes the result on to later steps."
+    },
+    "input": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Verktøykilde",
+            "en": "Tool source"
+          },
+          "x-widget": "text"
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Verktøy",
+            "en": "Tool"
+          },
+          "x-widget": "tool",
+          "x-options": {
+            "route": "/tenants/{tenant}/skill-tools",
+            "items": "data",
+            "value": "id"
+          }
+        },
+        "arguments": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "x-label": {
+            "nb": "Verdier til verktøyet",
+            "en": "Values for the tool"
+          },
+          "x-widget": "code"
+        },
+        "timeoutMs": {
+          "default": 60000,
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 600000,
+          "x-label": {
+            "nb": "Tidsavbrudd (millisekunder)",
+            "en": "Timeout (milliseconds)"
+          },
+          "x-widget": "number"
+        }
+      },
+      "required": ["source", "tool"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "json": {},
+        "parts": {
+          "type": "array",
+          "items": {}
+        },
+        "sources": {
+          "type": "array",
+          "items": {}
+        },
+        "source": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": ["text", "json", "parts", "sources", "source", "tool"],
+      "additionalProperties": false
+    }
+  }
+]

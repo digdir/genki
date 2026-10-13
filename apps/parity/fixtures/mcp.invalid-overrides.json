@@ -1,0 +1,52 @@
+{
+  "scenario": "mcp.invalid-overrides",
+  "recordedAt": "2026-10-06T21:15:36.774Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "headers": {
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "builtin.retrieve-only-agent__retrieve-only"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/call",
+          "params": {
+            "name": "builtin.retrieve-only-agent__retrieve-only",
+            "arguments": {
+              "query": "Hva sier evalueringene om digitalisering i staten?",
+              "overrides": {
+                "retrieve-bogus": true
+              }
+            },
+            "_meta": {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "error": {
+            "code": -32602,
+            "message": "Unsupported override keys: [\"retrieve-bogus\"]. Accepted: retrieve-auto-filter, retrieve-filter-by, retrieve-top-k.",
+            "data": {
+              "code": "invalid_overrides"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

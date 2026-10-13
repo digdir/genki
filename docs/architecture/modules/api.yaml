@@ -1,0 +1,325 @@
+id: api
+plane: composition
+name: API app
+note: Composition root (Hono)
+icon: network
+color: '#a78bfa'
+status: App
+packages:
+  - '@genai/api'
+summary: 'The one place that wires plugins together: routers, strategies, adapters, identity and stores.'
+description: apps/api reads platform wiring once at boot and fails fast (ADR 0005). It builds the
+  kernel through the shared composition runtime, adds the eval and builder strategies and the admin
+  modules, mounts the protocol adapters and the portal and console routes, and chooses Postgres and
+  the Altinn PDP or, only with GENAI_DEV_MODE=true, memory stores and the mock Altinn rights.
+responsibilities:
+  - Compose ports, providers and strategies into a kernel
+  - Mount MCP, /v1, REST, conversation, portal and console routes
+  - Authenticate callers and choose stores
+  - Run a published service over a document set, with a cost estimate, a cost cap and a retry list
+  - Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap
+files:
+  - apps/api/src/main.ts
+  - apps/api/src/composition.ts
+  - apps/api/src/auth.ts
+  - apps/api/src/routes/portal-routes.ts
+  - apps/api/src/routes/console-routes.ts
+  - apps/api/src/batch-runs.ts
+  - apps/api/src/projects.ts
+  - apps/api/src/task-export.ts
+input: Environment and catalogs at boot; HTTP at runtime
+output: A running platform on :8080
+replaces:
+  - module: api
+    how: HTTP server and routing
+  - module: setup
+    how: Bootstrap and wiring
+edges:
+  - to: i18n
+    label: Accept-Language and translated problem details
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/i18n/index.ts
+      imports: '@genai/i18n'
+  - to: composition
+    label: Builds the kernel, routers and registries through the shared runtime
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/composition'
+  - to: hooks
+    label: Manages hooks over the shared hook runtime
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/hooks.ts
+      imports: '@genai/hooks'
+  - to: plugins
+    label: Plug-in registry and contract runs
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/plugins.ts
+      imports: '@genai/plugins'
+  - to: port-embedding
+    label: Composes Embedding port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/index-ingestion.ts
+      imports: '@genai/port-embedding'
+  - to: providers-pgvector
+    label: Composes the pgvector engine
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-pgvector'
+  - to: providers-postgres-source
+    label: Composes the read-only database source reader
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-postgres-source'
+  - to: ingest
+    label: Runs ingestion through the writer router
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/index-ingestion.ts
+      imports: '@genai/ingest'
+  - to: adapter-mcp
+    label: Composes MCP adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/adapter-mcp'
+  - to: adapter-a2a
+    label: Composes A2A adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/adapter-a2a'
+  - to: adapter-openai
+    label: Composes OpenAI /v1 adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/adapter-openai'
+  - to: adapter-rest
+    label: Composes REST datasets & facets
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/adapter-rest'
+  - to: conversations
+    label: Composes Conversations
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/conversations'
+  - to: definitions
+    label: Composes Definitions & settings
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/admin.ts
+      imports: '@genai/definitions'
+  - to: eval
+    label: Composes Evaluation
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/eval'
+  - to: guardrails
+    label: Composes Guardrails
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/config-routes.ts
+      imports: '@genai/guardrails'
+  - to: identity
+    label: Composes Identity & access
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/auth.ts
+      imports: '@genai/identity'
+  - to: jobs
+    label: Composes Jobs & triggers
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/jobs'
+  - to: kernel
+    label: Composes Kernel + contracts
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/access.ts
+      imports: '@genai/contracts'
+  - to: port-blob
+    label: Composes Blob port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/port-blob'
+  - to: port-knowledge
+    label: Composes Knowledge port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/port-knowledge'
+  - to: port-model
+    label: Composes Model port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/port-model'
+  - to: port-rerank
+    label: Composes Rerank port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/external-plugins.ts
+      imports: '@genai/port-rerank'
+  - to: strategy-remote
+    label: Runs the agent contract suite against registered agent endpoints
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/external-plugins.ts
+      imports: '@genai/strategy-remote'
+  - to: port-tools
+    label: Composes Tool port
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/plugins.ts
+      imports: '@genai/port-tools'
+  - to: providers-anthropic
+    label: Composes anthropic-messages adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-anthropic'
+  - to: providers-colbert
+    label: Composes ColBERT adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-colbert'
+  - to: providers-documents
+    label: Composes the local document converter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/document-converter.ts
+      imports: '@genai/providers-documents'
+  - to: providers-langfuse
+    label: Composes Langfuse exporter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/main.ts
+      imports: '@genai/providers-langfuse'
+  - to: providers-a2a-client
+    label: Composes A2A client
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-a2a-client'
+  - to: providers-openapi-tools
+    label: Composes OpenAPI tools
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-openapi-tools'
+  - to: providers-mcp-client
+    label: Composes MCP client
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-mcp-client'
+  - to: providers-openai
+    label: Composes openai-chat adapter
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-openai'
+  - to: providers-postgres
+    label: Composes Postgres stores
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/main.ts
+      imports: '@genai/providers-postgres'
+  - to: providers-typesense
+    label: Composes Typesense reader
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-typesense'
+  - to: strategy-builder
+    label: Composes the builder assistant and serves its turns
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/strategy-builder'
+  - to: strategy-rag
+    label: Schema labels for the RAG strategy parameters
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/schemas.ts
+      imports: '@genai/strategy-rag'
+  - to: strategy-single-call
+    label: Composes Single call
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/skills.ts
+      imports: '@genai/strategy-single-call'
+  - to: strategy-step-flow
+    label: Composes Step flows
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/strategy-step-flow'
+  - to: retrieval
+    label: Fixed-query retrieval and planner diagnostics
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/diagnostics.ts
+      imports: '@genai/retrieval'
+  - to: strategy-agent-loop
+    label: Search display limit for stage attribution
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/diagnostics.ts
+      imports: '@genai/strategy-agent-loop'
+keywords: api composition hono main wiring boot

@@ -1,0 +1,1142 @@
+{
+  "scenario": "mcp.tools-list",
+  "recordedAt": "2026-10-06T21:15:36.114Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "headers": {
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/list"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/list",
+          "params": {
+            "_meta": {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": {
+            "resultType": "complete",
+            "tools": [
+              {
+                "name": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+                "title": "Agentic RAG Agent — Agentic RAG (graph, bundled inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "General-purpose agentic retrieval assistant. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/agent-rag-agent",
+                  "mode": "agent-rag-graph-bundled",
+                  "default": true
+                }
+              },
+              {
+                "name": "builtin.agent-rag-agent__agent-rag-graph-faithful",
+                "title": "Agentic RAG Agent — Agentic RAG (graph, faithful inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "General-purpose agentic retrieval assistant. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/agent-rag-agent",
+                  "mode": "agent-rag-graph-faithful"
+                }
+              },
+              {
+                "name": "builtin.ai-overview-agent__ai-overview",
+                "title": "AI Overview Agent — AI Overview",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Short, fully-cited overview answer presented ahead of the underlying results. Declines rather than answering when retrieval is thin. — AI Overview: Short synthesised answer with inline chunk-level citations, ahead of the underlying results. Declines rather than answering on thin retrieval. Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/ai-overview-agent",
+                  "mode": "ai-overview",
+                  "default": true
+                }
+              },
+              {
+                "name": "builtin.fact-checker-agent__fact-checker",
+                "title": "Fact Checker Agent — Fact Checker",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Verification-focused agent for checking claims against evidence. — Fact Checker: Verify claims against document evidence Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/fact-checker-agent",
+                  "mode": "fact-checker",
+                  "default": true
+                }
+              },
+              {
+                "name": "builtin.research-assistant-agent__agent-rag-graph-bundled",
+                "title": "Research Assistant Agent — Agentic RAG (graph, bundled inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Breadth-first retrieval with a synthesis-heavy answer, for questions that want a survey of the sources rather than a single fact. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/research-assistant-agent",
+                  "mode": "agent-rag-graph-bundled"
+                }
+              },
+              {
+                "name": "builtin.research-assistant-agent__agent-rag-graph-faithful",
+                "title": "Research Assistant Agent — Agentic RAG (graph, faithful inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Breadth-first retrieval with a synthesis-heavy answer, for questions that want a survey of the sources rather than a single fact. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/research-assistant-agent",
+                  "mode": "agent-rag-graph-faithful",
+                  "default": true
+                }
+              },
+              {
+                "name": "builtin.retrieve-only-agent__retrieve-only",
+                "title": "Retrieve Only Agent — Retrieve Only",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Diagnostic agent that returns retrieved and reranked evidence without generating an answer. — Retrieve Only: Retrieve and rerank evidence without generating an answer Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "builtin/retrieve-only-agent",
+                  "mode": "retrieve-only",
+                  "default": true
+                }
+              },
+              {
+                "name": "digdir.altinn-docs-tuned__agent-rag-graph-bundled",
+                "title": "Altinn Docs Tuned Agent — Agentic RAG (graph, bundled inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Round-5-tuned retrieval for the altinn-docs corpus. Phrase-only weights with strategy caps; opt-in alternative to the general-purpose agent. — Agentic RAG (graph, bundled inner): Phase 2.5.C inner shape: per-iteration body grouped into 4 coarse-grained skills (:llm-and-tools / :evaluate-evidence / :sufficiency-gates / :record-and-route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "digdir/altinn-docs-tuned",
+                  "mode": "agent-rag-graph-bundled"
+                }
+              },
+              {
+                "name": "digdir.altinn-docs-tuned__agent-rag-graph-faithful",
+                "title": "Altinn Docs Tuned Agent — Agentic RAG (graph, faithful inner)",
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for this conversation; pass it back to continue."
+                    },
+                    "chunks": {
+                      "type": "array",
+                      "description": "Retrieved source chunks the answer drew on.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "chunk_id": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "Public URL of the source document. PRESENT ONLY when the corpus has one: website-sourced chunks always carry it, folder-sourced chunks only when the dataset supplies a base URL. Absent otherwise — do not build a link without checking."
+                          },
+                          "chunk_index": {
+                            "type": "integer"
+                          },
+                          "doc_num": {
+                            "type": "string"
+                          },
+                          "content_markdown": {
+                            "type": "string",
+                            "description": "The chunk's text. PRESENT ONLY when the skill graph read it; at most 8000 characters, so a value shorter than content_length was cut."
+                          },
+                          "total_chunks": {
+                            "type": "integer"
+                          },
+                          "content_length": {
+                            "type": "integer"
+                          },
+                          "metadata": {
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "queries": {
+                      "type": "array",
+                      "description": "Search queries that were run.",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "search_attribution": {
+                      "type": "object",
+                      "description": "Which retrieval strategy contributed each hit."
+                    },
+                    "filters_applied": {
+                      "type": "array",
+                      "description": "Each distinct filter retrieval ran with. `source` is explicit (caller or model), auto (detected from the query) or merged. `auto_detected` is the detected part; `auto_detected_dropped` means it found nothing and the search ran without it.",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "clarification": {
+                      "type": "object",
+                      "description": "Present when the agent needs a clarifying answer before proceeding."
+                    }
+                  },
+                  "required": ["conversation_id"]
+                },
+                "description": "Round-5-tuned retrieval for the altinn-docs corpus. Phrase-only weights with strategy caps; opt-in alternative to the general-purpose agent. — Agentic RAG (graph, faithful inner): Phase 2.5.D inner shape: per-iteration body decomposed into 10 fine-grained steps, one per logical phase (:llm, :tools, :evaluate-pending-reads, :shadow-gate, :range-read-hint, :sufficiency-gate, :response-validation-gate, :record-turn, :compute-route, :route). Multi-turn: the response carries structuredContent.conversation_id; pass it back as the conversation_id argument to continue the same conversation, and earlier turns are supplied to the model automatically.",
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "object",
+                      "description": "Per-call overrides. Accepts `retrieve-filter-by`, `retrieve-auto-filter` and `retrieve-top-k` (1 to 200); any other key is refused. Optional."
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "conversation-history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The question to ask. Also accepted as `user-query`, the name used internally."
+                    },
+                    "claim": {
+                      "type": "string"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "description": "Handle for an ongoing conversation. Omit on the first call; the response returns the handle in structuredContent.conversation_id. Pass it back on later calls to continue the same conversation — prior turns are retained server-side and supplied to the model automatically."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Dataset tenant to scope this call to. Optional when the API key or agent already fixes a scope."
+                    },
+                    "dataset_config_key": {
+                      "type": "string",
+                      "description": "Dataset configuration key to scope this call to. Optional, as for `tenant`."
+                    }
+                  },
+                  "required": ["query"]
+                },
+                "_meta": {
+                  "agent-id": "digdir/altinn-docs-tuned",
+                  "mode": "agent-rag-graph-faithful",
+                  "default": true
+                }
+              }
+            ],
+            "_meta": {
+              "request-id": "qK6y6u9PuecXUCdRvuNoe"
+            },
+            "ttlMs": 60000,
+            "cacheScope": "private"
+          }
+        }
+      }
+    }
+  ]
+}

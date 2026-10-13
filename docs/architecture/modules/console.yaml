@@ -1,0 +1,51 @@
+id: console
+plane: consumers
+name: Console
+note: Digdir operators
+icon: chart
+color: '#74a7ff'
+status: React app
+packages:
+  - '@genai/console'
+summary: 'The operator console for Digdir: tenants, shared services, models and platform health.'
+description: Operators sign in with Entra ID and work across tenants only through time-limited
+  support sessions (ADR 0010). They classify discovered models by residency, manage shared services
+  (fellestjenester) and follow operations.
+responsibilities:
+  - Tenant and shared-service administration
+  - Model classification by residency and capability
+  - Operations and support sessions
+files:
+  - apps/console/src/App.tsx
+  - apps/console/src/api.ts
+  - apps/console/src/screens
+input: Operator actions
+output: Platform admin requests
+replaces:
+  - module: admin
+    how: Operator part of the admin UI
+  - module: telemetry
+    how: Status and diagnostics screens
+edges:
+  - to: i18n
+    label: Language choice
+    kind: call
+    target: call
+    witness:
+      file: apps/console/src/Shell.tsx
+      imports: '@genai/i18n'
+  - to: api
+    label: 'Console routes: tenants, models, operations'
+    kind: http
+    target: http
+    witness:
+      file: apps/console/src/api.ts
+      contains: /tenants/
+  - to: schema-forms
+    label: Renders strategy and plugin parameters from JSON Schema
+    kind: call
+    target: call
+    witness:
+      file: apps/console/src/screens/Schemas.tsx
+      imports: '@genai/schema-forms'
+keywords: console operator digdir entra models tenants operations

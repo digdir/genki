@@ -1,0 +1,53 @@
+id: providers-a2a-client
+plane: providers
+name: A2A client
+note: External agents as tools
+icon: gateway
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-a2a-client'
+summary: Calls tenant-registered A2A agents as tools, one tool per skill on the agent card.
+description: Reads the agent card through the egress guard, pins one tool per skill (changes wait
+  for approval like MCP tools) and sends SendMessage with the connection's vault credential. Answers
+  come back as untrusted tool results with the task and context ids, polled until done.
+responsibilities:
+  - Agent card reading and validation
+  - Skill pinning and approval
+  - SendMessage and GetTask through the egress guard
+files:
+  - packages/providers-a2a-client/src/client.ts
+  - packages/providers-a2a-client/src/source.ts
+input: Tool call
+output: Untrusted tool result
+replaces: []
+edges:
+  - to: plugins
+    label: Manifest and contract fixture
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-a2a-client/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-a2a-client/src/source.ts
+      imports: '@genai/kernel'
+  - to: port-tools
+    label: Tool registry and tool calls
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-a2a-client/src/source.ts
+      imports: '@genai/port-tools'
+  - to: providers-mcp-client
+    label: Connections, egress guard and tenant secrets
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-a2a-client/src/source.ts
+      imports: '@genai/providers-mcp-client'
+keywords: a2a client agents tools egress tenant

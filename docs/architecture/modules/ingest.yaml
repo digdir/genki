@@ -1,0 +1,83 @@
+id: ingest
+plane: services
+name: Ingest
+note: Load · chunk · enrich
+icon: source
+color: '#70d6a1'
+status: Library
+packages:
+  - '@genai/ingest'
+summary: Loads Kudos, websites and folders, converts and chunks them, and builds phrases.
+description: Source loaders and the ingest pipeline. Document ids are derived with valuehash so they
+  match the ids headless-rag gave the same documents.
+responsibilities:
+  - Kudos, website and folder loaders
+  - Conversion and chunking
+  - Phrase extraction with a model
+files:
+  - packages/ingest/src/pipeline.ts
+  - packages/ingest/src/kudos.ts
+  - packages/ingest/src/website.ts
+  - packages/ingest/src/chunking.ts
+input: Source config
+output: Documents, chunks and phrases
+replaces:
+  - module: sources
+    how: Source loaders
+  - module: pipeline
+    how: Ingestion pipelines
+edges:
+  - to: port-blob
+    label: Reads uploaded files from the blob store
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/sources.ts
+      imports: '@genai/port-blob'
+  - to: port-knowledge
+    label: Writes documents through the index writer port
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/index-writer.ts
+      imports: '@genai/port-knowledge'
+  - to: port-embedding
+    label: Embeds chunks and phrases when the engine needs vectors
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/index-writer.ts
+      imports: '@genai/port-embedding'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/converter.ts
+      imports: '@genai/kernel'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/phrases.ts
+      imports: '@genai/port-model'
+  - to: valuehash
+    label: Clojure-compatible ids
+    kind: call
+    target: call
+    witness:
+      file: packages/ingest/src/ids.ts
+      imports: '@genai/valuehash'
+  - to: kudos
+    label: Document search and download
+    kind: http
+    target: http
+    witness:
+      file: packages/ingest/src/kudos.ts
+      contains: await send(url
+contract:
+  - name: config
+    file: packages/ingest/src/pipeline.ts
+    export: ingestConfig
+keywords: ingest pipeline loaders kudos website chunking

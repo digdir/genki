@@ -1,0 +1,104 @@
+endpoints:
+  kudos-typesense:
+    engine: typesense
+    baseURL: ${TYPESENSE_URL}
+    auth: { kind: api-key, secret: secret://env/typesense-key }
+  platform-pg:
+    engine: pgvector
+    options: { connection: platform }
+    sharing: { tenants: '*' }
+datasets:
+  - id: digdir/kudos
+    name: Kudos
+    aliases: [public-sector-knowledge/default, public-sector-knowledge/kudos]
+    endpoint: kudos-typesense
+    residency: norway
+    links: kudos-legacy
+    filters:
+      type: multiselect
+      concerned_years: multiselect
+      orgs_short: multiselect
+      orgs_long: multiselect
+      doc_num: multiselect
+      title: text
+    valueTypes: { concerned_years: integer }
+    options:
+      collections:
+        docs: KUDOS_preprod_v4_documents_ab897fbdedfa
+        chunks: KUDOS_preprod_v4_chunks_ab897fbdedfa
+        phrases: KUDOS_preprod_v4_phrases_ab897fbdedfa
+      docFields: [url, title, total_chunks, orgs_long, orgs_short, file_sha256, files, publish_date]
+      maxFacetValues: 1000
+      profiles:
+        phrase:
+          collection: phrases
+          queryBy: [search_phrase, phrase_vec]
+          textField: search_phrase
+          include: [chunk_id, search_phrase, doc_num]
+          exclude: [phrase_vec]
+          score: fusion
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        metadata:
+          collection: chunks
+          queryBy: [metadata]
+          textField: metadata
+          include: [chunk_id, metadata]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        content:
+          collection: chunks
+          queryBy: [content_markdown]
+          textField: content_markdown
+          include: [chunk_id, content_markdown]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        doc-title:
+          collection: docs
+          queryBy: [title]
+          textField: title
+          include: [doc_num, total_chunks, title]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+  - id: digdir/public-docs
+    name: Offentlige nettsider
+    aliases: [digdir/default]
+    endpoint: kudos-typesense
+    residency: norway
+    options:
+      collections:
+        docs: website_documents_ab897fbdedfa
+        chunks: website_chunks_ab897fbdedfa
+        phrases: website_phrases_ab897fbdedfa
+      docFields: [url, title, total_chunks]
+      profiles:
+        phrase:
+          collection: phrases
+          queryBy: [search_phrase, phrase_vec]
+          textField: search_phrase
+          include: [chunk_id, search_phrase, doc_num]
+          exclude: [phrase_vec]
+          score: fusion
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        metadata:
+          collection: chunks
+          queryBy: [metadata]
+          textField: metadata
+          include: [chunk_id, metadata]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        content:
+          collection: chunks
+          queryBy: [content_markdown]
+          textField: content_markdown
+          include: [chunk_id, content_markdown]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        doc-title:
+          collection: docs
+          queryBy: [title]
+          textField: title
+          include: [doc_num, total_chunks, title]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }

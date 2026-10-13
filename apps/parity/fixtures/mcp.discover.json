@@ -1,0 +1,53 @@
+{
+  "scenario": "mcp.discover",
+  "recordedAt": "2026-10-06T21:15:36.045Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "headers": {
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "server/discover"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "server/discover",
+          "params": {
+            "_meta": {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "result": {
+            "resultType": "complete",
+            "supportedVersions": ["2026-07-28"],
+            "capabilities": {
+              "tools": {}
+            },
+            "_meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "digdir-rag",
+                "version": "1.0"
+              }
+            },
+            "ttlMs": 3600000,
+            "cacheScope": "public",
+            "instructions": "This server exposes one tool per (agent, mode) pair, named `<agent>__<mode>`, where `<agent>` is the agent id with its namespace separator written as a dot - `builtin.agent-rag-agent__agent-rag-graph-bundled`. Call `tools/list` to see which pairs this API key can reach.\n\nAsk a question with the `query` argument - `user-query` is accepted as an alias. The answer comes back as text, with `structuredContent` carrying the retrieved chunks, the queries that were run, and `conversation_id`.\n\nTo continue a conversation, pass the `conversation_id` from the previous response back in the next call. Earlier turns are retained server-side and supplied to the model automatically; omit it to start fresh.\n\nScope a call with `tenant` and `dataset_config_key` when the API key or agent does not already fix one.\n\nErrors: a result with `isError: true` carries a message you can act on - fix the arguments or choose another tool. A JSON-RPC error means the request could not be dispatched (-32602) or the server failed (-32603); neither is worth retrying unchanged."
+          }
+        }
+      }
+    }
+  ]
+}

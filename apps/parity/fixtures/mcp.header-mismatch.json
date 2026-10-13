@@ -1,0 +1,41 @@
+{
+  "scenario": "mcp.header-mismatch",
+  "recordedAt": "2026-10-06T21:15:36.513Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "headers": {
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "server/discover"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/list",
+          "params": {
+            "_meta": {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "error": {
+            "code": -32020,
+            "message": "Header mismatch: Mcp-Method header 'server/discover' does not match body method 'tools/list'"
+          }
+        }
+      }
+    }
+  ]
+}

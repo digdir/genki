@@ -1,0 +1,65 @@
+{
+  "testSets": {
+    "ka-kudos-draft": {
+      "corpus": "digdir/kudos",
+      "old": {
+        "agent": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+        "probe": "builtin.retrieve-only-agent__retrieve-only",
+        "arguments": {
+          "tenant": "public-sector-knowledge",
+          "dataset_config_key": "default"
+        }
+      },
+      "new": {
+        "agent": "kunnskapsassistenten__default",
+        "probe": "kunnskapsassistenten-retrieve-only__default",
+        "arguments": {
+          "tenant": "public-sector-knowledge",
+          "dataset_config_key": "default"
+        },
+        "dataset": "digdir/kudos",
+        "service": "kunnskapsassistenten",
+        "retrieveService": "kunnskapsassistenten-retrieve-only",
+        "relaxedAgent": "agent-budget-relaxed__default"
+      }
+    },
+    "headless-rag-website-118": {
+      "corpus": "digdir/public-docs",
+      "old": {
+        "agent": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+        "probe": "builtin.retrieve-only-agent__retrieve-only",
+        "arguments": {
+          "tenant": "digdir",
+          "dataset_config_key": "default"
+        }
+      },
+      "new": {
+        "agent": "public-docs-agent__default",
+        "probe": "public-docs-retrieve-only__default",
+        "arguments": {},
+        "dataset": "digdir/public-docs",
+        "service": "public-docs-agent",
+        "retrieveService": "public-docs-retrieve-only"
+      }
+    },
+    "headless-rag-ue-42": {
+      "corpus": "digdir/public-docs",
+      "old": {
+        "agent": "builtin.agent-rag-agent__agent-rag-graph-bundled",
+        "probe": "builtin.retrieve-only-agent__retrieve-only",
+        "arguments": {
+          "tenant": "digdir",
+          "dataset_config_key": "default"
+        }
+      },
+      "new": {
+        "agent": "public-docs-agent__default",
+        "probe": "public-docs-retrieve-only__default",
+        "arguments": {},
+        "dataset": "digdir/public-docs",
+        "service": "public-docs-agent",
+        "retrieveService": "public-docs-retrieve-only"
+      }
+    }
+  }
+}

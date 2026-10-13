@@ -1,0 +1,130 @@
+{
+  "adr": "docs/adr/0017-parity-scope-and-intentional-divergences.md",
+  "divergences": [
+    {
+      "id": "unscoped-key",
+      "behaviour": "An API key with no grants can reach everything",
+      "reason": "fail-open does not belong in a multi-tenant platform; a key reaches only what it is granted, and the legacy flag that kept the old default is removed",
+      "scenarios": ["auth.unscoped-key"],
+      "action": "invert",
+      "expect": {
+        "status": [401, 403]
+      }
+    },
+    {
+      "id": "settings-every-entry-point",
+      "behaviour": "skills.* settings work in the playground and REST, not MCP and /v1",
+      "reason": "every setting works on every entry point, so the old MCP and /v1 results are not the reference",
+      "scenarios": ["settings."],
+      "action": "skip"
+    },
+    {
+      "id": "mcp-ping",
+      "behaviour": "MCP ping",
+      "reason": "the new platform follows the current MCP revision, which removes ping",
+      "scenarios": ["mcp.ping"],
+      "action": "invert",
+      "expect": {
+        "status": [404],
+        "body": {
+          "$.error.code": -32601
+        }
+      }
+    },
+    {
+      "id": "debug-routes",
+      "behaviour": "Debug routes behind a shared key",
+      "reason": "operator diagnostics sit behind operator roles, so a shared key is refused",
+      "scenarios": ["debug."],
+      "action": "invert",
+      "expect": {
+        "status": [401, 403, 404]
+      }
+    },
+    {
+      "id": "guardrails-enforced",
+      "behaviour": "Agent guardrails are stored but not enforced",
+      "reason": "guardrails are enforced or not offered, so the old unguarded answers are not the reference",
+      "scenarios": ["guardrails."],
+      "action": "skip"
+    },
+    {
+      "id": "mcp-body-limit",
+      "behaviour": "MCP accepts request bodies of any size",
+      "reason": "input is bounded; bodies over 1 MiB are refused",
+      "scenarios": ["mcp.oversized-body"],
+      "action": "invert",
+      "expect": {
+        "status": [413]
+      }
+    },
+    {
+      "id": "v1-stream-deltas",
+      "behaviour": "/v1 streaming sends the whole answer as one delta, citations first",
+      "reason": "by default the whole answer still comes as one delta; a client that asks for live streaming gets token deltas, retract frames and citations after the text, so frame order is not compared",
+      "scenarios": ["v1.stream"],
+      "action": "skip"
+    },
+    {
+      "id": "outbound-timeouts",
+      "behaviour": "No timeouts on Typesense and ColBERT calls",
+      "reason": "every outbound call has a timeout so a hung dependency cannot hang a request",
+      "scenarios": ["timeouts.outbound"],
+      "action": "skip"
+    },
+    {
+      "id": "facets-undeclared-field",
+      "behaviour": "/api/facets on a field the dataset does not declare answers 502 or empty",
+      "reason": "a field the dataset does not declare is the caller's error, so it is refused with 400",
+      "scenarios": ["rest.facets-undeclared"],
+      "action": "invert",
+      "expect": {
+        "status": [400]
+      }
+    },
+    {
+      "id": "model-override",
+      "behaviour": "A model argument on a tool call overrides the agent's model",
+      "reason": "the service definition decides the model, checked for residency at publish, so a per-call model is accepted and ignored",
+      "scenarios": ["mcp.model-override"],
+      "action": "skip"
+    },
+    {
+      "id": "citations-by-document",
+      "behaviour": "An answer cites [N] per chunk of the synthesis context, renumbered after streaming",
+      "reason": "KA numbers its sources per document in the order structuredContent.chunks lists them, so the new platform numbers the synthesis context per document in that order and keeps the streamed numbers",
+      "scenarios": ["mcp.citation-numbering"],
+      "action": "skip"
+    },
+    {
+      "id": "chunk-page-markers",
+      "behaviour": "Chunk text in structuredContent keeps the source's {N} page markers",
+      "reason": "page markers are layout residue from PDF conversion that clients show as text, so published chunk text leaves them out",
+      "scenarios": ["mcp.chunk-page-markers"],
+      "action": "skip"
+    },
+    {
+      "id": "conversations-user-header",
+      "behaviour": "The conversation routes answer 400 \"Missing X-User-Id header\" to an API key without X-User-Id",
+      "reason": "only a key bound to a service serves end users and may name one with X-User-Id; any other key, or a bound key without the header, owns its conversations itself",
+      "scenarios": ["rest.conversations-without-user"],
+      "action": "invert",
+      "expect": {
+        "status": [200]
+      }
+    },
+    {
+      "id": "mcp-version-negotiation",
+      "behaviour": "MCP refuses initialize with -32022 and accepts only the 2026-07-28 revision",
+      "reason": "the platform negotiates a common MCP version per the spec: initialize is answered with a supported handshake version, so older tool servers and the platform's own client can connect",
+      "scenarios": ["mcp.initialize-rejected"],
+      "action": "invert",
+      "expect": {
+        "status": [200],
+        "body": {
+          "$.result.protocolVersion": "2025-06-18"
+        }
+      }
+    }
+  ]
+}

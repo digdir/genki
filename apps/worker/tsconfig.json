@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    {
+      "path": "../../packages/composition"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/jobs"
+    },
+    {
+      "path": "../../packages/port-blob"
+    },
+    {
+      "path": "../../packages/definitions"
+    },
+    {
+      "path": "../../packages/providers-postgres"
+    },
+    {
+      "path": "../../packages/providers-langfuse"
+    }
+  ]
+}

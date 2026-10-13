@@ -1,0 +1,17 @@
+id: ansattporten
+plane: external
+name: Ansattporten
+note: Employee login
+icon: shield
+color: '#607b88'
+status: External
+external: true
+summary: National login for public-sector employees, with Altinn rights in the token. Mocked locally.
+description: National login for public-sector employees, with Altinn rights in the token. Mocked locally.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: ansattporten ansattporten external

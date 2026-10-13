@@ -1,0 +1,25 @@
+apiVersion: genai/v1
+kind: Service
+metadata:
+  { tenant: '991825827', id: agent-budget-relaxed, name: 'Kudos-agent, romsligere budsjett' }
+spec:
+  purpose: Samme agent som Kunnskapsassistenten med dobbelt søke- og lesebudsjett, for budsjettmåling
+  audience: [employees]
+  riskClass: limited
+  variants:
+    - id: default
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      budget: { searches: 8, reads: 12, readChars: 24000 }
+      temperature: 0.3
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos
+    reranker: colbert
+    retrieval: { maxPerDocument: 10, rerank: { enabled: true } }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { mcp: true, openai: true, rest: true }

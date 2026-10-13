@@ -1,0 +1,38 @@
+id: port-blob
+plane: ports
+name: Blob port
+note: Files · parts · folders
+icon: source
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/port-blob'
+summary: Stores input and output files, with memory and filesystem implementations and folder watching.
+description: Used by batch jobs and the worker; Azure Blob comes later behind the same port.
+responsibilities:
+  - Blob store interface
+  - Folder watch for triggers
+  - Zip export
+files:
+  - packages/port-blob/src/port.ts
+  - packages/port-blob/src/filesystem.ts
+  - packages/port-blob/src/watch.ts
+input: Bytes + path
+output: Stored parts
+replaces: []
+edges:
+  - to: plugins
+    label: Blob contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/port-blob/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/port-blob/src/parts.ts
+      imports: '@genai/contracts'
+keywords: blob storage files folder

@@ -1,0 +1,40 @@
+id: adapter-rest
+plane: adapters
+name: REST datasets & facets
+note: /api/datasets, /api/facets
+icon: api
+color: '#46d7c8'
+status: Protocol adapter
+packages:
+  - '@genai/adapter-rest'
+summary: Read-only REST for datasets and disjunctive facets, straight on the knowledge port.
+description: Lists the datasets a principal may see and computes facet counts for declared fields.
+  Unknown facet fields answer 400 naming the field instead of 502 (ADR 0017).
+responsibilities:
+  - List and describe datasets, with the filter fields each declares
+  - Disjunctive facet counts with filter mapping
+files:
+  - packages/adapter-rest/src/index.ts
+  - packages/adapter-rest/src/facets.ts
+  - packages/adapter-rest/src/filters.ts
+input: GET /api/datasets, /api/facets
+output: Dataset descriptions, facet options
+replaces:
+  - module: api
+    how: Dataset and facet routes of the headless HTTP API
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/adapter-rest/src/index.ts
+      imports: '@genai/contracts'
+  - to: port-knowledge
+    label: Search and fetch through the knowledge port
+    kind: call
+    target: call
+    witness:
+      file: packages/adapter-rest/src/facets.ts
+      imports: '@genai/port-knowledge'
+keywords: rest datasets facets filters

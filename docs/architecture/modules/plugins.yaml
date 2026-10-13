@@ -1,0 +1,34 @@
+id: plugins
+plane: ports
+name: Plug-ins
+note: Manifests · contract suites
+icon: config
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/plugins'
+summary: Plug-in manifests, a registry, and contract suites that prove a plug-in meets its kind's contract.
+description:
+  Every capability type is a plug-in kind with a versioned contract (ADR 0023). A manifest
+  names the kind, id, version, contract, capabilities, data location, config schema and required
+  secrets and hosts. Each kind ships a contract suite that runs in CI through vitest, at operator
+  registration and on demand in the API, and results are recorded per plug-in version. A plug-in
+  reaches only the hosts and secrets its manifest declares.
+responsibilities:
+  - Manifest format and validation
+  - Contract suite runner with timeouts
+  - Plug-in registry with recorded contract runs
+  - Manifest permissions for hosts and secrets
+files:
+  - packages/plugins/src/manifest.ts
+  - packages/plugins/src/permissions.ts
+  - packages/plugins/src/contract.ts
+  - packages/plugins/src/registry.ts
+input: Manifests and contract targets
+output: Contract results per plug-in version
+edges: []
+contract:
+  - name: manifest
+    file: packages/plugins/src/manifest.ts
+    export: pluginManifest
+keywords: plugin manifest contract suite registry adr-0023

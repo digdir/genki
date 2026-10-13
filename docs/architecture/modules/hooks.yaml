@@ -1,0 +1,65 @@
+id: hooks
+plane: policy
+name: Hooks
+note: Observe · annotate · refuse
+icon: shield
+color: '#ff8790'
+status: Plugin
+packages:
+  - '@genai/hooks'
+summary: Tenant and platform hooks at fixed points in a run, as built-in functions or signed webhooks.
+description: Hooks run before and after model, tool and search calls, when a task completes, on
+  publish and on feedback.
+  They observe, annotate or refuse, with ordering, timeouts and fail-open or fail-closed. The
+  composition root wraps every service strategy with them, and each hook run is an audit event.
+responsibilities:
+  - Hook specs, ordering and failure modes
+  - Strategy wrapper around model, tool and knowledge ports
+  - Built-in hook functions and the hook contract suite
+files:
+  - packages/hooks/src/hook.ts
+  - packages/hooks/src/strategy.ts
+  - packages/hooks/src/builtins.ts
+input: Model, tool and search calls in a run, and feedback
+output: Allowed, annotated or refused calls
+edges:
+  - to: plugins
+    label: Plug-in manifests and the hook contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/hooks/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: strategies and invocation context'
+    kind: call
+    target: call
+    witness:
+      file: packages/hooks/src/strategy.ts
+      imports: '@genai/kernel'
+  - to: port-model
+    label: Wraps model calls
+    kind: call
+    target: call
+    witness:
+      file: packages/hooks/src/strategy.ts
+      imports: '@genai/port-model'
+  - to: port-tools
+    label: Wraps tool calls
+    kind: call
+    target: call
+    witness:
+      file: packages/hooks/src/strategy.ts
+      imports: '@genai/port-tools'
+  - to: port-knowledge
+    label: Wraps search calls
+    kind: call
+    target: call
+    witness:
+      file: packages/hooks/src/strategy.ts
+      imports: '@genai/port-knowledge'
+contract:
+  - name: hook
+    file: packages/hooks/src/hook.ts
+    export: hookSpec
+keywords: hooks webhook policy refuse annotate adr-0023

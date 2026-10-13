@@ -1,0 +1,38 @@
+{
+  "scenario": "mcp.no-key",
+  "recordedAt": "2026-10-06T21:15:36.629Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/mcp",
+        "headers": {
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/list"
+        },
+        "auth": false,
+        "body": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/list",
+          "params": {
+            "_meta": {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer"
+        },
+        "body": {
+          "error": "Invalid or missing API key"
+        }
+      }
+    }
+  ]
+}

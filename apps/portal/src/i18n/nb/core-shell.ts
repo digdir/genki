@@ -1,0 +1,89 @@
+import { defineNamespace } from '@genai/i18n';
+
+export const shell = defineNamespace({
+  navOverview: 'Oversikt',
+  navServices: 'Tjenester',
+  navSharedServices: 'Fellestjenester',
+  navDatasets: 'Datasett',
+  navBuildingBlocks: 'Byggeklosser',
+  navPlayground: 'Prøveområde',
+  navAccess: 'Tilgang',
+  navUsage: 'Forbruk',
+  navIntegrations: 'Integrasjoner',
+  navLog: 'Logg',
+  navSettings: 'Innstillinger',
+  skipToContent: 'Hopp til hovedinnhold',
+  menu: 'Meny',
+  mainMenu: 'Hovedmeny',
+  brandShort: 'KI-portalen',
+  brandFull: 'Fellesløsning for generativ KI',
+  owner: 'Digdir',
+  orgMeta: 'Org.nr. {orgNr}',
+  orgMetaUnregistered: 'Org.nr. {orgNr} · ikke registrert',
+  orgButton: 'Handler for {name}, org.nr. {orgNr}. Bytt virksomhet',
+  orgButtonUnregistered: 'Handler for {name}, org.nr. {orgNr}, ikke registrert. Bytt virksomhet',
+  actingForLabel: 'Handler for',
+  chooseOrg: 'Velg virksomhet',
+  chooseOrgHelp: 'Du kan handle for disse virksomhetene.',
+  organisations: 'Virksomheter',
+  orgOptionMeta: 'Org.nr. {orgNr}',
+  orgOptionUnregistered: 'Org.nr. {orgNr} · ikke registrert',
+  orgOptionRole: 'Org.nr. {orgNr} · {role}',
+  userMenuButton: '{name}, åpne brukermeny',
+  userMenu: 'Brukermeny',
+  actingFor: 'Handler for {name} (org.nr. {orgNr})',
+  yourRights: 'Rettighetene dine',
+  rightsGivenBy: 'Rettighetene er gitt av tilgangsstyrerne i virksomheten din, i Altinn.',
+  seeInAltinn: 'Se eller endre i Altinn (åpnes i ny fane)',
+  logout: 'Logg ut',
+  guide: 'Brukerveiledning',
+  status: 'Driftsstatus',
+  contact: 'Kontakt Digdir',
+  badgeIngest: {
+    one: '{count} innlesing trenger oppfølging',
+    other: '{count} innlesinger trenger oppfølging',
+  },
+});
+
+export const app = defineNamespace({
+  notFound: 'Fant ikke siden',
+  notDrawn: 'Denne siden er ikke tegnet ennå. Gå tilbake til <link>Oversikt</link>.',
+  guideIntro:
+    'I portalen setter virksomheten din opp KI-tjenester og følger med på dem. Slik henger sidene sammen.',
+  guideStartTitle: 'Kom i gang',
+  guideStart:
+    '<overview>Oversikt</overview> viser tjenestene, datasettene og innlesingene til virksomheten du handler for. Du bytter virksomhet øverst på siden.',
+  guideBuildTitle: 'Sett opp en tjeneste',
+  guideBuild:
+    'Lag og publiser tjenester under <services>Tjenester</services>, legg inn kunnskap under <datasets>Datasett</datasets>, og gjenbruk deler fra <blocks>Byggeklosser</blocks>. Tjenester som Digdir deler med alle, finner du under <shared>Fellestjenester</shared>.',
+  guideTryTitle: 'Prøv og ta i bruk',
+  guideTry:
+    'Prøv en tjeneste i <playground>Prøveområdet</playground>. Kall den fra eget system med eksemplene i <code>Kall en tjeneste fra kode</code> og endepunktene i <api>API-referansen</api>.',
+  guideFollowTitle: 'Følg med og styr',
+  guideFollow:
+    'Se bruk og kostnad i <usage>Forbruk</usage>, kjøringer i <log>Logg</log>, hvem som har tilgang i <access>Tilgang</access>, og standardvalg for virksomheten i <settings>Innstillinger</settings>.',
+  guideRights:
+    'Hva du kan gjøre, avhenger av rettighetene virksomheten din har gitt deg i Altinn. Du ser dem i brukermenyen.',
+  statusIntro: 'Siden spør plattformens API om det svarer.',
+  statusChecking: 'Sjekker API-et',
+  statusApi: 'API',
+  statusUp: 'Svarer',
+  statusDown: 'API-et svarer ikke akkurat nå. Prøv igjen om litt.',
+  statusVersion: 'Versjon',
+  statusCheckAgain: 'Sjekk igjen',
+  statusScope:
+    'Siden viser bare om API-et svarer. Status for hver tjeneste ser du under <services>Tjenester</services>, og kjøringer som har feilet, ser du i <log>Logg</log>.',
+  contactOwner:
+    'Plattformen eies og utvikles av Digitaliseringsdirektoratet (Digdir). Kildekoden ligger i kodelageret genki.',
+  contactText:
+    'Plattformen er under utprøving, og den har ikke et eget kontaktpunkt for brukerstøtte ennå. Ta kontakt med kontaktpersonen deres i Digdir.',
+  loadingStrategies: 'Henter arbeidsmåtene fra plattformen',
+  signedOutTitle: 'Du er logget ut',
+  sessionExpired: 'Økten din er utløpt. Logg inn igjen for å fortsette.',
+  sessionEnding:
+    'Økten din utløper klokka {time}. Logg inn på nytt nå, så fyller vi inn igjen det du har skrevet.',
+  sessionRelogin: 'Logg inn på nytt',
+  login: 'Logg inn',
+  unknownUser: 'Ukjent bruker',
+  languageReason: 'Endret språk i brukermenyen',
+});

@@ -1,0 +1,28 @@
+{
+  "name": "@genai/providers-postgres",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "pg": "^8.23.1",
+    "@genai/conversations": "0.0.0",
+    "@genai/definitions": "0.0.0",
+    "@genai/eval": "0.0.0",
+    "@genai/providers-mcp-client": "0.0.0",
+    "@genai/identity": "0.0.0",
+    "@genai/jobs": "0.0.0"
+  }
+}

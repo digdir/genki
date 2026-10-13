@@ -1,0 +1,145 @@
+{
+  "apiVersion": "genai/v1",
+  "kind": "StepFlow",
+  "metadata": {
+    "tenant": "999888777",
+    "id": "maloppnaelse-flyt",
+    "name": "Vurdering av måloppnåelse"
+  },
+  "spec": {
+    "purpose": "Hent mål, styringsparametere og rapporterte resultater fra tildelingsbrev og årsrapporter for valgte virksomheter, og lag en tabell med kilde for hver celle",
+    "input": {
+      "virksomheter": "liste",
+      "aar": "liste"
+    },
+    "steps": [
+      {
+        "id": "dokumenter",
+        "name": "Finn dokumentene",
+        "block": "documents@1",
+        "input": {
+          "filters": {
+            "orgs_short": "{{input.virksomheter}}",
+            "concerned_years": "{{input.aar}}"
+          }
+        },
+        "params": {
+          "filters": {
+            "type": ["Tildelingsbrev", "Årsrapport"]
+          },
+          "limit": 200
+        }
+      },
+      {
+        "id": "per-dokument",
+        "name": "For hvert dokument",
+        "onError": "skip",
+        "forEach": {
+          "in": "dokumenter.documents",
+          "as": "dok",
+          "steps": [
+            {
+              "id": "les",
+              "name": "Les dokumentet",
+              "block": "read-document@1",
+              "input": {
+                "document": "{{dok.id}}",
+                "query": "mål, styringsparametere og resultater"
+              },
+              "params": {
+                "maxChunks": 300,
+                "topK": 30
+              }
+            },
+            {
+              "id": "uthenting",
+              "name": "Hent ut mål og resultater",
+              "block": "extract@1",
+              "input": {
+                "prompt": "Finn målene og styringsparameterne i {{dok.title}}, og det som er rapportert som oppnådd resultat for hvert av dem.",
+                "chunks": "{{les.chunks}}"
+              },
+              "params": {
+                "name": "maloppnaelse",
+                "temperature": 0,
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "goals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "goal": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["goal", "target", "result"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["goals"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "tabell",
+        "name": "Lag tabellen",
+        "block": "table@1",
+        "input": {
+          "items": "{{per-dokument}}",
+          "documents": "{{dokumenter.documents}}"
+        },
+        "params": {
+          "title": "Vurdering av måloppnåelse",
+          "rows": "goals",
+          "pair": {
+            "primary": {
+              "field": "type",
+              "value": "Tildelingsbrev"
+            },
+            "reported": {
+              "field": "type",
+              "value": "Årsrapport"
+            },
+            "key": "goal",
+            "group": ["orgs_short", "concerned_years"]
+          },
+          "columns": [
+            {
+              "key": "document",
+              "label": "Dokument",
+              "from": "document.title"
+            },
+            {
+              "key": "goal",
+              "label": "Mål",
+              "from": "goal"
+            },
+            {
+              "key": "target",
+              "label": "Styringsparameter",
+              "from": "target"
+            },
+            {
+              "key": "result",
+              "label": "Rapportert resultat",
+              "from": "result"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

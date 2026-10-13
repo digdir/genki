@@ -1,0 +1,18 @@
+endpoints:
+  foundry-embeddings:
+    protocol: openai-embeddings
+    baseURL: ${FOUNDRY_OPENAI_BASE_URL}
+    auth: { kind: api-key, header: api-key, secret: secret://env/foundry-openai-key }
+models:
+  - id: foundry/text-embedding-3-small
+    endpoint: foundry-embeddings
+    deployment: text-embedding-3-small
+    residency: global
+    dimensions: 1536
+    maxBatch: 64
+  - id: foundry/text-embedding-3-large
+    endpoint: foundry-embeddings
+    deployment: text-embedding-3-large
+    residency: global
+    dimensions: 3072
+    maxBatch: 64

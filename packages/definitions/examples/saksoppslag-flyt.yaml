@@ -1,0 +1,23 @@
+# Look a case up in a registered tool source, then let the model answer from the result
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: saksoppslag-flyt, name: Saksoppslag }
+spec:
+  purpose: Slå opp saken i saksarkivet og forklar hva som står i den
+  input: { query: tekst }
+  steps:
+    - id: sok
+      name: Slå opp i saksarkivet
+      block: tool@1
+      params:
+        source: saker
+        tool: sok
+        arguments: { q: '{{input.query}}', limit: 5 }
+        timeoutMs: 20000
+      onError: use-default
+      default: { text: 'Saksarkivet svarte ikke.', json: null, parts: [], sources: [] }
+    - id: svar
+      name: Forklar svaret
+      block: model@1
+      input:
+        prompt: "Spørsmål: {{input.query}}\n\nSvar fra saksarkivet:\n{{sok.text}}\n\nForklar kort hva saken gjelder."

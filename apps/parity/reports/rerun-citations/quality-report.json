@@ -1,0 +1,459 @@
+{
+  "provisional": true,
+  "testSet": {
+    "source": "packages/eval/testsets/ka-kudos-draft.yaml",
+    "status": "draft",
+    "cases": 84
+  },
+  "generatedAt": "2026-10-08T22:21:47.153Z",
+  "repeats": 3,
+  "judge": {
+    "id": "rubric-v1",
+    "model": "claude-opus-5-5"
+  },
+  "answers": {
+    "systems": [
+      {
+        "target": "old",
+        "runs": 252,
+        "errors": 0,
+        "judgeErrors": 0,
+        "score": {
+          "mean": 0.6006746031746029,
+          "ci": [0.5304930764602815, 0.6708561298889242]
+        },
+        "patternMatch": 0.706140350877193,
+        "refusalOnNotCovered": 0.3333333333333333,
+        "falseRefusal": 0.02631578947368421,
+        "citesExpectedDocument": 0.7368421052631579,
+        "citesAnything": 1,
+        "latencyMs": {
+          "p50": 14431,
+          "p90": 41505
+        }
+      },
+      {
+        "target": "new",
+        "runs": 252,
+        "errors": 0,
+        "judgeErrors": 0,
+        "score": {
+          "mean": 0.5688492063492063,
+          "ci": [0.4983255316010402, 0.6393728810973724]
+        },
+        "patternMatch": 0.6710526315789473,
+        "refusalOnNotCovered": 0.3333333333333333,
+        "falseRefusal": 0.09649122807017543,
+        "citesExpectedDocument": 0.7543859649122807,
+        "citesAnything": 1,
+        "latencyMs": {
+          "p50": 13035,
+          "p90": 35720
+        }
+      }
+    ],
+    "paired": {
+      "meanDifference": -0.0318253968253968,
+      "ci": [-0.08971134350630053, 0.02606054985550694],
+      "n": 84
+    },
+    "byTag": [
+      {
+        "tag": "arsrapport",
+        "n": 32,
+        "scores": [0.5422916666666667, 0.5280208333333333]
+      },
+      {
+        "tag": "comparison",
+        "n": 6,
+        "scores": [0.325, 0.2822222222222222]
+      },
+      {
+        "tag": "evaluering",
+        "n": 1,
+        "scores": [0.8500000000000001, 0.26]
+      },
+      {
+        "tag": "factual",
+        "n": 70,
+        "scores": [0.5962857142857141, 0.5586666666666666]
+      },
+      {
+        "tag": "instruks",
+        "n": 4,
+        "scores": [0.69, 0.7208333333333333]
+      },
+      {
+        "tag": "not-covered",
+        "n": 8,
+        "scores": [0.8458333333333332, 0.8729166666666668]
+      },
+      {
+        "tag": "proposisjon-til-stortinget",
+        "n": 2,
+        "scores": [0.5716666666666667, 0.09166666666666666]
+      },
+      {
+        "tag": "statusrapport",
+        "n": 23,
+        "scores": [0.5352173913043479, 0.5062318840579711]
+      },
+      {
+        "tag": "strategi-plan",
+        "n": 2,
+        "scores": [0.8499999999999999, 0.8083333333333333]
+      },
+      {
+        "tag": "tildelingsbrev",
+        "n": 12,
+        "scores": [0.6311111111111111, 0.6097222222222223]
+      }
+    ],
+    "perCase": [
+      {
+        "id": "ka-kudos-001-factual",
+        "scores": [0.8333333333333334, 0.8166666666666668]
+      },
+      {
+        "id": "ka-kudos-002-factual",
+        "scores": [0.6, 0.8966666666666666]
+      },
+      {
+        "id": "ka-kudos-003-factual",
+        "scores": [0.9499999999999998, 0.85]
+      },
+      {
+        "id": "ka-kudos-004-factual",
+        "scores": [0.43333333333333335, 0.4333333333333333]
+      },
+      {
+        "id": "ka-kudos-005-factual",
+        "scores": [0.5666666666666667, 0.3166666666666667]
+      },
+      {
+        "id": "ka-kudos-006-factual",
+        "scores": [0.5333333333333333, 0.15]
+      },
+      {
+        "id": "ka-kudos-007-factual",
+        "scores": [0.61, 0.03333333333333333]
+      },
+      {
+        "id": "ka-kudos-008-factual",
+        "scores": [0.31666666666666665, 0]
+      },
+      {
+        "id": "ka-kudos-009-factual",
+        "scores": [0.3, 0.85]
+      },
+      {
+        "id": "ka-kudos-010-factual",
+        "scores": [0.8500000000000001, 0.26]
+      },
+      {
+        "id": "ka-kudos-011-factual",
+        "scores": [0.3166666666666667, 0.5]
+      },
+      {
+        "id": "ka-kudos-012-factual",
+        "scores": [0.65, 0.8166666666666668]
+      },
+      {
+        "id": "ka-kudos-013-factual",
+        "scores": [0.8833333333333333, 0.5933333333333334]
+      },
+      {
+        "id": "ka-kudos-014-factual",
+        "scores": [0, 0.9499999999999998]
+      },
+      {
+        "id": "ka-kudos-015-factual",
+        "scores": [0.9266666666666666, 0.8933333333333334]
+      },
+      {
+        "id": "ka-kudos-016-factual",
+        "scores": [0.31666666666666665, 0.5666666666666668]
+      },
+      {
+        "id": "ka-kudos-017-factual",
+        "scores": [0.85, 0.7333333333333334]
+      },
+      {
+        "id": "ka-kudos-018-factual",
+        "scores": [0.11666666666666668, 0.11666666666666665]
+      },
+      {
+        "id": "ka-kudos-019-factual",
+        "scores": [0.9166666666666666, 0.5666666666666667]
+      },
+      {
+        "id": "ka-kudos-020-factual",
+        "scores": [0.8500000000000001, 0.8333333333333334]
+      },
+      {
+        "id": "ka-kudos-021-factual",
+        "scores": [0.25000000000000006, 0.09999999999999999]
+      },
+      {
+        "id": "ka-kudos-022-factual",
+        "scores": [0.8933333333333334, 0.9133333333333334]
+      },
+      {
+        "id": "ka-kudos-023-factual",
+        "scores": [0.86, 0.87]
+      },
+      {
+        "id": "ka-kudos-024-factual",
+        "scores": [0.16666666666666666, 0.18333333333333335]
+      },
+      {
+        "id": "ka-kudos-025-factual",
+        "scores": [0.39999999999999997, 0.29]
+      },
+      {
+        "id": "ka-kudos-026-factual",
+        "scores": [0.9166666666666666, 0.5499999999999999]
+      },
+      {
+        "id": "ka-kudos-027-factual",
+        "scores": [0.3233333333333333, 0.8733333333333334]
+      },
+      {
+        "id": "ka-kudos-028-factual",
+        "scores": [0.6333333333333333, 0.5499999999999999]
+      },
+      {
+        "id": "ka-kudos-029-comparison",
+        "scores": [0.8733333333333334, 0.6]
+      },
+      {
+        "id": "ka-kudos-030-factual",
+        "scores": [0.31666666666666665, 0.8866666666666667]
+      },
+      {
+        "id": "ka-kudos-031-factual",
+        "scores": [0.8000000000000002, 0.79]
+      },
+      {
+        "id": "ka-kudos-032-factual",
+        "scores": [0.02666666666666667, 0]
+      },
+      {
+        "id": "ka-kudos-033-factual",
+        "scores": [0.9, 0.8766666666666666]
+      },
+      {
+        "id": "ka-kudos-034-factual",
+        "scores": [0.016666666666666666, 0]
+      },
+      {
+        "id": "ka-kudos-035-factual",
+        "scores": [0.3333333333333333, 0.5499999999999999]
+      },
+      {
+        "id": "ka-kudos-036-factual",
+        "scores": [0.9499999999999998, 0.86]
+      },
+      {
+        "id": "ka-kudos-037-comparison",
+        "scores": [0.2333333333333333, 0.27666666666666667]
+      },
+      {
+        "id": "ka-kudos-038-factual",
+        "scores": [0.9499999999999998, 0.8966666666666666]
+      },
+      {
+        "id": "ka-kudos-039-factual",
+        "scores": [0.9166666666666666, 0.3166666666666667]
+      },
+      {
+        "id": "ka-kudos-040-factual",
+        "scores": [0.9033333333333333, 0.8833333333333333]
+      },
+      {
+        "id": "ka-kudos-041-factual",
+        "scores": [0.46666666666666673, 0.7333333333333334]
+      },
+      {
+        "id": "ka-kudos-042-factual",
+        "scores": [0.39999999999999997, 0.5166666666666666]
+      },
+      {
+        "id": "ka-kudos-043-factual",
+        "scores": [0.9166666666666666, 0.9499999999999998]
+      },
+      {
+        "id": "ka-kudos-044-factual",
+        "scores": [0.7666666666666666, 0.9499999999999998]
+      },
+      {
+        "id": "ka-kudos-045-factual",
+        "scores": [0.016666666666666666, 0.26666666666666666]
+      },
+      {
+        "id": "ka-kudos-046-factual",
+        "scores": [0.9499999999999998, 0.5833333333333334]
+      },
+      {
+        "id": "ka-kudos-047-comparison",
+        "scores": [0.03333333333333333, 0.03333333333333333]
+      },
+      {
+        "id": "ka-kudos-048-factual",
+        "scores": [0, 0]
+      },
+      {
+        "id": "ka-kudos-049-factual",
+        "scores": [0.10666666666666667, 0.13333333333333333]
+      },
+      {
+        "id": "ka-kudos-050-factual",
+        "scores": [0.7466666666666667, 0.7833333333333332]
+      },
+      {
+        "id": "ka-kudos-051-comparison",
+        "scores": [0.29333333333333333, 0.16666666666666666]
+      },
+      {
+        "id": "ka-kudos-052-factual",
+        "scores": [0.3333333333333333, 0.5499999999999999]
+      },
+      {
+        "id": "ka-kudos-053-factual",
+        "scores": [0.8666666666666667, 0.55]
+      },
+      {
+        "id": "ka-kudos-054-factual",
+        "scores": [0.9499999999999998, 0.85]
+      },
+      {
+        "id": "ka-kudos-055-comparison",
+        "scores": [0.20000000000000004, 0.06666666666666667]
+      },
+      {
+        "id": "ka-kudos-056-factual",
+        "scores": [0.9, 0.8333333333333334]
+      },
+      {
+        "id": "ka-kudos-057-factual",
+        "scores": [0.6666666666666666, 0.35000000000000003]
+      },
+      {
+        "id": "ka-kudos-058-factual",
+        "scores": [0.9166666666666666, 0.8933333333333334]
+      },
+      {
+        "id": "ka-kudos-059-factual",
+        "scores": [0.6333333333333333, 0.10666666666666667]
+      },
+      {
+        "id": "ka-kudos-060-factual",
+        "scores": [0.9499999999999998, 0.9]
+      },
+      {
+        "id": "ka-kudos-061-comparison",
+        "scores": [0.3166666666666667, 0.55]
+      },
+      {
+        "id": "ka-kudos-062-factual",
+        "scores": [0, 0]
+      },
+      {
+        "id": "ka-kudos-063-factual",
+        "scores": [0.9499999999999998, 0.26666666666666666]
+      },
+      {
+        "id": "ka-kudos-064-factual",
+        "scores": [0.9333333333333332, 0.2833333333333333]
+      },
+      {
+        "id": "ka-kudos-065-factual",
+        "scores": [0.7666666666666666, 0.7333333333333334]
+      },
+      {
+        "id": "ka-kudos-066-factual",
+        "scores": [0, 0.03333333333333333]
+      },
+      {
+        "id": "ka-kudos-067-factual",
+        "scores": [0.4666666666666666, 0.9333333333333332]
+      },
+      {
+        "id": "ka-kudos-068-factual",
+        "scores": [0.3333333333333333, 0.5]
+      },
+      {
+        "id": "ka-kudos-069-factual",
+        "scores": [0.9, 0.8933333333333334]
+      },
+      {
+        "id": "ka-kudos-070-factual",
+        "scores": [0.9, 0.8333333333333334]
+      },
+      {
+        "id": "ka-kudos-071-factual",
+        "scores": [0.9333333333333332, 0.8833333333333333]
+      },
+      {
+        "id": "ka-kudos-072-factual",
+        "scores": [0.8933333333333334, 0.9033333333333333]
+      },
+      {
+        "id": "ka-kudos-073-factual",
+        "scores": [0.31666666666666665, 0.3666666666666667]
+      },
+      {
+        "id": "ka-kudos-074-factual",
+        "scores": [0.9166666666666666, 0.8266666666666668]
+      },
+      {
+        "id": "ka-kudos-075-factual",
+        "scores": [0.3666666666666667, 0.08333333333333333]
+      },
+      {
+        "id": "ka-kudos-076-factual",
+        "scores": [0.09999999999999999, 0.05000000000000001]
+      },
+      {
+        "id": "ka-kudos-077-not-covered",
+        "scores": [0.9333333333333332, 0.8666666666666666]
+      },
+      {
+        "id": "ka-kudos-078-not-covered",
+        "scores": [0.9, 0.9166666666666666]
+      },
+      {
+        "id": "ka-kudos-079-not-covered",
+        "scores": [0.9333333333333332, 0.9500000000000001]
+      },
+      {
+        "id": "ka-kudos-080-not-covered",
+        "scores": [0.8333333333333334, 0.8000000000000002]
+      },
+      {
+        "id": "ka-kudos-081-not-covered",
+        "scores": [0.9, 0.9166666666666666]
+      },
+      {
+        "id": "ka-kudos-082-not-covered",
+        "scores": [0.85, 0.8833333333333333]
+      },
+      {
+        "id": "ka-kudos-083-not-covered",
+        "scores": [0.5333333333333333, 0.7000000000000001]
+      },
+      {
+        "id": "ka-kudos-084-not-covered",
+        "scores": [0.8833333333333333, 0.9499999999999998]
+      }
+    ]
+  },
+  "notes": [
+    "Neither system reports token usage over MCP, so cost per answer is not compared here.",
+    "headless-rag returns its top chunks after reranking (often 3 to 5); the platform returns up to 10, which limits overlap and favours the platform on recall at 10.",
+    "Both systems plan queries with a language model, so retrieval varies between repeats; stability shows how much.",
+    "Refusal rates use a keyword heuristic and undercount refusals worded in other ways; the judge scores on the not-covered tag are the better signal.",
+    "About one in five platform answers carries no sources in its MCP result, and those answers score low. That is the main gap to investigate before Kunnskapsassistenten switches.",
+    "Search profile recall uses the raw question with no planner and no auto-filters, so it measures the profiles alone, not the full pipeline."
+  ]
+}

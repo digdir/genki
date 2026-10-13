@@ -1,0 +1,32 @@
+{
+  "scenario": "mcp.get-not-allowed",
+  "recordedAt": "2026-10-06T21:15:36.325Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/mcp",
+        "headers": {}
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "content-type": "application/json",
+          "allow": "POST"
+        },
+        "body": {
+          "jsonrpc": "2.0",
+          "id": null,
+          "error": {
+            "code": -32601,
+            "message": "Method Not Allowed: the MCP endpoint accepts POST only",
+            "data": {
+              "allow": ["POST"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

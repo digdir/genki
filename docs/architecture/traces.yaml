@@ -1,0 +1,90 @@
+- id: ka-question
+  name: KA asks a question over MCP
+  steps:
+    - { module: ka, text: "KA's frontend calls tools/call with its existing tool name." }
+    - {
+        module: adapter-mcp,
+        text: 'The MCP adapter resolves the tool name, an alias, to a published capability.',
+      }
+    - {
+        module: identity,
+        text: 'The caller becomes a Principal: Maskinporten token or a bridged legacy key.',
+      }
+    - {
+        module: kernel,
+        text: 'The kernel checks policy and budget, opens a task and starts its event log.',
+      }
+    - {
+        module: guardrails,
+        text: 'pii-before-model and the other configured guardrails wrap the strategy.',
+      }
+    - {
+        module: strategy-agent-loop,
+        text: 'The agent loop plans and calls the retrieval tool through the tool port.',
+      }
+    - { module: retrieval, text: 'Retrieval plans the query, searches, merges and reranks.' }
+    - {
+        module: port-knowledge,
+        text: "The knowledge port routes the search to the dataset's endpoint, with a timeout.",
+      }
+    - { module: providers-typesense, text: 'The search-only Typesense adapter runs multi_search.' }
+    - {
+        module: port-model,
+        text: 'The model router checks residency and capabilities, then calls the model.',
+      }
+    - { module: providers-openai, text: 'The openai-chat adapter talks to the Foundry deployment.' }
+    - { module: azure-foundry, text: 'Azure AI Foundry generates the answer.' }
+    - {
+        module: providers-postgres,
+        text: 'Events are appended; payloads encrypted per tenant and thread.',
+      }
+    - {
+        module: adapter-mcp,
+        text: 'Progress and the final structuredContent with chunks and citations go back to KA.',
+      }
+- id: publish-service
+  name: An agency publishes a service
+  steps:
+    - { module: portal, text: 'An agency admin edits the service definition in the portal.' }
+    - {
+        module: ansattporten,
+        text: 'They are signed in through Ansattporten and act for their organisation.',
+      }
+    - { module: api, text: 'The portal route invokes platform.service.publish as a task.' }
+    - {
+        module: identity,
+        text: 'Altinn decides whether the principal may publish for that organisation.',
+      }
+    - {
+        module: definitions,
+        text: 'The closed schema validates the definition and compiles each variant.',
+      }
+    - { module: eval, text: "Publishing gates run the service's test sets." }
+    - {
+        module: providers-postgres,
+        text: 'The store saves an immutable version with the next integer.',
+      }
+- id: employee-chat
+  name: An employee chats in Workspace
+  steps:
+    - { module: workspace, text: 'An employee signs in and picks a published service.' }
+    - {
+        module: adapter-openai,
+        text: '/v1/chat/completions resolves the model name to a capability.',
+      }
+    - { module: kernel, text: 'The kernel runs the task and streams client events.' }
+    - { module: strategy-rag, text: 'The RAG strategy retrieves and answers once, with citations.' }
+    - { module: adapter-openai, text: 'Real token deltas stream back; citations follow the text.' }
+    - { module: api, text: 'Feedback on the answer becomes a kernel feedback event.' }
+- id: ingest-dataset
+  name: A document arrives in a job folder
+  steps:
+    - { module: port-blob, text: "A file lands in a service's folder." }
+    - { module: worker, text: "The worker's trigger binding fires for that service." }
+    - { module: jobs, text: 'The trigger starts a task, or a batch over the folder.' }
+    - { module: kernel, text: "The task runs as the agency's system user." }
+    - {
+        module: strategy-single-call,
+        text: 'A single-call strategy rewrites or classifies the document.',
+      }
+    - { module: port-blob, text: 'The result is written back next to the input.' }

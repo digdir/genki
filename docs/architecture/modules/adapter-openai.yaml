@@ -1,0 +1,46 @@
+id: adapter-openai
+plane: adapters
+name: OpenAI /v1 adapter
+note: Chat completions + tools API
+icon: api
+color: '#46d7c8'
+status: Protocol adapter
+packages:
+  - '@genai/adapter-openai'
+summary: OpenAI-compatible /v1/models and /v1/chat/completions over published variants, plus an
+  OpenAPI tool surface.
+description: Resolves the model name to a capability (with version pin via metadata.version), splits
+  messages into input, invokes the kernel and, when streaming, sends citations first and the final answer once; clients
+  that send genai_stream live get token deltas, a retract frame when an answer is replaced, and
+  citations after the text. Optional extensions for own frontends (conversation_id and
+  genai_conversation for server-side history, filters, genai_steps, and one source per document with
+  index and excerpts, see docs/frontend-contract.md). Also serves /api/tools for OpenAPI-style tool calls.
+responsibilities:
+  - Model listing and name resolution with aliases
+  - Chat completions, streamed or unary
+  - Frontend extensions: conversations, filters, step events, per-document sources
+  - OpenAPI tool endpoints
+files:
+  - packages/adapter-openai/src/app.ts
+  - packages/adapter-openai/src/sources.ts
+input: Chat completion request
+output: Completion or SSE deltas
+replaces:
+  - module: api
+    how: The OpenAI-compatible half of the headless HTTP API
+edges:
+  - to: i18n
+    label: Localised OpenAPI description
+    kind: call
+    target: call
+    witness:
+      file: packages/adapter-openai/src/app.ts
+      imports: '@genai/i18n'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/adapter-openai/src/app.ts
+      imports: '@genai/contracts'
+keywords: openai v1 chat completions models streaming

@@ -1,0 +1,70 @@
+id: parity
+plane: composition
+name: Parity harness
+note: Record old, compare new
+icon: scope
+color: '#a78bfa'
+status: App
+packages:
+  - '@genai/parity'
+summary: Records headless-rag and compares any target against it, honouring the agreed divergences.
+description: Captures requests and responses from headless-rag, normalises nondeterminism, and
+  replays them against the new platform. It reads the ADR 0017 divergence list to skip or invert
+  checks, and runs retrieval baselines, quality sweeps on the KA and headless-rag golden sets with
+  stage attribution and the served model, and the fixed-query retrieval, rerank, auto-filter and
+  agent-budget benchmarks through headless-rag's debug route and the platform's operator
+  diagnostics.
+responsibilities:
+  - Record and play back headless-rag traffic
+  - Compare shape, SSE and ids with divergence rules
+  - Retrieval baseline and quality reports
+  - Fixed-query retrieval, rerank, auto-filter and agent-budget benchmarks
+files:
+  - apps/parity/src/cli.ts
+  - apps/parity/src/compare.ts
+  - apps/parity/src/divergences.ts
+  - apps/parity/src/http.ts
+  - apps/parity/src/sweep.ts
+  - apps/parity/src/bench.ts
+  - apps/parity/src/diagnostics.ts
+  - apps/parity/src/testsets.ts
+input: Scenarios and two base URLs
+output: Parity and quality reports
+replaces: []
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: apps/parity/src/cli.ts
+      imports: '@genai/kernel'
+  - to: port-knowledge
+    label: Search and fetch through the knowledge port
+    kind: call
+    target: call
+    witness:
+      file: apps/parity/src/cli.ts
+      imports: '@genai/port-knowledge'
+  - to: providers-typesense
+    label: Typesense adapter for live runs
+    kind: call
+    target: call
+    witness:
+      file: apps/parity/src/cli.ts
+      imports: '@genai/providers-typesense'
+  - to: headless-rag
+    label: Records the reference behaviour
+    kind: http
+    target: http
+    witness:
+      file: apps/parity/src/http.ts
+      contains: fetch(new URL(request.path, target.baseUrl)
+  - to: api
+    label: Operator diagnostics for fixed-query retrieval and stage attribution
+    kind: http
+    target: http
+    witness:
+      file: apps/parity/src/diagnostics.ts
+      contains: /diagnostics/retrieve
+keywords: parity harness compare record playback divergences golden

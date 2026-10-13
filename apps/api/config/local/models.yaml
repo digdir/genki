@@ -1,0 +1,28 @@
+endpoints:
+  foundry-openai:
+    protocol: openai-chat
+    baseURL: ${FOUNDRY_OPENAI_BASE_URL}
+    auth: { kind: api-key, header: api-key, secret: secret://env/foundry-openai-key }
+    discovery:
+      source: azure-deployments
+      exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
+      capabilities: [stream, tools, json-schema]
+  foundry-claude:
+    protocol: anthropic-messages
+    baseURL: ${FOUNDRY_CLAUDE_BASE_URL}
+    auth: { kind: api-key, secret: secret://env/foundry-claude-key }
+    discovery:
+      source: azure-deployments
+      from: foundry-openai
+      include: ['claude-*']
+      capabilities: [stream, tools, json-schema, reasoning]
+  local-model:
+    protocol: openai-chat
+    baseURL: ${LOCAL_MODEL_URL}
+    auth: { kind: bearer, secret: secret://env/local-model-key }
+models:
+  - id: local/echo
+    endpoint: local-model
+    deployment: echo
+    residency: norway
+    capabilities: [stream, json-schema]

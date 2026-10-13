@@ -1,0 +1,17 @@
+id: langfuse
+plane: external
+name: Langfuse
+note: Traces
+icon: pulse
+color: '#607b88'
+status: External
+external: true
+summary: Trace sink, metadata only by default.
+description: Trace sink, metadata only by default.
+responsibilities: []
+files: []
+input: ''
+output: ''
+replaces: []
+edges: []
+keywords: langfuse langfuse external

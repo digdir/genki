@@ -1,0 +1,17 @@
+# A service that uses a flow with a tool step: the tool must be listed under tools
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: saksoppslag, name: Saksoppslag }
+spec:
+  purpose: Slå opp saker i saksarkivet og forklar dem
+  audience: [employees]
+  riskClass: limited
+  input: { accepts: [text/plain] }
+  output: { kind: answer }
+  strategy:
+    id: step-flow
+    version: 1
+    config: { flow: 'saksoppslag-flyt@1' }
+  tools: [saker.sok@1]
+  model: { primary: foundry/gpt-4o, residency: norway }
+  exposure: { chat: true, mcp: true, rest: true }

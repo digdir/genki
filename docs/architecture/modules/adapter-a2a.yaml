@@ -1,0 +1,41 @@
+id: adapter-a2a
+plane: adapters
+name: A2A adapter
+note: Services as A2A 1.0 agents
+icon: gateway
+color: '#46d7c8'
+status: Protocol adapter
+packages:
+  - '@genai/adapter-a2a'
+summary: Exposes published services with the a2a channel as A2A agents, with an agent card each and
+  the JSON-RPC binding mapped onto kernel tasks.
+description: 'Implements A2A 1.0 (JSON-RPC binding) on /a2a: a listing of agent cards, a card per
+  service at /a2a/{agent}/.well-known/agent-card.json derived from the capability descriptor, and
+  SendMessage, SendStreamingMessage (SSE), GetTask, ListTasks (caller and agent scoped, cursor
+  paging), CancelTask and SubscribeToTask. A2A 0.3 clients (A2A-Version 0.3, or a 0.3 method name
+  without the header) get the 0.3 method names and shapes on the same handlers. Interrupts
+  become input-required and are resumed by a message with the task id. Push notifications and
+  the extended card are refused with the A2A error codes (ADR 0023). Services that
+  opt in with exposure.a2aPublicCard get a reduced card and listing without login, rate limited
+  per client address.'
+responsibilities:
+  - Agent cards from capability descriptors and input fields
+  - Map A2A messages and tasks onto kernel invoke, resume, cancel and events
+  - Stream answer chunks and the final status over SSE
+files:
+  - packages/adapter-a2a/src/app.ts
+  - packages/adapter-a2a/src/protocol.ts
+  - packages/adapter-a2a/src/legacy.ts
+  - packages/adapter-a2a/src/list-tasks.ts
+input: A2A JSON-RPC request
+output: A2A task, artifacts or SSE stream
+replaces: []
+edges:
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/adapter-a2a/src/app.ts
+      imports: '@genai/kernel'
+keywords: a2a agent card json-rpc tasks streaming sse agents

@@ -1,0 +1,16 @@
+# Batch: summarise a whole folder of consultation responses
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '999888777', id: horingssvar, name: Høringssvar }
+spec:
+  purpose: Oppsummer høringssvar og sammenlign standpunktene på tvers av høringsinstansene
+  riskClass: minimal
+  input: { accepts: [application/pdf, text/plain] }
+  output: { kind: document, template: maler/horingsoppsummering.docx }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/horing.nb.md }
+  model: { primary: foundry/gpt-4o, residency: eu }
+  exposure: { rest: true }
+  batch: { enabled: true }

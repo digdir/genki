@@ -1,0 +1,36 @@
+# Answer with sources: today's Kunnskapsassistenten, rebuilt as an ordinary service
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: kunnskapsassistenten, name: Kunnskapsassistenten }
+spec:
+  purpose: Svar med kilder fra offentlige rapporter i Kudos
+  audience: [employees]
+  riskClass: limited
+  variants:
+    - id: default
+      aliases: [ka]
+    - id: retrieve-only
+      aliases: [ka-retrieve-only]
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      instructions: prompts/ka-system.nb.md
+      budget: { searches: 4, reads: 6, readChars: 12000 }
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos
+        filters: { type: multiselect, concerned_years: multiselect }
+    reranker: colbert
+    retrieval: { maxPerDocument: 10 }
+  tools: [rag@1]
+  model: { primary: foundry/gpt-4o, fallback: aivar/borealis, residency: norway }
+  guardrails:
+    pii-before-model: { categories: [national-id] }
+    require-sources: true
+    language: { mode: same }
+  exposure: { chat: true, mcp: true, openai: true, rest: true }
+  evaluation: { testSets: [ka-kudos], gates: [recall-at-10, no-tag-regression] }
+  improve: { allow: [instructions, retrieval] }

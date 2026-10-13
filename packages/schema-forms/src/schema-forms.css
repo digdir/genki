@@ -1,0 +1,33 @@
+.sf-form {
+  display: grid;
+  gap: var(--ds-size-4);
+}
+.sf-group {
+  display: grid;
+  gap: var(--ds-size-4);
+}
+.sf-optional {
+  font-weight: 400;
+  color: var(--ds-color-neutral-text-subtle);
+}
+.sf-number {
+  max-width: 12rem;
+}
+.sf-mono,
+.sf-prompt {
+  font-family: var(--ds-font-family-mono, ui-monospace, monospace);
+}
+.sf-items {
+  display: grid;
+  gap: var(--ds-size-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sf-item,
+.sf-map-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--ds-size-2);
+}

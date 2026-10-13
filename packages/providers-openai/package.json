@@ -1,0 +1,33 @@
+{
+  "name": "@genai/providers-openai",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./contract": {
+      "source": "./src/contract.ts",
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/plugins": "0.0.0",
+    "@genai/port-embedding": "0.0.0",
+    "@genai/port-model": "0.0.0",
+    "openai": "^7.28.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/kernel": "0.0.0"
+  }
+}

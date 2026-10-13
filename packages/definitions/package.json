@@ -1,0 +1,23 @@
+{
+  "name": "@genai/definitions",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,72 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: docs-release-cross-check, name: Docs Release Cross-Check }
+spec:
+  purpose: Turn release notes into a per-page TODO list of documentation edits, citing the pages that need them
+  steps:
+    - id: entities
+      block: extract@1
+      input:
+        prompt: "Extract all entities from the following text.\n\nEntity types to extract: product, feature, api, setting, event\n\nText:\n{{input.query}}"
+      params:
+        name: extractEntities
+        temperature: 0.1
+        schema:
+          type: object
+          properties:
+            queries:
+              type: array
+              items: { type: string }
+              description: The text of each extracted entity, without duplicates
+          required: [queries]
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', queries: '{{entities.queries}}' }
+      params: { plan: false }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+      params: { contextTopK: 16 }
+    - id: todos
+      block: extract@1
+      input:
+        prompt: "You are a documentation-maintenance assistant for Altinn 3. You receive a list of release-note items and a set of retrieved prior-art excerpts from https://docs.altinn.studio (and related digdir.no pages). Your job is to produce a per-page TODO list of edits that the docs need so they stay accurate after the release.\n\nRelease-notes input:\n{{input.query}}\n\nRules:\n- Each release-note item MUST land in EXACTLY ONE of todos or uncovered_items. Never both.\n- A release-note item belongs in todos only when the excerpts contain at least one page that clearly relates to the item's subject. Otherwise place it in uncovered_items; do not invent or guess a page_url.\n- One TODO per (page, release-note item) pair.\n- Use the page's URL from the excerpts as page_url. Never fabricate a page_url that is not in the excerpts.\n- Mark confidence honestly: high only when an existing excerpt clearly contradicts or omits the release-note item; medium when the page is related but the specific detail is not in the excerpt. Low-confidence items belong in uncovered_items."
+        chunks: '{{rerank.contextChunks}}'
+      params:
+        name: emitReleaseTodos
+        temperature: 0.2
+        schema:
+          type: object
+          properties:
+            todos:
+              type: array
+              items:
+                type: object
+                properties:
+                  page_url:
+                    { type: string, description: URL of the existing doc page that needs updating. }
+                  release_item:
+                    { type: string, description: The release-note item that triggers this edit. }
+                  predicted_edit:
+                    {
+                      type: string,
+                      description: One-sentence description of the edit the maintainer should make.,
+                    }
+                  rationale: { type: string, description: Why this page is affected. }
+                  confidence: { type: string, enum: [high, medium] }
+                required: [page_url, release_item, predicted_edit]
+            uncovered_items:
+              type: array
+              items: { type: string }
+              description: Release-note items whose subject no excerpt covers.
+            notes:
+              type: array
+              items: { type: string }
+              description: Cross-cutting observations about the release as a whole. Empty if none.
+          required: [todos]
+    - id: answer
+      block: answer@1
+      input:
+        text: '{"todoList": {{todos}}}'
+        chunks: '{{rerank.contextChunks}}'
+        meta: { todoList: '{{todos}}' }

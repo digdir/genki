@@ -1,0 +1,151 @@
+[
+  {
+    "scenario": "mcp.discover",
+    "title": "server/discover returns versions, capabilities and cache hints",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.tools-list",
+    "title": "tools/list returns the tools this key can reach, with private cache hints",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.ping",
+    "title": "ping answers with an empty result",
+    "differences": [
+      {
+        "severity": "fail",
+        "path": "$.status",
+        "old": "200",
+        "new": "404",
+        "step": "mcp.ping"
+      },
+      {
+        "severity": "fail",
+        "path": "$.body.error",
+        "old": "undefined",
+        "new": "{\"code\":-32601,\"message\":\"Method not found\",\"data\":{\"method\":\"ping\"}}",
+        "step": "mcp.ping"
+      },
+      {
+        "severity": "fail",
+        "path": "$.body.result",
+        "old": "{\"resultType\":\"complete\"}",
+        "new": "undefined",
+        "step": "mcp.ping"
+      }
+    ],
+    "outcome": "divergence",
+    "divergence": "ADR 0017: the new platform follows the current MCP revision, which removes ping"
+  },
+  {
+    "scenario": "mcp.initialize-rejected",
+    "title": "initialize is refused with -32022 and the supported versions",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.unknown-method",
+    "title": "an unknown method is HTTP 404 with -32601",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.get-not-allowed",
+    "title": "GET is 405",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.delete-not-allowed",
+    "title": "DELETE is 405",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.missing-headers",
+    "title": "a request without metadata headers is 400 with -32020",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.header-mismatch",
+    "title": "a header that contradicts the body is 400 with -32020",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.unsupported-version",
+    "title": "an older protocol version is 400 with -32022",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.notification",
+    "title": "a notification is 202 with no body",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.no-key",
+    "title": "a request without an API key is refused",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.unknown-tool",
+    "title": "calling an unknown tool is an error before anything runs",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "mcp.invalid-overrides",
+    "title": "an override outside the allowlist fails with -32602 invalid_overrides",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "v1.models",
+    "title": "/v1/models lists agent and mode pairs with the fields KA parses",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "v1.no-key",
+    "title": "/v1/models without a key is 401 in the OpenAI error format",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "v1.unknown-model",
+    "title": "an unknown model is refused with model_not_found",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "rest.datasets",
+    "title": "/api/datasets lists the datasets this key can see",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "rest.conversations",
+    "title": "conversation lifecycle: create, list, read, rename, delete, then gone",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "rest.conversations-without-user",
+    "title": "conversations without X-User-Id are refused",
+    "differences": [],
+    "outcome": "pass"
+  },
+  {
+    "scenario": "rest.no-key",
+    "title": "/api/datasets without a key is refused",
+    "differences": [],
+    "outcome": "pass"
+  }
+]

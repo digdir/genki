@@ -1,0 +1,25 @@
+{
+  "name": "@genai/identity",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/i18n": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "hono": "^4.13.13",
+    "jose": "^6.2.12",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,24 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: docs-agent, name: 'Dokumentasjonsagent' }
+spec:
+  purpose: 'Hjelp til å vedlikeholde Altinn-dokumentasjonen: disposisjoner og sjekk av endringslogger'
+  audience: [employees]
+  riskClass: limited
+  variants:
+    - id: outline-graph
+    - id: release-cross-check
+      overrides: { 'flow': 'docs-release-cross-check@1' }
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: step-flow
+    version: 1
+    config: { 'flow': 'docs-outline@1' }
+  knowledge:
+    datasets:
+      - dataset: digdir/public-docs
+    reranker: colbert
+    retrieval: { maxPerDocument: 10 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { mcp: true, openai: true, rest: true }

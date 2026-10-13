@@ -1,0 +1,35 @@
+import type { Translation } from '@genai/i18n';
+import type { approvals as source } from '../nb/approvals';
+
+export const approvals = {
+  writeWhy: 'Write why you are rejecting the draft.',
+  service: 'Service',
+  case: 'Case',
+  due: 'Due',
+  assigned: 'Assigned to',
+  aiDraft: 'Draft made with AI',
+  basis: 'See what the service used as its basis',
+  comment: 'Comment',
+  commentHelp: 'Required if you reject.',
+  notSaved: 'The decision was not saved. Please try again in a moment.',
+  approve: 'Approve',
+  reject: 'Reject',
+  accountability:
+    'Your name is stored with the decision. This is for accountability, not monitoring.',
+  approved: '{title} is approved and sent to the case.',
+  rejected: '{title} is rejected. The service is notified, and your comment becomes feedback.',
+  heading: 'For approval',
+  intro: 'Drafts assigned to you or your group, from services you have access to.',
+  loading: 'Loading drafts …',
+  loadFailed: 'Could not load the drafts',
+  notYourFault: 'You have not done anything wrong. Please try again in a moment.',
+  tryAgain: 'Try again',
+  empty: 'No drafts are waiting for you.',
+  emptyText: 'New drafts appear here, and you get a notice by email.',
+  dueTag: 'Due {due}',
+  meta: '{service} · case {caseNumber}',
+  doneToday: 'Handled today',
+  approvedTag: 'Approved',
+  rejectedTag: 'Rejected',
+  pick: 'Choose a draft to see it.',
+} satisfies Translation<typeof source>;

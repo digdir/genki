@@ -1,0 +1,66 @@
+id: portal
+plane: consumers
+name: Portal
+note: Agency self-service
+icon: ui
+color: '#74a7ff'
+status: React app
+packages:
+  - '@genai/portal'
+summary: Where an agency builds, tests and publishes its own services, datasets and API keys.
+description: The tenant-facing builder. Agency admins edit service definitions (YAML or forms),
+  browse datasets and facets, manage API keys and publish versions. Every change goes through the
+  same publish capability as git automation (ADR 0005, 0010).
+responsibilities:
+  - Edit and publish service definitions
+  - Browse datasets and facets
+  - Issue and revoke tenant API keys
+files:
+  - apps/portal/src/App.tsx
+  - apps/portal/src/api.ts
+  - apps/portal/src/oidc.ts
+  - apps/portal/src/yaml.ts
+input: Agency admin actions
+output: Publish and admin requests
+replaces:
+  - module: admin
+    how: Tenant-scoped part of the admin UI
+  - module: playground
+    how: Service testing before publish
+edges:
+  - to: i18n
+    label: Language state and choice
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/App.tsx
+      imports: '@genai/i18n'
+  - to: api
+    label: 'Tenant routes: services, versions, API keys'
+    kind: http
+    target: http
+    witness:
+      file: apps/portal/src/api.ts
+      contains: /api-keys
+  - to: adapter-rest
+    label: Dataset list and facets
+    kind: http
+    target: http
+    witness:
+      file: apps/portal/src/api.ts
+      contains: /api/datasets
+  - to: ansattporten
+    label: OIDC sign-in
+    kind: http
+    target: http
+    witness:
+      file: apps/portal/src/oidc.ts
+      contains: ansattporten
+  - to: schema-forms
+    label: Renders strategy and plugin parameters from JSON Schema
+    kind: call
+    target: call
+    witness:
+      file: apps/portal/src/screens/service/StrategyPanel.tsx
+      imports: '@genai/schema-forms'
+keywords: portal agency tenant builder publish api keys datasets

@@ -1,0 +1,23 @@
+{
+  "scenario": "rest.conversations-without-user",
+  "recordedAt": "2026-10-06T21:20:59.231Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/conversations",
+        "headers": {}
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "Missing X-User-Id header"
+        }
+      }
+    }
+  ]
+}

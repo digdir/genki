@@ -1,0 +1,55 @@
+id: client
+plane: consumers
+name: Frontend client
+note: '@genai/client for own frontends'
+icon: api
+color: '#74a7ff'
+status: Library, preview
+packages:
+  - '@genai/client'
+summary: A small typed TypeScript client for the frontend contract, for Node and browsers.
+description: Wraps the OpenAI-compatible /v1 API with its documented extensions (conversations,
+  filters, per-document sources, live streaming with retract), conversations, facets, datasets and
+  feedback. No runtime dependencies. A reusable contract suite runs the same checks against any
+  platform instance (docs/frontend-contract.md).
+responsibilities:
+  - Ask, stream and retract, with the citation rule applied
+  - Conversations, facets, datasets and feedback calls
+  - Reusable frontend contract suite
+files:
+  - packages/client/src/client.ts
+  - packages/client/src/contract-suite.ts
+  - packages/client/src/types.ts
+input: A service name, a question and optional filters
+output: Answers with indexed sources, stream events
+replaces: []
+edges:
+  - to: adapter-openai
+    label: Chat completions and models
+    kind: http
+    target: http
+    witness:
+      file: packages/client/src/client.ts
+      contains: /v1/chat/completions
+  - to: conversations
+    label: Conversation CRUD
+    kind: http
+    target: http
+    witness:
+      file: packages/client/src/client.ts
+      contains: /api/conversations
+  - to: adapter-rest
+    label: Datasets and facets
+    kind: http
+    target: http
+    witness:
+      file: packages/client/src/client.ts
+      contains: /api/facets
+  - to: plugins
+    label: Contract suite runner
+    kind: call
+    target: call
+    witness:
+      file: packages/client/src/contract-suite.ts
+      imports: '@genai/plugins'
+keywords: client frontend contract sdk typescript browser node

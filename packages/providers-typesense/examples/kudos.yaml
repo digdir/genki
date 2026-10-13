@@ -1,0 +1,56 @@
+endpoints:
+  kudos-typesense:
+    engine: typesense
+    baseURL: https://typesense.example:8108
+    auth: { kind: api-key, secret: secret://env/typesense-key }
+datasets:
+  - id: digdir/kudos
+    name: Kudos
+    aliases: [public-sector-knowledge/default, public-sector-knowledge/kudos]
+    endpoint: kudos-typesense
+    residency: norway
+    filters:
+      type: multiselect
+      concerned_years: multiselect
+      orgs_short: multiselect
+      orgs_long: multiselect
+      doc_num: multiselect
+      title: text
+    options:
+      collections:
+        docs: KUDOS_preprod_v4_documents_ab897fbdedfa
+        chunks: KUDOS_preprod_v4_chunks_ab897fbdedfa
+        phrases: KUDOS_preprod_v4_phrases_ab897fbdedfa
+      docFields: [url, title, total_chunks, orgs_long, orgs_short, file_sha256, files]
+      maxFacetValues: 300
+      profiles:
+        phrase:
+          collection: phrases
+          queryBy: [search_phrase, phrase_vec]
+          textField: search_phrase
+          include: [chunk_id, search_phrase, doc_num]
+          exclude: [phrase_vec]
+          score: fusion
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        metadata:
+          collection: chunks
+          queryBy: [metadata]
+          textField: metadata
+          include: [chunk_id, metadata]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        content:
+          collection: chunks
+          queryBy: [content_markdown]
+          textField: content_markdown
+          include: [chunk_id, content_markdown]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        doc-title:
+          collection: docs
+          queryBy: [title]
+          textField: title
+          include: [doc_num, total_chunks, title]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }

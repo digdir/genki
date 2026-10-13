@@ -1,0 +1,26 @@
+# Bring your own agent: the platform hands each turn to an agent you run yourself
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: ekstern-agent, name: Ekstern agent }
+spec:
+  purpose: Svar på spørsmål om tilskuddsordninger med en agent som teamet driver selv
+  audience: [employees]
+  riskClass: limited
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: remote-agent
+    version: 1
+    config:
+      endpoint:
+        url: https://tilskuddsagent.example.no/api/turn
+        protocol: http
+        residency: eu
+        auth: { kind: bearer, secret: 'secret://tenant/991825827/tilskuddsagent-token' }
+        timeoutMs: 60000
+      send: { history: true, maxMessages: 10, identity: none, metadata: [] }
+  model: { primary: foundry/gpt-4o, residency: eu }
+  guardrails:
+    pii-before-model: { categories: [national-id] }
+    language: { mode: same }
+  exposure: { chat: true, mcp: true, openai: true, rest: true, a2a: true }

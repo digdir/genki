@@ -1,0 +1,2 @@
+export const defaultSearchPhrasesPrompt =
+  'Analyze the following chunk and generate a list of keyword search phrases\nthat have high BM25 information retrieval precision, using the same language\nas the document. If the text is not comprehensible, return an empty array.\n\nRespond with a single JSON object of the form:\n{"phrases": ["phrase one", "phrase two", "phrase three"]}\n\nOutput ONLY the JSON object — no commentary before or after.\n\n<chunk>\nREPLACE_ME\n</chunk>';

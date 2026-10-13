@@ -1,0 +1,46 @@
+id: port-embedding
+plane: ports
+name: Embedding port
+note: Text to vectors
+icon: chart
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/port-embedding'
+summary: Turns text into vectors through a catalog of embedding models.
+description:
+  Same router shape as the model and rerank ports. Checks residency and dimensions, batches
+  input and meters usage to the caller, so search engines without built-in embedding can use vectors.
+responsibilities:
+  - Embedding catalog
+  - Residency and dimension checks
+  - Batching and metering
+files:
+  - packages/port-embedding/src/port.ts
+  - packages/port-embedding/src/router.ts
+  - packages/port-embedding/src/catalog.ts
+input: Texts
+output: Vectors
+replaces:
+  - module: rag
+    how: Embedding inside Typesense
+edges:
+  - to: plugins
+    label: Embedding contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/port-embedding/src/contract.ts
+      imports: '@genai/plugins'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/port-embedding/src/adapter.ts
+      imports: '@genai/kernel'
+contract:
+  - name: catalog
+    file: packages/port-embedding/src/catalog.ts
+    export: embeddingCatalog
+keywords: embedding port vectors catalog

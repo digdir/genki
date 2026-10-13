@@ -1,0 +1,37 @@
+id: kernel
+plane: runtime
+name: Kernel + contracts
+note: Tasks · events · policy · budgets
+icon: shield
+color: '#46d7c8'
+status: Core
+packages:
+  - '@genai/kernel'
+  - '@genai/contracts'
+summary: Every invocation is a task with an append-only event log; access, quotas and budgets are
+  enforced here.
+description: 'The paradigm-neutral core (ADR 0002). It knows only contracts: principals,
+  capabilities, parts and events. It invokes strategies, brokers port access, writes the audit
+  record, keeps client and audit events apart and makes sure every task ends.'
+responsibilities:
+  - Run tasks and stream client events
+  - Enforce policy, tenant sharing and budgets
+  - Own the audit record and the SPI for ports and stores
+files:
+  - packages/kernel/src/kernel.ts
+  - packages/kernel/src/spi.ts
+  - packages/kernel/src/memory.ts
+  - packages/kernel/src/retention.ts
+  - packages/kernel/src/secrets.ts
+  - packages/contracts/src/index.ts
+input: Principal + capability + typed input
+output: Task with event stream
+replaces:
+  - module: skills
+    how: The runtime that every request goes through
+  - module: scope
+    how: Tenant and principal scope per task
+  - module: telemetry
+    how: Event log as the audit trail
+edges: []
+keywords: kernel task event log policy budget audit contracts spi

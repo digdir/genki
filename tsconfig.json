@@ -1,0 +1,158 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/contracts"
+    },
+    {
+      "path": "packages/kernel"
+    },
+    {
+      "path": "packages/plugins"
+    },
+    {
+      "path": "packages/hooks"
+    },
+    {
+      "path": "packages/composition"
+    },
+    {
+      "path": "packages/definitions"
+    },
+    {
+      "path": "packages/providers-postgres"
+    },
+    {
+      "path": "packages/providers-pgvector"
+    },
+    {
+      "path": "packages/providers-postgres-source"
+    },
+    {
+      "path": "packages/port-model"
+    },
+    {
+      "path": "packages/providers-openai"
+    },
+    {
+      "path": "packages/providers-anthropic"
+    },
+    {
+      "path": "packages/port-knowledge"
+    },
+    {
+      "path": "packages/providers-typesense"
+    },
+    {
+      "path": "packages/strategy-single-call"
+    },
+    {
+      "path": "packages/strategy-remote"
+    },
+    {
+      "path": "packages/identity"
+    },
+    {
+      "path": "packages/providers-langfuse"
+    },
+    {
+      "path": "packages/retrieval"
+    },
+    {
+      "path": "packages/port-rerank"
+    },
+    {
+      "path": "packages/port-embedding"
+    },
+    {
+      "path": "packages/providers-colbert"
+    },
+    {
+      "path": "packages/port-tools"
+    },
+    {
+      "path": "packages/strategy-agent-loop"
+    },
+    {
+      "path": "packages/strategy-rag"
+    },
+    {
+      "path": "packages/adapter-mcp"
+    },
+    {
+      "path": "packages/adapter-a2a"
+    },
+    {
+      "path": "packages/adapter-openai"
+    },
+    {
+      "path": "packages/conversations"
+    },
+    {
+      "path": "packages/eval"
+    },
+    {
+      "path": "packages/valuehash"
+    },
+    {
+      "path": "packages/client"
+    },
+    {
+      "path": "packages/i18n"
+    },
+    {
+      "path": "packages/adapter-rest"
+    },
+    {
+      "path": "packages/strategy-step-flow"
+    },
+    {
+      "path": "packages/strategy-builder"
+    },
+    {
+      "path": "packages/guardrails"
+    },
+    {
+      "path": "packages/port-blob"
+    },
+    {
+      "path": "packages/jobs"
+    },
+    {
+      "path": "packages/ingest"
+    },
+    {
+      "path": "packages/providers-typesense-writer"
+    },
+    {
+      "path": "packages/providers-mcp-client"
+    },
+    {
+      "path": "packages/providers-a2a-client"
+    },
+    {
+      "path": "packages/providers-openapi-tools"
+    },
+    {
+      "path": "packages/providers-documents"
+    },
+    {
+      "path": "apps/api"
+    },
+    {
+      "path": "apps/parity"
+    },
+    {
+      "path": "apps/portal"
+    },
+    {
+      "path": "apps/console"
+    },
+    {
+      "path": "apps/worker"
+    },
+    {
+      "path": "apps/workspace"
+    }
+  ]
+}

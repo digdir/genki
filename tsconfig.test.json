@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"]
+  },
+  "include": ["packages/*/src", "apps/*/src", "examples/*/*.test.ts", "vitest.config.ts"],
+  "exclude": [
+    "apps/portal",
+    "apps/console",
+    "apps/workspace",
+    "packages/i18n/src/**/*.tsx",
+    "packages/schema-forms"
+  ]
+}

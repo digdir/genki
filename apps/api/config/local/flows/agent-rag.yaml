@@ -1,0 +1,10 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: agent-rag, name: Agentic RAG }
+spec:
+  purpose: General-purpose agentic retrieval assistant
+  steps:
+    - id: agent
+      block: agent@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+      params: { variant: "{{vars.variant ?? 'faithful'}}" }

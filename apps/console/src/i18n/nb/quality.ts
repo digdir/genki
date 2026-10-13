@@ -1,0 +1,32 @@
+import { defineNamespace } from '@genai/i18n';
+
+export const quality = defineNamespace({
+  title: 'Kvalitet',
+  intro:
+    'Poeng på testsettene over tid. Tilbakegang etter endringer i modell eller plattform er markert.',
+  openMatrix: 'Åpne kvalitetsmatrisen og dommerne',
+  loading: 'Henter kvalitetsdata',
+  metric: '{mean} ({low} til {high}, n={n})',
+  regressions: { one: '{count} tilbakegang', other: '{count} tilbakeganger' },
+  regressionsAfter: ' etter {event}',
+  regressionLine: '{name}: {from} → {to}. Nå {now}.',
+  showInChart: 'Vis i grafen',
+  chartLabel: 'Poeng på testsett per uke fra {from} til {to}. Detaljer i tabellen under.',
+  perService: 'Kvalitet per tjeneste',
+  colService: 'Fellestjeneste eller tjeneste',
+  colServiceShort: 'Tjeneste',
+  colNow: 'Nå',
+  colTwoWeeksAgo: 'For to uker siden',
+  colChange: 'Endring',
+  regression: 'Tilbakegang {delta}',
+  note: 'Tjenester er med bare når virksomheten har valgt å dele testsettet sitt med Digdir. Tilbakegang betyr at poengene falt med 4 eller mer fra én uke til den neste.',
+  emptyTitle: 'Ingen evalueringer ennå',
+  emptyText: 'Når en tjeneste blir evaluert, vises resultatet her.',
+  latestRuns: 'Siste kjøringer',
+  colTestSet: 'Testsett',
+  colResult: 'Resultat',
+  colStatus: 'Status',
+  colRan: 'Kjørt',
+  regressionIn: 'Tilbakegang: {metrics}',
+  noRegression: 'Ingen tilbakegang',
+});

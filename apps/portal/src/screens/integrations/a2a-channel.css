@@ -1,0 +1,39 @@
+.a2a-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.a2a-channel-address {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.a2a-channel-address > input {
+  flex: 1 1 320px;
+}
+
+.a2a-channel-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  font-size: 15px;
+}
+
+.a2a-channel-dl dt {
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.a2a-channel-dl dd {
+  margin: 0;
+}
+
+.a2a-channel-auth {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}

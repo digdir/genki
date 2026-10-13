@@ -1,0 +1,55 @@
+id: providers-typesense-writer
+plane: providers
+name: Typesense writer
+note: Generations · refuses shared
+icon: database
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-typesense-writer'
+summary: Writes ingest output to Typesense in generations, and refuses the shared cluster.
+description: Creates collections, upserts documents and swaps generations. It throws
+  SharedClusterRefused against the shared production cluster; writing there needs a separate key and
+  a decision.
+responsibilities:
+  - Collection generations
+  - Upsert and delete
+  - Refuse the shared cluster
+files:
+  - packages/providers-typesense-writer/src/writer.ts
+  - packages/providers-typesense-writer/src/adapter.ts
+input: Documents + schemas
+output: Indexed collections
+replaces:
+  - module: pipeline
+    how: Index materialisation
+edges:
+  - to: port-knowledge
+    label: Index writer adapter
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense-writer/src/adapter.ts
+      imports: '@genai/port-knowledge'
+  - to: providers-typesense
+    label: Reuses the search adapter dataset options
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense-writer/src/adapter.ts
+      imports: '@genai/providers-typesense'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-typesense-writer/src/writer.ts
+      imports: '@genai/kernel'
+  - to: typesense-cluster
+    label: Collection and document writes (own cluster only)
+    kind: http
+    target: http
+    witness:
+      file: packages/providers-typesense-writer/src/writer.ts
+      contains: /documents/import
+keywords: typesense writer index collections generation

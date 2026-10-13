@@ -1,0 +1,745 @@
+{
+  "generatedBy": "headless-rag digdir.rag.chunking and digdir.docs.pipeline.core",
+  "chunking": [
+    {
+      "id": "kudos-legacy",
+      "docNum": "12345",
+      "chunks": [
+        {
+          "content_markdown": "Forord til tildelingsbrevet. Kort tekst før første overskrift.\n\nInnledning.\n\nDigitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\"}\n",
+          "chunk_id": "ab90aa0c353d",
+          "doc_num": "12345",
+          "chunk_index": 0,
+          "content_length": 537
+        },
+        {
+          "content_markdown": "Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året.\n\n```\n# ikke en overskrift\nverdi = 1\n```\n\nBeholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\", \"Header 2\" \"Mål og prioriteringer\", \"Header 3\" \"Delmål 1  sikkerhet\"}\n",
+          "chunk_id": "5a9ebad21a18",
+          "doc_num": "12345",
+          "chunk_index": 1,
+          "content_length": 677
+        }
+      ]
+    },
+    {
+      "id": "kudos-crlf",
+      "docNum": "67890",
+      "chunks": [
+        {
+          "content_markdown": "Digitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.",
+          "metadata": "{\"Header 2\" \"Rapport\"}\n",
+          "chunk_id": "caa4844d9d71",
+          "doc_num": "67890",
+          "chunk_index": 0,
+          "content_length": 460
+        },
+        {
+          "content_markdown": "Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året.\n\nBeholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året. Ekstra setning.",
+          "metadata": "{\"Header 2\" \"Rapport\", \"Header 3\" \"Detaljer\"}\n",
+          "chunk_id": "2740924e01c4",
+          "doc_num": "67890",
+          "chunk_index": 1,
+          "content_length": 980
+        }
+      ]
+    },
+    {
+      "id": "kudos-fixed-width",
+      "docNum": "67890",
+      "chunks": [
+        {
+          "content_markdown": "## Rapport\r\n\r\nDigitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig ",
+          "chunk_id": "8b91a4ec887a",
+          "doc_num": "67890",
+          "chunk_index": 0,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "altning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Ar",
+          "chunk_id": "621fe4ee886c",
+          "doc_num": "67890",
+          "chunk_index": 1,
+          "content_length": 173
+        },
+        {
+          "content_markdown": " konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.\r\n\r\n#",
+          "chunk_id": "77a429b2f2f2",
+          "doc_num": "67890",
+          "chunk_index": 2,
+          "content_length": 173
+        },
+        {
+          "content_markdown": " etterprøvbare.\r\n\r\n### Detaljer\r\n\r\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og s",
+          "chunk_id": "b0bd9b5e8773",
+          "doc_num": "67890",
+          "chunk_index": 3,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "nomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges ",
+          "chunk_id": "1bfa2d157345",
+          "doc_num": "67890",
+          "chunk_index": 4,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "en og Altinn følges opp systematisk gjennom hele året.\r\n\r\n#### Dypere\r\n\r\nBeholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og",
+          "chunk_id": "23b648ff2b6a",
+          "doc_num": "67890",
+          "chunk_index": 5,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettå",
+          "chunk_id": "6b518ae083f8",
+          "doc_num": "67890",
+          "chunk_index": 6,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "r for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.\r\n\r\n## Tilbake på nivå to\r\n\r\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsninge",
+          "chunk_id": "d6e11bbcdb66",
+          "doc_num": "67890",
+          "chunk_index": 7,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "t til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdater",
+          "chunk_id": "7dd19129dfe2",
+          "doc_num": "67890",
+          "chunk_index": 8,
+          "content_length": 173
+        },
+        {
+          "content_markdown": "kapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året. Ekstra setning.",
+          "chunk_id": "9f26084e4a75",
+          "doc_num": "67890",
+          "chunk_index": 9,
+          "content_length": 141
+        }
+      ]
+    },
+    {
+      "id": "website",
+      "docNum": "71ca11f8eede",
+      "chunks": [
+        {
+          "content_markdown": "---\ntitle: Om Altinn\nlinktitle: Altinn\ndiataxis: diataxis_explanation\n---\n\nDigitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.",
+          "metadata": "{\"Header 1\" \"Om Altinn\"}",
+          "chunk_id": "5a83b0954417",
+          "doc_num": "71ca11f8eede",
+          "chunk_index": 0,
+          "content_length": 535,
+          "location": "http://localhost:1313/nb/om/index.md"
+        }
+      ]
+    },
+    {
+      "id": "folder-split",
+      "docNum": "ac0db429d2df",
+      "chunks": [
+        {
+          "content_markdown": "Avsnitt 1. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 1.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "3236712f41d2",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 0,
+          "content_length": 285,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 1.\n\nAvsnitt 2. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 2.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "a853a8db5bd3",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 1,
+          "content_length": 349,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 2.\n\nAvsnitt 3. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 3.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "8bbca06c5c7c",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 2,
+          "content_length": 349,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 3.\n\nAvsnitt 4. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 4.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "2f8eb29b3375",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 3,
+          "content_length": 349,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 4.\n\nAvsnitt 5. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 5.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "45d50349d28f",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 4,
+          "content_length": 349,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 5.\n\nAvsnitt 6. Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 6.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "8196d5645495",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 5,
+          "content_length": 349,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "e42217f56e65",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 6,
+          "content_length": 500,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "91e99f2c0047",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 7,
+          "content_length": 582,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "5b4067cf19ef",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 8,
+          "content_length": 382,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        }
+      ]
+    },
+    {
+      "id": "stress-legacy",
+      "docNum": "12345",
+      "chunks": [
+        {
+          "content_markdown": "Forord til tildelingsbrevet. Kort tekst før første overskrift.",
+          "metadata": "{}\n",
+          "chunk_id": "4581a97e9551",
+          "doc_num": "12345",
+          "chunk_index": 0,
+          "content_length": 62
+        },
+        {
+          "content_markdown": "Innledning.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\"}\n",
+          "chunk_id": "6a534160dd77",
+          "doc_num": "12345",
+          "chunk_index": 1,
+          "content_length": 11
+        },
+        {
+          "content_markdown": "Digitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\", \"Header 2\" \"Mål og prioriteringer\"}\n",
+          "chunk_id": "b73b15d48df5",
+          "doc_num": "12345",
+          "chunk_index": 2,
+          "content_length": 460
+        },
+        {
+          "content_markdown": "Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\", \"Header 2\" \"Mål og prioriteringer\", \"Header 3\" \"Delmål 1  sikkerhet\"}\n",
+          "chunk_id": "305126c911df",
+          "doc_num": "12345",
+          "chunk_index": 3,
+          "content_length": 325
+        },
+        {
+          "content_markdown": "```\n# ikke en overskrift\nverdi = 1\n```\n\nBeholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\", \"Header 2\" \"Økonomi\"}\n",
+          "chunk_id": "e4293fb3cf94",
+          "doc_num": "12345",
+          "chunk_index": 4,
+          "content_length": 350
+        },
+        {
+          "content_markdown": "Beholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.",
+          "metadata": "{\"Header 1\" \"Tildelingsbrev 2025\", \"Header 2\" \"Økonomi\", \"Header 3\" \"Sitat \\\"viktig\\\"\\tmed tab\"}\n",
+          "chunk_id": "db4addbd9f03",
+          "doc_num": "12345",
+          "chunk_index": 5,
+          "content_length": 310
+        },
+        {
+          "content_markdown": "Kort vedlegg. ",
+          "metadata": "{\"Header 1\" \"Vedlegg\", \"Header 2\" \"Økonomi\"}\n",
+          "chunk_id": "bee1f31b0d91",
+          "doc_num": "12345",
+          "chunk_index": 6,
+          "content_length": 14
+        }
+      ]
+    },
+    {
+      "id": "stress-crlf",
+      "docNum": "67890",
+      "chunks": [
+        {
+          "content_markdown": "Digitaliseringsdirektoratet skal i 2025 prioritere arbeidet med felles digitale løsninger, sammenhengende tjenester og god informasjonsforvaltning i offentlig sektor. Direktoratet skal bidra til at virksomhetene tar i bruk nasjonale fellesløsninger, og følge opp digitaliseringsstrategien med konkrete tiltak. Arbeidet skal skje i tett samarbeid med KS og andre sektormyndigheter, og resultatene skal rapporteres i årsrapporten. Målene skal være etterprøvbare.",
+          "metadata": "{\"Header 2\" \"Rapport\"}",
+          "chunk_id": "caa4844d9d71",
+          "doc_num": "67890",
+          "chunk_index": 0,
+          "content_length": 460
+        },
+        {
+          "content_markdown": "Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året.",
+          "metadata": "{\"Header 2\" \"Rapport\", \"Header 3\" \"Detaljer\"}",
+          "chunk_id": "45ba1f0b5738",
+          "doc_num": "67890",
+          "chunk_index": 1,
+          "content_length": 325
+        },
+        {
+          "content_markdown": "Beholdninger omfatter varer for salg og driftsmateriell. Regnskapet føres etter kontantprinsippet og rapporteres månedlig til departementet. Avvik skal forklares, og vesentlige avvik skal varsles uten ugrunnet opphold. Rammene gjelder for hele budsjettåret og kan ikke overskrides uten samtykke fra Stortinget.",
+          "metadata": "{\"Header 2\" \"Rapport\", \"Header 3\" \"Detaljer\", \"Header 4\" \"Dypere\"}",
+          "chunk_id": "4140e34704ad",
+          "doc_num": "67890",
+          "chunk_index": 2,
+          "content_length": 310
+        },
+        {
+          "content_markdown": "Delmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene. Direktoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt. Det forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Maskinporten og Altinn følges opp systematisk gjennom hele året. Ekstra setning.",
+          "metadata": "{\"Header 2\" \"Tilbake på nivå to\", \"Header 3\" \"Detaljer\"}",
+          "chunk_id": "5d075aa025bc",
+          "doc_num": "67890",
+          "chunk_index": 3,
+          "content_length": 341
+        }
+      ]
+    },
+    {
+      "id": "stress-split-small",
+      "docNum": "ac0db429d2df",
+      "chunks": [
+        {
+          "content_markdown": "Avsnitt 1.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "bcde02de7e3f",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 0,
+          "content_length": 82,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "ebb5e699e1ff",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 1,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 1.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "5fe217291994",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 2,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "i ID-porten, Avslutning 1.\n\nAvsnitt 2.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "237bb6520cf8",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 3,
+          "content_length": 110,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "5ea25118edd1",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 4,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 2.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "98be1ec1b981",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 5,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "i ID-porten, Avslutning 2.\n\nAvsnitt 3.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "55a501ba9158",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 6,
+          "content_length": 110,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "33a718312a18",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 7,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 3.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "9b322f0df4f2",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 8,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "i ID-porten, Avslutning 3.\n\nAvsnitt 4.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "64552e897564",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 9,
+          "content_length": 110,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "9051cc7b1017",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 10,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 4.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "177f494a3a06",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 11,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "i ID-porten, Avslutning 4.\n\nAvsnitt 5.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "66e2f1adbe25",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 12,
+          "content_length": 110,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "0072f5c33616",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 13,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 5.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "cbd3de9b5334",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 14,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "i ID-porten, Avslutning 5.\n\nAvsnitt 6.\n\nDelmålet omfatter sikkerhet og beredskap knyttet til fellesløsningene.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "b1ea68d6d030",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 15,
+          "content_length": 110,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "knyttet til fellesløsningene.\n\nDirektoratet skal ha oversikt over risiko, gjennomføre øvelser og sørge for at hendelser håndteres raskt.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "ebf0930bdd2e",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 16,
+          "content_length": 136,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "at hendelser håndteres raskt.\n\nDet forventes at beredskapsplanene oppdateres årlig, og at sårbarheter i ID-porten, Avslutning 6.",
+          "metadata": "{\"Header 1\" \"Stor seksjon\"}",
+          "chunk_id": "bfcbecebf0b1",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 17,
+          "content_length": 128,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "02f2dd43158a",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 18,
+          "content_length": 120,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "8cbd2f34ed00",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 19,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "202fd923e974",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 20,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "0b7832753077",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 21,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "93958b3fa722",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 22,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "67d43bdff3d2",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 23,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "d98f8db352cb",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 24,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "5c1f9b04c834",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 25,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "61365dc11e75",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 26,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "38d1f4f770c7",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 27,
+          "content_length": 152,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        },
+        {
+          "content_markdown": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "metadata": "{\"Header 1\" \"Stor seksjon\", \"Header 2\" \"Uten punktum\"}",
+          "chunk_id": "5e7053240b27",
+          "doc_num": "ac0db429d2df",
+          "chunk_index": 28,
+          "content_length": 132,
+          "location": "/srv/corpus/nb/stor-seksjon.md"
+        }
+      ]
+    },
+    {
+      "id": "repeat",
+      "docNum": "777",
+      "chunks": [
+        {
+          "content_markdown": "Samme avsnitt om budsjettrammer og rapportering.",
+          "metadata": "{\"Header 1\" \"Del A\"}\n",
+          "chunk_id": "01581b5a4301",
+          "doc_num": "777",
+          "chunk_index": 0,
+          "content_length": 48
+        },
+        {
+          "content_markdown": "Samme avsnitt om budsjettrammer og rapportering.",
+          "metadata": "{\"Header 1\" \"Del B\"}\n",
+          "chunk_id": "91a55ec3b52a",
+          "doc_num": "777",
+          "chunk_index": 1,
+          "content_length": 48
+        },
+        {
+          "content_markdown": "Et annet avsnitt.",
+          "metadata": "{\"Header 1\" \"Del C\"}\n",
+          "chunk_id": "937166ef1e79",
+          "doc_num": "777",
+          "chunk_index": 2,
+          "content_length": 17
+        },
+        {
+          "content_markdown": "Samme avsnitt om budsjettrammer og rapportering.",
+          "metadata": "{\"Header 1\" \"Del D\"}\n",
+          "chunk_id": "a7dec73a8426",
+          "doc_num": "777",
+          "chunk_index": 3,
+          "content_length": 48
+        }
+      ]
+    }
+  ],
+  "phrases": {
+    "legacy": [
+      {
+        "id": "df9d08cfa74d",
+        "search_phrase": "tildelingsbrev 2025",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "3ef035b79696",
+        "search_phrase": "Digitaliseringsdirektoratet prioriteringer",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "f4766a637959",
+        "search_phrase": "",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "5403cd1ae554",
+        "search_phrase": "  ",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "d71142bb3312",
+        "search_phrase": "sikkerhet og beredskap",
+        "chunk_id": "5a9ebad21a18",
+        "doc_num": "12345"
+      },
+      {
+        "id": "7c55d0f49cc3",
+        "search_phrase": "ID-porten Maskinporten",
+        "chunk_id": "5a9ebad21a18",
+        "doc_num": "12345"
+      }
+    ],
+    "pipeline": [
+      {
+        "id": "df9d08cfa74d",
+        "search_phrase": "tildelingsbrev 2025",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "3ef035b79696",
+        "search_phrase": "Digitaliseringsdirektoratet prioriteringer",
+        "chunk_id": "ab90aa0c353d",
+        "doc_num": "12345"
+      },
+      {
+        "id": "d71142bb3312",
+        "search_phrase": "sikkerhet og beredskap",
+        "chunk_id": "5a9ebad21a18",
+        "doc_num": "12345"
+      },
+      {
+        "id": "7c55d0f49cc3",
+        "search_phrase": "ID-porten Maskinporten",
+        "chunk_id": "5a9ebad21a18",
+        "doc_num": "12345"
+      }
+    ]
+  },
+  "parser": [
+    {
+      "content": "{\"phrases\": [\" Altinn 3, juni 2020 \", \"\", \"fellesløsninger\", 7]}",
+      "phrases": ["Altinn 3, juni 2020", "fellesløsninger"]
+    },
+    {
+      "content": "Her er søkefrasene:\n1. **keywords only**.\nfellesløsninger, ID-porten, digital samhandling",
+      "phrases": ["fellesløsninger", "ID-porten", "digital samhandling"]
+    },
+    {
+      "content": "Resultat:\nfellesløsninger, ID-porten, digital samhandling\n- notat, med komma",
+      "phrases": ["fellesløsninger", "ID-porten", "digital samhandling"]
+    },
+    {
+      "content": "kort, ok",
+      "phrases": []
+    },
+    {
+      "content": "[\"a\", \"b\"]",
+      "phrases": ["[\"a\"", "\"b\"]"]
+    },
+    {
+      "content": "",
+      "phrases": []
+    },
+    {
+      "content": "{\"phrases\": \"ikke en liste\"}\nalfa beta, gamma delta",
+      "phrases": ["alfa beta", "gamma delta"]
+    }
+  ],
+  "collections": {
+    "legacyKudos": [
+      "KUDOS_preprod_v4_documents_ab897fbdedfa",
+      "KUDOS_preprod_v4_chunks_ab897fbdedfa",
+      "KUDOS_preprod_v4_phrases_ab897fbdedfa"
+    ],
+    "pipeline": [
+      "website_documents_513fcbfbe8da",
+      "website_chunks_8db10296a15f",
+      "website_phrases_cbd15c392abf"
+    ],
+    "pipelineNames": [
+      "kudos_documents_579ebeef76d9",
+      "kudos_chunks_579ebeef76d9",
+      "kudos_phrases_579ebeef76d9"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: multi-query-rag, name: Multi-Query RAG }
+spec:
+  purpose: Plan several search queries, retrieve for all of them, merge, rerank and answer with citations
+  steps:
+    - id: retrieve
+      block: retrieve@1
+      input: { query: '{{input.query}}', history: '{{input.history}}' }
+    - id: rerank
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+    - id: synthesize
+      block: synthesize@1
+      input: { query: '{{input.query}}', contextDocs: '{{rerank.contextDocs}}' }
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{synthesize.response}}'
+        chunks: '{{rerank.contextChunks}}'
+        citations: '{{synthesize.citations}}'

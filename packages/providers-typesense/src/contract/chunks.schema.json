@@ -1,0 +1,74 @@
+{
+  "fields": [
+    {
+      "name": "chunk_id",
+      "type": "string",
+      "facet": true,
+      "index": true,
+      "infix": false,
+      "locale": "",
+      "optional": false,
+      "sort": true,
+      "stem": false,
+      "store": true
+    },
+    {
+      "name": "doc_num",
+      "type": "string",
+      "facet": true,
+      "index": true,
+      "infix": false,
+      "locale": "",
+      "optional": false,
+      "reference": "{docs}.doc_num",
+      "async_reference": true,
+      "sort": false,
+      "stem": false,
+      "store": true
+    },
+    {
+      "name": "chunk_index",
+      "type": "int32",
+      "facet": true,
+      "index": true,
+      "infix": false,
+      "locale": "",
+      "optional": false,
+      "sort": true,
+      "stem": false,
+      "store": true
+    },
+    {
+      "name": "content_markdown",
+      "type": "string",
+      "facet": false,
+      "index": true,
+      "infix": false,
+      "locale": "no",
+      "optional": false,
+      "sort": false,
+      "stem": false,
+      "store": true
+    },
+    {
+      "name": "metadata",
+      "type": "string",
+      "facet": false,
+      "index": true,
+      "infix": false,
+      "locale": "no",
+      "optional": true,
+      "sort": false,
+      "stem": false,
+      "store": true
+    },
+    {
+      "name": "content_length",
+      "type": "int32",
+      "facet": false,
+      "index": true,
+      "optional": true,
+      "sort": true
+    }
+  ]
+}

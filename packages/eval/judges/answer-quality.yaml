@@ -1,0 +1,26 @@
+id: answer-quality
+version: '1'
+scale: { min: 1, max: 5 }
+criteria:
+  - id: correctness
+    description: The answer agrees with the reference answer on every fact it states. Missing facts lower completeness, not correctness.
+  - id: completeness
+    description: The answer covers the points in the reference answer that the question asks for.
+  - id: language
+    description: The answer is written in the same language as the question (bokmål, nynorsk or English).
+system: |
+  You grade answers from a public-sector assistant against a reference answer.
+  Grade each criterion on its own. Do not reward length or style.
+  Reply with JSON only: {"scores": {"<criterion>": <integer>}, "rationale": "<one or two sentences>"}.
+template: |
+  Question:
+  {{question}}
+
+  Reference answer:
+  {{reference}}
+
+  Answer to grade:
+  {{answer}}
+
+  Criteria, each scored from {{min}} to {{max}}:
+  {{criteria}}

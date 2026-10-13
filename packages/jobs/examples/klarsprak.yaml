@@ -1,0 +1,24 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: klarsprak, name: Klarspråk }
+spec:
+  purpose: Skriv om brev og vedtak til klart språk etter Språkrådets råd, uten å endre meningen
+  riskClass: minimal
+  input: { accepts: [text/plain] }
+  output:
+    kind: fields
+    fields:
+      - { name: text, type: string, description: Teksten skrevet om til klart språk }
+      - { name: changes, type: list, description: Hva som ble endret og hvorfor }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/klarsprak.nb.md, temperature: 0.2 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { rest: true, mcp: true }
+  triggers:
+    - { kind: document-arrives, folder: klarsprak/innboks }
+  batch: { enabled: true }
+  availableTo: '*'
+  evaluation: { testSets: [klarsprak-brev], gates: [klarsprak-overall] }
+  improve: { allow: [instructions, examples] }

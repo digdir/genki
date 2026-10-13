@@ -1,0 +1,21 @@
+# Classify: sort incoming mail with a reusable step flow
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '999888777', id: postsortering, name: Postsortering }
+spec:
+  purpose: Sorter innkommende post etter tema og send den til riktig saksbehandlerkø
+  riskClass: limited
+  input: { accepts: [text/plain, application/pdf] }
+  output:
+    kind: fields
+    fields:
+      - { name: category, type: string, description: Tema }
+      - { name: queue, type: string, description: Køen posten skal til }
+  strategy:
+    id: step-flow
+    version: 1
+    config: { flow: postsortering-flyt@1 }
+  model: { primary: foundry/gpt-4o, residency: norway }
+  exposure: { rest: true }
+  triggers:
+    - { kind: queue-message, queue: post-inn }

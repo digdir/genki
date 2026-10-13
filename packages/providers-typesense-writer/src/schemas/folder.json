@@ -1,0 +1,185 @@
+{
+  "docs": {
+    "fields": [
+      {
+        "facet": true,
+        "index": true,
+        "name": "id",
+        "optional": false,
+        "sort": true,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "doc_num",
+        "optional": false,
+        "sort": true,
+        "type": "string"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "title",
+        "optional": false,
+        "sort": false,
+        "type": "string",
+        "locale": "en"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "path",
+        "optional": false,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "url",
+        "optional": true,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "lastmod",
+        "optional": true,
+        "sort": true,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "type",
+        "optional": false,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "total_chunks",
+        "optional": true,
+        "sort": true,
+        "type": "int32"
+      }
+    ]
+  },
+  "chunks": {
+    "fields": [
+      {
+        "facet": true,
+        "index": true,
+        "name": "chunk_id",
+        "optional": false,
+        "sort": true,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "doc_num",
+        "optional": false,
+        "sort": false,
+        "type": "string",
+        "reference": "{docs}.doc_num",
+        "async_reference": true
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "chunk_index",
+        "optional": false,
+        "sort": true,
+        "type": "int32"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "content_markdown",
+        "optional": false,
+        "sort": false,
+        "type": "string",
+        "locale": "en"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "metadata",
+        "optional": true,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "content_length",
+        "optional": true,
+        "sort": true,
+        "type": "int32"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "path",
+        "optional": false,
+        "sort": false,
+        "type": "string"
+      }
+    ]
+  },
+  "phrases": {
+    "default_sorting_field": "chunk_id",
+    "fields": [
+      {
+        "facet": true,
+        "index": true,
+        "name": "chunk_id",
+        "optional": false,
+        "sort": true,
+        "type": "string"
+      },
+      {
+        "facet": true,
+        "index": true,
+        "name": "doc_num",
+        "optional": false,
+        "sort": true,
+        "type": "string",
+        "async_reference": false,
+        "reference": "{docs}.doc_num"
+      },
+      {
+        "facet": false,
+        "index": true,
+        "name": "search_phrase",
+        "optional": false,
+        "sort": false,
+        "type": "string"
+      },
+      {
+        "embed": {
+          "from": ["search_phrase"],
+          "model_config": {
+            "model_name": "ts/all-MiniLM-L12-v2"
+          }
+        },
+        "facet": false,
+        "hnsw_params": {
+          "M": 16,
+          "ef_construction": 200
+        },
+        "index": true,
+        "name": "phrase_vec",
+        "num_dim": 384,
+        "optional": true,
+        "sort": false,
+        "type": "float[]",
+        "vec_dist": "cosine"
+      }
+    ]
+  }
+}

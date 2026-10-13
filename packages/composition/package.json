@@ -1,0 +1,56 @@
+{
+  "name": "@genai/composition",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/contracts": "0.0.0",
+    "@genai/definitions": "0.0.0",
+    "@genai/eval": "0.0.0",
+    "@genai/guardrails": "0.0.0",
+    "@genai/hooks": "0.0.0",
+    "@genai/i18n": "0.0.0",
+    "@genai/identity": "0.0.0",
+    "@genai/jobs": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "@genai/port-blob": "0.0.0",
+    "@genai/port-embedding": "0.0.0",
+    "@genai/port-knowledge": "0.0.0",
+    "@genai/port-model": "0.0.0",
+    "@genai/port-rerank": "0.0.0",
+    "@genai/port-tools": "0.0.0",
+    "@genai/providers-a2a-client": "0.0.0",
+    "@genai/providers-anthropic": "0.0.0",
+    "@genai/providers-colbert": "0.0.0",
+    "@genai/providers-mcp-client": "0.0.0",
+    "@genai/providers-openai": "0.0.0",
+    "@genai/providers-openapi-tools": "0.0.0",
+    "@genai/providers-pgvector": "0.0.0",
+    "@genai/providers-typesense": "0.0.0",
+    "@genai/providers-typesense-writer": "0.0.0",
+    "@genai/retrieval": "0.0.0",
+    "@genai/strategy-agent-loop": "0.0.0",
+    "@genai/strategy-rag": "0.0.0",
+    "@genai/strategy-remote": "0.0.0",
+    "@genai/strategy-single-call": "0.0.0",
+    "@genai/strategy-step-flow": "0.0.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

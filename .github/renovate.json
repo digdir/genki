@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests",
+    ":semanticCommitsDisabled"
+  ],
+  "schedule": ["before 7am on monday"],
+  "timezone": "Europe/Oslo",
+  "rangeStrategy": "bump",
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 7am on monday"] },
+  "vulnerabilityAlerts": { "enabled": true, "schedule": ["at any time"] },
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0/",
+      "groupName": "npm minor and patch"
+    },
+    { "matchPackageNames": ["typescript"], "rangeStrategy": "replace" },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "matchManagers": ["bicep"],
+      "groupName": "bicep api versions"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["node"],
+      "allowedVersions": "/^24\\./"
+    }
+  ]
+}

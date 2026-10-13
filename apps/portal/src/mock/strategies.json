@@ -1,0 +1,247 @@
+{
+  "data": [
+    {
+      "id": "single-call",
+      "version": 1,
+      "how": "single",
+      "default": true,
+      "title": {
+        "nb": "Ett steg",
+        "en": "One step"
+      },
+      "description": {
+        "nb": "Ett modellkall per oppgave. Raskest, billigst og lettest å etterprøve.",
+        "en": "One model call per task. Fastest, cheapest and easiest to verify."
+      },
+      "pipeline": [
+        {
+          "title": {
+            "nb": "Les inn",
+            "en": "Read input"
+          },
+          "description": {
+            "nb": "Teksten eller filen som kommer inn.",
+            "en": "The text or file that comes in."
+          }
+        },
+        {
+          "title": {
+            "nb": "Modellkall",
+            "en": "Model call"
+          },
+          "description": {
+            "nb": "Ett kall med instruksjonene og eksemplene.",
+            "en": "One call with the instructions and the examples."
+          }
+        },
+        {
+          "title": {
+            "nb": "Vern",
+            "en": "Guardrails"
+          },
+          "description": {
+            "nb": "Kontroll etter risikonivå før resultatet leveres.",
+            "en": "Checks by risk level before the result is delivered."
+          }
+        }
+      ],
+      "newConfig": {},
+      "takes": {
+        "instructions": "required",
+        "examples": "optional"
+      },
+      "schema": "/schemas/Strategy.single-call%401"
+    },
+    {
+      "id": "agent-loop",
+      "version": 1,
+      "how": "agent",
+      "default": true,
+      "title": {
+        "nb": "Agent (søker selv)",
+        "en": "Agent (searches by itself)"
+      },
+      "description": {
+        "nb": "Modellen bestemmer selv hvilke verktøy den bruker og i hvilken rekkefølge, til den har nok til å svare eller når grensene.",
+        "en": "The model decides which tools to use and in what order, until it has enough to answer or reaches the limits."
+      },
+      "pipeline": [
+        {
+          "title": {
+            "nb": "Planlegg",
+            "en": "Plan"
+          },
+          "description": {
+            "nb": "Agenten lager en plan ut fra spørsmålet.",
+            "en": "The agent makes a plan from the question."
+          }
+        },
+        {
+          "title": {
+            "nb": "Søk og les",
+            "en": "Search and read"
+          },
+          "description": {
+            "nb": "Gjentas til agenten har nok, eller til budsjettet for søk og lesing er brukt.",
+            "en": "Repeats until the agent has enough, or until the budget for searching and reading is used up."
+          },
+          "repeats": true
+        },
+        {
+          "title": {
+            "nb": "Vurder grunnlaget",
+            "en": "Assess the basis"
+          },
+          "description": {
+            "nb": "Agenten sjekker om kildene holder til å svare.",
+            "en": "The agent checks whether the sources are enough to answer."
+          },
+          "repeats": true
+        },
+        {
+          "title": {
+            "nb": "Svar",
+            "en": "Answer"
+          },
+          "description": {
+            "nb": "Svar med kilder. Vernet kjøres før svaret sendes.",
+            "en": "Answer with sources. Guardrails run before the answer is sent."
+          }
+        }
+      ],
+      "newConfig": {
+        "maxIterations": 8
+      },
+      "takes": {
+        "instructions": "optional",
+        "examples": "no"
+      },
+      "schema": "/schemas/Strategy.agent-loop%401"
+    },
+    {
+      "id": "rag-single-shot",
+      "version": 1,
+      "how": "single",
+      "default": false,
+      "title": {
+        "nb": "Ett søk og ett svar",
+        "en": "One search and one answer"
+      },
+      "description": {
+        "nb": "Ett søk i datasettene og ett modellkall med treffene som grunnlag. Rask og forutsigbar.",
+        "en": "One search in the datasets and one model call based on the hits. Fast and predictable."
+      },
+      "pipeline": [
+        {
+          "title": {
+            "nb": "Søk",
+            "en": "Search"
+          },
+          "description": {
+            "nb": "Ett søk i datasettene med spørsmålet.",
+            "en": "One search in the datasets with the question."
+          }
+        },
+        {
+          "title": {
+            "nb": "Ranger",
+            "en": "Rank"
+          },
+          "description": {
+            "nb": "De beste tekstbitene velges ut.",
+            "en": "The best passages are selected."
+          }
+        },
+        {
+          "title": {
+            "nb": "Skriv svar",
+            "en": "Write answer"
+          },
+          "description": {
+            "nb": "Ett modellkall med treffene som grunnlag.",
+            "en": "One model call based on the hits."
+          }
+        }
+      ],
+      "newConfig": {},
+      "takes": {
+        "instructions": "optional",
+        "examples": "no"
+      },
+      "schema": "/schemas/Strategy.rag-single-shot%401"
+    },
+    {
+      "id": "step-flow",
+      "version": 1,
+      "how": "flow",
+      "default": true,
+      "title": {
+        "nb": "Fast stegflyt",
+        "en": "Fixed step flow"
+      },
+      "description": {
+        "nb": "Faste steg i en bestemt rekkefølge. Flyten er data, ikke kode, og hver endring blir en ny versjon.",
+        "en": "Fixed steps in a set order. The flow is data, not code, and every change becomes a new version."
+      },
+      "pipeline": [],
+      "newConfig": {},
+      "takes": {
+        "instructions": "no",
+        "examples": "no"
+      },
+      "schema": "/schemas/Strategy.step-flow%401"
+    },
+    {
+      "id": "remote-agent",
+      "version": 1,
+      "how": "single",
+      "default": false,
+      "title": {
+        "nb": "Egen motor",
+        "en": "Own engine"
+      },
+      "description": {
+        "nb": "Hele svaret lages av en motor du driver selv. Plattformen sender samtalen dit og beholder tilgang, kanaler, vern, kostnadstak og logg.",
+        "en": "The whole answer is made by an engine you run yourself. The platform sends the conversation there and keeps access, channels, safeguards, cost caps and logging."
+      },
+      "pipeline": [
+        {
+          "title": {
+            "nb": "Sender samtalen",
+            "en": "Sends the conversation"
+          },
+          "description": {
+            "nb": "Spørsmålet, tidligere meldinger og det tjenesten har sagt ja til å dele.",
+            "en": "The question, earlier messages and what the service has agreed to share."
+          }
+        },
+        {
+          "title": {
+            "nb": "Din motor svarer",
+            "en": "Your engine answers"
+          },
+          "description": {
+            "nb": "Svar, kilder, steg og forbruk kommer tilbake i en avtalt form.",
+            "en": "The answer, sources, steps and usage come back in an agreed form."
+          }
+        },
+        {
+          "title": {
+            "nb": "Plattformen tar imot",
+            "en": "The platform receives it"
+          },
+          "description": {
+            "nb": "Svaret sjekkes og vises i alle kanaler, og stegene vises i Hva skjedde.",
+            "en": "The answer is checked and shown in every channel, and the steps show in What happened."
+          }
+        }
+      ],
+      "newConfig": {},
+      "takes": {
+        "instructions": "no",
+        "examples": "no"
+      },
+      "schema": "/schemas/Strategy.remote-agent%401"
+    }
+  ]
+}

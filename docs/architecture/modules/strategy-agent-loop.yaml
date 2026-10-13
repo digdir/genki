@@ -1,0 +1,63 @@
+id: strategy-agent-loop
+plane: runtime
+name: Agent loop
+note: Plan · act · observe
+icon: agent
+color: '#4ad3bb'
+status: Strategy plugin
+packages:
+  - '@genai/strategy-agent-loop'
+summary: A bounded tool-using loop with sufficiency checks, workspace and structured citations.
+description: "Reproduces KA's agent-rag behaviour: intent, tool calls through the tool port
+  (retrieval is a tool), read signals, sufficiency evaluation and structured output with chunks and
+  citations. Budgets come from the kernel."
+responsibilities:
+  - Bounded plan-act-observe loop
+  - Tool calls via the tool port
+  - Sufficiency, citations and structured content
+files:
+  - packages/strategy-agent-loop/src/index.ts
+  - packages/strategy-agent-loop/src/tools.ts
+  - packages/strategy-agent-loop/src/sufficiency.ts
+  - packages/strategy-agent-loop/src/citations.ts
+input: Question + tools + datasets
+output: Answer with chunks and citations
+replaces:
+  - module: agents
+    how: The agentic ReAct loop
+  - module: skills
+    how: The agent-rag graph bundle
+edges:
+  - to: strategy-single-call
+    label: Shares the skill prompt helpers
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-agent-loop/src/skills.ts
+      imports: '@genai/strategy-single-call'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-agent-loop/src/sources.ts
+      imports: '@genai/contracts'
+  - to: port-model
+    label: Model calls through the model port
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-agent-loop/src/prompts.ts
+      imports: '@genai/port-model'
+  - to: port-tools
+    label: Tool registry and tool calls
+    kind: call
+    target: call
+    witness:
+      file: packages/strategy-agent-loop/src/index.ts
+      imports: '@genai/port-tools'
+contract:
+  - name: config
+    file: packages/strategy-agent-loop/src/index.ts
+    export: agentLoopConfig
+keywords: agent loop react tools sufficiency citations

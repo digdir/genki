@@ -1,0 +1,25 @@
+import { defineNamespace } from '@genai/i18n';
+
+export const common = defineNamespace({
+  allTenants: 'Alle virksomheter',
+  orgNumberName: 'Org.nr. {number}',
+  reason: 'Begrunnelse',
+  close: 'Lukk',
+  cancel: 'Avbryt',
+  retry: 'Prøv igjen',
+  notDecided: 'Ikke bestemt',
+  showApiCall: 'Vis API-kall',
+  proposedCall: 'Finnes ikke i API-et ennå. Foreslått kall i samme mønster:',
+  reasonTooShort: 'Skriv en begrunnelse på minst {min} tegn.',
+  reasonTooShortAudited: 'Skriv en begrunnelse på minst {min} tegn. Den vises i Revisjon.',
+  saveFailed: 'Kunne ikke lagre endringen. Prøv igjen om litt.',
+  todayAt: 'I dag kl. {time}',
+  dayAt: '{date} kl. {time}',
+  unavailableTitle: 'Ikke tilgjengelig ennå',
+  unavailableText: 'Plattformen har ikke denne funksjonen ennå.',
+  loadFailedTitle: 'Kunne ikke hente dataene',
+  loadFailed: 'Noe gikk galt da vi hentet dataene. Prøv igjen om litt.',
+  loadUnauthenticated: 'Du er ikke logget inn lenger. Logg inn på nytt.',
+  loadForbidden: 'Du har ikke tilgang til dette i driftskonsollet.',
+  loadNotFound: 'Vi fant ikke det du lette etter.',
+});

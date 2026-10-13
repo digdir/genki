@@ -1,0 +1,37 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: entity-extraction, name: Entity Extraction }
+spec:
+  purpose: Extract structured entities (people, organizations, dates, locations and more) from text
+  input: { text: string }
+  steps:
+    - id: extract
+      block: extract@1
+      input:
+        prompt: "Extract all entities from the following text.\n\nEntity types to extract: {{vars.entityTypes ?? 'person, organization, location, date, product, event'}}\n\nText:\n{{input.text ?? input.query}}"
+      params:
+        name: extractEntities
+        temperature: 0.1
+        schema:
+          type: object
+          properties:
+            entities:
+              type: array
+              items:
+                type: object
+                properties:
+                  text: { type: string, description: The extracted entity text }
+                  type:
+                    {
+                      type: string,
+                      description: 'Entity type (person, organization, location, date, etc.)',
+                    }
+                  confidence: { type: number, description: Confidence score 0-1 }
+                  context: { type: string, description: Surrounding context where entity was found }
+                required: [text, type]
+          required: [entities]
+    - id: answer
+      block: answer@1
+      input:
+        text: '{"entities": {{extract.entities}}}'
+        meta: { entities: '{{extract.entities}}' }

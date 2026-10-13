@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Azure built-in role definition ids: published by Microsoft, identical in every tenant"
+regexes = ['''4633458b-17de-408a-b874-0445c86b69e6''']

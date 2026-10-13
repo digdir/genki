@@ -1,0 +1,17 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: summarization, name: Summarization }
+spec:
+  purpose: Generate a summary of the given content
+  input: { text: string }
+  steps:
+    - id: summarize
+      block: model@1
+      input:
+        prompt: "Summarize the following content.\n\n{{vars.styleInstruction ?? 'Write a clear and informative summary.'}}\n{{vars.formatInstruction ?? 'Write in paragraph form.'}}\n\nContent:\n{{input.text ?? input.query}}"
+      params:
+        system: You are a skilled summarizer.
+        temperature: 0.3
+    - id: answer
+      block: answer@1
+      input: { text: '{{summarize.text}}' }

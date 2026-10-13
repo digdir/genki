@@ -1,0 +1,15 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: optimiser, name: Forbedringstjeneste }
+spec:
+  purpose: Foreslår en endring i instruksjonene til en tjeneste ut fra tilbakemeldinger og feilede testtilfeller. Endringen havner bare i utkastet.
+  audience: [employees]
+  riskClass: minimal
+  input: { accepts: [application/json] }
+  output: { kind: answer }
+  strategy:
+    id: optimiser
+    version: 1
+    config: { instructions: prompts/optimiser.nb.md }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  evaluation: { testSets: [optimiser] }

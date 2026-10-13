@@ -1,0 +1,17 @@
+.config-editor {
+  padding: 16px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.config-editor .config-json textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.config-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

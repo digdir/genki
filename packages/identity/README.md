@@ -1,0 +1,53 @@
+# @genai/identity
+
+Token verification, the Altinn policy, and local fakes of Ansattporten, Maskinporten and the Altinn PDP. The fakes follow `src/Designer/development/fake-ansattporten` and `src/Runtime/localtest` in altinn-studio, but stay closer to the real services where those fakes cut corners.
+
+## Mock Ansattporten (`createMockAnsattporten`)
+
+|                           | Real Ansattporten (test.ansattporten.no)                                                                                                       | Mock                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Discovery                 | `/.well-known/openid-configuration`                                                                                                            | Same keys for what the mock supports                                |
+| JWKS                      | `/jwks.json`                                                                                                                                   | `/jwks.json` (and `/jwks`)                                          |
+| Login                     | ID-porten, then organisation chooser                                                                                                           | Test-person picker, then organisation chooser (Norwegian)           |
+| Flow                      | Code flow, PKCE S256 required, `iss` in the redirect                                                                                           | Same                                                                |
+| Client auth               | `client_secret_basic`, `client_secret_post`, `private_key_jwt`, `none`                                                                         | Same; the method registered on the client is enforced               |
+| `private_key_jwt`         | `iss` = `sub` = client id, `aud` = issuer, short-lived, unique `jti`                                                                           | Same                                                                |
+| `authorization_details`   | `ansattporten:altinn:resource` with `authorized_parties` (`orgno`, `resource`, `actions`, `name`, `unit_type`), `resource_name`                | Same shape; parties come from the test data and the resource policy |
+| Request options           | `actions`, `organizationform`, `allow_multiple_organizations`, `representation_is_required`                                                    | Same                                                                |
+| Access token `aud`        | From the `resource` parameter                                                                                                                  | Same; must be one of the client's audiences                         |
+| Claims                    | `sub` (pairwise), `pid`, `acr` (`substantial`/`high`), `amr`, `sid`, `auth_time`, `locale`, profile claims, `client_id`, `client_amr`, `scope` | Same; `amr` is `TestID`                                             |
+| Refresh, userinfo, logout | Yes                                                                                                                                            | Yes (refresh tokens rotate)                                         |
+
+Not mocked: PAR, JAR, DPoP, `ansattporten:orgno`, Entra ID logins (`acr=entraid`), and response modes other than `query`.
+
+## Mock Altinn PDP (`createMockAltinnPdp`)
+
+Serves the XACML JSON profile at `POST /authorization/api/v1/authorize` (the external endpoint) and `/authorization/api/v1/decision` (the localtest endpoint). The subject is `urn:altinn:person:identifier-no`, `urn:altinn:userid` or `urn:altinn:systemuser:uuid`. The resource is `urn:altinn:resource` plus `urn:altinn:organization:identifier-no` or `urn:altinn:partyid`. Every answer carries a `Status`.
+
+A person gets an action on a resource for a party through a direct delegation (`resources`), an Altinn or ER role (`roles`, compared without case), or an access package (`accessPackages`) that a rule in `resourcePolicies` grants. Following localtest, no matching rule gives `NotApplicable`, while an unknown person, system user or resource, or an unreadable request, gives `Indeterminate`. The mock never answers `Deny`. The same rules fill `authorized_parties` in the Ansattporten tokens.
+
+Local test data lives in `apps/api/config/local/identity.yaml`.
+
+## Platform rights (`platform-rights.ts`)
+
+The platform's Altinn resource (`urn:altinn:resource:digdir-genai-platform`) has five actions, one per right (ADR 0027):
+
+| Action                     | Label                   |
+| -------------------------- | ----------------------- |
+| `use-services`             | Bruke tjenester         |
+| `manage-services`          | Administrere tjenester  |
+| `manage-datasets`          | Administrere datasett   |
+| `register-building-blocks` | Registrere byggeklosser |
+| `view-usage`               | Se forbruk og kostnad   |
+
+`platformRightsOf(principal, tenant)` gives the rights for one organisation. Operators get all five. When the Altinn actions for the organisation contain none of the five, the legacy actions are mapped: `read` gives `use-services` and `view-usage`; `write` gives `manage-services`, `manage-datasets`, `register-building-blocks` and `view-usage`. A principal whose authorisations carry no actions at all keeps every right for its own tenant and the organisations it is authorised for.
+
+## Switching to the real services
+
+For Ansattporten, only configuration changes in `apps/api`:
+
+- `ANSATTPORTEN_ISSUER=https://test.ansattporten.no` (or `https://ansattporten.no`). The JWKS defaults to `<issuer>/jwks.json`, and `ANSATTPORTEN_JWKS_URI` overrides it. With an issuer set, the mock and `/mock/dev-login` are not mounted. Without one, the API mounts them only with `GENAI_DEV_MODE=true` and otherwise refuses to start.
+- `API_AUDIENCE` must match the audience registered for the client in Samarbeidsportalen, and the frontend must send it as `resource`.
+- The frontend client is registered with `integration_type: ansattporten`, the scopes `openid profile`, PKCE, and the Altinn resource it requests in `authorization_details`. A backend client should use `private_key_jwt`.
+
+`ALTINN_PDP_URL` turns on the real PDP (`apps/api/src/altinn-pdp.ts`). Without it, the API uses the mock only with `GENAI_DEV_MODE=true` and otherwise refuses to start. The real PDP uses `httpAltinnAuthorization` against `https://platform.tt02.altinn.no` (or production), with a Maskinporten token for `altinn:authorization/authorize` and the APIM subscription key in `headers`. The resource policy, roles and access packages then come from the Altinn resource registry rather than the YAML.

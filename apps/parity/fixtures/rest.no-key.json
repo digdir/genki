@@ -1,0 +1,25 @@
+{
+  "scenario": "rest.no-key",
+  "recordedAt": "2026-10-06T21:15:37.158Z",
+  "target": "old",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/datasets",
+        "auth": false,
+        "headers": {}
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer"
+        },
+        "body": {
+          "error": "Invalid or missing API key"
+        }
+      }
+    }
+  ]
+}

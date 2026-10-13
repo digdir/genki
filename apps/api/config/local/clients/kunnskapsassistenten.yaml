@@ -1,0 +1,9 @@
+apiVersion: genai/v1
+kind: Client
+metadata: { tenant: '991825827', id: kunnskapsassistenten-web, name: Kunnskapsassistenten }
+spec:
+  service: kunnskapsassistenten
+  kind: server
+  url: http://localhost:5177
+  channels: [mcp, openai, conversations, feedback, facets]
+  allowedOrigins: ['http://localhost:5177']

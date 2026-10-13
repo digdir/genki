@@ -1,0 +1,16 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: local-test-chat, name: Lokal testchat }
+spec:
+  purpose: Prøv innloggingen, chatten og samtalene uten ekte KI. Svarer med det du skrev.
+  audience: [employees]
+  riskClass: minimal
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: false }
+  strategy:
+    id: single-call
+    version: 1
+    config: { instructions: prompts/local-test-chat.nb.md }
+  model: { primary: local/echo, residency: norway }
+  exposure: { chat: true, rest: true, mcp: true, openai: true }
+  availableTo: '*'

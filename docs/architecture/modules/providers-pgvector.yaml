@@ -1,0 +1,42 @@
+id: providers-pgvector
+plane: providers
+name: pgvector search
+note: Hybrid search in Postgres
+icon: database
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-pgvector'
+summary: Built-in search engine and index writer in the platform's own Postgres.
+description: Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement.
+  Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay
+  invisible until promoted. It runs only in the platform database (ADR 0023).
+responsibilities:
+  - Text, vector and hybrid search
+  - Filters, facets, fetch and range
+  - Index writer with generations
+files:
+  - packages/providers-pgvector/src/engine.ts
+  - packages/providers-pgvector/src/schema.ts
+  - packages/providers-pgvector/src/sql.ts
+input: Searches and index documents
+output: SQL
+replaces:
+  - module: rag
+    how: Search without a separate search cluster
+edges:
+  - to: port-knowledge
+    label: Knowledge adapter and index writer
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-pgvector/src/engine.ts
+      imports: '@genai/port-knowledge'
+  - to: postgres-db
+    label: SQL over the platform pool
+    kind: sql
+    target: sql
+    witness:
+      file: packages/providers-pgvector/src/schema.ts
+      contains: vector
+keywords: pgvector postgres hybrid search vectors writer

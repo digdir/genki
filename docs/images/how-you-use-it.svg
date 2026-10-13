@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <title>How you use genki</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1e2b3c"/>
+    </marker>
+  </defs>
+  <style>
+    .role { fill: #1e2b3c; font-weight: 700; font-size: 17px; }
+    .where { fill: #4b5563; font-size: 13.5px; }
+    .t { fill: #ffffff; font-weight: 600; font-size: 16px; }
+    .s { fill: #ffffff; font-size: 13px; opacity: 0.92; }
+    .n { fill: #2e5f7f; font-weight: 700; font-size: 14px; }
+    .lane { fill: #f3f5f7; }
+  </style>
+  <rect width="1200" height="560" fill="#ffffff"/>
+
+  <!-- Lanes -->
+  <rect class="lane" x="20" y="20" width="1160" height="120" rx="6"/>
+  <rect class="lane" x="20" y="156" width="1160" height="210" rx="6"/>
+  <rect class="lane" x="20" y="382" width="1160" height="158" rx="6"/>
+
+  <text class="role" x="40" y="70">Digdir</text>
+  <text class="where" x="40" y="92">in the console</text>
+  <text class="role" x="40" y="250">Your organisation</text>
+  <text class="where" x="40" y="272">in the portal, or through</text>
+  <text class="where" x="40" y="290">the API and YAML</text>
+  <text class="role" x="40" y="452">Users and systems</text>
+  <text class="where" x="40" y="474">wherever the service is offered</text>
+
+  <!-- Digdir -->
+  <rect x="230" y="42" width="290" height="76" rx="4" fill="#7f7f7f"/>
+  <text class="t" x="375" y="74" text-anchor="middle">Approves organisations</text>
+  <text class="s" x="375" y="96" text-anchor="middle">Onboarding, rights from Altinn</text>
+  <rect x="540" y="42" width="300" height="76" rx="4" fill="#7f7f7f"/>
+  <text class="t" x="690" y="74" text-anchor="middle">Chooses models and prices</text>
+  <text class="s" x="690" y="96" text-anchor="middle">Where each model runs, what it costs</text>
+  <rect x="860" y="42" width="300" height="76" rx="4" fill="#7f7f7f"/>
+  <text class="t" x="1010" y="74" text-anchor="middle">Runs the platform</text>
+  <text class="s" x="1010" y="96" text-anchor="middle">Search engines, shared services, health</text>
+
+  <!-- Your organisation: steps -->
+  <g>
+    <rect x="230" y="186" width="148" height="150" rx="4" fill="#2e5f7f"/>
+    <circle cx="256" cy="212" r="14" fill="#ffffff"/><text class="n" x="256" y="217" text-anchor="middle">1</text>
+    <text class="t" x="246" y="252">Add data</text>
+    <text class="s" x="246" y="276">Upload documents</text>
+    <text class="s" x="246" y="294">or connect a</text>
+    <text class="s" x="246" y="312">search index</text>
+  </g>
+  <g>
+    <rect x="394" y="186" width="148" height="150" rx="4" fill="#5f9e3c"/>
+    <circle cx="420" cy="212" r="14" fill="#ffffff"/><text class="n" x="420" y="217" text-anchor="middle" fill="#5f9e3c">2</text>
+    <text class="t" x="410" y="252">Build a service</text>
+    <text class="s" x="410" y="276">Purpose, data, model,</text>
+    <text class="s" x="410" y="294">way of working,</text>
+    <text class="s" x="410" y="312">variants, guardrails</text>
+  </g>
+  <g>
+    <rect x="558" y="186" width="148" height="150" rx="4" fill="#2e5f7f"/>
+    <circle cx="584" cy="212" r="14" fill="#ffffff"/><text class="n" x="584" y="217" text-anchor="middle">3</text>
+    <text class="t" x="574" y="252">Test</text>
+    <text class="s" x="574" y="276">Try it in the</text>
+    <text class="s" x="574" y="294">playground, run</text>
+    <text class="s" x="574" y="312">test sets</text>
+  </g>
+  <g>
+    <rect x="722" y="186" width="148" height="150" rx="4" fill="#2e5f7f"/>
+    <circle cx="748" cy="212" r="14" fill="#ffffff"/><text class="n" x="748" y="217" text-anchor="middle">4</text>
+    <text class="t" x="738" y="252">Publish</text>
+    <text class="s" x="738" y="276">Checked, numbered,</text>
+    <text class="s" x="738" y="294">and audited with</text>
+    <text class="s" x="738" y="312">who and why</text>
+  </g>
+  <g>
+    <rect x="886" y="186" width="130" height="150" rx="4" fill="#2e5f7f"/>
+    <circle cx="912" cy="212" r="14" fill="#ffffff"/><text class="n" x="912" y="217" text-anchor="middle">5</text>
+    <text class="t" x="902" y="252">Offer it</text>
+    <text class="s" x="902" y="276">Choose channels,</text>
+    <text class="s" x="902" y="294">create API keys</text>
+  </g>
+  <g>
+    <rect x="1032" y="186" width="128" height="150" rx="4" fill="#2e5f7f"/>
+    <circle cx="1058" cy="212" r="14" fill="#ffffff"/><text class="n" x="1058" y="217" text-anchor="middle">6</text>
+    <text class="t" x="1048" y="252">Follow up</text>
+    <text class="s" x="1048" y="276">Usage and cost,</text>
+    <text class="s" x="1048" y="294">feedback, quality,</text>
+    <text class="s" x="1048" y="312">the change log</text>
+  </g>
+  <path d="M378 261 H392" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M542 261 H556" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M706 261 H720" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M870 261 H884" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M1016 261 H1030" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M1096 186 C1096 160 476 160 468 182" fill="none" stroke="#1e2b3c" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <rect x="672" y="158" width="216" height="18" fill="#f3f5f7"/>
+  <text class="where" x="780" y="172" text-anchor="middle">improve and publish a new version</text>
+
+  <!-- Users and systems -->
+  <rect x="230" y="404" width="290" height="112" rx="4" fill="#111111"/>
+  <text class="t" x="375" y="446" text-anchor="middle">Employees</text>
+  <text class="s" x="375" y="470" text-anchor="middle">Chat in the workspace, with sources</text>
+  <text class="s" x="375" y="490" text-anchor="middle">and a button for feedback</text>
+  <rect x="540" y="404" width="300" height="112" rx="4" fill="#111111"/>
+  <text class="t" x="690" y="446" text-anchor="middle">Your own frontend</text>
+  <text class="s" x="690" y="470" text-anchor="middle">Calls the API with a key,</text>
+  <text class="s" x="690" y="490" text-anchor="middle">builds forms from the service's schema</text>
+  <rect x="860" y="404" width="300" height="112" rx="4" fill="#111111"/>
+  <text class="t" x="1010" y="446" text-anchor="middle">AI tools and agents</text>
+  <text class="s" x="1010" y="470" text-anchor="middle">Use the service as a tool over</text>
+  <text class="s" x="1010" y="490" text-anchor="middle">MCP, the OpenAI API or A2A</text>
+
+  <path d="M951 336 V390" stroke="#1e2b3c" stroke-width="2"/>
+  <path d="M375 390 H1010" stroke="#1e2b3c" stroke-width="2"/>
+  <path d="M375 390 V402" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M690 390 V402" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M1010 390 V402" stroke="#1e2b3c" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M1110 404 V340" stroke="#1e2b3c" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text class="where" x="1118" y="366">feedback</text>
+</svg>

@@ -1,0 +1,87 @@
+id: providers-postgres
+plane: providers
+name: Postgres stores
+note: Events · tasks · RLS
+icon: database
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-postgres'
+summary: Postgres implementations of the event log, task, state, definition, conversation and key stores.
+description: Row-level security on tables the API reads, two database roles, and payloads encrypted
+  per tenant and thread so erasure deletes a key (ADR 0011, 0022). Without DATABASE_URL the API
+  and the worker refuse to start, unless GENAI_DEV_MODE=true lets it use memory stores.
+responsibilities:
+  - Event log, tasks and state
+  - Definitions, conversations, identities, API keys
+  - Tenancy, RLS and content keys
+  - Rate-limit windows shared by every API replica
+files:
+  - packages/providers-postgres/src/event-log.ts
+  - packages/providers-postgres/src/schema.ts
+  - packages/providers-postgres/src/tenancy.ts
+  - packages/providers-postgres/src/crypto.ts
+  - packages/providers-postgres/src/retention.ts
+input: Store calls
+output: SQL
+replaces:
+  - module: data
+    how: Datahike over Postgres, now plain Postgres with RLS
+edges:
+  - to: conversations
+    label: Conversation store interface
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/conversations.ts
+      imports: '@genai/conversations'
+  - to: definitions
+    label: Definitions, settings and the definition store
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/definitions.ts
+      imports: '@genai/definitions'
+  - to: eval
+    label: Stores test sets, runs and feedback
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/eval.ts
+      imports: '@genai/eval'
+  - to: providers-mcp-client
+    label: Stores tenant tool connections
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/connections.ts
+      imports: '@genai/providers-mcp-client'
+  - to: identity
+    label: Stores frontend clients and webhook deliveries
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/clients.ts
+      imports: '@genai/identity'
+  - to: jobs
+    label: Stores trigger runs
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/trigger-runs.ts
+      imports: '@genai/jobs'
+  - to: kernel
+    label: 'Kernel SPI: tasks, events, principals, capabilities'
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-postgres/src/event-log.ts
+      imports: '@genai/contracts'
+  - to: postgres-db
+    label: SQL over a pooled connection
+    kind: sql
+    target: sql
+    witness:
+      file: packages/providers-postgres/src/pool.ts
+      contains: pg
+keywords: postgres stores rls event log encryption

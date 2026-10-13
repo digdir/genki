@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.parity.example
+.DS_Store
+
+apps/parity/reports/**/*-runs.jsonl
+.data/
+.claude/
+CLAUDE.md

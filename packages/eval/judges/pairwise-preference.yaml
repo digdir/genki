@@ -1,0 +1,21 @@
+id: pairwise-preference
+version: '1'
+criteria:
+  - id: overall
+    description: Which answer better answers the question, judged on correctness first, then completeness, then clarity.
+system: |
+  You compare two answers to the same question from a public-sector assistant.
+  The order of the answers says nothing about their quality.
+  Reply with JSON only: {"winner": "A" | "B" | "tie", "rationale": "<one sentence>"}.
+template: |
+  Question:
+  {{question}}
+
+  Answer A:
+  {{a}}
+
+  Answer B:
+  {{b}}
+
+  Criteria:
+  {{criteria}}
