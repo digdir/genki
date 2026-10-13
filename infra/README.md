@@ -50,11 +50,12 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                                                        |
 | `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API                                        |
 | `OPERATOR_SUBJECTS`                                                                      | People with the operator role, comma separated                                                              |
+| `ALTINN_RESOURCE`                                                                        | The Altinn resource whose rights count in genki. Empty means `urn:altinn:resource:digdir-genai-platform`    |
 | `PLATFORM_TENANT`                                                                        | The organisation that plays Digdir, for a test environment with test organisations only. Empty means Digdir |
 | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                |
 | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                                                 |
 
-The API audience (`digdir:genai`) and the Altinn resource (`urn:altinn:resource:digdir-genai-platform`) have defaults in `main.bicep`.
+The API audience (`digdir:genai`) has a default in `main.bicep`. The Altinn resource comes from `ALTINN_RESOURCE`, default `urn:altinn:resource:digdir-genai-platform`; genki-test uses `urn:altinn:resource:digdir-genai-platform-test`.
 
 Secrets live only in Key Vault. Each name in `keyVaultSecretNames` becomes an environment variable in the API and worker, which the platform reads as `secret://env/<name>`:
 

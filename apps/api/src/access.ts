@@ -16,8 +16,10 @@ export const tenantAccess =
   (principal, tenant, request) => {
     if (principal.kind === 'operator') {
       const id = request.headers.get(supportSessionHeader) ?? undefined;
-      return admin.supportSession(id, principal, tenant)
-        ? { ...principal, tenant, actor: principal }
+      if (admin.supportSession(id, principal, tenant))
+        return { ...principal, tenant, actor: principal };
+      return principal.authorizedFor?.some((a) => a.org === tenant)
+        ? { ...principal, kind: 'employee', tenant }
         : undefined;
     }
     if (principal.tenant === tenant) return principal;

@@ -64,6 +64,7 @@ import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
+import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 
@@ -176,7 +177,9 @@ if (mock)
     },
   };
 const reservedClientIds = (testData.clients ?? []).map((c) => c.clientId);
-const verifier = operators.watch(createTokenVerifier({ issuers: trusted }));
+const verifier = operators.watch(
+  asPlatformResource(createTokenVerifier({ issuers: trusted }), resource),
+);
 const secrets = envSecrets();
 
 const memoryKeys = new InMemoryTenantApiKeys();

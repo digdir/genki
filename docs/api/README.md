@@ -36,9 +36,9 @@ Tenant routes check two things, in order ([ADR 0027](../adr/0027-platform-rights
 1. May the caller act for this tenant at all? If not: `404`.
 2. Does the caller have the right for this action? If not: `403` with `errors: [{ "path": "right", "message": "<right>" }]`.
 
-Every tenant route follows this order, so a tenant the caller cannot reach never answers `403`. An operator without a support session cannot reach a tenant either. A resource that does not exist (a client, a key, a pipeline, a run) answers `404`, not `400` or `403`.
+Every tenant route follows this order, so a tenant the caller cannot reach never answers `403`. An operator without a support session cannot reach a tenant either, unless Altinn gives the operator rights in that organisation: then the operator acts there as an ordinary employee, with those rights only. A resource that does not exist (a client, a key, a pipeline, a run) answers `404`, not `400` or `403`.
 
-The five rights are `use-services`, `manage-services`, `manage-datasets`, `register-building-blocks` and `view-usage`. The summary or description of each operation names the right it needs. Operators have every right, but reach a tenant's data only inside a support session: send `support-session: <id>` (see [Operations](operations.md)).
+The five rights are `use-services`, `manage-services`, `manage-datasets`, `register-building-blocks` and `view-usage`. The summary or description of each operation names the right it needs. Operators have every right, but reach a tenant's data only inside a support session: send `support-session: <id>` (see [Operations](operations.md)). In an organisation where Altinn gives them rights, operators act as employees with exactly those rights. Rights count for the Altinn resource in `ALTINN_RESOURCE` (default `urn:altinn:resource:digdir-genai-platform`).
 
 ## Changes: reason and audit
 
