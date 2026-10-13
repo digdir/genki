@@ -47,6 +47,8 @@ jobs:
       FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
       TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
       COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+      PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
+      ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
     steps:
       - uses: actions/checkout@v5
       - uses: azure/login@v2
