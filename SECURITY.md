@@ -36,7 +36,7 @@ Out of scope:
 
 - dev mode (`GENAI_DEV_MODE=true`): the mock Ansattporten, mock Altinn, dev login and in-memory storage are for local development and are insecure by design. A way to turn dev mode on, or reach the mock login, without setting that flag is in scope.
 - the test persons, generated keys and example data in `apps/api/config/local` and in tests
-- the parked Azure setup in `infra/`, which is not deployed
+- the Azure setup in `infra/`, deployed to the test environment only
 - the services the platform calls (Azure AI Foundry, Typesense, Altinn, Ansattporten, Maskinporten, Langfuse) and other Digdir systems such as digdir-headless-rag: report those to their owners
 - model answers that are wrong or unwanted but cross no security boundary, and denial of service by volume
 - findings from automated scanners without a demonstrated impact

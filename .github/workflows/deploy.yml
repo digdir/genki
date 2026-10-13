@@ -103,6 +103,31 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: api
+        env:
+          ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+        run: |
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          if [ -n "$ALTINN_PDP_URL" ]; then
+            {
+              echo "deploy=true"
+              echo "image=${{ needs.build.outputs.api }}"
+              echo "version=${{ github.sha }}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          image=mcr.microsoft.com/k8se/quickstart:latest
+          version=bootstrap
+          if [ -n "$app" ]; then
+            image=$(az containerapp show -g "$rg" -n "$app" --query 'properties.template.containers[0].image' -o tsv)
+            version=$(az containerapp show -g "$rg" -n "$app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)
+          fi
+          {
+            echo "deploy=false"
+            echo "image=$image"
+            echo "version=${version:-bootstrap}"
+          } >> "$GITHUB_OUTPUT"
       - id: deploy
         env:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
@@ -123,15 +148,26 @@ jobs:
           FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
           TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+          PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
+          ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/test.bicepparam \
-            --parameters apiImage="${{ needs.build.outputs.api }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ github.sha }}" \
+            --parameters apiImage="${{ steps.api.outputs.image }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ steps.api.outputs.version }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: api skipped
+        if: steps.api.outputs.deploy != 'true'
+        run: |
+          {
+            echo "### API not deployed"
+            echo
+            echo "ALTINN_PDP_URL is not set in the test environment, and the API refuses to start without the real Altinn decision point. The worker and the apps were deployed; the API keeps its current image."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: smoke
+        if: steps.api.outputs.deploy == 'true'
         run: |
           for _ in $(seq 1 20); do
             body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
@@ -177,6 +213,8 @@ jobs:
           FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
           TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
+          PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
+          ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \

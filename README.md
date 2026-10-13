@@ -54,7 +54,7 @@ It provides:
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
-- **`infra/`**: the Azure setup, written but parked
+- **`infra/`**: the Azure setup for the test environment
 - **`scripts/`**: setup, running everything locally, and building the atlas
 - **`mise.toml`**: the pinned Node version
 
@@ -337,7 +337,7 @@ Definitions live in the database once published. The files in `apps/api/config/l
 
 ### Deployment
 
-The platform runs locally only. The Azure setup in [`infra/`](infra/README.md) is written but parked, and the `Dockerfile` builds the API image that CI checks.
+Every merge to `main` deploys to the test environment in Azure (`genki-test.digdir.cloud`), using [`infra/`](infra/README.md) and the `deploy` workflow. Production is not set up yet.
 
 ### Troubleshooting
 
@@ -354,7 +354,7 @@ The platform runs locally only. The Azure setup in [`infra/`](infra/README.md) i
 
 | Area                       | Where it stands                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Running**                | Locally only. The Azure setup in [`infra/`](infra/README.md) is written but parked.                                                                                                                                                                                                                                                                                                                                             |
+| **Running**                | A test environment in Azure, deployed on every merge to `main`. Production is not set up yet.                                                                                                                                                                                                                                                                                                                                   |
 | **Login and rights**       | Ansattporten, Maskinporten and Altinn are wired behind settings, mocked in development mode.                                                                                                                                                                                                                                                                                                                                    |
 | **Replacing headless-rag** | Every capability of [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag) is covered or a written difference in [ADR 0017](docs/adr/0017-parity-scope-and-intentional-divergences.md). On a draft test set nobody has reviewed yet, the judge score shows no significant difference (platform minus headless-rag: -0.03, 95% CI -0.09 to 0.03; [report](apps/parity/reports/rerun-citations/quality-report.md)). |
 | **Kudos search**           | Reads the shared index headless-rag keeps up to date. The platform only searches it.                                                                                                                                                                                                                                                                                                                                            |

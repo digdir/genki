@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-10-12 (partly built). Proposed 2026-10-06
 
-Not built yet: deployment. The Azure setup in infra/ is written but parked, and only CI runs.
+Not built yet: production. A test environment in Azure is deployed from `main` with the workflows in `.github/workflows`.
 
 ## Decision
 
