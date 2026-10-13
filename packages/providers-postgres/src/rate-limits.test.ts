@@ -3,6 +3,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresStores, LocalKeyWrapper, PostgresRateLimiter } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let stores: Awaited<ReturnType<typeof createPostgresStores>>;
@@ -18,8 +19,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stores?.close();
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 describe('the shared rate limit', () => {

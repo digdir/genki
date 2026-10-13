@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Strategy } from '@genai/kernel';
 import { createPostgresStores, erased, LocalKeyWrapper, migrate } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let pool: pg.Pool;
@@ -45,8 +46,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 describe('postgres event log', () => {

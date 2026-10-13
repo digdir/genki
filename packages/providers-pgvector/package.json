@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@genai/kernel": "0.0.0",
-    "@genai/port-embedding": "0.0.0"
+    "@genai/port-embedding": "0.0.0",
+    "@genai/providers-postgres": "0.0.0"
   }
 }

@@ -3,6 +3,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPostgresStores, LocalKeyWrapper } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 
@@ -14,7 +15,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 describe('a hardened database', () => {

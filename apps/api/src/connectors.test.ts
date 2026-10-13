@@ -12,6 +12,7 @@ import type { AssistantProposal } from '@genai/strategy-builder';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { storeProposal, type CatalogProposal } from './proposals.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 const digdir = '991825827';
 const other = '999888777';
@@ -68,7 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await source?.end();
   await pool?.end();
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const reason = 'Koblingen er gjennomgått';

@@ -36,6 +36,7 @@ import {
 import { InMemoryExecutionStore, type Execution, type ExecutionStore } from './ingestion.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
 import { InMemoryTenantApiKeys, registerPortalRoutes } from './routes/portal-routes.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 interface Stores {
   directory: TenantDirectoryStore;
@@ -102,7 +103,7 @@ afterAll(async () => {
     await db.runtimePool.end();
     await db.pool.end();
   }
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const memoryBackend = memory();

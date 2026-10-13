@@ -12,6 +12,7 @@ import {
   withPlatformAccess,
   withTenant,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let superuser: pg.Pool;
@@ -159,8 +160,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stores?.close();
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 describe('database roles', () => {
