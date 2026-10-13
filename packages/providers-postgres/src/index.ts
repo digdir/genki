@@ -1,5 +1,5 @@
 import pg, { type Pool } from 'pg';
-import { createPool, type PostgresPoolOptions } from './pool.js';
+import { createPool, withClientErrorListener, type PostgresPoolOptions } from './pool.js';
 import { PostgresConversationStore } from './conversations.js';
 import type { KeyWrapper } from './crypto.js';
 import { PostgresEventLog } from './event-log.js';
@@ -102,12 +102,14 @@ export {
 } from './executions.js';
 
 const runtimePoolFor = (owner: Pool) =>
-  new pg.Pool({
-    ...owner.options,
-    password: owner.options.password,
-    allowExitOnIdle: true,
-    options: [owner.options.options, `-c role=${runtimeRole}`].filter(Boolean).join(' '),
-  });
+  withClientErrorListener(
+    new pg.Pool({
+      ...owner.options,
+      password: owner.options.password,
+      allowExitOnIdle: true,
+      options: [owner.options.options, `-c role=${runtimeRole}`].filter(Boolean).join(' '),
+    }),
+  );
 
 export const createPostgresStores = async (
   source: Pool | PostgresPoolOptions,
@@ -119,7 +121,7 @@ export const createPostgresStores = async (
     runtime?: Pool | PostgresPoolOptions;
   } = {},
 ) => {
-  const owner = 'query' in source ? source : createPool(source);
+  const owner = 'query' in source ? withClientErrorListener(source) : createPool(source);
   const onError =
     options.onError ??
     ((error: unknown) => process.emitWarning(`postgres connection error: ${String(error)}`));
@@ -129,7 +131,7 @@ export const createPostgresStores = async (
     options.runtime === undefined
       ? runtimePoolFor(owner)
       : 'query' in options.runtime
-        ? options.runtime
+        ? withClientErrorListener(options.runtime)
         : createPool(options.runtime);
   if (pool.listenerCount('error') === 0) pool.on('error', onError);
   const keys = new ContentKeys(pool, wrapper);
