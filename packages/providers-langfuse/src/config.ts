@@ -1,4 +1,4 @@
-import { secretRefPattern } from '@genai/kernel';
+import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
 import { z } from 'zod';
 
 const secret = z.string().regex(secretRefPattern, 'must be a secret:// reference');
@@ -41,6 +41,6 @@ export type ExporterConfigInput = z.input<typeof exporterConfig>;
 export type ExporterConfig = z.output<typeof exporterConfig>;
 
 export const tracesUrl = (endpoint: string) =>
-  endpoint.replace(/\/+$/, '').endsWith('/v1/traces')
+  withoutTrailingSlashes(endpoint).endsWith('/v1/traces')
     ? endpoint
-    : `${endpoint.replace(/\/+$/, '')}/v1/traces`;
+    : `${withoutTrailingSlashes(endpoint)}/v1/traces`;

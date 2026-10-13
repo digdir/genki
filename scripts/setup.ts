@@ -53,14 +53,16 @@ export const ensureEnvFile = (
 ): EnvResult => {
   const path = join(root, '.env.local');
   const values = generatedSettings(random, env);
-  if (existsSync(path)) {
-    const current = parseEnv(readFileSync(path, 'utf8'));
-    const missing = Object.keys(values).filter((name) => !current[name]);
-    return { path, created: false, missing };
-  }
   const template = readFileSync(join(root, '.env.example'), 'utf8');
-  writeFileSync(path, fillEnv(template, values), { mode: 0o600 });
-  return { path, created: true, missing: [] };
+  try {
+    writeFileSync(path, fillEnv(template, values), { mode: 0o600, flag: 'wx' });
+    return { path, created: true, missing: [] };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  const current = parseEnv(readFileSync(path, 'utf8'));
+  const missing = Object.keys(values).filter((name) => !current[name]);
+  return { path, created: false, missing };
 };
 
 export const nodeProblem = (version: string, pinned: string | undefined): string | undefined => {

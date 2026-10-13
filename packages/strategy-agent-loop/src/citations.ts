@@ -139,11 +139,14 @@ export const sourcesFirst = <C extends { chunkId: string }>(first: C[], rest: C[
 };
 
 const sourceListLine =
-  /^\s*[*#_>-]*\s*(kilder|kilde|kjelder|kjelde|sources?|references?)\s*[*_]*\s*:?\s*[*_]*\s*(\[\d+\]\s*(?:[-–,.;]|og|and)?\s*)+[*_]*\s*$/iu;
+  /^[#>-]* ?(kilder|kilde|kjelder|kjelde|sources?|references?) ?:? ?(\[\d+\] ?(?:(?:[-–,.;]|og|and) ?)?)+$/iu;
+
+const isSourceListLine = (line: string) =>
+  sourceListLine.test(line.replace(/[*_]/g, '').replace(/\s+/g, ' ').trim());
 
 export const stripSourceLists = (text: string): string => {
   const lines = text.split('\n');
-  const kept = lines.filter((line) => !sourceListLine.test(line));
+  const kept = lines.filter((line) => !isSourceListLine(line));
   return kept.length === lines.length ? text : kept.join('\n').trimEnd();
 };
 

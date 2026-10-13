@@ -20,7 +20,7 @@ describe('API call preview', () => {
       },
       t,
     );
-    expect(write).toContain('-H "change-reason: <begrunnelse>"');
+    expect(write).toContain("-H 'change-reason: <begrunnelse>'");
     expect(curlOf({ title: 'Hent', method: 'GET', path: '/x' }, t)).not.toContain('change-reason');
 
     const pinned = curlOf(
@@ -32,7 +32,22 @@ describe('API call preview', () => {
       },
       t,
     );
-    expect(pinned).toContain('-H "change-reason: Ny%20adresse%20for%20s%C3%B8k"');
-    expect(pinned).toContain('-H "if-match: \\"3\\""');
+    expect(pinned).toContain("-H 'change-reason: Ny%20adresse%20for%20s%C3%B8k'");
+    expect(pinned).toContain(`-H 'if-match: "3"'`);
+  });
+
+  it('quotes header values and the body so the shell runs nothing inside them', () => {
+    const curl = curlOf(
+      {
+        title: 'Lagre',
+        method: 'PUT',
+        path: '/x',
+        headers: { 'if-match': `$(touch x) it's` },
+        body: { note: "it's $(id)" },
+      },
+      t,
+    );
+    expect(curl).toContain(`-H 'if-match: $(touch x) it'\\''s'`);
+    expect(curl).toContain(`'{\n  "note": "it'\\''s $(id)"\n}'`);
   });
 });

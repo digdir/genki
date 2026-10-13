@@ -24,7 +24,7 @@ const inV4 = (ip: string, [base, bits]: [string, number]) => {
 
 const expandV6 = (ip: string): number[] | undefined => {
   let address = ip.toLowerCase().split('%')[0] ?? '';
-  const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(address);
+  const tail = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(address);
   if (tail?.[1]) {
     const n = v4ToInt(tail[1]);
     address = address.replace(tail[1], `${(n >>> 16).toString(16)}:${(n & 0xffff).toString(16)}`);

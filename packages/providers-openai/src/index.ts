@@ -23,6 +23,12 @@ import type {
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
 
+const withoutTrailingSlashes = (url: string) => {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
+  return url.slice(0, end);
+};
+
 const cached = (tokens: number | undefined) => (tokens ? { cachedInputTokens: tokens } : {});
 
 const endpointOptions = z.strictObject({});
@@ -236,8 +242,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
 };
 
 const azureRoot = (baseURL: string) =>
-  baseURL
-    .replace(/\/+$/, '')
+  withoutTrailingSlashes(baseURL)
     .replace(/\/openai(\/v1)?$/, '')
     .replace(/\/anthropic$/, '');
 

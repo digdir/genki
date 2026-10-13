@@ -125,10 +125,47 @@ const render = (node: HtmlNode, region: HtmlElement): string => {
     : `<${node.tag}${node.attrs}>${inner}</${node.tag}>`;
 };
 
-const withoutRawText = (html: string) =>
-  html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, '');
+const rawTextTags = ['script', 'style', 'noscript', 'template'];
+
+const rawTextTagAt = (lower: string, at: number) =>
+  rawTextTags.find(
+    (tag) => lower.startsWith(tag, at + 1) && !/\w/.test(lower[at + 1 + tag.length] ?? ''),
+  );
+
+const withoutRawText = (html: string) => {
+  const lower = html.toLowerCase();
+  let out = '';
+  let from = 0;
+  let at = lower.indexOf('<');
+  while (at !== -1) {
+    if (lower.startsWith('<!--', at)) {
+      const close = lower.indexOf('-->', at + 4);
+      out += html.slice(from, at);
+      if (close === -1) return out;
+      from = close + 3;
+    } else {
+      const tag = rawTextTagAt(lower, at);
+      if (tag) {
+        const close = lower.indexOf(`</${tag}`, at);
+        const end = close === -1 ? -1 : lower.indexOf('>', close);
+        out += html.slice(from, at);
+        if (end === -1) return out;
+        from = end + 1;
+      }
+    }
+    at = lower.indexOf('<', Math.max(at + 1, from));
+  }
+  return out + html.slice(from);
+};
+
+const withoutTags = (html: string) => {
+  let text = html;
+  for (let before = ''; before !== text;) {
+    before = text;
+    text = text.replace(/<[^<>]*>/g, '');
+  }
+  return text;
+};
 
 export const extractMainContent: ContentExtractor = (html) => {
   const root = parseHtml(withoutRawText(html));
@@ -167,27 +204,25 @@ const collapseWhitespace = (html: string) =>
     .map((part, i) => (i % 2 === 1 ? part : part.replace(/\s+/g, ' ')))
     .join('');
 
-const plainText = (html: string) =>
-  decodeEntities(html.replace(/<[^>]+>/g, ''))
-    .replace(/\s+/g, ' ')
-    .trim();
+const plainText = (html: string) => decodeEntities(withoutTags(html)).replace(/\s+/g, ' ').trim();
 
 const contentToMarkdown = (html: string) =>
   decodeEntities(
-    collapseWhitespace(html)
-      .replace(
-        /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi,
-        (_, level: string, text: string) =>
-          `\n\n${'#'.repeat(Number(level))} ${plainText(text)}\n\n`,
-      )
-      .replace(/<li\b[^>]*>/gi, '\n- ')
-      .replace(/<(td|th)\b[^>]*>/gi, ' ')
-      .replace(/<\/(p|blockquote|ul|ol|table|pre|figure)\b[^>]*>/gi, '\n\n')
-      .replace(
-        /<(br|\/div|\/li|\/tr|\/section|\/article|\/figcaption|\/dd|\/dt|\/main|\/header)\b[^>]*>/gi,
-        '\n',
-      )
-      .replace(/<[^>]+>/g, ''),
+    withoutTags(
+      collapseWhitespace(html)
+        .replace(
+          /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi,
+          (_, level: string, text: string) =>
+            `\n\n${'#'.repeat(Number(level))} ${plainText(text)}\n\n`,
+        )
+        .replace(/<li\b[^>]*>/gi, '\n- ')
+        .replace(/<(td|th)\b[^>]*>/gi, ' ')
+        .replace(/<\/(p|blockquote|ul|ol|table|pre|figure)\b[^>]*>/gi, '\n\n')
+        .replace(
+          /<(br|\/div|\/li|\/tr|\/section|\/article|\/figcaption|\/dd|\/dt|\/main|\/header)\b[^>]*>/gi,
+          '\n',
+        ),
+    ),
   )
     .split('\n')
     .map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim())

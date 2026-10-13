@@ -313,14 +313,19 @@ export const urlToDoc = (entry: SitemapEntry) => {
   };
 };
 
-const frontmatterBlock = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/;
+const frontmatterBody = (markdown: string) => {
+  const lines = markdown.split('\n');
+  if (lines[0]?.trim() !== '---') return undefined;
+  const end = lines.findIndex((line, i) => i > 0 && line.trim() === '---');
+  return end === -1 ? undefined : lines.slice(1, end).join('\n');
+};
 
 export const parseFrontmatter = (markdown: string): Record<string, unknown> | undefined => {
   if (!markdown.startsWith('---')) return undefined;
-  const m = frontmatterBlock.exec(markdown);
-  if (!m) return undefined;
+  const body = frontmatterBody(markdown);
+  if (body === undefined) return undefined;
   try {
-    const parsed: unknown = parseYaml(m[1] as string);
+    const parsed: unknown = parseYaml(body);
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};

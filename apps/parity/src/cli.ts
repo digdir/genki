@@ -157,9 +157,13 @@ if (command === 'record' || command === 'compare') {
       if (r.error) console.log(`    error: ${r.error}`);
     }
     const reportFile = join(values.fixtures, 'report.json');
-    const previous = existsSync(reportFile)
-      ? (JSON.parse(await readFile(reportFile, 'utf8')) as ScenarioReport[])
-      : [];
+    const previous = await readFile(reportFile, 'utf8').then(
+      (text) => JSON.parse(text) as ScenarioReport[],
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+      },
+    );
     const excluded = [
       values.only ? `--only ${values.only}` : '',
       ...values.skip.map((s) => `--skip ${s}`),

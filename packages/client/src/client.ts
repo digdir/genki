@@ -19,6 +19,12 @@ import type {
   StreamOptions,
 } from './types.js';
 
+const withoutTrailingSlashes = (url: string) => {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
+  return url.slice(0, end);
+};
+
 export interface ClientOptions {
   baseUrl: string;
   apiKey?: string;
@@ -153,7 +159,7 @@ class Accumulator {
 }
 
 export const createClient = (options: ClientOptions) => {
-  const base = options.baseUrl.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(options.baseUrl);
   const doFetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
 
   const headersFor = async (call: CallOptions, json: boolean): Promise<Headers> => {

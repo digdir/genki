@@ -83,7 +83,7 @@ export const operationSlug = (method: string, path: string) =>
   `${method}_${path}`
     .replace(/[{}]/g, '')
     .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(/^_|_$/g, '')
     .toLowerCase();
 
 const blockedHeaders = new Set([

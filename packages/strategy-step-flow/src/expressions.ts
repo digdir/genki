@@ -67,7 +67,27 @@ const resolveOne = (expression: string, scope: Scope): unknown => {
   return record ? walk(record.output, rest) : undefined;
 };
 
-const comparison = /^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/;
+const operators = ['==', '!=', '>=', '<=', '>', '<'] as const;
+
+const operatorAt = (text: string, at: number) => operators.find((op) => text.startsWith(op, at));
+
+export const leftOfComparison = (expression: string) => {
+  for (let at = 0; at < expression.length; at += 1)
+    if (operatorAt(expression, at)) return expression.slice(0, at).trimEnd();
+  return expression;
+};
+
+const splitComparison = (expression: string) => {
+  if (expression.includes('\n')) return undefined;
+  for (let at = 1; at < expression.length; at += 1) {
+    const op = operatorAt(expression, at);
+    if (!op) continue;
+    const left = expression.slice(0, at).trimEnd();
+    const right = expression.slice(at + op.length).trimStart();
+    if (left && right) return { left, op, right };
+  }
+  return undefined;
+};
 
 const truthy = (v: unknown) =>
   !(
@@ -82,9 +102,9 @@ const truthy = (v: unknown) =>
 export const evaluateCondition = (expression: string, scope: Scope): boolean => {
   const trimmed = expression.trim();
   if (trimmed.startsWith('!')) return !evaluateCondition(trimmed.slice(1), scope);
-  const match = comparison.exec(trimmed);
+  const match = splitComparison(trimmed);
   if (!match) return truthy(resolvePath(trimmed, scope));
-  const [, left = '', op, right = ''] = match;
+  const { left, op, right } = match;
   const a = resolvePath(left, scope);
   const b = resolvePath(right, scope);
   switch (op) {
@@ -109,8 +129,8 @@ export const sameValue = (a: unknown, b: unknown): boolean => {
   return JSON.stringify(a) === JSON.stringify(b);
 };
 
-const template = /\{\{\s*([^}]+?)\s*\}\}/g;
-const whole = /^\{\{\s*([^}]+?)\s*\}\}$/;
+const template = /\{\{([^{}]+)\}\}/g;
+const whole = /^\{\{([^{}]+)\}\}$/;
 
 const asText = (value: unknown) =>
   value === undefined || value === null
@@ -124,8 +144,8 @@ const asText = (value: unknown) =>
 export const render = (value: unknown, scope: Scope): unknown => {
   if (typeof value === 'string') {
     const single = whole.exec(value);
-    if (single?.[1]) return resolvePath(single[1], scope);
-    return value.replace(template, (_m, path: string) => asText(resolvePath(path, scope)));
+    if (single?.[1]) return resolvePath(single[1].trim(), scope);
+    return value.replace(template, (_m, path: string) => asText(resolvePath(path.trim(), scope)));
   }
   if (Array.isArray(value)) return value.map((v) => render(v, scope));
   if (isRecord(value))
@@ -137,7 +157,7 @@ export const referencedSteps = (value: unknown): string[] => {
   const out: string[] = [];
   const visit = (v: unknown) => {
     if (typeof v === 'string') {
-      for (const m of v.matchAll(template)) out.push(...stepsIn(m[1] ?? ''));
+      for (const m of v.matchAll(template)) out.push(...stepsIn((m[1] ?? '').trim()));
     } else if (Array.isArray(v)) v.forEach(visit);
     else if (isRecord(v)) Object.values(v).forEach(visit);
   };
