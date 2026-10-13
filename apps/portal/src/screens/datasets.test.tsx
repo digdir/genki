@@ -209,8 +209,8 @@ describe('Datasett: detalj', () => {
   });
 
   it('runs an ingestion with progress, then announces the result', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     await openDetail(web, 'Nettsidene til Testetaten');
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: 'Les inn nå' }));
     const bar = screen.getByRole('progressbar', { name: 'Fremdrift' });
     expect(bar.getAttribute('aria-valuenow')).toBe('0');
@@ -234,8 +234,8 @@ describe('Datasett: detalj', () => {
   });
 
   it('stops a running ingestion after confirmation and keeps documents already read', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     await openDetail(tilsyn, 'Tilsynsrapporter 2025');
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: 'Les inn nå' }));
     act(() => {
       vi.advanceTimersByTime(1500);
