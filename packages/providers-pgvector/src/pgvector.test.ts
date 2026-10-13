@@ -23,6 +23,7 @@ import {
 } from '@genai/port-knowledge/testing';
 import { fakeEmbedder } from '@genai/port-embedding/testing';
 import { pgvectorEngine, type PgvectorEngineOptions, type QueryEmbedder } from './index.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 let container: StartedPostgreSqlContainer;
 let pool: pg.Pool;
@@ -57,7 +58,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool?.end();
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const seeded =

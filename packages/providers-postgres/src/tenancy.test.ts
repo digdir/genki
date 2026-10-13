@@ -26,6 +26,7 @@ import {
   threadScope,
   withTenant,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Pool;
@@ -38,7 +39,6 @@ const ORG_B = '889640782';
 const AGENT = 'kunnskapsassistenten__default';
 
 const track = (pool: pg.Pool) => {
-  pool.on('connect', (client) => client.on('error', () => undefined));
   pools.push(pool);
   return pool;
 };
@@ -64,8 +64,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 const asTenant = async <T>(tenant: string | undefined, sql: string, params: unknown[] = []) => {

@@ -10,6 +10,7 @@ import {
   threadScope,
   withPlatformAccess,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let stores: Awaited<ReturnType<typeof createPostgresStores>>;
@@ -80,7 +81,7 @@ afterAll(async () => {
   await stores?.close();
   await stores?.runtimePool.end();
   await pool?.end();
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 describe('postgres retention', () => {
