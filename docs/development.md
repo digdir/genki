@@ -85,7 +85,7 @@ Vendor SDKs live only in `packages/providers-*`, and only composition roots may 
 npm run check   # prettier, eslint, typecheck, dependency boundaries, all tests
 ```
 
-Tests use Vitest; the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs `npm run check`, a gitleaks scan and a Docker image build, without pushing.
+Tests use Vitest; the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks scan and a Docker image build, without pushing.
 
 Quality of answers is measured, not assumed: `packages/eval` runs test sets with judges and publishing gates, and `apps/parity` compares the platform with headless-rag on the same questions ([apps/parity/README.md](../apps/parity/README.md)).
 

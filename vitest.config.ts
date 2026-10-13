@@ -8,6 +8,7 @@ export default defineConfig({
   ssr: { resolve: { conditions: ['source', ...defaultServerConditions] } },
   test: {
     testTimeout: 15_000,
+    setupFiles: ['./vitest.setup.ts'],
     include: [
       'packages/*/src/**/*.test.ts',
       'packages/*/src/**/*.test.tsx',

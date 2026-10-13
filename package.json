@@ -32,6 +32,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@testcontainers/postgresql": "^12.2.0",
+    "@testing-library/dom": "^10.4.2",
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
     "dependency-cruiser": "^18.5.0",
