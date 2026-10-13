@@ -1,3 +1,4 @@
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 
@@ -27,16 +28,22 @@ describe('GET /reference', () => {
     const csp = res.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("script-src-attr 'none'");
-    const scripts = [...body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
+    const { document } = new JSDOM(body).window;
+    const scripts = [...document.querySelectorAll('script')];
     expect(scripts.length).toBeGreaterThan(0);
-    for (const [, attrs, inner] of scripts) {
-      expect(attrs).toMatch(/\ssrc="reference\/[^"]+"/);
-      expect((inner ?? '').trim()).toBe('');
+    for (const script of scripts) {
+      expect(script.getAttribute('src')).toMatch(/^reference\//);
+      expect(script.textContent?.trim()).toBe('');
     }
-    expect(body).not.toMatch(/\son[a-z]+\s*=/i);
-    expect(body).not.toMatch(/\sstyle\s*=/i);
-    expect(body).not.toMatch(/<style\b/i);
-    expect(body).not.toMatch(/javascript:/i);
+    const attributes = [...document.querySelectorAll('*')].flatMap((element) =>
+      [...element.attributes].map((attribute) => attribute.name.toLowerCase()),
+    );
+    expect(attributes.filter((name) => name.startsWith('on') || name === 'style')).toEqual([]);
+    expect(document.querySelectorAll('style')).toHaveLength(0);
+    const links = [...document.querySelectorAll('[href], [src]')].map(
+      (element) => element.getAttribute('href') ?? element.getAttribute('src') ?? '',
+    );
+    expect(links.filter((link) => link.trim().toLowerCase().startsWith('javascript:'))).toEqual([]);
   });
 
   it('builds the page with the dom, never with eval, inline handlers or html strings', async () => {
