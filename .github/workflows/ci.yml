@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  static:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v3
@@ -25,9 +25,37 @@ jobs:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
-      - run: npm run check
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run boundaries
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run --shard=${{ matrix.shard }}/4
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'false'
+
+  check:
+    needs: [static, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "${{ needs.static.result }}" = success && test "${{ needs.test.result }}" = success
 
   secrets:
     runs-on: ubuntu-latest
