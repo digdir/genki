@@ -37,6 +37,11 @@ import type { ModelPrice } from './draft-runner.js';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
+import {
+  defaultPlatformTenant,
+  ownedByPlatformTenant,
+  platformTenantFrom,
+} from '@genai/composition';
 import { createApp } from './app.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
@@ -82,6 +87,8 @@ if (isDevMode(process.env)) {
   console.warn(`\n*** DEV MODE ***\n${devModeWarning}\n`);
   log('dev mode', { warning: devModeWarning });
 }
+const platformTenant = platformTenantFrom(process.env);
+log('platform tenant', { tenant: platformTenant });
 
 const identityFile = (() => {
   const raw = (parseYaml(readFileSync(join(configDir, 'identity.yaml'), 'utf8')) ?? {}) as {
@@ -178,14 +185,14 @@ if (mock && process.env.DEV_API_KEY) {
     id: 'local-dev',
     name: 'Local development key',
     digest: apiKeyDigest(process.env.DEV_API_KEY),
-    tenant: '991825827',
+    tenant: platformTenant,
     scopes: ['query' as const],
     datasets: ['*'],
     agents: ['*'],
   };
   if (db) await db.apiKeys.restore(devKey);
   else await memoryKeys.add(devKey);
-  log('local dev key enabled', { tenant: '991825827', storage: db ? 'postgres' : 'memory' });
+  log('local dev key enabled', { tenant: platformTenant, storage: db ? 'postgres' : 'memory' });
 }
 
 if (mock && process.env.DEV_SERVICE_API_KEY) {
@@ -194,7 +201,7 @@ if (mock && process.env.DEV_SERVICE_API_KEY) {
     id: 'local-dev-service',
     name: `Local development key bound to ${service}`,
     digest: apiKeyDigest(process.env.DEV_SERVICE_API_KEY),
-    tenant: '991825827',
+    tenant: platformTenant,
     scopes: ['query' as const],
     datasets: [],
     agents: [],
@@ -311,7 +318,8 @@ const definitionSources: DefinitionSource[] = [
 ];
 
 const platform = await createPlatform({
-  modules: [...platformModules, createDefinitionSourcesModule(definitionSources)],
+  platformTenant,
+  modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
   clients,
@@ -438,6 +446,7 @@ const platform = await createPlatform({
 });
 
 const admin = createAdmin({
+  platformTenant,
   store: platform.definitions,
   plugins: platform.plugins,
   settings,
@@ -472,24 +481,44 @@ const app = createApp(version, {
 });
 platform.mount(app, admin);
 
-const localTestSets = readTestSets([
-  join(import.meta.dirname, '..', '..', '..', 'packages', 'eval', 'testsets'),
-  join(import.meta.dirname, '..', '..', '..', 'packages', 'jobs', 'examples', 'testsets'),
-]);
+const localTestSets = readTestSets(
+  [
+    join(import.meta.dirname, '..', '..', '..', 'packages', 'eval', 'testsets'),
+    join(import.meta.dirname, '..', '..', '..', 'packages', 'jobs', 'examples', 'testsets'),
+  ],
+  platformTenant,
+);
 for (const outcome of await seedTestSets(
   admin,
   platform.evalStores.testSets,
-  testSetsOfServices(localTestSets.sets, readGitDefinitions(definitionSources).definitions),
+  testSetsOfServices(
+    localTestSets.sets,
+    readGitDefinitions(definitionSources, platformTenant).definitions,
+  ),
 ))
   if (outcome.state !== 'present') log(`test set ${outcome.state}`, outcome);
 for (const unreadable of localTestSets.unreadable) log('test set unreadable', { ...unreadable });
 
 const seeded = withoutUnknownVariantModels(
-  readGitDefinitions(definitionSources).definitions,
+  readGitDefinitions(definitionSources, platformTenant).definitions,
   (id) => platform.plugins.models.has(id),
 );
 for (const dropped of seeded.dropped)
   log('variant skipped: its model is not configured', { ...dropped });
+if (
+  await platform.directory.ensure(
+    {
+      orgNumber: platformTenant,
+      name:
+        (testData.organisations ?? []).find((o) => o.orgno === platformTenant)?.name ??
+        (platformTenant === defaultPlatformTenant ? 'Digitaliseringsdirektoratet' : platformTenant),
+      status: 'active',
+    },
+    'platform:seed',
+  )
+)
+  log('platform tenant registered', { tenant: platformTenant });
+
 for (const outcome of await seedDefinitions(admin, platform.definitions, seeded.definitions))
   if (outcome.state === 'published') log('definition published', outcome);
   else if (outcome.state === 'skipped') log('definition skipped', outcome);
@@ -498,9 +527,12 @@ const clientsDir = join(configDir, 'clients');
 for (const file of existsSync(clientsDir)
   ? readdirSync(clientsDir).filter((f) => f.endsWith('.yaml'))
   : []) {
-  const definition = parseYaml(readFileSync(join(clientsDir, file), 'utf8')) as {
-    metadata: { tenant: string; id: string };
-  };
+  const definition = ownedByPlatformTenant(
+    parseYaml(readFileSync(join(clientsDir, file), 'utf8')) as {
+      metadata: { tenant: string; id: string };
+    },
+    platformTenant,
+  );
   const { tenant, id } = definition.metadata;
   if (await clients.get(tenant, id)) continue;
   const result = await admin.perform(platformActor('seed', tenant), 'platform.clients.save', {

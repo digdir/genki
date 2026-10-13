@@ -2,13 +2,15 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   attachRuntimeBlocks,
+  type BlockTexts,
   createRuntime,
   followChanges,
   loadCatalog,
+  ownedByPlatformTenant,
+  platformTenantFrom,
   runtimeBlocksOf,
   TenantSecretVault,
   withBlockSettings,
-  type BlockTexts,
 } from '@genai/composition';
 import {
   InMemoryDefinitionStore,
@@ -69,7 +71,7 @@ if (isDevMode(process.env)) {
 const servicesDir = process.env.WORKER_SERVICES_DIR ?? join(root, 'packages', 'jobs', 'examples');
 const configDir = process.env.CONFIG_DIR ?? join(root, 'apps', 'api', 'config', 'local');
 const blobDir = process.env.BLOB_DIR ?? join(root, '.data', 'blobs');
-const platformTenant = process.env.PLATFORM_TENANT ?? '991825827';
+const platformTenant = platformTenantFrom(process.env);
 
 const databaseHosts = (...urls: (string | undefined)[]) =>
   urls.flatMap((url) => {
@@ -240,7 +242,7 @@ if (!db) {
       Object.entries(prompts).filter(([path]) => text.includes(path)),
     );
     const result = await runtime.store.publish(
-      parseYaml(text),
+      ownedByPlatformTenant(parseYaml(text) as { metadata?: { tenant?: unknown } }, platformTenant),
       'worker:seed',
       'local configuration',
       used,

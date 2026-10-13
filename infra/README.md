@@ -41,17 +41,18 @@ The app identity owns the schema and runs migrations. Queries run as `genai_runt
 
 Plain settings come from the GitHub environment's variables (Settings → Environments → test → Variables), read by `test.bicepparam` with `readEnvironmentVariable`:
 
-| Variable                                                                                 | For                                                                         |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `ANSATTPORTEN_ISSUER`                                                                    | Login for people, API and apps. Required: the API does not start without it |
-| `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`                                                | Ansattporten client ids of the portal and workspace                         |
-| `CONSOLE_CLIENT_ID`, `CONSOLE_TOKEN_ENDPOINT`                                            | The console's login (its issuer defaults to `ANSATTPORTEN_ISSUER`)          |
-| `ALTINN_PDP_URL`                                                                         | The Altinn decision point. Required: the API does not start without it      |
-| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                        |
-| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API        |
-| `OPERATOR_SUBJECTS`                                                                      | People with the operator role, comma separated                              |
-| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                |
-| `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                 |
+| Variable                                                                                 | For                                                                                                         |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `ANSATTPORTEN_ISSUER`                                                                    | Login for people, API and apps. Required: the API does not start without it                                 |
+| `PORTAL_CLIENT_ID`, `WORKSPACE_CLIENT_ID`                                                | Ansattporten client ids of the portal and workspace                                                         |
+| `CONSOLE_CLIENT_ID`, `CONSOLE_TOKEN_ENDPOINT`                                            | The console's login (its issuer defaults to `ANSATTPORTEN_ISSUER`)                                          |
+| `ALTINN_PDP_URL`                                                                         | The Altinn decision point. Required: the API does not start without it                                      |
+| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`                                                      | The Maskinporten client that asks the decision point                                                        |
+| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                                          | Maskinporten, for the decision point and for systems calling the API                                        |
+| `OPERATOR_SUBJECTS`                                                                      | People with the operator role, comma separated                                                              |
+| `PLATFORM_TENANT`                                                                        | The organisation that plays Digdir, for a test environment with test organisations only. Empty means Digdir |
+| `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                |
+| `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                                                 |
 
 The API audience (`digdir:genai`) and the Altinn resource (`urn:altinn:resource:digdir-genai-platform`) have defaults in `main.bicep`.
 

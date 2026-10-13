@@ -33,6 +33,16 @@ describe('booting the API', () => {
     expect(bootProblems({ ...dev, ...rest })).toEqual([]);
   });
 
+  it('refuses to start with a malformed PLATFORM_TENANT, also in dev mode', () => {
+    expect(bootProblems({ ...real, PLATFORM_TENANT: '12345' })).toEqual([
+      expect.stringContaining('PLATFORM_TENANT'),
+    ]);
+    expect(bootProblems({ ...dev, PLATFORM_TENANT: 'digdir' })).toEqual([
+      expect.stringContaining('PLATFORM_TENANT'),
+    ]);
+    expect(bootProblems({ ...real, PLATFORM_TENANT: '213192752' })).toEqual([]);
+  });
+
   it('names every missing setting when none is set', () => {
     const problems = bootProblems({});
     expect(problems).toHaveLength(3);

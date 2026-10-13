@@ -151,6 +151,33 @@ const boot = async (options: { quotaExhausted?: boolean } = {}) => {
   return { app, testSets, candidates, feedback, call, read, propose, adminTasks };
 };
 
+describe('the tenant directory', () => {
+  it('registers the platform tenant once and keeps an entry an operator already made', async () => {
+    const directory = new TenantDirectory();
+
+    expect(
+      await directory.ensure(
+        { orgNumber: '213192752', name: '213192752', status: 'active' },
+        'platform:seed',
+      ),
+    ).toBe(true);
+    await directory.add(
+      { orgNumber: '213192752', name: 'Snill skjør ape', status: 'paused' },
+      'employee:test:ola',
+    );
+    expect(
+      await directory.ensure(
+        { orgNumber: '213192752', name: '213192752', status: 'active' },
+        'platform:seed',
+      ),
+    ).toBe(false);
+
+    expect(await directory.list()).toEqual([
+      { orgNumber: '213192752', name: 'Snill skjør ape', status: 'paused' },
+    ]);
+  });
+});
+
 describe('test-case candidates', () => {
   it('a candidate proposed by the assistant keeps its origin', async () => {
     const { candidates, propose } = await boot();

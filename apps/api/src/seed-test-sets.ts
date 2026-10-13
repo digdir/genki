@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { defaultPlatformTenant, ownedByPlatformTenant } from '@genai/composition';
 import { parseTestSetYaml, type TestSet, type TestSetStore } from '@genai/eval';
 import { platformActor, type Admin } from './admin.js';
 import { seedReason, type GitDefinition, type UnreadableFile } from './definition-sources.js';
@@ -14,7 +15,7 @@ export type TestSetSeedOutcome =
   | { file: string; testSet: string; state: 'present' }
   | { file: string; testSet: string; state: 'skipped'; errors: unknown[]; task?: string };
 
-export const readTestSets = (dirs: string[]) => {
+export const readTestSets = (dirs: string[], platformTenant: string = defaultPlatformTenant) => {
   const sets: GitTestSet[] = [];
   const unreadable: UnreadableFile[] = [];
   for (const dir of dirs) {
@@ -24,7 +25,10 @@ export const readTestSets = (dirs: string[]) => {
       .sort()) {
       const file = join(dir, name);
       try {
-        sets.push({ file, set: parseTestSetYaml(readFileSync(file, 'utf8')) });
+        sets.push({
+          file,
+          set: ownedByPlatformTenant(parseTestSetYaml(readFileSync(file, 'utf8')), platformTenant),
+        });
       } catch (error) {
         unreadable.push({ file, error: error instanceof Error ? error.message : String(error) });
       }

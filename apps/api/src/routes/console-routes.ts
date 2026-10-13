@@ -1,4 +1,5 @@
 import type { Principal } from '@genai/contracts';
+import { defaultPlatformTenant } from '@genai/composition';
 import type { DefinitionStore, PluginSchemas, ValidationError } from '@genai/definitions';
 import { judgeAgreement, type EvalRunStore, type JudgeLabel, type LabelStore } from '@genai/eval';
 import type { Residency } from '@genai/port-model';
@@ -251,7 +252,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
   deps: ConsoleRouteDeps,
 ) => {
   const now = deps.now ?? (() => new Date());
-  const platformTenant = deps.platformTenant ?? '991825827';
+  const platformTenant = deps.platformTenant ?? defaultPlatformTenant;
 
   const operatorOf = async (c: Context) => {
     const principal = await deps.authenticate(c.req.raw);

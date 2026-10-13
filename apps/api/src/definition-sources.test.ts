@@ -62,6 +62,19 @@ describe('definitions from git', () => {
     ]);
   });
 
+  it('a configured platform tenant owns the definitions seeded for Digdir', async () => {
+    const { store, admin } = setup();
+    const source = gitConfig({ 'klarsprak.yaml': klarsprak() });
+
+    const read = readGitDefinitions([source], '213192752').definitions;
+    const outcomes = await seedDefinitions(admin, store, read);
+
+    expect(read).toMatchObject([{ tenant: '213192752', id: 'klarsprak' }]);
+    expect(outcomes).toMatchObject([{ state: 'published', version: 1 }]);
+    expect(await store.get('Service', '213192752', 'klarsprak')).toBeDefined();
+    expect(await store.get('Service', digdir, 'klarsprak')).toBeUndefined();
+  });
+
   it('seeding leaves a definition that is already published alone', async () => {
     const { store, admin } = setup();
     await store.publish(klarsprak(), 'employee:test:kari', 'endret i portalen', files);
