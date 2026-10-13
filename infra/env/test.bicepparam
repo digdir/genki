@@ -27,6 +27,7 @@ param appEnv = {
 }
 
 param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')
+param altinnResource = readEnvironmentVariable('ALTINN_RESOURCE', 'urn:altinn:resource:digdir-genai-platform')
 param altinnPdpUrl = readEnvironmentVariable('ALTINN_PDP_URL', '')
 param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
 param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
