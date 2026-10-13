@@ -31,7 +31,9 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      image: ${{ steps.image.outputs.ref }}
+      api: ${{ steps.image.outputs.api }}
+      worker: ${{ steps.image.outputs.worker }}
+      apps: ${{ steps.image.outputs.apps }}
     steps:
       - uses: actions/checkout@v5
       - uses: azure/login@v2
@@ -45,18 +47,46 @@ jobs:
           echo "server=$server" >> "$GITHUB_OUTPUT"
           az acr login --name "${{ vars.ACR_NAME }}"
       - uses: docker/setup-buildx-action@v3
-      - id: push
+      - id: api
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: api
           push: true
           provenance: mode=max
           sbom: true
           tags: ${{ steps.registry.outputs.server }}/genai-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - id: worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-worker:${{ github.sha }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+      - id: apps
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: apps
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.registry.outputs.server }}/genai-apps:${{ github.sha }}
+          cache-from: type=gha,scope=apps
+          cache-to: type=gha,mode=max,scope=apps
       - id: image
-        run: echo "ref=${{ steps.registry.outputs.server }}/genai-api@${{ steps.push.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: |
+          {
+            echo "api=${{ steps.registry.outputs.server }}/genai-api@${{ steps.api.outputs.digest }}"
+            echo "worker=${{ steps.registry.outputs.server }}/genai-worker@${{ steps.worker.outputs.digest }}"
+            echo "apps=${{ steps.registry.outputs.server }}/genai-apps@${{ steps.apps.outputs.digest }}"
+          } >> "$GITHUB_OUTPUT"
 
   deploy-test:
     needs: build
@@ -78,12 +108,27 @@ jobs:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
           PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
           DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+          ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
+          ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+          ALTINN_PDP_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PDP_MASKINPORTEN_CLIENT_ID }}
+          MASKINPORTEN_ISSUER: ${{ vars.MASKINPORTEN_ISSUER }}
+          MASKINPORTEN_TOKEN_URL: ${{ vars.MASKINPORTEN_TOKEN_URL }}
+          OPERATOR_SUBJECTS: ${{ vars.OPERATOR_SUBJECTS }}
+          PORTAL_CLIENT_ID: ${{ vars.PORTAL_CLIENT_ID }}
+          WORKSPACE_CLIENT_ID: ${{ vars.WORKSPACE_CLIENT_ID }}
+          CONSOLE_CLIENT_ID: ${{ vars.CONSOLE_CLIENT_ID }}
+          CONSOLE_TOKEN_ENDPOINT: ${{ vars.CONSOLE_TOKEN_ENDPOINT }}
+          CUSTOM_DOMAINS_STAGE: ${{ vars.CUSTOM_DOMAINS_STAGE }}
+          FOUNDRY_OPENAI_BASE_URL: ${{ vars.FOUNDRY_OPENAI_BASE_URL }}
+          FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
+          TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
+          COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "api-${{ github.run_id }}" \
+            --name "genki-${{ github.run_id }}" \
             --parameters infra/env/test.bicepparam \
-            --parameters image="${{ needs.build.outputs.image }}" appVersion="${{ github.sha }}" \
+            --parameters apiImage="${{ needs.build.outputs.api }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ github.sha }}" \
             --query properties.outputs.apiUrl.value -o tsv)
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: smoke
@@ -117,9 +162,24 @@ jobs:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
           PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
           DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+          ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
+          ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+          ALTINN_PDP_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PDP_MASKINPORTEN_CLIENT_ID }}
+          MASKINPORTEN_ISSUER: ${{ vars.MASKINPORTEN_ISSUER }}
+          MASKINPORTEN_TOKEN_URL: ${{ vars.MASKINPORTEN_TOKEN_URL }}
+          OPERATOR_SUBJECTS: ${{ vars.OPERATOR_SUBJECTS }}
+          PORTAL_CLIENT_ID: ${{ vars.PORTAL_CLIENT_ID }}
+          WORKSPACE_CLIENT_ID: ${{ vars.WORKSPACE_CLIENT_ID }}
+          CONSOLE_CLIENT_ID: ${{ vars.CONSOLE_CLIENT_ID }}
+          CONSOLE_TOKEN_ENDPOINT: ${{ vars.CONSOLE_TOKEN_ENDPOINT }}
+          CUSTOM_DOMAINS_STAGE: ${{ vars.CUSTOM_DOMAINS_STAGE }}
+          FOUNDRY_OPENAI_BASE_URL: ${{ vars.FOUNDRY_OPENAI_BASE_URL }}
+          FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
+          TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
+          COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
         run: |
           az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "api-${{ github.run_id }}" \
+            --name "genki-${{ github.run_id }}" \
             --parameters infra/env/prod.bicepparam \
-            --parameters image="${{ needs.build.outputs.image }}" appVersion="${{ github.sha }}"
+            --parameters apiImage="${{ needs.build.outputs.api }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ github.sha }}"

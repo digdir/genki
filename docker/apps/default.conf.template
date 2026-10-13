@@ -1,0 +1,43 @@
+server {
+  listen 8080;
+  server_tokens off;
+  root /usr/share/nginx/html/__APP__;
+  index index.html;
+  client_max_body_size 50m;
+
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok";
+  }
+
+  location = /config.js {
+    alias /tmp/genki/config.js;
+    default_type application/javascript;
+    include /etc/nginx/genki-headers.conf;
+    add_header Cache-Control "no-store" always;
+  }
+
+  location /assets/ {
+    include /etc/nginx/genki-headers.conf;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+
+  location /api/ {
+    proxy_pass __API_UPSTREAM__/;
+    proxy_ssl_server_name on;
+    proxy_set_header Host __API_HOST__;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+  }
+
+  location / {
+    include /etc/nginx/genki-headers.conf;
+    add_header Cache-Control "no-cache" always;
+    try_files $uri $uri/ /index.html;
+  }
+}

@@ -6,6 +6,43 @@ param postgresAdminGroupObjectId = readEnvironmentVariable('PG_ADMIN_GROUP_OBJEC
 param postgresAdminGroupName = readEnvironmentVariable('PG_ADMIN_GROUP_NAME')
 param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
 param appIdentityIsPostgresAdmin = true
-param keyVaultSecretNames = []
 param minReplicas = 1
 param maxReplicas = 2
+
+param keyVaultSecretNames = [
+  'content-master-key'
+  'altinn-pdp-maskinporten-key'
+  'altinn-subscription-key'
+  'foundry-openai-key'
+  'foundry-claude-key'
+  'typesense-key'
+  'colbert-api-key'
+]
+
+param appEnv = {
+  FOUNDRY_OPENAI_BASE_URL: readEnvironmentVariable('FOUNDRY_OPENAI_BASE_URL', '')
+  FOUNDRY_CLAUDE_BASE_URL: readEnvironmentVariable('FOUNDRY_CLAUDE_BASE_URL', '')
+  TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
+  COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
+}
+
+param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')
+param altinnPdpUrl = readEnvironmentVariable('ALTINN_PDP_URL', '')
+param altinnPdpMaskinportenClientId = readEnvironmentVariable('ALTINN_PDP_MASKINPORTEN_CLIENT_ID', '')
+param maskinportenIssuer = readEnvironmentVariable('MASKINPORTEN_ISSUER', '')
+param maskinportenTokenUrl = readEnvironmentVariable('MASKINPORTEN_TOKEN_URL', '')
+param operatorSubjects = readEnvironmentVariable('OPERATOR_SUBJECTS', '')
+param portalClientId = readEnvironmentVariable('PORTAL_CLIENT_ID', '')
+param workspaceClientId = readEnvironmentVariable('WORKSPACE_CLIENT_ID', '')
+param consoleClientId = readEnvironmentVariable('CONSOLE_CLIENT_ID', '')
+param consoleTokenEndpoint = readEnvironmentVariable('CONSOLE_TOKEN_ENDPOINT', '')
+
+param hostnames = {
+  api: 'api.genki-test.digdir.cloud'
+  portal: 'portal.genki-test.digdir.cloud'
+  workspace: 'workspace.genki-test.digdir.cloud'
+  console: 'console.genki-test.digdir.cloud'
+}
+param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
+param createDnsZone = true
+param dnsZoneName = 'genki-test.digdir.cloud'

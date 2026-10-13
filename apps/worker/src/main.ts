@@ -42,6 +42,7 @@ import {
   LocalKeyWrapper,
   PostgresDefinitionStore,
   PostgresLeaderLease,
+  postgresSourceFromEnv,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
 import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
@@ -79,9 +80,10 @@ const databaseHosts = (...urls: (string | undefined)[]) =>
     }
   });
 
-const db = process.env.DATABASE_URL
+const databaseSource = postgresSourceFromEnv(process.env);
+const db = databaseSource
   ? await createPostgresStores(
-      { connectionString: process.env.DATABASE_URL },
+      databaseSource,
       LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
       {
         onError: (error) => log('postgres connection error', { error: String(error) }),
@@ -205,6 +207,7 @@ const runtime = await createRuntime({
       'localhost',
       '127.0.0.1',
       ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
+      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
     ],
   },
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),

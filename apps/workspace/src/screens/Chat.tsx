@@ -1,3 +1,4 @@
+import { setting } from '../runtime-config';
 import {
   Alert,
   Button,
@@ -40,9 +41,7 @@ import type {
   WorkspaceApi,
 } from '../types';
 
-const portalUrl = (
-  (import.meta.env.VITE_PORTAL_URL as string | undefined) ?? 'http://localhost:5173'
-).replace(/\/+$/, '');
+const portalUrl = (setting('PORTAL_URL') ?? 'http://localhost:5173').replace(/\/+$/, '');
 
 export const dataPolicyUrl = `${portalUrl}/#/data-handling`;
 export const runLogUrl = (task: string) => `${portalUrl}/#/log/${encodeURIComponent(task)}`;

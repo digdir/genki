@@ -25,6 +25,7 @@ import {
   createPostgresStores,
   LocalKeyWrapper,
   PostgresDefinitionStore,
+  postgresSourceFromEnv,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
@@ -118,9 +119,10 @@ const databaseHosts = (...urls: (string | undefined)[]) =>
     }
   });
 
-const db = process.env.DATABASE_URL
+const databaseSource = postgresSourceFromEnv(process.env);
+const db = databaseSource
   ? await createPostgresStores(
-      { connectionString: process.env.DATABASE_URL },
+      databaseSource,
       LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
       {
         onError: (error) => log('postgres connection error', { error: String(error) }),
@@ -391,6 +393,7 @@ const platform = await createPlatform({
       '127.0.0.1',
       `localhost:${port}`,
       ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
+      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
     ],
   },
   catalogSkips: skipped,

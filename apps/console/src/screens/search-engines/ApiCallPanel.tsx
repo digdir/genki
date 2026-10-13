@@ -1,11 +1,10 @@
+import { setting } from '../../runtime-config';
 import { Button, Heading, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useId, useState } from 'react';
 import { useT, type T } from '../../i18n';
 import { SidePanel } from '../../ui';
 
-const apiBase = (
-  (import.meta.env.VITE_PUBLIC_API_BASE as string | undefined) ?? 'http://localhost:8080'
-).replace(/\/+$/, '');
+const apiBase = (setting('PUBLIC_API_BASE') ?? 'http://localhost:8080').replace(/\/+$/, '');
 
 export interface ApiCall {
   title: string;

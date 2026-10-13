@@ -32,6 +32,21 @@ jobs:
       PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
       PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
       DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
+      ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
+      ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+      ALTINN_PDP_MASKINPORTEN_CLIENT_ID: ${{ vars.ALTINN_PDP_MASKINPORTEN_CLIENT_ID }}
+      MASKINPORTEN_ISSUER: ${{ vars.MASKINPORTEN_ISSUER }}
+      MASKINPORTEN_TOKEN_URL: ${{ vars.MASKINPORTEN_TOKEN_URL }}
+      OPERATOR_SUBJECTS: ${{ vars.OPERATOR_SUBJECTS }}
+      PORTAL_CLIENT_ID: ${{ vars.PORTAL_CLIENT_ID }}
+      WORKSPACE_CLIENT_ID: ${{ vars.WORKSPACE_CLIENT_ID }}
+      CONSOLE_CLIENT_ID: ${{ vars.CONSOLE_CLIENT_ID }}
+      CONSOLE_TOKEN_ENDPOINT: ${{ vars.CONSOLE_TOKEN_ENDPOINT }}
+      CUSTOM_DOMAINS_STAGE: ${{ vars.CUSTOM_DOMAINS_STAGE }}
+      FOUNDRY_OPENAI_BASE_URL: ${{ vars.FOUNDRY_OPENAI_BASE_URL }}
+      FOUNDRY_CLAUDE_BASE_URL: ${{ vars.FOUNDRY_CLAUDE_BASE_URL }}
+      TYPESENSE_URL: ${{ vars.TYPESENSE_URL }}
+      COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
     steps:
       - uses: actions/checkout@v5
       - uses: azure/login@v2
@@ -41,12 +56,25 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: current
         run: |
-          app=$(az containerapp list -g "${{ vars.AZURE_RESOURCE_GROUP }}" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
-          if [ -n "$app" ]; then
-            echo "image=$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "$app" --query 'properties.template.containers[0].image' -o tsv)" >> "$GITHUB_OUTPUT"
-            echo "version=$(az containerapp show -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "$app" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)" >> "$GITHUB_OUTPUT"
+          rg="${{ vars.AZURE_RESOURCE_GROUP }}"
+          placeholder=mcr.microsoft.com/k8se/quickstart:latest
+          image_of() {
+            app=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-$1')].name | [0]" -o tsv)
+            if [ -n "$app" ]; then
+              az containerapp show -g "$rg" -n "$app" --query 'properties.template.containers[0].image' -o tsv
+            else
+              echo "$placeholder"
+            fi
+          }
+          {
+            echo "api=$(image_of api)"
+            echo "worker=$(image_of worker)"
+            echo "apps=$(image_of portal)"
+          } >> "$GITHUB_OUTPUT"
+          api=$(az containerapp list -g "$rg" --query "[?ends_with(name, '-api')].name | [0]" -o tsv)
+          if [ -n "$api" ]; then
+            echo "version=$(az containerapp show -g "$rg" -n "$api" --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" -o tsv)" >> "$GITHUB_OUTPUT"
           else
-            echo "image=mcr.microsoft.com/k8se/quickstart:latest" >> "$GITHUB_OUTPUT"
             echo "version=bootstrap" >> "$GITHUB_OUTPUT"
           fi
       - run: |
@@ -54,4 +82,4 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}" \
             --parameters infra/env/${{ inputs.environment }}.bicepparam \
-            --parameters image="${{ steps.current.outputs.image }}" appVersion="${{ steps.current.outputs.version }}"
+            --parameters apiImage="${{ steps.current.outputs.api }}" workerImage="${{ steps.current.outputs.worker }}" appsImage="${{ steps.current.outputs.apps }}" appVersion="${{ steps.current.outputs.version }}"
