@@ -19,3 +19,4 @@ export * from './webhook-signature.js';
 export * from './block-settings.js';
 export * from './schema-labels.js';
 export * from './boot-guard.js';
+export * from './platform-tenant.js';

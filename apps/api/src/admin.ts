@@ -1,4 +1,5 @@
 import type { Event, Part, Principal } from '@genai/contracts';
+import { defaultPlatformTenant } from '@genai/composition';
 import {
   checkPromptFiles,
   importTenant,
@@ -228,7 +229,7 @@ export const createAdmin = (options: AdminOptions) => {
   const { store, plugins, settings } = options;
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? (() => crypto.randomUUID());
-  const platformTenant = options.platformTenant ?? '991825827';
+  const platformTenant = options.platformTenant ?? defaultPlatformTenant;
   const maxSupportMinutes = options.maxSupportMinutes ?? 240;
   const records = options.records ?? new InMemoryAdminRecords();
   const pending = new Map<

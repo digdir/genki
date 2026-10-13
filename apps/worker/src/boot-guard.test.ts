@@ -15,6 +15,12 @@ describe('booting the worker', () => {
     expect(workerBootProblems({ PGHOST: 'genki-test-pg.postgres.database.azure.com' })).toEqual([]);
   });
 
+  it('the worker refuses to start with a malformed PLATFORM_TENANT, also in dev mode', () => {
+    expect(workerBootProblems({ GENAI_DEV_MODE: 'true', PLATFORM_TENANT: '12345' })).toEqual([
+      expect.stringContaining('PLATFORM_TENANT'),
+    ]);
+  });
+
   it('refuses dev mode in production', () => {
     expect(workerBootProblems({ GENAI_DEV_MODE: 'true', GENAI_ENV: 'production' })).toEqual([
       expect.stringContaining('production'),

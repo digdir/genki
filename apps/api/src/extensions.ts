@@ -18,7 +18,7 @@ import {
   type FeedbackStore,
   type TestSetStore,
 } from '@genai/eval';
-import { TenantSecretVault } from '@genai/composition';
+import { defaultPlatformTenant, TenantSecretVault } from '@genai/composition';
 
 export {
   InMemoryTenantSecrets,
@@ -128,6 +128,12 @@ export class TenantDirectory {
 
   async add(entry: DirectoryEntry, by: string) {
     await this.store.save(entry, by);
+  }
+
+  async ensure(entry: DirectoryEntry, by: string) {
+    if ((await this.store.list()).some((e) => e.orgNumber === entry.orgNumber)) return false;
+    await this.store.save(entry, by);
+    return true;
   }
 
   async list(): Promise<DirectoryEntry[]> {
@@ -498,7 +504,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
       return problem(c, 400, 'Invalid request', [
         { path: 'value', message: 'a value is required' },
       ]);
-    const acting = { ...principal, tenant: deps.platformTenant ?? '991825827' };
+    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
     const value = body.value;
     return performed(
       c,
@@ -516,7 +522,7 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!principal) return problem(c, 401, 'Unauthorized');
     if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
     const body = (await c.req.json().catch(() => ({}))) as { orgNumber?: string; name?: string };
-    const acting = { ...principal, tenant: deps.platformTenant ?? '991825827' };
+    const acting = { ...principal, tenant: deps.platformTenant ?? defaultPlatformTenant };
     return performed(c, acting, 'platform.tenant.create', {
       tenant: body.orgNumber ?? '',
       orgNumber: body.orgNumber ?? '',

@@ -32,6 +32,9 @@ param maskinportenRequiredScope string = ''
 @description('Comma-separated person identifiers that get the operator role.')
 param operatorSubjects string = ''
 
+@description('Organisation number that plays Digdir: owns the seeded services, shared services and platform tasks. Empty means Digdir.')
+param platformTenant string = ''
+
 @description('Ansattporten client ids for the three apps, and the console login settings.')
 param portalClientId string = ''
 param workspaceClientId string = ''
@@ -194,6 +197,7 @@ module apps 'modules/containerapps.bicep' = {
       MASKINPORTEN_TOKEN_URL: maskinportenTokenUrl
       MASKINPORTEN_REQUIRED_SCOPE: maskinportenRequiredScope
       OPERATOR_SUBJECTS: operatorSubjects
+      PLATFORM_TENANT: platformTenant
     }
     webSettings: {
       ansattportenIssuer: ansattportenIssuer

@@ -1,8 +1,9 @@
 import {
+  type Catalogs,
   createRuntime,
+  defaultPlatformTenant,
   InMemoryConfigEntryStore,
   strategyModelNeeds,
-  type Catalogs,
 } from '@genai/composition';
 import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
@@ -846,7 +847,7 @@ export const askFilterIssues = (
 };
 
 export const createPlatform = async (input: PlatformInput) => {
-  const platformTenant = input.platformTenant ?? '991825827';
+  const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
   const vault = new TenantSecretVault(input.tenantSecrets);
   const settings = input.settings ?? new SettingsRegistry(platformSettings);

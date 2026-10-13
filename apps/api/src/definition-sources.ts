@@ -7,6 +7,7 @@ import {
   type PluginSchemas,
   type PromptFiles,
 } from '@genai/definitions';
+import { defaultPlatformTenant, ownedByPlatformTenant } from '@genai/composition';
 import type { Context } from 'hono';
 import { parse as parseYaml } from 'yaml';
 import { platformActor, type Admin } from './admin.js';
@@ -63,7 +64,10 @@ const promptsOf = (dir: string | undefined): PromptFiles =>
       )
     : {};
 
-export const readGitDefinitions = (sources: DefinitionSource[]) => {
+export const readGitDefinitions = (
+  sources: DefinitionSource[],
+  platformTenant: string = defaultPlatformTenant,
+) => {
   const definitions: GitDefinition[] = [];
   const unreadable: UnreadableFile[] = [];
   for (const source of sources) {
@@ -74,10 +78,11 @@ export const readGitDefinitions = (sources: DefinitionSource[]) => {
       .sort()) {
       const file = join(source.dir, name);
       try {
-        const definition = parseYaml(readFileSync(file, 'utf8')) as unknown;
-        const metadata = isRecord(definition) ? definition.metadata : undefined;
-        if (!isRecord(definition) || !isRecord(metadata))
+        const parsed = parseYaml(readFileSync(file, 'utf8')) as unknown;
+        if (!isRecord(parsed) || !isRecord(parsed.metadata))
           throw new Error('the file has no metadata');
+        const definition = ownedByPlatformTenant(parsed, platformTenant);
+        const metadata = definition.metadata as Record<string, unknown>;
         const text = JSON.stringify(definition);
         definitions.push({
           file,
@@ -250,7 +255,7 @@ const problem = (c: Context, status: 401 | 403, title: string) =>
   });
 
 export const createDefinitionSourcesModule =
-  (sources: DefinitionSource[]): PlatformModuleFactory =>
+  (sources: DefinitionSource[], platformTenant?: string): PlatformModuleFactory =>
   (deps) => ({
     id: 'definition-sources',
     mount: (app, mounted) => {
@@ -259,7 +264,11 @@ export const createDefinitionSourcesModule =
         if (!principal) return problem(c, 401, 'Unauthorized');
         if (principal.kind !== 'operator') return problem(c, 403, 'Forbidden');
         return c.json(
-          await driftReport(deps.definitions, deps.plugins, readGitDefinitions(sources)),
+          await driftReport(
+            deps.definitions,
+            deps.plugins,
+            readGitDefinitions(sources, platformTenant),
+          ),
         );
       });
     },
