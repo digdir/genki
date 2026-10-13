@@ -17,6 +17,7 @@ import {
   PostgresTenants,
   type IngestionExecution,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Pool;
@@ -50,8 +51,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 const asTenant = async (tenant: string | undefined, sql: string) => {

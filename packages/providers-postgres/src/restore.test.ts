@@ -13,6 +13,7 @@ import {
   PostgresApiKeys,
   PostgresConversationStore,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Pool;
@@ -39,7 +40,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await runtime?.end();
   await admin?.end();
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const base = (id: string, digest: string) => ({

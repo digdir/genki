@@ -15,6 +15,7 @@ import { createAdmin } from './admin.js';
 import { loadCatalog } from './catalogs.js';
 import { createPlatform, type PlatformInput } from './composition.js';
 import { toTimeline } from './timeline.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 const digdir = '991825827';
 
@@ -35,7 +36,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool?.end();
-  await container?.stop();
+  await stopPostgres(container);
   if (folder) await rm(folder, { recursive: true, force: true });
 });
 

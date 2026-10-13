@@ -13,6 +13,7 @@ import {
   PostgresSettingsStore,
   withTenant,
 } from './index.js';
+import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Pool;
@@ -72,8 +73,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all(feeds.map((f) => f.close()));
-  await Promise.all(pools.map((p) => p.end()));
-  await container?.stop();
+  await stopPostgres(container, pools);
 });
 
 describe('postgres change feed', () => {

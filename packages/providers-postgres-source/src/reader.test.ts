@@ -10,6 +10,7 @@ import {
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pageStatement, postgresRowReader } from './index.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Client;
@@ -44,7 +45,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await admin?.end();
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const query = (overrides: Record<string, unknown> = {}): TableQuery =>

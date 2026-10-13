@@ -26,6 +26,7 @@ import { InMemoryConfigEntryStore, type ConfigEntryStore } from './config-store.
 import { InMemoryExecutionStore, IngestionService, pendingIngestionBackend } from './ingestion.js';
 import { createGateRegistry } from './scoped-registry.js';
 import { InMemoryTenantSecrets, type TenantSecretStore } from './extensions.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 interface Stores {
   settings: SettingsStore;
@@ -115,7 +116,7 @@ afterAll(async () => {
     await db.runtimePool.end();
     await db.pool.end();
   }
-  await container?.stop();
+  await stopPostgres(container);
 });
 
 const testSet = (tenant: string, id: string, version: number, service?: string): TestSet => ({

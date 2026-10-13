@@ -25,6 +25,7 @@ import {
   type SwitchEstimate,
 } from './engine-switches.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { stopPostgres } from '@genai/providers-postgres/testing';
 
 const digdir = '991825827';
 const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
@@ -154,7 +155,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool?.end();
-  await container?.stop();
+  await stopPostgres(container);
   await new Promise((resolve) => typesenseServer?.close(resolve));
 });
 
