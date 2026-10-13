@@ -8,6 +8,7 @@ const discovery = {
   issuer,
   authorization_endpoint: `${issuer}/authorize`,
   token_endpoint: `${issuer}/token`,
+  end_session_endpoint: `${issuer}/logout`,
 };
 
 const jwt = (claims: Record<string, unknown>) =>
@@ -263,6 +264,34 @@ describe('login through Ansattporten', () => {
     await client.logout();
 
     expect(client.current()).toBeUndefined();
+  });
+
+  it('ends the Ansattporten session too when the person logs out', async () => {
+    const { client, navigated, returnFromAnsattporten } = setup();
+    void client.login();
+    await vi.waitFor(() => expect(navigated).toHaveLength(1));
+    returnFromAnsattporten({ code: 'abc' });
+    await client.login();
+
+    await client.logout(true);
+
+    const url = new URL(navigated[1] ?? '');
+    expect(`${url.origin}${url.pathname}`).toBe(`${issuer}/logout`);
+    expect(url.searchParams.get('id_token_hint')).toBeTruthy();
+    expect(url.searchParams.get('post_logout_redirect_uri')).toBe('http://localhost:5176/');
+    expect(client.current()).toBeUndefined();
+  });
+
+  it('keeps the Ansattporten session when only the local session ends', async () => {
+    const { client, navigated, returnFromAnsattporten } = setup();
+    void client.login();
+    await vi.waitFor(() => expect(navigated).toHaveLength(1));
+    returnFromAnsattporten({ code: 'abc' });
+    await client.login();
+
+    await client.logout();
+
+    expect(navigated).toHaveLength(1);
   });
 
   it('falls back to the dev login when the discovery document is unreachable', async () => {

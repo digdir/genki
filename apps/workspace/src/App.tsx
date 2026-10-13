@@ -696,7 +696,7 @@ const Root = ({
 
   const logout = (why: 'self' | 'expired') => {
     if (why === 'expired') saveUnsavedInput(inputStore());
-    void (auth.logout?.() ?? Promise.resolve()).then(() => {
+    void (auth.logout?.(why === 'self') ?? Promise.resolve()).then(() => {
       setLoggedOut(why);
       setSession(undefined);
     });

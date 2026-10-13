@@ -5,7 +5,7 @@ import type { Organisation, Session } from './types';
 export interface OidcAuthClient {
   current(): Session | undefined;
   login(): Promise<Session>;
-  logout(): Promise<void>;
+  logout(endSession?: boolean): Promise<void>;
   callbackPending(): boolean;
   expiresAt(): number | undefined;
   refresh(): Promise<Session | undefined>;
@@ -40,6 +40,7 @@ interface Discovery {
   issuer: string;
   authorization_endpoint: string;
   token_endpoint: string;
+  end_session_endpoint?: string;
 }
 
 interface PendingLogin {
@@ -49,7 +50,7 @@ interface PendingLogin {
   returnTo?: string;
 }
 
-type StoredSession = Session & { expiresAt?: number; refreshToken?: string };
+type StoredSession = Session & { expiresAt?: number; refreshToken?: string; idToken?: string };
 
 interface TokenResponse {
   access_token: string;
@@ -186,12 +187,14 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
           ? access.name
           : (previous?.name ?? '');
     const refreshToken = tokens.refresh_token ?? previous?.refreshToken;
+    const idToken = tokens.id_token ?? previous?.idToken;
     const session: StoredSession = {
       name: name || translator(resolveLocale(options.uiLocales?.()))('app.unknownUser'),
       organisations: organisationsFrom(access, options.altinnResource),
       token: tokens.access_token,
       ...(typeof access.exp === 'number' ? { expiresAt: access.exp * 1000 } : {}),
       ...(refreshToken ? { refreshToken } : {}),
+      ...(idToken ? { idToken } : {}),
     };
     options.storage.setItem(sessionKey, JSON.stringify(session));
     return { name: session.name, organisations: session.organisations, token: session.token };
@@ -294,12 +297,27 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
       });
       return redirecting;
     },
-    logout: async () => {
+    logout: async (endSession = false) => {
+      const idToken = read<StoredSession>(sessionKey)?.idToken;
       options.storage.removeItem(sessionKey);
       options.storage.removeItem(loginKey);
       completing = undefined;
       if (viaFallback) await options.fallback?.logout?.();
+      const signedInHere = !viaFallback;
       viaFallback = false;
+      if (!endSession || !signedInHere || !idToken) return;
+      const endSessionAt = await discover()
+        .then((d) => d.end_session_endpoint)
+        .catch(() => undefined);
+      if (!endSessionAt) return;
+      const url = new URL(endSessionAt);
+      url.searchParams.set('id_token_hint', idToken);
+      url.searchParams.set(
+        'post_logout_redirect_uri',
+        new URL('/', options.redirectUri).toString(),
+      );
+      url.searchParams.set('state', randomString());
+      options.navigate(url.toString());
     },
   };
 };

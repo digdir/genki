@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { mockAnsattporten, type AuthClient } from './auth';
 import { mockFetch } from './mock';
@@ -11,7 +11,10 @@ beforeEach(() => {
   window.location.hash = '';
   window.sessionStorage.clear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const minutes = (n: number) => n * 60_000;
 
@@ -47,22 +50,29 @@ describe('the 60 minute session', () => {
       () => minutes(4),
       () => ({ ...kari, token: 'renewed-token' }),
     );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     await auth.login();
     window.location.hash = '#/datasets';
     render(<App auth={auth} fetch={mockFetch()} live />);
     await screen.findByLabelText('Søk i datasett');
+    expect(auth.refreshed).toBe(0);
+    vi.advanceTimersByTime(minutes(2));
     await waitFor(() => expect(auth.refreshed).toBe(1));
     expect(screen.queryByText(/Økten din utløper/)).toBeNull();
   });
 
-  it('warns 5 minutes before expiry when the session cannot be renewed', async () => {
+  it('warns halfway through a short session that cannot be renewed', async () => {
     const auth = renewable(
       () => minutes(4),
       () => undefined,
     );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     await auth.login();
     window.location.hash = '#/datasets';
     render(<App auth={auth} fetch={mockFetch()} live />);
+    await screen.findByLabelText('Søk i datasett');
+    expect(screen.queryByText(/Økten din utløper/)).toBeNull();
+    vi.advanceTimersByTime(minutes(2));
     expect(await screen.findByText(/^Økten din utløper klokka \d\d[.:]\d\d\./)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Logg inn på nytt' })).toBeTruthy();
   });

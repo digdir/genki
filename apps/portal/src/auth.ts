@@ -3,7 +3,7 @@ import type { Session } from './types';
 export interface AuthClient {
   current(): Session | undefined;
   login(): Promise<Session>;
-  logout(): Promise<void>;
+  logout(endSession?: boolean): Promise<void>;
   callbackPending?(): boolean;
   expiresAt?(): number | undefined;
   refresh?(): Promise<Session | undefined>;

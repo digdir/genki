@@ -103,12 +103,35 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
     }
   };
 
+  const endpoints = async () => {
+    const fallback = {
+      authorize: `${options.issuer}/authorize`,
+      logout: `${options.issuer}/logout`,
+    };
+    try {
+      const response = await options.fetch(`${options.issuer}/.well-known/openid-configuration`, {
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) return fallback;
+      const metadata = (await response.json()) as {
+        authorization_endpoint?: string;
+        end_session_endpoint?: string;
+      };
+      return {
+        authorize: metadata.authorization_endpoint ?? fallback.authorize,
+        logout: metadata.end_session_endpoint ?? fallback.logout,
+      };
+    } catch {
+      return fallback;
+    }
+  };
+
   const rolesFor = async (token: string) => {
     const response = await options.fetch(`${options.apiBaseUrl}/operator/tenants`, {
       headers: { accept: 'application/json', authorization: `Bearer ${token}` },
     });
     if (response.ok) return [operatorRole];
-    if (response.status === 403) return [];
+    if (response.status === 403 || response.status === 404) return [];
     throw new LoginError(say()('api.accessCheckFailed'));
   };
 
@@ -119,7 +142,7 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
       const state = randomString();
       const nonce = randomString();
       write(pendingKey, { verifier, state, nonce });
-      const url = new URL(`${options.issuer}/authorize`);
+      const url = new URL((await endpoints()).authorize);
       url.search = new URLSearchParams({
         response_type: 'code',
         client_id: options.clientId,
@@ -173,7 +196,7 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
       const session = read<OperatorSession>(sessionKey);
       forget(sessionKey);
       forget(pendingKey);
-      const url = new URL(`${options.issuer}/logout`);
+      const url = new URL((await endpoints()).logout);
       url.search = new URLSearchParams({
         client_id: options.clientId,
         post_logout_redirect_uri: options.postLogoutRedirectUri,
