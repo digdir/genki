@@ -11,8 +11,9 @@ export const isProduction = (env: Env) =>
 export const isDevMode = (env: Env) => env.GENAI_DEV_MODE === 'true';
 
 export const databaseRequirement = (env: Env): BootRequirement => ({
-  met: Boolean(env.DATABASE_URL),
-  problem: 'set DATABASE_URL; in-memory storage runs only with GENAI_DEV_MODE=true',
+  met: Boolean(env.DATABASE_URL || env.PGHOST),
+  problem:
+    'set DATABASE_URL, or PGHOST for Entra ID login; in-memory storage runs only with GENAI_DEV_MODE=true',
 });
 
 export const unmetOutsideDevMode = (env: Env, requirements: BootRequirement[]): string[] => {

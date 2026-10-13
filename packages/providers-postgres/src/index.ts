@@ -37,6 +37,14 @@ export {
   type PostgresPoolOptions,
 } from './pool.js';
 export {
+  cachedEntraPassword,
+  managedIdentityTokenSource,
+  postgresSourceFromEnv,
+  usesEntraPostgres,
+  type AccessToken,
+  type TokenSource,
+} from './entra.js';
+export {
   PostgresAdminRecords,
   type PostgresAuditEntry,
   type PostgresSupportSession,

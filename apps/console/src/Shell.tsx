@@ -1,3 +1,4 @@
+import { setting } from './runtime-config';
 import { Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -7,7 +8,7 @@ import { SupportDialog } from './support-dialog';
 import { minutesLeft } from './ui';
 import type { OperatorSession } from './types';
 
-const configuredEnvironment: string | undefined = import.meta.env.VITE_ENVIRONMENT;
+const configuredEnvironment: string | undefined = setting('ENVIRONMENT');
 
 interface NavGroup {
   id: string;

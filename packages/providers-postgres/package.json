@@ -15,14 +15,15 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.3",
     "@genai/contracts": "0.0.0",
-    "@genai/kernel": "0.0.0",
-    "pg": "^8.23.1",
     "@genai/conversations": "0.0.0",
     "@genai/definitions": "0.0.0",
     "@genai/eval": "0.0.0",
-    "@genai/providers-mcp-client": "0.0.0",
     "@genai/identity": "0.0.0",
-    "@genai/jobs": "0.0.0"
+    "@genai/jobs": "0.0.0",
+    "@genai/kernel": "0.0.0",
+    "@genai/providers-mcp-client": "0.0.0",
+    "pg": "^8.23.1"
   }
 }

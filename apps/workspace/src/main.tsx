@@ -16,29 +16,29 @@ import {
 } from './mock';
 import { ansattporten } from './oidc';
 import { createProjectsApi } from './projects-api';
+import { setting } from './runtime-config';
 import { mockProjectsApi } from './projects-mock';
 
-const useMock = import.meta.env.VITE_API === 'mock';
+const useMock = setting('API') === 'mock';
 const send = window.fetch.bind(window);
 const locale = () => resolveLocale(document.documentElement.lang);
-const issuer =
-  (import.meta.env.VITE_ANSATTPORTEN_ISSUER as string | undefined) ??
-  'http://localhost:8080/mock/ansattporten';
+const configuredIssuer = setting('ANSATTPORTEN_ISSUER');
+const issuer = configuredIssuer ?? 'http://localhost:8080/mock/ansattporten';
 const auth = useMock
   ? mockLogin(caseworker, 300)
   : ansattporten({
       issuer,
-      clientId: 'local-workspace',
+      clientId: setting('OIDC_CLIENT_ID') ?? 'local-workspace',
       redirectUri: `${window.location.origin}/callback`,
-      audience: 'digdir:genai',
-      altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+      audience: setting('API_AUDIENCE') ?? 'digdir:genai',
+      altinnResource: setting('ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform',
       fetch: send,
       storage: window.sessionStorage,
       location: () => new URL(window.location.href),
       navigate: (url) => window.location.assign(url),
       replace: (url) => window.history.replaceState(null, '', url),
       endpoint: (url) => url.replace(/^http:\/\/localhost:\d+\//, '/api/'),
-      fallback: localDevLogin(send),
+      ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
     });
 const api = useMock

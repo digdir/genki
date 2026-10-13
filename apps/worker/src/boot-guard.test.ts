@@ -11,6 +11,10 @@ describe('booting the worker', () => {
     expect(workerBootProblems({ DATABASE_URL: 'postgres://db/genai' })).toEqual([]);
   });
 
+  it('accepts PGHOST for Entra ID login in place of DATABASE_URL', () => {
+    expect(workerBootProblems({ PGHOST: 'genki-test-pg.postgres.database.azure.com' })).toEqual([]);
+  });
+
   it('refuses dev mode in production', () => {
     expect(workerBootProblems({ GENAI_DEV_MODE: 'true', GENAI_ENV: 'production' })).toEqual([
       expect.stringContaining('production'),

@@ -6,10 +6,49 @@ param namePrefix string = 'genai'
 param location string = resourceGroup().location
 param tags object = {}
 
-@description('Container image by digest, e.g. <registry>.azurecr.io/genai-api@sha256:...')
-param image string = 'mcr.microsoft.com/k8se/quickstart:latest'
+@description('Container images by digest, e.g. <registry>.azurecr.io/genai-api@sha256:...')
+param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+param appsImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 param appVersion string = 'bootstrap'
+
+@description('Plain settings for the api and worker, e.g. FOUNDRY_OPENAI_BASE_URL, TYPESENSE_URL.')
 param appEnv object = {}
+
+@description('Ansattporten issuer for people. Required outside development mode.')
+param ansattportenIssuer string = ''
+param ansattportenJwksUri string = ''
+param apiAudience string = 'digdir:genai'
+param altinnResource string = 'urn:altinn:resource:digdir-genai-platform'
+
+@description('Altinn decision point. Required outside development mode.')
+param altinnPdpUrl string = ''
+param altinnPdpMaskinportenClientId string = ''
+param maskinportenIssuer string = ''
+param maskinportenJwksUri string = ''
+param maskinportenTokenUrl string = ''
+param maskinportenRequiredScope string = ''
+
+@description('Comma-separated person identifiers that get the operator role.')
+param operatorSubjects string = ''
+
+@description('Ansattporten client ids for the three apps, and the console login settings.')
+param portalClientId string = ''
+param workspaceClientId string = ''
+param consoleClientId string = ''
+param consoleIssuer string = ansattportenIssuer
+param consoleTokenEndpoint string = ''
+
+@description('Custom hostnames: api, portal, workspace, console. Empty strings use the generated Container Apps hostnames.')
+param hostnames object = { api: '', portal: '', workspace: '', console: '' }
+
+@description('none: no custom domains. hostnames: add them without certificates (DNS must exist). certificates: managed certificates, run after hostnames.')
+@allowed(['none', 'hostnames', 'certificates'])
+param customDomainsStage string = 'none'
+
+@description('Create an Azure DNS zone for the hostnames, with the CNAME and validation records. Delegate it from the parent zone.')
+param createDnsZone bool = false
+param dnsZoneName string = ''
 
 @description('Key Vault secret names the api reads. Each becomes an env var and resolves as secret://env/<name>.')
 param keyVaultSecretNames array = []
@@ -113,10 +152,20 @@ module postgres 'modules/postgres.bicep' = {
   }
 }
 
+module storage 'modules/storage.bicep' = {
+  name: 'storage'
+  params: {
+    name: take('${namePrefix}${environmentName}data${suffix}', 24)
+    location: location
+    tags: allTags
+  }
+}
+
 module apps 'modules/containerapps.bicep' = {
   name: 'containerapps'
   params: {
     name: baseName
+    environmentName: environmentName
     location: location
     tags: allTags
     appsSubnetId: network.outputs.appsSubnetId
@@ -128,9 +177,38 @@ module apps 'modules/containerapps.bicep' = {
     registryServer: registry.outputs.loginServer
     keyVaultUri: vault.outputs.uri
     keyVaultSecretNames: keyVaultSecretNames
-    image: image
+    apiImage: apiImage
+    workerImage: workerImage
+    appsImage: appsImage
     appVersion: appVersion
     appEnv: appEnv
+    identityEnv: {
+      ANSATTPORTEN_ISSUER: ansattportenIssuer
+      ANSATTPORTEN_JWKS_URI: ansattportenJwksUri
+      API_AUDIENCE: apiAudience
+      ALTINN_RESOURCE: altinnResource
+      ALTINN_PDP_URL: altinnPdpUrl
+      ALTINN_PDP_MASKINPORTEN_CLIENT_ID: altinnPdpMaskinportenClientId
+      MASKINPORTEN_ISSUER: maskinportenIssuer
+      MASKINPORTEN_JWKS_URI: maskinportenJwksUri
+      MASKINPORTEN_TOKEN_URL: maskinportenTokenUrl
+      MASKINPORTEN_REQUIRED_SCOPE: maskinportenRequiredScope
+      OPERATOR_SUBJECTS: operatorSubjects
+    }
+    webSettings: {
+      ansattportenIssuer: ansattportenIssuer
+      apiAudience: apiAudience
+      altinnResource: altinnResource
+      portalClientId: portalClientId
+      workspaceClientId: workspaceClientId
+      consoleClientId: consoleClientId
+      consoleIssuer: consoleIssuer
+      consoleTokenEndpoint: consoleTokenEndpoint
+    }
+    storageAccountName: storage.outputs.name
+    storageShareName: storage.outputs.shareName
+    hostnames: hostnames
+    customDomainsStage: customDomainsStage
     postgresHost: postgres.outputs.fqdn
     postgresDatabase: postgres.outputs.databaseName
     minReplicas: minReplicas
@@ -140,8 +218,28 @@ module apps 'modules/containerapps.bicep' = {
   }
 }
 
+var zoneSuffix = '.${dnsZoneName}'
+var zoneApps = filter(['api', 'portal', 'workspace', 'console'], app => !empty(hostnames[app]) && endsWith(hostnames[app], zoneSuffix))
+
+module dns 'modules/dns.bicep' = if (createDnsZone && !empty(dnsZoneName)) {
+  name: 'dns'
+  params: {
+    zoneName: dnsZoneName
+    tags: allTags
+    verificationId: apps.outputs.verificationId
+    records: [for app in zoneApps: {
+      label: replace(hostnames[app], zoneSuffix, '')
+      target: apps.outputs.defaultFqdns[app]
+    }]
+  }
+}
+
 output apiUrl string = 'https://${apps.outputs.fqdn}'
+output appUrls object = apps.outputs.defaultFqdns
+output customDomainVerificationId string = apps.outputs.verificationId
+output dnsNameServers array = createDnsZone && !empty(dnsZoneName) ? dns!.outputs.nameServers : []
 output containerAppName string = apps.outputs.appName
+output workerAppName string = apps.outputs.workerName
 output registryName string = registry.outputs.name
 output registryLoginServer string = registry.outputs.loginServer
 output keyVaultName string = vault.outputs.name

@@ -8,29 +8,29 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { localDevLogin, mockAnsattporten } from './auth';
 import { exampleOrganisations, mockFetch } from './mock';
+import { setting } from './runtime-config';
 import { ansattporten } from './oidc';
 
-const useMock = import.meta.env.VITE_API === 'mock';
+const useMock = setting('API') === 'mock';
 const send = window.fetch.bind(window);
 const locale = () => resolveLocale(document.documentElement.lang);
-const issuer =
-  (import.meta.env.VITE_ANSATTPORTEN_ISSUER as string | undefined) ??
-  'http://localhost:8080/mock/ansattporten';
+const configuredIssuer = setting('ANSATTPORTEN_ISSUER');
+const issuer = configuredIssuer ?? 'http://localhost:8080/mock/ansattporten';
 const auth = useMock
   ? mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations }, 300)
   : ansattporten({
       issuer,
-      clientId: 'local-portal',
+      clientId: setting('OIDC_CLIENT_ID') ?? 'local-portal',
       redirectUri: `${window.location.origin}/callback`,
-      audience: 'digdir:genai',
-      altinnResource: 'urn:altinn:resource:digdir-genai-platform',
+      audience: setting('API_AUDIENCE') ?? 'digdir:genai',
+      altinnResource: setting('ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform',
       fetch: send,
       storage: window.sessionStorage,
       location: () => new URL(window.location.href),
       navigate: (url) => window.location.assign(url),
       replace: (url) => window.history.replaceState(null, '', url),
       endpoint: (url) => url.replace(/^http:\/\/localhost:\d+\//, '/api/'),
-      fallback: localDevLogin(send),
+      ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
     });
 const root = document.getElementById('root');
