@@ -27,7 +27,7 @@ describe('GET /reference', () => {
     const csp = res.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("script-src-attr 'none'");
-    const scripts = [...body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+    const scripts = [...body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)];
     expect(scripts.length).toBeGreaterThan(0);
     for (const [, attrs, inner] of scripts) {
       expect(attrs).toMatch(/\ssrc="reference\/[^"]+"/);
