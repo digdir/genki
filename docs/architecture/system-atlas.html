@@ -5220,11 +5220,13 @@
               'Token verification and principal mapping',
               'Legacy API-key bridge',
               'Altinn authorization (mocked today)',
+              'Altinn actions for parties the token lists without actions',
             ],
             files: [
               'packages/identity/src/verify.ts',
               'packages/identity/src/authenticate.ts',
               'packages/identity/src/altinn.ts',
+              'packages/identity/src/altinn-actions.ts',
               'packages/identity/src/policy.ts',
               'packages/identity/src/mock-ansattporten.ts',
               'packages/identity/src/api-keys.ts',
@@ -7573,9 +7575,9 @@
             status: 'External',
             external: true,
             summary:
-              'National login for public-sector employees, with Altinn rights in the token. Mocked locally.',
+              'National login for public-sector employees. The token lists the organisations the person may act for; the actions come from the Altinn PDP. Mocked locally.',
             description:
-              'National login for public-sector employees, with Altinn rights in the token. Mocked locally.',
+              'National login for public-sector employees. The token lists the organisations the person may act for; the actions come from the Altinn PDP. Mocked locally.',
             responsibilities: [],
             files: [],
             input: '',

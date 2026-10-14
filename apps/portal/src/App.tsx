@@ -155,6 +155,7 @@ const Portal = ({
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
   const [expired, setExpired] = useState(false);
   const [failingIngests, setFailingIngests] = useState<Record<string, number>>({});
+  const [serverRights, setServerRights] = useState<Record<string, string[]>>({});
   const active = useLocale().locale;
   const locale = useRef<Locale>(active);
   locale.current = active;
@@ -269,6 +270,20 @@ const Portal = ({
     return () => controller.abort();
   }, [api, tenantKey]);
 
+  useEffect(() => {
+    setServerRights({});
+  }, [token]);
+
+  useEffect(() => {
+    if (!live || !tenantKey) return;
+    const controller = new AbortController();
+    api.preferences.rights(tenantKey, controller.signal).then(
+      (rights) => setServerRights((all) => ({ ...all, [tenantKey]: rights })),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [api, live, tenantKey, token]);
+
   save.current = (next) => {
     locale.current = next ?? negotiate(languages) ?? 'nb';
     if (tenantKey)
@@ -321,12 +336,13 @@ const Portal = ({
       );
 
     const failing = failingIngests[organisation.orgNumber] ?? 0;
+    const reported = serverRights[organisation.orgNumber];
     const effective =
       route.segments.length === 0 ? { ...route, path: '/overview', segments: ['overview'] } : route;
     return (
       <Shell
         session={session}
-        organisation={organisation}
+        organisation={reported ? { ...organisation, actions: reported } : organisation}
         onSwitch={(org) => {
           setOrganisation(org);
           if (effective.segments[0] !== 'overview' || orgParam)

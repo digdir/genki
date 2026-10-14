@@ -76,6 +76,7 @@ export type TrustedIssuer =
 export interface VerifiedIdentity {
   principal: Principal;
   personId?: string;
+  partiesWithoutActions?: { org: string; resource: string }[];
 }
 
 export interface TokenVerifierOptions {
@@ -138,9 +139,14 @@ const employee = (
     .flatMap((d) =>
       (d.authorized_parties ?? []).flatMap((p) => {
         const org = fromOrgNo(p.orgno);
-        return org ? [{ org, resource: d.resource, actions: p.actions ?? [] }] : [];
+        return org
+          ? [{ org, resource: d.resource, actions: p.actions ?? [], listed: !p.actions }]
+          : [];
       }),
     );
+  const partiesWithoutActions = authorizedFor
+    .filter((a) => a.listed)
+    .map(({ org, resource }) => ({ org, resource }));
   const orgs = [...new Set(authorizedFor.map((a) => a.org))];
   const pid = typeof payload.pid === 'string' ? payload.pid : undefined;
 
@@ -150,11 +156,16 @@ const employee = (
       issuer: issuer.issuer,
       subject: payload.sub as string,
       assurance,
-      authorizedFor,
+      authorizedFor: authorizedFor.map(({ org, resource, actions }) => ({
+        org,
+        resource,
+        actions,
+      })),
       ...(orgs.length === 1 ? { tenant: orgs[0] } : {}),
       ...expiresAt(payload),
     },
     ...(pid ? { personId: pid } : {}),
+    ...(partiesWithoutActions.length > 0 ? { partiesWithoutActions } : {}),
   };
 };
 

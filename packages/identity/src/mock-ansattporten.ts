@@ -140,7 +140,6 @@ export const authorizedParties = (
           {
             orgno: toOrgNo(p.orgno),
             resource: resourceId(detail.resource),
-            actions,
             name: p.name,
             unit_type: p.unitType,
           },

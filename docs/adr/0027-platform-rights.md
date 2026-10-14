@@ -15,6 +15,7 @@ Access within a tenant is split into five rights, each an action on the platform
 | `view-usage`               | Se forbruk og kostnad   | Usage and cost                                                              |
 
 - **Legacy actions still work.** When a token or PDP answer has none of the five actions, `read` maps to Bruke tjenester and Se forbruk og kostnad, and `write` to the four others plus Se forbruk og kostnad. Once any of the five is present, only those count.
+- **The rights come from the Altinn PDP.** Ansattporten lists the organisations where the person has access to the resource, without actions. The API asks the PDP which actions the person has for each listed organisation and caches the answer for two minutes. Actions in a token are used as they are. When the PDP fails, the person gets no rights for that organisation.
 - **Routes check rights after tenant access.** A route first checks that the principal may act for the tenant at all (404 otherwise), then the right for that action (403 "Du trenger rettigheten «…»").
 - **Invoking a service requires `use-services`.** The playground needs Administrere tjenester or Administrere datasett, because it runs drafts.
 - **Operators** get every right, but reach a tenant's data only through a support session with a reason (0010).
