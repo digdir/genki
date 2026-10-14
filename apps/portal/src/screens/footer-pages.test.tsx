@@ -81,7 +81,7 @@ describe('footer pages', () => {
   });
 
   it('says the API does not answer and checks again on request', async () => {
-    await open('#/status', health([down, up('2.0.0')]));
+    await open('#/status', health([down, down, up('2.0.0')]));
     expect(await screen.findByText(/API-et svarer ikke akkurat nå/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Sjekk igjen' }));
     expect(await screen.findByText('2.0.0')).toBeTruthy();

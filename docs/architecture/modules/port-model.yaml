@@ -13,6 +13,7 @@ description: Adapters are per wire protocol, not per vendor (ADR 0021). Models a
 responsibilities:
   - Model catalog and discovery
   - Residency and capability checks
+  - Refusing callers the environment does not admit (lockdown, ADR 0033)
   - Credential resolution and metering
 files:
   - packages/port-model/src/port.ts

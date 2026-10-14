@@ -27,6 +27,33 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('a locked environment', () => {
+  const health = (lockdown: boolean): typeof fetch => {
+    const base = mockFetch();
+    return async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith('/health')
+        ? Response.json({ status: 'ok', version: 'test', lockdown })
+        : base(input, init);
+    };
+  };
+
+  it('shows a banner saying that only registered clients use models', async () => {
+    await signedIn('#/tenants', [operatorRole], health(true));
+
+    expect(
+      await screen.findByText('Låst testmiljø: her brukes modeller bare av registrerte klienter.'),
+    ).toBeTruthy();
+  });
+
+  it('shows no banner when the environment is not locked', async () => {
+    await signedIn('#/tenants', [operatorRole], health(false));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Virksomheter' })).toBeTruthy();
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+  });
+});
+
 describe('operator shell', () => {
   it('asks for a Digdir login and opens the console for an operator', async () => {
     render(

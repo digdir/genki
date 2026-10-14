@@ -18,6 +18,7 @@ export const shell = defineNamespace({
   brandShort: 'KI-portalen',
   brandFull: 'Fellesløsning for generativ KI',
   owner: 'Digdir',
+  lockdown: 'Låst testmiljø: her brukes modeller bare av registrerte klienter.',
   orgMeta: 'Org.nr. {orgNr}',
   orgMetaUnregistered: 'Org.nr. {orgNr} · ikke registrert',
   orgButton: 'Handler for {name}, org.nr. {orgNr}. Bytt virksomhet',

@@ -420,3 +420,30 @@ describe('language choice in the user menu', () => {
     expect(sent.at(-1)?.language).toBe('nb');
   });
 });
+
+describe('a locked environment', () => {
+  const locked = (lockdown: boolean): typeof fetch => {
+    const base = mockFetch();
+    return async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith('/health')
+        ? Response.json({ status: 'ok', version: 'test', lockdown })
+        : base(input, init);
+    };
+  };
+
+  it('shows a banner saying that only registered clients use models', async () => {
+    await renderAt('/overview', locked(true));
+
+    expect(
+      await screen.findByText('Låst testmiljø: her brukes modeller bare av registrerte klienter.'),
+    ).toBeTruthy();
+  });
+
+  it('shows no banner when the environment is not locked', async () => {
+    await renderAt('/overview', locked(false));
+
+    expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+  });
+});

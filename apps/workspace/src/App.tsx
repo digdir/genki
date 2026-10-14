@@ -284,6 +284,7 @@ const Workspace = ({
   const [tables, setTables] = useState<Map<string, TableEntry>>(new Map());
   const [standard, setStandard] = useState<WrittenStandard>('user');
   const [services, retryServices] = useAsync((signal) => api.listServices(signal), [api]);
+  const [lockdown] = useAsync((signal) => api.lockdown?.(signal) ?? Promise.resolve(false), [api]);
   const [pending, retryPending, setPending] = useAsync(
     (signal) => (approvals ?? noApprovals).listPending(signal),
     [approvals],
@@ -471,6 +472,11 @@ const Workspace = ({
       </header>
       <main id="hovedinnhold" tabIndex={-1} className="main">
         {notice}
+        {lockdown.status === 'ready' && lockdown.data ? (
+          <Alert data-color="warning" data-size="sm" className="lockdown-banner">
+            {t('shell.lockdown')}
+          </Alert>
+        ) : null}
         <div aria-live="polite">
           {flash ? (
             <Alert data-color="success" data-size="sm" className="flash">

@@ -1,4 +1,4 @@
-import type { Ref } from '@genai/contracts';
+import type { Principal, Ref } from '@genai/contracts';
 import {
   credentialFor,
   type Credential,
@@ -56,6 +56,7 @@ export interface ModelRouterOptions {
   timeoutMs?: number;
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
   fetchFor?: (endpoint: string) => typeof fetch | undefined;
+  admits?: (principal: Principal) => boolean;
 }
 
 export interface ModelPrice {
@@ -338,6 +339,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
   }
 
   open(ref: Ref, ctx: PortContext): ModelPort {
+    if (this.options.admits && !this.options.admits(ctx.principal))
+      throw new ModelError('unauthorized', 'this caller may not use models in this environment');
     const route = this.#routes().get(ref.id);
     if (!route) throw new ModelError('bad_request', `no model ${ref.id} in the catalog`);
     const model = this.#effective(route);

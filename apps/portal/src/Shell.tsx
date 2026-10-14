@@ -1,4 +1,4 @@
-import { Avatar, Button, Link, SkipLink, Tag } from '@digdir/designsystemet-react';
+import { Alert, Avatar, Button, Link, SkipLink, Tag } from '@digdir/designsystemet-react';
 import {
   createContext,
   useCallback,
@@ -117,6 +117,24 @@ interface ShellProps {
   api: ApiClient;
   children: ReactNode;
 }
+
+export const LockdownBanner = ({ api }: { api: Pick<ApiClient, 'getHealth'> }) => {
+  const t = useT();
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getHealth(controller.signal).then(
+      (health) => setLocked(health.lockdown === true),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [api]);
+  return locked ? (
+    <Alert data-color="warning" data-size="sm" className="lockdown-banner">
+      {t('shell.lockdown')}
+    </Alert>
+  ) : null;
+};
 
 const NavLinks = ({
   path,
@@ -372,6 +390,7 @@ export const Shell = ({
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="main-inner">
+            <LockdownBanner api={api} />
             {gated ? (
               <Unregistered
                 api={api}

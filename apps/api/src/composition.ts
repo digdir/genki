@@ -261,6 +261,7 @@ import { frontendOpenApiModule } from './frontend-openapi.js';
 import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
+import { mayUseModels, withCredentialOrigin, type Lockdown } from './lockdown.js';
 
 export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
@@ -397,6 +398,7 @@ export interface PlatformInput {
   documentConverter?: DocumentConverter;
   kudos?: KudosAccess;
   phraseArchive?: DeclaredPhraseArchive;
+  lockdown?: Lockdown;
 }
 
 interface ServiceRequirementShape {
@@ -937,6 +939,7 @@ export const createPlatform = async (input: PlatformInput) => {
     definitions: input.definitions,
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
+    ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
     log: tracker.log,
     tasks: taskStore,
     prices,
@@ -1267,8 +1270,14 @@ export const createPlatform = async (input: PlatformInput) => {
     const known = callers.get(request);
     if (known) return known;
     const found = (async () => {
-      const caller = await input.authenticate(request);
-      if (!caller) return undefined;
+      const authenticated = await input.authenticate(request);
+      if (!authenticated) return undefined;
+      const caller = input.lockdown
+        ? {
+            ...authenticated,
+            principal: withCredentialOrigin(input.lockdown, request, authenticated.principal),
+          }
+        : authenticated;
       return (await admitConfined(clients, request, caller.principal)) ? caller : undefined;
     })();
     callers.set(request, found);
