@@ -49,6 +49,9 @@ param hostnames object = { api: '', portal: '', workspace: '', console: '' }
 @allowed(['none', 'hostnames', 'certificates'])
 param customDomainsStage string = 'none'
 
+@description('Managed certificates that already exist in the environment, by app (api, portal, workspace, console). The certificates stage binds these instead of creating its own.')
+param existingCertificates object = {}
+
 @description('Create an Azure DNS zone for the hostnames, with the CNAME and validation records. Delegate it from the parent zone.')
 param createDnsZone bool = false
 param dnsZoneName string = ''
@@ -213,6 +216,7 @@ module apps 'modules/containerapps.bicep' = {
     storageShareName: storage.outputs.shareName
     hostnames: hostnames
     customDomainsStage: customDomainsStage
+    existingCertificates: existingCertificates
     postgresHost: postgres.outputs.fqdn
     postgresDatabase: postgres.outputs.databaseName
     minReplicas: minReplicas
