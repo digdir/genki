@@ -19,6 +19,7 @@ export const shell = {
   brandShort: 'AI portal',
   brandFull: 'Generative AI platform',
   owner: 'Digdir',
+  lockdown: 'Locked test environment: here, only registered clients use models.',
   orgMeta: 'Org. no. {orgNr}',
   orgMetaUnregistered: 'Org. no. {orgNr} · not registered',
   orgButton: 'Acting for {name}, org. no. {orgNr}. Switch organisation',

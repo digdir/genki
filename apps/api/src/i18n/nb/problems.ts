@@ -20,6 +20,9 @@ export const problems = defineNamespace({
   keyScope: 'API-nøkkelen gir ikke tilgang til denne ruten',
   keyScopeDetail: 'Ruter for virksomheter krever en nøkkel med admin-omfang.',
   tenantNotRegisteredDetail: 'Virksomheten {tenant} er ikke registrert av Digdir.',
+  modelsLocked: 'Miljøet er låst: bare registrerte klienter kan bruke modeller her',
+  modelsLockedDetail:
+    'I dette testmiljøet når bare klienter fra konfigurasjonen en modell. Personer og operatører kan lese, men ikke kjøre.',
   unreadableDefinition: 'Definisjonen kan ikke leses',
   invalidDefinition: 'Ugyldig definisjon',
   skillsPublishedThrough:

@@ -1136,3 +1136,7 @@ ul.plain {
   justify-content: space-between;
   margin-block-end: var(--ds-size-4);
 }
+
+.lockdown-banner {
+  margin-block-end: var(--ds-size-4);
+}

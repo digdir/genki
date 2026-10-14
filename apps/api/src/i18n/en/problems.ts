@@ -21,6 +21,9 @@ export const problems = {
   keyScope: 'The API key does not reach this route',
   keyScopeDetail: 'Tenant routes need a key with the admin scope.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
+  modelsLocked: 'The environment is locked: only registered clients may use models here',
+  modelsLockedDetail:
+    'In this test environment only clients from the configuration reach a model. People and operators can read, but not run.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:

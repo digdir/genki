@@ -148,6 +148,7 @@ export interface ServiceImpact {
 export interface Health {
   status: 'ok';
   version: string;
+  lockdown?: boolean;
 }
 
 export interface ImportPlanItem {

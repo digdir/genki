@@ -21,6 +21,23 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe('a locked environment', () => {
+  it('shows a banner saying that only registered clients use models', async () => {
+    await renderApp('', { api: { ...mockWorkspaceApi(), lockdown: async () => true } });
+
+    expect(
+      await screen.findByText('Låst testmiljø: her brukes modeller bare av registrerte klienter.'),
+    ).toBeTruthy();
+  });
+
+  it('shows no banner when the environment is not locked', async () => {
+    await renderApp('', { api: { ...mockWorkspaceApi(), lockdown: async () => false } });
+
+    expect(await screen.findByText('KI-arbeidsflaten')).toBeTruthy();
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
+  });
+});
+
 describe('workspace shell', () => {
   it('has a skip link, the agency, the person menu and the views as links', async () => {
     const { container } = await renderApp('');

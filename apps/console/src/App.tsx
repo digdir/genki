@@ -254,6 +254,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
         path={current}
         badges={queued === undefined ? badges : { ...badges, queue: queued }}
         onLogout={logout}
+        health={api.health}
       >
         {render ? (
           render()

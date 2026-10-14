@@ -9,6 +9,7 @@ export const shell = {
   navErrors: 'Error messages',
   navDocument: 'Document draft',
   skipLink: 'Skip to main content',
+  lockdown: 'Locked test environment: here, only registered clients use models.',
   productName: 'AI workspace',
   platformName: 'Shared platform for generative AI',
   orgNumber: 'Org. no. {number}',

@@ -47,6 +47,8 @@ The apps talk to the live API through a Vite proxy on `/api`. To run one against
 
 **API keys for local clients.** In dev mode with the mock login active, `DEV_API_KEY` registers a general dev key, and `DEV_SERVICE_API_KEY` registers a key bound to one service: `DEV_SERVICE_API_KEY_SERVICE`, `kunnskapsassistenten` by default. Both keys are in `.env.local` after setup.
 
+**Locked environment.** `GENAI_LOCKDOWN=true` turns on what genki-test runs with: only the keys above, registered from configuration at startup, may run anything that reaches a model. People, operators and keys made through the API get a 403 problem that says the environment is locked; reading and configuration changes work as usual. `/health` reports `lockdown`, and the portal, console and workspace show a banner. See [ADR 0033](adr/0033-locked-test-environment.md).
+
 **Frontend clients.** `apps/api/config/local/clients/kunnskapsassistenten.yaml` registers an example client: a separate frontend for Kunnskapsassistenten on `http://localhost:5177`, allowed to call the platform from the browser. Nothing in this repository runs on that port; it shows how a frontend of your own is registered.
 
 **What needs your own settings.** Every setting is listed in `.env.example`, with what happens when it is empty. Integrations with missing settings are skipped and logged at startup, not fatal, and so are the services that need them.

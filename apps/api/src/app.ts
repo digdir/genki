@@ -14,6 +14,7 @@ import {
   securityHeaders,
 } from './hardening.js';
 import { localeMiddleware, t } from './i18n/index.js';
+import { refuseModelUse } from './lockdown.js';
 import { keepsOwnErrorShape, problemResponses } from './problem-responses.js';
 import { problem, type Authenticator } from './http.js';
 import { withChangeReasons, withTags, withUndocumentedRoutes } from './openapi-routes.js';
@@ -22,7 +23,9 @@ import { registerReference } from './reference/index.js';
 import type { ServiceDrafts } from './service-drafts.js';
 import { kernelTaskReader, type TaskReader } from './timeline.js';
 
-const Health = z.object({ status: z.literal('ok'), version: z.string() }).openapi('Health');
+const Health = z
+  .object({ status: z.literal('ok'), version: z.string(), lockdown: z.boolean() })
+  .openapi('Health');
 
 const healthRoute = createRoute({
   method: 'get',
@@ -51,6 +54,7 @@ export interface PlatformOptions {
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
   names?: ActorNames;
   now?: () => Date;
+  lockdown?: boolean;
 }
 
 export interface AppOptions {
@@ -74,7 +78,8 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   app.use('*', gzipResponses());
   app.use('*', localeMiddleware);
   app.use('*', problemResponses);
-  app.openapi(healthRoute, (c) => c.json({ status: 'ok' as const, version }, 200));
+  const lockdown = options.platform?.lockdown ?? false;
+  app.openapi(healthRoute, (c) => c.json({ status: 'ok' as const, version, lockdown }, 200));
   app.get('/up', (c) => c.text('ok'));
   app.notFound((c) => {
     if (!isHeadlessRagApiPath(c.req.path)) return problem(c, 404, 'Not found');
@@ -95,7 +100,9 @@ export const createApp = (version: string, options: AppOptions = {}) => {
 
   if (options.platform) {
     const { store, plugins, settings, auth } = options.platform;
-    app.use('*', requireChangeReason(options.platform.caller ?? ((r) => auth.authenticate(r))));
+    const caller = options.platform.caller ?? ((r: Request) => auth.authenticate(r));
+    if (lockdown) app.use('*', refuseModelUse(caller));
+    app.use('*', requireChangeReason(caller));
     const admin =
       options.platform.admin ??
       createAdmin({

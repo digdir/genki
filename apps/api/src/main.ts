@@ -67,6 +67,7 @@ import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
+import { isLockdown } from './lockdown.js';
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -188,6 +189,7 @@ const verifier = operators.watch(
 const secrets = envSecrets();
 
 const memoryKeys = new InMemoryTenantApiKeys();
+const configuredKeys = new Set<string>();
 if (mock && process.env.DEV_API_KEY) {
   const devKey = {
     id: 'local-dev',
@@ -198,6 +200,7 @@ if (mock && process.env.DEV_API_KEY) {
     datasets: ['*'],
     agents: ['*'],
   };
+  configuredKeys.add(devKey.digest);
   if (db) await db.apiKeys.restore(devKey);
   else await memoryKeys.add(devKey);
   log('local dev key enabled', { tenant: platformTenant, storage: db ? 'postgres' : 'memory' });
@@ -215,6 +218,7 @@ if (mock && process.env.DEV_SERVICE_API_KEY) {
     agents: [],
     service,
   };
+  configuredKeys.add(serviceKey.digest);
   if (db) await db.apiKeys.restore(serviceKey);
   else await memoryKeys.add(serviceKey);
 }
@@ -325,8 +329,15 @@ const definitionSources: DefinitionSource[] = [
     : []),
 ];
 
+const lockdown = isLockdown(process.env);
+if (lockdown)
+  log('lockdown: only API keys from configuration may use models', {
+    configuredKeys: configuredKeys.size,
+  });
+
 const platform = await createPlatform({
   platformTenant,
+  ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -486,6 +497,7 @@ const app = createApp(version, {
     auth: bearerAuthenticator(verifier, operators.isOperator),
     drafts: platform.serviceDrafts,
     names: actorNames(configEntries),
+    lockdown,
   },
 });
 platform.mount(app, admin);

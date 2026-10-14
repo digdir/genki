@@ -1,4 +1,4 @@
-import type { Ref, Usage } from '@genai/contracts';
+import type { Principal, Ref, Usage } from '@genai/contracts';
 import {
   platformSettings,
   SettingsRegistry,
@@ -180,6 +180,7 @@ export interface RuntimeInput {
     sharedFlow?: FlowFinder,
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
+  admitsModelUse?: (principal: Principal) => boolean;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -362,6 +363,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   );
   const models = new ModelRouter({
     catalog: input.catalogs.models,
+    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     adapters: modelAdapters,
     ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],

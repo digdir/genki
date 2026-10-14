@@ -154,6 +154,7 @@ export interface WorkspaceApi {
   sendFeedback(input: FeedbackInput): Promise<void>;
   failedRuns?(tenant: string, signal?: AbortSignal): Promise<FailedRun[]>;
   rights?(tenant: string, signal?: AbortSignal): Promise<string[]>;
+  lockdown?(signal?: AbortSignal): Promise<boolean>;
   writtenStandard?(tenant: string, signal?: AbortSignal): Promise<WrittenStandard>;
   setWrittenStandard?(tenant: string, value: WrittenStandard): Promise<void>;
   language?(tenant: string, signal?: AbortSignal): Promise<Locale | null>;

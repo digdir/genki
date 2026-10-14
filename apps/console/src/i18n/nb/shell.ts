@@ -28,6 +28,7 @@ export const shell = defineNamespace({
   menuLabel: 'Konsollmeny',
   owner: 'Digdir · Fellesløsning for generativ KI',
   title: 'Driftskonsoll',
+  lockdown: 'Låst testmiljø: her brukes modeller bare av registrerte klienter.',
   envLocal: 'Lokalt',
   envProduction: 'Produksjon',
   account: 'Digdir-konto · operatør',

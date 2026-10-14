@@ -285,7 +285,7 @@ export const createApiClient = ({
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      fetchJson<{ status: 'ok'; version: string }>('/health', signal),
+      fetchJson<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
     ...featureClients({ get, request, tenantPath, send: raw }),
     listStepBlocks: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ blocks: StepBlockSchema[] }>(`${tenantPath(tenant)}/step-flows/blocks`, signal))

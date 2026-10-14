@@ -7,7 +7,7 @@ describe('api', () => {
   it('answers health with its version', async () => {
     const res = await app.request('/health');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: 'ok', version: 'test' });
+    expect(await res.json()).toEqual({ status: 'ok', version: 'test', lockdown: false });
   });
 
   it('publishes an OpenAPI document that lists health', async () => {

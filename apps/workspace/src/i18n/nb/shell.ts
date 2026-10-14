@@ -8,6 +8,7 @@ export const shell = defineNamespace({
   navErrors: 'Feilmeldinger',
   navDocument: 'Dokumentutkast',
   skipLink: 'Hopp til hovedinnhold',
+  lockdown: 'Låst testmiljø: her brukes modeller bare av registrerte klienter.',
   productName: 'KI-arbeidsflaten',
   platformName: 'Fellesløsning for generativ KI',
   orgNumber: 'Org.nr. {number}',

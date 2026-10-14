@@ -29,6 +29,7 @@ export const shell = {
   menuLabel: 'Console menu',
   owner: 'Digdir · Generative AI platform',
   title: 'Operations console',
+  lockdown: 'Locked test environment: here, only registered clients use models.',
   envLocal: 'Local',
   envProduction: 'Production',
   account: 'Digdir account · operator',

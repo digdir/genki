@@ -444,3 +444,20 @@ describe('workspace api', () => {
     expect(calls[0]?.url).toBe('/api/mock/dev-login');
   });
 });
+
+describe('the locked environment flag', () => {
+  it('reads lockdown from /health', async () => {
+    const { calls, fetcher } = recorder(() =>
+      Response.json({ status: 'ok', version: 't', lockdown: true }),
+    );
+
+    expect(await client(fetcher).lockdown?.()).toBe(true);
+    expect(calls[0]?.url).toBe('/api/health');
+  });
+
+  it('treats a missing flag as not locked', async () => {
+    const { fetcher } = recorder(() => Response.json({ status: 'ok', version: 't' }));
+
+    expect(await client(fetcher).lockdown?.()).toBe(false);
+  });
+});

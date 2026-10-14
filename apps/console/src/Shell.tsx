@@ -1,12 +1,12 @@
 import { setting } from './runtime-config';
-import { Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-react';
+import { Alert, Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT, type PlainKey, type T } from './i18n';
 import { useSupport } from './support';
 import { SupportDialog } from './support-dialog';
 import { minutesLeft } from './ui';
-import type { OperatorSession } from './types';
+import type { Health, OperatorSession } from './types';
 
 const configuredEnvironment: string | undefined = setting('ENVIRONMENT');
 
@@ -82,6 +82,7 @@ interface ShellProps {
   onLogout: () => void;
   path: string;
   badges?: NavBadges;
+  health?: (signal?: AbortSignal) => Promise<Health>;
   children: ReactNode;
 }
 
@@ -104,7 +105,25 @@ const badgeFor = (path: string, badges: NavBadges, t: T) => {
 const isCurrent = (item: NavItem, path: string) =>
   path === item.path || path.startsWith(`${item.path}/`);
 
-export const Shell = ({ session, onLogout, path, badges = {}, children }: ShellProps) => {
+const LockdownBanner = ({ health }: { health: (signal?: AbortSignal) => Promise<Health> }) => {
+  const t = useT();
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    health(controller.signal).then(
+      (found) => setLocked(found.lockdown === true),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [health]);
+  return locked ? (
+    <Alert data-color="warning" data-size="sm" className="lockdown-banner">
+      {t('shell.lockdown')}
+    </Alert>
+  ) : null;
+};
+
+export const Shell = ({ session, onLogout, path, badges = {}, health, children }: ShellProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [extending, setExtending] = useState(false);
   const t = useT();
@@ -317,7 +336,10 @@ export const Shell = ({ session, onLogout, path, badges = {}, children }: ShellP
           </div>
         </nav>
         <main id="hovedinnhold" className="main" tabIndex={-1}>
-          <div className="content">{children}</div>
+          <div className="content">
+            {health ? <LockdownBanner health={health} /> : null}
+            {children}
+          </div>
         </main>
       </div>
     </div>

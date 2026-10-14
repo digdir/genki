@@ -1462,3 +1462,7 @@ tr.digdir-row td {
 .break {
   word-break: break-all;
 }
+
+.lockdown-banner {
+  margin-block-end: var(--ds-size-4);
+}

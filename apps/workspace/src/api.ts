@@ -206,6 +206,14 @@ export const createWorkspaceApi = ({
   const review = (task: string, rest = '') => `tasks/${encodeURIComponent(task)}/review${rest}`;
 
   return {
+    lockdown: async (signal) => {
+      const response = await send(`${baseUrl}/health`, {
+        headers: { accept: 'application/json' },
+        ...(signal ? { signal } : {}),
+      });
+      const body = (await readJson(response)) as { lockdown?: unknown } | undefined;
+      return response.ok && body?.lockdown === true;
+    },
     rights: async (tenant, signal) => {
       try {
         const rights = (await tenantCall('GET', tenant, 'me', { signal }))?.rights;
