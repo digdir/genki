@@ -43,7 +43,8 @@ describe('GET /reference', () => {
     const links = [...document.querySelectorAll('[href], [src]')].map(
       (element) => element.getAttribute('href') ?? element.getAttribute('src') ?? '',
     );
-    expect(links.filter((link) => link.trim().toLowerCase().startsWith('javascript:'))).toEqual([]);
+    const schemes = links.map((link) => new URL(link, 'https://genki.example/reference').protocol);
+    expect(schemes.filter((scheme) => scheme !== 'https:' && scheme !== 'http:')).toEqual([]);
   });
 
   it('builds the page with the dom, never with eval, inline handlers or html strings', async () => {
