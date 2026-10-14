@@ -1,5 +1,5 @@
 import type { Principal } from '@genai/contracts';
-import { isApiKeyPrincipal } from '@genai/identity';
+import { grantsOf, isApiKeyPrincipal, keyReaches } from '@genai/identity';
 import type { Context, MiddlewareHandler } from 'hono';
 import { t } from './i18n/index.js';
 
@@ -24,6 +24,29 @@ const refuse = (c: Context, type: string, title: string, detail: string) =>
     'content-type': 'application/problem+json',
   });
 
+export const keyReachesDataset = (principal: Principal, datasets: string[]) => {
+  const grants = grantsOf(principal);
+  if (!grants || grants.scopes.includes('admin')) return true;
+  return keyReaches(principal, 'ingest', { datasets });
+};
+
+export const tenantNotRegistered = (c: Context, tenant: string) =>
+  refuse(
+    c,
+    tenantNotRegisteredType,
+    t('problems.tenantNotRegistered'),
+    t('problems.tenantNotRegisteredDetail', { tenant }),
+  );
+
+export const adminKeysOnly =
+  (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
+  async (c, next) => {
+    const principal = await caller(c.req.raw);
+    if (principal && isApiKeyPrincipal(principal) && !keyReachesRoute(principal, c))
+      return refuse(c, keyScopeType, t('problems.keyScope'), t('problems.keyScopeDetail'));
+    return next();
+  };
+
 export const tenantGate =
   (deps: TenantGateDeps): MiddlewareHandler =>
   async (c, next) => {
@@ -34,12 +57,6 @@ export const tenantGate =
       return refuse(c, keyScopeType, t('problems.keyScope'), t('problems.keyScopeDetail'));
     const member =
       principal.tenant === tenant || principal.authorizedFor?.some((a) => a.org === tenant);
-    if (member && !(await deps.registered(tenant)))
-      return refuse(
-        c,
-        tenantNotRegisteredType,
-        t('problems.tenantNotRegistered'),
-        t('problems.tenantNotRegisteredDetail', { tenant }),
-      );
+    if (member && !(await deps.registered(tenant))) return tenantNotRegistered(c, tenant);
     return next();
   };

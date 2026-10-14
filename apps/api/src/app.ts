@@ -44,6 +44,7 @@ export interface PlatformOptions {
   organisationName?: PlatformApiOptions['organisationName'];
   tenantQuota?: PlatformApiOptions['tenantQuota'];
   tenantGate?: MiddlewareHandler;
+  registered?: (tenant: string) => Promise<boolean>;
   caller?: (request: Request) => Promise<Principal | undefined>;
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
@@ -120,6 +121,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       access,
       ...(options.platform.drafts ? { drafts: options.platform.drafts } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
+      ...(options.platform.registered ? { registered: options.platform.registered } : {}),
     });
     registerPlatformRoutes(app, {
       store,

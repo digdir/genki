@@ -44,6 +44,14 @@ export interface BatchItemResult {
   error?: string;
 }
 
+const resumable = (results: Record<string, BatchItemResult>) =>
+  Object.fromEntries(
+    Object.values(results).map((r) => [
+      r.id,
+      { id: r.id, status: r.status, attempts: r.attempts, ...(r.task ? { task: r.task } : {}) },
+    ]),
+  );
+
 export interface BatchResult {
   batchId: string;
   capability: string;
@@ -147,7 +155,7 @@ export const runBatch = async function* (
   const record = (result: BatchItemResult) => {
     done[result.id] = result;
     writes = writes.then(async () => {
-      version = await ctx.state.put('principal', stateKey, done, version);
+      version = await ctx.state.put('principal', stateKey, resumable(done), version);
       await ctx.state.checkpoint({ batchId, done: Object.keys(done).length, total: items.length });
     });
     return writes;

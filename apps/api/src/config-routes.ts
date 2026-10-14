@@ -20,6 +20,7 @@ import {
   type CatalogRegistry,
 } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
+import { keyReachesDataset } from './tenant-gate.js';
 import {
   unboundedKudos,
   unboundedKudosMessage,
@@ -904,6 +905,10 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       return item && item.scope === scope ? item : undefined;
     };
     const datasetFor = (c: Context, scope: string) => itemFor(c, scope)?.id;
+    const keyRefused = (c: Context, principal: Principal, item: { id: string }) =>
+      keyReachesDataset(principal, [item.id, param(c, 'dataset')])
+        ? undefined
+        : problem(c, 403, 'Forbidden');
     app.get(`${base}/datasets/:dataset/pipelines`, async (c) => {
       const guard = await access(c);
       if ('response' in guard) return guard.response;
@@ -991,6 +996,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       const dataset = item.id;
       const pipeline = await deps.ingestion.get(guard.scope, dataset, param(c, 'id'));
       if (!pipeline) return problem(c, 404, 'Not found');
@@ -1021,6 +1028,8 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       if ('response' in guard) return guard.response;
       const item = itemFor(c, guard.scope);
       if (!item) return problem(c, 404, 'Not found');
+      const refusedKey = keyRefused(c, guard.principal, item);
+      if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
       return c.json({
         data: await deps.ingestion.executions(item.id, param(c, 'id')),

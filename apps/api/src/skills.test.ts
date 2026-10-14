@@ -582,6 +582,38 @@ describe('skills', () => {
     expect(detail.draft?.problems).toEqual([]);
   });
 
+  it('an import of a skill that already exists writes no attachments', async () => {
+    const { app, send, blobs } = await boot();
+    await blobs.put(
+      { tenant, path: 'skills/klarsprak/ordliste.txt' },
+      new TextEncoder().encode('vedtak: bestemmelse'),
+      'text/plain',
+    );
+    const original = skill();
+    original.spec.attachments = [
+      { name: 'ordliste.txt', blob: 'skills/klarsprak/ordliste.txt' },
+    ] as never[];
+    await send('POST', base, 'kari', { id: 'klarsprak', definition: original });
+    await send('POST', `/tenants/${other}/skills`, 'kari', {
+      id: 'klarsprak',
+      definition: skill(),
+    });
+    const exported = await app.request(`${base}/klarsprak/export`, {
+      headers: { authorization: 'Bearer kari' },
+    });
+
+    const imported = await app.request(`/tenants/${other}/skills/import`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer kari', 'content-type': 'application/zip' },
+      body: await exported.arrayBuffer(),
+    });
+
+    expect(imported.status).toBe(409);
+    expect(
+      await blobs.head({ tenant: other, path: 'skills/klarsprak/ordliste.txt' }),
+    ).toBeUndefined();
+  });
+
   it('exports and imports a package as base64 JSON when the client asks for JSON', async () => {
     const { send } = await boot();
     await send('POST', base, 'kari', { id: 'klarsprak', definition: skill() });
@@ -608,6 +640,52 @@ describe('skills', () => {
       title: 'Du trenger rettigheten «Administrere tjenester»',
     });
     expect(read.status).toBe(200);
+  });
+
+  it('another tenant sees, exports and copies only the version Digdir approved', async () => {
+    const { send } = await boot();
+    const publishVersion = async (text: string) => {
+      await send('PUT', `${base}/klarsprak`, 'kari', { definition: skill(text) }, reason);
+      await send('POST', `${base}/klarsprak/test-runs`, 'kari', { model: modelId });
+      return send('POST', `${base}/klarsprak/publish`, 'kari', {}, reason);
+    };
+    await createAndTest(send);
+    await send('POST', `${base}/klarsprak/publish`, 'kari', {}, reason);
+    expect((await publishVersion(`${instructions} Versjon 2.`)).status).toBe(200);
+    await send('POST', `${base}/klarsprak/share`, 'kari', { confirm: true }, reason);
+    await send(
+      'POST',
+      `/operator/skills/shares/${tenant}-klarsprak/decision`,
+      'operator',
+      { approve: true },
+      { 'change-reason': 'Godkjent for felles katalog' },
+    );
+    expect((await publishVersion(`${instructions} Versjon 3.`)).status).toBe(200);
+
+    const shared = `/tenants/${other}/skills/klarsprak`;
+    const detail = await send('GET', `${shared}?owner=${tenant}`, 'kari');
+    const unapproved = await Promise.all(
+      [1, 3].map((v) => send('GET', `${shared}/export?owner=${tenant}&version=${v}`, 'kari')),
+    );
+    const copiedUnapproved = await send(
+      'POST',
+      `${shared}/copy`,
+      'kari',
+      { owner: tenant, version: 3, id: 'kopi-3' },
+      { 'change-reason': 'Kopi til egen bruk' },
+    );
+    const copied = await send(
+      'POST',
+      `${shared}/copy`,
+      'kari',
+      { owner: tenant, id: 'kopi' },
+      { 'change-reason': 'Kopi til egen bruk' },
+    );
+
+    expect((detail.body as unknown as SkillDetail).versions.map((v) => v.version)).toEqual([2]);
+    expect(unapproved.map((r) => r.status)).toEqual([404, 404]);
+    expect(copiedUnapproved.status).toBe(404);
+    expect(copied.body).toMatchObject({ draft: { copiedFrom: { version: 2 } } });
   });
 
   it('a skill shared after Digdir approves it can be listed and copied by another tenant', async () => {

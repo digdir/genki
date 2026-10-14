@@ -207,6 +207,7 @@ const boot = async (
       admin,
       auth: { authenticate: async () => undefined },
       tenantGate: platform.tenantGate,
+      registered: platform.registered,
     },
   });
   platform.mount(app, admin);
@@ -299,6 +300,27 @@ describe('API key grants', () => {
       expect(response.headers.get('content-type')).toContain('application/problem+json');
     }
     expect((await send(`/tenants/${digdir}/datasets`, 'admin')).status).toBe(200);
+  });
+
+  it('refuses a key without the admin scope on eval and candidate routes outside /tenants', async () => {
+    const { send } = await boot();
+    const reason = { 'change-reason': 'checking the key scope rule' };
+    const requests = [
+      send('/eval-runs/run-1', 'alle'),
+      send('/eval-runs/compare?baseline=a&candidate=b&metric=m', 'alle'),
+      send('/eval-tasks/task-1', 'alle'),
+      send('/testcase-candidates/fb-00000000/review', 'alle', {
+        body: { decision: 'accept' },
+        headers: reason,
+      }),
+    ];
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(403);
+      expect(((await response.json()) as { type: string }).type).toBe(
+        'urn:genai:problem:api-key-scope',
+      );
+    }
+    expect((await send('/eval-runs/run-1', 'admin')).status).not.toBe(403);
   });
 
   it('answers an unknown /api route with headless-rag not-found body', async () => {

@@ -231,6 +231,7 @@ const kinds = {
 
 const defaultThreshold = 0.9;
 const maxZipBytes = 20 * 1024 * 1024;
+const maxZipEntries = 1000;
 const slugPattern = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const reservedIds = new Set(['import', 'imports']);
 const validId = (id: string) => slugPattern.test(id) && !reservedIds.has(id);
@@ -274,17 +275,22 @@ const contentTypeOf = (name: string) =>
   })[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
 
 export const readZip = (zip: Uint8Array): ZipEntry[] => {
+  if (zip.byteLength > maxZipBytes) throw new Error('the package is too large');
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   let end = zip.byteLength - 22;
   while (end >= 0 && view.getUint32(end, true) !== 0x06054b50) end -= 1;
   if (end < 0) throw new Error('not a zip file');
   const count = view.getUint16(end + 10, true);
+  if (count > maxZipEntries) throw new Error('the package has too many files');
   let at = view.getUint32(end + 16, true);
   const decoder = new TextDecoder();
   const entries: ZipEntry[] = [];
+  const ranges: [number, number][] = [];
+  const names = new Set<string>();
   let total = 0;
   for (let i = 0; i < count; i += 1) {
-    if (view.getUint32(at, true) !== 0x02014b50) throw new Error('broken zip directory');
+    if (at + 46 > zip.byteLength || view.getUint32(at, true) !== 0x02014b50)
+      throw new Error('broken zip directory');
     const method = view.getUint16(at + 10, true);
     const compressed = view.getUint32(at + 20, true);
     const size = view.getUint32(at + 24, true);
@@ -295,14 +301,24 @@ export const readZip = (zip: Uint8Array): ZipEntry[] => {
     const name = decoder.decode(zip.subarray(at + 46, at + 46 + nameLength));
     at += 46 + nameLength + extraLength + commentLength;
     if (name.endsWith('/')) continue;
-    total += size;
-    if (total > maxZipBytes) throw new Error('the package is too large');
+    if (names.has(name)) throw new Error(`duplicate file ${name}`);
+    names.add(name);
+    if (local + 30 > zip.byteLength) throw new Error('broken zip entry');
     const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+    if (start + compressed > zip.byteLength) throw new Error('broken zip entry');
+    if (ranges.some(([a, b]) => local < b && start + compressed > a))
+      throw new Error('overlapping zip entries');
+    ranges.push([local, start + compressed]);
     const raw = zip.subarray(start, start + compressed);
-    if (method === 0) entries.push({ name, data: raw });
+    let data: Uint8Array;
+    if (method === 0) data = raw;
     else if (method === 8)
-      entries.push({ name, data: new Uint8Array(inflateRawSync(raw, { maxOutputLength: size })) });
+      data = new Uint8Array(inflateRawSync(raw, { maxOutputLength: Math.max(size, 1) }));
     else throw new Error(`unsupported compression in ${name}`);
+    if (data.byteLength !== size) throw new Error(`size mismatch in ${name}`);
+    total += data.byteLength;
+    if (total > maxZipBytes) throw new Error('the package is too large');
+    entries.push({ name, data });
   }
   return entries;
 };
@@ -352,6 +368,18 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
   const shareOf = async (tenant: string, skill: string) =>
     (await deps.configEntries.history(kinds.share, tenant, skill)).at(-1) as
       ConfigEntry<ShareSpec> | undefined;
+
+  const approvedVersion = async (owner: string, skill: string) => {
+    const spec = (await shareOf(owner, skill))?.spec;
+    return spec?.state === 'shared' ? spec.version : undefined;
+  };
+
+  const historyFor = async (viewer: string, owner: string, id: string) => {
+    const history = await deps.definitions.versions('Skill', owner, id);
+    if (owner === viewer) return history;
+    const approved = await approvedVersion(owner, id);
+    return history.filter((v) => v.version === approved);
+  };
 
   const decorateCapability = skillDecorator({ resolveSkill, toRuntime }, (tenant, service) =>
     pending.get(`${tenant}/${service}`),
@@ -525,7 +553,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
 
   const summaryOf = async (viewer: string, owner: string, id: string): Promise<SkillSummary> => {
     const draft = owner === viewer ? await draftOf(owner, id) : undefined;
-    const latest = (await deps.definitions.versions('Skill', owner, id)).at(-1);
+    const latest = (await historyFor(viewer, owner, id)).at(-1);
     const published = latest?.definition as SkillDefinition | undefined;
     const shown = (published ?? draft?.spec.definition) as Record<string, unknown> | undefined;
     const metadata = (shown?.metadata ?? {}) as { name?: string };
@@ -561,7 +589,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
     const summary = await summaryOf(viewer, owner, id);
     const own = owner === viewer;
     const draft = own ? await draftOf(owner, id) : undefined;
-    const history = await deps.definitions.versions('Skill', owner, id);
+    const history = await historyFor(viewer, owner, id);
     const runs = own ? await runsOf(owner, id) : [];
     const gates = requirementsFor(owner, draft, runs);
     const share = own ? await shareOf(owner, id) : undefined;
@@ -621,7 +649,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
 
   const knownTo = async (viewer: string, owner: string, id: string) => {
     if (owner === viewer) return (await ownIds(viewer)).includes(id);
-    return (await shareOf(owner, id))?.spec.state === 'shared';
+    return (await approvedVersion(owner, id)) !== undefined;
   };
 
   const fieldsFor = (expected: Record<string, unknown>) =>
@@ -909,7 +937,11 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
     return storeZip(entries);
   };
 
-  const fromPackage = async (tenant: string, zip: Uint8Array) => {
+  const fromPackage = async (
+    tenant: string,
+    zip: Uint8Array,
+    beforeWriting: (id: string) => Promise<void> = async () => undefined,
+  ) => {
     const entries = readZip(zip);
     const skillFile = entries
       .filter((e) => /(^|\/)SKILL\.md$/.test(e.name))
@@ -931,6 +963,7 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
     const examples = file('examples.yaml');
     const testset = file('testset.yaml');
     const attachments: { name: string; blob: string }[] = [];
+    await beforeWriting(id);
     for (const asset of entries.filter((e) => e.name.startsWith(`${root}assets/`))) {
       const name = asset.name.slice(`${root}assets/`.length);
       if (!segmentPattern.test(name)) continue;
@@ -1160,16 +1193,22 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       if (!file) return problem(c, 400, 'Invalid request', [{ path: 'file', message: 'no file' }]);
       const zip = file.data;
       let definition: Record<string, unknown>;
+      let taken: string | undefined;
       try {
-        definition = await fromPackage(tenant, zip);
+        definition = await fromPackage(tenant, zip, async (id) => {
+          if ((await ownIds(tenant)).includes(id)) {
+            taken = id;
+            throw new Error(`skill ${id} exists`);
+          }
+        });
       } catch (error) {
+        if (taken)
+          return problem(c, 409, 'Conflict', [{ path: 'id', message: `skill ${taken} exists` }]);
         return problem(c, 422, 'Invalid package', [
           { path: 'file', message: error instanceof Error ? error.message : String(error) },
         ]);
       }
       const id = (definition.metadata as { id: string }).id;
-      if ((await ownIds(tenant)).includes(id))
-        return problem(c, 409, 'Conflict', [{ path: 'id', message: `skill ${id} exists` }]);
       await saveDraft(
         c,
         'platform.skill.import',
@@ -1584,10 +1623,11 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       const source = param(c, 'id');
       const owner = typeof data.owner === 'string' ? data.owner : tenant;
       if (!(await knownTo(tenant, owner, source))) return problem(c, 404, 'Not found');
+      const available = await historyFor(tenant, owner, source);
       const version =
         typeof data.version === 'number'
-          ? data.version
-          : (await deps.definitions.versions('Skill', owner, source)).at(-1)?.version;
+          ? available.find((v) => v.version === data.version)?.version
+          : available.at(-1)?.version;
       const found =
         version === undefined
           ? undefined
@@ -1636,15 +1676,17 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
       const id = param(c, 'id');
       if (!(await knownTo(guard.tenant, owner, id))) return problem(c, 404, 'Not found');
       const requested = c.req.query('version');
+      const available = await historyFor(guard.tenant, owner, id);
       let definition: unknown;
-      if (requested !== undefined)
-        definition = (await deps.definitions.get('Skill', owner, id, Number(requested)))
-          ?.definition;
-      else if (owner === guard.tenant)
+      if (requested !== undefined) {
+        const match = available.find((v) => v.version === Number(requested));
+        if (!match) return problem(c, 404, 'Not found');
+        definition = match.definition;
+      } else if (owner === guard.tenant)
         definition =
           (await draftOf(owner, id))?.spec.definition ??
           (await deps.definitions.get('Skill', owner, id))?.definition;
-      else definition = (await deps.definitions.get('Skill', owner, id))?.definition;
+      else definition = available.at(-1)?.definition;
       const parsed = skillDefinition.safeParse(definition);
       if (!parsed.success)
         return problem(c, 422, 'The skill cannot be exported', [

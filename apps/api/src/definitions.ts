@@ -26,6 +26,7 @@ import {
   problemContent,
 } from './http.js';
 import { draftOutdatedTitle, draftOutdatedType, type ServiceDrafts } from './service-drafts.js';
+import { tenantNotRegistered } from './tenant-gate.js';
 
 export interface DefinitionsApiOptions {
   store: DefinitionStore;
@@ -36,6 +37,7 @@ export interface DefinitionsApiOptions {
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
   names?: ActorNames;
   now?: () => Date;
+  registered?: (tenant: string) => Promise<boolean>;
 }
 
 const kinds = { services: 'Service', 'step-flows': 'StepFlow', skills: 'Skill' } as const;
@@ -312,6 +314,10 @@ const redact = (errors: ValidationError[], tenant: string) =>
   });
 
 export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsApiOptions) => {
+  const unregistered = async (principal: { kind: string }, tenant: string) =>
+    principal.kind !== 'operator' &&
+    options.registered !== undefined &&
+    !(await options.registered(tenant));
   const { store, plugins, auth, admin, access } = options;
   const now = options.now ?? (() => new Date());
   const namesOf = async (versions: PublishedVersion[]): Promise<Names> =>
@@ -327,6 +333,7 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const tenant = validated.ok ? validated.definition.metadata.tenant : undefined;
     if (tenant && !access(principal, tenant, c.req.raw))
       return problem(c, 403, 'Not allowed for this tenant');
+    if (tenant && (await unregistered(principal, tenant))) return tenantNotRegistered(c, tenant);
     const lacking = tenant && refusedRight(c, principal, tenant, 'manage-services');
     if (lacking) return lacking;
     if (!validated.ok) return problem(c, 422, 'Invalid definition', { errors: validated.errors });
@@ -347,6 +354,7 @@ export const registerDefinitionRoutes = (app: OpenAPIHono, options: DefinitionsA
     const tenant = validated.definition.metadata.tenant;
     const acting = access(principal, tenant, c.req.raw);
     if (!acting) return problem(c, 403, 'Not allowed for this tenant');
+    if (await unregistered(principal, tenant)) return tenantNotRegistered(c, tenant);
     const lacking = refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
     if (validated.definition.kind === 'Skill')

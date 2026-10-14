@@ -33,6 +33,7 @@ import {
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, supportSessionHeader, tenantAccess } from './access.js';
+import { adminKeysOnly } from './tenant-gate.js';
 import {
   AdminRefused,
   refusedBy,
@@ -346,6 +347,10 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
   deps: ExtensionRouteDeps,
 ) => {
   const who = async (c: Context) => deps.authenticate(c.req.raw);
+  const adminKeys = adminKeysOnly(deps.authenticate);
+  app.use('/testcase-candidates/*', adminKeys);
+  app.use('/eval-runs/*', adminKeys);
+  app.use('/eval-tasks/*', adminKeys);
   const access = tenantAccess(deps.admin);
   const sessionTenant = (c: Context) => {
     const id = c.req.header(supportSessionHeader);

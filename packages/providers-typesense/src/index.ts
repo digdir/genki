@@ -26,6 +26,16 @@ export { assertReadOnly, assertSearchOnly, readOnlyClient, type ReadOnlyClient }
 export { readTypesenseDocuments, type ReadCollections } from './reader.js';
 
 const fieldName = z.string().regex(/^[A-Za-z0-9_.]+$/);
+const reservedParams = new Set([
+  'collection',
+  'q',
+  'query_by',
+  'filter_by',
+  'include_fields',
+  'exclude_fields',
+  'per_page',
+]);
+
 const param = z.union([z.string(), z.number(), z.boolean()]);
 
 const profile = z.strictObject({
@@ -38,7 +48,12 @@ const profile = z.strictObject({
     .enum(['text', 'fusion'])
     .meta({ enumTitles: ['Ordsøk', 'Kombinert søk'] })
     .default('text'),
-  params: z.record(z.string(), param).default({}),
+  params: z
+    .record(z.string(), param)
+    .refine((params) => !Object.keys(params).some((key) => reservedParams.has(key)), {
+      message: `params cannot set ${[...reservedParams].join(', ')}`,
+    })
+    .default({}),
 });
 
 const datasetOptions = z
@@ -348,6 +363,7 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
           return {
             profile: p,
             body: {
+              ...p.params,
               collection: collectionName(dataset, p.collection),
               q: r.query,
               query_by: p.queryBy.join(','),
@@ -355,7 +371,6 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
               ...(p.exclude.length ? { exclude_fields: p.exclude.join(',') } : {}),
               per_page: r.limit ?? 10,
               ...(filter ? { filter_by: filter } : {}),
-              ...p.params,
             },
           };
         });
