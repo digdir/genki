@@ -1,6 +1,6 @@
 # Infrastructure
 
-Every merge to `main` deploys to the test environment with `.github/workflows/deploy.yml`, after the checks in `ci.yml` pass. Infrastructure changes run by hand with `.github/workflows/infra.yml`, `what-if` first.
+The test environment is deployed from `main` by running `.github/workflows/deploy.yml` by hand (`gh workflow run deploy.yml`), after the checks in `ci.yml` pass. Infrastructure changes run by hand with `.github/workflows/infra.yml`, `what-if` first.
 
 Bicep for genki's Azure environments. Test exists now; prod gets its own parameter file later, under `genki.digdir.cloud` with the same host names.
 
@@ -139,10 +139,10 @@ Each asks for `openid profile`, the API audience `digdir:genai`, and `authorizat
 
 1. Run the **infra** workflow with `what-if` on, read the plan, then run it again with `what-if` off. It deploys placeholder images and creates the registry, vault and DNS zone.
 2. Set `ACR_NAME` from the run's output `registryName`, add the Key Vault secrets, and ask for the DNS delegation.
-3. Merge to `main`. The **deploy** workflow runs the checks, builds the `api`, `worker` and `apps` images, pushes them and deploys them by digest. While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
+3. Run the **deploy** workflow on `main` (`gh workflow run deploy.yml`). It runs the checks, builds the `api`, `worker` and `apps` images, pushes them and deploys them by digest. While `ALTINN_PDP_URL` is not set, it deploys the worker and the apps only: the API keeps its current image, since it refuses to start without the real Altinn decision point, and the run summary says so. Once it is set, the deploy also waits until the API's `/health` reports the commit.
 4. When the delegation works, set `CUSTOM_DOMAINS_STAGE=hostnames` and run infra, then `certificates` and run it again.
 
-After that, every merge to `main` deploys to test. Infra changes ride along with the next deploy, or run the infra workflow by hand.
+After that, run the deploy workflow whenever `main` should go to test; merges do not deploy on their own. Infra changes ride along with the next deploy, or run the infra workflow by hand.
 
 ## Validate locally
 
