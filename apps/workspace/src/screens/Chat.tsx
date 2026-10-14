@@ -175,6 +175,7 @@ export const Chat = ({
     if (past.status === 'error') setPastList(undefined);
   }, [past]);
   const conversationsOn = pastList !== undefined;
+  const savesConversation = api.conversations !== undefined && past.status !== 'error';
   const ownPast = (pastList ?? []).filter(
     (c) => !c.agentId || c.agentId === serviceIdOf(service.id),
   );
@@ -225,7 +226,7 @@ export const Chat = ({
         (text) => patch(answerId, { text, lang: detectLang(text) }),
         controller.signal,
         input,
-        conversationsOn ? { ...(conversationId ? { id: conversationId } : {}) } : undefined,
+        savesConversation ? { ...(conversationId ? { id: conversationId } : {}) } : undefined,
         rules && documents.length ? documents : undefined,
       );
     } catch {

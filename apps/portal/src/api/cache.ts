@@ -11,7 +11,7 @@ interface Entry {
   tenant: string;
 }
 
-type Listener = (id: string, key: string) => void;
+type Listener = (id: string, key: string, source?: AbortSignal) => void;
 
 const listeners = new Set<Listener>();
 const readers = new WeakMap<AbortSignal, Set<string>>();
@@ -25,8 +25,8 @@ export const markPageLoad = (signal: AbortSignal, reload = false) => {
 };
 
 export const onRefreshed = (signal: AbortSignal, listener: () => void) => {
-  const wrapped: Listener = (id, key) =>
-    readers.get(signal)?.has(`${id}\u0000${key}`) && listener();
+  const wrapped: Listener = (id, key, source) =>
+    source !== signal && readers.get(signal)?.has(`${id}\u0000${key}`) && listener();
   listeners.add(wrapped);
   return () => listeners.delete(wrapped);
 };
@@ -43,13 +43,13 @@ export const createResponseCache = ({
   const refreshing = new Map<string, Promise<void>>();
   let generation = 0;
 
-  const store = (key: string, tenant: string, data: unknown) => {
+  const store = (key: string, tenant: string, data: unknown, source?: AbortSignal) => {
     const json = JSON.stringify(data);
     const changed = entries.get(key)?.json !== json;
     entries.delete(key);
     entries.set(key, { data, json, at: now(), tenant });
     if (entries.size > maxEntries) entries.delete(entries.keys().next().value as string);
-    if (changed) for (const listener of listeners) listener(id, key);
+    if (changed) for (const listener of listeners) listener(id, key, source);
   };
 
   const fetchAndStore = async <T>(
@@ -60,7 +60,7 @@ export const createResponseCache = ({
   ) => {
     const started = generation;
     const data = await fetcher(signal);
-    if (started === generation) store(key, tenant, data);
+    if (started === generation) store(key, tenant, data, signal);
     return data;
   };
 

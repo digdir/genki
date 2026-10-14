@@ -233,6 +233,22 @@ describe('Datasett: detalj', () => {
     expect(screen.queryByText('Siste innlesing feilet')).toBeNull();
   });
 
+  it('keeps an ingestion started the moment the detail page appears', async () => {
+    let clicked = false;
+    const observer = new MutationObserver(() => {
+      const runNow = screen.queryByRole('button', { name: 'Les inn nå' });
+      if (clicked || !runNow) return;
+      clicked = true;
+      fireEvent.click(runNow);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await openDetail(web, 'Nettsidene til Testetaten');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    observer.disconnect();
+    expect(clicked).toBe(true);
+    expect(screen.getByRole('progressbar', { name: 'Fremdrift' })).toBeTruthy();
+  });
+
   it('stops a running ingestion after confirmation and keeps documents already read', async () => {
     await openDetail(tilsyn, 'Tilsynsrapporter 2025');
     vi.useFakeTimers();
