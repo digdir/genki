@@ -12,3 +12,4 @@ export * from './authenticate.js';
 export * from './cache.js';
 export * from './clients.js';
 export * from './maskinporten-client.js';
+export * from './altinn-actions.js';

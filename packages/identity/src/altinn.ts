@@ -184,7 +184,9 @@ export const httpAltinnAuthorization = (options: HttpAltinnOptions): AltinnAutho
       },
     );
     if (!response.ok) throw new Error(`Altinn authorization answered ${response.status}`);
-    const body = (await response.json()) as Partial<XacmlResponse>;
-    return body.Response?.[0]?.Decision ?? 'Indeterminate';
+    const body = (await response.json()) as Partial<XacmlResponse> & {
+      response?: { decision?: AltinnDecision }[];
+    };
+    return body.Response?.[0]?.Decision ?? body.response?.[0]?.decision ?? 'Indeterminate';
   },
 });

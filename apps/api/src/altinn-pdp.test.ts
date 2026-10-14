@@ -52,12 +52,13 @@ describe('Altinn PDP by configuration', () => {
     expect(await choice.authorization.decide(request)).toBe('Permit');
   });
 
-  it('asks the configured Altinn PDP with a Maskinporten token and the subscription key', async () => {
+  it('exchanges the Maskinporten token for an Altinn token and asks the PDP with it and the subscription key', async () => {
     const calls: { url: string; headers: Headers }[] = [];
     const choice = altinnPdpFrom(await realEnv(), testData, async (url, init) => {
       calls.push({ url: String(url), headers: new Headers(init?.headers) });
       if (String(url).endsWith('/token'))
         return Response.json({ access_token: 'mp-token', expires_in: 120 });
+      if (String(url).endsWith('/exchange/maskinporten')) return new Response('"altinn-token"');
       return Response.json({
         Response: [{ Decision: 'Deny', Status: { StatusCode: { Value: 'ok' } } }],
       });
@@ -69,10 +70,30 @@ describe('Altinn PDP by configuration', () => {
     expect(decision).toBe('Deny');
     expect(calls.map((c) => c.url)).toEqual([
       'https://test.maskinporten.test/token',
+      'https://platform.tt02.altinn.test/authentication/api/v1/exchange/maskinporten',
       'https://platform.tt02.altinn.test/authorization/api/v1/authorize',
     ]);
     expect(calls[1]?.headers.get('authorization')).toBe('Bearer mp-token');
-    expect(calls[1]?.headers.get('ocp-apim-subscription-key')).toBe('abonnement');
+    expect(calls[2]?.headers.get('authorization')).toBe('Bearer altinn-token');
+    expect(calls[2]?.headers.get('ocp-apim-subscription-key')).toBe('abonnement');
+  });
+
+  it('reads the decision from the camel-case response Altinn tt02 sends', async () => {
+    const choice = altinnPdpFrom(await realEnv(), testData, async (url) => {
+      if (String(url).endsWith('/token'))
+        return Response.json({ access_token: 'mp-token', expires_in: 120 });
+      if (String(url).endsWith('/exchange/maskinporten')) return new Response('"altinn-token"');
+      return Response.json({
+        response: [
+          {
+            decision: 'Permit',
+            status: { statusCode: { value: 'urn:oasis:names:tc:xacml:1.0:status:ok' } },
+          },
+        ],
+      });
+    });
+
+    expect(await choice.authorization.decide(request)).toBe('Permit');
   });
 
   it('refuses to start with half the real PDP configuration', () => {

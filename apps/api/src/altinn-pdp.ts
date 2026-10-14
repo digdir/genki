@@ -1,10 +1,15 @@
 import {
+  altinnActionLookup,
+  cachedActionLookup,
   cachedAltinnAuthorization,
   createMockAltinnPdp,
   httpAltinnAuthorization,
+  altinnTokens,
   maskinportenTokens,
+  withAltinnActions,
   type AltinnAuthorization,
   type IdentityTestDataInput,
+  type VerifiedIdentity,
 } from '@genai/identity';
 import type { JWK } from 'jose';
 import { isDevMode } from './boot-guard.js';
@@ -63,6 +68,7 @@ export const altinnPdpFrom = (
     privateKey: privateKeyOf(env.ALTINN_PDP_MASKINPORTEN_KEY as string),
     fetch: fetchFn,
   });
+  const exchanged = altinnTokens({ baseURL, maskinporten: tokens, fetch: fetchFn });
   const subscriptionKey = env.ALTINN_SUBSCRIPTION_KEY as string;
   return {
     kind: 'altinn',
@@ -72,10 +78,22 @@ export const altinnPdpFrom = (
         baseURL,
         fetch: fetchFn,
         headers: async () => ({
-          authorization: `Bearer ${await tokens.token()}`,
+          authorization: `Bearer ${await exchanged.token()}`,
           'ocp-apim-subscription-key': subscriptionKey,
         }),
       }),
     ),
   };
 };
+
+export const withPdpActions = <V extends { verify(token: string): Promise<VerifiedIdentity> }>(
+  verifier: V,
+  pdp: Pick<AltinnPdpChoice, 'authorization'>,
+  resource: string,
+  onError?: (error: unknown) => void,
+): V =>
+  withAltinnActions(verifier, {
+    lookup: cachedActionLookup(altinnActionLookup(pdp.authorization)),
+    resource,
+    ...(onError ? { onError } : {}),
+  });

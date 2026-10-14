@@ -290,16 +290,17 @@ describe('mock Ansattporten', () => {
         issuer: ISSUER,
         subject: expect.stringMatching(/^[\w-]{43}$/),
         assurance: 'high',
-        authorizedFor: [{ org: DIGDIR, resource: KA, actions: ['read'] }],
+        authorizedFor: [{ org: DIGDIR, resource: KA, actions: [] }],
         tenant: DIGDIR,
         expiresAt: expect.any(String),
       },
       personId: '45840375084',
+      partiesWithoutActions: [{ org: DIGDIR, resource: KA }],
     });
     expect(JSON.stringify(identity.principal)).not.toContain('45840375084');
   });
 
-  it('carries the Altinn rights in the id token the way Ansattporten does', async () => {
+  it('lists the authorized parties in the id token without actions, the way Ansattporten does', async () => {
     const { ansattporten } = setup();
     const { location, exchange } = await login(ansattporten.app, '45840375084');
     const tokens = (await (await exchange(location.searchParams.get('code'))).json()) as Record<
@@ -324,13 +325,13 @@ describe('mock Ansattporten', () => {
             {
               orgno: { authority: 'iso6523-actorid-upis', ID: `0192:${DIGDIR}` },
               resource: 'digdir-kunnskapsassistent',
-              actions: ['read'],
               name: 'DIGITALISERINGSDIREKTORATET',
             },
           ],
         },
       ],
     });
+    expect(claims.authorization_details[0].authorized_parties[0]).not.toHaveProperty('actions');
   });
 
   it('refuses a wrong code verifier, a reused code and a different redirect uri', async () => {
@@ -757,7 +758,6 @@ describe('mock Ansattporten login through the test-person picker', () => {
       {
         orgno: { authority: 'iso6523-actorid-upis', ID: `0192:${NAV}` },
         resource: 'digdir-kunnskapsassistent',
-        actions: ['read'],
         name: 'NAV',
         unit_type: 'ORGL',
       },
@@ -826,7 +826,7 @@ describe('mock Ansattporten login through the test-person picker', () => {
     expect(single.response.status).toBe(400);
   });
 
-  it('filters by organisation form and restricts the actions to the requested ones', async () => {
+  it('filters by organisation form and by the requested actions', async () => {
     const { ansattporten } = setup();
 
     const flow = await login(ansattporten.app, '12345678901', {
@@ -850,7 +850,6 @@ describe('mock Ansattporten login through the test-person picker', () => {
       {
         orgno: { authority: 'iso6523-actorid-upis', ID: `0192:${FITNESS_OSLO}` },
         resource: 'digdir-kunnskapsassistent',
-        actions: ['write'],
         name: 'DDG Fitness Oslo',
         unit_type: 'BEDR',
       },

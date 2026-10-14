@@ -47,3 +47,36 @@ export const cachedAltinnAuthorization = (
     },
   };
 };
+
+export type ActionLookup = (personId: string, party: string, resource: string) => Promise<string[]>;
+
+export interface ActionCacheOptions {
+  seconds?: number;
+  maxEntries?: number;
+  now?: () => number;
+}
+
+export const cachedActionLookup = (
+  inner: ActionLookup,
+  options: ActionCacheOptions = {},
+): ActionLookup => {
+  const seconds = options.seconds ?? 120;
+  if (seconds < 60 || seconds > 300) throw new RangeError('seconds must be between 60 and 300');
+  const maxEntries = options.maxEntries ?? 10_000;
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, { actions: Promise<string[]>; until: number }>();
+
+  return (personId, party, resource) => {
+    const key = JSON.stringify([personId, party, resource]);
+    const hit = entries.get(key);
+    if (hit && hit.until > now()) return hit.actions;
+    entries.delete(key);
+    if (entries.size >= maxEntries) entries.delete(entries.keys().next().value as string);
+    const actions = inner(personId, party, resource);
+    entries.set(key, { actions, until: now() + seconds * 1000 });
+    actions.catch(() => {
+      if (entries.get(key)?.actions === actions) entries.delete(key);
+    });
+    return actions;
+  };
+};

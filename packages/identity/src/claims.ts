@@ -20,7 +20,7 @@ export const fromOrgNo = (value: OrgNo | undefined): string | undefined => {
 export interface AuthorizedParty {
   orgno: OrgNo;
   resource: string;
-  actions: string[];
+  actions?: string[];
   name: string;
   unit_type: string;
 }
