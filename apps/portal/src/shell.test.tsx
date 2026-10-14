@@ -345,9 +345,14 @@ describe('login through Ansattporten in live mode', () => {
 
   it('returns to the start page after Logg ut', async () => {
     render(<App auth={callbackClient()} fetch={mockFetch()} live />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
+    await screen.findByRole('button', { name: 'Ingrid Berg, åpne brukermeny' });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Logg ut' }));
+    await waitFor(() => {
+      if (!screen.queryByRole('dialog', { name: 'Brukermeny' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
+      const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+      fireEvent.click(within(menu).getByRole('button', { name: 'Logg ut' }));
+    });
 
     expect((await screen.findAllByRole('button', { name: 'Logg inn' })).length).toBeGreaterThan(0);
     expect(screen.queryByRole('navigation', { name: 'Hovedmeny' })).toBeNull();
