@@ -1,4 +1,4 @@
-import { authHeaders, type Credential } from '@genai/kernel';
+import { authHeaders, type Credential, withoutTrailingSlashes } from '@genai/kernel';
 import { KnowledgeError } from '@genai/port-knowledge';
 
 export const assertSearchOnly = (method: string, path: string) => {
@@ -40,7 +40,7 @@ export const searchOnlyClient = (
   credential: Credential,
   timeoutMs: number,
 ): SearchOnlyClient => {
-  const base = baseURL.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(baseURL);
   const request = async (
     method: string,
     path: string,
@@ -121,7 +121,7 @@ export const readOnlyClient = (
   timeoutMs: number,
   send: typeof fetch = fetch,
 ): ReadOnlyClient => {
-  const base = baseURL.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(baseURL);
   const get = async (path: string, query: Record<string, string>, signal: AbortSignal) => {
     assertReadOnly('GET', path);
     const url = new URL(base + path);

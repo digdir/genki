@@ -1,6 +1,6 @@
 import type { FlowStep, StepFlowDefinition } from '@genai/definitions';
 import type { BlockRegistry } from './blocks.js';
-import { referencedSteps, stepsIn } from './expressions.js';
+import { leftOfComparison, referencedSteps, stepsIn } from './expressions.js';
 
 export interface FlowProblem {
   path: string;
@@ -54,7 +54,7 @@ export const checkFlow = (flow: StepFlowDefinition, blocks: BlockRegistry): Flow
       if (step.repeat) {
         visit(step.repeat.steps, `${path}.repeat.steps`, vars);
         unknownRefs(
-          stepsIn(step.repeat.until.replace(/^!/, '').split(/\s*(?:==|!=|>=|<=|>|<)\s*/)[0] ?? ''),
+          stepsIn(leftOfComparison(step.repeat.until.replace(/^!/, ''))),
           vars,
           `${path}.repeat.until`,
           'until',

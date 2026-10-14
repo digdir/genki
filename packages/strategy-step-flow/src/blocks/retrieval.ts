@@ -361,11 +361,18 @@ const finalizeInput = z.looseObject({
   insufficientContext: z.boolean().nullish(),
 });
 
-const sentinelOnly = (text: string) =>
-  text
-    .trim()
-    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '')
-    .toUpperCase() === insufficientSentinel;
+const punctuationOrSpace = /^[\p{P}\s]$/u;
+
+const trimPunctuation = (text: string) => {
+  const chars = Array.from(text);
+  let start = 0;
+  let end = chars.length;
+  while (start < end && punctuationOrSpace.test(chars[start] ?? '')) start += 1;
+  while (end > start && punctuationOrSpace.test(chars[end - 1] ?? '')) end -= 1;
+  return chars.slice(start, end).join('');
+};
+
+const sentinelOnly = (text: string) => trimPunctuation(text).toUpperCase() === insufficientSentinel;
 
 export const overviewFinalizeBlock: Block<z.infer<typeof finalizeInput>, Record<string, never>> = {
   name: 'overview-finalize',

@@ -12,8 +12,9 @@ export class StructuredEvalError extends Error {
 
 export const stripCodeFences = (text: string): string => {
   const trimmed = text.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
-  return fenced ? (fenced[1] ?? '') : trimmed;
+  if (trimmed.length < 6 || !trimmed.startsWith('```') || !trimmed.endsWith('```')) return trimmed;
+  const inner = trimmed.slice(3, -3);
+  return (inner.startsWith('json') ? inner.slice(4) : inner).trim();
 };
 
 export const extractJsonObject = (text: string): string => {

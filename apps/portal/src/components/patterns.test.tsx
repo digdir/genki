@@ -58,7 +58,7 @@ describe('ApiCall', () => {
     expect(within(panel).getAllByText(/Tokenet/)).toHaveLength(1);
     expect(within(panel).getAllByText(/Bytt ut \$TOKEN/)).toHaveLength(1);
     expect(within(panel).getByLabelText('Forespørsel').textContent).toContain(
-      '-H "change-reason: <begrunnelse>"',
+      "-H 'change-reason: <begrunnelse>'",
     );
   });
 
@@ -75,8 +75,8 @@ describe('ApiCall', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
 
     const curl = screen.getByLabelText('Forespørsel').textContent ?? '';
-    expect(curl).toContain('-H "change-reason: Bedre%20s%C3%B8k"');
-    expect(curl).toContain('-H "if-match: 4"');
+    expect(curl).toContain("-H 'change-reason: Bedre%20s%C3%B8k'");
+    expect(curl).toContain("-H 'if-match: 4'");
     expect(curlLines(curl).at(-1)).toMatch(/^ {2}-d /);
   });
 

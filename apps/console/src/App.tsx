@@ -246,7 +246,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     '/platform-defaults': () => <PlatformDefaults />,
     '/schemas': () => <Schemas api={api} initial={params.get('kind') ?? undefined} />,
   };
-  const render = screens[current];
+  const render = Object.hasOwn(screens, current) ? screens[current] : undefined;
   return (
     <SupportProvider api={api}>
       <Shell

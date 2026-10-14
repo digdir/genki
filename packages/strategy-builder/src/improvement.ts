@@ -85,7 +85,9 @@ export const parseInstructionChange = (
   reply: string,
   before: string,
 ): InstructionChange | undefined => {
-  const body = /\{[\s\S]*\}/.exec(reply)?.[0];
+  const start = reply.indexOf('{');
+  const end = reply.lastIndexOf('}');
+  const body = start >= 0 && end > start ? reply.slice(start, end + 1) : undefined;
   let parsed: unknown;
   try {
     parsed = JSON.parse(body ?? '');

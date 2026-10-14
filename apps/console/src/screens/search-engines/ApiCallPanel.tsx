@@ -30,16 +30,21 @@ const headersOf = (call: ApiCall, t: T) => {
   };
 };
 
+const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+
 export const curlOf = (call: ApiCall, t: T) =>
   [
     `curl -X ${call.method} "${apiBase}${call.path}"`,
     '  -H "Authorization: Bearer $TOKEN"',
     ...Object.entries(headersOf(call, t)).map(
-      ([name, value]) => `  -H "${name}: ${value.replace(/"/g, '\\"')}"`,
+      ([name, value]) => `  -H ${shellQuote(`${name}: ${value}`)}`,
     ),
     ...(call.body === undefined
       ? []
-      : ['  -H "Content-Type: application/json"', `  -d '${JSON.stringify(call.body, null, 2)}'`]),
+      : [
+          '  -H "Content-Type: application/json"',
+          `  -d ${shellQuote(JSON.stringify(call.body, null, 2))}`,
+        ]),
   ].join(' \\\n');
 
 export const ApiCallPanel = ({ call, onClose }: { call: ApiCall; onClose: () => void }) => {

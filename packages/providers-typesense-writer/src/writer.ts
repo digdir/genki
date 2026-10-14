@@ -1,4 +1,4 @@
-import { authHeaders, type Credential } from '@genai/kernel';
+import { authHeaders, type Credential, withoutTrailingSlashes } from '@genai/kernel';
 import { KnowledgeError } from '@genai/port-knowledge';
 import folder from './schemas/folder.json' with { type: 'json' };
 import website from './schemas/website.json' with { type: 'json' };
@@ -71,7 +71,7 @@ export interface TypesenseHttpOptions {
 }
 
 export const typesenseHttp = (options: TypesenseHttpOptions) => {
-  const base = options.baseURL.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(options.baseURL);
   const send = options.fetch ?? fetch;
 
   const request = async (

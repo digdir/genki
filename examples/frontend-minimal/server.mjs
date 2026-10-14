@@ -21,10 +21,14 @@ const readJson = async (request) => {
 
 const fail = (response, error) => {
   const status = error instanceof ApiError ? error.status : 500;
+  if (!(error instanceof ApiError))
+    process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
   response.writeHead(status === 401 || status === 403 ? 502 : status, {
     'content-type': 'application/json',
   });
-  response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+  response.end(
+    JSON.stringify({ error: error instanceof ApiError ? error.message : 'Something went wrong' }),
+  );
 };
 
 const server = createServer(async (request, response) => {

@@ -1,3 +1,4 @@
+import { withoutTrailingSlashes } from '@genai/kernel';
 import { shortHash } from '@genai/valuehash';
 import type { Chunk } from './chunk-document.js';
 import type { IngestSource, SourceDocument } from './pipeline.js';
@@ -264,7 +265,7 @@ export const prepareEpiserverDoc = (doc: EpiserverDoc, totalChunks: number, base
     {
       ...doc,
       total_chunks: totalChunks,
-      ...(baseUrl ? { url: `${baseUrl.replace(/\/+$/, '')}${doc.url}` } : {}),
+      ...(baseUrl ? { url: `${withoutTrailingSlashes(baseUrl)}${doc.url}` } : {}),
     },
     docFields,
   );

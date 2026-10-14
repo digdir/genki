@@ -58,7 +58,8 @@ export const isAccountNumber = (value: string) => {
 const elevenDigits = /(?<![\d.])\d{6} ?\d{5}(?![\d])|(?<![\d.])\d{4}[ .]\d{2}[ .]\d{5}(?!\d)/g;
 const phone =
   /(?<![\d+])(?:(?:\+|00)47[\s-]?)?(?:[2-9]\d{7}|[2-9]\d{2}[\s-]\d{2}[\s-]\d{3}|[2-9]\d[\s-]\d{2}[\s-]\d{2}[\s-]\d{2})(?![\d])/g;
-const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const email =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/g;
 const icd10 = /\b[A-TV-Z]\d{2}(?:\.\d{1,2})?\b/g;
 
 const overlaps = (a: PiiMatch, b: PiiMatch) => a.start < b.end && b.start < a.end;

@@ -1,3 +1,4 @@
+import { withoutTrailingSlashes } from '@genai/kernel';
 import type { Part } from '@genai/contracts';
 import type { PortContext, SecretResolver } from '@genai/kernel';
 import { errorResult, ToolError, type ToolPort, type ToolResult } from '@genai/port-tools';
@@ -111,7 +112,7 @@ export const requestFor = (
       else query.append(p.name, scalar(value));
     } else headers[p.name.toLowerCase()] = scalar(value);
   }
-  const base = endpoint.replace(/\/+$/, '');
+  const base = withoutTrailingSlashes(endpoint);
   const search = query.toString();
   return {
     url: `${base}${path.startsWith('/') ? path : `/${path}`}${search ? `?${search}` : ''}`,

@@ -19,6 +19,7 @@ export {
   type TaskStore,
 } from './memory.js';
 export { envSecrets, secretRefPattern, type SecretResolver } from './secrets.js';
+export { withoutTrailingSlashes } from './urls.js';
 export {
   authenticatedFetch,
   authHeaders,

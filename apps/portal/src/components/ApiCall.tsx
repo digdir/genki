@@ -44,16 +44,18 @@ const headersFor = (call: ApiCallPreview) => {
   };
 };
 
+const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+
 export const curlFor = (call: ApiCallPreview) => {
   const lines = [
     `curl -X ${call.method} "${publicApiBase}${call.path}"`,
     '  -H "Authorization: Bearer $TOKEN"',
     ...Object.entries(headersFor(call)).map(
-      ([name, value]) => `  -H "${name}: ${value.replace(/"/g, '\\"')}"`,
+      ([name, value]) => `  -H ${shellQuote(`${name}: ${value}`)}`,
     ),
     ...(call.body === undefined
       ? []
-      : ['  -H "Content-Type: application/json"', `  -d '${JSON.stringify(call.body)}'`]),
+      : ['  -H "Content-Type: application/json"', `  -d ${shellQuote(JSON.stringify(call.body))}`]),
   ];
   return lines.join(' \\\n');
 };

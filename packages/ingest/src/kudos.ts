@@ -231,8 +231,8 @@ export const isPdf = (bytes: Uint8Array) =>
   bytes.length >= 4 && new TextDecoder('ascii').decode(bytes.subarray(0, 4)) === '%PDF';
 
 const citationPatterns = [
-  /citation_pdf_url"?[^>]*?content="([^"]+)"/i,
-  /content="([^"]+)"[^>]*?citation_pdf_url/i,
+  /citation_pdf_url"?[^<>]{0,500}?content="([^"<>]{1,2000})"/i,
+  /content="([^"<>]{1,2000})"[^<>]{0,500}?citation_pdf_url/i,
 ];
 
 export const citationPdfUrl = (html: string) => {
