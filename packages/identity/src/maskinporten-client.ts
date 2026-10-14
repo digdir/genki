@@ -72,7 +72,10 @@ const expiryOf = (token: string): number | undefined => {
 
 export const altinnTokens = (options: AltinnTokenOptions) => {
   const now = options.now ?? Date.now;
-  const endpoint = `${options.baseURL.replace(/\/+$/, '')}/authentication/api/v1/exchange/maskinporten`;
+  const endpoint = new URL(
+    'authentication/api/v1/exchange/maskinporten',
+    options.baseURL.endsWith('/') ? options.baseURL : `${options.baseURL}/`,
+  ).toString();
   let cached: { token: string; until: number } | undefined;
 
   return {
