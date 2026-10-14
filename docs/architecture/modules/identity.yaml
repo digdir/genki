@@ -15,10 +15,12 @@ responsibilities:
   - Token verification and principal mapping
   - Legacy API-key bridge
   - Altinn authorization (mocked today)
+  - Altinn actions for parties the token lists without actions
 files:
   - packages/identity/src/verify.ts
   - packages/identity/src/authenticate.ts
   - packages/identity/src/altinn.ts
+  - packages/identity/src/altinn-actions.ts
   - packages/identity/src/policy.ts
   - packages/identity/src/mock-ansattporten.ts
   - packages/identity/src/api-keys.ts

@@ -59,7 +59,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
 import { operatorDirectory, splitOperators } from './operators.js';
-import { altinnPdpFrom } from './altinn-pdp.js';
+import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
@@ -68,6 +68,9 @@ import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 
+const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
+if (existsSync(envFile)) process.loadEnvFile(envFile);
+
 const port = Number(process.env.PORT ?? 8080);
 const version = process.env.APP_VERSION ?? 'dev';
 const audience = process.env.API_AUDIENCE ?? 'digdir:genai';
@@ -75,9 +78,6 @@ const configDir = process.env.CONFIG_DIR ?? join(import.meta.dirname, '..', 'con
 const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-genai-platform';
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
-
-const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
-if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 const refused = bootProblems(process.env);
 if (refused.length > 0) {
@@ -178,7 +178,12 @@ if (mock)
   };
 const reservedClientIds = (testData.clients ?? []).map((c) => c.clientId);
 const verifier = operators.watch(
-  asPlatformResource(createTokenVerifier({ issuers: trusted }), resource),
+  asPlatformResource(
+    withPdpActions(createTokenVerifier({ issuers: trusted }), altinnPdp, resource, (error) =>
+      log('altinn actions failed', { error: String(error) }),
+    ),
+    resource,
+  ),
 );
 const secrets = envSecrets();
 

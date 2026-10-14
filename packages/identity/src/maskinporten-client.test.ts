@@ -8,6 +8,7 @@ import {
   createTokenVerifier,
   isUnregisteredClient,
   keyGrantPolicy,
+  altinnTokens,
   maskinportenTokens,
   toOrgNo,
 } from './index.js';
@@ -140,5 +141,45 @@ describe('registered Maskinporten clients', () => {
     const { principal } = await verifier.verify(token);
 
     expect(principal.scopes).toEqual(['digdir:genai.invoke']);
+  });
+});
+
+describe('Altinn token exchange', () => {
+  const jwt = (exp: number) =>
+    ['e30', Buffer.from(JSON.stringify({ exp })).toString('base64url'), 'sig'].join('.');
+
+  it('exchanges the Maskinporten token once and reuses the Altinn token until it nearly expires', async () => {
+    let clock = 1_000_000_000_000;
+    const seen: string[] = [];
+    const tokens = altinnTokens({
+      baseURL: 'https://platform.tt02.altinn.test/',
+      maskinporten: { token: async () => 'mp-token' },
+      now: () => clock,
+      fetch: async (url, init) => {
+        seen.push(`${String(url)} ${new Headers(init?.headers).get('authorization')}`);
+        return new Response(JSON.stringify(jwt(clock / 1000 + 600)));
+      },
+    });
+
+    const first = await tokens.token();
+    clock += 500_000;
+    expect(await tokens.token()).toBe(first);
+    clock += 80_000;
+    await tokens.token();
+
+    expect(seen).toEqual([
+      'https://platform.tt02.altinn.test/authentication/api/v1/exchange/maskinporten Bearer mp-token',
+      'https://platform.tt02.altinn.test/authentication/api/v1/exchange/maskinporten Bearer mp-token',
+    ]);
+  });
+
+  it('fails when Altinn refuses the exchange', async () => {
+    const tokens = altinnTokens({
+      baseURL: 'https://platform.tt02.altinn.test',
+      maskinporten: { token: async () => 'mp-token' },
+      fetch: async () => new Response('', { status: 401 }),
+    });
+
+    await expect(tokens.token()).rejects.toThrow('Altinn token exchange answered 401');
   });
 });

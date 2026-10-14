@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import {
+  createMockAltinnPdp,
   createMockAnsattporten,
   createSigningKey,
   createTokenVerifier,
   type IdentityTestDataInput,
 } from '@genai/identity';
 import { tenantAccess } from './access.js';
+import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { bearerAuthenticator } from './auth.js';
 import { operatorDirectory, splitOperators } from './operators.js';
@@ -35,16 +37,20 @@ const localPeople = async () => {
   });
   const operators = operatorDirectory(operatorPids);
   const verifier = operators.watch(
-    createTokenVerifier({
-      issuers: [
-        {
-          kind: 'ansattporten',
-          issuer,
-          audience: 'digdir:genai',
-          keys: createLocalJWKSet({ keys: [key.publicJwk] }),
-        },
-      ],
-    }),
+    withPdpActions(
+      createTokenVerifier({
+        issuers: [
+          {
+            kind: 'ansattporten',
+            issuer,
+            audience: 'digdir:genai',
+            keys: createLocalJWKSet({ keys: [key.publicJwk] }),
+          },
+        ],
+      }),
+      createMockAltinnPdp(testData as IdentityTestDataInput),
+      resource,
+    ),
   );
   const auth = bearerAuthenticator(verifier, operators.isOperator);
   return async (pid: string, org?: string) => {

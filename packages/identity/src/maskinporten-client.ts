@@ -51,3 +51,44 @@ export const maskinportenTokens = (options: MaskinportenClientOptions) => {
     },
   };
 };
+
+export interface AltinnTokenOptions {
+  baseURL: string;
+  maskinporten: { token(): Promise<string> };
+  fetch?: typeof fetch;
+  now?: () => number;
+}
+
+const expiryOf = (token: string): number | undefined => {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
+      exp?: unknown;
+    };
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const altinnTokens = (options: AltinnTokenOptions) => {
+  const now = options.now ?? Date.now;
+  const endpoint = new URL(
+    'authentication/api/v1/exchange/maskinporten',
+    options.baseURL.endsWith('/') ? options.baseURL : `${options.baseURL}/`,
+  ).toString();
+  let cached: { token: string; until: number } | undefined;
+
+  return {
+    token: async (): Promise<string> => {
+      if (cached && cached.until > now()) return cached.token;
+      const response = await (options.fetch ?? fetch)(endpoint, {
+        headers: { authorization: `Bearer ${await options.maskinporten.token()}` },
+      });
+      if (!response.ok) throw new Error(`Altinn token exchange answered ${response.status}`);
+      const token = (await response.text()).trim().replace(/^"|"$/g, '');
+      if (!token) throw new Error('Altinn token exchange sent no token');
+      cached = { token, until: (expiryOf(token) ?? now() + 60_000) - 30_000 };
+      return token;
+    },
+  };
+};

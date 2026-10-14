@@ -178,3 +178,28 @@ describe('cost estimate before a paid test set run', () => {
     expect(calls.some((c) => c.startsWith('POST') && c.includes('/eval-runs'))).toBe(true);
   });
 });
+
+describe('rights in live mode', () => {
+  const fromApi =
+    (org: string, rights: string[]): typeof fetch =>
+    (input, init) =>
+      (urlOf(input).split('?')[0] ?? '').endsWith(`/tenants/${org}/me`)
+        ? Promise.resolve(Response.json({ rights }))
+        : mockFetch()(input, init);
+
+  it('uses the rights the API reports when the login lists the organisation without actions', async () => {
+    await renderAs(
+      '#/integrations?tab=keys',
+      [{ orgNumber: '312521172', name: 'FALSK IDIOTSIKKER ELEFANT' }],
+      fromApi('312521172', ['use-services', 'manage-services', 'view-usage']),
+    );
+    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    await expect.poll(() => create.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('the API answer wins over the actions in the login', async () => {
+    await renderAs('#/integrations?tab=keys', manager, fromApi('999888777', ['use-services']));
+    const create = await screen.findByRole('button', { name: 'Lag API-nøkkel' });
+    await expect.poll(() => create.getAttribute('aria-disabled')).toBe('true');
+  });
+});
