@@ -195,6 +195,26 @@ describe('batch jobs', () => {
     expect(second.result).toMatchObject({ succeeded: 6, failed: 0 });
   });
 
+  it('a rerun carries over which items are done, never their answers', async () => {
+    let broken = true;
+    const { kernel, batchId } = await setup((caseId) =>
+      caseId === 'innkalling-mote' && broken ? 'ikke json' : plain(caseId),
+    );
+
+    const first = await runBatch(kernel, batchId, 'brev-desember');
+    broken = false;
+    const second = await runBatch(kernel, batchId, 'brev-desember');
+
+    const earlier = second.result.items.filter((i) => i.id !== 'innkalling-mote');
+    const answered = (i: { text?: string; json?: unknown }) =>
+      i.text !== undefined || i.json !== undefined;
+    expect(first.result.items.filter(answered).length).toBe(5);
+    expect(earlier.every((i) => i.status === 'succeeded' && i.task !== undefined)).toBe(true);
+    expect(earlier.some(answered)).toBe(false);
+    const redone = second.result.items.find((i) => i.id === 'innkalling-mote');
+    expect(redone && answered(redone)).toBe(true);
+  });
+
   it('runs a batch over items given directly, without a folder', async () => {
     const { kernel, batchId } = await setup((caseId) => plain(caseId));
     const letter = letters()[0];

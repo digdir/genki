@@ -492,6 +492,25 @@ describe('enrichment collections', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('refuses profile params that would replace the collection or the checked search fields', () => {
+    const [name, first] = (Object.entries(dataset.options.profiles)[0] ?? []) as [
+      string | undefined,
+      Record<string, unknown> | undefined,
+    ];
+    for (const key of ['collection', 'filter_by', 'q', 'query_by']) {
+      const result = typesense.datasetOptions.safeParse({
+        ...dataset.options,
+        profiles: { [name ?? 'p']: { ...first, params: { [key]: 'kudos_docs' } } },
+      });
+      expect(result.success).toBe(false);
+    }
+    const allowed = typesense.datasetOptions.safeParse({
+      ...dataset.options,
+      profiles: { [name ?? 'p']: { ...first, params: { prefix: false } } },
+    });
+    expect(allowed.success).toBe(true);
+  });
 });
 
 describe('typesense capabilities and defaults', () => {

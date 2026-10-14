@@ -7,6 +7,8 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 - Reading runs, test sets, gates and feedback needs membership in the tenant. A run's timeline is open to whoever started it, or to `manage-services`.
 - Projects and their runs need `use-services`; a subscription that runs a service needs `manage-services`.
 - Test sets, eval runs, improvements, batch runs, gates, guardrail rules and candidate reviews need `manage-services`.
+- An API key needs the `admin` scope on these routes, also on the ones outside `/tenants/{tenant}` (`/eval-runs/*`, `/eval-tasks/*`, `/testcase-candidates/*`); other keys get 403 `urn:genai:problem:api-key-scope`.
+- A rerun of a batch with the same `batchId` skips the items that already succeeded. Their entries in the new result carry status, attempts and the task that produced them, not the answer, which stays with that task and its retention.
 - Editing and approving a table review (`PUT .../tasks/{task}/review/edits`, `POST .../review/approve`) needs `use-services` and is open only to whoever started the run. Both are audited admin tasks with `change-reason`; an edit that races another answers 409.
 - Usage and cost need `view-usage`.
 - Starting, cancelling and retrying a batch run (`POST /tenants/{tenant}/services/{id}/batch-runs`, `.../{runId}/cancel`, `.../{runId}/retry`) are audited admin tasks: each needs `change-reason` and answers with a `genai-task` header.

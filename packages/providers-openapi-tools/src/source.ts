@@ -92,6 +92,15 @@ const planOf = (tool: PinnedTool): CallPlan => tool.call as unknown as CallPlan;
 
 const scalar = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
 
+const matchesTemplate = (template: string, url: string) => {
+  const expected = new URL(template).pathname.split('/');
+  const actual = new URL(url).pathname.split('/');
+  return (
+    expected.length === actual.length &&
+    expected.every((segment, i) => segment.includes('%7B') || segment === actual[i])
+  );
+};
+
 export const requestFor = (
   endpoint: string,
   plan: CallPlan,
@@ -106,16 +115,23 @@ export const requestFor = (
       if (p.in === 'path') return { error: `\`${p.name}\` is required` };
       continue;
     }
-    if (p.in === 'path') path = path.replaceAll(`{${p.name}}`, encodeURIComponent(scalar(value)));
-    else if (p.in === 'query') {
+    if (p.in === 'path') {
+      const raw = scalar(value);
+      if (raw === '' || raw === '.' || raw === '..')
+        return { error: `\`${p.name}\` is not a valid path segment` };
+      path = path.replaceAll(`{${p.name}}`, encodeURIComponent(raw));
+    } else if (p.in === 'query') {
       if (Array.isArray(value)) for (const v of value) query.append(p.name, scalar(v));
       else query.append(p.name, scalar(value));
     } else headers[p.name.toLowerCase()] = scalar(value);
   }
   const base = withoutTrailingSlashes(endpoint);
   const search = query.toString();
+  const url = `${base}${path.startsWith('/') ? path : `/${path}`}${search ? `?${search}` : ''}`;
+  if (!matchesTemplate(`${base}${plan.path.startsWith('/') ? plan.path : `/${plan.path}`}`, url))
+    return { error: 'the request path does not match the operation' };
   return {
-    url: `${base}${path.startsWith('/') ? path : `/${path}`}${search ? `?${search}` : ''}`,
+    url,
     headers,
     ...(plan.body && input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
   };

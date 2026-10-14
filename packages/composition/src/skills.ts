@@ -22,18 +22,24 @@ export const skillResolver = (deps: {
     examples: definition.spec.examples,
   });
 
-  const sharedOwners = async (skill: string, except: string) =>
+  const sharedOwners = async (skill: string, version: number, except: string) =>
     (await deps.configEntries.latest({ kind: skillShareKind }))
       .filter((e) => {
-        const spec = e.spec as { skill?: string; state?: string };
-        return !e.deleted && spec.skill === skill && spec.state === 'shared' && e.scope !== except;
+        const spec = e.spec as { skill?: string; state?: string; version?: number };
+        return (
+          !e.deleted &&
+          spec.skill === skill &&
+          spec.state === 'shared' &&
+          spec.version === version &&
+          e.scope !== except
+        );
       })
       .map((e) => e.scope);
 
   const resolveSkill = async (tenant: string, id: string, version: number) => {
     const own = await deps.definitions.get('Skill', tenant, id, version);
     if (own) return { owner: tenant, definition: own.definition as SkillDefinition };
-    for (const owner of await sharedOwners(id, tenant)) {
+    for (const owner of await sharedOwners(id, version, tenant)) {
       const found = await deps.definitions.get('Skill', owner, id, version);
       if (found) return { owner, definition: found.definition as SkillDefinition };
     }

@@ -480,6 +480,7 @@ const app = createApp(version, {
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
     tenantQuota: platform.quota,
     tenantGate: platform.tenantGate,
+    registered: platform.registered,
     caller: platform.caller,
     lifecycle: platform.lifecycle,
     auth: bearerAuthenticator(verifier, operators.isOperator),
