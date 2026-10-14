@@ -108,6 +108,17 @@ describe('the stale-while-revalidate cache for page loads', () => {
     expect(told - first).toBe(1);
   });
 
+  it('does not tell the page load that fetched the answer itself, so it does not load twice', async () => {
+    const cache = createResponseCache();
+    const signal = page();
+    let told = 0;
+    onRefreshed(signal, () => (told += 1));
+
+    await cache.load('k', 't', async () => 'first', signal);
+
+    expect(told).toBe(0);
+  });
+
   it('always fetches when the caller is not a page load, and still updates the cache', async () => {
     const cache = createResponseCache({ now: () => 0 });
     const api = source('a', 'b');

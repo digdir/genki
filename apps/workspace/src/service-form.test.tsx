@@ -205,6 +205,31 @@ describe('a service with an input form in the workspace', () => {
     ).toBeTruthy();
   });
 
+  it('saves a form run sent before the past conversations have loaded', async () => {
+    const asked: ({ id?: string } | undefined)[] = [];
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      listServices: async () => [maloppnaelse],
+      chat: async (_service, _history, _onDelta, _signal, _input, conversation) => {
+        asked.push(conversation);
+        return { text: '', sources: [], conversationId: 'run-1' };
+      },
+      conversations: {
+        list: () => new Promise(() => undefined),
+        messages: async () => [],
+      },
+    };
+    await renderApp('#/chat', { api, initialMessages: [] });
+    fireEvent.change(await screen.findByRole('combobox', { name: /Departement/ }), {
+      target: { value: 'Kunnskapsdepartementet' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: /Virksomhet/ }), {
+      target: { value: 'Utdanningsdirektoratet' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør tjenesten' }));
+    await waitFor(() => expect(asked).toEqual([{}]));
+  });
+
   it('waits for the field a choice depends on, and starts from the defaults', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),
