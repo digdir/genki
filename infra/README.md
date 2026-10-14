@@ -95,6 +95,8 @@ Custom domains are added in three runs, because Azure only issues a managed cert
 2. `CUSTOM_DOMAINS_STAGE=hostnames`, once the delegation is in place: adds the host names without certificates.
 3. `CUSTOM_DOMAINS_STAGE=certificates`: creates the managed certificates (validated by CNAME) and binds them. Leave it at this value from then on.
 
+Certificates created outside the template, for example in the Azure portal, go in `existingCertificates` in the parameter file, by app. The certificates stage then binds them as they are and creates none of its own; Azure allows only one managed certificate per host name in an environment. genki-test uses this.
+
 Without the DNS zone, create the same CNAME and TXT records wherever `genki-test.digdir.cloud` is hosted.
 
 ## Login registrations

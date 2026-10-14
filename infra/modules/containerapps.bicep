@@ -28,6 +28,9 @@ param hostnames object
 
 @allowed(['none', 'hostnames', 'certificates'])
 param customDomainsStage string
+
+@description('Managed certificates that already exist in the environment, by app. Bound as they are instead of created.')
+param existingCertificates object = {}
 param minReplicas int
 param maxReplicas int
 param cpu string
@@ -85,9 +88,11 @@ resource dataStorage 'Microsoft.App/managedEnvironments/storages@2025-02-02-prev
 var appNames = ['api', 'portal', 'workspace', 'console']
 var withHost = filter(appNames, app => !empty(hostnames[app]))
 
-resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for app in withHost: if (customDomainsStage == 'certificates') {
+var certificateNames = toObject(appNames, app => app, app => existingCertificates[?app] ?? replace(hostnames[app], '.', '-'))
+
+resource certificates 'Microsoft.App/managedEnvironments/managedCertificates@2025-02-02-preview' = [for app in withHost: if (customDomainsStage == 'certificates' && empty(existingCertificates[?app] ?? '')) {
   parent: environment
-  name: replace(hostnames[app], '.', '-')
+  name: certificateNames[app]
   location: location
   tags: tags
   properties: {
@@ -103,7 +108,7 @@ var customDomains = toObject(appNames, app => app, app => empty(hostnames[app]) 
         name: hostnames[app]
         bindingType: customDomainsStage == 'certificates' ? 'SniEnabled' : 'Disabled'
         certificateId: customDomainsStage == 'certificates'
-          ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, replace(hostnames[app], '.', '-'))
+          ? resourceId('Microsoft.App/managedEnvironments/managedCertificates', environment.name, certificateNames[app])
           : null
       }
     ])
