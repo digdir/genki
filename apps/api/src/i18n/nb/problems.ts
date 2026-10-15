@@ -23,6 +23,9 @@ export const problems = defineNamespace({
   modelsLocked: 'Miljøet er låst: bare registrerte klienter kan bruke modeller her',
   modelsLockedDetail:
     'I dette testmiljøet når bare klienter fra konfigurasjonen en modell. Personer og operatører kan lese, men ikke kjøre.',
+  ingestionLocked: 'Miljøet er låst: bare registrerte klienter kan kjøre innlesing her',
+  ingestionLockedDetail:
+    'I dette testmiljøet er det bare klienter fra konfigurasjonen som henter dokumenter og lager nye vektorer. Personer og operatører kan lese og søke, men ikke lese inn.',
   unreadableDefinition: 'Definisjonen kan ikke leses',
   invalidDefinition: 'Ugyldig definisjon',
   skillsPublishedThrough:

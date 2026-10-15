@@ -57,7 +57,7 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                              |
 | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                               |
 
-`test.bicepparam` also sets `GENAI_LOCKDOWN=true` in `appEnv`, not from a variable: genki-test is always locked. In lockdown only API keys from configuration may use models; people, operators and keys made through the API can read and change configuration, but not run anything that reaches a model. See [ADR 0033](../docs/adr/0033-locked-test-environment.md).
+`test.bicepparam` also sets `GENAI_LOCKDOWN=true` in `appEnv`, not from a variable: genki-test is always locked. In lockdown only API keys from configuration may use models or run ingestion; people, operators and keys made through the API can read, search and change configuration, but not run anything that reaches a model, fetches documents or writes new embeddings, and scheduled ingestion is skipped. `appEnv` reaches the worker too, which then runs no triggers. See [ADR 0033](../docs/adr/0033-locked-test-environment.md).
 
 The API audience (`digdir:genai`) has a default in `main.bicep`. genki-test reads the Altinn resource from `ALTINN_RESOURCE` and uses `urn:altinn:resource:digdir-genai-platform-test`. `prod.bicepparam` fixes the resource to `urn:altinn:resource:digdir-genai-platform` and the platform tenant to Digdir, and sets no `GENAI_LOCKDOWN`, so neither variable has any effect in prod.
 

@@ -432,11 +432,13 @@ describe('a locked environment', () => {
     };
   };
 
-  it('shows a banner saying that only registered clients use models', async () => {
+  it('shows a banner saying that only registered clients use models and run ingestion', async () => {
     await renderAt('/overview', locked(true));
 
     expect(
-      await screen.findByText('Låst testmiljø: her brukes modeller bare av registrerte klienter.'),
+      await screen.findByText(
+        'Låst testmiljø: her brukes modeller og innlesing bare av registrerte klienter.',
+      ),
     ).toBeTruthy();
   });
 

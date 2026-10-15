@@ -348,6 +348,7 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
       pipeline,
       target: ingestionTarget(item),
       by: actor(principal),
+      principal,
       ...(input.tenant ? { tenant: String(input.tenant) } : {}),
     });
     return started.ok

@@ -30,6 +30,7 @@ export interface WorkerOptions {
   paused?: (binding: TriggerBinding) => boolean | Promise<boolean>;
   blocked?: (binding: TriggerBinding) => Promise<{ code: string; error: string } | undefined>;
   active?: () => boolean | Promise<boolean>;
+  locked?: boolean;
   admit?: (tenant: string) => Promise<Admission>;
   meter?: (task: string) => Promise<RunCost>;
 }
@@ -56,12 +57,13 @@ export const createWorker = (options: WorkerOptions) => {
   const syncOnce = async () => {
     await runtime.sync();
     const bindings = await triggerBindings(runtime.store);
-    const active = (await options.active?.()) ?? true;
+    const active = !options.locked && ((await options.active?.()) ?? true);
     const changes = runner.reconcile(active ? bindings : []);
     return {
       capabilities: runtime.registry.all().length,
       triggers: bindings.length,
       active,
+      ...(options.locked ? { locked: true } : {}),
       ...changes,
     };
   };
