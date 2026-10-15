@@ -1,4 +1,4 @@
-import type { Usage } from '@genai/contracts';
+import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
   rowMapping,
@@ -302,6 +302,9 @@ const toPipeline = (entry: ConfigEntry<unknown>): Pipeline => {
   };
 };
 
+export const ingestionLockedMessage =
+  'the environment is locked: only clients from the configuration may run ingestion here';
+
 export const runLockedMessage = (dataset: string, execution: string) =>
   `the dataset ${dataset} is already being ingested by run ${execution}; wait for it to finish or cancel it`;
 
@@ -334,6 +337,8 @@ export class IngestionService {
       backend: IngestionBackend;
       now?: () => Date;
       newId?: () => string;
+      admits?: (principal: Principal | undefined) => boolean;
+      onRefused?: (message: string) => void;
     },
   ) {}
 
@@ -465,10 +470,17 @@ export class IngestionService {
     target: IngestionTarget;
     by: string;
     tenant?: string;
+    principal?: Principal;
   }): Promise<
     | { ok: true; value: Execution; done: Promise<Execution> }
     | { ok: false; errors: { path: string; message: string }[]; conflict?: boolean }
   > {
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; ${input.pipeline.dataset}/${input.pipeline.id} by ${input.by} did not run`,
+      );
+      return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
+    }
     const backend = this.options.backend;
     const status = this.availability(input.target, input.pipeline);
     if (!status.available)

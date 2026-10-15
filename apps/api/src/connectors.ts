@@ -350,6 +350,7 @@ export const connectOnApproval = async <E extends Env, S extends Schema, B exten
       pipeline,
       target: ingestionTarget(item),
       by: actorOf(principal.actor ?? principal),
+      principal,
       tenant,
     });
     if (started.ok) void started.done.catch(() => undefined);

@@ -5,7 +5,9 @@ import {
   type BlockTexts,
   createRuntime,
   followChanges,
+  isLockdown,
   loadCatalog,
+  mayUseModels,
   ownedByPlatformTenant,
   platformTenantFrom,
   runtimeBlocksOf,
@@ -151,6 +153,9 @@ const knowledgeDatasets =
 const datasetOf = (id: string) =>
   knowledgeDatasets.find((d) => d.id === id || d.aliases?.includes(id));
 
+const lockdown = isLockdown(process.env);
+if (lockdown) log('lockdown: the worker runs no triggers and refuses every model call');
+
 const blob = new FileSystemBlobStore(blobDir);
 const eventLog = db?.log ?? new InMemoryEventLog();
 const runtime = await createRuntime({
@@ -179,6 +184,7 @@ const runtime = await createRuntime({
           sharedSkill,
         ),
   policy: ownTenantOnly(),
+  ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
   log: eventLog,
   tasks,
   prices,
@@ -318,6 +324,7 @@ const worker = createWorker({
       pricedModels,
     ),
   ...(lease ? { active: () => lease.tryAcquire() } : {}),
+  locked: lockdown,
 });
 log('worker started', { blobDir, ...(await worker.sync()) });
 const following = followPublished({

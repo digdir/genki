@@ -20,3 +20,4 @@ export * from './block-settings.js';
 export * from './schema-labels.js';
 export * from './boot-guard.js';
 export * from './platform-tenant.js';
+export * from './lockdown.js';

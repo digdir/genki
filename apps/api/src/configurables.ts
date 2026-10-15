@@ -34,6 +34,8 @@ export interface ConfigurablesInput {
   ruleSeed?: Seed;
   now?: () => Date;
   scheduleIntervalMs?: number;
+  admitsIngestion?: (principal: Principal | undefined) => boolean;
+  onWarning?: (message: string) => void;
 }
 
 const countTtlMs = 5 * 60_000;
@@ -99,6 +101,8 @@ export const createConfigurables = (
       executions: input.executions ?? new InMemoryExecutionStore(),
       backend: input.ingestion ?? deps.ingestion ?? pendingIngestionBackend(),
       ...(input.now ? { now: input.now } : {}),
+      ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
+      ...(input.onWarning ? { onRefused: input.onWarning } : {}),
     });
     const configDeps = {
       catalog,

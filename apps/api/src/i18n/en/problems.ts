@@ -24,6 +24,9 @@ export const problems = {
   modelsLocked: 'The environment is locked: only registered clients may use models here',
   modelsLockedDetail:
     'In this test environment only clients from the configuration reach a model. People and operators can read, but not run.',
+  ingestionLocked: 'The environment is locked: only registered clients may run ingestion here',
+  ingestionLockedDetail:
+    'In this test environment only clients from the configuration fetch documents and write new embeddings. People and operators can read and search, but not ingest.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:
