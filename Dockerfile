@@ -12,8 +12,9 @@ RUN mkdir -p /out && \
       mkdir -p "/out/$dir" && cp "$dir/package.json" "/out/$dir/" && \
       if [ -d "$dir/dist" ]; then cp -r "$dir/dist" "/out/$dir/"; fi; \
     done && \
-    cp -r apps/api/config /out/apps/api/ && \
-    cp -r packages/jobs/examples /out/packages/jobs/ && \
+    for asset in $(cat docker/runtime-assets); do \
+      mkdir -p "/out/$(dirname "$asset")" && cp -r "$asset" "/out/$asset" || exit 1; \
+    done && \
     cp package.json package-lock.json /out/
 
 FROM ${NODE_IMAGE} AS deps
