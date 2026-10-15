@@ -9,7 +9,10 @@ export const shell = {
   navErrors: 'Error messages',
   navDocument: 'Document draft',
   skipLink: 'Skip to main content',
-  lockdown: 'Locked test environment: here, only registered clients use models and run ingestion.',
+  lockdown:
+    'Locked test environment: only Entra ID logins can make changes. They and the API keys and clients they create can use models and run ingestion.',
+  lockdownReadOnly:
+    'Locked test environment: you can look around, but changes, models and ingestion need an Entra ID login.',
   productName: 'AI workspace',
   platformName: 'Shared platform for generative AI',
   orgNumber: 'Org. no. {number}',

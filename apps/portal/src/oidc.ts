@@ -34,6 +34,7 @@ export interface AnsattportenOptions {
   fallback?: FallbackClient;
   now?: () => number;
   uiLocales?: () => string;
+  organisations?: (token: string) => Promise<Organisation[]>;
 }
 
 interface Discovery {
@@ -112,6 +113,39 @@ export const organisationsFrom = (claims: Record<string, unknown>, resource: str
   return [...found.values()];
 };
 
+export const isEntraLogin = (token: string) => {
+  try {
+    return decodeJwt(token).acr === 'entraid';
+  } catch {
+    return false;
+  }
+};
+
+interface MyOrganisations {
+  organisations?: { orgNumber: string; name: string; rights: string[] }[];
+  title?: string;
+  detail?: string;
+}
+
+export const organisationsFromApi =
+  (fetcher: typeof fetch, baseUrl: string) =>
+  async (token: string): Promise<Organisation[]> => {
+    const response = await fetcher(`${baseUrl}/me`, {
+      headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+    });
+    const body = (await response.json().catch(() => ({}))) as MyOrganisations;
+    if (!response.ok)
+      throw new LoginError(body.detail ?? body.title ?? `GET /me answered ${response.status}`);
+    return (body.organisations ?? []).map(({ orgNumber, name, rights }) => ({
+      orgNumber,
+      name,
+      actions: rights,
+    }));
+  };
+
+const textClaim = (...values: unknown[]) =>
+  values.find((v) => typeof v === 'string' && v) as string | undefined;
+
 export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
   const sessionKey = `${options.clientId}.session`;
   const loginKey = `${options.clientId}.login`;
@@ -178,19 +212,23 @@ export const ansattporten = (options: AnsattportenOptions): OidcAuthClient => {
     return keep(tokens, id);
   };
 
-  const keep = (tokens: TokenResponse, id: Record<string, unknown>, previous?: StoredSession) => {
+  const keep = async (
+    tokens: TokenResponse,
+    id: Record<string, unknown>,
+    previous?: StoredSession,
+  ) => {
     const access = decodeJwt(tokens.access_token);
-    const name =
-      typeof id.name === 'string'
-        ? id.name
-        : typeof access.name === 'string'
-          ? access.name
-          : (previous?.name ?? '');
+    const name = textClaim(id.name, access.name, previous?.name, id.email, access.email) ?? '';
+    const listed = organisationsFrom(access, options.altinnResource);
+    const organisations =
+      listed.length === 0 && options.organisations
+        ? await options.organisations(tokens.access_token)
+        : listed;
     const refreshToken = tokens.refresh_token ?? previous?.refreshToken;
     const idToken = tokens.id_token ?? previous?.idToken;
     const session: StoredSession = {
       name: name || translator(resolveLocale(options.uiLocales?.()))('app.unknownUser'),
-      organisations: organisationsFrom(access, options.altinnResource),
+      organisations,
       token: tokens.access_token,
       ...(typeof access.exp === 'number' ? { expiresAt: access.exp * 1000 } : {}),
       ...(refreshToken ? { refreshToken } : {}),

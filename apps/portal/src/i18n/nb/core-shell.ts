@@ -18,7 +18,10 @@ export const shell = defineNamespace({
   brandShort: 'KI-portalen',
   brandFull: 'Fellesløsning for generativ KI',
   owner: 'Digdir',
-  lockdown: 'Låst testmiljø: her brukes modeller og innlesing bare av registrerte klienter.',
+  lockdown:
+    'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
+  lockdownReadOnly:
+    'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
   orgMeta: 'Org.nr. {orgNr}',
   orgMetaUnregistered: 'Org.nr. {orgNr} · ikke registrert',
   orgButton: 'Handler for {name}, org.nr. {orgNr}. Bytt virksomhet',

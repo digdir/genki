@@ -11,7 +11,7 @@ import {
   type SettingsRegistry,
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
-import { requireRight } from './rights.js';
+import { requireRight, rights, rightsOf } from './rights.js';
 import {
   settingsConflictMessage,
   type Admin,
@@ -286,7 +286,25 @@ const OperatorTenant = z
   })
   .openapi('OperatorTenant');
 
+const MyOrganisation = z
+  .object({
+    orgNumber: z.string(),
+    name: z.string(),
+    rights: z.array(z.enum(rights as [string, ...string[]])),
+  })
+  .openapi('MyOrganisation');
+
 const routes = {
+  me: createRoute({
+    method: 'get',
+    path: '/me',
+    summary:
+      'The organisations the signed-in person may act for, with names and rights, for logins whose token lists none',
+    responses: {
+      200: json(z.object({ organisations: z.array(MyOrganisation) }), 'Organisations'),
+      401: problems[401],
+    },
+  }),
   timeline: createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks/{task}/timeline',
@@ -782,6 +800,31 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
       {
         tenants: Object.fromEntries(orgs.sort().map((org) => [org, settings.tenant(org)])),
         services: all.filter((s) => Object.keys(s.settings).length > 0),
+      },
+      200,
+    );
+  });
+
+  app.openapi(routes.me, async (c) => {
+    const principal = await auth.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, 'Not authenticated');
+    const orgs = [
+      ...new Set([
+        ...(principal.authorizedFor ?? []).map((a) => a.org),
+        ...(principal.tenant ? [principal.tenant] : []),
+      ]),
+    ];
+    const directory = orgs.length > 0 ? ((await options.tenantDirectory?.()) ?? []) : [];
+    return c.json(
+      {
+        organisations: orgs.map((orgNumber) => ({
+          orgNumber,
+          name:
+            directory.find((d) => d.orgNumber === orgNumber)?.name ??
+            options.organisationName?.(orgNumber) ??
+            orgNumber,
+          rights: [...rightsOf(principal, orgNumber)],
+        })),
       },
       200,
     );

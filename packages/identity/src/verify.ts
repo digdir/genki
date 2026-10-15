@@ -11,10 +11,12 @@ import {
 import {
   fromOrgNo,
   INTERNAL_GRANT_PREFIX,
+  trustedEntraScope,
   type AltinnResourceDetail,
   type OrgNo,
   type SystemUserDetail,
 } from './claims.js';
+import { PLATFORM_RIGHTS } from './platform-rights.js';
 
 export type AuthenticationErrorCode =
   | 'unknown_issuer'
@@ -22,7 +24,8 @@ export type AuthenticationErrorCode =
   | 'insufficient_assurance'
   | 'missing_scope'
   | 'missing_role'
-  | 'not_authorized_for_org';
+  | 'not_authorized_for_org'
+  | 'entra_not_trusted';
 
 export class AuthenticationError extends Error {
   constructor(
@@ -46,6 +49,13 @@ export interface ClientRegistry {
   byClientId(clientId: string): Promise<RegisteredClient | undefined>;
 }
 
+export interface TrustedEntra {
+  groups: readonly string[];
+  emailDomain?: string;
+  tenant: string;
+  resource: string;
+}
+
 export type TrustedIssuer =
   | {
       kind: 'ansattporten';
@@ -54,6 +64,7 @@ export type TrustedIssuer =
       keys: JWTVerifyGetKey;
       minAssurance?: 'substantial' | 'high';
       acceptEntraId?: boolean;
+      trustedEntra?: TrustedEntra;
       registeredClients?: ClientRegistry;
     }
   | {
@@ -120,12 +131,42 @@ const assuranceOf = (acr: unknown): Assurance | undefined => {
 const expiresAt = (payload: JWTPayload) =>
   payload.exp === undefined ? {} : { expiresAt: new Date(payload.exp * 1000).toISOString() };
 
+const trustedEntraLogin = (
+  issuer: string,
+  trusted: TrustedEntra,
+  payload: JWTPayload,
+): VerifiedIdentity => {
+  const configured = new Set(trusted.groups.map((g) => g.toLowerCase()));
+  const groups = Array.isArray(payload.groups) ? payload.groups : [];
+  if (!groups.some((g) => typeof g === 'string' && configured.has(g.toLowerCase())))
+    throw new AuthenticationError('entra_not_trusted', 'the login is in no trusted Entra group');
+  const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
+  if (trusted.emailDomain && !email.endsWith(`@${trusted.emailDomain.toLowerCase()}`))
+    throw new AuthenticationError('entra_not_trusted', 'the email is outside the trusted domain');
+  return {
+    principal: {
+      kind: 'employee',
+      issuer,
+      subject: payload.sub as string,
+      assurance: 'entraid',
+      tenant: trusted.tenant,
+      authorizedFor: [
+        { org: trusted.tenant, resource: trusted.resource, actions: [...PLATFORM_RIGHTS] },
+      ],
+      scopes: [trustedEntraScope],
+      ...expiresAt(payload),
+    },
+  };
+};
+
 const employee = (
   issuer: Extract<TrustedIssuer, { kind: 'ansattporten' }>,
   payload: JWTPayload,
 ): VerifiedIdentity => {
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
+  if (assurance === 'entraid' && issuer.trustedEntra)
+    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload);
   if (assurance === 'entraid' && !issuer.acceptEntraId)
     throw new AuthenticationError('insufficient_assurance', 'Entra ID logins are not accepted');
   if (issuer.minAssurance === 'high' && assurance !== 'high')

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
-import { apiKeyDigest, createAuthenticator } from '@genai/identity';
+import { apiKeyDigest, createAuthenticator, PLATFORM_RIGHTS } from '@genai/identity';
+import { UnsecuredJWT } from 'jose';
 import { envSecrets } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
@@ -11,12 +12,35 @@ import { InMemoryConfigEntryStore } from './config-store.js';
 import { InMemoryExecutionStore, InMemoryIngestionBackend, IngestionService } from './ingestion.js';
 import {
   configuredCredentialScope,
+  entraNotTrustedType,
   lockedEnvironmentType,
   mayUseModels,
+  trustedEntraScope,
   withCredentialOrigin,
 } from './lockdown.js';
-import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
-import { digdir, files, principals, testService } from './testkit.js';
+import { operatorDirectory } from './operators.js';
+import {
+  maskinportenClientRegistry,
+  admitMaskinportenClients,
+  maskinportenClientsModule,
+} from './maskinporten-clients.js';
+import type { ModuleDeps } from './platform-modules.js';
+import { InMemoryTenantApiKeys, portalAdminHandlers } from './routes/portal-routes.js';
+import { digdir, files, principals as testPrincipals, testService } from './testkit.js';
+
+const principals: Record<string, Principal> = {
+  ...testPrincipals,
+  entra: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'entra-subject',
+    assurance: 'entraid',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [trustedEntraScope],
+  },
+};
+const operators = operatorDirectory([], [testPrincipals.operator?.subject ?? '']);
 
 const configuredKey = 'gp_from-configuration';
 const configuredIngestKey = 'gp_ingest-from-configuration';
@@ -127,12 +151,14 @@ const boot = async (lockdown: boolean) => {
       : {}),
     authenticate: async (request) => {
       const person = principals[request.headers.get('authorization')?.slice(7) ?? ''];
-      if (person) return { principal: person };
+      if (person)
+        return callerFrom({ method: 'token', principal: person }, operators.isOperator(person));
       const found = await authenticator.authenticate(request);
       return found && callerFrom(found);
     },
   });
   await platform.definitions.publish(testService('klarsprak'), 'test', 'test', files);
+  await platform.definitions.publish(testService('annen'), 'test', 'test', files);
   const admin = createAdmin({
     store: platform.definitions,
     plugins: platform.plugins,
@@ -150,6 +176,8 @@ const boot = async (lockdown: boolean) => {
       tenantGate: platform.tenantGate,
       caller: platform.caller,
       lockdown,
+      loginRefusal: async (request) =>
+        request.headers.get('authorization')?.includes('.') ? 'entra_not_trusted' : undefined,
     },
   });
   platform.mount(app, admin);
@@ -167,12 +195,19 @@ const boot = async (lockdown: boolean) => {
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
-  const chat = (as: string) =>
+  const chat = (as: string, service = 'klarsprak') =>
     send('/v1/chat/completions', as, {
-      body: { model: 'klarsprak__default', messages: [{ role: 'user', content: 'hei' }] },
+      body: { model: `${service}__default`, messages: [{ role: 'user', content: 'hei' }] },
     });
+  const createKey = async (as: string) => {
+    const created = await send(`/tenants/${digdir}/services/klarsprak/api-keys`, as, {
+      body: { name: 'KA test' },
+      reason,
+    });
+    return json<{ key: string; apiKey: { id: string } }>(created);
+  };
   const dataset = async () => {
-    await send(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+    await send(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'entra', {
       method: 'PUT',
       body: {
         engine: 'typesense',
@@ -181,7 +216,7 @@ const boot = async (lockdown: boolean) => {
       },
       reason,
     });
-    const created = await send(`/tenants/${digdir}/datasets`, 'kari', {
+    const created = await send(`/tenants/${digdir}/datasets`, 'entra', {
       body: {
         id: 'sider',
         name: 'Nettsider',
@@ -191,7 +226,7 @@ const boot = async (lockdown: boolean) => {
       reason,
     });
     expect(created.status).toBe(201);
-    const pipeline = await send(`/tenants/${digdir}/datasets/sider/pipelines`, 'kari', {
+    const pipeline = await send(`/tenants/${digdir}/datasets/sider/pipelines`, 'entra', {
       body: {
         id: 'nettsider',
         name: 'Nettsidene',
@@ -208,7 +243,7 @@ const boot = async (lockdown: boolean) => {
       body: {},
       reason,
     });
-  return { app, send, chat, platform, model, ingestion, dataset, execute };
+  return { app, send, chat, createKey, keys, platform, model, ingestion, dataset, execute };
 };
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
@@ -223,20 +258,155 @@ describe('lockdown', () => {
     expect(JSON.stringify(await res.json())).toContain('Hei.');
   });
 
-  it('refuses a key created through the API from running a service in lockdown', async () => {
-    const { send, chat, model } = await boot(true);
-    const created = await send(`/tenants/${digdir}/services/klarsprak/api-keys`, 'kari', {
-      body: { name: 'Egen nøkkel' },
-      reason,
-    });
-    expect(created.status).toBe(201);
-    const { key } = await json<{ key: string }>(created);
+  it('lets a key an Entra user created run its service in lockdown', async () => {
+    const { chat, createKey } = await boot(true);
+    const { key } = await createKey('entra');
 
     const res = await chat(key);
+
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(await res.json())).toContain('Hei.');
+  });
+
+  it('keeps a key admitted after an Entra user rotates it', async () => {
+    const { chat, createKey, send } = await boot(true);
+    const { apiKey } = await createKey('entra');
+
+    const rotated = await send(`/tenants/${digdir}/api-keys/${apiKey.id}/rotate`, 'entra', {
+      body: {},
+      reason,
+    });
+    const { key } = await json<{ key: string }>(rotated);
+
+    expect(rotated.status).toBe(201);
+    expect((await chat(key)).status).toBe(200);
+  });
+
+  it('drops the admission when a key is rotated by someone who may not use models', async () => {
+    const { chat, createKey, keys, model } = await boot(true);
+    const { apiKey } = await createKey('entra');
+    const plaintext = 'gp_rotated-by-testid';
+
+    const outcome = await portalAdminHandlers({ apiKeys: keys })['platform.apikeys.rotate']?.(
+      {
+        tenant: digdir,
+        id: apiKey.id,
+        newId: 'rotert',
+        digest: apiKeyDigest(plaintext),
+        createdAt: new Date().toISOString(),
+        admittedInLockdown: true,
+        reason,
+      },
+      testPrincipals.kari as Principal,
+    );
+    const res = await chat(plaintext);
+
+    expect(outcome).toMatchObject({ ok: true });
+    expect((await keys.list(digdir)).find((k) => k.id === 'rotert')).not.toHaveProperty(
+      'admittedInLockdown',
+    );
+    expect(res.status).toBe(403);
+    expect(model.seen).toHaveLength(0);
+  });
+
+  it('does not admit keys created before lockdown admission existed', async () => {
+    const { chat, keys, model } = await boot(true);
+    const plaintext = 'gp_from-before';
+    await keys.add({
+      id: 'eldre',
+      name: 'Eldre nøkkel',
+      digest: apiKeyDigest(plaintext),
+      tenant: digdir,
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'klarsprak',
+    });
+
+    const res = await chat(plaintext);
 
     expect(res.status).toBe(403);
     expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
     expect(model.seen).toHaveLength(0);
+  });
+
+  it('does not let an admitted key reach the operator role or other services', async () => {
+    const { chat, createKey, dataset, execute, ingestion, send } = await boot(true);
+    await dataset();
+    const { key } = await createKey('entra');
+
+    const operator = await send('/operator/tenants', key);
+    const other = await chat(key, 'annen');
+    const ingested = await execute(key);
+
+    expect([401, 403]).toContain(operator.status);
+    expect(other.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(await other.json())).not.toContain('Hei.');
+    expect([401, 403]).toContain(ingested.status);
+    expect(ingestion.jobs).toHaveLength(0);
+  });
+
+  it('cannot set the admission through the request body', async () => {
+    const { chat, keys } = await boot(true);
+    const plaintext = 'gp_asked-for-admission';
+
+    await portalAdminHandlers({ apiKeys: keys })['platform.apikeys.create']?.(
+      {
+        tenant: digdir,
+        id: 'selvvalgt',
+        name: 'Selvvalgt',
+        service: 'klarsprak',
+        digest: apiKeyDigest(plaintext),
+        admittedInLockdown: true,
+        reason,
+      },
+      testPrincipals.kari as Principal,
+    );
+
+    expect((await keys.list(digdir)).find((k) => k.id === 'selvvalgt')).not.toHaveProperty(
+      'admittedInLockdown',
+    );
+    expect((await chat(plaintext)).status).toBe(403);
+  });
+
+  it('admits a Maskinporten client an Entra user registered, and not one from anyone else', async () => {
+    const configEntries = new InMemoryConfigEntryStore();
+    const { handlers } = maskinportenClientsModule({ configEntries } as unknown as ModuleDeps);
+    const save = handlers?.['platform.maskinporten-client.save'];
+    await save?.(
+      { tenant: digdir, clientId: 'fra-entra', name: 'KA', services: ['*'], reason },
+      principals.entra as Principal,
+    );
+    await save?.(
+      {
+        tenant: digdir,
+        clientId: 'fra-testid',
+        name: 'Annen',
+        services: ['*'],
+        admittedInLockdown: true,
+        reason,
+      },
+      testPrincipals.kari as Principal,
+    );
+    const admit = admitMaskinportenClients(maskinportenClientRegistry(configEntries), ['mp']);
+    const inLockdown = async (client: string) =>
+      withCredentialOrigin(
+        { configuredKeys: new Set() },
+        new Request('http://x'),
+        await admit({
+          kind: 'agency-system',
+          issuer: 'mp',
+          subject: client,
+          tenant: digdir,
+          client,
+        }),
+      );
+
+    expect(mayUseModels(await inLockdown('fra-entra'))).toBe(true);
+    expect(mayUseModels(await inLockdown('fra-testid'))).toBe(false);
+    expect(await maskinportenClientRegistry(configEntries).list(digdir)).not.toContainEqual(
+      expect.objectContaining({ admittedInLockdown: true }),
+    );
   });
 
   it.each(['kari', 'operator'])(
@@ -427,7 +597,7 @@ describe('lockdown', () => {
     expect(principal.scopes).toEqual([]);
   });
 
-  it('allows reading and configuration changes in lockdown', async () => {
+  it('keeps a TestID login read-only in lockdown', async () => {
     const { send } = await boot(true);
 
     const read = await send(`/tenants/${digdir}/definitions`, 'kari');
@@ -435,9 +605,95 @@ describe('lockdown', () => {
       body: { name: 'Ny nøkkel' },
       reason,
     });
+    const operatorChange = await send('/operator/plugins/x', 'operator', {
+      method: 'DELETE',
+      reason,
+    });
+    const preferences = await send(`/tenants/${digdir}/me/preferences`, 'kari', {
+      method: 'PUT',
+      body: { language: 'en' },
+      reason,
+    });
 
     expect(read.status).toBe(200);
+    expect(created.status).toBe(403);
+    expect(await json(created)).toMatchObject({
+      type: lockedEnvironmentType,
+      title: expect.stringContaining('Entra ID'),
+    });
+    expect(operatorChange.status).toBe(403);
+    expect(await json(operatorChange)).toMatchObject({ type: lockedEnvironmentType });
+    expect(preferences.status).toBe(200);
+  });
+
+  it('lets a trusted Entra login change configuration in lockdown', async () => {
+    const { send } = await boot(true);
+
+    const created = await send(`/tenants/${digdir}/services/klarsprak/api-keys`, 'entra', {
+      body: { name: 'Ny nøkkel' },
+      reason,
+    });
+
     expect(created.status).toBe(201);
+  });
+
+  it('lets TestID logins change configuration when lockdown is off', async () => {
+    const { send } = await boot(false);
+
+    const created = await send(`/tenants/${digdir}/services/klarsprak/api-keys`, 'kari', {
+      body: { name: 'Ny nøkkel' },
+      reason,
+    });
+
+    expect(created.status).toBe(201);
+  });
+
+  it('lets a trusted Entra login use models and run ingestion in lockdown', async () => {
+    const { chat, dataset, execute, ingestion, model } = await boot(true);
+    await dataset();
+
+    const ran = await chat('entra');
+    const ingested = await execute('entra');
+
+    expect(ran.status).toBe(200);
+    expect(model.seen.length).toBeGreaterThan(0);
+    expect(ingested.status).toBe(202);
+    expect(ingestion.jobs).toMatchObject([{ admitted: true }]);
+  });
+
+  it('makes the console treat a trusted Entra login as operator', async () => {
+    const { send } = await boot(true);
+
+    expect((await send('/operator/tenants', 'entra')).status).toBe(200);
+    expect((await send('/operator/tenants', 'kari')).status).toBe(403);
+  });
+
+  it('answers /me with the organisations and rights of a trusted Entra login', async () => {
+    const { send } = await boot(true);
+
+    const res = await send('/me', 'entra');
+
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({
+      organisations: [
+        { orgNumber: digdir, name: expect.any(String), rights: [...PLATFORM_RIGHTS] },
+      ],
+    });
+  });
+
+  it('refuses an Entra login outside the configured groups with a clear problem', async () => {
+    const { app } = await boot(true);
+    const token = new UnsecuredJWT({ acr: 'entraid', sub: 'outsider' }).encode();
+
+    const res = await app.request(`/tenants/${digdir}/definitions`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({
+      type: entraNotTrustedType,
+      title: expect.stringContaining('Entra ID'),
+    });
   });
 
   it('lets people run services when lockdown is off', async () => {

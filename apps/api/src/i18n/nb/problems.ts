@@ -20,12 +20,20 @@ export const problems = defineNamespace({
   keyScope: 'API-nøkkelen gir ikke tilgang til denne ruten',
   keyScopeDetail: 'Ruter for virksomheter krever en nøkkel med admin-omfang.',
   tenantNotRegisteredDetail: 'Virksomheten {tenant} er ikke registrert av Digdir.',
-  modelsLocked: 'Miljøet er låst: bare registrerte klienter kan bruke modeller her',
+  modelsLocked:
+    'Miljøet er låst: bare registrerte klienter og Entra ID-innlogging kan bruke modeller her',
   modelsLockedDetail:
-    'I dette testmiljøet når bare klienter fra konfigurasjonen en modell. Personer og operatører kan lese, men ikke kjøre.',
-  ingestionLocked: 'Miljøet er låst: bare registrerte klienter kan kjøre innlesing her',
+    'I dette testmiljøet når bare klienter fra konfigurasjonen, Digdir-ansatte som logger inn med Entra ID, og nøkler og klienter disse har laget, en modell. Andre kan lese, men ikke kjøre.',
+  ingestionLocked:
+    'Miljøet er låst: bare registrerte klienter og Entra ID-innlogging kan kjøre innlesing her',
   ingestionLockedDetail:
-    'I dette testmiljøet er det bare klienter fra konfigurasjonen som henter dokumenter og lager nye vektorer. Personer og operatører kan lese og søke, men ikke lese inn.',
+    'I dette testmiljøet er det bare klienter fra konfigurasjonen, Digdir-ansatte som logger inn med Entra ID, og nøkler og klienter disse har laget, som henter dokumenter og lager nye vektorer. Andre kan lese og søke, men ikke lese inn.',
+  changesLocked: 'Miljøet er låst: endringer krever innlogging med Entra ID',
+  changesLockedDetail:
+    'I dette testmiljøet kan alle som logger inn med TestID, lese, men bare Digdir-ansatte som logger inn med Entra ID, kan endre.',
+  entraNotTrusted: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
+  entraNotTrustedDetail:
+    'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her. Logg inn med TestID for å lese, eller be om tilgang.',
   unreadableDefinition: 'Definisjonen kan ikke leses',
   invalidDefinition: 'Ugyldig definisjon',
   skillsPublishedThrough:

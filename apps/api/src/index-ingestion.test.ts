@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DocumentConverter } from '@genai/ingest';
+import { mayUseModels } from '@genai/composition';
+import type { Principal } from '@genai/contracts';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
@@ -297,6 +299,44 @@ describe('index ingestion', () => {
 
     expect(typeof at).toBe('string');
     expect(String(at) >= before).toBe(true);
+  });
+
+  it.each([
+    { admitted: true, rule: 'lets an ingestion run that lockdown admitted use its phrase model' },
+    { admitted: false, rule: 'keeps the phrase model of an ingestion run nobody admitted locked' },
+  ])('$rule', async ({ admitted }) => {
+    const tenant = '991825827';
+    const blobs = new InMemoryBlobStore();
+    await blobs.put(
+      { tenant, path: `${uploadPrefix(`${tenant}/opplastet`, tenant)}frister.md` },
+      new TextEncoder().encode('# Frister\n\nFristen for innsyn er tre virkedager.'),
+      'text/markdown',
+    );
+    const asked: Principal[] = [];
+    const job = jobFor({ kind: 'upload' }, `${tenant}/opplastet`, tenant);
+    job.pipeline.spec = pipelineSpec.parse({
+      name: 'Rapporter',
+      source: { kind: 'upload' },
+      chunking: { minimumLength: 1 },
+      phrases: { model: 'fake/gpt' },
+    });
+
+    await indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      uploads: blobs,
+      models: {
+        open: (_ref, ctx) => {
+          asked.push(ctx.principal);
+          throw new Error('the environment is locked');
+        },
+      },
+    })
+      .run({ ...job, ...(admitted ? { admitted } : {}) }, signal)
+      .catch(() => undefined);
+
+    expect(asked.map(mayUseModels)).toEqual([admitted]);
   });
 
   it('ingests Kudos documents of the chosen types, since a date and from the chosen orgs', async () => {

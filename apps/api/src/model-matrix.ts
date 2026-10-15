@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withModelAdmission } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import type { PolicyDecisionPoint } from '@genai/kernel';
 import { caseTypeOf, type TestSet } from '@genai/eval';
@@ -364,7 +365,9 @@ export const createModelMatrixModule =
         try {
           await lease.update((r) => ({ ...r, status: 'running' }), 'Kjører');
           for (const [index, row] of planned.entries()) {
-            const acting = matrixPrincipal(deps.platformTenant);
+            const acting = deps.modelAdmission?.(principal)
+              ? withModelAdmission(matrixPrincipal(deps.platformTenant))
+              : matrixPrincipal(deps.platformTenant);
             const cases = row.set.spec.cases;
             const options = {
               avoidAsJudge: [run.model, run.current],

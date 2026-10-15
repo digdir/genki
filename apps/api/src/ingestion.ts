@@ -134,6 +134,7 @@ export interface IngestionJob {
   pipeline: Pipeline;
   target: IngestionTarget;
   tenant?: string;
+  admitted?: boolean;
 }
 
 export interface IngestionReport {
@@ -526,6 +527,7 @@ export class IngestionService {
               pipeline: input.pipeline,
               target: input.target,
               ...(input.tenant ? { tenant: input.tenant } : {}),
+              ...(this.options.admits ? { admitted: true } : {}),
             },
             controller.signal,
           ),

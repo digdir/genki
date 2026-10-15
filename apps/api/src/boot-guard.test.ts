@@ -43,6 +43,20 @@ describe('booting the API', () => {
     expect(bootProblems({ ...real, PLATFORM_TENANT: '213192752' })).toEqual([]);
   });
 
+  it('refuses to start when LOCKDOWN_ENTRA_GROUPS lists something that is not a group id', () => {
+    const groups = '0f0e0d0c-0b0a-4908-8706-050403020100, Digdir-ansatte';
+
+    expect(bootProblems({ ...real, LOCKDOWN_ENTRA_GROUPS: groups })).toEqual([
+      expect.stringContaining('Digdir-ansatte'),
+    ]);
+    expect(
+      bootProblems({ ...real, LOCKDOWN_ENTRA_GROUPS: '0f0e0d0c-0b0a-4908-8706-050403020100' }),
+    ).toEqual([]);
+    expect(bootProblems({ ...real, LOCKDOWN_ENTRA_EMAIL_DOMAIN: 'not a domain' })).toEqual([
+      expect.stringContaining('LOCKDOWN_ENTRA_EMAIL_DOMAIN'),
+    ]);
+  });
+
   it('names every missing setting when none is set', () => {
     const problems = bootProblems({});
     expect(problems).toHaveLength(3);

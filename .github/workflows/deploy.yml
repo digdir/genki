@@ -153,6 +153,8 @@ jobs:
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+          LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
+          LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \

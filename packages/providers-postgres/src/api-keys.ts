@@ -18,6 +18,7 @@ export interface PostgresApiKey {
   skillGraphs?: string[];
   allowedConfigKeys?: string[];
   policy?: PostgresKeyPolicy;
+  admittedInLockdown?: boolean;
   lastUsedAt?: string;
   revokedAt?: string;
   expiresAt?: string;
@@ -68,6 +69,7 @@ interface KeyRow {
   skill_graph_grants: string[];
   allowed_config_keys: string[];
   policy_id: string | null;
+  admitted_in_lockdown: boolean;
   last_used_at: Date | null;
   revoked_at: Date | null;
   expires_at: Date | null;
@@ -108,6 +110,7 @@ const toKey = (row: KeyRow): PostgresApiKey => ({
   ...(row.skill_graph_grants.length ? { skillGraphs: row.skill_graph_grants } : {}),
   ...(row.allowed_config_keys.length ? { allowedConfigKeys: row.allowed_config_keys } : {}),
   ...(row.policy_id === null ? {} : { policy: { id: row.policy_id } }),
+  ...(row.admitted_in_lockdown ? { admittedInLockdown: true } : {}),
   ...(row.last_used_at === null ? {} : { lastUsedAt: row.last_used_at.toISOString() }),
   ...(row.revoked_at === null ? {} : { revokedAt: row.revoked_at.toISOString() }),
   ...(row.expires_at === null ? {} : { expiresAt: row.expires_at.toISOString() }),
@@ -209,8 +212,8 @@ export class PostgresApiKeys {
       client.query(
         `insert into legacy_api_keys (id, digest, prefix, last_four, name, tenant, legacy, scopes, dataset_grants,
            agent_grants, client_id, revoked_at, expires_at, created_at, service, allowed_overrides, calls_per_minute,
-           skill_graph_grants, allowed_config_keys, policy_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+           skill_graph_grants, allowed_config_keys, policy_id, admitted_in_lockdown)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
         [
           key.id,
           key.digest,
@@ -232,6 +235,7 @@ export class PostgresApiKeys {
           key.skillGraphs ?? [],
           key.allowedConfigKeys ?? [],
           key.policy?.id ?? null,
+          key.admittedInLockdown === true,
         ],
       ),
     );

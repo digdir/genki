@@ -40,6 +40,7 @@ import {
   type RowReader,
   type SkippedDocument,
 } from '@genai/ingest';
+import { withModelAdmission } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
 import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
@@ -477,12 +478,13 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
     run: async (job: IngestionJob, signal: AbortSignal): Promise<IngestionReport> => {
       const tenant = job.tenant ?? options.platformTenant;
       const usage: Record<string, Usage> = {};
-      const principal: Principal = {
+      const system: Principal = {
         kind: 'agency-system',
         issuer: 'platform',
         subject: 'ingestion',
         tenant,
       };
+      const principal = job.admitted ? withModelAdmission(system) : system;
       const ctx: PortContext = {
         tenant,
         principal,

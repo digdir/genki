@@ -22,12 +22,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('a locked environment', () => {
-  it('shows a banner saying that only registered clients use models and run ingestion', async () => {
+  it('tells a TestID login that changes, models and ingestion need an Entra login', async () => {
     await renderApp('', { api: { ...mockWorkspaceApi(), lockdown: async () => true } });
 
     expect(
       await screen.findByText(
-        'Låst testmiljø: her brukes modeller og innlesing bare av registrerte klienter.',
+        'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
       ),
     ).toBeTruthy();
   });

@@ -25,6 +25,8 @@ param appEnv = {
   TYPESENSE_URL: readEnvironmentVariable('TYPESENSE_URL', '')
   COLBERT_API_URL: readEnvironmentVariable('COLBERT_API_URL', '')
   GENAI_LOCKDOWN: 'true'
+  LOCKDOWN_ENTRA_GROUPS: readEnvironmentVariable('LOCKDOWN_ENTRA_GROUPS', '')
+  LOCKDOWN_ENTRA_EMAIL_DOMAIN: readEnvironmentVariable('LOCKDOWN_ENTRA_EMAIL_DOMAIN', 'digdir.no')
 }
 
 param ansattportenIssuer = readEnvironmentVariable('ANSATTPORTEN_ISSUER', '')

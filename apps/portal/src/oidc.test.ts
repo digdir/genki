@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ansattporten, codeChallenge, type AnsattportenOptions } from './oidc';
+import {
+  ansattporten,
+  codeChallenge,
+  organisationsFromApi,
+  type AnsattportenOptions,
+} from './oidc';
 
 const issuer = 'http://localhost:8080/mock/ansattporten';
 const resource = 'urn:altinn:resource:digdir-genai-platform';
@@ -60,6 +65,8 @@ const renewedToken = jwt({
 });
 let refreshable = 'refresh-1';
 
+let issued: Record<string, string> | undefined;
+
 const setup = (overrides: Partial<AnsattportenOptions> = {}, start = 'http://localhost:5175/') => {
   const storage = memoryStorage();
   const requests: { url: string; init?: RequestInit | undefined }[] = [];
@@ -81,6 +88,7 @@ const setup = (overrides: Partial<AnsattportenOptions> = {}, start = 'http://loc
               token_type: 'Bearer',
             })
           : Response.json({ error: 'invalid_grant' }, { status: 400 });
+      if (issued) return Response.json(issued);
       return Response.json({
         access_token: accessToken,
         id_token: jwt({ name: 'Ingrid Berg', nonce }),
@@ -309,5 +317,92 @@ describe('login through Ansattporten', () => {
     expect(client.current()).toBe(fallbackSession);
     await client.logout();
     expect(client.current()).toBeUndefined();
+  });
+});
+
+describe('login with Entra ID through Ansattporten', () => {
+  const entraAccess = jwt({
+    exp: 4_000_000_000,
+    acr: 'entraid',
+    email: 'lise@digdir.example',
+    groups: ['0f0e0d0c-0b0a-4908-8706-050403020100'],
+  });
+  const api = (
+    status = 200,
+    body: unknown = {
+      organisations: [
+        {
+          orgNumber: '312521172',
+          name: 'Plattformen',
+          rights: ['use-services', 'manage-services'],
+        },
+      ],
+    },
+  ) => {
+    const asked: { url: string; authorization: string | null }[] = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      asked.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get('authorization'),
+      });
+      return Response.json(body, { status });
+    };
+    return { asked, organisations: organisationsFromApi(fetch, '/api') };
+  };
+  const signIn = async (organisations: AnsattportenOptions['organisations']) => {
+    issued = { access_token: entraAccess, token_type: 'Bearer' };
+    try {
+      const { client, navigated, returnFromAnsattporten } = setup({
+        ...(organisations ? { organisations } : {}),
+      });
+      void client.login();
+      await vi.waitFor(() => expect(navigated).toHaveLength(1));
+      returnFromAnsattporten({ code: 'abc' });
+      return await client.login();
+    } finally {
+      issued = undefined;
+    }
+  };
+
+  it('shows the organisations and name from the API for an Entra login', async () => {
+    const { asked, organisations } = api();
+
+    const session = await signIn(organisations);
+
+    expect(asked).toEqual([{ url: '/api/me', authorization: `Bearer ${entraAccess}` }]);
+    expect(session).toEqual({
+      name: 'lise@digdir.example',
+      organisations: [
+        {
+          orgNumber: '312521172',
+          name: 'Plattformen',
+          actions: ['use-services', 'manage-services'],
+        },
+      ],
+      token: entraAccess,
+    });
+  });
+
+  it('reports why the API refuses an Entra login', async () => {
+    const { organisations } = api(403, {
+      title: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
+      detail:
+        'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her.',
+    });
+
+    await expect(signIn(organisations)).rejects.toThrow(/oppsatte Entra-gruppene/);
+  });
+
+  it('does not ask the API when the token lists the organisations', async () => {
+    const { asked, organisations } = api();
+    const { client, navigated, returnFromAnsattporten } = setup({ organisations });
+    void client.login();
+    await vi.waitFor(() => expect(navigated).toHaveLength(1));
+    returnFromAnsattporten({ code: 'abc' });
+
+    const session = await client.login();
+
+    expect(asked).toEqual([]);
+    expect(session.organisations).toHaveLength(1);
   });
 });

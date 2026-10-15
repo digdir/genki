@@ -12,6 +12,7 @@ import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
 import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
+import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { followChanges, LocalChangeFeed } from './change-feed.js';
 import { createPlatform } from './composition.js';
@@ -39,6 +40,14 @@ const principals: Record<string, Principal> = {
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  entra: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'entra',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [trustedEntraScope],
+  },
 };
 
 const kudosPages: Record<string, unknown> = {
@@ -167,7 +176,9 @@ const embeddingModel = (id: string) => ({
   dimensions: 8,
 });
 
-const boot = async (shared: { entries?: InMemoryConfigEntryStore; clock?: { now: Date } } = {}) => {
+const boot = async (
+  shared: { entries?: InMemoryConfigEntryStore; clock?: { now: Date }; lockdown?: boolean } = {},
+) => {
   const secrets = envSecrets({ TS_KEY: 'k', EMBED_KEY: 'k' });
   const clock = shared.clock ?? { now: new Date('2026-10-07T10:00:00Z') };
   const late: { platform?: Awaited<ReturnType<typeof createPlatform>> } = {};
@@ -218,6 +229,7 @@ const boot = async (shared: { entries?: InMemoryConfigEntryStore; clock?: { now:
     },
     kudos: { fetch: kudosFetch, sleep: async () => undefined },
     ...(shared.entries ? { configurables: { store: shared.entries } } : {}),
+    ...(shared.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     modules: [
       knowledgeEndpointsModule,
       createEngineSwitchesModule({
@@ -417,6 +429,33 @@ describe('switching the search engine of a dataset', () => {
       reason: 'Flytter til plattformens database',
     });
   });
+
+  it.each([
+    { who: 'entra', admitted: true },
+    { who: 'kari', admitted: undefined },
+  ])(
+    'carries whether $who may use models in lockdown into the re-ingestion of a switch',
+    async ({ who, admitted }) => {
+      const entries = new InMemoryConfigEntryStore();
+      const booted = await boot({ entries, lockdown: true });
+      const dataset = `ka-laast-${who}`;
+      await createDataset(booted, dataset);
+
+      const started = await booted.call(`${base(dataset)}/engine-switches`, {
+        as: who,
+        body: {
+          to: 'platform-pg',
+          method: 'copy',
+          embedding: { model: 'fake/embed', dimensions: 8 },
+        },
+      });
+
+      expect(started.status).toBe(202);
+      await settled(booted, dataset, (await json<EngineSwitchView>(started)).sid);
+      const [entry] = await entries.latest({ kind: 'engine-switch' });
+      expect((entry?.spec as EngineSwitchSpec).modelsAdmitted).toBe(admitted);
+    },
+  );
 
   it('services keep the old engine until activate', async () => {
     const booted = await boot();

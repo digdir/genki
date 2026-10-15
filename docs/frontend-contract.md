@@ -392,6 +392,16 @@ curl -sN https://platform.example.no/v1/chat/completions \
        "genai_conversation":true,"stream":true,"genai_stream":"live"}'
 ```
 
+## Connect Kunnskapsassistenten to genki-test
+
+genki-test is locked (ADR 0033), so a server key reaches a model there only when a trusted Entra login created it.
+
+1. Log in to the portal at `https://portal.genki-test.digdir.cloud` with Entra ID, not TestID.
+2. Open the service `kunnskapsassistenten`, go to "API-nøkler for tjenesten" and create a key. Copy it now; it is shown once.
+3. Give the key to KA test's backend as a secret, with the base URL `https://api.genki-test.digdir.cloud`, and call `POST /v1/chat/completions` with `"model": "kunnskapsassistenten"`.
+
+Answers with sources need the Typesense search key in test: the Key Vault secret `typesense-key` must be set. A key created before this rule, or rotated by someone without an Entra login, is refused with `urn:genai:problem:locked-environment`; create a new one.
+
 ## Contract tests (repository only)
 
 For contributors. The repository has a reusable suite that checks everything above against a platform instance: `frontendContract` from `@genai/client/contract` (a `ContractSuite` for `@genai/plugins`). It runs in process with fakes (`apps/api/src/composition.test.ts`, `apps/api/src/integration.test.ts`). Against a running platform:

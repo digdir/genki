@@ -28,7 +28,10 @@ export const shell = defineNamespace({
   menuLabel: 'Konsollmeny',
   owner: 'Digdir · Fellesløsning for generativ KI',
   title: 'Driftskonsoll',
-  lockdown: 'Låst testmiljø: her brukes modeller og innlesing bare av registrerte klienter.',
+  lockdown:
+    'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
+  lockdownReadOnly:
+    'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
   envLocal: 'Lokalt',
   envProduction: 'Produksjon',
   account: 'Digdir-konto · operatør',

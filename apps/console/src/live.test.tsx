@@ -196,6 +196,29 @@ describe('operator login with Ansattporten', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
+  it('makes the console treat a trusted Entra login as operator and names it by email', async () => {
+    const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'lise@digdir.example' })}.sig`;
+    const api = liveApi(true, (path) =>
+      path === '/api/mock/ansattporten/token'
+        ? json({
+            access_token: entraAccess,
+            id_token: `${encode({ alg: 'none' })}.${encode({ acr: 'entraid' })}.sig`,
+            token_type: 'Bearer',
+          })
+        : undefined,
+    );
+    const c = client(api.fetch);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+
+    const session = await c.auth.completeLogin?.(
+      new URL(`http://localhost:5174/callback?code=a&state=${state}`),
+    );
+
+    expect(session).toMatchObject({ name: 'lise@digdir.example', roles: [operatorRole] });
+    const asked = api.calls.find((call) => call.path === '/api/operator/tenants');
+    expect(new Headers(asked?.init?.headers).get('authorization')).toBe(`Bearer ${entraAccess}`);
+  });
+
   it('rejects a callback whose state does not match', async () => {
     const api = liveApi();
     const c = client(api.fetch);

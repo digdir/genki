@@ -78,6 +78,14 @@ const claimsOf = (jwt: string): Record<string, unknown> => {
   }
 };
 
+export const isEntraLogin = (token: string) => claimsOf(token).acr === 'entraid';
+
+const nameOf = (...claims: Record<string, unknown>[]) => {
+  for (const key of ['name', 'email'])
+    for (const found of claims) if (typeof found[key] === 'string' && found[key]) return found[key];
+  return undefined;
+};
+
 export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
   const say = () => translator(options.locale?.() ?? 'nb');
   const read = <T>(key: string): T | undefined => {
@@ -184,7 +192,7 @@ export const ansattportenLogin = (options: AnsattportenOptions): AuthClient => {
       const tokens = (await response.json()) as { access_token: string; id_token?: string };
       const claims = claimsOf(tokens.id_token ?? '');
       const session: OperatorSession = {
-        name: typeof claims.name === 'string' ? claims.name : say()('api.unknownUser'),
+        name: nameOf(claims, claimsOf(tokens.access_token)) ?? say()('api.unknownUser'),
         roles: await rolesFor(tokens.access_token),
         token: tokens.access_token,
         ...(tokens.id_token ? { idToken: tokens.id_token } : {}),

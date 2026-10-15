@@ -42,6 +42,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   writers: IndexWriterRouter;
   engines(): EngineDescription[];
   ingestion: IngestionService;
+  modelAdmission?: (principal: Principal) => boolean;
   evalStores: {
     testSets: TestSetStore;
     runs: EvalRunStore;

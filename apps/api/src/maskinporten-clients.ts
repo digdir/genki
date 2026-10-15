@@ -1,3 +1,4 @@
+import { isTrustedEntraLogin } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import { clientGrants, isUnregisteredClient } from '@genai/identity';
 import type { Context, MiddlewareHandler } from 'hono';
@@ -15,6 +16,10 @@ export interface MaskinportenClient {
   services: string[];
 }
 
+interface StoredMaskinportenClient extends MaskinportenClient {
+  admittedInLockdown?: boolean;
+}
+
 export interface MaskinportenClientView extends MaskinportenClient {
   tenant: string;
   createdBy: string;
@@ -30,20 +35,30 @@ export const clientNotRegistered = {
 const clientIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const servicePattern = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 
+const publicSpec = ({
+  clientId,
+  name,
+  services,
+}: StoredMaskinportenClient): MaskinportenClient => ({
+  clientId,
+  name,
+  services,
+});
+
 export const maskinportenClientRegistry = (store: ConfigEntryStore) => ({
   list: async (tenant: string): Promise<MaskinportenClientView[]> =>
     (await store.latest({ kind: maskinportenClientKind, scope: tenant }))
       .filter((e) => !e.deleted)
       .map((e) => ({
-        ...(e.spec as MaskinportenClient),
+        ...publicSpec(e.spec as StoredMaskinportenClient),
         tenant: e.scope,
         createdBy: e.by,
         createdAt: e.at,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'nb')),
-  find: async (tenant: string, clientId: string): Promise<MaskinportenClient | undefined> => {
+  find: async (tenant: string, clientId: string): Promise<StoredMaskinportenClient | undefined> => {
     const latest = (await store.history(maskinportenClientKind, tenant, clientId)).at(-1);
-    return latest && !latest.deleted ? (latest.spec as MaskinportenClient) : undefined;
+    return latest && !latest.deleted ? (latest.spec as StoredMaskinportenClient) : undefined;
   },
 });
 
@@ -60,7 +75,7 @@ export const admitMaskinportenClients =
     )
       return principal;
     const registered = await registry.find(principal.tenant, principal.client);
-    return clientGrants(principal, registered?.services);
+    return clientGrants(principal, registered?.services, registered?.admittedInLockdown === true);
   };
 
 const problem = (
@@ -134,7 +149,7 @@ export const maskinportenClientsModule: PlatformModuleFactory = (deps) => {
           kind: maskinportenClientKind,
           scope: tenant,
           id: clientId,
-          spec,
+          spec: isTrustedEntraLogin(principal) ? { ...spec, admittedInLockdown: true } : spec,
           deleted: false,
           by: actorOf(principal),
           reason,
@@ -143,7 +158,7 @@ export const maskinportenClientsModule: PlatformModuleFactory = (deps) => {
           ok: true,
           value: spec,
           target,
-          audit: { before: before ?? null, after: spec },
+          audit: { before: before ? publicSpec(before) : null, after: spec },
         };
       }),
     'platform.maskinporten-client.remove': (input, principal) =>
@@ -164,7 +179,12 @@ export const maskinportenClientsModule: PlatformModuleFactory = (deps) => {
           by: actorOf(principal.actor ?? principal),
           reason,
         });
-        return { ok: true, value: { removed: clientId }, target, audit: { before } };
+        return {
+          ok: true,
+          value: { removed: clientId },
+          target,
+          audit: { before: publicSpec(before) },
+        };
       }),
   };
 

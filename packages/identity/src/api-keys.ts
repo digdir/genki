@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Confinement, Principal } from '@genai/contracts';
-import { INTERNAL_GRANT_PREFIX } from './claims.js';
+import { admittedCredentialScope, INTERNAL_GRANT_PREFIX } from './claims.js';
 import { AuthenticationError, type VerifiedIdentity } from './verify.js';
 
 export const LEGACY_KEY_ISSUER = 'urn:genai:legacy-api-key';
@@ -22,6 +22,7 @@ export interface StoredApiKey {
   skillGraphs?: string[];
   allowedConfigKeys?: string[];
   policy?: KeyPolicy;
+  admittedInLockdown?: boolean;
   lastUsedAt?: string;
   revokedAt?: string;
   expiresAt?: string;
@@ -160,6 +161,7 @@ export const verifyApiKey = async (
         ...(everything ? [ALL_GRANT] : datasets).map((d) => `${DATASET_GRANT_SCOPE}${d}`),
         ...skillGraphs.map((g) => `${SKILL_GRAPH_GRANT_SCOPE}${g}`),
         ...allowedConfigKeys.map((k) => `${CONFIG_KEY_GRANT_SCOPE}${k}`),
+        ...(stored.admittedInLockdown ? [admittedCredentialScope] : []),
       ],
       ...(stored.clientId ? { client: stored.clientId } : {}),
       ...(confinedTo ? { confinedTo } : {}),
@@ -197,7 +199,11 @@ export const isGrantedClient = (principal: Principal) =>
 export const isUnregisteredClient = (principal: Principal) =>
   principal.scopes?.includes(UNREGISTERED_CLIENT_SCOPE) ?? false;
 
-export const clientGrants = (principal: Principal, services: string[] | undefined): Principal => {
+export const clientGrants = (
+  principal: Principal,
+  services: string[] | undefined,
+  admittedInLockdown = false,
+): Principal => {
   const own = (principal.scopes ?? []).filter(
     (s) => !s.startsWith(INTERNAL_GRANT_PREFIX) && !s.startsWith('legacy:'),
   );
@@ -210,6 +216,7 @@ export const clientGrants = (principal: Principal, services: string[] | undefine
       'legacy:query',
       CLIENT_GRANT_SCOPE,
       ...services.map((s) => `${AGENT_GRANT_SCOPE}${s}`),
+      ...(admittedInLockdown ? [admittedCredentialScope] : []),
     ],
   };
 };
