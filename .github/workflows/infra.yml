@@ -6,7 +6,7 @@ on:
       environment:
         description: Target environment
         type: choice
-        options: [test]
+        options: [test, prod]
         default: test
       what-if:
         description: Only show what would change
