@@ -1,5 +1,5 @@
 import type { Principal } from '@genai/contracts';
-import type { VerifiedIdentity } from '@genai/identity';
+import { trustedEntraScope, type VerifiedIdentity } from '@genai/identity';
 
 interface PersonEntry {
   pid?: unknown;
@@ -30,7 +30,8 @@ export const operatorDirectory = (pids: Iterable<string>, subjects: Iterable<str
     add: (subject: string) => {
       known.add(subject);
     },
-    isOperator: (principal: Pick<Principal, 'subject'>) => known.has(principal.subject),
+    isOperator: (principal: Pick<Principal, 'subject' | 'scopes'>) =>
+      known.has(principal.subject) || (principal.scopes?.includes(trustedEntraScope) ?? false),
     watch: <V extends { verify(token: string): Promise<VerifiedIdentity> }>(verifier: V): V => ({
       ...verifier,
       verify: async (token: string) => {

@@ -9,7 +9,7 @@ import { App } from './App';
 import { localDevLogin, mockAnsattporten } from './auth';
 import { exampleOrganisations, mockFetch } from './mock';
 import { setting } from './runtime-config';
-import { ansattporten } from './oidc';
+import { ansattporten, organisationsFromApi } from './oidc';
 
 const useMock = setting('API') === 'mock';
 const send = window.fetch.bind(window);
@@ -30,6 +30,7 @@ const auth = useMock
       navigate: (url) => window.location.assign(url),
       replace: (url) => window.history.replaceState(null, '', url),
       endpoint: (url) => url.replace(/^http:\/\/localhost:\d+\//, '/api/'),
+      organisations: organisationsFromApi(send, '/api'),
       ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
     });

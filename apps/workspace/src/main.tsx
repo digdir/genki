@@ -14,7 +14,7 @@ import {
   mockApprovalsApi,
   mockWorkspaceApi,
 } from './mock';
-import { ansattporten } from './oidc';
+import { ansattporten, organisationsFromApi } from './oidc';
 import { createProjectsApi } from './projects-api';
 import { setting } from './runtime-config';
 import { mockProjectsApi } from './projects-mock';
@@ -38,6 +38,7 @@ const auth = useMock
       navigate: (url) => window.location.assign(url),
       replace: (url) => window.history.replaceState(null, '', url),
       endpoint: (url) => url.replace(/^http:\/\/localhost:\d+\//, '/api/'),
+      organisations: organisationsFromApi(send, '/api'),
       ...(configuredIssuer ? {} : { fallback: localDevLogin(send) }),
       uiLocales: locale,
     });

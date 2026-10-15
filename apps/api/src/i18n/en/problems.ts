@@ -21,12 +21,20 @@ export const problems = {
   keyScope: 'The API key does not reach this route',
   keyScopeDetail: 'Tenant routes need a key with the admin scope.',
   tenantNotRegisteredDetail: 'Organisation {tenant} has not been registered by Digdir.',
-  modelsLocked: 'The environment is locked: only registered clients may use models here',
+  modelsLocked:
+    'The environment is locked: only registered clients and Entra ID logins may use models here',
   modelsLockedDetail:
-    'In this test environment only clients from the configuration reach a model. People and operators can read, but not run.',
-  ingestionLocked: 'The environment is locked: only registered clients may run ingestion here',
+    'In this test environment only clients from the configuration, Digdir staff who log in with Entra ID, and keys and clients those staff created reach a model. Others can read, but not run.',
+  ingestionLocked:
+    'The environment is locked: only registered clients and Entra ID logins may run ingestion here',
   ingestionLockedDetail:
-    'In this test environment only clients from the configuration fetch documents and write new embeddings. People and operators can read and search, but not ingest.',
+    'In this test environment only clients from the configuration, Digdir staff who log in with Entra ID, and keys and clients those staff created fetch documents and write new embeddings. Others can read and search, but not ingest.',
+  changesLocked: 'The environment is locked: changes need an Entra ID login',
+  changesLockedDetail:
+    'In this test environment anyone who logs in with TestID can read, but only Digdir staff who log in with Entra ID can make changes.',
+  entraNotTrusted: 'Your Entra ID login gives no access to this environment',
+  entraNotTrustedDetail:
+    'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
   unreadableDefinition: 'Unreadable definition',
   invalidDefinition: 'Invalid definition',
   skillsPublishedThrough:

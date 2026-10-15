@@ -1531,6 +1531,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
+    ...(input.lockdown ? { modelAdmission: mayUseModels } : {}),
     evalStores,
     connections,
     blobs: blobStore,

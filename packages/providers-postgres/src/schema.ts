@@ -443,6 +443,7 @@ const migrations: string[] = [
      update legacy_api_keys set legacy = false where legacy;
      perform set_config('app.platform_access', '', true);
    end $$`,
+  `alter table legacy_api_keys add column if not exists admitted_in_lockdown boolean not null default false`,
   `create table if not exists clients (
      tenant text not null,
      id text not null,

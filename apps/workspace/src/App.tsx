@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiError } from './api';
 import type { AuthClient } from './auth';
 import { useAsync, useHashRoute } from './hooks';
+import { isEntraLogin } from './oidc';
 import { useSessionTimer } from './session-timer';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import { useT, type PlainKey, type T } from './i18n';
@@ -474,7 +475,7 @@ const Workspace = ({
         {notice}
         {lockdown.status === 'ready' && lockdown.data ? (
           <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-            {t('shell.lockdown')}
+            {t(isEntraLogin(session.token) ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
           </Alert>
         ) : null}
         <div aria-live="polite">

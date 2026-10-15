@@ -9,6 +9,7 @@ import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
+import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { restartMessage } from './background-lease.js';
 import { batchRunsModule, createBatchRunsModule } from './batch-run-routes.js';
@@ -56,6 +57,14 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: tenant, actions: ['use-services'] }],
   },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
+  entra: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'entra',
+    tenant,
+    authorizedFor: [{ org: tenant, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [trustedEntraScope],
+  },
 };
 
 const kudosDocs = [
@@ -245,6 +254,7 @@ const service = {
 interface BootOptions {
   prices?: Record<string, ModelPrice>;
   store?: InMemoryConfigEntryStore;
+  lockdown?: boolean;
 }
 
 const boot = async (options: BootOptions = {}) => {
@@ -308,6 +318,7 @@ const boot = async (options: BootOptions = {}) => {
     policy: { decide: async () => ({ allow: true }) },
     prices: options.prices ?? priced,
     ...(options.store ? { configurables: { store: options.store } } : {}),
+    ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     modules: [
       ...platformModules.filter((m) => m !== batchRunsModule),
       createBatchRunsModule({ onBackground: (w) => background.push(w) }),
@@ -377,6 +388,47 @@ const runTo = async (env: Env, start: Record<string, unknown>) => {
   await env.settled();
   return (await env.send('GET', `${base}/${String(started.body.id)}`)).body;
 };
+
+describe('batch runs in a locked environment', () => {
+  const start = async (env: Env, who: string) => {
+    const estimate = await env.send('POST', `${base}/estimate`, who, {
+      sample: false,
+      ...annualReports,
+    });
+    expect(estimate.status).toBe(201);
+    const started = await env.send('POST', base, who, {
+      estimate: estimate.body.id,
+      maxCostNok: 5,
+    });
+    expect(started.status).toBe(202);
+    await env.settled();
+    return (await env.send('GET', `${base}/${String(started.body.id)}`, who)).body;
+  };
+
+  it('runs a batch an Entra user started in lockdown', async () => {
+    const env = await boot({ lockdown: true });
+    env.state.broken = false;
+
+    const run = await start(env, 'entra');
+
+    expect(env.state.modelCalls).toBe(5);
+    expect((run.items as { status: string }[]).map((i) => i.status)).toEqual(
+      Array(5).fill('succeeded'),
+    );
+  });
+
+  it('still refuses a batch a TestID user started in lockdown', async () => {
+    const env = await boot({ lockdown: true });
+    env.state.broken = false;
+
+    const run = await start(env, 'kari');
+
+    expect(env.state.modelCalls).toBe(0);
+    expect((run.items as { status: string }[]).map((i) => i.status)).toEqual(
+      Array(5).fill('failed'),
+    );
+  });
+});
 
 describe('batch runs over a document set', () => {
   it('offers the datasets with their filter values and estimates the cost of a selection', async () => {

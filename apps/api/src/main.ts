@@ -67,7 +67,7 @@ import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
-import { isLockdown } from './lockdown.js';
+import { isLockdown, trustedEntraFrom } from './lockdown.js';
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -150,12 +150,19 @@ const clients = notifyingClients(db?.clients ?? new InMemoryClients(), {
 });
 const registeredClients = clientRegistry(clients);
 
+const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
+if (trustedEntra)
+  log('lockdown: Entra logins in the configured groups get the whole platform', {
+    groups: trustedEntra.groups.length,
+    emailDomain: trustedEntra.emailDomain ?? null,
+  });
 const { trusted, mock } = await loginIssuers({
   env: process.env,
   port,
   audience,
   testData,
   registeredClients,
+  ...(trustedEntra ? { trustedEntra } : {}),
 });
 if (mock)
   mockRegistration = {
@@ -331,7 +338,7 @@ const definitionSources: DefinitionSource[] = [
 
 const lockdown = isLockdown(process.env);
 if (lockdown)
-  log('lockdown: only API keys from configuration may use models', {
+  log('lockdown: only configured keys, trusted Entra logins and their keys may use models', {
     configuredKeys: configuredKeys.size,
   });
 
@@ -498,6 +505,10 @@ const app = createApp(version, {
     drafts: platform.serviceDrafts,
     names: actorNames(configEntries),
     lockdown,
+    loginRefusal: async (request) => {
+      const checked = await authenticator.check(request);
+      return checked.ok ? undefined : checked.code;
+    },
   },
 });
 platform.mount(app, admin);

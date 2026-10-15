@@ -1,13 +1,30 @@
-import { configuredCredentialScope, isLockdown, mayUseModels } from '@genai/composition';
+import {
+  configuredCredentialScope,
+  isLockdown,
+  mayUseModels,
+  readOnlyInLockdown,
+  trustedEntraFrom,
+  trustedEntraScope,
+} from '@genai/composition';
 import type { Principal } from '@genai/contracts';
-import { apiKeyDigest } from '@genai/identity';
+import { admittedCredentialScope, apiKeyDigest } from '@genai/identity';
 import type { MiddlewareHandler } from 'hono';
-import { reasonFreeWrites, routeOf } from './change-reason.js';
+import { decodeJwt } from 'jose';
+import { reasonFreeWrites, routeOf, writeMethods } from './change-reason.js';
 import { t } from './i18n/index.js';
 
 export const lockedEnvironmentType = 'urn:genai:problem:locked-environment';
 
-export { configuredCredentialScope, isLockdown, mayUseModels };
+export const entraNotTrustedType = 'urn:genai:problem:entra-not-trusted';
+
+export {
+  configuredCredentialScope,
+  isLockdown,
+  mayUseModels,
+  readOnlyInLockdown,
+  trustedEntraFrom,
+  trustedEntraScope,
+};
 
 export interface Lockdown {
   configuredKeys: ReadonlySet<string>;
@@ -25,9 +42,13 @@ export const withCredentialOrigin = (
   request: Request,
   principal: Principal,
 ): Principal => {
-  const scopes = (principal.scopes ?? []).filter((s) => s !== configuredCredentialScope);
+  const scopes = (principal.scopes ?? []).filter(
+    (s) => s !== configuredCredentialScope && s !== admittedCredentialScope,
+  );
   const key = presentedKey(request);
-  const configured = key !== undefined && lockdown.configuredKeys.has(apiKeyDigest(key));
+  const configured =
+    (key !== undefined && lockdown.configuredKeys.has(apiKeyDigest(key))) ||
+    (principal.scopes?.includes(admittedCredentialScope) ?? false);
   return {
     ...principal,
     scopes: configured ? [...scopes, configuredCredentialScope] : scopes,
@@ -57,22 +78,73 @@ export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/apply',
 ]);
 
-const lockedProblem = (route: string) =>
-  modelRunRoutes.has(route)
-    ? { title: t('problems.modelsLocked'), detail: t('problems.modelsLockedDetail') }
-    : ingestionRoutes.has(route)
-      ? { title: t('problems.ingestionLocked'), detail: t('problems.ingestionLockedDetail') }
-      : undefined;
+const readableWrites = new Set(['personal', 'feedback', 'check']);
+
+const changesConfiguration = (route: string) => {
+  const kind = reasonFreeWrites[route];
+  return writeMethods.has(route.split(' ')[0] ?? '') && !(kind && readableWrites.has(kind));
+};
+
+const refusal = (title: string, detail: string) => ({
+  type: lockedEnvironmentType,
+  status: 403 as const,
+  title,
+  detail,
+});
+
+const lockedProblem = (route: string, principal: Principal) => {
+  if (modelRunRoutes.has(route))
+    return mayUseModels(principal)
+      ? undefined
+      : refusal(t('problems.modelsLocked'), t('problems.modelsLockedDetail'));
+  if (ingestionRoutes.has(route))
+    return mayUseModels(principal)
+      ? undefined
+      : refusal(t('problems.ingestionLocked'), t('problems.ingestionLockedDetail'));
+  if (changesConfiguration(route) && readOnlyInLockdown(principal))
+    return refusal(t('problems.changesLocked'), t('problems.changesLockedDetail'));
+  return undefined;
+};
+
+const problemJson = { 'content-type': 'application/problem+json' };
 
 export const refuseLockedRoutes =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const route = routeOf(c);
-    const locked = route ? lockedProblem(route) : undefined;
-    if (!locked) return next();
+    if (!route) return next();
+    if (!modelRunRoutes.has(route) && !ingestionRoutes.has(route) && !changesConfiguration(route))
+      return next();
     const principal = await caller(c.req.raw);
-    if (!principal || mayUseModels(principal)) return next();
-    return c.json({ type: lockedEnvironmentType, status: 403, ...locked }, 403, {
-      'content-type': 'application/problem+json',
-    });
+    const locked = principal ? lockedProblem(route, principal) : undefined;
+    if (!locked) return next();
+    return c.json(locked, 403, problemJson);
+  };
+
+const bearerClaims = (request: Request) => {
+  const header = request.headers.get('authorization') ?? '';
+  const token = /^bearer (.+)$/i.exec(header)?.[1]?.trim();
+  if (!token) return undefined;
+  try {
+    return decodeJwt(token);
+  } catch {
+    return undefined;
+  }
+};
+
+export const refuseUntrustedEntra =
+  (refusedCode: (request: Request) => Promise<string | undefined>): MiddlewareHandler =>
+  async (c, next) => {
+    if (bearerClaims(c.req.raw)?.acr !== 'entraid') return next();
+    if ((await refusedCode(c.req.raw)) !== 'entra_not_trusted') return next();
+    return c.json(
+      {
+        type: entraNotTrustedType,
+        status: 403,
+        title: t('problems.entraNotTrusted'),
+        detail: t('problems.entraNotTrustedDetail'),
+      },
+      403,
+      problemJson,
+    );
   };

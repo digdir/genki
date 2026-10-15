@@ -397,6 +397,29 @@ describe('cross-tenant definer functions', () => {
     });
   });
 
+  it('keeps the lockdown admission of an API key, and none on keys stored without it', async () => {
+    const add = (id: string, digest: string, admitted?: boolean) =>
+      stores.apiKeys.add({
+        id,
+        name: 'n',
+        digest,
+        tenant: ORG_A,
+        scopes: ['query'],
+        datasets: [],
+        agents: [],
+        ...(admitted ? { admittedInLockdown: true } : {}),
+      });
+    await add('key-admitted', 'cd'.repeat(32), true);
+    await add('key-plain', 'ef'.repeat(32));
+
+    expect(await stores.apiKeys.findByDigest('cd'.repeat(32))).toMatchObject({
+      admittedInLockdown: true,
+    });
+    expect(await stores.apiKeys.findByDigest('ef'.repeat(32))).not.toHaveProperty(
+      'admittedInLockdown',
+    );
+  });
+
   it('serves the platform reads of the stores through the runtime role', async () => {
     expect((await stores.tenants.list()).map((t) => t.orgNumber).sort()).toEqual(
       [ORG_A, ORG_B].sort(),

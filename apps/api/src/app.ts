@@ -14,7 +14,7 @@ import {
   securityHeaders,
 } from './hardening.js';
 import { localeMiddleware, t } from './i18n/index.js';
-import { refuseLockedRoutes } from './lockdown.js';
+import { refuseLockedRoutes, refuseUntrustedEntra } from './lockdown.js';
 import { keepsOwnErrorShape, problemResponses } from './problem-responses.js';
 import { problem, type Authenticator } from './http.js';
 import { withChangeReasons, withTags, withUndocumentedRoutes } from './openapi-routes.js';
@@ -55,6 +55,7 @@ export interface PlatformOptions {
   names?: ActorNames;
   now?: () => Date;
   lockdown?: boolean;
+  loginRefusal?: (request: Request) => Promise<string | undefined>;
 }
 
 export interface AppOptions {
@@ -101,6 +102,8 @@ export const createApp = (version: string, options: AppOptions = {}) => {
   if (options.platform) {
     const { store, plugins, settings, auth } = options.platform;
     const caller = options.platform.caller ?? ((r: Request) => auth.authenticate(r));
+    if (options.platform.loginRefusal)
+      app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
     if (lockdown) app.use('*', refuseLockedRoutes(caller));
     app.use('*', requireChangeReason(caller));
     const admin =

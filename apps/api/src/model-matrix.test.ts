@@ -10,6 +10,7 @@ import { envSecrets, InMemoryTaskStore, type StoredTask } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
+import { trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform, platformModules } from './composition.js';
@@ -37,6 +38,12 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: tenant }],
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'digdir-drift' },
+  'entra-operator': {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'entra-drift',
+    scopes: [trustedEntraScope],
+  },
 };
 
 const reply = (content: string, stream: boolean) =>
@@ -117,7 +124,7 @@ const testSet = parseTestSet({
   },
 });
 
-const boot = async (candidateKnowsDeadlines: boolean, withTestSet = true) => {
+const boot = async (candidateKnowsDeadlines: boolean, withTestSet = true, lockdown = false) => {
   const deployments: string[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
@@ -178,6 +185,7 @@ const boot = async (candidateKnowsDeadlines: boolean, withTestSet = true) => {
       ...platformModules.filter((m) => m !== modelMatrixModule),
       createModelMatrixModule({ onBackground: (w) => background.push(w) }),
     ],
+    ...(lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     authenticate: async (request) => {
       const who = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
       const principal = people[who];
@@ -237,15 +245,15 @@ const boot = async (candidateKnowsDeadlines: boolean, withTestSet = true) => {
   if (added.status !== 200) throw new Error(JSON.stringify(added.body));
   const visible = async () =>
     ((await send('GET', '/models', 'kari')).body.data as { id: string }[]).map((m) => m.id);
-  const runMatrix = async () => {
-    const estimate = await send('POST', '/operator/quality/matrix/estimate', 'operator', {
+  const runMatrix = async (who = 'operator') => {
+    const estimate = await send('POST', '/operator/quality/matrix/estimate', who, {
       model: candidate,
       current,
     });
     const started = await send(
       'POST',
       '/operator/quality/matrix/runs',
-      'operator',
+      who,
       { model: candidate, current, confirmedCostNok: estimate.body.estimatedCostNok },
       { 'change-reason': reason },
     );
@@ -385,6 +393,27 @@ describe('a new platform model before release', () => {
     });
     expect(quality.body.candidates).toEqual([{ id: candidate, residency: 'global', testSets: 1 }]);
     expect(quality.body.matrixRuns).toMatchObject([{ status: 'succeeded', model: candidate }]);
+  });
+});
+
+describe('the quality matrix in a locked environment', () => {
+  it('runs the quality matrix an Entra operator started in lockdown', async () => {
+    const { send, runMatrix, deployments } = await boot(false, true, true);
+
+    const { started } = await runMatrix('entra-operator');
+    const run = await send('GET', `/operator/quality/matrix/runs/${String(started.body.id)}`);
+
+    expect(started.status).toBe(202);
+    expect(run.body).toMatchObject({ status: 'succeeded', done: 1 });
+    expect(deployments).toContain('kandidat');
+  });
+
+  it('still refuses the quality matrix a TestID operator started in lockdown', async () => {
+    const { runMatrix, deployments } = await boot(false, true, true);
+
+    await runMatrix('operator');
+
+    expect(deployments).toEqual([]);
   });
 });
 

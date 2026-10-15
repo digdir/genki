@@ -1,5 +1,6 @@
 import {
   databaseRequirement,
+  lockdownEntraProblems,
   platformTenantProblems,
   unmetOutsideDevMode,
 } from '@genai/composition';
@@ -14,6 +15,7 @@ export const hasIdentityProvider = (env: Env) =>
 
 export const bootProblems = (env: Env): string[] => [
   ...platformTenantProblems(env),
+  ...lockdownEntraProblems(env),
   ...unmetOutsideDevMode(env, [
     {
       met: hasIdentityProvider(env),

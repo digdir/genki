@@ -127,6 +127,7 @@ export interface EngineSwitchSpec {
   activatedVersion?: number;
   decisions: SwitchDecision[];
   cleanup: GenerationCleanup[];
+  modelsAdmitted?: boolean;
 }
 
 export interface EngineSwitchView {
@@ -678,7 +679,13 @@ export const createEngineSwitchesModule =
         const unavailable = backend.unavailableFor?.(target, pipeline);
         if (unavailable) throw new Error(unavailable);
         const result = await backend.run(
-          { execution: spec.generation, pipeline, target, tenant: tenantOf(scope) },
+          {
+            execution: spec.generation,
+            pipeline,
+            target,
+            tenant: tenantOf(scope),
+            ...(spec.modelsAdmitted ? { admitted: true } : {}),
+          },
           signal,
         );
         if (result.stored === 0 && result.failed.length > 0)
@@ -1232,6 +1239,7 @@ export const createEngineSwitchesModule =
                 datasetVersion: item.version,
                 decisions: [],
                 cleanup: [],
+                ...(deps.modelAdmission?.(g.principal) ? { modelsAdmitted: true } : {}),
               };
               const saved = await inTask(
                 c,
@@ -1307,8 +1315,10 @@ export const createEngineSwitchesModule =
                     const attempt = s.attempt + 1;
                     const rest = { ...s };
                     delete rest.error;
+                    delete rest.modelsAdmitted;
                     return {
                       ...rest,
+                      ...(deps.modelAdmission?.(g.principal) ? { modelsAdmitted: true } : {}),
                       state: 'running',
                       attempt,
                       generation: `switch-${g.entry.id.split(':').pop()}-${attempt}`,

@@ -19,7 +19,10 @@ export const shell = {
   brandShort: 'AI portal',
   brandFull: 'Generative AI platform',
   owner: 'Digdir',
-  lockdown: 'Locked test environment: here, only registered clients use models and run ingestion.',
+  lockdown:
+    'Locked test environment: only Entra ID logins can make changes. They and the API keys and clients they create can use models and run ingestion.',
+  lockdownReadOnly:
+    'Locked test environment: you can look around, but changes, models and ingestion need an Entra ID login.',
   orgMeta: 'Org. no. {orgNr}',
   orgMetaUnregistered: 'Org. no. {orgNr} · not registered',
   orgButton: 'Acting for {name}, org. no. {orgNr}. Switch organisation',

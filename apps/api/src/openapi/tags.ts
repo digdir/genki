@@ -42,7 +42,7 @@ const rules: [RegExp, ApiTag][] = [
   [/^\/(health|up|openapi\.json|reference)(\/|$)|^\/schemas(\/|$)/, 'Platform'],
   [/^\/(v1|api|a2a)(\/|$)/, 'Frontend'],
   [/^\/(operator|support-sessions)(\/|$)/, 'Operations'],
-  [/^\/mock\/|^\/onboarding\//, 'Access and extensions'],
+  [/^\/mock\/|^\/onboarding\/|^\/me$/, 'Access and extensions'],
   [/^\/(eval-tasks|eval-runs|testcase-candidates|tasks)\//, 'Work and quality'],
   [/^\/models$/, 'Datasets and knowledge'],
   [/^\/tenants\/\{tenant\}\/services\/\{service\}\/api-keys$/, 'Access and extensions'],

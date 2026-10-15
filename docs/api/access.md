@@ -5,6 +5,7 @@ Who and what may call the platform, and what the platform may call: the caller's
 ## Rights
 
 - `GET /tenants/{tenant}/me` returns the caller's own rights in the tenant. Rights are granted in Altinn, not through this API.
+- `GET /me` returns the organisations a signed-in person may act for, with names and rights. The apps use it for logins whose token lists no organisations, such as an Entra ID login in a locked environment (ADR 0033).
 - Keys, key policies, clients, Maskinporten clients and tool connections need `manage-services`. A tenant secret needs `manage-services` or `register-building-blocks`.
 - Registering building blocks needs `register-building-blocks`; adopting one needs `manage-services`, or `manage-datasets` for data blocks.
 - Connector syncs and credentials need `manage-datasets`.

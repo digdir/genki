@@ -12,6 +12,7 @@ import { LanguageChoice } from '@genai/i18n/react';
 import type { ApiClient } from './api';
 import { Icon, icons } from './components/Icon';
 import { formatOrgNumber, profileFor } from './data/organisations';
+import { isEntraLogin } from './oidc';
 import { useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
@@ -118,7 +119,13 @@ interface ShellProps {
   children: ReactNode;
 }
 
-export const LockdownBanner = ({ api }: { api: Pick<ApiClient, 'getHealth'> }) => {
+export const LockdownBanner = ({
+  api,
+  entra,
+}: {
+  api: Pick<ApiClient, 'getHealth'>;
+  entra: boolean;
+}) => {
   const t = useT();
   const [locked, setLocked] = useState(false);
   useEffect(() => {
@@ -131,7 +138,7 @@ export const LockdownBanner = ({ api }: { api: Pick<ApiClient, 'getHealth'> }) =
   }, [api]);
   return locked ? (
     <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-      {t('shell.lockdown')}
+      {t(entra ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
     </Alert>
   ) : null;
 };
@@ -390,7 +397,7 @@ export const Shell = ({
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="main-inner">
-            <LockdownBanner api={api} />
+            <LockdownBanner api={api} entra={isEntraLogin(session.token)} />
             {gated ? (
               <Unregistered
                 api={api}

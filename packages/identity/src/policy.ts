@@ -2,6 +2,7 @@ import type { Principal, Ref } from '@genai/contracts';
 import type { Decision, PolicyAction, PolicyDecisionPoint } from '@genai/kernel';
 import type { AltinnAuthorization, AltinnDecisionRequest } from './altinn.js';
 import { capabilityModes, grantsOf, keyReaches, keyReachesMode } from './api-keys.js';
+import { trustedEntraScope } from './claims.js';
 import type { VerifiedIdentity } from './verify.js';
 
 export interface IdentityLookup {
@@ -45,6 +46,12 @@ export const altinnPolicy = (options: AltinnPolicyOptions): PolicyDecisionPoint 
     tenant: string,
     requirement: ServiceRequirement,
   ): Promise<AltinnDecisionRequest['subject'] | Decision> => {
+    if (principal.scopes?.includes(trustedEntraScope))
+      return principal.authorizedFor?.some(
+        (a) => a.org === tenant && a.actions?.includes(requirement.action),
+      )
+        ? { allow: true }
+        : deny(`the Entra login carries no ${requirement.action} right for ${tenant}`);
     if (principal.kind === 'employee') {
       if (!principal.authorizedFor?.some((a) => a.org === tenant))
         return deny(`the login does not carry rights for ${tenant}`);

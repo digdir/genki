@@ -432,12 +432,29 @@ describe('a locked environment', () => {
     };
   };
 
-  it('shows a banner saying that only registered clients use models and run ingestion', async () => {
+  it('tells a TestID login that changes, models and ingestion need an Entra login', async () => {
     await renderAt('/overview', locked(true));
 
     expect(
       await screen.findByText(
-        'Låst testmiljø: her brukes modeller og innlesing bare av registrerte klienter.',
+        'Låst testmiljø: du kan se deg rundt, men endringer, modeller og innlesing krever innlogging med Entra ID.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows an Entra login the ordinary locked-environment banner', async () => {
+    const token = `e30.${btoa(JSON.stringify({ acr: 'entraid' })).replace(/=+$/, '')}.sig`;
+    const auth: AuthClient = {
+      current: () => ({ ...kari, token }),
+      login: async () => ({ ...kari, token }),
+      logout: async () => undefined,
+    };
+    window.location.hash = '#/overview';
+    render(<App auth={auth} fetch={locked(true)} />);
+
+    expect(
+      await screen.findByText(
+        'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
       ),
     ).toBeTruthy();
   });

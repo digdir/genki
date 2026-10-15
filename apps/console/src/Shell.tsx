@@ -2,6 +2,7 @@ import { setting } from './runtime-config';
 import { Alert, Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { isEntraLogin } from './auth';
 import { useT, type PlainKey, type T } from './i18n';
 import { useSupport } from './support';
 import { SupportDialog } from './support-dialog';
@@ -105,7 +106,13 @@ const badgeFor = (path: string, badges: NavBadges, t: T) => {
 const isCurrent = (item: NavItem, path: string) =>
   path === item.path || path.startsWith(`${item.path}/`);
 
-const LockdownBanner = ({ health }: { health: (signal?: AbortSignal) => Promise<Health> }) => {
+const LockdownBanner = ({
+  health,
+  entra,
+}: {
+  health: (signal?: AbortSignal) => Promise<Health>;
+  entra: boolean;
+}) => {
   const t = useT();
   const [locked, setLocked] = useState(false);
   useEffect(() => {
@@ -118,7 +125,7 @@ const LockdownBanner = ({ health }: { health: (signal?: AbortSignal) => Promise<
   }, [health]);
   return locked ? (
     <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-      {t('shell.lockdown')}
+      {t(entra ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
     </Alert>
   ) : null;
 };
@@ -337,7 +344,7 @@ export const Shell = ({ session, onLogout, path, badges = {}, health, children }
         </nav>
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="content">
-            {health ? <LockdownBanner health={health} /> : null}
+            {health ? <LockdownBanner health={health} entra={isEntraLogin(session.token)} /> : null}
             {children}
           </div>
         </main>

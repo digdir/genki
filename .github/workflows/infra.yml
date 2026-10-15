@@ -49,6 +49,8 @@ jobs:
       COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
       PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
       ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+      LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
+      LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1

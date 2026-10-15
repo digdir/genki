@@ -3,6 +3,7 @@ import {
   createSigningKey,
   remoteJwks,
   type IdentityTestDataInput,
+  type TrustedEntra,
   type TrustedIssuer,
 } from '@genai/identity';
 import { createLocalJWKSet } from 'jose';
@@ -19,6 +20,7 @@ export interface LoginIssuerOptions {
   audience: string;
   testData: IdentityTestDataInput;
   registeredClients: RegisteredClients;
+  trustedEntra?: TrustedEntra;
 }
 
 export const loginIssuers = async ({
@@ -27,6 +29,7 @@ export const loginIssuers = async ({
   audience,
   testData,
   registeredClients,
+  trustedEntra,
 }: LoginIssuerOptions) => {
   const trusted: TrustedIssuer[] = [];
   if (env.ANSATTPORTEN_ISSUER) {
@@ -36,6 +39,7 @@ export const loginIssuers = async ({
       audience,
       keys: remoteJwks(env.ANSATTPORTEN_JWKS_URI ?? `${env.ANSATTPORTEN_ISSUER}/jwks.json`),
       registeredClients,
+      ...(trustedEntra ? { trustedEntra } : {}),
     });
   }
   if (env.MASKINPORTEN_ISSUER && env.MASKINPORTEN_JWKS_URI) {
@@ -59,6 +63,7 @@ export const loginIssuers = async ({
     audience,
     keys: createLocalJWKSet({ keys: [key.publicJwk] }),
     registeredClients,
+    ...(trustedEntra ? { trustedEntra } : {}),
   });
   return { trusted, mock };
 };
