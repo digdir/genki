@@ -977,6 +977,10 @@ export const createPlatform = async (input: PlatformInput) => {
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
     ],
+    extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
+      strategyKey(id, 1),
+      platformServiceConfig,
+    ]),
     platformCapabilities: [evalCapability],
     ...(input.state ? { state: input.state } : {}),
     ...(input.observe ? { observe: input.observe } : {}),
@@ -1038,8 +1042,6 @@ export const createPlatform = async (input: PlatformInput) => {
     sync,
     blobStore,
   } = runtime;
-  for (const id of [builderStrategyId, optimiserStrategyId])
-    plugins.strategies.set(strategyKey(id, 1), platformServiceConfig);
   const configurables = createConfigurables({
     ...input.configurables,
     ...(input.lockdown ? { admitsIngestion: mayUseModels } : {}),

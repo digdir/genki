@@ -7,7 +7,7 @@ import {
   type PluginSchemas,
   type PromptFiles,
 } from '@genai/definitions';
-import { defaultPlatformTenant, ownedByPlatformTenant } from '@genai/composition';
+import { defaultPlatformTenant, isDevMode, ownedByPlatformTenant } from '@genai/composition';
 import type { Context } from 'hono';
 import { parse as parseYaml } from 'yaml';
 import { platformActor, type Admin } from './admin.js';
@@ -63,6 +63,18 @@ const promptsOf = (dir: string | undefined): PromptFiles =>
         readdirSync(dir).map((f) => [`prompts/${f}`, readFileSync(join(dir, f), 'utf8')]),
       )
     : {};
+
+export const localDefinitionSources = (
+  configDir: string,
+  env: Record<string, string | undefined>,
+): DefinitionSource[] => {
+  const promptsDir = join(configDir, 'prompts');
+  return [
+    { dir: join(configDir, 'flows'), promptsDir },
+    { dir: join(configDir, 'services'), promptsDir },
+    ...(isDevMode(env) ? [{ dir: join(configDir, 'dev-services'), promptsDir }] : []),
+  ];
+};
 
 export const readGitDefinitions = (
   sources: DefinitionSource[],

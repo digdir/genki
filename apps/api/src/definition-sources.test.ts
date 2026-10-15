@@ -10,6 +10,7 @@ import { createAdmin } from './admin.js';
 import {
   createDefinitionSourcesModule,
   driftReport,
+  localDefinitionSources,
   readGitDefinitions,
   seedDefinitions,
 } from './definition-sources.js';
@@ -73,6 +74,16 @@ describe('definitions from git', () => {
     expect(outcomes).toMatchObject([{ state: 'published', version: 1 }]);
     expect(await store.get('Service', '213192752', 'klarsprak')).toBeDefined();
     expect(await store.get('Service', digdir, 'klarsprak')).toBeUndefined();
+  });
+
+  it('seeds local-only services only in development mode', () => {
+    const configDir = join(import.meta.dirname, '..', 'config', 'local');
+    const seeded = (env: Record<string, string>) =>
+      readGitDefinitions(localDefinitionSources(configDir, env)).definitions.map((d) => d.id);
+
+    expect(seeded({ GENAI_DEV_MODE: 'true' })).toContain('local-test-chat');
+    expect(seeded({})).not.toContain('local-test-chat');
+    expect(seeded({ GENAI_DEV_MODE: 'false' })).toContain('builder-assistant');
   });
 
   it('seeding leaves a definition that is already published alone', async () => {

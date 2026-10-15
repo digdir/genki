@@ -3,13 +3,24 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, platformSettings, SettingsRegistry } from '@genai/definitions';
+import {
+  compileStoredServices,
+  InMemoryDefinitionStore,
+  platformSettings,
+  SettingsRegistry,
+  type DefinitionStore,
+  type PluginSchemas,
+} from '@genai/definitions';
 import { contractAssertions, kernelTarget, parseTestSetYaml, runEval, splits } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
-import { publishPlatformServices } from './platform-services.js';
+import {
+  builderServiceId,
+  optimiserServiceId,
+  publishPlatformServices,
+} from './platform-services.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -136,7 +147,30 @@ const replay = (body: Record<string, unknown>) => {
   );
 };
 
-const boot = async () => {
+const restartedFrom =
+  (previous: DefinitionStore) =>
+  (plugins: PluginSchemas): DefinitionStore => ({
+    get: (...args) => previous.get(...args),
+    versions: (...args) => previous.versions(...args),
+    list: (...args) => previous.list(...args),
+    resolve: (...args) => previous.resolve(...args),
+    publish: (...args) => previous.publish(...args),
+    capabilities: async (onInvalid) => {
+      const stored = await Promise.all(
+        [builderServiceId, optimiserServiceId].map((id) => previous.get('Service', tenant, id)),
+      );
+      return compileStoredServices(
+        stored.filter((v) => v !== undefined),
+        plugins,
+        onInvalid,
+      );
+    },
+  });
+
+const boot = async (
+  definitions?: (plugins: PluginSchemas) => DefinitionStore,
+  logger?: (msg: string, fields: Record<string, unknown>) => void,
+) => {
   const model = await fakeHttp((body) =>
     body.messages
       ? replay(body)
@@ -159,17 +193,22 @@ const boot = async () => {
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
-    definitions: (plugins) => new InMemoryDefinitionStore(plugins),
+    definitions: definitions ?? ((plugins) => new InMemoryDefinitionStore(plugins)),
     settings: new SettingsRegistry(platformSettings),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async () => undefined,
+    ...(logger ? { logger } : {}),
   });
-  await publishPlatformServices(created.definitions, config);
+  if (!definitions) await publishPlatformServices(created.definitions, config);
   return created;
 };
 
-const runSet = async (file: string, capability: string) => {
-  const created = await boot();
+const runSet = async (
+  file: string,
+  capability: string,
+  created?: Awaited<ReturnType<typeof boot>>,
+) => {
+  created ??= await boot();
   const testSet = parseTestSetYaml(readFileSync(join(testsets, file), 'utf8'));
   const run = await runEval({
     target: kernelTarget(created.kernel, platform, capability),
@@ -203,6 +242,23 @@ describe('the platform services run their own test sets offline', () => {
     expect(failed).toEqual([]);
     expect(run.results).toHaveLength(testSet.spec.cases.length);
     expect(run.provenance.servedModels).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+  });
+
+  it('serves builder-assistant and optimiser after a restart with stored definitions', async () => {
+    const first = await boot();
+    const logged: string[] = [];
+    const restarted = await boot(restartedFrom(first.definitions), (msg) => logged.push(msg));
+
+    expect(logged).not.toContain('definition quarantined');
+    expect(restarted.quarantined()).toEqual([]);
+    for (const [file, id] of [
+      ['builder-assistant.yaml', 'builder-assistant'],
+      ['optimiser.yaml', 'optimiser'],
+    ] as const) {
+      const { run, failed } = await runSet(file, `${tenant}/${id}/default`, restarted);
+      expect(failed).toEqual([]);
+      expect(run.results.length).toBeGreaterThan(0);
+    }
   });
 
   it('only the platform tenant can publish a service on the builder or optimiser strategy', async () => {

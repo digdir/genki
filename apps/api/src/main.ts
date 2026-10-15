@@ -56,6 +56,7 @@ import {
 } from './composition.js';
 import {
   createDefinitionSourcesModule,
+  localDefinitionSources,
   readGitDefinitions,
   seedDefinitions,
   type DefinitionSource,
@@ -326,15 +327,13 @@ const admitClients = admitMaskinportenClients(
   trusted.filter((t) => t.kind === 'maskinporten').map((t) => t.issuer),
 );
 
-const promptsDir = join(configDir, 'prompts');
 const definitionSources: DefinitionSource[] = [
-  { dir: join(configDir, 'flows'), promptsDir },
-  { dir: join(configDir, 'services'), promptsDir },
+  ...localDefinitionSources(configDir, process.env),
   ...(process.env.SEED_PARITY_SERVICES === 'true'
     ? [
         {
           dir: join(import.meta.dirname, '..', '..', 'parity', 'config', 'services'),
-          promptsDir,
+          promptsDir: join(configDir, 'prompts'),
         },
       ]
     : []),

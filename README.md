@@ -51,7 +51,7 @@ It provides:
 ## Repository layout
 
 - **`apps/`**: the API, the worker, the portal, the workspace, the console, and `parity` (compares answers with headless-rag)
-- **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons
+- **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
 - **`infra/`**: the Azure setup for the test environment
