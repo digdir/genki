@@ -1019,6 +1019,8 @@ export const createPlatform = async (input: PlatformInput) => {
     plugins.strategies.set(strategyKey(id, 1), platformServiceConfig);
   const configurables = createConfigurables({
     ...input.configurables,
+    ...(input.lockdown ? { admitsIngestion: mayUseModels } : {}),
+    ...(input.onWarning ? { onWarning: input.onWarning } : {}),
     store: configEntries,
     rules: runtime.rules,
     ...(input.ingestionExecutions ? { executions: input.ingestionExecutions } : {}),

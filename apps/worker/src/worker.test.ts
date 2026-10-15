@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import { createRuntime, resolveCatalog, TenantSecretVault } from '@genai/composition';
+import { createRuntime, mayUseModels, resolveCatalog, TenantSecretVault } from '@genai/composition';
 import { InMemoryDefinitionStore } from '@genai/definitions';
 import { batchResultMime, systemPrincipal, type BatchResult, type TriggerRun } from '@genai/jobs';
 import { envSecrets, InMemoryEventLog, InMemoryStateStore, InMemoryTaskStore } from '@genai/kernel';
@@ -134,6 +134,7 @@ const kunnskapsassistent = () => {
 const setup = async (
   active?: () => boolean,
   blocked?: Parameters<typeof createWorker>[0]['blocked'],
+  lockdown = false,
 ) => {
   const upstream = await fakeHttp(reply);
   servers.push(upstream);
@@ -155,6 +156,7 @@ const setup = async (
     vault: new TenantSecretVault(),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     policy: ownTenantOnly(),
+    ...(lockdown ? { admitsModelUse: mayUseModels } : {}),
     log: new InMemoryEventLog(),
     tasks,
     state: new InMemoryStateStore(),
@@ -175,6 +177,7 @@ const setup = async (
     onRun: (r) => runs.push(r),
     ...(active ? { active } : {}),
     ...(blocked ? { blocked } : {}),
+    locked: lockdown,
   });
   return { worker, runtime, blob, runs, tasks, upstream, publish };
 };
@@ -269,6 +272,37 @@ describe('worker', () => {
       failed: 0,
     });
     expect(await blob.head({ tenant, path: 'klarsprak/results/arkiv-1.json' })).toBeDefined();
+    worker.stop();
+  });
+
+  it('the worker skips its triggers in lockdown and says so', async () => {
+    const { worker, blob, runs, upstream } = await setup(undefined, undefined, true);
+
+    expect(await worker.sync()).toMatchObject({ locked: true, active: false, started: 0 });
+    await drop(blob, 'klarsprak/innboks/vedtak.txt', 'Det vises til Deres søknad.');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(runs).toHaveLength(0);
+    expect(upstream.seen.filter((r) => r.body.messages)).toEqual([]);
+    worker.stop();
+  });
+
+  it('the worker refuses a trigger that runs a service in lockdown', async () => {
+    const { worker, upstream } = await setup(undefined, undefined, true);
+    await worker.sync();
+
+    const run = await worker.kernel.invoke(
+      systemPrincipal()(tenant),
+      `${tenant}/klarsprak/default`,
+      {
+        parts: [
+          { mime: 'text/plain', body: { kind: 'text', text: 'Det vises til Deres søknad.' } },
+        ],
+      },
+    );
+
+    await expect(run.result).rejects.toThrow(/may not use models/);
+    expect(upstream.seen.filter((r) => r.body.messages)).toEqual([]);
     worker.stop();
   });
 
