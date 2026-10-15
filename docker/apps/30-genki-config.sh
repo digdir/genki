@@ -33,9 +33,18 @@ for url in "${ANSATTPORTEN_ISSUER:-}" "${OIDC_ISSUER:-}" "${OIDC_TOKEN_ENDPOINT:
   case "$url" in https://*) connect="$connect $(origin "$url")" ;; esac
 done
 upstream=${API_UPSTREAM%/}
-api_host=$(printf '%s' "$upstream" | sed -E 's#^https?://([^/]+).*#\1#')
+api_scheme=${upstream%%://*}
+api_rest=${upstream#*://}
+api_host=${api_rest%%/*}
+api_path=${api_rest#"$api_host"}
+api_hostname=${api_host%:*}
+case "$api_host" in
+  *:*) api_server=$api_host ;;
+  *) api_server="$api_host:$([ "$api_scheme" = https ] && echo 443 || echo 80)" ;;
+esac
 
 sed -e "s#__CONNECT_SRC__#$connect#g" /etc/nginx/genki-headers.conf >/tmp/genki/headers.conf
-sed -e "s#__APP__#$APP#g" -e "s#__API_UPSTREAM__#$upstream#g" -e "s#__API_HOST__#$api_host#g" \
+sed -e "s#__APP__#$APP#g" -e "s#__API_SCHEME__#$api_scheme#g" -e "s#__API_SERVER__#$api_server#g" \
+  -e "s#__API_PATH__#$api_path#g" -e "s#__API_HOSTNAME__#$api_hostname#g" -e "s#__API_HOST__#$api_host#g" \
   -e "s#/etc/nginx/genki-headers.conf#/tmp/genki/headers.conf#g" \
   /etc/genki/default.conf.template >/etc/nginx/conf.d/default.conf
