@@ -579,6 +579,44 @@ describe('the composed platform', () => {
     expect(body.sources[0]?.excerpts.length).toBeGreaterThan(0);
   });
 
+  it('limits a service key to the datasets of its service', async () => {
+    const keys = new InMemoryApiKeys();
+    keys.add({
+      id: 'frontend',
+      name: 'frontend',
+      digest: apiKeyDigest('frontend-key'),
+      tenant: '991825827',
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      service: 'kunnskapsassistenten',
+    });
+    const authenticator = createAuthenticator({ apiKeys: keys });
+    const { app, platform } = await boot({
+      authenticate: async (request) => {
+        const found = await authenticator.authenticate(request);
+        return found && callerFrom(found);
+      },
+    });
+    await platform.definitions.publish(yaml('services/kunnskapsassistenten.yaml'), 'test', 'test');
+    const call = (path: string) => app.request(path, { headers: { 'x-api-key': 'frontend-key' } });
+    const facets = (key: string) =>
+      call(
+        `/api/facets?${new URLSearchParams({ tenant: 'digdir', 'dataset-config-key': key, fields: 'orgs_short' })}`,
+      );
+
+    const listed = JSON.stringify(await (await call('/api/datasets')).json());
+    const own = await call('/api/datasets/kudos');
+    const other = await call('/api/datasets/public-docs');
+
+    expect(listed).toContain('"id":"kudos"');
+    expect(listed).not.toContain('"id":"public-docs"');
+    expect(own.status).toBe(200);
+    expect((await facets('kudos')).status).toBe(200);
+    expect(other.status).toBe(404);
+    expect((await facets('public-docs')).status).toBe(403);
+  });
+
   it('names the datasets a service searches on /v1/models and in its schema, with owner tenant, dataset-config-key and filter value types', async () => {
     const { app, platform } = await boot();
     await platform.definitions.publish(yaml('services/kunnskapsassistenten.yaml'), 'test', 'test');

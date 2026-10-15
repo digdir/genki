@@ -162,7 +162,11 @@ export const createQualityModule =
           const latest = (await evals.drafts.latestVersion(guard.tenant, service)) ?? 0;
           const baseVersion = draft.spec.baseVersion;
           const behind = baseVersion !== undefined && baseVersion < latest;
-          if (!behind || !rightsOf(guard.principal, guard.tenant).has('manage-services'))
+          if (
+            !behind ||
+            !rightsOf(guard.principal, guard.tenant).has('manage-services') ||
+            deps.readOnly?.(guard.principal)
+          )
             return { ...(await draftView(guard.tenant, service, draft)), behind, conflicts: [] };
           const reason = reasonOf(c) || 'Utkast oppdatert med publiserte endringer';
           const rebased = await inTask(

@@ -428,6 +428,27 @@ describe('batch runs in a locked environment', () => {
       Array(5).fill('failed'),
     );
   });
+
+  it('estimates a batch without running samples for someone who may not use models in lockdown', async () => {
+    const env = await boot({ lockdown: true });
+    env.state.broken = false;
+
+    const res = await env.send('POST', `${base}/estimate`, 'kari', annualReports);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ basis: 'assumed', samples: [] });
+    expect(env.state.modelCalls).toBe(0);
+  });
+
+  it('still samples a batch estimate for an Entra user in lockdown', async () => {
+    const env = await boot({ lockdown: true });
+    env.state.broken = false;
+
+    const res = await env.send('POST', `${base}/estimate`, 'entra', annualReports);
+
+    expect(res.body.basis).toBe('measured');
+    expect(env.state.modelCalls).toBe(3);
+  });
 });
 
 describe('batch runs over a document set', () => {

@@ -276,7 +276,6 @@ export const bootPlatform = async (options: BootOptions = {}) => {
       plugins: platform.plugins,
       settings,
       admin,
-      auth: { authenticate: (request) => platform.caller(request) },
       tenantGate: platform.tenantGate,
       registered: platform.registered,
       caller: platform.caller,

@@ -1586,7 +1586,7 @@
             files: [
               'apps/api/src/main.ts',
               'apps/api/src/composition.ts',
-              'apps/api/src/auth.ts',
+              'apps/api/src/app.ts',
               'apps/api/src/routes/portal-routes.ts',
               'apps/api/src/routes/console-routes.ts',
               'apps/api/src/batch-runs.ts',
@@ -1726,7 +1726,7 @@
                 label: 'Composes Identity & access',
                 kind: 'call',
                 target: 'call',
-                witness: { file: 'apps/api/src/auth.ts', imports: '@genai/identity' },
+                witness: { file: 'apps/api/src/composition.ts', imports: '@genai/identity' },
               },
               {
                 to: 'jobs',

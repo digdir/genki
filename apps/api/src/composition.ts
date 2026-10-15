@@ -261,7 +261,12 @@ import { frontendOpenApiModule } from './frontend-openapi.js';
 import { servicesOpenApiModule } from './openapi/services.js';
 import { workOpenApiModule } from './openapi/work.js';
 import { schemasModule } from './schemas.js';
-import { mayUseModels, withCredentialOrigin, type Lockdown } from './lockdown.js';
+import {
+  mayUseModels,
+  readOnlyInLockdown,
+  withCredentialOrigin,
+  type Lockdown,
+} from './lockdown.js';
 
 export const platformModules: PlatformModuleFactory[] = [
   buildingBlocksModule,
@@ -329,6 +334,24 @@ export const callerFrom = (found: Authenticated, operator = false): Caller => ({
       }
     : {}),
 });
+
+export const platformCaller =
+  (
+    authenticator: { authenticate(request: Request): Promise<Authenticated | undefined> },
+    options: {
+      isOperator: (principal: Principal) => boolean;
+      admit?: (principal: Principal) => Promise<Principal>;
+    },
+  ) =>
+  async (request: Request): Promise<Caller | undefined> => {
+    const found = await authenticator.authenticate(request);
+    if (!found) return undefined;
+    const principal = options.admit ? await options.admit(found.principal) : found.principal;
+    return callerFrom(
+      { ...found, principal },
+      found.method === 'token' && options.isOperator(found.principal),
+    );
+  };
 
 export const tenantCallsPerMinuteSetting = 'usage.tenantCallsPerMinute';
 export interface PlatformInput {
@@ -1196,6 +1219,24 @@ export const createPlatform = async (input: PlatformInput) => {
   const lifecycleFor = (compiled: CompiledCapability) =>
     lifecycleOf(configEntries, compiled.service.tenant, compiled.service.id);
   const optionCache: OptionCache = new Map();
+  const datasetsOf = (compiled: CompiledCapability) => {
+    const known = knowledge.datasets();
+    return compiled.capability.grants.flatMap((g) => {
+      if (g.port !== 'knowledge') return [];
+      const id = knowledge.resolve(g.ref.id) ?? g.ref.id;
+      return [id, ...(known.get(id)?.aliases ?? [])];
+    });
+  };
+  const boundServiceReads = async (principal: Principal, names: string[]) => {
+    const bound = principal.confinedTo;
+    if (!bound) return true;
+    const used = new Set(
+      (await definitions.capabilities())
+        .filter((c) => c.service.tenant === bound.tenant && c.service.id === bound.service)
+        .flatMap(datasetsOf),
+    );
+    return names.some((name) => used.has(name));
+  };
   const resolver = capabilityResolver(definitions, kernel, {
     pin,
     fieldOptions: (principal, tenant, from) =>
@@ -1231,14 +1272,7 @@ export const createPlatform = async (input: PlatformInput) => {
       );
     },
     searches: (principal, compiled) => serviceDatasets(knowledge, principal, compiled),
-    datasets: (compiled) => {
-      const known = knowledge.datasets();
-      return compiled.capability.grants.flatMap((g) => {
-        if (g.port !== 'knowledge') return [];
-        const id = knowledge.resolve(g.ref.id) ?? g.ref.id;
-        return [id, ...(known.get(id)?.aliases ?? [])];
-      });
-    },
+    datasets: datasetsOf,
   });
   const ingestionUsage = async (tenant: string) => {
     const scopes = tenant === platformTenant ? [tenant, platformScope] : [tenant];
@@ -1531,7 +1565,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
     ingestion: config.ingestion,
-    ...(input.lockdown ? { modelAdmission: mayUseModels } : {}),
+    ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
     evalStores,
     connections,
     blobs: blobStore,
@@ -1862,11 +1896,12 @@ export const createPlatform = async (input: PlatformInput) => {
       createRestAdapter({
         knowledge,
         auth: principalAuth,
-        mayRead: (principal, dataset) => {
+        mayRead: async (principal, dataset) => {
           const names = [dataset, dataset.slice(dataset.lastIndexOf('/') + 1)];
           return (
             keyReaches(principal, 'query', { datasets: names }) &&
-            configKeyAllows(principal, 'dataset', names)
+            configKeyAllows(principal, 'dataset', names) &&
+            (await boundServiceReads(principal, names))
           );
         },
         status: async (dataset) => {

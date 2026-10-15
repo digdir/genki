@@ -45,11 +45,15 @@ import {
 import { createApp } from './app.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
-import { bearerAuthenticator } from './auth.js';
 import { followChanges } from './change-feed.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
 import { loadCatalog } from './catalogs.js';
-import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
+import {
+  createPlatform,
+  platformCaller,
+  platformModules,
+  serviceRequirement,
+} from './composition.js';
 import {
   createDefinitionSourcesModule,
   readGitDefinitions,
@@ -456,14 +460,10 @@ const platform = await createPlatform({
       requirementFor: () => serviceRequirement(resource),
     }),
   ),
-  authenticate: async (request) => {
-    const found = await authenticator.authenticate(request);
-    if (!found) return undefined;
-    return callerFrom(
-      { ...found, principal: await admitClients(found.principal) },
-      found.method === 'token' && operators.isOperator(found.principal),
-    );
-  },
+  authenticate: platformCaller(authenticator, {
+    isOperator: operators.isOperator,
+    admit: admitClients,
+  }),
   onWarning: (message) => log('warning', { message }),
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
@@ -501,7 +501,6 @@ const app = createApp(version, {
     registered: platform.registered,
     caller: platform.caller,
     lifecycle: platform.lifecycle,
-    auth: bearerAuthenticator(verifier, operators.isOperator),
     drafts: platform.serviceDrafts,
     names: actorNames(configEntries),
     lockdown,
