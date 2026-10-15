@@ -71,6 +71,17 @@ param postgresSkuName string = 'Standard_B1ms'
 param postgresSkuTier string = 'Burstable'
 param postgresStorageSizeGB int = 32
 
+@minValue(7)
+@maxValue(35)
+param postgresBackupRetentionDays int = 7
+
+@description('Copies backups to the paired region. Azure sets this only when the server is created.')
+@allowed(['Enabled', 'Disabled'])
+param postgresGeoRedundantBackup string = 'Disabled'
+
+@allowed(['Disabled', 'SameZone', 'ZoneRedundant'])
+param postgresHighAvailability string = 'Disabled'
+
 param addressPrefix string = '10.40.0.0/16'
 param appsSubnetPrefix string = '10.40.0.0/23'
 param postgresSubnetPrefix string = '10.40.2.0/24'
@@ -147,6 +158,9 @@ module postgres 'modules/postgres.bicep' = {
     skuName: postgresSkuName
     skuTier: postgresSkuTier
     storageSizeGB: postgresStorageSizeGB
+    backupRetentionDays: postgresBackupRetentionDays
+    geoRedundantBackup: postgresGeoRedundantBackup
+    highAvailability: postgresHighAvailability
     databaseName: 'genai'
     delegatedSubnetId: network.outputs.postgresSubnetId
     privateDnsZoneId: network.outputs.postgresDnsZoneId
