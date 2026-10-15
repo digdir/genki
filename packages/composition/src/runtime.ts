@@ -202,6 +202,7 @@ export interface RuntimeInput {
   decorateAfter?: (store: DefinitionStore) => CapabilityDecorator;
   wrapStrategy?: (strategy: Strategy) => Strategy;
   extraStrategies?: (parts: ExtraStrategyParts) => Strategy[];
+  extraStrategyConfigs?: [key: string, config: z.ZodType][];
   platformCapabilities?: KernelCapability[];
   now?: () => Date;
   onWarning?: (message: string) => void;
@@ -513,6 +514,7 @@ export const createRuntime = async (input: RuntimeInput) => {
               path: ['endpoint', 'url'],
             }),
       ],
+      ...(input.extraStrategyConfigs ?? []),
     ]),
     tools: new Map(),
     guardrails: guardrailSchemas,
