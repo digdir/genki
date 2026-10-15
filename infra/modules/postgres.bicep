@@ -5,6 +5,9 @@ param version string
 param skuName string
 param skuTier string
 param storageSizeGB int
+param backupRetentionDays int
+param geoRedundantBackup string
+param highAvailability string
 param databaseName string
 param delegatedSubnetId string
 param privateDnsZoneId string
@@ -22,8 +25,8 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   properties: {
     version: version
     storage: { storageSizeGB: storageSizeGB, autoGrow: 'Enabled' }
-    backup: { backupRetentionDays: 7, geoRedundantBackup: 'Disabled' }
-    highAvailability: { mode: 'Disabled' }
+    backup: { backupRetentionDays: backupRetentionDays, geoRedundantBackup: geoRedundantBackup }
+    highAvailability: { mode: highAvailability }
     network: {
       delegatedSubnetResourceId: delegatedSubnetId
       privateDnsZoneArmResourceId: privateDnsZoneId

@@ -29,6 +29,7 @@ jobs:
       contents: read
       id-token: write
     outputs:
+      registry: ${{ steps.registry.outputs.id }}
       api: ${{ steps.image.outputs.api }}
       worker: ${{ steps.image.outputs.worker }}
       apps: ${{ steps.image.outputs.apps }}
@@ -42,7 +43,11 @@ jobs:
       - id: registry
         run: |
           server=$(az acr show --name "${{ vars.ACR_NAME }}" --query loginServer -o tsv)
-          echo "server=$server" >> "$GITHUB_OUTPUT"
+          id=$(az acr show --name "${{ vars.ACR_NAME }}" --query id -o tsv)
+          {
+            echo "server=$server"
+            echo "id=$id"
+          } >> "$GITHUB_OUTPUT"
           az acr login --name "${{ vars.ACR_NAME }}"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - id: api
@@ -187,14 +192,39 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - name: prod parameters exist
-        run: test -f infra/env/prod.bicepparam || { echo "infra/env/prod.bicepparam is not written yet"; exit 1; }
+      - name: required settings
+        env:
+          ACR_NAME: ${{ vars.ACR_NAME }}
+          ANSATTPORTEN_ISSUER: ${{ vars.ANSATTPORTEN_ISSUER }}
+          ALTINN_PDP_URL: ${{ vars.ALTINN_PDP_URL }}
+        run: |
+          missing=""
+          for name in ACR_NAME ANSATTPORTEN_ISSUER ALTINN_PDP_URL; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then echo "Not set in the prod environment:$missing"; exit 1; fi
       - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - env:
+      - id: image
+        env:
+          ACR_NAME: ${{ vars.ACR_NAME }}
+          SOURCE_REGISTRY: ${{ needs.build.outputs.registry }}
+        run: |
+          server=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          copy_image() {
+            digest="${2#*@}"
+            az acr import --name "$ACR_NAME" --registry "$SOURCE_REGISTRY" \
+              --source "$1@$digest" --image "$1:${{ github.sha }}" --force
+            echo "$3=$server/$1@$digest" >> "$GITHUB_OUTPUT"
+          }
+          copy_image genai-api "${{ needs.build.outputs.api }}" api
+          copy_image genai-worker "${{ needs.build.outputs.worker }}" worker
+          copy_image genai-apps "${{ needs.build.outputs.apps }}" apps
+      - id: deploy
+        env:
           PG_ADMIN_GROUP_OBJECT_ID: ${{ vars.PG_ADMIN_GROUP_OBJECT_ID }}
           PG_ADMIN_GROUP_NAME: ${{ vars.PG_ADMIN_GROUP_NAME }}
           DEPLOY_PRINCIPAL_ID: ${{ vars.DEPLOY_PRINCIPAL_ID }}
@@ -216,8 +246,18 @@ jobs:
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
         run: |
-          az deployment group create \
+          url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
             --parameters infra/env/prod.bicepparam \
-            --parameters apiImage="${{ needs.build.outputs.api }}" workerImage="${{ needs.build.outputs.worker }}" appsImage="${{ needs.build.outputs.apps }}" appVersion="${{ github.sha }}"
+            --parameters apiImage="${{ steps.image.outputs.api }}" workerImage="${{ steps.image.outputs.worker }}" appsImage="${{ steps.image.outputs.apps }}" appVersion="${{ github.sha }}" \
+            --query properties.outputs.apiUrl.value -o tsv)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: smoke
+        run: |
+          for _ in $(seq 1 20); do
+            body=$(curl -fsS "${{ steps.deploy.outputs.url }}/health" || true)
+            if echo "$body" | grep -q '"version":"${{ github.sha }}"'; then echo "$body"; exit 0; fi
+            sleep 15
+          done
+          echo "health check did not report ${{ github.sha }}"; exit 1
