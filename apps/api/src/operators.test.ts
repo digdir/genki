@@ -5,11 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import {
   createMockAnsattporten,
+  createAuthenticator,
   createSigningKey,
   createTokenVerifier,
   type IdentityTestDataInput,
 } from '@genai/identity';
-import { bearerAuthenticator } from './auth.js';
+import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 
 const issuer = 'http://localhost:8080/mock/ansattporten';
@@ -43,12 +44,15 @@ const setup = async () => {
       ],
     }),
   );
-  const auth = bearerAuthenticator(verifier, operators.isOperator);
+  const caller = platformCaller(createAuthenticator({ verifier }), {
+    isOperator: operators.isOperator,
+  });
   const principalFor = async (pid: string) => {
     const { access_token } = await mock.testTokens(pid, 'local-console', [resource]);
-    return auth.authenticate(
+    const found = await caller(
       new Request('http://api/platform', { headers: { authorization: `Bearer ${access_token}` } }),
     );
+    return found?.principal;
   };
   return { operatorPids, principalFor };
 };

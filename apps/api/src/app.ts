@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { MiddlewareHandler } from 'hono';
 import type { Principal } from '@genai/contracts';
 import type { DefinitionStore, PluginSchemas, SettingsRegistry } from '@genai/definitions';
+import { isApiKeyPrincipal } from '@genai/identity';
 import { tenantAccess, type Access } from './access.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
@@ -35,11 +36,14 @@ const healthRoute = createRoute({
   },
 });
 
-export interface PlatformOptions {
+type Caller = (request: Request) => Promise<Principal | undefined>;
+
+type Authentication = { auth: Authenticator; caller?: never } | { caller: Caller; auth?: never };
+
+export type PlatformOptions = Authentication & {
   store: DefinitionStore;
   plugins: PluginSchemas;
   settings: SettingsRegistry;
-  auth: Authenticator;
   admin?: Admin;
   access?: Access;
   tasks?: TaskReader;
@@ -48,7 +52,6 @@ export interface PlatformOptions {
   tenantQuota?: PlatformApiOptions['tenantQuota'];
   tenantGate?: MiddlewareHandler;
   registered?: (tenant: string) => Promise<boolean>;
-  caller?: (request: Request) => Promise<Principal | undefined>;
   lifecycle?: PlatformApiOptions['lifecycle'];
   models?: ModelAdmin;
   drafts?: Pick<ServiceDrafts, 'outdated' | 'followPublish'>;
@@ -56,7 +59,14 @@ export interface PlatformOptions {
   now?: () => Date;
   lockdown?: boolean;
   loginRefusal?: (request: Request) => Promise<string | undefined>;
-}
+};
+
+const withoutApiKeys = (caller: Caller): Authenticator => ({
+  authenticate: async (request) => {
+    const principal = await caller(request);
+    return principal && !isApiKeyPrincipal(principal) ? principal : undefined;
+  },
+});
 
 export interface AppOptions {
   platform?: PlatformOptions;
@@ -96,12 +106,19 @@ export const createApp = (version: string, options: AppOptions = {}) => {
     app.use('/tenants/:tenant/*', options.platform.tenantGate);
   }
 
-  if (options.platform?.names)
-    app.use('*', rememberActorNames(options.platform.auth, options.platform.names));
+  const given = options.platform;
+  const authentication = !given
+    ? undefined
+    : given.caller
+      ? { caller: given.caller, auth: withoutApiKeys(given.caller) }
+      : { caller: (r: Request) => given.auth.authenticate(r), auth: given.auth };
 
-  if (options.platform) {
-    const { store, plugins, settings, auth } = options.platform;
-    const caller = options.platform.caller ?? ((r: Request) => auth.authenticate(r));
+  if (options.platform?.names && authentication)
+    app.use('*', rememberActorNames(authentication.auth, options.platform.names));
+
+  if (options.platform && authentication) {
+    const { store, plugins, settings } = options.platform;
+    const { caller, auth } = authentication;
     if (options.platform.loginRefusal)
       app.use('*', refuseUntrustedEntra(options.platform.loginRefusal));
     if (lockdown) app.use('*', refuseLockedRoutes(caller));

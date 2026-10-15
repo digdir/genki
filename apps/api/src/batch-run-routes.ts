@@ -312,7 +312,7 @@ export const createBatchRunsModule =
                 ...(documents ? { documents } : {}),
                 ...(prompt ? { prompt } : {}),
                 ...(isRecord(data.input) ? { input: data.input } : {}),
-                sample: data.sample !== false,
+                sample: data.sample !== false && (deps.modelAdmission?.(guard.principal) ?? true),
               },
               reasonOf(c) || 'Beregnet kostnad for kjøring over dokumenter',
             );

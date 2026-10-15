@@ -6,7 +6,8 @@ import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { createPlatform } from './composition.js';
 import { draftOutdatedType, mergeThreeWay, type DraftConflict } from './service-drafts.js';
-import { auth, digdir, principals, settingDefinitions } from './testkit.js';
+import { trustedEntraScope } from './lockdown.js';
+import { digdir, principals, settingDefinitions } from './testkit.js';
 
 const service = {
   apiVersion: 'genai/v1',
@@ -32,7 +33,15 @@ const reader: Principal = {
 
 type Spec = typeof service.spec & { settings?: Record<string, unknown> };
 
-const boot = async () => {
+const entra: Principal = {
+  kind: 'employee',
+  issuer: 'test',
+  subject: 'entra',
+  tenant: digdir,
+  scopes: [trustedEntraScope],
+};
+
+const boot = async (lockdown = false) => {
   const settings = new SettingsRegistry(settingDefinitions);
   const platform = await createPlatform({
     catalogs: {
@@ -61,9 +70,10 @@ const boot = async () => {
     settings,
     definitions: (p) => new InMemoryDefinitionStore({ ...p, settings: settingDefinitions }),
     policy: { decide: async () => ({ allow: true }) },
+    ...(lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     authenticate: async (request) => {
       const token = request.headers.get('authorization')?.slice(7) ?? '';
-      const principal = token === 'reader' ? reader : principals[token];
+      const principal = token === 'reader' ? reader : token === 'entra' ? entra : principals[token];
       return principal ? { principal } : undefined;
     },
   });
@@ -78,9 +88,10 @@ const boot = async () => {
       store: platform.definitions,
       plugins: platform.plugins,
       settings,
-      auth,
+      caller: platform.caller,
       admin,
       drafts: platform.serviceDrafts,
+      lockdown,
     },
   });
   platform.mount(app, admin);
@@ -96,19 +107,30 @@ const boot = async () => {
     });
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   };
+  const writer = lockdown ? 'entra' : 'kari';
   const publish = (spec: Partial<Spec>, draftRevision?: number) =>
-    send('POST', '/definitions', {
-      definition: { ...service, spec: { ...service.spec, ...spec } },
-      files: {},
-      ...(draftRevision === undefined ? {} : { draftRevision }),
-    });
+    send(
+      'POST',
+      '/definitions',
+      {
+        definition: { ...service, spec: { ...service.spec, ...spec } },
+        files: {},
+        ...(draftRevision === undefined ? {} : { draftRevision }),
+      },
+      writer,
+    );
   const draftPath = `/tenants/${digdir}/services/svar/draft`;
   const saveDraft = (spec: Partial<Spec>, revision?: number) =>
-    send('PUT', draftPath, {
-      definition: { ...service, spec: { ...service.spec, ...spec } },
-      files: {},
-      ...(revision === undefined ? {} : { revision }),
-    });
+    send(
+      'PUT',
+      draftPath,
+      {
+        definition: { ...service, spec: { ...service.spec, ...spec } },
+        files: {},
+        ...(revision === undefined ? {} : { revision }),
+      },
+      writer,
+    );
   const draft = async () => (await send('GET', draftPath)).body;
   const latest = async () =>
     (
@@ -292,6 +314,28 @@ describe('opening a draft with rebase=clean', () => {
     expect(opened.status).toBe(200);
     expect(opened.body).toMatchObject({ revision: saved.body.revision, behind: true });
     expect(await env.draft()).toMatchObject({ baseVersion: 1, revision: saved.body.revision });
+  });
+
+  it('does not write a draft on GET for a read-only person in lockdown', async () => {
+    const env = await boot(true);
+    const saved = await env.saveDraft({ purpose: 'Svarer grundig' });
+    await env.publish({ settings: { 'search.topK': 5 } }, saved.body.revision as number);
+
+    const opened = await env.send('GET', `${env.draftPath}?rebase=clean`);
+
+    expect(opened.status).toBe(200);
+    expect(opened.body).toMatchObject({ revision: saved.body.revision, behind: true });
+    expect(await env.draft()).toMatchObject({ baseVersion: 1, revision: saved.body.revision });
+  });
+
+  it('rebases a draft on GET for a trusted Entra login in lockdown', async () => {
+    const env = await boot(true);
+    const saved = await env.saveDraft({ purpose: 'Svarer grundig' });
+    await env.publish({ settings: { 'search.topK': 5 } }, saved.body.revision as number);
+
+    const opened = await env.send('GET', `${env.draftPath}?rebase=clean`, undefined, 'entra');
+
+    expect(opened.body).toMatchObject({ baseVersion: 2, behind: false, rebasedFrom: 1 });
   });
 
   it('opening without rebase=clean returns the stored draft as before', async () => {

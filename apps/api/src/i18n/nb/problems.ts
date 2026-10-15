@@ -31,6 +31,10 @@ export const problems = defineNamespace({
   changesLocked: 'Miljøet er låst: endringer krever innlogging med Entra ID',
   changesLockedDetail:
     'I dette testmiljøet kan alle som logger inn med TestID, lese, men bare Digdir-ansatte som logger inn med Entra ID, kan endre.',
+  secretChecksLocked:
+    'Miljøet er låst: tester som bruker lagrede hemmeligheter, krever innlogging med Entra ID',
+  secretChecksLockedDetail:
+    'I dette testmiljøet kan bare Digdir-ansatte som logger inn med Entra ID, kjøre tester som sender en lagret hemmelighet til en adresse.',
   entraNotTrusted: 'Entra ID-innloggingen din gir ikke tilgang til dette miljøet',
   entraNotTrustedDetail:
     'Bare medlemmer av de oppsatte Entra-gruppene i Digdir kan logge inn med Entra ID her. Logg inn med TestID for å lese, eller be om tilgang.',

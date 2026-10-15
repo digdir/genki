@@ -80,6 +80,11 @@ export const ingestionRoutes = new Set([
 
 const readableWrites = new Set(['personal', 'feedback', 'check']);
 
+export const secretSendingChecks = new Set([
+  'POST /tenants/:tenant/building-blocks/contract-tests',
+  'POST /operator/knowledge/endpoints/test',
+]);
+
 const changesConfiguration = (route: string) => {
   const kind = reasonFreeWrites[route];
   return writeMethods.has(route.split(' ')[0] ?? '') && !(kind && readableWrites.has(kind));
@@ -103,20 +108,37 @@ const lockedProblem = (route: string, principal: Principal) => {
       : refusal(t('problems.ingestionLocked'), t('problems.ingestionLockedDetail'));
   if (changesConfiguration(route) && readOnlyInLockdown(principal))
     return refusal(t('problems.changesLocked'), t('problems.changesLockedDetail'));
+  if (secretSendingChecks.has(route) && readOnlyInLockdown(principal))
+    return refusal(t('problems.secretChecksLocked'), t('problems.secretChecksLockedDetail'));
   return undefined;
 };
 
 const problemJson = { 'content-type': 'application/problem+json' };
 
+const presentsCredential = (request: Request) =>
+  request.headers.has('x-api-key') || /^bearer /i.test(request.headers.get('authorization') ?? '');
+
+const locks = (route: string) =>
+  modelRunRoutes.has(route) ||
+  ingestionRoutes.has(route) ||
+  secretSendingChecks.has(route) ||
+  changesConfiguration(route);
+
 export const refuseLockedRoutes =
   (caller: (request: Request) => Promise<Principal | undefined>): MiddlewareHandler =>
   async (c, next) => {
     const route = routeOf(c);
-    if (!route) return next();
-    if (!modelRunRoutes.has(route) && !ingestionRoutes.has(route) && !changesConfiguration(route))
-      return next();
+    if (!route || !locks(route)) return next();
     const principal = await caller(c.req.raw);
-    const locked = principal ? lockedProblem(route, principal) : undefined;
+    if (!principal) {
+      if (!presentsCredential(c.req.raw)) return next();
+      return c.json(
+        { type: 'about:blank', title: t('problems.status401'), status: 401 },
+        401,
+        problemJson,
+      );
+    }
+    const locked = lockedProblem(route, principal);
     if (!locked) return next();
     return c.json(locked, 403, problemJson);
   };

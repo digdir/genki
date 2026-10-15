@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15)
 
 ## Context
 
@@ -18,6 +18,9 @@ In lockdown, only a credential from configuration, a trusted Entra login (below)
 - The worker reads the same setting. It binds no triggers, so a document that lands in a folder or a scheduled trigger starts nothing, and each sync logs that it is locked. Its model port uses the same rule, and the worker runs as a system user without the mark, so any model call it makes is refused.
 - The ingestion service refuses to start a run that a credential from configuration did not start. Scheduled runs and the first sync of a new connector therefore do not run; a scheduled run is recorded as failed with the reason and logged.
 - People other than a trusted Entra login (below) are read-only: every change, meaning every write that needs a change reason (ADR 0026), gets the same problem with a title saying changes need an Entra ID login. Their own preferences, conversations, feedback and checks that change nothing stay open. API keys and Maskinporten clients keep their normal rights to change configuration. Startup seeding from YAML is unchanged.
+- Checks that send a stored secret to an address the caller chooses (a building-block contract test, an operator knowledge endpoint test) are not reads: they get the same problem for people other than a trusted Entra login.
+- For the same people, opening a draft with `rebase=clean` shows that it is behind instead of rebasing it, and a batch estimate skips the sample runs and assumes a range.
+- One authenticator decides for the lockdown gate and the routes: the routes use the same caller as the gate (API keys excluded from the definition and platform routes, as before). When a locked route gets a credential that resolves to nobody, the gate answers 401 instead of passing the request on.
 - `/health` reports `lockdown`, and the portal, console and workspace show a banner. A TestID login is told that changes, models and ingestion need an Entra ID login; an Entra login sees the ordinary locked-environment banner.
 
 The embedding port is not locked, so search keeps embedding queries and reading existing data. Writing embeddings is locked where it starts instead: ingestion runs in the background under a system user, so the embedding port cannot tell who started it, but the start can. Saving a pipeline, including one with a schedule, is configuration and stays allowed.
@@ -59,4 +62,5 @@ Test should stay open for the team to look at, and for configuration to be tried
 - TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS`, can only read in genki-test.
 - Who may work in test is decided by Entra group membership in Digdir, not by the platform. Removing someone from the group takes effect at their next token.
 - Production does not run in lockdown. It will have a real Kunnskapsassistenten service and a separate test service for KA's test backend.
+- A new check that sends a stored secret somewhere goes in `secretSendingChecks`.
 - A new route that runs a model goes in `modelRunRoutes` in `apps/api/src/lockdown.ts`, and a new route that ingests or writes embeddings goes in `ingestionRoutes`, so it gets the clear problem and not a failed task.

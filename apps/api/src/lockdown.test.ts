@@ -172,7 +172,6 @@ const boot = async (lockdown: boolean) => {
       plugins: platform.plugins,
       settings,
       admin,
-      auth: { authenticate: (request) => platform.caller(request) },
       tenantGate: platform.tenantGate,
       caller: platform.caller,
       lockdown,
@@ -624,6 +623,59 @@ describe('lockdown', () => {
     expect(operatorChange.status).toBe(403);
     expect(await json(operatorChange)).toMatchObject({ type: lockedEnvironmentType });
     expect(preferences.status).toBe(200);
+  });
+
+  it('refuses a contract test that sends a secret for a read-only person in lockdown', async () => {
+    const { send } = await boot(true);
+    const contractTest = (as: string) =>
+      send(`/tenants/${digdir}/building-blocks/contract-tests`, as, {
+        body: {
+          type: 'mcp',
+          name: 'Probe',
+          endpoint: 'http://127.0.0.1:9/mcp',
+          auth: { kind: 'bearer', secret: 'probe' },
+        },
+      });
+
+    const refused = await contractTest('kari');
+    const allowed = await contractTest('entra');
+
+    expect(refused.status).toBe(403);
+    expect(await json(refused)).toMatchObject({ type: lockedEnvironmentType });
+    expect(allowed.status).toBe(200);
+  });
+
+  it('refuses an operator endpoint test that sends a secret for a read-only operator in lockdown', async () => {
+    const { send } = await boot(true);
+    const endpointTest = (as: string) =>
+      send('/operator/knowledge/endpoints/test', as, {
+        body: {
+          engine: 'typesense',
+          baseURL: 'http://127.0.0.1:9',
+          auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
+        },
+      });
+
+    const refused = await endpointTest('operator');
+    const allowed = await endpointTest('entra');
+
+    expect(refused.status).toBe(403);
+    expect(await json(refused)).toMatchObject({ type: lockedEnvironmentType });
+    expect(allowed.status).toBe(200);
+  });
+
+  it('lets people run checks that send secrets when lockdown is off', async () => {
+    const { send } = await boot(false);
+
+    const res = await send('/operator/knowledge/endpoints/test', 'operator', {
+      body: {
+        engine: 'typesense',
+        baseURL: 'http://127.0.0.1:9',
+        auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
+      },
+    });
+
+    expect(res.status).toBe(200);
   });
 
   it('lets a trusted Entra login change configuration in lockdown', async () => {

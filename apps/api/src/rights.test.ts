@@ -7,6 +7,7 @@ import type { Principal } from '@genai/contracts';
 import {
   createMockAltinnPdp,
   createMockAnsattporten,
+  createAuthenticator,
   createSigningKey,
   createTokenVerifier,
   type IdentityTestDataInput,
@@ -14,7 +15,7 @@ import {
 import { tenantAccess } from './access.js';
 import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
-import { bearerAuthenticator } from './auth.js';
+import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 import { requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
 
@@ -52,10 +53,12 @@ const localPeople = async () => {
       resource,
     ),
   );
-  const auth = bearerAuthenticator(verifier, operators.isOperator);
+  const caller = platformCaller(createAuthenticator({ verifier }), {
+    isOperator: operators.isOperator,
+  });
   return async (pid: string, org?: string) => {
     const { access_token } = await mock.testTokens(pid, 'local-portal', [resource]);
-    const principal = await auth.authenticate(
+    const found = await caller(
       new Request('http://api/tenants', {
         headers: {
           authorization: `Bearer ${access_token}`,
@@ -63,6 +66,7 @@ const localPeople = async () => {
         },
       }),
     );
+    const principal = found?.principal;
     if (!principal) throw new Error(`no principal for ${pid}`);
     return principal;
   };

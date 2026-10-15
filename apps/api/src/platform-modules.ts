@@ -43,6 +43,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   engines(): EngineDescription[];
   ingestion: IngestionService;
   modelAdmission?: (principal: Principal) => boolean;
+  readOnly?: (principal: Principal) => boolean;
   evalStores: {
     testSets: TestSetStore;
     runs: EvalRunStore;

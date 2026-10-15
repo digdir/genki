@@ -32,6 +32,10 @@ export const problems = {
   changesLocked: 'The environment is locked: changes need an Entra ID login',
   changesLockedDetail:
     'In this test environment anyone who logs in with TestID can read, but only Digdir staff who log in with Entra ID can make changes.',
+  secretChecksLocked:
+    'The environment is locked: tests that use stored secrets need an Entra ID login',
+  secretChecksLockedDetail:
+    'In this test environment only Digdir staff who log in with Entra ID can run tests that send a stored secret to an address.',
   entraNotTrusted: 'Your Entra ID login gives no access to this environment',
   entraNotTrustedDetail:
     'Only members of the configured Digdir Entra groups can log in with Entra ID here. Log in with TestID to read, or ask for access.',
