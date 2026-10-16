@@ -10,6 +10,7 @@ import {
   documentId,
   fillInKudosFields,
   findFolderFiles,
+  folderSource,
   generatePhrases,
   guardedFetchText,
   kudosClient,
@@ -24,6 +25,7 @@ import {
   type IngestSource,
   type KudosProfile,
 } from './index.js';
+import { firstHeading } from './folder.js';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -249,6 +251,58 @@ describe('folder loader', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('links a folder document to its file with the extension kept and titles it by its first heading', async () => {
+    const files: Record<string, string> = {
+      '/repo/docs/adr/0033-locked.md': 'Intro.\n\n# 0033 Locked test environment\n\n## Why\n',
+      '/repo/notes.md': 'No heading here.',
+    };
+    const source = folderSource({
+      entries: Object.keys(files).map((path) => ({ path, lastmod: '1' })),
+      basePath: '/repo/',
+      baseUrl: 'https://github.com/digdir/genki/blob/main/',
+      keepExtension: true,
+      titleFrom: 'heading',
+      read: async (path) => files[path] ?? '',
+    });
+    const stored = [];
+    for await (const document of source.documents()) stored.push(document.stored([]));
+
+    expect(stored).toMatchObject([
+      {
+        title: '0033 Locked test environment',
+        path: 'docs/adr/0033-locked.md',
+        url: 'https://github.com/digdir/genki/blob/main/docs/adr/0033-locked.md',
+      },
+      { title: 'Notes', url: 'https://github.com/digdir/genki/blob/main/notes.md' },
+    ]);
+  });
+
+  it('takes the first level-one heading, without closing hashes, tabs or a carriage return', () => {
+    expect(firstHeading('Intro\n## Sub\n#\tGenKI guide\t## \r\n# Second')).toBe('GenKI guide');
+    expect(firstHeading('#No space\n# \t#\n## Only sub')).toBeUndefined();
+  });
+
+  it('reads a heading line of many tabs in linear time', () => {
+    const started = performance.now();
+    expect(firstHeading(`#\t${'\t\t'.repeat(50_000)}`)).toBeUndefined();
+    expect(firstHeading(`#\ta${'\t'.repeat(100_000)}x`)).toBe(`a${'\t'.repeat(100_000)}x`);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('drops .md from folder links unless told to keep it', async () => {
+    const source = folderSource({
+      entries: [{ path: '/site/guide/start.md', lastmod: '1' }],
+      basePath: '/site/',
+      baseUrl: 'https://www.example.no/',
+      read: async () => '# Start',
+    });
+    for await (const document of source.documents())
+      expect(document.stored([])).toMatchObject({
+        title: 'Start',
+        url: 'https://www.example.no/guide/start',
+      });
   });
 });
 

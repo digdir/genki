@@ -138,6 +138,7 @@ var serverEnv = concat(
     { name: 'PGSSLMODE', value: 'require' }
     { name: 'DATA_DIR', value: '/data' }
     { name: 'BLOB_DIR', value: '/data/blobs' }
+    { name: 'INGEST_FOLDER_ROOT', value: '/app/genki-docs' }
   ],
   identityPlainEnv,
   secretEnv,

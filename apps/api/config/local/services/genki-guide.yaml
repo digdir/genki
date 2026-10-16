@@ -1,0 +1,30 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: genki-guide, name: GenKI-guiden }
+spec:
+  purpose: Svar med kilder fra GenKI-dokumentasjonen, for utviklere som er nye i GenKI
+  exampleQuestions:
+    - nb: Hvordan kjører jeg genki lokalt?
+      en: How do I run genki locally?
+    - nb: Hva betyr det at genki-test er låst?
+      en: What does it mean that genki-test is locked?
+    - nb: Hvilke ADR-er handler om rettigheter?
+      en: Which ADRs are about rights?
+  audience: [employees]
+  riskClass: limited
+  languages: [nb, en]
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      instructions: prompts/genki-guide.nb.md
+      budget: { searches: 4, reads: 6, readChars: 12000 }
+      temperature: 0.2
+  knowledge:
+    datasets:
+      - dataset: digdir/genki-docs
+    retrieval: { maxPerDocument: 10 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { chat: true, openai: true }

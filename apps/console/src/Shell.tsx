@@ -20,7 +20,6 @@ interface NavGroup {
 interface NavItem {
   path: string;
   label: PlainKey;
-  external?: boolean;
   note?: PlainKey;
 }
 
@@ -59,12 +58,7 @@ export const navigation: NavGroup[] = [
       { path: '/support-access', label: 'shell.pageSupportAccess' },
       { path: '/audit', label: 'shell.pageAudit' },
       { path: '/schemas', label: 'schemas.page' },
-      {
-        path: '/system-atlas.html',
-        label: 'shell.pageAtlas',
-        external: true,
-        note: 'shell.atlasEnglishOnly',
-      },
+      { path: '/atlas', label: 'shell.pageAtlas', note: 'shell.atlasEnglishOnly' },
     ],
   },
 ];
@@ -302,16 +296,6 @@ export const Shell = ({ session, onLogout, path, badges = {}, health, children }
                 </h2>
                 <ul aria-labelledby={`gruppe-${group.id}`}>
                   {group.items.map((item) => {
-                    if (item.external)
-                      return (
-                        <li key={item.label}>
-                          <a href={item.path} target="_blank" rel="noopener noreferrer">
-                            {t(item.label)}
-                            <span className="visually-hidden">{t('shell.opensInNewTab')}</span>
-                          </a>
-                          {item.note ? <span className="nav-note">{t(item.note)}</span> : null}
-                        </li>
-                      );
                     const current = isCurrent(item, path);
                     const badge = badgeFor(item.path, badges, t);
                     return (
@@ -334,6 +318,7 @@ export const Shell = ({ session, onLogout, path, badges = {}, health, children }
                             </>
                           ) : null}
                         </a>
+                        {item.note ? <span className="nav-note">{t(item.note)}</span> : null}
                       </li>
                     );
                   })}

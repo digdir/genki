@@ -45,11 +45,14 @@ import type {
   KnowledgeEngine,
   StoredSecret,
   AccessRequest,
+  AnswerSource,
   BlockApprovalRequest,
+  ChatTurn,
   ModelEndpointInput,
   ModelSettings,
   PlatformProposal,
   QuarantinedDefinition,
+  ServiceAnswer,
   SkillShareRequest,
   TenantKey,
 } from './types';
@@ -104,6 +107,53 @@ export const localizedEngine = (engine: KnowledgeEngine, t: T): KnowledgeEngine 
   const names = builtinEngines[engine.engine];
   return names ? { ...engine, ...names(t) } : engine;
 };
+
+export const lockedEnvironmentType = 'urn:genai:problem:locked-environment';
+
+async function* sseData(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = done ? '' : (events.pop() ?? '');
+    for (const event of events) {
+      const data = event
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+      if (data) yield data;
+    }
+    if (done) return;
+  }
+}
+
+const problemOf = (status: number, body: unknown): Problem | undefined => {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { type, error } = body as { type?: unknown; error?: unknown };
+  if (typeof type === 'string') return body as Problem;
+  const message = (error as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' ? { type: 'about:blank', title: message, status } : undefined;
+};
+
+interface ChatFrame {
+  retract?: boolean;
+  no_answer?: boolean;
+  notice?: string;
+  sources?: { index?: unknown; title?: unknown; url?: unknown }[];
+  error?: { message?: unknown };
+  choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+}
+
+const sourcesOf = (frame: ChatFrame): AnswerSource[] =>
+  (frame.sources ?? []).map((s) => ({
+    title: typeof s.title === 'string' && s.title ? s.title : String(s.url ?? ''),
+    ...(typeof s.index === 'number' ? { index: s.index } : {}),
+    ...(typeof s.url === 'string' && /^https?:\/\//i.test(s.url) ? { url: s.url } : {}),
+  }));
 
 export const createApiClient = ({
   baseUrl,
@@ -226,6 +276,55 @@ export const createApiClient = ({
         headers: { 'change-reason': reason },
       }),
     health: (signal?: AbortSignal) => call<Health>('GET', '/health', { signal }),
+    askService: async (
+      model: string,
+      messages: ChatTurn[],
+      onText: (text: string) => void,
+      signal?: AbortSignal,
+    ): Promise<ServiceAnswer> => {
+      const bearer = token();
+      const response = await send(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          accept: 'text/event-stream',
+          'content-type': 'application/json',
+          'accept-language': locale?.() ?? 'nb',
+          ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+        },
+        body: JSON.stringify({ model, messages, stream: true, genai_stream: 'live' }),
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok || !response.body) {
+        const body: unknown = await response.json().catch(() => undefined);
+        throw new ApiError(response.status, problemOf(response.status, body));
+      }
+      let text = '';
+      let notice = '';
+      let sources: AnswerSource[] = [];
+      for await (const data of sseData(response.body)) {
+        if (data === '[DONE]') break;
+        let frame: ChatFrame;
+        try {
+          frame = JSON.parse(data) as ChatFrame;
+        } catch {
+          continue;
+        }
+        if (frame.retract) {
+          text = '';
+          onText(text);
+        }
+        if (frame.sources) sources = sourcesOf(frame);
+        if (frame.no_answer && typeof frame.notice === 'string') notice = frame.notice;
+        const choice = frame.choices?.[0];
+        if (choice?.finish_reason === 'error')
+          throw new ApiError(502, problemOf(502, { error: frame.error }));
+        if (choice?.delta?.content) {
+          text += choice.delta.content;
+          onText(text);
+        }
+      }
+      return { text: text || notice, sources };
+    },
     settingsCatalog: async (signal?: AbortSignal) =>
       (await call<{ data: SettingInfo[] }>('GET', '/settings', { signal })).data,
     defaults: async (signal?: AbortSignal) =>

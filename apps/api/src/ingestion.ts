@@ -47,6 +47,8 @@ export const pipelineSpec = z.strictObject({
       path: z.string().min(1),
       include: z.array(glob).default(['**/*.md']),
       baseUrl: z.url().optional(),
+      keepExtension: z.boolean().optional(),
+      titleFrom: z.enum(['file-name', 'heading']).optional(),
     }),
     z.strictObject({
       kind: z.literal('upload'),
