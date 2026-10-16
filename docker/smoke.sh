@@ -6,7 +6,7 @@ apps_image=${2:?usage: docker/smoke.sh <api image> <apps image>}
 name=genki-smoke-$$
 
 cleanup() {
-  docker rm -f "$name-echo" "$name-apps" >/dev/null 2>&1 || true
+  docker rm -f "$name-echo" "$name-apps" "$name-console" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -70,6 +70,27 @@ if [ "$first" = "data: first" ]; then
   echo "ok: events stream before the response ends"
 else
   echo "FAILED: no event within 2 seconds, got '$first'" >&2
+  failed=1
+fi
+
+docker run -d --name "$name-console" --network "$name" -p 127.0.0.1::8080 \
+  -e APP=console -e API_UPSTREAM=http://echo:9000 "$apps_image" >/dev/null
+console="http://$(docker port "$name-console" 8080 | head -n 1)"
+tries=0
+until curl -fsS "$console/healthz" >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  [ "$tries" -lt 30 ] || { docker logs "$name-console" >&2; exit 1; }
+  sleep 1
+done
+headers() { curl -sS -o /dev/null -D - "$console$1" | tr -d '\r'; }
+if headers /system-atlas.html | grep -qi "^x-frame-options: SAMEORIGIN" &&
+  headers /system-atlas.html | grep -qi "frame-ancestors 'self'" &&
+  headers / | grep -qi "^x-frame-options: DENY" &&
+  curl -fsS "$console/system-atlas.js" >/dev/null &&
+  ! curl -sS "$console/system-atlas.html" | grep -q "<script>"; then
+  echo "ok: the console frames its System Atlas from its own origin only, without inline script"
+else
+  echo "FAILED: System Atlas headers or script file in the console" >&2
   failed=1
 fi
 

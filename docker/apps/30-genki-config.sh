@@ -44,7 +44,10 @@ case "$api_host" in
 esac
 
 sed -e "s#__CONNECT_SRC__#$connect#g" /etc/nginx/genki-headers.conf >/tmp/genki/headers.conf
+sed -e 's#X-Frame-Options "DENY"#X-Frame-Options "SAMEORIGIN"#' -e "s#frame-ancestors 'none'#frame-ancestors 'self'#" \
+  /tmp/genki/headers.conf >/tmp/genki/headers-same-origin.conf
 sed -e "s#__APP__#$APP#g" -e "s#__API_SCHEME__#$api_scheme#g" -e "s#__API_SERVER__#$api_server#g" \
   -e "s#__API_PATH__#$api_path#g" -e "s#__API_HOSTNAME__#$api_hostname#g" -e "s#__API_HOST__#$api_host#g" \
   -e "s#/etc/nginx/genki-headers.conf#/tmp/genki/headers.conf#g" \
+  -e "s#/etc/nginx/genki-headers-same-origin.conf#/tmp/genki/headers-same-origin.conf#g" \
   /etc/genki/default.conf.template >/etc/nginx/conf.d/default.conf
