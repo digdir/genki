@@ -1,6 +1,7 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
+  readableTextExtensions,
   rowMapping,
   type SkipReason,
   type SkippedDocument,
@@ -46,9 +47,18 @@ export const pipelineSpec = z.strictObject({
       kind: z.literal('folder'),
       path: z.string().min(1),
       include: z.array(glob).default(['**/*.md']),
+      exclude: z.array(glob).optional(),
       baseUrl: z.url().optional(),
       keepExtension: z.boolean().optional(),
-      titleFrom: z.enum(['file-name', 'heading']).optional(),
+      titleFrom: z
+        .enum(['file-name', 'heading'])
+        .optional()
+        .describe('heading: the first # heading, or the top-level name: of a YAML file'),
+      extensions: z
+        .array(z.enum(readableTextExtensions))
+        .min(1)
+        .optional()
+        .describe('File types read as text; default .md, .txt, .html, .htm'),
     }),
     z.strictObject({
       kind: z.literal('upload'),

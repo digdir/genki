@@ -8801,9 +8801,22 @@
         document.getElementById('empty-search').classList.toggle('show', matches === 0);
       }
 
+      function shortText(text, max = 300) {
+        if (!text || text.length <= max) return text || '';
+        const cut = text.slice(0, max);
+        return `${cut.slice(0, cut.lastIndexOf(' ') > 0 ? cut.lastIndexOf(' ') : max)}...`;
+      }
+
+      function packagesOf(m) {
+        return (m.packages || []).join(', ');
+      }
+
       function moduleContext(m) {
         const files = (m.files || []).join(', ');
-        return ` Context from the atlas: module "${m.name}" (id ${m.id}): ${m.summary}${files ? ` Files: ${files}.` : ''}`;
+        const packages = packagesOf(m);
+        const description =
+          m.description && m.description !== m.summary ? ` ${shortText(m.description)}` : '';
+        return ` Context from the atlas: module "${m.name}" (id ${m.id}): ${m.summary}${description}${packages ? ` Packages: ${packages}.` : ''}${files ? ` Files: ${files}.` : ''}`;
       }
 
       function modulePrompts(m) {
@@ -8830,7 +8843,12 @@
       function edgePrompt(e) {
         const label = `Explain the connection from ${nameOf(e.from)} to ${nameOf(e.to)}: ${e.label}`;
         const witness = e.witness ? ` The atlas witnesses it in ${e.witness.file}.` : '';
-        return { label, text: `${label}.${witness}` };
+        const packages = [e.from, e.to]
+          .map((id) => (byId[id] ? packagesOf(byId[id]) : ''))
+          .filter(Boolean)
+          .join(' and ');
+        const context = packages ? ` Context from the atlas: packages ${packages}.` : '';
+        return { label, text: `${label}.${witness}${context}` };
       }
 
       function tracePrompt(t) {

@@ -25,7 +25,7 @@ import {
   type IngestSource,
   type KudosProfile,
 } from './index.js';
-import { firstHeading } from './folder.js';
+import { firstHeading, yamlName } from './folder.js';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -303,6 +303,55 @@ describe('folder loader', () => {
         title: 'Start',
         url: 'https://www.example.no/guide/start',
       });
+  });
+
+  it('reads YAML files only when the folder source allows .yaml', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ingest-yaml-'));
+    try {
+      await writeFile(join(root, 'client.yaml'), 'id: client\nname: Frontend client\n');
+      const entries = [{ path: join(root, 'client.yaml'), lastmod: '1' }];
+      const skips = async (extensions?: string[]) => {
+        const out = [];
+        const source = folderSource({ entries, ...(extensions ? { extensions } : {}) });
+        for await (const document of source.documents()) out.push(document.skip);
+        return out;
+      };
+
+      expect(await skips()).toEqual(['unsupported_type']);
+      expect(await skips(['.md'])).toEqual(['unsupported_type']);
+      expect(await skips(['.md', '.yaml'])).toEqual([undefined]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('titles a YAML document by its top-level name and keeps .yaml in its link', async () => {
+    const source = folderSource({
+      entries: [{ path: '/repo/docs/modules/client.yaml', lastmod: '1' }],
+      basePath: '/repo/',
+      baseUrl: 'https://github.com/digdir/genki/blob/main/',
+      keepExtension: true,
+      titleFrom: 'heading',
+      read: async () =>
+        '# not a heading\nid: client\nedges:\n  - name: inner\nname: Frontend client\n',
+    });
+    for await (const document of source.documents())
+      expect(document.stored([])).toMatchObject({
+        title: 'Frontend client',
+        url: 'https://github.com/digdir/genki/blob/main/docs/modules/client.yaml',
+      });
+  });
+
+  it('takes the top-level YAML name, unquoted, and nothing from nested or empty names', () => {
+    expect(yamlName("id: a\nname: 'Frontend client'\r\n")).toBe('Frontend client');
+    expect(yamlName('id: a\n  name: Nested\nname:\n')).toBeUndefined();
+    expect(yamlName('id: a')).toBeUndefined();
+  });
+
+  it('reads a long YAML name line in linear time', () => {
+    const started = performance.now();
+    expect(yamlName(`name: '${' '.repeat(200_000)}`)).toBe("'");
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });
 

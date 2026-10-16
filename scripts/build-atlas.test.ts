@@ -229,6 +229,31 @@ describe('the GenKI guide in the atlas', () => {
     dom.window.close();
   });
 
+  it('sends the package names and description of a module with every prompt about it', async () => {
+    const client = byId.get('client') as Module;
+    const { doc, click, reply, lastAsk, posted, dom } = await openAtlas(true);
+    const answer = () =>
+      reply({ type: 'genki-atlas:answer', id: lastAsk().id, text: 'Ok.', html: '<p>Ok.</p>' });
+    click('[data-module="client"]');
+
+    const count = doc.querySelectorAll('[data-ask-prompt]').length;
+    for (let i = 0; i < count; i++) {
+      click(`[data-ask-prompt="${i}"]`);
+      const asked = lastAsk().messages.at(-1)?.content ?? '';
+      expect(asked).toContain('Packages: @genai/client.');
+      expect(asked).toContain('Wraps the OpenAI-compatible /v1 API');
+      expect(asked).toContain(client.summary as string);
+      answer();
+    }
+    click('[data-ask-edge="0"]');
+
+    expect(posted).toHaveLength(count + 1);
+    expect(lastAsk().messages.at(-1)?.content).toMatch(
+      /Context from the atlas: packages @genai\/client and @genai\//,
+    );
+    dom.window.close();
+  });
+
   it('asks about a connection from its Ask button', async () => {
     const m = modules.find((x) => x.edges?.length) as (typeof modules)[number];
     const edge = m.edges?.[0] as (typeof m.edges & object)[number];
