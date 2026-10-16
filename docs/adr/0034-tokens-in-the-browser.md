@@ -30,7 +30,7 @@ Rejected: tokens in `localStorage` (survives the tab, readable by any script in 
 - Closes the token criterion in #41 for test. Production readiness depends on the BFF.
 - The BFF needs a session store shared by API replicas, so restarts do not sign everyone out. It rotates the session id at login, binds `state`, `nonce` and the PKCE verifier to a pre-login cookie, and at logout destroys the session, revokes the refresh token and ends the Ansattporten session.
 - With cookies, every state-changing request through `/api/` checks the exact `Origin` and requires a JSON body or a non-simple header, since sibling subdomains are same-site.
-- A refresh token, if Ansattporten issues one to these clients, is a bearer credential that outlives the tab once stolen. Before production, confirm whether it is issued and how long it lives.
+- Ansattporten TEST issues 5-minute access tokens, and the console gets no refresh token (checked 2026-10-16; the apps ask for `openid profile`, without `offline_access`). A refresh token, if the portal or workspace ever gets one, is a bearer credential that outlives the tab once stolen.
 - Logout today removes the tokens from `sessionStorage` and ends the Ansattporten session on a deliberate logout; it does not revoke a refresh token. Unsaved input kept across re-login is stored per tab, not per person, and is cleared on a deliberate logout.
 - The ID token is used only for the display name and for logout. It grants nothing and the API never accepts it. The console checks the `nonce` like the portal and workspace do.
 - A new script source, inline script or third-party library in the apps weakens this decision until the BFF exists; review the CSP when adding one.

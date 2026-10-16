@@ -16,8 +16,8 @@ Operators run the console: tenants, catalog, settings, support sessions and audi
 - **Only the console's own client can make an operator.** The operator rule accepts only access tokens whose `client_id` is in `OPERATOR_CLIENT_IDS`. A token from any other client, registered tenant clients included, is never an operator.
 - **An operator is never a tenant principal.** Outside lockdown the rule gives the operator role and nothing else: no tenant, no `authorizedFor`. A tenant's content (conversations, documents, runs) is reached only through a support session with a reason and a time limit (ADR 0010). The lockdown grant of every right in `PLATFORM_TENANT` stays specific to genki-test.
 - **Two marks, not one.** The verifier sets the operator mark from `OPERATOR_ENTRA_GROUPS` and, in lockdown, the model-access mark from `LOCKDOWN_ENTRA_GROUPS`. genki-test may name the same group in both; the code never derives one from the other. Only the verifier sets either mark, never token scopes, key scopes or headers.
-- **Group membership decides, per token.** Adding or removing an operator happens in Entra and needs no deploy. Removal takes effect when the operator's current access token expires, and at the latest at their next login. The API logs which group admitted the operator.
-- **MFA is required.** Digdir Conditional Access enforces MFA on the Ansattporten app for operators; if the token carries `amr`, the API requires `mfa`.
+- **Group membership decides, per token.** Adding or removing an operator happens in Entra and needs no deploy. Removal takes effect when the operator's current access token expires: Ansattporten TEST issues 5-minute access tokens, and the console gets no refresh token. The API logs which group admitted the operator.
+- **MFA is required, and enforced in Entra.** Ansattporten's Entra tokens carry no `amr` (checked 2026-10-16), so the API cannot see how the person authenticated. Digdir Conditional Access must require MFA for the Ansattporten app; if Ansattporten later adds `amr`, the API requires `mfa`.
 - **No other way in, in production.** Operator pids in `identity.yaml` apply only to the mock issuer in dev mode, and startup refuses them otherwise. `OPERATOR_SUBJECTS` holds `issuer|subject` pairs for Ansattporten tokens only, for local development and break-glass: in production the API refuses to start with it set unless `OPERATOR_BREAK_GLASS_UNTIL` names a date at most seven days ahead, and every break-glass login is audited as such.
 
 ## Why
@@ -29,7 +29,8 @@ Rejected: Altinn rights for operators (operators act across tenants, Altinn righ
 ## Consequences
 
 - Closes the operator criterion in #41 once built.
-- Before production, confirm with the Ansattporten team: which clients can obtain `aud=digdir:genai`; that `groups` is passed through only for logins from Digdir's Entra tenant and cannot be shaped by another tenant's configuration; whether tokens carry `amr`; and the access token lifetime. If a tenant id claim becomes available, the API requires it to be Digdir's.
+- Checked from a console token in genki-test (2026-10-16): the access token carries `client_id`, and `aud` lists both `digdir:genai` and the client id; it lives 5 minutes; it has `groups` and `email` but no `amr` and no Entra tenant id. Pinning `client_id` therefore does not depend on whether other Ansattporten clients can obtain `aud=digdir:genai`.
+- Still to confirm with Digdir IT: that Conditional Access requires MFA for the Ansattporten app. If a tenant id claim becomes available, the API requires it to be Digdir's.
 - Production needs a Digdir Entra group for genki operators, owned by someone who reviews it regularly, and Entra logins enabled on the production console client.
 - The verifier's Entra branch, tied to lockdown today, is split into the two marks above; this is new code, not only configuration.
 - Today operators see tenant metadata across tenants without a support session (definitions, tasks, eval labels, audit, usage). Each of those routes is either documented as metadata or moved behind a support session.
