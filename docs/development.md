@@ -45,6 +45,26 @@ The apps talk to the live API through a Vite proxy on `/api`. To run one against
 | Erik Larsen     | Rights in other organisations                 |
 | Hensynsløs Måke | No access                                     |
 
+**Real Ansattporten locally.** To log in through Ansattporten TEST instead of the mock, as genki-test does, the API and each app need their own settings. None of the values are in the repository; ask the team for them and keep them out of chat.
+
+In `.env.local`:
+
+| Setting                                                                  | Value                                                                        |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `ANSATTPORTEN_ISSUER`                                                    | `https://test.ansattporten.no`. With it set, the mock login is not mounted   |
+| `ALTINN_PDP_URL`, `ALTINN_SUBSCRIPTION_KEY`                              | `https://platform.tt02.altinn.no` and the APIM subscription key              |
+| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                          | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`     |
+| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY`       | The Maskinporten client that asks the PDP, and its private JWK               |
+| `ALTINN_RESOURCE`                                                        | `urn:altinn:resource:digdir-genai-platform-test`                             |
+| `PLATFORM_TENANT`                                                        | The synthetic organisation that plays Digdir in TT02, as in genki-test       |
+| `GENAI_LOCKDOWN`, `LOCKDOWN_ENTRA_GROUPS`, `LOCKDOWN_ENTRA_EMAIL_DOMAIN` | `true`, the Entra group, `digdir.no`: needed to log in with Entra ID (below) |
+
+In `apps/portal/.env.local` and `apps/workspace/.env.local`: `VITE_ANSATTPORTEN_ISSUER`, `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. In `apps/console/.env.local`: `VITE_OIDC_ISSUER`, `VITE_OIDC_TOKEN_ENDPOINT` (`https://test.ansattporten.no/token`), `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. Each app has its own client, and Ansattporten only accepts the login when that client lists `http://localhost:<the app's port>/callback` as a redirect URI. A git worktree does not get these files; copy or link them from your main checkout.
+
+Who gets in: a TestID person gets the rights Altinn TT02 gives them for the resource, so outside lockdown a general manager of `PLATFORM_TENANT` gets the platform rights; in lockdown TestID logins can only read. An Entra ID login (choose Entra ID in Ansattporten) is refused outside lockdown; with `GENAI_LOCKDOWN=true` and `LOCKDOWN_ENTRA_GROUPS`, a member of the group gets the whole platform, as in genki-test (ADR 0033). In lockdown only such a login may use models and run ingestion, so this is the setup for working as a Digdir employee.
+
+To check it: `curl localhost:8080/health` reports `lockdown`, the API log at startup has `altinn pdp` with the TT02 address, and the lockdown lines when it is on, and the login button goes to `login.test.ansattporten.no`, not `/mock/ansattporten`. A 404 on `/mock/ansattporten/...` means an app has no `.env.local` and still uses the mock while the API does not.
+
 **API keys for local clients.** In dev mode with the mock login active, `DEV_API_KEY` registers a general dev key, and `DEV_SERVICE_API_KEY` registers a key bound to one service: `DEV_SERVICE_API_KEY_SERVICE`, `kunnskapsassistenten` by default. Both keys are in `.env.local` after setup.
 
 **Locked environment.** `GENAI_LOCKDOWN=true` turns on what genki-test runs with: only the keys above, registered from configuration at startup, may run anything that reaches a model or run ingestion (pipeline runs, connector syncs, engine switches, applying hypothetical questions). People, operators and keys made through the API get a 403 problem that says the environment is locked, and scheduled runs and worker triggers are skipped. People can only read and search; keys made through the API can still change configuration. `LOCKDOWN_ENTRA_GROUPS` (Entra group object ids) and `LOCKDOWN_ENTRA_EMAIL_DOMAIN` let an Entra ID login through Ansattporten in one of those groups work with the whole platform, as operator with every right in the platform organisation; the mock login cannot issue such tokens. API keys and Maskinporten clients such a login creates may use models and run ingestion too, within their own bindings. `/health` reports `lockdown`, and the portal, console and workspace show a banner. See [ADR 0033](adr/0033-locked-test-environment.md).
