@@ -58,4 +58,10 @@ describe('the GenKI docs bundle', () => {
       /name: 'azure\.extensions'\s+properties: \{ value: '[A-Z_,]*VECTOR[A-Z_,]*'/,
     );
   });
+
+  it('sets the extension list as a user override, the only source Azure Postgres accepts for it', () => {
+    expect(read('infra/modules/postgres.bicep')).toMatch(
+      /name: 'azure\.extensions'\s+properties: \{ value: '[A-Z_,]*', source: 'user-override' \}/,
+    );
+  });
 });
