@@ -47,8 +47,18 @@ export const makeFolderUrl = (
   return `${baseUrl}${path.startsWith('/') ? path.slice(1) : path}`;
 };
 
-export const firstHeading = (markdown: string) =>
-  /^#[ \t]+(.+?)[ \t#]*$/m.exec(markdown)?.[1]?.trim() || undefined;
+const headingTrail = new Set([' ', '\t', '#', '\r']);
+
+export const firstHeading = (markdown: string) => {
+  for (const line of markdown.split('\n')) {
+    if (line[0] !== '#' || (line[1] !== ' ' && line[1] !== '\t')) continue;
+    let end = line.length;
+    while (end > 1 && headingTrail.has(line[end - 1] ?? '')) end--;
+    const title = line.slice(1, end).trim();
+    if (title) return title;
+  }
+  return undefined;
+};
 
 export const extractTitleFromPath = (path: string) => {
   const parts = javaSplit(path, /\//);

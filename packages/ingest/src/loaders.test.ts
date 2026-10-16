@@ -25,6 +25,7 @@ import {
   type IngestSource,
   type KudosProfile,
 } from './index.js';
+import { firstHeading } from './folder.js';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
@@ -276,6 +277,18 @@ describe('folder loader', () => {
       },
       { title: 'Notes', url: 'https://github.com/digdir/genki/blob/main/notes.md' },
     ]);
+  });
+
+  it('takes the first level-one heading, without closing hashes, tabs or a carriage return', () => {
+    expect(firstHeading('Intro\n## Sub\n#\tGenKI guide\t## \r\n# Second')).toBe('GenKI guide');
+    expect(firstHeading('#No space\n# \t#\n## Only sub')).toBeUndefined();
+  });
+
+  it('reads a heading line of many tabs in linear time', () => {
+    const started = performance.now();
+    expect(firstHeading(`#\t${'\t\t'.repeat(50_000)}`)).toBeUndefined();
+    expect(firstHeading(`#\ta${'\t'.repeat(100_000)}x`)).toBe(`a${'\t'.repeat(100_000)}x`);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('drops .md from folder links unless told to keep it', async () => {
