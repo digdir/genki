@@ -5,7 +5,7 @@ import { NoTextLayerError, type DocumentConverter } from './converter.js';
 import { readDocument, skipReasonFor, type ReadDocument } from './documents.js';
 import {
   extractTitleFromFileName,
-  firstHeading,
+  headingTitle,
   makeRelativePath,
   pathToDoc,
   prepareFolderChunks,
@@ -170,6 +170,7 @@ export interface FolderSourceOptions {
   baseUrl?: string;
   keepExtension?: boolean;
   titleFrom?: 'file-name' | 'heading';
+  extensions?: readonly string[];
   read?(path: string): Promise<string>;
   readBytes?(path: string): Promise<Uint8Array>;
   converter?: DocumentConverter;
@@ -183,11 +184,14 @@ const readFolderEntry = async (
     const text = await options.read(path);
     return text.trim() === '' ? { skip: 'no_text' } : { text };
   }
-  const skip = skipReasonFor(path, options.converter);
+  const skip = skipReasonFor(path, options.converter, options.extensions);
   if (skip) return { skip };
   return readDocument(
     { name: path, bytes: await (options.readBytes ?? readFile)(path) },
-    options.converter ? { converter: options.converter } : {},
+    {
+      ...(options.converter ? { converter: options.converter } : {}),
+      ...(options.extensions ? { textExtensions: options.extensions } : {}),
+    },
   );
 };
 
@@ -198,7 +202,9 @@ export const folderSource = (options: FolderSourceOptions): IngestSource => ({
     for (const entry of options.entries) {
       const read = await readFolderEntry(options, entry.path);
       const heading =
-        options.titleFrom === 'heading' && 'text' in read ? firstHeading(read.text) : undefined;
+        options.titleFrom === 'heading' && 'text' in read
+          ? headingTitle(entry.path, read.text)
+          : undefined;
       const doc = { ...pathToDoc(entry), ...(heading ? { title: heading } : {}) };
       const config = {
         ...(options.basePath ? { basePath: options.basePath } : {}),

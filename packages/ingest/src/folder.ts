@@ -60,6 +60,22 @@ export const firstHeading = (markdown: string) => {
   return undefined;
 };
 
+const quotes = new Set(['"', "'"]);
+
+export const yamlName = (yaml: string) => {
+  for (const line of yaml.split('\n')) {
+    if (!line.startsWith('name:')) continue;
+    let value = line.slice(5).trim();
+    if (value.length > 1 && quotes.has(value[0] ?? '') && value.at(-1) === value[0])
+      value = value.slice(1, -1).trim();
+    return value || undefined;
+  }
+  return undefined;
+};
+
+export const headingTitle = (path: string, text: string) =>
+  ['.yaml', '.yml'].includes(extname(path).toLowerCase()) ? yamlName(text) : firstHeading(text);
+
 export const extractTitleFromPath = (path: string) => {
   const parts = javaSplit(path, /\//);
   const filename = (parts[parts.length - 1] ?? '').replace(/\.md$/, '');

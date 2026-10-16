@@ -1,5 +1,5 @@
 import { cpSync, globSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, matchesGlob } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
@@ -17,11 +17,26 @@ export const docsPipelineFile = join(
 
 export const docsBundleFolder = 'genki-docs';
 
-export const docsBundleIncludes = (file = docsPipelineFile): string[] =>
-  (parseYaml(readFileSync(file, 'utf8')) as { spec: { source: { include: string[] } } }).spec.source
-    .include;
+const docsSource = (file: string) =>
+  (
+    parseYaml(readFileSync(file, 'utf8')) as {
+      spec: { source: { include: string[]; exclude?: string[]; extensions?: string[] } };
+    }
+  ).spec.source;
 
-export const docsBundleFiles = (root = repo, includes = docsBundleIncludes()): string[] =>
+export const docsBundleIncludes = (file = docsPipelineFile): string[] => docsSource(file).include;
+
+export const docsBundleExcludes = (file = docsPipelineFile): string[] =>
+  docsSource(file).exclude ?? [];
+
+export const docsBundleExtensions = (file = docsPipelineFile): string[] =>
+  docsSource(file).extensions ?? ['.md', '.txt', '.html', '.htm'];
+
+export const docsBundleFiles = (
+  root = repo,
+  includes = docsBundleIncludes(),
+  excludes = docsBundleExcludes(),
+): string[] =>
   [
     ...new Set(
       globSync(includes, {
@@ -31,6 +46,7 @@ export const docsBundleFiles = (root = repo, includes = docsBundleIncludes()): s
     ),
   ]
     .map((path) => path.split('\\').join('/'))
+    .filter((path) => !excludes.some((pattern) => matchesGlob(path, pattern)))
     .sort();
 
 export const writeDocsBundle = (out: string, root = repo): string[] => {

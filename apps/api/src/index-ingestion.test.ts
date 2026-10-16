@@ -169,6 +169,55 @@ describe('index ingestion', () => {
     ]);
   });
 
+  it('a folder pipeline reads YAML files only when its extensions allow .yaml', async () => {
+    root = await mkdtemp(join(tmpdir(), 'ingest-'));
+    await mkdir(join(root, 'moduler'));
+    await writeFile(join(root, 'moduler', 'klient.yaml'), 'id: klient\nname: Klienten\n');
+    const folder = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      folderRoot: root,
+      platformTenant: 'digdir',
+    });
+    const source = { kind: 'folder', path: 'moduler', include: ['*.yaml'] };
+
+    expect(await folder.run(jobFor(source), signal)).toMatchObject({ stored: 0, skipped: 1 });
+    expect(
+      await folder.run(jobFor({ ...source, extensions: ['.md', '.yaml'] }), signal),
+    ).toMatchObject({ stored: 1, skipped: 0 });
+  });
+
+  it('a folder pipeline leaves out the files its exclude list names', async () => {
+    root = await mkdtemp(join(tmpdir(), 'ingest-'));
+    await mkdir(join(root, 'moduler'));
+    await writeFile(join(root, 'moduler', 'klient.md'), '# Klienten\n\nTekst.');
+    await writeFile(join(root, 'moduler', 'rekkefolge.md'), '# Rekkefølge\n\nTekst.');
+    const folder = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      folderRoot: root,
+      platformTenant: 'digdir',
+    });
+
+    expect(
+      await folder.run(
+        jobFor({ kind: 'folder', path: 'moduler', exclude: ['rekkefolge.md'] }),
+        signal,
+      ),
+    ).toMatchObject({ stored: 1, skipped: 0 });
+  });
+
+  it('a folder pipeline accepts only known text extensions', () => {
+    const parse = (extensions: unknown) =>
+      pipelineSpec.safeParse({
+        name: 'Moduler',
+        source: { kind: 'folder', path: '.', extensions },
+      }).success;
+
+    expect(parse(['.md', '.yaml', '.yml'])).toBe(true);
+    expect([parse(['.pdf']), parse(['yaml']), parse([])]).toEqual([false, false, false]);
+  });
+
   it('converts PDF and DOCX from websites and folders when a converter is configured', async () => {
     root = await mkdtemp(join(tmpdir(), 'ingest-'));
     await mkdir(join(root, 'rapporter'));

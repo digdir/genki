@@ -2,7 +2,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { docsBundleFiles, docsBundleFolder, writeDocsBundle } from './docs-bundle.ts';
+import {
+  docsBundleExtensions,
+  docsBundleFiles,
+  docsBundleFolder,
+  writeDocsBundle,
+} from './docs-bundle.ts';
 import { shippedAssets } from './runtime-assets.ts';
 
 const repo = join(import.meta.dirname, '..');
@@ -26,9 +31,21 @@ describe('the GenKI docs bundle', () => {
     );
   });
 
-  it('takes only markdown, and nothing from node_modules or builds', () => {
+  it('holds the System Atlas module files but not their order list', () => {
+    expect(docsBundleFiles()).toEqual(
+      expect.arrayContaining([
+        'docs/architecture/modules/client.yaml',
+        'docs/architecture/modules/ingest.yaml',
+      ]),
+    );
+    expect(docsBundleFiles()).not.toContain('docs/architecture/modules/order.yaml');
+  });
+
+  it('takes only the file types the pipeline reads, and nothing from node_modules or builds', () => {
     const files = docsBundleFiles();
-    expect(files.filter((f) => !f.endsWith('.md'))).toEqual([]);
+    const extensions = docsBundleExtensions();
+    expect(extensions).toEqual(['.md', '.yaml']);
+    expect(files.filter((f) => !extensions.some((e) => f.endsWith(e)))).toEqual([]);
     expect(files.filter((f) => /(^|\/)(node_modules|dist)\//.test(f))).toEqual([]);
   });
 
