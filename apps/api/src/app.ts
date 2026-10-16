@@ -7,6 +7,7 @@ import { tenantAccess, type Access } from './access.js';
 import { requireChangeReason } from './change-reason.js';
 import { rememberActorNames, type ActorNames } from './actor-names.js';
 import { createAdmin, type Admin, type ModelAdmin } from './admin.js';
+import { acceptDecodedIds } from './decoded-ids.js';
 import { registerDefinitionRoutes } from './definitions.js';
 import {
   apiNotFoundBody,
@@ -84,6 +85,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       });
     },
   });
+  acceptDecodedIds(app);
 
   app.use('*', securityHeaders);
   app.use('*', gzipResponses());
