@@ -10,6 +10,7 @@ import {
   documentId,
   fillInKudosFields,
   findFolderFiles,
+  folderSource,
   generatePhrases,
   guardedFetchText,
   kudosClient,
@@ -249,6 +250,46 @@ describe('folder loader', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('links a folder document to its file with the extension kept and titles it by its first heading', async () => {
+    const files: Record<string, string> = {
+      '/repo/docs/adr/0033-locked.md': 'Intro.\n\n# 0033 Locked test environment\n\n## Why\n',
+      '/repo/notes.md': 'No heading here.',
+    };
+    const source = folderSource({
+      entries: Object.keys(files).map((path) => ({ path, lastmod: '1' })),
+      basePath: '/repo/',
+      baseUrl: 'https://github.com/digdir/genki/blob/main/',
+      keepExtension: true,
+      titleFrom: 'heading',
+      read: async (path) => files[path] ?? '',
+    });
+    const stored = [];
+    for await (const document of source.documents()) stored.push(document.stored([]));
+
+    expect(stored).toMatchObject([
+      {
+        title: '0033 Locked test environment',
+        path: 'docs/adr/0033-locked.md',
+        url: 'https://github.com/digdir/genki/blob/main/docs/adr/0033-locked.md',
+      },
+      { title: 'Notes', url: 'https://github.com/digdir/genki/blob/main/notes.md' },
+    ]);
+  });
+
+  it('drops .md from folder links unless told to keep it', async () => {
+    const source = folderSource({
+      entries: [{ path: '/site/guide/start.md', lastmod: '1' }],
+      basePath: '/site/',
+      baseUrl: 'https://www.example.no/',
+      read: async () => '# Start',
+    });
+    for await (const document of source.documents())
+      expect(document.stored([])).toMatchObject({
+        title: 'Start',
+        url: 'https://www.example.no/guide/start',
+      });
   });
 });
 

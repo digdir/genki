@@ -37,11 +37,18 @@ export const findFolderFiles = async (
 export const makeRelativePath = (basePath: string | undefined, path: string) =>
   basePath && path.startsWith(basePath) ? path.slice(basePath.length) : path;
 
-export const makeFolderUrl = (baseUrl: string | undefined, relativePath: string | undefined) => {
+export const makeFolderUrl = (
+  baseUrl: string | undefined,
+  relativePath: string | undefined,
+  keepExtension = false,
+) => {
   if (!baseUrl || !relativePath) return undefined;
-  const withoutMd = relativePath.replace(/\.md$/, '');
-  return `${baseUrl}${withoutMd.startsWith('/') ? withoutMd.slice(1) : withoutMd}`;
+  const path = keepExtension ? relativePath : relativePath.replace(/\.md$/, '');
+  return `${baseUrl}${path.startsWith('/') ? path.slice(1) : path}`;
 };
+
+export const firstHeading = (markdown: string) =>
+  /^#[ \t]+(.+?)[ \t#]*$/m.exec(markdown)?.[1]?.trim() || undefined;
 
 export const extractTitleFromPath = (path: string) => {
   const parts = javaSplit(path, /\//);
@@ -71,11 +78,12 @@ const pick = (record: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(keys.flatMap((k) => (k in record ? [[k, record[k]]] : [])));
 
 export const prepareFolderDoc = (
-  config: { basePath?: string; baseUrl?: string },
+  config: { basePath?: string; baseUrl?: string; keepExtension?: boolean },
   doc: Record<string, unknown>,
 ) => {
   const relative = makeRelativePath(config.basePath, String(doc.path));
-  return pick({ ...doc, path: relative, url: makeFolderUrl(config.baseUrl, relative) ?? null }, [
+  const url = makeFolderUrl(config.baseUrl, relative, config.keepExtension) ?? null;
+  return pick({ ...doc, path: relative, url }, [
     'id',
     'doc_num',
     'title',

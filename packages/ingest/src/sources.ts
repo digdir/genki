@@ -5,6 +5,7 @@ import { NoTextLayerError, type DocumentConverter } from './converter.js';
 import { readDocument, skipReasonFor, type ReadDocument } from './documents.js';
 import {
   extractTitleFromFileName,
+  firstHeading,
   makeRelativePath,
   pathToDoc,
   prepareFolderChunks,
@@ -167,6 +168,8 @@ export interface FolderSourceOptions {
   entries: FolderEntry[];
   basePath?: string;
   baseUrl?: string;
+  keepExtension?: boolean;
+  titleFrom?: 'file-name' | 'heading';
   read?(path: string): Promise<string>;
   readBytes?(path: string): Promise<Uint8Array>;
   converter?: DocumentConverter;
@@ -193,11 +196,14 @@ export const folderSource = (options: FolderSourceOptions): IngestSource => ({
   phraseRows: 'pipeline',
   documents: async function* () {
     for (const entry of options.entries) {
-      const doc = pathToDoc(entry);
       const read = await readFolderEntry(options, entry.path);
+      const heading =
+        options.titleFrom === 'heading' && 'text' in read ? firstHeading(read.text) : undefined;
+      const doc = { ...pathToDoc(entry), ...(heading ? { title: heading } : {}) };
       const config = {
         ...(options.basePath ? { basePath: options.basePath } : {}),
         ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+        ...(options.keepExtension ? { keepExtension: true } : {}),
       };
       yield {
         key: doc.id,

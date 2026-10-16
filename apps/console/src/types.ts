@@ -879,3 +879,19 @@ export interface ModelSettings {
   capabilities: Capability[];
   enabled: boolean;
 }
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AnswerSource {
+  index?: number;
+  title: string;
+  url?: string;
+}
+
+export interface ServiceAnswer {
+  text: string;
+  sources: AnswerSource[];
+}

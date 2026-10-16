@@ -33,6 +33,8 @@ In prod the names are `genai-prod-*` and the host names end in `genki.digdir.clo
 
 The `api` and `worker` images hold each package's `dist` and the folders in `docker/runtime-assets`: the files the code reads from disk next to itself, such as eval judges, test sets and the seeded services. A test (`scripts/runtime-assets.test.ts`) fails when the code reads such a folder that is not listed.
 
+They also hold `/app/genki-docs`: the documentation the GenKI guide answers from, collected at build time by `scripts/docs-bundle.ts` with the include list of `apps/api/config/local/pipelines/genki-docs.yaml`, so the guide always matches the deployed code. `INGEST_FOLDER_ROOT` points there, which makes it the only folder that folder pipelines can read.
+
 The `apps` image holds all three app builds; `APP` picks which one a container serves. Settings are read at start, not at build: the container writes `/config.js` from its environment (`ANSATTPORTEN_ISSUER`, `OIDC_CLIENT_ID`, `API_AUDIENCE`, `ALTINN_RESOURCE`, `PUBLIC_API_BASE`, `PORTAL_URL`, and for the console `OIDC_ISSUER`, `OIDC_TOKEN_ENDPOINT`, `ENVIRONMENT`), so one image runs in every environment. It proxies `/api/` to the API (`API_UPSTREAM`), so the browser talks to one origin and the API needs no CORS. The proxy drops `/api` and forwards the rest of the request URI as the browser sent it, so encoded slashes in ids such as `digdir%2Fkudos` reach the API still encoded. It sends a Content Security Policy that allows connections to the login issuer only.
 
 ## Database
@@ -40,6 +42,8 @@ The `apps` image holds all three app builds; `APP` picks which one a container s
 The API and worker log in to Postgres with the app's managed identity and an Entra ID token as the password (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, `AZURE_CLIENT_ID`). The token is fetched when a connection opens and reused until five minutes before it expires. `DATABASE_URL` still wins when set, which is how local development connects.
 
 The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022).
+
+The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list, and the pgvector engine creates `vector` when it first migrates. To allow more extensions later, add them to the same comma-separated value.
 
 ## Settings and secrets
 

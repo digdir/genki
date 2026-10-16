@@ -373,6 +373,8 @@ const sourceOf = async (
       entries: listed,
       basePath: `${root}${sep}`,
       ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
+      ...(source.keepExtension ? { keepExtension: true } : {}),
+      ...(source.titleFrom ? { titleFrom: source.titleFrom } : {}),
       ...(converter ? { converter } : {}),
     });
   }
