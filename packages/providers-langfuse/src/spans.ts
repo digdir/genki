@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Event, Ref, Task, Usage } from '@genai/contracts';
+import type { Event, Part, Ref, Task, Usage } from '@genai/contracts';
+import { citedSources, traceOutput } from './output.js';
 
 export type AnyValue =
   | { stringValue: string }
@@ -204,6 +205,7 @@ const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
   const name = task?.service.capability.id ?? 'task';
   const inputEvent = events.find((e) => e.type === 'kernel.task.input');
   const resultEvent = events.find((e) => e.type === 'kernel.result');
+  const parts = Array.isArray(resultEvent?.data) ? (resultEvent.data as Part[]) : undefined;
   const statusMessage = error
     ? content && error.message
       ? `${error.code}: ${error.message}`
@@ -243,9 +245,11 @@ const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
           `${i.dataset}${i.generation ? `@${i.generation}` : ''}${i.collections?.length ? ` (${i.collections.join(', ')})` : ''}`,
       ),
       'genai.error.code': error?.code,
+      'genai.citations': parts ? citedSources(parts).length : undefined,
       'langfuse.observation.input':
         content && inputEvent ? json((inputEvent.data as { input?: unknown }).input) : undefined,
-      'langfuse.observation.output': content && resultEvent ? json(resultEvent.data) : undefined,
+      'langfuse.observation.output':
+        content && resultEvent ? json(parts ? traceOutput(parts) : resultEvent.data) : undefined,
     }),
     status: {
       code: status === 'failed' ? STATUS_ERROR : status === 'completed' ? STATUS_OK : STATUS_UNSET,

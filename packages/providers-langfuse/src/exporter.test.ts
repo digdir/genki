@@ -15,6 +15,7 @@ import {
   observedEventLog,
   type ExporterConfigInput,
   type OtlpSpan,
+  type TraceOutput,
 } from './index.js';
 
 interface Received {
@@ -74,6 +75,7 @@ const attr = (span: OtlpSpan | undefined, key: string) => {
 
 const personalNumber = '01017012345';
 const secretAnswer = 'Hemmelig svar om saken';
+const secretSource = 'Hemmelig kildetekst om saken';
 const kari: Principal = {
   kind: 'employee',
   issuer: 'test',
@@ -138,7 +140,31 @@ const run = async (config: Omit<ExporterConfigInput, 'endpoint'>, url: string, f
           await child.result;
           if (fail) throw new Error(`failed on ${personalNumber}`);
           yield { type: 'kernel.part', data: textPart(answer), span: { id: 'answer' } };
-          yield { type: 'kernel.result', data: [textPart(answer)] };
+          yield {
+            type: 'kernel.result',
+            data: [
+              { ...textPart(`${answer} [1]`), meta: { citations: [{ index: 1, chunkId: 'c1' }] } },
+              {
+                mime: 'application/vnd.genai.sources+json',
+                body: {
+                  kind: 'json',
+                  json: {
+                    sources: [
+                      {
+                        chunkId: 'c1',
+                        title: 'Årsrapport 2023',
+                        headers: ['Årsrapport 2023', 'Likelønn'],
+                        url: 'https://kudos.dfo.no/dokument/d1',
+                        document: 'd1',
+                        publishedAt: '2024-04-15',
+                        text: secretSource,
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          };
         },
       },
       {
@@ -194,6 +220,8 @@ describe('trace exporter', () => {
     const raw = received.map((r) => r.raw).join('');
     expect(raw).not.toContain(personalNumber);
     expect(raw).not.toContain(secretAnswer);
+    expect(raw).not.toContain(secretSource);
+    expect(raw).not.toContain('Årsrapport 2023');
     expect(raw).not.toContain('kari-nordmann');
 
     const spans = received.flatMap((r) => r.spans);
@@ -211,6 +239,8 @@ describe('trace exporter', () => {
     ]);
     expect(attr(root, 'langfuse.user.id')).toBeUndefined();
     expect(attr(root, 'langfuse.observation.input')).toBeUndefined();
+    expect(attr(root, 'langfuse.observation.output')).toBeUndefined();
+    expect(attr(root, 'genai.citations')).toBe(1);
 
     const generation = spans.find((s) => attr(s, 'langfuse.observation.type') === 'generation');
     expect(generation?.parentSpanId).toBe(root?.spanId);
@@ -226,14 +256,27 @@ describe('trace exporter', () => {
     expect(child?.parentSpanId).toBe(root?.spanId);
   });
 
-  it('includes prompts and answers only when the connection opts in to content', async () => {
+  it('includes the question, the answer and the sources it cites only when the connection opts in to content', async () => {
     const { url, received } = await collector();
 
     await run({ content: true }, url);
 
     const root = received.flatMap((r) => r.spans).find((s) => s.name === 'kunnskapsassistenten');
     expect(attr(root, 'langfuse.observation.input')).toContain(personalNumber);
-    expect(attr(root, 'langfuse.observation.output')).toContain(secretAnswer);
+    const output = JSON.parse(String(attr(root, 'langfuse.observation.output'))) as TraceOutput;
+    expect(output.answer).toBe(`${secretAnswer} [1]`);
+    expect(output.citations).toEqual([
+      {
+        index: 1,
+        title: 'Årsrapport 2023',
+        breadcrumb: 'Årsrapport 2023 › Likelønn',
+        url: 'https://kudos.dfo.no/dokument/d1',
+        document_id: 'd1',
+        published_at: '2024-04-15',
+        chunk_id: 'c1',
+        excerpt: secretSource,
+      },
+    ]);
   });
 
   it('authenticates to Langfuse and adds a pseudonymous user id when a pseudonym key is set', async () => {

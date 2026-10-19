@@ -8,8 +8,8 @@ status: Provider
 packages:
   - '@genai/providers-langfuse'
 summary: Exports task events as OTLP spans to Langfuse, metadata only unless opted in.
-description: Wraps the event log; content goes out only if the connection opts in and the sink can
-  honour erasure (ADR 0011).
+description: Wraps the event log; content (the question, the answer and the sources it cites) goes
+  out only if the connection opts in and the sink can honour erasure (ADR 0011).
 responsibilities:
   - Build spans from events
   - Export with content opt-in
