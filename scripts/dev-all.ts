@@ -16,11 +16,29 @@ export interface DevProcess {
   env?: Record<string, string>;
 }
 
+// Run npm through the node that runs this script: spawning `npm` without a shell fails on
+// Windows, where npm is npm.cmd. npm sets npm_execpath to its own CLI when it runs a script.
+export const npmCommand = (
+  args: string[],
+  execPath = process.env.npm_execpath,
+): Pick<DevProcess, 'command' | 'args'> =>
+  execPath && /\.[cm]?js$/.test(execPath)
+    ? { command: process.execPath, args: [execPath, ...args] }
+    : { command: 'npm', args };
+
 const vite = (name: string, port: number, env: Record<string, string> = {}): DevProcess => ({
   name,
   port,
-  command: 'npm',
-  args: ['run', 'dev', '--workspace', `apps/${name}`, '--', '--port', String(port), '--strictPort'],
+  ...npmCommand([
+    'run',
+    'dev',
+    '--workspace',
+    `apps/${name}`,
+    '--',
+    '--port',
+    String(port),
+    '--strictPort',
+  ]),
   env,
 });
 
@@ -83,8 +101,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
     {
       name: 'api',
       port: ports.api,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', 'apps/api'],
+      ...npmCommand(['run', 'dev', '--workspace', 'apps/api']),
       env: {
         ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
         ...(custom ? { PORT: String(ports.api) } : {}),

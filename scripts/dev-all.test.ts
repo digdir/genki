@@ -7,6 +7,7 @@ import {
   devProcesses,
   localModelPort,
   missingCallbacks,
+  npmCommand,
   portInUse,
   prefixer,
   repoRoot,
@@ -39,6 +40,18 @@ describe('dev:all', () => {
     ).toMatchObject({ port: 8095, env: { LOCAL_MODEL_PORT: '8095' } });
     expect(localModelPort('https://models.example.no/v1')).toBeUndefined();
     expect(localModelPort('not a url')).toBeUndefined();
+  });
+
+  it('runs npm through this node when npm gives its CLI, so Windows needs no shell', () => {
+    expect(npmCommand(['run', 'dev'], 'C:\nodejs\node_modules\npm\bin\npm-cli.js')).toEqual({
+      command: process.execPath,
+      args: ['C:\nodejs\node_modules\npm\bin\npm-cli.js', 'run', 'dev'],
+    });
+    expect(npmCommand(['run', 'dev'], '')).toEqual({ command: 'npm', args: ['run', 'dev'] });
+    expect(npmCommand(['run', 'dev'], '/usr/bin/yarn')).toEqual({
+      command: 'npm',
+      args: ['run', 'dev'],
+    });
   });
 
   it('starts the API in dev mode unless GENAI_DEV_MODE is set', () => {
