@@ -30,3 +30,6 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0031](0031-services-variants-and-ways-of-working.md)    | Services, variants and ways of working   | Accepted, partly built                                              |
 | [0032](0032-the-portal-is-one-client.md)                 | The portal is one client                 | Accepted, partly built                                              |
 | [0033](0033-locked-test-environment.md)                  | Locked test environment                  | Accepted, built                                                     |
+| [0034](0034-tokens-in-the-browser.md)                    | Tokens in the browser                    | Proposed                                                            |
+| [0035](0035-operator-login.md)                           | Operator login                           | Proposed                                                            |
+| [0036](0036-delegating-platform-rights.md)               | Delegating platform rights               | Proposed                                                            |

@@ -165,4 +165,29 @@ describe('ingestion pipelines', () => {
       await screen.findByRole('heading', { name: 'Krever egen skrivenøkkel og en beslutning' }),
     ).toBeTruthy();
   });
+
+  it('runs a pipeline with the default reason, which is long enough for the API', async () => {
+    const base = '/operator/datasets/digdir%2Fgenki-docs/pipelines';
+    const { calls, api } = platform({
+      [`GET ${base}`]: () => [
+        200,
+        {
+          data: [{ id: 'genki-docs', version: 1, spec: { name: 'GenKI-dokumentasjonen' } }],
+          backend: { name: 'pgvector', available: true },
+        },
+      ],
+      [`GET ${base}/genki-docs/versions`]: () => [200, { data: [] }],
+      [`POST ${base}/genki-docs/execute`]: () => [202, { id: 'run-1', status: 'running' }],
+    });
+    render(<Pipelines api={api} base={base} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Åpne/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør' }));
+
+    await screen.findByText(/startet/i);
+    const reason = decodeURIComponent(
+      calls.find((c) => c.method === 'POST')?.headers.get('change-reason') ?? '',
+    );
+    expect(reason.trim().length).toBeGreaterThanOrEqual(10);
+  });
 });

@@ -1,0 +1,23 @@
+dataset: digdir/genki-docs
+id: genki-docs
+spec:
+  name: GenKI-dokumentasjonen
+  description: README, bidragsregler, sikkerhet, ADR-er, utviklerdokumentasjon, API-dokumentasjon, README-ene til pakkene og modulbeskrivelsene i System Atlas, slik de ligger i koden som kjører
+  source:
+    kind: folder
+    path: .
+    include:
+      - README.md
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - docs/**/*.md
+      - docs/architecture/modules/*.yaml
+      - packages/*/README.md
+      - apps/*/README.md
+      - examples/*/README.md
+    exclude:
+      - docs/architecture/modules/order.yaml
+    baseUrl: https://github.com/digdir/genki/blob/main/
+    keepExtension: true
+    titleFrom: heading
+    extensions: [.md, .yaml]

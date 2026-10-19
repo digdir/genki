@@ -62,7 +62,7 @@ export const config = {
   writeKeyNotice: 'Requires a separate write key and a decision',
   ingestion: 'Ingestion',
   ingestionReasonLabel: 'Reason for the ingestion',
-  ingestionDefaultReason: 'Ingestion',
+  ingestionDefaultReason: 'Ingestion from the console',
   run: 'Run',
   ingestionBlocked:
     'Ingestion writes to the search index and is switched off until a separate write key is set up and its use is decided. The setup is saved and can be run later.',

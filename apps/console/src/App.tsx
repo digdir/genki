@@ -1,6 +1,6 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { resolveLocale } from '@genai/i18n';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import { useT } from './i18n';
 import { LoginError, operatorRole, type AuthClient } from './auth';
@@ -28,6 +28,8 @@ import { Tracing } from './screens/Tracing';
 import { allPages, Shell, type NavBadges } from './Shell';
 import { EmptyState, Loading } from './states';
 import { SupportProvider } from './support';
+
+const Atlas = lazy(() => import('./screens/Atlas').then((m) => ({ default: m.Atlas })));
 import type { OperatorSession } from './types';
 
 interface Props {
@@ -200,6 +202,12 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
 
   const { path, params } = splitRoute(hash);
   const current = path === '/' ? '/tenants' : path;
+  if (current === '/atlas')
+    return (
+      <Suspense fallback={null}>
+        <Atlas api={api} />
+      </Suspense>
+    );
   const page = allPages.find((p) => p.path === current);
   const screens: Record<string, () => React.ReactNode> = {
     '/tenants': () => <Tenants api={api} />,

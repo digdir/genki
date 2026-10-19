@@ -63,6 +63,7 @@ import {
 } from './definition-sources.js';
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
+import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
@@ -552,6 +553,11 @@ if (
 for (const outcome of await seedDefinitions(admin, platform.definitions, seeded.definitions))
   if (outcome.state === 'published') log('definition published', outcome);
   else if (outcome.state === 'skipped') log('definition skipped', outcome);
+
+const pipelineSeeds = readPipelineSeeds(join(configDir, 'pipelines'));
+for (const unreadable of pipelineSeeds.unreadable) log('pipeline seed unreadable', unreadable);
+for (const outcome of await seedPipelines(platform.ingestion, pipelineSeeds.seeds))
+  if (outcome.state !== 'present') log(`pipeline ${outcome.state}`, outcome);
 
 const clientsDir = join(configDir, 'clients');
 for (const file of existsSync(clientsDir)

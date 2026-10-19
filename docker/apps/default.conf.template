@@ -27,6 +27,12 @@ server {
     add_header Cache-Control "no-store" always;
   }
 
+  location = /system-atlas.html {
+    include /etc/nginx/genki-headers-same-origin.conf;
+    add_header Cache-Control "no-cache" always;
+    try_files $uri =404;
+  }
+
   location /assets/ {
     include /etc/nginx/genki-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable" always;

@@ -99,16 +99,26 @@ describe('operator shell', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
-  it('links to the system atlas in a new tab from the support menu', async () => {
+  it('links to the system atlas screen inside the console from the support menu', async () => {
     await signedIn('#/tenants');
 
     const menu = screen.getByRole('navigation', { name: 'Konsollmeny' });
-    const atlas = within(menu).getByRole('link', { name: /^Systematlas/ });
+    const atlas = within(menu).getByRole('link', { name: 'Systematlas' });
 
-    expect(atlas.textContent).toMatch(/åpnes i ny fane/);
-    expect(atlas.getAttribute('href')).toBe('/system-atlas.html');
-    expect(atlas.getAttribute('target')).toBe('_blank');
-    expect(atlas.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(atlas.getAttribute('href')).toBe('#/atlas');
+    expect(atlas.getAttribute('target')).toBeNull();
+    expect(within(menu).getByText('Atlaset finnes bare på engelsk.')).toBeTruthy();
+  });
+
+  it('shows the atlas on the whole view without the console shell on the atlas route', async () => {
+    await signedIn('#/atlas');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Systematlas' })).toBeTruthy();
+    expect(screen.getByTitle('Systematlas for GenKI').getAttribute('src')).toBe(
+      '/system-atlas.html',
+    );
+    expect(screen.queryByRole('navigation', { name: 'Konsollmeny' })).toBeNull();
+    expect(screen.queryByText('Driftskonsoll')).toBeNull();
   });
 
   it('shows the dark header, audit notice, grouped menu with badges and the current page', async () => {

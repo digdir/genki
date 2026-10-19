@@ -15,6 +15,7 @@ RUN mkdir -p /out && \
     for asset in $(cat docker/runtime-assets); do \
       mkdir -p "/out/$(dirname "$asset")" && cp -r "$asset" "/out/$asset" || exit 1; \
     done && \
+    node scripts/docs-bundle.ts /out/genki-docs && \
     cp package.json package-lock.json /out/
 
 FROM ${NODE_IMAGE} AS deps

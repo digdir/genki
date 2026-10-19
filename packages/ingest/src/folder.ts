@@ -37,11 +37,44 @@ export const findFolderFiles = async (
 export const makeRelativePath = (basePath: string | undefined, path: string) =>
   basePath && path.startsWith(basePath) ? path.slice(basePath.length) : path;
 
-export const makeFolderUrl = (baseUrl: string | undefined, relativePath: string | undefined) => {
+export const makeFolderUrl = (
+  baseUrl: string | undefined,
+  relativePath: string | undefined,
+  keepExtension = false,
+) => {
   if (!baseUrl || !relativePath) return undefined;
-  const withoutMd = relativePath.replace(/\.md$/, '');
-  return `${baseUrl}${withoutMd.startsWith('/') ? withoutMd.slice(1) : withoutMd}`;
+  const path = keepExtension ? relativePath : relativePath.replace(/\.md$/, '');
+  return `${baseUrl}${path.startsWith('/') ? path.slice(1) : path}`;
 };
+
+const headingTrail = new Set([' ', '\t', '#', '\r']);
+
+export const firstHeading = (markdown: string) => {
+  for (const line of markdown.split('\n')) {
+    if (line[0] !== '#' || (line[1] !== ' ' && line[1] !== '\t')) continue;
+    let end = line.length;
+    while (end > 1 && headingTrail.has(line[end - 1] ?? '')) end--;
+    const title = line.slice(1, end).trim();
+    if (title) return title;
+  }
+  return undefined;
+};
+
+const quotes = new Set(['"', "'"]);
+
+export const yamlName = (yaml: string) => {
+  for (const line of yaml.split('\n')) {
+    if (!line.startsWith('name:')) continue;
+    let value = line.slice(5).trim();
+    if (value.length > 1 && quotes.has(value[0] ?? '') && value.at(-1) === value[0])
+      value = value.slice(1, -1).trim();
+    return value || undefined;
+  }
+  return undefined;
+};
+
+export const headingTitle = (path: string, text: string) =>
+  ['.yaml', '.yml'].includes(extname(path).toLowerCase()) ? yamlName(text) : firstHeading(text);
 
 export const extractTitleFromPath = (path: string) => {
   const parts = javaSplit(path, /\//);
@@ -71,11 +104,12 @@ const pick = (record: Record<string, unknown>, keys: string[]) =>
   Object.fromEntries(keys.flatMap((k) => (k in record ? [[k, record[k]]] : [])));
 
 export const prepareFolderDoc = (
-  config: { basePath?: string; baseUrl?: string },
+  config: { basePath?: string; baseUrl?: string; keepExtension?: boolean },
   doc: Record<string, unknown>,
 ) => {
   const relative = makeRelativePath(config.basePath, String(doc.path));
-  return pick({ ...doc, path: relative, url: makeFolderUrl(config.baseUrl, relative) ?? null }, [
+  const url = makeFolderUrl(config.baseUrl, relative, config.keepExtension) ?? null;
+  return pick({ ...doc, path: relative, url }, [
     'id',
     'doc_num',
     'title',

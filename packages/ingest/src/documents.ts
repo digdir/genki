@@ -5,6 +5,8 @@ import type { SkipReason } from './pipeline.js';
 
 export const textExtensions: readonly string[] = ['.md', '.txt', '.html', '.htm'];
 
+export const readableTextExtensions = ['.md', '.txt', '.html', '.htm', '.yaml', '.yml'] as const;
+
 export const defaultConvertibleExtensions: readonly string[] = ['.pdf', '.docx'];
 
 const unsearchableWebExtensions = new Set([
@@ -47,9 +49,10 @@ export const convertibleExtensions = (converter?: DocumentConverter): readonly s
 export const skipReasonFor = (
   path: string,
   converter?: DocumentConverter,
+  texts: readonly string[] = textExtensions,
 ): SkipReason | undefined => {
   const ext = extname(path).toLowerCase();
-  return textExtensions.includes(ext) || convertibleExtensions(converter).includes(ext)
+  return texts.includes(ext) || convertibleExtensions(converter).includes(ext)
     ? undefined
     : 'unsupported_type';
 };
@@ -70,6 +73,7 @@ export interface ReadDocumentOptions {
   converter?: DocumentConverter;
   extract?: ContentExtractor;
   defaultExtension?: string;
+  textExtensions?: readonly string[];
 }
 
 const kindOf = (file: DocumentFile, fallback = '') => {
@@ -90,7 +94,8 @@ export const readDocument = async (
       );
       return { text: page.markdown, ...(page.title ? { title: page.title } : {}) };
     }
-    if (textExtensions.includes(kind)) return { text: new TextDecoder().decode(file.bytes) };
+    if ((options.textExtensions ?? textExtensions).includes(kind))
+      return { text: new TextDecoder().decode(file.bytes) };
     if (!options.converter || !convertibleExtensions(options.converter).includes(kind))
       return { skip: 'unsupported_type' };
     try {

@@ -367,12 +367,15 @@ const sourceOf = async (
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
     const name = (path: string) => relative(root, path).split(sep).join('/');
     const listed = (await findFolderFiles(root, 'all')).filter((e) =>
-      selected(name(e.path), source.include),
+      selected(name(e.path), source.include, source.exclude),
     );
     return folderSource({
       entries: listed,
       basePath: `${root}${sep}`,
       ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
+      ...(source.keepExtension ? { keepExtension: true } : {}),
+      ...(source.titleFrom ? { titleFrom: source.titleFrom } : {}),
+      ...(source.extensions ? { extensions: source.extensions } : {}),
       ...(converter ? { converter } : {}),
     });
   }

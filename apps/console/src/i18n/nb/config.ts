@@ -61,7 +61,7 @@ export const config = defineNamespace({
   writeKeyNotice: 'Krever egen skrivenøkkel og en beslutning',
   ingestion: 'Innlesing',
   ingestionReasonLabel: 'Begrunnelse for innlesingen',
-  ingestionDefaultReason: 'Innlesing',
+  ingestionDefaultReason: 'Innlesing fra konsollet',
   run: 'Kjør',
   ingestionBlocked:
     'Innlesing skriver til søkeindeksen og er slått av til en egen skrivenøkkel er satt opp og bruken er besluttet. Oppsettet er lagret og kan kjøres senere.',

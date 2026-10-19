@@ -102,3 +102,10 @@ datasets:
           include: [doc_num, total_chunks, title]
           params:
             { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+  - id: digdir/genki-docs
+    name: GenKI-dokumentasjon
+    description: Dokumentasjonen til GenKI selv, lest inn fra filene i koden som kjører
+    endpoint: platform-pg
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    options: { textSearchConfig: english }
