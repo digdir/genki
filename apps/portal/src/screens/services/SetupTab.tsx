@@ -4,6 +4,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  Details,
   Field,
   Input,
   Label,
@@ -78,7 +79,7 @@ import {
   type SchedulePreset,
 } from '../../data/service-form';
 import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
-import { strategyFor, takesOf } from '../../data/strategies';
+import { defaultInstructionsOf, strategyFor, takesOf } from '../../data/strategies';
 import type { AsyncState } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
 import { useUserName } from '../../Shell';
@@ -237,6 +238,52 @@ export const defaultInstructions = (t: T, spec: ServiceSpec) => {
   return spec.strategy.id && !['single-call', 'step-flow'].includes(spec.strategy.id)
     ? t('setup.instructionsBuiltIn')
     : undefined;
+};
+
+const BuiltInInstructions = ({
+  strategy,
+  own,
+  onUse,
+}: {
+  strategy: string | undefined;
+  own: boolean;
+  onUse?: ((text: string) => void) | undefined;
+}) => {
+  const t = useT();
+  const found = defaultInstructionsOf(strategy, t.locale);
+  if (!found) return null;
+  return (
+    <Details data-size="sm">
+      <Details.Summary>
+        {own ? t('setup.defaultInstructionsCompare') : t('setup.defaultInstructionsShow')}
+      </Details.Summary>
+      <Details.Content>
+        <div className="stack-xs">
+          <Field>
+            <Label htmlFor="felt-standardinstr">{t('setup.defaultInstructionsLabel')}</Label>
+            <Textarea
+              id="felt-standardinstr"
+              rows={10}
+              readOnly
+              className="instructions-editor"
+              value={found.text}
+            />
+          </Field>
+          {found.note ? <p className="meta">{found.note}</p> : null}
+          {own || !onUse ? null : (
+            <Button
+              variant="secondary"
+              data-size="sm"
+              className="align-start"
+              onClick={() => onUse(found.text)}
+            >
+              {t('setup.defaultInstructionsUse')}
+            </Button>
+          )}
+        </div>
+      </Details.Content>
+    </Details>
+  );
 };
 
 const inputChoiceIds = Object.keys(inputChoices) as InputChoice[];
@@ -887,6 +934,17 @@ export const SetupTab = ({
               </>
             )}
           </Field>,
+        )}
+        {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
+          <BuiltInInstructions
+            strategy={s.strategy.id}
+            own={!!instructions || typeof s.strategy.config.instructions === 'object'}
+            onUse={
+              readOnly
+                ? undefined
+                : (text) => patch((cur) => withSharedInstructions(cur.spec, text))
+            }
+          />
         )}
         {instructionsAssist}
         {takesOf(s.strategy.id).examples === 'no' ? null : (

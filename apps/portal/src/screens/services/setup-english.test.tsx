@@ -6,7 +6,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { columnProblems } from '../../data/table-output';
 import { translator } from '../../i18n';
 import type { InputFormField } from '../../data/input-form';
+import { applySpec } from '../../data/service-definition';
 import { exampleTemplate } from '../../data/services';
+import { registerStrategies } from '../../data/strategies';
+import { platformStrategies } from '../../mock/strategies';
 import type { TableOutput } from '../../data/table-output';
 import { InputFormEditor, formIssues } from './InputFormEditor';
 import { SetupHarness } from './setup-harness';
@@ -17,6 +20,31 @@ document.getAnimations ??= () => [];
 afterEach(cleanup);
 
 describe('the service setup in English', () => {
+  it('shows the default instructions with an English label and note', () => {
+    registerStrategies(platformStrategies);
+    render(
+      inEnglish(
+        <SetupHarness
+          sections={['instructions']}
+          initial={applySpec(exampleTemplate('answers'), {
+            strategy: { id: 'rag-single-shot', version: 1, config: {} },
+          })}
+        />,
+      ),
+    );
+
+    fireEvent.click(screen.getByText('See the default instructions'));
+    expect(
+      (
+        screen.getByLabelText(
+          'The default instructions (cannot be changed here)',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toContain('{date}');
+    expect(screen.getByText(/becomes today's date/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Use as a starting point' })).toBeTruthy();
+  });
+
   it('shows labels, risk options and start options in English', () => {
     render(
       inEnglish(

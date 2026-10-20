@@ -1407,8 +1407,9 @@ export const exampleAssistantTurn = (
   if (state === 'plattform-4') return platformTurn(4, draft);
   if (state === 'plattform-4-avslatt') return platformTurn(4, draft, true);
   if (state === 'utilgjengelig')
-    return turn('trn_u1', 'Modellen assistenten bruker, svarer ikke akkurat nå.', {
+    return turn('trn_u1', 'Assistenten svarer ikke akkurat nå.', {
       status: 'unavailable',
+      reason: 'model_failed',
     });
   if (state === 'budsjett-brukt')
     return turn('trn_b1', 'Assistentens budsjett for i dag er brukt opp.', {

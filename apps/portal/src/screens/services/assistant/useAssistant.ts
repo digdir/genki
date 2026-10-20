@@ -9,6 +9,7 @@ import type {
   AssistantRejected,
   AssistantTurn,
   AssistantTurnRequest,
+  AssistantUnavailableReason,
   AssistantUsage,
   ImprovedInstructions,
   SuggestedTestCase,
@@ -19,7 +20,12 @@ import { refusalOf } from '../../../states';
 
 export type Availability =
   | { kind: 'ready' }
-  | { kind: 'unavailable' }
+  | {
+      kind: 'unavailable';
+      reason: AssistantUnavailableReason | 'api' | 'unknown';
+      task?: string;
+      message?: string;
+    }
   | { kind: 'disabled' }
   | { kind: 'refused'; message: string }
   | { kind: 'budget'; usage: AssistantUsage };
@@ -83,6 +89,25 @@ const statusOf = (error: unknown) =>
     ? error.status
     : 0;
 
+const knownReasons: readonly string[] = [
+  'not_published',
+  'no_model',
+  'model_failed',
+  'empty_result',
+] satisfies AssistantUnavailableReason[];
+
+export const unavailableOf = (turn: AssistantTurn): Availability => {
+  const reason =
+    turn.reason && knownReasons.includes(turn.reason) ? turn.reason : ('unknown' as const);
+  const withTask = reason === 'model_failed' || reason === 'empty_result';
+  return {
+    kind: 'unavailable',
+    reason,
+    ...(withTask && turn.turnId ? { task: turn.turnId } : {}),
+    ...(reason === 'unknown' && turn.message ? { message: turn.message } : {}),
+  };
+};
+
 let counter = 0;
 const nextId = () => `turn-${++counter}`;
 
@@ -120,8 +145,8 @@ export const useAssistant = ({ api, tenant, service, definition, onMessage, onAp
 
   const statusTurn = (turn: AssistantTurn) => {
     if (typeof turn?.message !== 'string' || !Array.isArray(turn.proposals))
-      setAvailability({ kind: 'unavailable' });
-    else if (turn.status === 'unavailable') setAvailability({ kind: 'unavailable' });
+      setAvailability({ kind: 'unavailable', reason: 'api' });
+    else if (turn.status === 'unavailable') setAvailability(unavailableOf(turn));
     else if (turn.status === 'budget_exhausted')
       setAvailability({ kind: 'budget', usage: turn.usage });
     else return false;
@@ -135,7 +160,7 @@ export const useAssistant = ({ api, tenant, service, definition, onMessage, onAp
         ? { kind: 'refused', message: refusal }
         : statusOf(error) === 409
           ? { kind: 'disabled' }
-          : { kind: 'unavailable' },
+          : { kind: 'unavailable', reason: 'api' },
     );
   };
 

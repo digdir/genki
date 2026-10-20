@@ -36,6 +36,20 @@ describe('the services area in English', () => {
     expect(screen.getAllByRole('button', { name: /Roll back to this/ })).toHaveLength(2);
   });
 
+  it('explains an unavailable assistant in English per reason', () => {
+    render(
+      inEnglish(
+        <AssistantBanner
+          availability={{ kind: 'unavailable', reason: 'no_model' }}
+          tenantName="DFØ"
+          onRetry={() => undefined}
+        />,
+      ),
+    );
+    expect(screen.getByText(/No model with tool support is available/)).toBeTruthy();
+    expect(screen.getByText(/at DFØ/)).toBeTruthy();
+  });
+
   it('formats the assistant budget notice in English', () => {
     render(
       inEnglish(
