@@ -517,7 +517,7 @@ describe('task timeline and the operator tenant list', () => {
     expect((await send(`/tenants/${digdir}/tasks/finnes-ikke/timeline`, 'kari')).status).toBe(404);
   });
 
-  it('names the service on the timeline, and a playground draft as Prøveområdet', async () => {
+  it('names the service on the timeline, a playground draft as Prøveområdet and a builder assistant run as Byggeassistenten, in the asked language', async () => {
     const { store, admin, settings } = setup();
     await store.publish(klarsprak(), 'test', 'seed', files);
     const descriptor = (await store.capabilities())[0]?.capability.descriptor;
@@ -535,6 +535,7 @@ describe('task timeline and the operator tenant list', () => {
     const tasks: Record<string, Task> = {
       t1: taskOf('t1', descriptor?.id ?? ''),
       t2: taskOf('t2', 'platform/draft/playground/abc'),
+      t3: taskOf('t3', 'platform/draft/assistant/def'),
     };
     const app = createApp('test', {
       platform: {
@@ -546,16 +547,18 @@ describe('task timeline and the operator tenant list', () => {
         tasks: { task: async (id) => tasks[id], events: async () => [] },
       },
     });
-    const read = async (id: string) =>
+    const read = async (id: string, language = 'nb') =>
       body(
         await app.request(`/tenants/${digdir}/tasks/${id}/timeline`, {
-          headers: { authorization: 'Bearer kari' },
+          headers: { authorization: 'Bearer kari', 'accept-language': language },
         }),
       );
 
     expect(descriptor?.title).toBeTruthy();
     expect(await read('t1')).toMatchObject({ serviceName: descriptor?.title });
     expect(await read('t2')).toMatchObject({ serviceName: 'Prøveområdet (utkast)' });
+    expect(await read('t3')).toMatchObject({ serviceName: 'Byggeassistenten' });
+    expect(await read('t3', 'en')).toMatchObject({ serviceName: 'The builder assistant' });
   });
 
   it('shows operators every tenant value and service value on top of the defaults', async () => {

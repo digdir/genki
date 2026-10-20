@@ -115,6 +115,22 @@ const platform = (calls: string[] = []): typeof fetch => {
       const data = service ? runs.map((r) => ({ ...r, service })) : runs;
       return json({ data, total: data.length });
     }
+    if (/\/tasks\/assist1\/timeline$/.test(path))
+      return json({
+        id: 'assist1',
+        service: 'platform/draft/assistant/def',
+        serviceName: 'Byggeassistenten',
+        status: 'failed',
+        trigger: 'api',
+        caller: 'employee',
+        startedAt: '2026-10-09T08:41:00Z',
+        durationSeconds: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        costOre: 0,
+        steps: [],
+      });
+    if (/\/tasks\/assist1$/.test(path)) return new Response('{}', { status: 404 });
     if (/\/tasks\/[^/]+\/timeline$/.test(path))
       return json({
         id: runs[0]?.id,
@@ -169,6 +185,14 @@ beforeEach(() => {
   window.location.hash = '';
 });
 afterEach(cleanup);
+
+describe('a run that belongs to no published service', () => {
+  it('takes its name from the timeline, so a builder assistant run is called Byggeassistenten', async () => {
+    await open('#/log/assist1');
+    expect(await screen.findByText('Byggeassistenten')).toBeTruthy();
+    expect(screen.queryByText('Assistant')).toBeNull();
+  });
+});
 
 describe('Tjenester in live mode', () => {
   it('reads the whole list from one summary call, in the order the platform gives it', async () => {

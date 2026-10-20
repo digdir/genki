@@ -92,6 +92,7 @@ describe('the API log', () => {
           model: 'fake/gpt',
           error: 'ModelError',
           code: 'bad_request',
+          reason: '400 deployment not found',
         },
       },
       {
