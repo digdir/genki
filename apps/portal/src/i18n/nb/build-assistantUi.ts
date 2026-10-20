@@ -24,7 +24,20 @@ export const assistantUi = {
     send: 'Send',
     bannerUnavailableTitle: 'Byggeassistenten er ikke tilgjengelig',
     bannerUnavailable:
-      'Modellen assistenten bruker, svarer ikke akkurat nå. Du kan bygge videre i skjemaet. Ingenting du har gjort, går tapt.',
+      'Assistenten kan ikke svare akkurat nå. Du kan bygge videre i skjemaet. Ingenting du har gjort, går tapt.',
+    bannerNotPublished:
+      'Byggeassistenten er ikke publisert på plattformen ennå, så den kan ikke svare. Det må Digdir ordne. Du kan bygge videre i skjemaet.',
+    bannerNoModel:
+      'Ingen modell med verktøystøtte er tilgjengelig for byggeassistenten hos {tenant}. En administrator kan velge modell under Innstillinger. Du kan bygge videre i skjemaet.',
+    bannerModelFailed:
+      'Modellen assistenten bruker, svarte med en feil. Prøv igjen om litt. Du kan bygge videre i skjemaet. Ingenting du har gjort, går tapt.',
+    bannerEmptyResult:
+      'Modellen svarte, men ikke med noe assistenten kunne bruke. Prøv igjen, gjerne med en kortere melding. Ingenting du har gjort, går tapt.',
+    bannerTask: 'Oppgave-ID: {task}',
+    bannerTaskLink: 'Se kjøringen',
+    bannerApiTitle: 'Fikk ikke svar fra plattformen',
+    bannerApi:
+      'Portalen fikk ikke kontakt med plattformens API, så meldingen kom ikke fram til assistenten. Sjekk nettforbindelsen og prøv igjen. Du kan bygge videre i skjemaet.',
     retry: 'Prøv igjen',
     bannerRefusedTitle: 'Du har ikke tilgang til byggeassistenten',
     bannerDisabledTitle: 'Byggeassistenten er slått av',

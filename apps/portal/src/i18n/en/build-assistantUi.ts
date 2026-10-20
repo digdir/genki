@@ -25,7 +25,20 @@ export const assistantUi = {
     send: 'Send',
     bannerUnavailableTitle: 'The build assistant is not available',
     bannerUnavailable:
-      'The model the assistant uses is not responding right now. You can keep building in the form. Nothing you have done is lost.',
+      'The assistant cannot answer right now. You can keep building in the form. Nothing you have done is lost.',
+    bannerNotPublished:
+      'The build assistant is not published on the platform yet, so it cannot answer. Digdir has to do that. You can keep building in the form.',
+    bannerNoModel:
+      'No model with tool support is available for the build assistant at {tenant}. An administrator can choose a model under Settings. You can keep building in the form.',
+    bannerModelFailed:
+      'The model the assistant uses answered with an error. Try again in a little while. You can keep building in the form. Nothing you have done is lost.',
+    bannerEmptyResult:
+      'The model answered, but not with anything the assistant could use. Try again, perhaps with a shorter message. Nothing you have done is lost.',
+    bannerTask: 'Task ID: {task}',
+    bannerTaskLink: 'See the run',
+    bannerApiTitle: 'No answer from the platform',
+    bannerApi:
+      'The portal could not reach the platform API, so your message did not reach the assistant. Check your connection and try again. You can keep building in the form.',
     retry: 'Try again',
     bannerRefusedTitle: 'You do not have access to the build assistant',
     bannerDisabledTitle: 'The build assistant is turned off',

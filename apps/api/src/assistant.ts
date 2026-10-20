@@ -18,6 +18,7 @@ import {
   type ConversationEntry,
   type RefusedBlock,
   type TurnStatus,
+  type UnavailableReason,
 } from '@genai/strategy-builder';
 import type { Context } from 'hono';
 import { parse as parseYaml } from 'yaml';
@@ -348,6 +349,33 @@ export const createAssistantModule =
           usage: await usageFor(tenant, tokens),
         });
 
+        const unavailable = async (
+          tenant: string,
+          target: BuilderTarget,
+          reason: UnavailableReason,
+          details: { task?: string; tokens?: number; model?: string; code?: string } = {},
+        ): Promise<AssistantTurn> => {
+          deps.logger?.('assistant unavailable', {
+            level: 'warn',
+            tenant,
+            target,
+            reason,
+            ...(details.task ? { task: details.task } : {}),
+            ...(details.model ? { model: details.model } : {}),
+            ...(details.code ? { code: details.code } : {}),
+          });
+          const message =
+            reason === 'not_published'
+              ? texts.notPublished()
+              : reason === 'no_model'
+                ? texts.noModel()
+                : texts.unavailable();
+          return {
+            ...(await bare(tenant, 'unavailable', message, details.task, details.tokens)),
+            reason,
+          };
+        };
+
         const tokensOf = async (task: string) => {
           const found = await deps.task(task);
           return (found?.usage.inputTokens ?? 0) + (found?.usage.outputTokens ?? 0);
@@ -497,12 +525,21 @@ export const createAssistantModule =
                   task,
                   tokens,
                 )
-              : await bare(tenant, 'unavailable', texts.unavailable(), task, tokens);
+              : await unavailable(tenant, input.target, 'model_failed', {
+                  ...(task ? { task } : {}),
+                  tokens,
+                  model,
+                  ...(outcome?.code ? { code: outcome.code } : {}),
+                });
           }
           const result = resultOf(outcome.parts);
           const tokens = outcome.usage.inputTokens + outcome.usage.outputTokens;
           if (!result)
-            return await bare(tenant, 'unavailable', texts.unavailable(), outcome.task, tokens);
+            return await unavailable(tenant, input.target, 'empty_result', {
+              task: outcome.task,
+              tokens,
+              model,
+            });
           const proposals = await Promise.all(
             result.proposals.map(async (p) => stored.get(p.id) ?? (await withStorage(p))),
           );
@@ -619,15 +656,14 @@ export const createAssistantModule =
             );
           const service = await platformService(deps, builderServiceId);
           if (!service)
-            return respondWith(c, stream, await bare(tenant, 'unavailable', texts.notPublished()));
+            return respondWith(c, stream, await unavailable(tenant, target, 'not_published'));
           const context = await contextFor(
             tenant,
             await readBlockPolicy(deps.configEntries, tenant),
             acting,
           );
           const model = chooseModel(tenant, context, defaultModelOf(service));
-          if (!model)
-            return respondWith(c, stream, await bare(tenant, 'unavailable', texts.noModel()));
+          if (!model) return respondWith(c, stream, await unavailable(tenant, target, 'no_model'));
 
           const previous = await previousOf(acting, tenant, body);
           const history: ConversationEntry[] = previous?.transcript ?? [];

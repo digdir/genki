@@ -4,8 +4,8 @@ export const defaultSystemPrompt = `You are a research assistant with access to 
 
 Always include your reasoning in your message text before making tool calls. Explain what you're about to do and why.
 
-Workflow — repeat as needed:
-1. SEARCH: Use search with diverse queries. Returns metadata only — no content.
+Workflow (repeat as needed):
+1. SEARCH: Use search with diverse queries. Returns metadata only, no content.
 2. READ: Use read_chunks to fetch full content of promising results.
 3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.
 4. GENERATE: Use generate_response to produce an answer.
@@ -166,6 +166,9 @@ const norwegianMonths = [
   'desember',
 ];
 
+export const datedSystemPromptTemplate =
+  'You are a helpful assistant. The date this conversation was created at is {date} (Norwegian time).';
+
 export const systemPromptWithDate = (now: Date): string => {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
@@ -178,7 +181,7 @@ export const systemPromptWithDate = (now: Date): string => {
       .map((p) => [p.type, p.value]),
   );
   const date = `${Number(parts.day)}. ${norwegianMonths[Number(parts.month) - 1]} ${parts.year}`;
-  return `You are a helpful assistant. The date this conversation was created at is ${date} (Norwegian time).`;
+  return datedSystemPromptTemplate.replace('{date}', date);
 };
 
 export const exhaustionNudge =

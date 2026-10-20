@@ -139,8 +139,9 @@ const streamed = (reply: Reply): FakeReply => ({
   ],
 });
 
-const boot = async (replies: Reply[]) => {
+const boot = async (replies: Reply[], { publish = true } = {}) => {
   let chats = 0;
+  const logs: { msg: string; fields: Record<string, unknown> }[] = [];
   const requests: { role: string; content: string }[][] = [];
   const model = await fakeHttp((body) => {
     if (!body.messages)
@@ -176,8 +177,9 @@ const boot = async (replies: Reply[]) => {
       const principal = people[request.headers.get('authorization')?.slice(7) ?? ''];
       return principal ? { principal } : undefined;
     },
+    logger: (msg, fields) => logs.push({ msg, fields }),
   });
-  await publishPlatformServices(platform.definitions, config);
+  if (publish) await publishPlatformServices(platform.definitions, config);
   const app = new Hono();
   app.use('*', localeMiddleware);
   platform.mount(
@@ -208,7 +210,7 @@ const boot = async (replies: Reply[]) => {
     return res;
   };
   const chatCount = () => chats;
-  return { app, platform, settings, turn, chatCount, requests };
+  return { app, platform, settings, turn, chatCount, requests, logs };
 };
 
 const draft = () => ({
@@ -331,6 +333,74 @@ describe('the builder assistant API', () => {
     const body = await json(await turn({ message: 'Hjelp meg' }));
 
     expect(body).toMatchObject({ status: 'unavailable', proposals: [] });
+  });
+
+  it('an unpublished builder service answers unavailable with reason not_published', async () => {
+    const { turn, chatCount } = await boot([], { publish: false });
+
+    const body = await json(await turn({ message: 'Hjelp meg' }));
+
+    expect(body).toMatchObject({ status: 'unavailable', reason: 'not_published' });
+    expect(body.message).toContain('ikke publisert');
+    expect(chatCount()).toBe(0);
+  });
+
+  it('no usable model answers unavailable with reason no_model', async () => {
+    const { settings, turn, chatCount } = await boot([]);
+    expect(settings.setTenant(tenant, 'assistant.model', 'finnes-ikke')).toMatchObject({
+      ok: true,
+    });
+
+    const body = await json(await turn({ message: 'Hjelp meg' }));
+
+    expect(body).toMatchObject({ status: 'unavailable', reason: 'no_model' });
+    expect(body.message).toContain('Ingen modell');
+    expect(chatCount()).toBe(0);
+  });
+
+  it('a failed model run answers unavailable with reason model_failed and the task id', async () => {
+    const { turn, platform } = await boot([{ fail: true }]);
+
+    const body = await json(await turn({ message: 'Hjelp meg' }));
+
+    expect(body).toMatchObject({ status: 'unavailable', reason: 'model_failed' });
+    expect((await platform.kernel.task(people.kari as Principal, body.turnId)).id).toBe(
+      body.turnId,
+    );
+  });
+
+  it('a run without a builder result answers unavailable with reason empty_result', async () => {
+    const { platform, turn } = await boot([{ text: 'Bare tekst.' }]);
+    const builder = yaml(join('services', 'builder-assistant.yaml')) as {
+      spec: { strategy: unknown };
+    };
+    builder.spec.strategy = { id: 'single-call', version: 1, config: { instructions: 'Svar.' } };
+    expect((await platform.definitions.publish(builder, 'platform:seed', 'test', {})).ok).toBe(
+      true,
+    );
+
+    const body = await json(await turn({ message: 'Hjelp meg' }));
+
+    expect(body).toMatchObject({ status: 'unavailable', reason: 'empty_result' });
+  });
+
+  it('an unavailable turn logs the reason and task at warn level without the message or draft', async () => {
+    const { turn, logs } = await boot([{ fail: true }]);
+
+    const body = await json(await turn({ message: 'Hemmelig spørsmål' }));
+    const logged = logs.find((l) => l.msg === 'assistant unavailable');
+
+    expect(logged?.fields).toEqual({
+      level: 'warn',
+      tenant,
+      target: 'service',
+      reason: 'model_failed',
+      task: body.turnId,
+      model: expect.any(String),
+      code: expect.any(String),
+    });
+    expect(JSON.stringify(logs)).not.toContain('Hemmelig');
+    expect(JSON.stringify(logs)).not.toContain('Hent ut beløpet');
   });
 
   it('SSE emits delta, paragraph, proposal and done in order', async () => {

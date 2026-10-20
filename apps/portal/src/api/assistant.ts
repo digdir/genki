@@ -2,6 +2,8 @@ import type { ApiContext } from '../api';
 
 export type AssistantIntent = 'chat' | 'improve-instructions' | 'suggest-test-cases';
 export type AssistantStatus = 'completed' | 'refused' | 'unavailable' | 'budget_exhausted';
+export type AssistantUnavailableReason =
+  'not_published' | 'no_model' | 'model_failed' | 'empty_result';
 export type ProposalLevel = 1 | 2 | 3 | 4;
 export type ProposalKind = 'change' | 'connector' | 'building_block' | 'platform_change';
 export type PlatformChangeStatus = 'sent' | 'under_review' | 'planned' | 'rejected';
@@ -111,6 +113,7 @@ export interface AssistantProposal {
 export interface AssistantTurn {
   turnId: string;
   status: AssistantStatus;
+  reason?: AssistantUnavailableReason;
   message: string;
   questions?: AssistantQuestion[];
   proposals: AssistantProposal[];

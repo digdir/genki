@@ -1557,6 +1557,7 @@ export const createPlatform = async (input: PlatformInput) => {
     if (!pluginRegistry.get(plugin.manifest.id)) pluginRegistry.register(plugin);
   const moduleDeps: ModuleDeps = {
     platformTenant,
+    ...(input.logger ? { logger: input.logger } : {}),
     catalog: config.catalog,
     definitions,
     plugins,
