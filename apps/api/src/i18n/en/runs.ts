@@ -22,6 +22,7 @@ export const runs = {
   skipUnsupportedType: 'The file type cannot be searched',
   skipOutsideAccess: 'Outside what the service has access to',
   skipConversionFailed: 'Could not read the document',
+  skipNoChunks: 'No part of the text fits within the chunking length limits',
   skipScannedPdf: 'Scanned PDF without text',
   skipNoText: 'The document has no text',
   searchNote: 'Search note',

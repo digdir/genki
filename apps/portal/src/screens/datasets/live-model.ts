@@ -24,6 +24,7 @@ export const skipReasonText: Record<string, PlainKey> = {
   conversion_failed: 'datasets.skipConversion',
   outside_access: 'datasets.skipOutsideAccess',
   too_large: 'datasets.skipTooLarge',
+  no_chunks: 'datasets.skipNoChunks',
 };
 
 export const reasonText = (t: T, reason: SkipReason) =>

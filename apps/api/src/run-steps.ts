@@ -105,6 +105,7 @@ const skipReasons: Record<string, ApiKey> = {
   unsupported_type: 'runs.skipUnsupportedType',
   outside_access: 'runs.skipOutsideAccess',
   conversion_failed: 'runs.skipConversionFailed',
+  no_chunks: 'runs.skipNoChunks',
 };
 
 const reasonText = (document: string, reason: string) => {
