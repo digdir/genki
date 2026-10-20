@@ -33,3 +33,4 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0034](0034-tokens-in-the-browser.md)                    | Tokens in the browser                    | Proposed                                                            |
 | [0035](0035-operator-login.md)                           | Operator login                           | Proposed                                                            |
 | [0036](0036-delegating-platform-rights.md)               | Delegating platform rights               | Proposed                                                            |
+| [0037](0037-simple-and-developer-view.md)                | Simple and developer view in the portal  | Proposed                                                            |
