@@ -38,6 +38,7 @@ const model = z.strictObject({
   residency: z.enum(residencies),
   capabilities: z.array(z.enum(capabilities)).default([]),
   contextWindow: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
   options: z.record(z.string(), z.unknown()).default({}),

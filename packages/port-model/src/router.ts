@@ -91,6 +91,8 @@ interface Route {
   options: unknown;
 }
 
+export const modelOutputCeiling = 16_384;
+
 const needed = (request: ChatRequest): Capability[] => [
   ...(request.tools?.length ? (['tools'] as const) : []),
   ...(request.jsonSchema ? (['json-schema'] as const) : []),
@@ -381,9 +383,13 @@ export class ModelRouter implements PortProvider<ModelPort> {
     };
     const bounded = (input: ChatRequest): ChatRequest => {
       const request = applyParameterRules(input, model.parameters);
+      const ceiling = model.maxOutputTokens ?? modelOutputCeiling;
       const left = ctx.outputLimit?.();
-      if (left === undefined) return request;
-      const most = Math.max(1, Math.floor(left));
+      if (left === undefined)
+        return request.maxTokens !== undefined && request.maxTokens > ceiling
+          ? { ...request, maxTokens: ceiling }
+          : request;
+      const most = Math.max(1, Math.min(Math.floor(left), ceiling));
       return request.maxTokens !== undefined && request.maxTokens <= most
         ? request
         : { ...request, maxTokens: most };

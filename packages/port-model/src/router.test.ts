@@ -7,6 +7,7 @@ import { createKernel, envSecrets } from '@genai/kernel';
 import {
   ModelError,
   ModelRouter,
+  modelOutputCeiling,
   parseCatalog,
   parseCatalogYaml,
   type ChatRequest,
@@ -415,6 +416,48 @@ describe('model router', () => {
     await budgeted.result;
 
     expect(a.calls.map((c) => c.request.maxTokens)).toEqual([300, 100, 50, 48]);
+  });
+});
+
+describe('output tokens a model is asked for', () => {
+  const limited = (left: number | undefined, maxOutputTokens?: number) => {
+    const a = recording('proto-a');
+    const b = recording('proto-b');
+    const router = new ModelRouter({
+      catalog: {
+        ...catalog,
+        models: catalog.models
+          .slice(0, 1)
+          .map((m) => ({ ...m, ...(maxOutputTokens ? { maxOutputTokens } : {}) })),
+      },
+      adapters: [a.adapter, b.adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+    });
+    const ctx = {
+      ...testContext().ctx,
+      ...(left === undefined ? {} : { outputLimit: () => left }),
+    };
+    return { port: open(router, 'a/small', ctx), a };
+  };
+
+  it('never asks a model for more output than it can give, even with a large budget left', async () => {
+    const { port, a } = limited(200_000);
+    await port.chat({ messages: [] });
+    expect(a.calls[0]?.request.maxTokens).toBe(modelOutputCeiling);
+  });
+
+  it('uses the output limit a catalog model declares', async () => {
+    const { port, a } = limited(200_000, 128_000);
+    await port.chat({ messages: [] });
+    expect(a.calls[0]?.request.maxTokens).toBe(128_000);
+  });
+
+  it('cuts an explicit request above the model limit, without a budget', async () => {
+    const { port, a } = limited(undefined, 8_000);
+    await port.chat({ messages: [], maxTokens: 50_000 });
+    await port.chat({ messages: [] });
+    expect(a.calls.map((c) => c.request.maxTokens)).toEqual([8_000, undefined]);
   });
 });
 
