@@ -269,6 +269,7 @@ export const RunDetail = ({
     ? child.name
     : live
       ? ((header.status === 'ready' ? header.data?.serviceName : undefined) ??
+        (state.status === 'ready' ? state.data.serviceName : undefined) ??
         serviceLabel(run.service))
       : run.service;
   const skippedSteps = steps.filter((s) => s.state === 'skipped').length;

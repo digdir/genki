@@ -105,6 +105,7 @@ export interface TimelineStep {
 export interface TaskTimeline {
   id: string;
   service: string;
+  serviceName?: string;
   status: TaskStatus;
   trigger: string;
   caller: string;
