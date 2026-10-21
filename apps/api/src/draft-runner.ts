@@ -8,6 +8,7 @@ import {
 } from '@genai/adapter-openai';
 import {
   textPart,
+  type EvaluationContext,
   type Event,
   type InputField,
   type Part,
@@ -76,6 +77,7 @@ export interface DraftRunInput {
   version?: number;
   variant?: string;
   onEvent?: (event: Event) => void | Promise<void>;
+  evaluation?: EvaluationContext;
 }
 
 export interface DraftModelUsage {
@@ -290,6 +292,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     maxOutputTokens?: number,
     onEvent?: (event: Event) => void | Promise<void>,
     budget?: Usage,
+    evaluation?: EvaluationContext,
   ): Promise<ServiceRunOutcome> => {
     let task: string | undefined;
     let tail: Promise<void> | undefined;
@@ -300,11 +303,14 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
         { ...principal, tenant },
         capability,
         { data, parts },
-        maxOutputTokens === undefined
-          ? budget
-            ? { budget }
-            : {}
-          : { maxOutputTokens, budget: { outputTokens: maxOutputTokens * 2 } },
+        {
+          ...(maxOutputTokens === undefined
+            ? budget
+              ? { budget }
+              : {}
+            : { maxOutputTokens, budget: { outputTokens: maxOutputTokens * 2 } }),
+          ...(evaluation ? { evaluation } : {}),
+        },
       );
       task = invoked.task;
       const id = task;
@@ -448,6 +454,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
         undefined,
         input.onEvent,
         input.budget,
+        input.evaluation,
       );
       return outcome.ok ? { ...outcome, origin: input.origin } : outcome;
     } finally {

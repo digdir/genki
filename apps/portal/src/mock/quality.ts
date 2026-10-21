@@ -1,6 +1,7 @@
 import type {
   Candidate,
   CandidateReview,
+  CaseSplit,
   EvalCaseResult,
   EvalRunDetail,
   Improvement,
@@ -339,10 +340,19 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         });
       if (parts[2] === 'eval-runs' && req.method === 'POST') {
         if (!req.reason) return req.reasonMissing();
-        const body = req.body<{ testSet?: string; version?: RunVersion }>();
+        const body = req.body<{
+          testSet?: string;
+          version?: RunVersion;
+          split?: CaseSplit;
+          cases?: string[];
+        }>();
         const set = sets.find((s) => s.id === body.testSet && s.service === service);
         if (!set) return req.notFound();
-        const run = runOf(service, set, body.version ?? 'draft');
+        const cases = set.cases.filter(
+          (c) =>
+            (!body.split || c.split === body.split) && (!body.cases || body.cases.includes(c.id)),
+        );
+        const run = runOf(service, { ...set, cases }, body.version ?? 'draft');
         runs.unshift(run);
         return req.json({ id: run.id }, 202);
       }

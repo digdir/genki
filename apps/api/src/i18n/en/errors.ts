@@ -328,6 +328,8 @@ export const qualityErrors = {
   baseVersionRange: 'baseVersion is a published version from 0 to {latest}',
   inputRequired: 'the input is required',
   lockedOrOpen: 'split is locked or open',
+  caseIdList: 'cases is a non-empty list of case ids',
+  noCaseIn: 'no case {id} in {setId}',
   expectedRequired: 'the expected answer or criteria are required',
   caseExists: 'case {id} exists',
   testSetRequired: 'the test set is required',

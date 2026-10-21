@@ -1,5 +1,6 @@
 import type {
   CapabilityDescriptor,
+  EvaluationContext,
   Event,
   EventAudience,
   Input,
@@ -112,6 +113,7 @@ export interface InvokeOptions {
   deadlineMs?: number;
   budget?: Usage;
   maxOutputTokens?: number;
+  evaluation?: EvaluationContext;
 }
 
 export interface EventsOptions {

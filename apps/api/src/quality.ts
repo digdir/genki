@@ -424,11 +424,29 @@ export const createQualityModule =
             return problem(c, 400, 'Ugyldig forespørsel', [
               { path: 'split', message: 'split is locked or open' },
             ]);
+          const only =
+            Array.isArray(data.cases) &&
+            data.cases.length > 0 &&
+            data.cases.every((id) => typeof id === 'string')
+              ? (data.cases as string[])
+              : undefined;
+          if (data.cases !== undefined && !only)
+            return problem(c, 400, 'Ugyldig forespørsel', [
+              { path: 'cases', message: 'cases is a non-empty list of case ids' },
+            ]);
           const set = await deps.evalStores.testSets.get(tenant, setId);
           if (!set || (set.spec.service !== undefined && set.spec.service !== service))
             return problem(c, 404, 'Fant ikke testsettet', [
               { path: 'testSet', message: `no test set ${setId} for ${service}` },
             ]);
+          const unknown = (only ?? []).filter((id) => !set.spec.cases.some((x) => x.id === id));
+          if (unknown.length > 0)
+            return problem(
+              c,
+              400,
+              'Ugyldig forespørsel',
+              unknown.map((id) => ({ path: 'cases', message: `no case ${id} in ${setId}` })),
+            );
           const found = await evals.subjectOf(tenant, service, data.version, data);
           if (!found)
             return problem(
@@ -446,14 +464,22 @@ export const createQualityModule =
             ]);
           const subject = variant ? { ...found, variant } : found;
           const split = isCaseSplit(data.split) ? data.split : undefined;
-          const cases = split
-            ? set.spec.cases.filter((x) => caseView(x).split === split)
-            : set.spec.cases;
+          const cases = set.spec.cases.filter(
+            (x) => (!split || caseView(x).split === split) && (!only || only.includes(x.id)),
+          );
           if (cases.length === 0)
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);
-          const started = await evals.startRun(principal, tenant, service, set, subject, split);
+          const started = await evals.startRun(
+            principal,
+            tenant,
+            service,
+            set,
+            subject,
+            split,
+            only,
+          );
           background(started.done);
           return c.json({ id: started.run.id }, 202);
         });

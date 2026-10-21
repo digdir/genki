@@ -327,6 +327,8 @@ export const qualityErrors = defineNamespace({
   baseVersionRange: 'baseVersion er en publisert versjon fra 0 til {latest}',
   inputRequired: 'input er påkrevd',
   lockedOrOpen: 'split er locked eller open',
+  caseIdList: 'cases er en liste med minst én id for et testtilfelle',
+  noCaseIn: 'ingen testtilfelle {id} i {setId}',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
   caseExists: 'testtilfellet {id} finnes',
   testSetRequired: 'testsettet er påkrevd',

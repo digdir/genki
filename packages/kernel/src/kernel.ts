@@ -777,7 +777,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     await emit(l, { type: 'kernel.task.status', data: { status: 'queued' } }, 'kernel');
     await emit(
       l,
-      { type: 'kernel.task.input', data: { input }, audience: 'audit' },
+      {
+        type: 'kernel.task.input',
+        data: {
+          input,
+          ...(invokeOptions.evaluation ? { evaluation: invokeOptions.evaluation } : {}),
+        },
+        audience: 'audit',
+      },
       principalRef(principal),
     );
     await persist(l);

@@ -159,6 +159,34 @@ describe('kernel: running a task', () => {
     expect(task.service.configHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('records what a test case expects with the input, without showing it to the strategy', async () => {
+    const seen: unknown[] = [];
+    const echo: Strategy = {
+      id: 'echo',
+      version: '1',
+      requires: { kernel: 1, ports: [], features: [] },
+      run: async function* (_ctx, input) {
+        seen.push(input);
+        yield { type: 'kernel.result', data: [] };
+      },
+    };
+    const kernel = kernelWith({ strategies: [echo], capabilities: [capability('ka', 'echo')] });
+    const evaluation = {
+      run: { id: 'run-1', name: 'Frister v1' },
+      case: { id: 'o1', expected: { referenceAnswer: 'Fristen er 1. mai' } },
+    };
+
+    const run = await kernel.invoke(kari, 'ka', { parts: [textPart('hei')] }, { evaluation });
+    await run.result;
+    const audit = await collect(await kernel.events(kari, run.task, { audience: 'audit' }));
+
+    expect(audit.find((e) => e.type === 'kernel.task.input')?.data).toEqual({
+      input: { parts: [textPart('hei')] },
+      evaluation,
+    });
+    expect(seen).toEqual([{ parts: [textPart('hei')] }]);
+  });
+
   it('fails a task whose strategy throws before it yields anything, and ends its readers', async () => {
     const broken = strategy('broken', () => {
       throw new Error('boom');

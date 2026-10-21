@@ -9,13 +9,16 @@ packages:
   - '@genai/providers-langfuse'
 summary: Exports task events as OTLP spans to Langfuse, metadata only unless opted in.
 description: Wraps the event log; content (the question, the answer and the sources it cites) goes
-  out only if the connection opts in and the sink can honour erasure (ADR 0011).
+  out only if the connection opts in and the sink can honour erasure (ADR 0011). A test run is sent
+  as one Langfuse experiment, one item per case (ADR 0003).
 responsibilities:
   - Build spans from events
   - Export with content opt-in
+  - Send test runs as experiments
 files:
   - packages/providers-langfuse/src/exporter.ts
   - packages/providers-langfuse/src/spans.ts
+  - packages/providers-langfuse/src/experiment.ts
 input: Kernel events
 output: OTLP spans
 replaces:

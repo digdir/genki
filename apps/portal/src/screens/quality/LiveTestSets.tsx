@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Field,
   Fieldset,
   Heading,
@@ -86,10 +87,14 @@ const NewTestSet = ({ onCreate, busy }: { onCreate: (name: string) => void; busy
 const CaseList = ({
   cases,
   busy,
+  marked,
+  onMark,
   onDelete,
 }: {
   cases: ServiceCase[];
   busy: boolean;
+  marked: string[];
+  onMark: (id: string, on: boolean) => void;
   onDelete: (c: ServiceCase) => void;
 }) => {
   const t = useT();
@@ -110,7 +115,15 @@ const CaseList = ({
       {cases.map((c) => (
         <li key={c.id}>
           <div className="live-case">
-            <span className="case-input">{c.input}</span>
+            {canManage ? (
+              <Checkbox
+                label={<span className="case-input">{c.input}</span>}
+                checked={marked.includes(c.id)}
+                onChange={(e) => onMark(c.id, e.target.checked)}
+              />
+            ) : (
+              <span className="case-input">{c.input}</span>
+            )}
             <span className="tag-row">
               <Tag data-size="sm" data-color={c.split === 'locked' ? 'accent' : 'info'}>
                 {t(splitTag[c.split])}
@@ -185,6 +198,7 @@ export const LiveTestSets = ({
   const [chosen, setChosen] = useState<string>();
   const [form, setForm] = useState<CaseForm>();
   const [busy, setBusy] = useState(false);
+  const [marked, setMarked] = useState<string[]>([]);
   const [sets, retrySets] = useAsync(
     (signal) => api.quality.testSets(tenant, serviceId, signal),
     [api, tenant, serviceId, setsRound],
@@ -262,6 +276,9 @@ export const LiveTestSets = ({
 
   const all = cases.status === 'ready' ? cases.data : [];
   const count = (s: CaseSplit) => all.filter((c) => c.split === s).length;
+  const markedIds = all.filter((c) => marked.includes(c.id)).map((c) => c.id);
+  const mark = (id: string, on: boolean) =>
+    setMarked((m) => (on ? [...m.filter((x) => x !== id), id] : m.filter((x) => x !== id)));
   const set = (p: Partial<CaseForm>) => setForm((f) => (f ? { ...f, ...p } : f));
   const inputError = form?.tried && !form.input.trim() ? t('quality.inputProblem') : '';
   const expectedError = form?.tried && !form.expected.trim() ? t('quality.describeGood') : '';
@@ -426,6 +443,9 @@ export const LiveTestSets = ({
         serviceId={serviceId}
         testSet={current}
         cases={all.length}
+        locked={count('locked')}
+        marked={markedIds}
+        onClearMarks={() => setMarked([])}
         setFlash={setFlash}
       />
 
@@ -433,6 +453,9 @@ export const LiveTestSets = ({
         <Heading level={2} data-size="xs" id="cases-h">
           {t('quality.cases')}
         </Heading>
+        {canManage && all.length > 0 ? (
+          <Paragraph data-size="sm">{t('quality.markHint')}</Paragraph>
+        ) : null}
         {cases.status === 'loading' ? (
           <Loading label={t('quality.casesLoading')} />
         ) : cases.status === 'error' ? (
@@ -441,6 +464,8 @@ export const LiveTestSets = ({
           <CaseList
             cases={all}
             busy={busy}
+            marked={markedIds}
+            onMark={mark}
             onDelete={(c) =>
               void act(
                 () =>

@@ -190,6 +190,11 @@ export interface Task {
   endedAt?: string;
 }
 
+export interface EvaluationContext {
+  run: { id: string; name: string; metadata?: Record<string, string> };
+  case: { id: string; expected?: unknown; metadata?: Record<string, string> };
+}
+
 export interface Artifact {
   id: string;
   task: string;

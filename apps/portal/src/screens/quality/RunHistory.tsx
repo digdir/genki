@@ -173,6 +173,9 @@ export const RunHistory = ({
   serviceId,
   testSet,
   cases,
+  locked,
+  marked,
+  onClearMarks,
   setFlash,
 }: {
   api: ApiClient;
@@ -180,12 +183,15 @@ export const RunHistory = ({
   serviceId: string;
   testSet: ServiceTestSet;
   cases: number;
+  locked: number;
+  marked: string[];
+  onClearMarks: () => void;
   setFlash: SetFlash;
 }) => {
   const { t, f, dateTime } = usePortalFormat();
   const canManage = useRights().has('manage-services');
   const canRun = canManage && cases > 0;
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'all' | 'locked' | 'marked'>();
   const [round, setRound] = useState(0);
   const [version, setVersion] = useState<'draft' | 'published'>('draft');
   const [starting, setStarting] = useState(false);
@@ -213,19 +219,26 @@ export const RunHistory = ({
     return () => clearTimeout(timer);
   }, [running, round]);
 
-  const start = async () => {
+  const start = async (choice: 'all' | 'locked' | 'marked') => {
     if (starting || running || !canRun) return;
-    setConfirming(false);
+    setConfirming(undefined);
     setStarting(true);
+    const names = { name: testSet.name, version: versionText(t, version).toLowerCase() };
     try {
       const started = await api.quality.startRun(
         tenant,
         serviceId,
-        { testSet: testSet.id, version },
-        t('quality.runReason', {
-          name: testSet.name,
-          version: versionText(t, version).toLowerCase(),
-        }),
+        {
+          testSet: testSet.id,
+          version,
+          ...(choice === 'locked' ? { split: 'locked' as const } : {}),
+          ...(choice === 'marked' ? { cases: marked } : {}),
+        },
+        choice === 'locked'
+          ? t('quality.runLockedReason', names)
+          : choice === 'marked'
+            ? t('quality.runMarkedReason', { ...names, count: marked.length })
+            : t('quality.runReason', names),
       );
       setStartedId(started.id);
       setFlash({ text: t('quality.runStarted'), color: 'info' });
@@ -238,6 +251,7 @@ export const RunHistory = ({
   };
 
   const blocked = starting || running || !canRun;
+  const chosen = confirming === 'locked' ? locked : confirming === 'marked' ? marked.length : cases;
 
   return (
     <section aria-labelledby="kj-h" className="stack-sm">
@@ -264,11 +278,42 @@ export const RunHistory = ({
           variant="secondary"
           aria-disabled={blocked || undefined}
           aria-describedby={!canRun ? 'run-hint' : undefined}
-          aria-expanded={canRun ? confirming : undefined}
-          onClick={() => !blocked && setConfirming(true)}
+          aria-expanded={canRun ? confirming === 'all' : undefined}
+          onClick={() => !blocked && setConfirming('all')}
         >
           {t('quality.runSet')}
         </Button>
+        {locked > 0 ? (
+          <Button
+            variant="tertiary"
+            aria-disabled={blocked || undefined}
+            aria-expanded={canRun ? confirming === 'locked' : undefined}
+            onClick={() => !blocked && setConfirming('locked')}
+          >
+            {t('quality.runLocked')}
+          </Button>
+        ) : null}
+        {marked.length > 0 ? (
+          <>
+            <Button
+              variant="tertiary"
+              aria-disabled={blocked || undefined}
+              aria-expanded={canRun ? confirming === 'marked' : undefined}
+              onClick={() => !blocked && setConfirming('marked')}
+            >
+              {t('quality.runMarked', { count: marked.length })}
+            </Button>
+            <Button
+              variant="tertiary"
+              onClick={() => {
+                if (confirming === 'marked') setConfirming(undefined);
+                onClearMarks();
+              }}
+            >
+              {t('quality.clearMarks')}
+            </Button>
+          </>
+        ) : null}
         {!canRun ? (
           <span id="run-hint" className="small">
             {canManage ? t('quality.addCasesFirst') : needsRight('manage-services', t)}
@@ -278,19 +323,23 @@ export const RunHistory = ({
       {confirming && canRun ? (
         <Alert data-color="info" data-size="sm">
           <Heading level={3} data-size="2xs">
-            {t('quality.confirmRunTitle', { count: cases })}
+            {confirming === 'locked'
+              ? t('quality.confirmLockedTitle', { count: locked })
+              : confirming === 'marked'
+                ? t('quality.confirmMarkedTitle', { count: marked.length })
+                : t('quality.confirmRunTitle', { count: cases })}
           </Heading>
-          <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={cases} />
+          <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={chosen} />
           <div className="actions">
             <Button
               variant="primary"
               data-size="sm"
               aria-disabled={blocked || undefined}
-              onClick={() => void start()}
+              onClick={() => void start(confirming)}
             >
               {t('quality.confirmRun')}
             </Button>
-            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(false)}>
+            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(undefined)}>
               {t('quality.cancel')}
             </Button>
           </div>

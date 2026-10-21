@@ -1,7 +1,13 @@
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { textPart, type Event, type Principal, type Task } from '@genai/contracts';
+import {
+  textPart,
+  type EvaluationContext,
+  type Event,
+  type Principal,
+  type Task,
+} from '@genai/contracts';
 import {
   createKernel,
   envSecrets,
@@ -99,7 +105,12 @@ const descriptor = (id: string) => ({
 
 const model = { kind: 'model', id: 'foundry/gpt-4o', tenant: '999888777' };
 
-const run = async (config: Omit<ExporterConfigInput, 'endpoint'>, url: string, fail = false) => {
+const run = async (
+  config: Omit<ExporterConfigInput, 'endpoint'>,
+  url: string,
+  fail = false,
+  evaluation?: EvaluationContext,
+) => {
   const tasks = new InMemoryTaskStore();
   const exporter = createTraceExporter(
     { endpoint: url, ...config },
@@ -202,9 +213,12 @@ const run = async (config: Omit<ExporterConfigInput, 'endpoint'>, url: string, f
     tasks,
   });
 
-  const started = await kernel.invoke(kari, 'kunnskapsassistenten', {
-    data: { question: personalNumber },
-  });
+  const started = await kernel.invoke(
+    kari,
+    'kunnskapsassistenten',
+    { data: { question: personalNumber } },
+    evaluation ? { evaluation } : {},
+  );
   await started.result.catch(() => undefined);
   await new Promise((resolve) => setTimeout(resolve, 20));
   await exporter.flush();
@@ -254,6 +268,7 @@ describe('trace exporter', () => {
     );
     const child = spans.find((s) => s.name === 'oppslag');
     expect(child?.parentSpanId).toBe(root?.spanId);
+    expect(raw).not.toContain('langfuse.experiment');
   });
 
   it('includes the question, the answer and the sources it cites only when the connection opts in to content', async () => {
@@ -322,6 +337,70 @@ describe('trace exporter', () => {
 
     expect(received).toHaveLength(0);
     expect(exporter.stats().sampledOut).toBe(2);
+  });
+});
+
+const testCase: EvaluationContext = {
+  run: {
+    id: 'run-1',
+    name: 'Frister v1 · kunnskapsassistenten v3 · 2026-10-21',
+    metadata: { service: 'kunnskapsassistenten', testSet: 'frister' },
+  },
+  case: {
+    id: 'o1',
+    expected: { referenceAnswer: 'Fristen er 1. mai', type: 'criteria' },
+    metadata: { split: 'validation', tags: 'frister' },
+  },
+};
+
+describe('trace exporter for a test case', () => {
+  it('sends the trace as one item of the run as an experiment, the ids on every span and what the case expects on the root', async () => {
+    const { url, received } = await collector();
+
+    const { task } = await run({ content: true }, url, false, testCase);
+
+    const spans = received.flatMap((r) => r.spans);
+    const root = spans.find((s) => attr(s, 'genai.task.id') === task);
+    expect(spans.length).toBeGreaterThan(3);
+    for (const span of spans) {
+      expect(attr(span, 'langfuse.experiment.id')).toBe('run-1');
+      expect(attr(span, 'langfuse.experiment.name')).toBe(testCase.run.name);
+      expect(attr(span, 'langfuse.experiment.metadata.testSet')).toBe('frister');
+      expect(attr(span, 'langfuse.experiment.item.id')).toBe('o1');
+      expect(attr(span, 'langfuse.experiment.item.root_observation_id')).toBe(root?.spanId);
+    }
+    expect(JSON.parse(String(attr(root, 'langfuse.experiment.item.expected_output')))).toEqual(
+      testCase.case.expected,
+    );
+    expect(attr(root, 'langfuse.experiment.item.metadata.split')).toBe('validation');
+    const others = spans.filter((s) => s !== root);
+    expect(others.map((s) => attr(s, 'langfuse.experiment.item.expected_output'))).toEqual(
+      others.map(() => undefined),
+    );
+    expect(spans.find((s) => s.name === 'oppslag')?.parentSpanId).toBe(root?.spanId);
+  });
+
+  it('leaves out what the case expects unless the connection opts in to content', async () => {
+    const { url, received } = await collector();
+
+    await run({}, url, false, testCase);
+
+    const raw = received.map((r) => r.raw).join('');
+    expect(raw).not.toContain('Fristen er 1. mai');
+    const root = received.flatMap((r) => r.spans).find((s) => s.name === 'kunnskapsassistenten');
+    expect(attr(root, 'langfuse.experiment.item.id')).toBe('o1');
+    expect(attr(root, 'langfuse.experiment.item.expected_output')).toBeUndefined();
+  });
+
+  it('never samples out a test case, so every case of a run reaches the experiment', async () => {
+    const { url, received } = await collector();
+
+    const { exporter } = await run({ sampleRate: 0 }, url, false, testCase);
+
+    expect(received.flatMap((r) => r.spans).map((s) => s.name)).toEqual(
+      expect.arrayContaining(['kunnskapsassistenten', 'oppslag']),
+    );
+    expect(exporter.stats().sampledOut).toBe(0);
   });
 });
 

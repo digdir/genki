@@ -134,6 +134,60 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('runs only the locked test cases after saying how many, and leaves the open ones out', async () => {
+    const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør bare de låste testtilfellene' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Kjøre bare 1 låst testtilfelle?' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+      body: { testSet: 'rapport-kjerne', version: 'draft', split: 'locked' },
+      reason: 'Kjørte de låste testtilfellene i Kjernespørsmål på utkastet',
+    });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    expect(within(row).getByText(/^\d av 1$/)).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('runs only the test cases marked in the list, and clears the marks', async () => {
+    const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
+    expect(screen.getByText('Kryss av testtilfeller for å kjøre bare dem.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hvor mange tilsyn hadde vi i 2025?' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Skriv et vedtak om tilskudd.' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør de 2 merkede testtilfellene' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Kjøre bare de 2 merkede testtilfellene?' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/tenants/999888777/services/rapportassistenten/eval-runs',
+      body: { testSet: 'rapport-kjerne', version: 'draft', cases: ['tc-1', 'tc-3'] },
+      reason: 'Kjørte merkede testtilfeller (2) i Kjernespørsmål på utkastet',
+    });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    expect(within(row).getByText(/^\d av 2$/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fjern merkingen' }));
+    expect(screen.queryByRole('button', { name: /merkede testtilfellene/ })).toBeNull();
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Hvor mange tilsyn hadde vi i 2025?',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    expectAccessible();
+  });
+
   it('shows a running run and blocks a second start', async () => {
     await openLive('', { runsStayRunning: true });
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

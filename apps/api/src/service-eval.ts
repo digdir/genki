@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Principal } from '@genai/contracts';
+import type { EvaluationContext, Principal } from '@genai/contracts';
 import {
   caseTypeOf,
   caseView,
@@ -78,8 +78,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export const casesIn = (set: TestSet, split?: CaseSplit) =>
-  split ? set.spec.cases.filter((c) => splitsFor(split).includes(c.split)) : set.spec.cases;
+export const casesIn = (set: TestSet, split?: CaseSplit, only?: string[]) =>
+  set.spec.cases.filter(
+    (c) => (!split || splitsFor(split).includes(c.split)) && (!only || only.includes(c.id)),
+  );
 
 export const summarize = (results: CaseResult[]): Outcome => {
   const passed = results.filter((r) => r.pass).length;
@@ -102,6 +104,46 @@ export const runSummary = (run: ServiceRun) => {
   const shown = runView(run);
   delete shown.cases;
   return shown;
+};
+
+const evaluationOf = (run: EvaluationContext['run'], c: TestCase): EvaluationContext => ({
+  run,
+  case: {
+    id: c.id,
+    expected: {
+      ...c.expected,
+      type: caseTypeOf(c),
+      grounding: c.grounding,
+      ...(c.language ? { language: c.language } : {}),
+    },
+    metadata: { split: c.split, ...(c.tags.length ? { tags: c.tags.join(', ') } : {}) },
+  },
+});
+
+const runLabel = (
+  id: string,
+  service: string,
+  set: TestSet,
+  subject: Subject,
+  startedAt: string,
+  split?: CaseSplit,
+  only?: string[],
+): EvaluationContext['run'] => {
+  const version = subject.version === 'draft' ? 'draft' : `v${subject.version}`;
+  const variant = subject.variant ? `/${subject.variant}` : '';
+  return {
+    id,
+    name: `${set.metadata.name} v${set.metadata.version} · ${service} ${version}${variant} · ${startedAt}`,
+    metadata: {
+      service,
+      version: String(subject.version),
+      ...(subject.variant ? { variant: subject.variant } : {}),
+      testSet: set.metadata.id,
+      testSetVersion: String(set.metadata.version),
+      ...(split ? { split } : {}),
+      ...(only ? { marked: String(only.length) } : {}),
+    },
+  };
 };
 
 const modelsOf = (definition: Record<string, unknown>) => {
@@ -173,7 +215,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     cases: TestCase[],
     meter: Meter,
-    options: { avoidAsJudge?: string[]; chargeTo?: string } = {},
+    options: { avoidAsJudge?: string[]; chargeTo?: string; run?: EvaluationContext['run'] } = {},
   ): Promise<Outcome> => {
     const served = modelsOf(subject.definition);
     const judgeTenant = options.chargeTo ?? tenant;
@@ -205,6 +247,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         origin: 'builder',
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(options.chargeTo ? { chargeTo: options.chargeTo } : {}),
+        ...(options.run ? { evaluation: evaluationOf(options.run, c) } : {}),
       });
       meter.add(outcome);
       if (!outcome.ok) {
@@ -299,6 +342,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     set: TestSet,
     subject: Subject,
     split?: CaseSplit,
+    only?: string[],
   ) => {
     const actor = actorOf(principal.actor ?? principal);
     const queued: ServiceRun = {
@@ -314,7 +358,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       endedAt: null,
       score: null,
       passed: 0,
-      total: casesIn(set, split).length,
+      total: casesIn(set, split, only).length,
       cost: null,
       tokens: { input: 0, output: 0 },
       cases: [],
@@ -333,7 +377,14 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const meter = choice.meter();
       try {
         await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
-        const outcome = await runCases(principal, tenant, subject, casesIn(set, split), meter);
+        const outcome = await runCases(
+          principal,
+          tenant,
+          subject,
+          casesIn(set, split, only),
+          meter,
+          { run: runLabel(queued.id, service, set, subject, queued.startedAt, split, only) },
+        );
         await lease.update(
           (run) => ({
             ...run,

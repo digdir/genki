@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
-import type { Principal } from '@genai/contracts';
+import type { EvaluationContext, Event, Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { parseTestSet, type FeedbackRecord } from '@genai/eval';
-import { envSecrets } from '@genai/kernel';
+import { envSecrets, type EventLog } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
@@ -139,6 +139,17 @@ const testSet = parseTestSet({
 
 const boot = async (prices?: Record<string, ModelPrice>) => {
   const optimiserPrompts: string[] = [];
+  const answerPrompts: string[] = [];
+  const inputs: Event[] = [];
+  const observe = (log: EventLog): EventLog => ({
+    append: async (event, scope) => {
+      const stored = await log.append(event, scope);
+      if (stored.type === 'kernel.task.input') inputs.push(stored);
+      return stored;
+    },
+    read: (task, fromSeq, isLive) => log.read(task, fromSeq, isLive),
+    wake: (task) => log.wake(task),
+  });
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
       return {
@@ -166,6 +177,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
         stream,
       );
     }
+    answerPrompts.push(JSON.stringify(messages));
     if (user.includes('personnummer')) return reply('Jeg kan ikke svare på det.', stream);
     return reply(
       system.includes('Oppgi alltid fristen') ? 'Fristen er 1. mai.' : 'Vi svarer snart.',
@@ -191,6 +203,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
+    observe,
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -244,7 +257,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     );
     return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
   };
-  return { platform, send, settled, optimiserPrompts, supportSession };
+  return { platform, send, settled, optimiserPrompts, answerPrompts, inputs, supportSession };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -348,6 +361,65 @@ describe('eval runs for a service', () => {
       reason: 'Vurdert.',
     });
     expect(run.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('runs each case as a task that records the run and what the case expects, which the model never sees', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const recorded = env.inputs.flatMap((e) => {
+      const evaluation = (e.data as { evaluation?: EvaluationContext }).evaluation;
+      return evaluation ? [evaluation] : [];
+    });
+
+    expect(recorded.map((e) => e.case.id).sort()).toEqual(['l1', 'o1', 'o2']);
+    for (const e of recorded)
+      expect(e.run).toEqual({
+        id,
+        name: expect.stringMatching(/^Frister v1 · svar v1 · \d{4}-\d\d-\d\dT/),
+        metadata: { service: 'svar', version: '1', testSet: 'svar-frister', testSetVersion: '1' },
+      });
+    expect(recorded.find((e) => e.case.id === 'o1')?.case).toEqual({
+      id: 'o1',
+      expected: {
+        sources: [],
+        referenceAnswer: 'Svaret oppgir fristen',
+        type: 'criteria',
+        grounding: 'sources-and-answer',
+      },
+      metadata: { split: 'train' },
+    });
+    expect(env.answerPrompts).toHaveLength(3);
+    expect(env.answerPrompts.join('\n')).not.toContain('Svaret oppgir fristen');
+  });
+
+  it('runs only the cases asked for by id, and refuses a case the test set does not have', async () => {
+    const env = await boot();
+    const path = `${services}/eval-runs`;
+
+    const started = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'l1'],
+    });
+    expect(started.status).toBe(202);
+    await env.settled();
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
+      .body as unknown as ServiceRun;
+    const unknown = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'x9'],
+    });
+    const empty = await env.send('POST', path, 'kari', { testSet: 'svar-frister', cases: [] });
+
+    expect(run.total).toBe(2);
+    expect(run.cases.map((c) => c.caseId).sort()).toEqual(['l1', 'o1']);
+    const evaluation = env.inputs
+      .map((e) => (e.data as { evaluation?: EvaluationContext }).evaluation)
+      .find((e) => e !== undefined);
+    expect(evaluation?.run.metadata?.marked).toBe('2');
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).toContain('no case x9 in svar-frister');
+    expect(empty.status).toBe(400);
   });
 
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
