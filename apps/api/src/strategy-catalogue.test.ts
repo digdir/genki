@@ -3,6 +3,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { Principal } from '@genai/contracts';
+import {
+  datedSystemPromptTemplate,
+  defaultSystemPrompt,
+  systemPromptWithDate,
+} from '@genai/strategy-agent-loop';
 import { strategyCatalogue, type StrategyEntry } from './strategy-catalogue.js';
 import { bootPlatform, digdir } from './testkit.js';
 
@@ -68,6 +73,28 @@ describe('the strategy catalogue', () => {
     expect(takes['single-call']).toEqual({ instructions: 'required', examples: 'optional' });
     expect(takes['agent-loop']).toEqual({ instructions: 'optional', examples: 'no' });
     expect(takes['step-flow']).toEqual({ instructions: 'no', examples: 'no' });
+  });
+
+  it('exposes the default instructions of each strategy that has them, per answer language', async () => {
+    const { body } = await listed();
+    const defaults = Object.fromEntries(body.data.map((s) => [s.id, s.defaultInstructions]));
+
+    expect(defaults['agent-loop']?.text).toEqual({
+      nb: defaultSystemPrompt,
+      en: defaultSystemPrompt,
+    });
+    expect(defaults['rag-single-shot']?.text.nb).toBe(datedSystemPromptTemplate);
+    expect(defaults['rag-single-shot']?.note?.nb).toContain('{date}');
+    expect(defaults['agent-loop']?.note?.en).toContain('skills');
+    expect(defaults['single-call']).toBeUndefined();
+    expect(defaults['step-flow']).toBeUndefined();
+    expect(defaults['remote-agent']).toBeUndefined();
+  });
+
+  it('gives the rag default the same text the strategy sends, with the date filled in', () => {
+    const sent = systemPromptWithDate(new Date('2026-10-20T10:00:00Z'));
+
+    expect(sent).toBe(datedSystemPromptTemplate.replace('{date}', '20. oktober 2026'));
   });
 
   it('starts an agent with eight rounds when a service switches to it', async () => {

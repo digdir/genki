@@ -68,9 +68,34 @@ export const AssistantBanner = ({
       {availability.kind === 'unavailable' ? (
         <Alert data-color="warning" data-size="sm">
           <Heading level={3} data-size="2xs">
-            {t('assistant.bannerUnavailableTitle')}
+            {availability.reason === 'api'
+              ? t('assistant.bannerApiTitle')
+              : t('assistant.bannerUnavailableTitle')}
           </Heading>
-          <Paragraph data-size="sm">{t('assistant.bannerUnavailable')}</Paragraph>
+          <Paragraph data-size="sm">
+            {availability.reason === 'not_published'
+              ? t('assistant.bannerNotPublished')
+              : availability.reason === 'no_model'
+                ? t('assistant.bannerNoModel', { tenant: tenantName })
+                : availability.reason === 'model_failed'
+                  ? t('assistant.bannerModelFailed')
+                  : availability.reason === 'empty_result'
+                    ? t('assistant.bannerEmptyResult')
+                    : availability.reason === 'api'
+                      ? t('assistant.bannerApi')
+                      : (availability.message ?? t('assistant.bannerUnavailable'))}
+          </Paragraph>
+          {availability.task && (
+            <Paragraph data-size="sm">
+              {t('assistant.bannerTask', { task: availability.task })}{' '}
+              <Link href={`#/log/${encodeURIComponent(availability.task)}`}>
+                {t('assistant.bannerTaskLink')}
+              </Link>
+            </Paragraph>
+          )}
+          {availability.reason === 'no_model' && (
+            <Link href="#/settings">{t('assistant.bannerDisabledLink')}</Link>
+          )}
           <Button variant="secondary" data-size="sm" onClick={onRetry}>
             {t('assistant.retry')}
           </Button>

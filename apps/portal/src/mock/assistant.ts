@@ -1,4 +1,8 @@
-import type { AssistantTurn, AssistantTurnRequest } from '../api/assistant';
+import type {
+  AssistantTurn,
+  AssistantTurnRequest,
+  AssistantUnavailableReason,
+} from '../api/assistant';
 import {
   answeredTurn,
   assistantUserMessages,
@@ -9,7 +13,8 @@ import {
 import type { MockHandler } from '../mock';
 
 export interface AssistantMockOptions {
-  status?: 'unavailable' | 'budget_exhausted' | 'disabled';
+  status?: 'unavailable' | 'budget_exhausted' | 'disabled' | 'server_error';
+  reason?: AssistantUnavailableReason;
   turns?: AssistantTurnRequest[];
   reply?: (draft: Record<string, unknown>) => AssistantTurn;
 }
@@ -48,13 +53,16 @@ export const assistantMock =
           { type: 'about:blank', title: 'Byggeassistenten er slått av', status: 409 },
           409,
         );
+      if (options.status === 'server_error')
+        return request.json({ type: 'about:blank', title: 'Bad Gateway', status: 502 }, 502);
       if (options.status) {
         const draft = asDraft(body.draft.definition);
+        const answer = exampleAssistantTurn(
+          options.status === 'unavailable' ? 'utilgjengelig' : 'budsjett-brukt',
+          draft,
+        );
         return request.json(
-          exampleAssistantTurn(
-            options.status === 'unavailable' ? 'utilgjengelig' : 'budsjett-brukt',
-            draft,
-          ),
+          options.reason && answer ? { ...answer, reason: options.reason } : answer,
         );
       }
       if (options.reply) return request.json(options.reply(asDraft(body.draft.definition)));

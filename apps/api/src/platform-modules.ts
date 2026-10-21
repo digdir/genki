@@ -18,6 +18,7 @@ import type { Admin, AdminHandler } from './admin.js';
 import type { CatalogRegistry } from './catalog-registry.js';
 import type { ChangeTopic } from './change-feed.js';
 import type { ConfigEntryStore } from './config-store.js';
+import type { ApiLog } from './failure-log.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
 import type { TaskIndex } from './extensions.js';
 import type { IngestSourceOptions } from './index-ingestion.js';
@@ -73,6 +74,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   };
   defaultEmbedding?: { model: string; dimensions: number; residency: Residency };
   hookRuntime?: HookRuntime;
+  logger?: ApiLog;
   triggerRuns?: TriggerRunStore;
   pluginRegistry?: PluginRegistry;
   externalPlugins?: {

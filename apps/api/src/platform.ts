@@ -31,14 +31,15 @@ import {
   reasonTooShort,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
+import { t } from './i18n/index.js';
 import { toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
 
-const draftOriginNames: Record<DraftOrigin, string> = {
-  builder: 'Byggeren (utkast)',
-  playground: 'Prøveområdet (utkast)',
-  'skill-test': 'Test av ferdighet (utkast)',
-  assistant: 'Byggeassistenten',
+const draftOriginNames: Record<DraftOrigin, () => string> = {
+  builder: () => t('runs.originBuilder'),
+  playground: () => t('runs.originPlayground'),
+  'skill-test': () => t('runs.originSkillTest'),
+  assistant: () => t('runs.originAssistant'),
 };
 
 export interface PlatformApiOptions {
@@ -761,7 +762,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
 
   const serviceNameOf = async (capability: string) => {
     const origin = originOf(capability);
-    if (origin !== serviceOrigin) return draftOriginNames[origin];
+    if (origin !== serviceOrigin) return draftOriginNames[origin]();
     return (await store.capabilities()).find((c) => c.capability.descriptor.id === capability)
       ?.capability.descriptor.title;
   };

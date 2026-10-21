@@ -1,15 +1,26 @@
 import type { Ref } from '@genai/contracts';
 import type { EventLog, PortContext } from '@genai/kernel';
-import type { ChatRequest, ModelPort } from '@genai/port-model';
+import { ModelError, type ChatRequest, type ModelPort } from '@genai/port-model';
 
 export type ApiLog = (msg: string, fields: Record<string, unknown>) => void;
 
 type CapabilityOf = (task: string) => Promise<string | undefined>;
 
+const requestErrors = new Set(['bad_request', 'unsupported']);
+const reasonLength = 300;
+
 const errorFields = (error: unknown) => {
   const named = error instanceof Error ? error.name : typeof error;
   const code = (error as { code?: unknown } | null)?.code;
-  return { error: named, ...(typeof code === 'string' ? { code } : {}) };
+  const reason =
+    error instanceof ModelError && requestErrors.has(error.code)
+      ? error.message.slice(0, reasonLength)
+      : undefined;
+  return {
+    error: named,
+    ...(typeof code === 'string' ? { code } : {}),
+    ...(reason ? { reason } : {}),
+  };
 };
 
 export const loggedModels = <R extends { open(ref: Ref, ctx: PortContext): ModelPort }>(

@@ -527,6 +527,45 @@ describe('builder assistant', () => {
     ).toBe('#/settings');
   });
 
+  it.each([
+    ['not_published', /ikke publisert på plattformen ennå/],
+    ['no_model', /Ingen modell med verktøystøtte er tilgjengelig/],
+    ['model_failed', /svarte med en feil/],
+    ['empty_result', /ikke med noe assistenten kunne bruke/],
+  ] as const)('unavailable with reason %s shows its own text', async (reason, text) => {
+    const panel = await open(
+      '#/services/soknadsuttrekk/setup',
+      withAssistant({ status: 'unavailable', reason }),
+    );
+    say(panel, 'Hva koster dette?');
+    await within(panel).findByText('Byggeassistenten er ikke tilgjengelig', {}, slow);
+    expect(within(panel).getByText(text)).toBeTruthy();
+    expect(within(panel).queryByText(/Fikk ikke svar fra plattformen/)).toBeNull();
+  });
+
+  it('a failed model run shows the task id with a link to the run', async () => {
+    const panel = await open(
+      '#/services/soknadsuttrekk/setup',
+      withAssistant({ status: 'unavailable', reason: 'model_failed' }),
+    );
+    say(panel, 'Hva koster dette?');
+    expect(await within(panel).findByText(/Oppgave-ID: trn_u1/, {}, slow)).toBeTruthy();
+    expect(within(panel).getByRole('link', { name: 'Se kjøringen' }).getAttribute('href')).toBe(
+      '#/log/trn_u1',
+    );
+  });
+
+  it('an HTTP error says the platform did not answer, not the model', async () => {
+    const panel = await open(
+      '#/services/soknadsuttrekk/setup',
+      withAssistant({ status: 'server_error' }),
+    );
+    say(panel, 'Hva koster dette?');
+    expect(await within(panel).findByText('Fikk ikke svar fra plattformen', {}, slow)).toBeTruthy();
+    expect(within(panel).getByText(/fikk ikke kontakt med plattformens API/)).toBeTruthy();
+    expect(within(panel).queryByText(/Modellen/)).toBeNull();
+  });
+
   it('shows the API call for an assistant message with proposals', async () => {
     const panel = await open('#/services/soknadsuttrekk/setup?assistent=api-kall');
     await within(panel).findByText('La til sjekk av status i Enhetsregisteret', {}, slow);

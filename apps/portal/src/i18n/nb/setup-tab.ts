@@ -84,6 +84,10 @@ export const setup = defineNamespace({
   instructionsInFlow: 'I stegene i stegflyten {flow}',
   instructionsBuiltInHelp:
     'Tjenesten bruker standardinstruksjonene til oppsettet. Skriver du instruksjoner her, erstatter de standarden.',
+  defaultInstructionsShow: 'Se standardinstruksjonene',
+  defaultInstructionsCompare: 'Sammenlign med standardinstruksjonene',
+  defaultInstructionsLabel: 'Standardinstruksjonene (kan ikke endres her)',
+  defaultInstructionsUse: 'Bruk som utgangspunkt',
   instructionsInFlowHelp:
     'Instruksjonene står i stegene i stegflyten {flow}. Endre dem i stegflyten under Stegflyter.',
   instructionsRemote: 'Hos den eksterne motoren',

@@ -19,6 +19,7 @@ export interface StrategyEntry {
   pipeline: { title: UiText; description: UiText; repeats?: true }[];
   newConfig: Record<string, unknown>;
   takes: { instructions: ConfigUse; examples: ConfigUse };
+  defaultInstructions?: { text: UiText; note?: UiText };
   schema: string;
 }
 
@@ -80,6 +81,11 @@ export const writePath = (config: Raw, path: string[], value: unknown): Raw => {
 };
 
 export const strategyEntry = (id: string | undefined) => catalogue.find((s) => s.id === id);
+
+export const defaultInstructionsOf = (id: string | undefined, locale: Locale) => {
+  const found = strategyEntry(id)?.defaultInstructions;
+  return found ? { text: found.text[locale], note: found.note?.[locale] } : undefined;
+};
 
 export const takesOf = (id: string | undefined) =>
   strategyEntry(id)?.takes ?? { instructions: 'no' as const, examples: 'no' as const };
