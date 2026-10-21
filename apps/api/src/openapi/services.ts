@@ -190,6 +190,10 @@ const EvalRunSummary = z
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
     split: z.enum(['locked', 'open']).optional(),
+    trace: z
+      .literal(false)
+      .optional()
+      .openapi({ description: 'Present when the run was kept out of the trace sink' }),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),
@@ -1086,6 +1090,10 @@ export const serviceRoutes: RouteConfig[] = [
             .min(1)
             .optional()
             .openapi({ description: 'Run only these cases of the test set, by id' }),
+          trace: z.boolean().optional().openapi({
+            description:
+              'false keeps the run out of the trace sink: no traces for its cases or for the judge calls that grade them',
+          }),
           definition: record.optional().openapi({
             description: 'With version draft: run this definition instead of the saved draft',
           }),

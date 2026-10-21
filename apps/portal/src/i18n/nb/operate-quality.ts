@@ -161,6 +161,11 @@ export const qualityArea = {
     runLockedReason: 'Kjørte de låste testtilfellene i {name} på {version}',
     runMarkedReason: 'Kjørte merkede testtilfeller ({count}) i {name} på {version}',
     markHint: 'Kryss av testtilfeller for å kjøre bare dem.',
+    sendTraces: 'Send kjøringen til Langfuse',
+    sendTracesHint:
+      'Kryss av for å sende spørsmålene, svarene og vurderingene i denne kjøringen til Langfuse som et eksperiment.',
+    notSent: 'Kjøringen sendes ikke til Langfuse.',
+    notSentShort: 'ikke sendt til Langfuse',
     clearMarks: 'Fjern merkingen',
     runMarked: {
       one: 'Kjør det merkede testtilfellet',

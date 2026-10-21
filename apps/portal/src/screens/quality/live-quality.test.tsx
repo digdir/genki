@@ -188,6 +188,45 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it('keeps a run out of Langfuse unless the box is ticked, and says so in the run list', async () => {
+    const { writes } = await openLive();
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    const send = await screen.findByRole('checkbox', { name: 'Send kjøringen til Langfuse' });
+    expect((send as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    expect(await screen.findByText('Kjøringen sendes ikke til Langfuse.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)).toMatchObject({
+      method: 'POST',
+      body: { testSet: 'rapport-kjerne', version: 'draft', trace: false },
+    });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    expect(within(row).getByText(/ikke sendt til Langfuse/)).toBeTruthy();
+    await screen.findByText('Kjøringen er ferdig. Resultatet vises i listen.');
+
+    fireEvent.click(send);
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    expect(screen.queryByText('Kjøringen sendes ikke til Langfuse.')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() =>
+      expect(writes().filter((w) => w.path.endsWith('/eval-runs'))).toHaveLength(2),
+    );
+    expect(writes().at(-1)?.body).not.toHaveProperty('trace');
+    expectAccessible();
+  });
+
+  it('offers no Langfuse choice when the platform sends no traces', async () => {
+    await openLive(
+      '',
+      {},
+      { integrations: { connections: [], traces: { enabled: false, content: false } } },
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    await screen.findByRole('button', { name: 'Kjør testsettet' });
+    expect(screen.queryByRole('checkbox', { name: 'Send kjøringen til Langfuse' })).toBeNull();
+  });
+
   it('shows a running run and blocks a second start', async () => {
     await openLive('', { runsStayRunning: true });
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

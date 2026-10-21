@@ -34,6 +34,7 @@ export interface EvalRun {
   passed?: number | null;
   total?: number | null;
   cost?: number | null;
+  trace?: false;
 }
 
 export interface EvalCaseResult {
@@ -243,7 +244,13 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     startRun: (
       tenant: string,
       id: string,
-      body: { testSet: string; version?: RunVersion; split?: CaseSplit; cases?: string[] },
+      body: {
+        testSet: string;
+        version?: RunVersion;
+        split?: CaseSplit;
+        cases?: string[];
+        trace?: boolean;
+      },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>

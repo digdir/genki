@@ -187,6 +187,24 @@ describe('kernel: running a task', () => {
     expect(seen).toEqual([{ parts: [textPart('hei')] }]);
   });
 
+  it('records with the input that a task is kept out of the trace sink', async () => {
+    const echo = strategy('echo', async function* () {
+      yield { type: 'kernel.result', data: [] };
+    });
+    const kernel = kernelWith({ strategies: [echo], capabilities: [capability('ka', 'echo')] });
+
+    const kept = await kernel.invoke(kari, 'ka', {}, { trace: false });
+    const traced = await kernel.invoke(kari, 'ka', {}, { trace: true });
+    await Promise.all([kept.result, traced.result]);
+    const inputOf = async (task: string) =>
+      (await collect(await kernel.events(kari, task, { audience: 'audit' }))).find(
+        (e) => e.type === 'kernel.task.input',
+      )?.data;
+
+    expect(await inputOf(kept.task)).toEqual({ input: {}, trace: false });
+    expect(await inputOf(traced.task)).toEqual({ input: {} });
+  });
+
   it('fails a task whose strategy throws before it yields anything, and ends its readers', async () => {
     const broken = strategy('broken', () => {
       throw new Error('boom');

@@ -782,6 +782,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
         data: {
           input,
           ...(invokeOptions.evaluation ? { evaluation: invokeOptions.evaluation } : {}),
+          ...(invokeOptions.trace === false ? { trace: false } : {}),
         },
         audience: 'audit',
       },

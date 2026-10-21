@@ -164,6 +164,11 @@ export const qualityArea = {
     runLockedReason: 'Ran the locked test cases of {name} on {version}',
     runMarkedReason: 'Ran marked test cases ({count}) of {name} on {version}',
     markHint: 'Tick test cases to run only those.',
+    sendTraces: 'Send the run to Langfuse',
+    sendTracesHint:
+      'Tick to send the questions, answers and assessments in this run to Langfuse as an experiment.',
+    notSent: 'The run is not sent to Langfuse.',
+    notSentShort: 'not sent to Langfuse',
     clearMarks: 'Clear the marks',
     runMarked: {
       one: 'Run the marked test case',

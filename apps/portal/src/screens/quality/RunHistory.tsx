@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Fieldset,
   Heading,
@@ -197,10 +198,14 @@ export const RunHistory = ({
   const [starting, setStarting] = useState(false);
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
+  const [send, setSend] = useState(false);
   const [state, retry] = useAsync(
     (signal) => api.quality.runs(tenant, serviceId, signal),
     [api, tenant, serviceId, round],
   );
+  const [integrations] = useAsync((signal) => api.integrations(tenant, signal), [api, tenant]);
+  const traced = integrations.status === 'ready' && integrations.data.traces.enabled;
+  const withheld = traced && !send;
   const seen = useRef<EvalRun[] | undefined>(undefined);
   if (state.status === 'ready') seen.current = state.data;
   const runs = (seen.current ?? []).filter((r) => r.testSet === testSet.id);
@@ -233,6 +238,7 @@ export const RunHistory = ({
           version,
           ...(choice === 'locked' ? { split: 'locked' as const } : {}),
           ...(choice === 'marked' ? { cases: marked } : {}),
+          ...(withheld ? { trace: false } : {}),
         },
         choice === 'locked'
           ? t('quality.runLockedReason', names)
@@ -258,7 +264,7 @@ export const RunHistory = ({
       <Heading level={2} data-size="xs" id="kj-h">
         {t('quality.runsTitle')}
       </Heading>
-      <div className="filter-row align-end">
+      <div className="run-start">
         <Fieldset>
           <Fieldset.Legend>{t('quality.runOn')}</Fieldset.Legend>
           <div className="tag-row">
@@ -274,77 +280,95 @@ export const RunHistory = ({
             ))}
           </div>
         </Fieldset>
-        <Button
-          variant="secondary"
-          aria-disabled={blocked || undefined}
-          aria-describedby={!canRun ? 'run-hint' : undefined}
-          aria-expanded={canRun ? confirming === 'all' : undefined}
-          onClick={() => !blocked && setConfirming('all')}
-        >
-          {t('quality.runSet')}
-        </Button>
-        {locked > 0 ? (
+        {traced && canRun ? (
+          <Checkbox
+            label={t('quality.sendTraces')}
+            description={t('quality.sendTracesHint')}
+            checked={send}
+            onChange={(e) => setSend(e.target.checked)}
+          />
+        ) : null}
+        <div className="actions">
           <Button
-            variant="tertiary"
+            variant="secondary"
             aria-disabled={blocked || undefined}
-            aria-expanded={canRun ? confirming === 'locked' : undefined}
-            onClick={() => !blocked && setConfirming('locked')}
+            aria-describedby={!canRun ? 'run-hint' : undefined}
+            aria-expanded={canRun ? confirming === 'all' : undefined}
+            onClick={() => !blocked && setConfirming('all')}
           >
-            {t('quality.runLocked')}
+            {t('quality.runSet')}
           </Button>
-        ) : null}
-        {marked.length > 0 ? (
-          <>
+          {locked > 0 ? (
             <Button
-              variant="tertiary"
+              variant="secondary"
               aria-disabled={blocked || undefined}
-              aria-expanded={canRun ? confirming === 'marked' : undefined}
-              onClick={() => !blocked && setConfirming('marked')}
+              aria-expanded={canRun ? confirming === 'locked' : undefined}
+              onClick={() => !blocked && setConfirming('locked')}
             >
-              {t('quality.runMarked', { count: marked.length })}
+              {t('quality.runLocked')}
             </Button>
-            <Button
-              variant="tertiary"
-              onClick={() => {
-                if (confirming === 'marked') setConfirming(undefined);
-                onClearMarks();
-              }}
-            >
-              {t('quality.clearMarks')}
-            </Button>
-          </>
-        ) : null}
-        {!canRun ? (
-          <span id="run-hint" className="small">
-            {canManage ? t('quality.addCasesFirst') : needsRight('manage-services', t)}
-          </span>
+          ) : null}
+          {marked.length > 0 ? (
+            <>
+              <Button
+                variant="secondary"
+                aria-disabled={blocked || undefined}
+                aria-expanded={canRun ? confirming === 'marked' : undefined}
+                onClick={() => !blocked && setConfirming('marked')}
+              >
+                {t('quality.runMarked', { count: marked.length })}
+              </Button>
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                onClick={() => {
+                  if (confirming === 'marked') setConfirming(undefined);
+                  onClearMarks();
+                }}
+              >
+                {t('quality.clearMarks')}
+              </Button>
+            </>
+          ) : null}
+          {!canRun ? (
+            <span id="run-hint" className="small">
+              {canManage ? t('quality.addCasesFirst') : needsRight('manage-services', t)}
+            </span>
+          ) : null}
+        </div>
+        {confirming && canRun ? (
+          <Alert data-color="info" data-size="sm">
+            <Heading level={3} data-size="2xs">
+              {confirming === 'locked'
+                ? t('quality.confirmLockedTitle', { count: locked })
+                : confirming === 'marked'
+                  ? t('quality.confirmMarkedTitle', { count: marked.length })
+                  : t('quality.confirmRunTitle', { count: cases })}
+            </Heading>
+            <RunEstimate
+              api={api}
+              tenant={tenant}
+              serviceId={serviceId}
+              runs={runs}
+              cases={chosen}
+            />
+            {withheld ? <Paragraph data-size="sm">{t('quality.notSent')}</Paragraph> : null}
+            <div className="actions">
+              <Button
+                variant="primary"
+                data-size="sm"
+                aria-disabled={blocked || undefined}
+                onClick={() => void start(confirming)}
+              >
+                {t('quality.confirmRun')}
+              </Button>
+              <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(undefined)}>
+                {t('quality.cancel')}
+              </Button>
+            </div>
+          </Alert>
         ) : null}
       </div>
-      {confirming && canRun ? (
-        <Alert data-color="info" data-size="sm">
-          <Heading level={3} data-size="2xs">
-            {confirming === 'locked'
-              ? t('quality.confirmLockedTitle', { count: locked })
-              : confirming === 'marked'
-                ? t('quality.confirmMarkedTitle', { count: marked.length })
-                : t('quality.confirmRunTitle', { count: cases })}
-          </Heading>
-          <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={chosen} />
-          <div className="actions">
-            <Button
-              variant="primary"
-              data-size="sm"
-              aria-disabled={blocked || undefined}
-              onClick={() => void start(confirming)}
-            >
-              {t('quality.confirmRun')}
-            </Button>
-            <Button variant="tertiary" data-size="sm" onClick={() => setConfirming(undefined)}>
-              {t('quality.cancel')}
-            </Button>
-          </div>
-        </Alert>
-      ) : null}
       {state.status === 'loading' && !seen.current ? (
         <Loading label={t('quality.runsLoading')} />
       ) : state.status === 'error' ? (
@@ -375,7 +399,12 @@ export const RunHistory = ({
                 return (
                   <Table.Row key={r.id}>
                     <Table.Cell>{dateTime(r.startedAt)}</Table.Cell>
-                    <Table.Cell>{versionText(t, r.version)}</Table.Cell>
+                    <Table.Cell>
+                      {versionText(t, r.version)}
+                      {r.trace === false ? (
+                        <span className="meta"> · {t('quality.notSentShort')}</span>
+                      ) : null}
+                    </Table.Cell>
                     <Table.Cell>
                       <Tag data-size="sm" data-color={color}>
                         {text}

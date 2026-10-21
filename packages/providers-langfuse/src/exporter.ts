@@ -10,6 +10,7 @@ export interface ExporterStats {
   dropped: number;
   failed: number;
   sampledOut: number;
+  withheld: number;
 }
 
 export interface TraceExporter {
@@ -44,9 +45,16 @@ export const createTraceExporter = (
   const url = tracesUrl(config.endpoint);
   const open = new Map<string, Open>();
   const experiments = new Map<string, Experiment>();
+  const withheld = new Set<string>();
   const queue: OtlpSpan[] = [];
   const building = new Set<Promise<void>>();
-  const stats: ExporterStats = { exported: 0, dropped: 0, failed: 0, sampledOut: 0 };
+  const stats: ExporterStats = {
+    exported: 0,
+    dropped: 0,
+    failed: 0,
+    sampledOut: 0,
+    withheld: 0,
+  };
   let sending: Promise<void> | undefined;
   let stopped = false;
   let headers: Promise<Record<string, string>> | undefined;
@@ -92,6 +100,28 @@ export const createTraceExporter = (
     }
     queue.push(...spans);
     if (queue.length >= config.batch.maxSpans) void flushQueue();
+  };
+
+  const withhold = (task: string) => {
+    if (withheld.has(task)) return;
+    withheld.add(task);
+    open.delete(task);
+    stats.withheld += 1;
+  };
+
+  const isWithheld = (event: Event) => {
+    if (
+      event.type === 'kernel.task.input' &&
+      (event.data as { trace?: unknown } | undefined)?.trace === false
+    )
+      withhold(event.task);
+    if (!withheld.has(event.task)) return false;
+    const data = event.data as { child?: unknown; status?: unknown } | undefined;
+    if (event.type === 'kernel.task.spawned' && typeof data?.child === 'string')
+      withhold(data.child);
+    if (event.type === 'kernel.task.status' && terminalStatuses.has(String(data?.status)))
+      withheld.delete(event.task);
+    return true;
   };
 
   const track = (event: Event) => {
@@ -194,6 +224,7 @@ export const createTraceExporter = (
   const observe = (event: Event, _scope: ContentScope) => {
     if (stopped) return;
     try {
+      if (isWithheld(event)) return;
       let state = open.get(event.task);
       if (!state) {
         if (open.size >= config.limits.openTasks) {

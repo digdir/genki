@@ -434,6 +434,10 @@ export const createQualityModule =
             return problem(c, 400, 'Ugyldig forespørsel', [
               { path: 'cases', message: 'cases is a non-empty list of case ids' },
             ]);
+          if (data.trace !== undefined && typeof data.trace !== 'boolean')
+            return problem(c, 400, 'Ugyldig forespørsel', [
+              { path: 'trace', message: 'trace is true or false' },
+            ]);
           const set = await deps.evalStores.testSets.get(tenant, setId);
           if (!set || (set.spec.service !== undefined && set.spec.service !== service))
             return problem(c, 404, 'Fant ikke testsettet', [
@@ -471,15 +475,11 @@ export const createQualityModule =
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);
-          const started = await evals.startRun(
-            principal,
-            tenant,
-            service,
-            set,
-            subject,
-            split,
-            only,
-          );
+          const started = await evals.startRun(principal, tenant, service, set, subject, {
+            ...(split ? { split } : {}),
+            ...(only ? { only } : {}),
+            ...(data.trace === false ? { trace: false } : {}),
+          });
           background(started.done);
           return c.json({ id: started.run.id }, 202);
         });

@@ -14,6 +14,7 @@ import {
   InMemoryEventLog,
   InMemoryTaskStore,
   type Capability,
+  type InvokeOptions,
   type PortContext,
 } from '@genai/kernel';
 import {
@@ -109,7 +110,7 @@ const run = async (
   config: Omit<ExporterConfigInput, 'endpoint'>,
   url: string,
   fail = false,
-  evaluation?: EvaluationContext,
+  invoke: Pick<InvokeOptions, 'evaluation' | 'trace'> = {},
 ) => {
   const tasks = new InMemoryTaskStore();
   const exporter = createTraceExporter(
@@ -217,7 +218,7 @@ const run = async (
     kari,
     'kunnskapsassistenten',
     { data: { question: personalNumber } },
-    evaluation ? { evaluation } : {},
+    invoke,
   );
   await started.result.catch(() => undefined);
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -357,7 +358,7 @@ describe('trace exporter for a test case', () => {
   it('sends the trace as one item of the run as an experiment, the ids on every span and what the case expects on the root', async () => {
     const { url, received } = await collector();
 
-    const { task } = await run({ content: true }, url, false, testCase);
+    const { task } = await run({ content: true }, url, false, { evaluation: testCase });
 
     const spans = received.flatMap((r) => r.spans);
     const root = spans.find((s) => attr(s, 'genai.task.id') === task);
@@ -383,7 +384,7 @@ describe('trace exporter for a test case', () => {
   it('leaves out what the case expects unless the connection opts in to content', async () => {
     const { url, received } = await collector();
 
-    await run({}, url, false, testCase);
+    await run({}, url, false, { evaluation: testCase });
 
     const raw = received.map((r) => r.raw).join('');
     expect(raw).not.toContain('Fristen er 1. mai');
@@ -395,12 +396,24 @@ describe('trace exporter for a test case', () => {
   it('never samples out a test case, so every case of a run reaches the experiment', async () => {
     const { url, received } = await collector();
 
-    const { exporter } = await run({ sampleRate: 0 }, url, false, testCase);
+    const { exporter } = await run({ sampleRate: 0 }, url, false, { evaluation: testCase });
 
     expect(received.flatMap((r) => r.spans).map((s) => s.name)).toEqual(
       expect.arrayContaining(['kunnskapsassistenten', 'oppslag']),
     );
     expect(exporter.stats().sampledOut).toBe(0);
+  });
+
+  it('sends nothing for a task kept out of the trace sink, nor for the tasks it spawns', async () => {
+    const { url, received } = await collector();
+
+    const { exporter } = await run({ content: true }, url, false, {
+      evaluation: testCase,
+      trace: false,
+    });
+
+    expect(received).toHaveLength(0);
+    expect(exporter.stats()).toMatchObject({ exported: 0, withheld: 2 });
   });
 });
 

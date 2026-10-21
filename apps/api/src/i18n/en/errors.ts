@@ -330,6 +330,7 @@ export const qualityErrors = {
   lockedOrOpen: 'split is locked or open',
   caseIdList: 'cases is a non-empty list of case ids',
   noCaseIn: 'no case {id} in {setId}',
+  traceTrueFalse: 'trace is true or false',
   expectedRequired: 'the expected answer or criteria are required',
   caseExists: 'case {id} exists',
   testSetRequired: 'the test set is required',

@@ -48,6 +48,7 @@ export interface ServiceRun extends Leased {
   version: RunVersion;
   variant?: string;
   split?: CaseSplit;
+  trace?: false;
   startedAt: string;
   endedAt: string | null;
   score: number | null;
@@ -215,7 +216,12 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     cases: TestCase[],
     meter: Meter,
-    options: { avoidAsJudge?: string[]; chargeTo?: string; run?: EvaluationContext['run'] } = {},
+    options: {
+      avoidAsJudge?: string[];
+      chargeTo?: string;
+      run?: EvaluationContext['run'];
+      trace?: boolean;
+    } = {},
   ): Promise<Outcome> => {
     const served = modelsOf(subject.definition);
     const judgeTenant = options.chargeTo ?? tenant;
@@ -226,7 +232,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ])
       : undefined;
     const judge = judgeId
-      ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter)
+      ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter, options.trace)
       : undefined;
     const results: CaseResult[] = [];
     for (const c of cases) {
@@ -248,6 +254,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(options.chargeTo ? { chargeTo: options.chargeTo } : {}),
         ...(options.run ? { evaluation: evaluationOf(options.run, c) } : {}),
+        ...(options.trace === false ? { trace: false } : {}),
       });
       meter.add(outcome);
       if (!outcome.ok) {
@@ -341,8 +348,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     service: string,
     set: TestSet,
     subject: Subject,
-    split?: CaseSplit,
-    only?: string[],
+    { split, only, trace }: { split?: CaseSplit; only?: string[]; trace?: boolean } = {},
   ) => {
     const actor = actorOf(principal.actor ?? principal);
     const queued: ServiceRun = {
@@ -354,6 +360,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       version: subject.version,
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(split ? { split } : {}),
+      ...(trace === false ? { trace: false as const } : {}),
       startedAt: new Date().toISOString(),
       endedAt: null,
       score: null,
@@ -383,7 +390,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           subject,
           casesIn(set, split, only),
           meter,
-          { run: runLabel(queued.id, service, set, subject, queued.startedAt, split, only) },
+          {
+            run: runLabel(queued.id, service, set, subject, queued.startedAt, split, only),
+            ...(trace === false ? { trace: false } : {}),
+          },
         );
         await lease.update(
           (run) => ({

@@ -422,6 +422,28 @@ describe('eval runs for a service', () => {
     expect(empty.status).toBe(400);
   });
 
+  it('keeps a run out of the trace sink when asked, with the judge calls that grade it', async () => {
+    const env = await boot();
+    const path = `${services}/eval-runs`;
+    const before = env.inputs.length;
+
+    const started = await env.send('POST', path, 'kari', { testSet: 'svar-frister', trace: false });
+    await env.settled();
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
+      .body as unknown as ServiceRun;
+    const recorded = env.inputs
+      .slice(before)
+      .map((e) => e.data as { trace?: boolean; evaluation?: EvaluationContext });
+    const refused = await env.send('POST', path, 'kari', { testSet: 'svar-frister', trace: 'nei' });
+
+    expect(started.status).toBe(202);
+    expect(run.trace).toBe(false);
+    expect(recorded.filter((d) => d.evaluation)).toHaveLength(3);
+    expect(recorded.length).toBeGreaterThan(3);
+    expect(recorded.every((d) => d.trace === false)).toBe(true);
+    expect(refused.status).toBe(400);
+  });
+
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
     const env = await boot();
     const id = await runPublished(env);

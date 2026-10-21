@@ -114,6 +114,7 @@ export const modelChoice = (deps: ModelChoiceDeps) => {
     user: string,
     origin: DraftOrigin,
     meter?: Meter,
+    trace?: boolean,
   ): Promise<DraftRunSuccess> => {
     const outcome = await deps.drafts.run({
       principal,
@@ -123,6 +124,7 @@ export const modelChoice = (deps: ModelChoiceDeps) => {
       }),
       parts: [{ kind: 'text', text: user }],
       origin,
+      ...(trace === false ? { trace: false } : {}),
     });
     meter?.add(outcome);
     if (!outcome.ok) throw new Error(outcome.errors.map((e) => e.message).join('; '));
@@ -135,13 +137,14 @@ export const modelChoice = (deps: ModelChoiceDeps) => {
     model: string,
     origin: DraftOrigin,
     meter?: Meter,
+    trace?: boolean,
   ): JudgeModel => ({
     id: model,
     family: familyOf(model) ?? model,
     complete: async (messages) => {
       const system = messages.find((m) => m.role === 'system')?.content ?? '';
       const user = messages.find((m) => m.role === 'user')?.content ?? '';
-      return (await complete(principal, tenant, model, system, user, origin, meter)).answer;
+      return (await complete(principal, tenant, model, system, user, origin, meter, trace)).answer;
     },
   });
 

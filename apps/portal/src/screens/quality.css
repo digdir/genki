@@ -70,6 +70,15 @@
   border-radius: var(--ds-border-radius-lg);
 }
 
+.run-start {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-lg);
+}
+
 .narrow-field {
   max-width: 380px;
 }

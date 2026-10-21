@@ -345,6 +345,7 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
           version?: RunVersion;
           split?: CaseSplit;
           cases?: string[];
+          trace?: boolean;
         }>();
         const set = sets.find((s) => s.id === body.testSet && s.service === service);
         if (!set) return req.notFound();
@@ -352,7 +353,10 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
           (c) =>
             (!body.split || c.split === body.split) && (!body.cases || body.cases.includes(c.id)),
         );
-        const run = runOf(service, { ...set, cases }, body.version ?? 'draft');
+        const run = {
+          ...runOf(service, { ...set, cases }, body.version ?? 'draft'),
+          ...(body.trace === false ? { trace: false as const } : {}),
+        };
         runs.unshift(run);
         return req.json({ id: run.id }, 202);
       }

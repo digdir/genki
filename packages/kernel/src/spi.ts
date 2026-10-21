@@ -114,6 +114,7 @@ export interface InvokeOptions {
   budget?: Usage;
   maxOutputTokens?: number;
   evaluation?: EvaluationContext;
+  trace?: boolean;
 }
 
 export interface EventsOptions {
