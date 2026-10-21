@@ -1,7 +1,5 @@
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
-python-multipart==0.0.12
-torch==2.8.0
-torchvision==0.23.0
-marker-pdf[full]==1.10.1
-psutil==7.1.0
+-r requirements-web.txt
+torch==2.14.1
+torchvision==0.29.1
+marker-pdf[full]==1.10.2
+psutil==7.2.2

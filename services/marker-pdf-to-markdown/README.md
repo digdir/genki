@@ -2,7 +2,7 @@
 
 A small HTTP service that converts PDF files to Markdown with [Marker](https://github.com/datalab-to/marker). The API uses it when `DOCUMENT_CONVERTER=marker`: the `markerConverter` in `packages/ingest/src/converter.ts` sends each PDF here and joins the returned pages.
 
-It is a Python service (FastAPI, `marker-pdf` 1.10.1, PyTorch), so it is not an npm workspace and is not part of `npm run check` or the genki image. Build and run it on its own.
+It is a Python service (Python 3.13, FastAPI, `marker-pdf` 1.10.2, PyTorch), so it is not an npm workspace and is not part of `npm run check` or the genki image. Build and run it on its own.
 
 ## Run it
 
@@ -21,10 +21,21 @@ The build downloads the Marker models into the image, so the first build is slow
 Without Docker, with [mise](https://mise.jdx.dev):
 
 ```sh
-mise trust && mise install   # Python 3.11 and a venv in ./venv
+mise trust && mise install   # Python 3.13 and a venv in ./venv
 mise run install             # pip install -r requirements.txt
 MARKER_PDF_TO_MARKDOWN_API_KEY=change-me mise run dev
 ```
+
+## Test it
+
+The tests replace Marker with a fake, so they need neither PyTorch nor the models. CI runs them on every pull request.
+
+```sh
+pip install -r requirements-test.txt
+python -m pytest
+```
+
+`requirements-web.txt` holds the web dependencies that both the service and the tests use, so the tests run against the same FastAPI version.
 
 ## Point genki at it
 
@@ -51,17 +62,19 @@ Marker is configured for Norwegian and English text, with image extraction turne
 
 Every `/api/v1` route needs the `X-API-Key` header.
 
-| Route                                 | What it does                                                                                                      |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `POST /api/v1/marker-pdf-to-markdown` | Converts the multipart `file`. Returns `{ success, pages, cached, file_hash }`, with one Markdown string per page |
-| `GET /api/v1/cache/{file_hash}`       | Returns the cached pages for a hash                                                                               |
-| `GET /api/v1/cache/{file_hash}/pdf`   | Returns the cached PDF for a hash                                                                                 |
-| `DELETE /api/v1/cache/{file_hash}`    | Deletes the cached PDF. The cached pages stay: it looks for a `.md` file, but they are stored as `.json`          |
-| `GET /`, `GET /health`, `GET /up`     | Status, queue sizes and liveness. No key needed                                                                   |
+| Route                                 | What it does                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/marker-pdf-to-markdown` | Converts the multipart `file`. Returns `{ success, pages, cached, file_hash }`: Marker's Markdown split on its page separator |
+| `GET /api/v1/cache/{file_hash}`       | Returns the cached pages for a hash                                                                                           |
+| `GET /api/v1/cache/{file_hash}/pdf`   | Returns the cached PDF for a hash                                                                                             |
+| `DELETE /api/v1/cache/{file_hash}`    | Deletes the cached PDF and its pages                                                                                          |
+| `GET /`, `GET /health`, `GET /up`     | Status, queue sizes and liveness. No key needed                                                                               |
 
 The conversion route takes two query flags:
 
 - `cache=true` returns a stored result for a PDF it has seen before, and stores new results.
 - `priority=true` puts the request ahead of requests without it.
+
+Marker writes a `{n}` page marker and the separator before every page, so `pages` has one more entry than the PDF has pages: the first is just `{0}`, and each later one ends with the next page's marker. Joined back together, every marker stands before its page, which is what genki's `markerConverter` does.
 
 A request waits until its PDF is converted, which can take minutes for a long document, so clients need a long timeout.

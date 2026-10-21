@@ -8,6 +8,7 @@ Supports caching, priority queues, and configurable worker pools.
 import asyncio
 import hashlib
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -19,10 +20,24 @@ from marker.models import create_model_dict
 from marker.config.parser import ConfigParser
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start the workers on startup, and stop them on shutdown."""
+    print(f"[STARTUP] Starting {MARKER_WORKERS} workers...")
+    shutdown_event.clear()
+    workers = [asyncio.create_task(worker(i)) for i in range(MARKER_WORKERS)]
+    print("[STARTUP] Workers started")
+    yield
+    print("[SHUTDOWN] Signaling workers to stop...")
+    shutdown_event.set()
+    await asyncio.gather(*workers)
+
+
 app = FastAPI(
     title="Marker PDF to Markdown API",
     description="Convert PDF files to Markdown using the Marker library",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Configuration
@@ -172,27 +187,10 @@ async def worker(worker_id: int):
             task.future.set_exception(e)
 
         finally:
-            # Clean up temp file if not caching
-            if not task.cache and task.pdf_path.exists():
+            if task.pdf_path.exists():
                 task.pdf_path.unlink()
 
     print(f"[WORKER-{worker_id}] Shutting down")
-
-
-@app.on_event("startup")
-async def startup():
-    """Start worker tasks on application startup."""
-    print(f"[STARTUP] Starting {MARKER_WORKERS} workers...")
-    for i in range(MARKER_WORKERS):
-        asyncio.create_task(worker(i))
-    print("[STARTUP] Workers started")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Signal workers to stop on application shutdown."""
-    print("[SHUTDOWN] Signaling workers to stop...")
-    shutdown_event.set()
 
 
 @app.get("/")
@@ -350,7 +348,7 @@ async def get_cached_pdf(file_hash: str, api_key: str = Depends(verify_api_key))
 async def delete_cache_entry(file_hash: str, api_key: str = Depends(verify_api_key)):
     """Delete a cached entry by file hash."""
     pdf_file = CACHE_DIR / f"{file_hash}.pdf"
-    md_file = CACHE_DIR / f"{file_hash}.md"
+    pages_file = CACHE_DIR / f"{file_hash}.json"
 
     files_deleted = []
 
@@ -358,9 +356,9 @@ async def delete_cache_entry(file_hash: str, api_key: str = Depends(verify_api_k
         pdf_file.unlink()
         files_deleted.append("pdf")
 
-    if md_file.exists():
-        md_file.unlink()
-        files_deleted.append("markdown")
+    if pages_file.exists():
+        pages_file.unlink()
+        files_deleted.append("pages")
 
     if not files_deleted:
         raise HTTPException(
