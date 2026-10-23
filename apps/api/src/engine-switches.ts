@@ -646,7 +646,8 @@ export const createEngineSwitchesModule =
         if (signal.aborted) throw new Stopped();
         let stored = withoutVectors(doc);
         if (embedding) {
-          if (hasVectors(doc, embedding.dimensions)) stored = doc;
+          if (hasVectors(doc, embedding.dimensions) && doc.embeddingModel === embedding.model)
+            stored = doc;
           else if (embedder) stored = await embedIndexDocument(stored, embedder);
           else throw new Error(`no embedder for ${embedding.model}`);
         }
@@ -675,6 +676,7 @@ export const createEngineSwitchesModule =
       });
       const target = { dataset: item.id, endpoint: spec.to, collections: {} };
       const replaced: string[] = [];
+      // Every pipeline writes this shared generation; sibling carry-forward stays omitted.
       for (const [index, pipeline] of pipelines.entries()) {
         const unavailable = backend.unavailableFor?.(target, pipeline);
         if (unavailable) throw new Error(unavailable);

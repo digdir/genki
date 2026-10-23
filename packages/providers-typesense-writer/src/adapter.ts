@@ -248,6 +248,7 @@ export const typesenseIndexWriter = (
     };
 
     return {
+      preservesPipeline: false,
       ...{
         enrichment: typesenseEnrichment(
           { request, json },

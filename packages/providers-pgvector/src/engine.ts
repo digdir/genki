@@ -89,6 +89,8 @@ interface HitRow {
 
 interface DocRow {
   id: string;
+  pipeline: string | null;
+  embedding_model: string | null;
   title: string | null;
   url: string | null;
   fields: Record<string, unknown>;
@@ -395,7 +397,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       const key = [dataset.id, chosen];
       const docs: DocRow[] = (
         await pool.query<DocRow>(
-          `select id, title, url, fields from kn_docs
+          `select id, pipeline, embedding_model, title, url, fields from kn_docs
              where dataset = $1 and generation = $2 and ($3::text is null or id > $3)
              order by id limit $4`,
           [...key, after, readPage],
@@ -418,6 +420,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       for (const doc of docs)
         yield {
           id: doc.id,
+          ...(doc.pipeline === null ? {} : { pipeline: doc.pipeline }),
+          ...(doc.embedding_model === null ? {} : { embeddingModel: doc.embedding_model }),
           ...(doc.title === null ? {} : { title: doc.title }),
           ...(doc.url === null ? {} : { url: doc.url }),
           fields: doc.fields,
@@ -461,7 +465,38 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       await migrated();
     };
 
+    const promote = async (
+      dataset: Dataset,
+      generation: string,
+      expected?: { active: string | undefined },
+    ) => {
+      await begin();
+      return transaction(pool, async (client) => {
+        await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
+          dataset.id,
+        ]);
+        await prepared(client, dataset, generation);
+        const { rows } = await client.query<{ generation: string }>(
+          `select generation from kn_active where dataset = $1`,
+          [dataset.id],
+        );
+        const previous = rows[0]?.generation;
+        if (expected && previous !== expected.active)
+          throw new KnowledgeError(
+            'bad_request',
+            `dataset ${dataset.id} changed during ingestion; run the pipeline again`,
+          );
+        await client.query(
+          `insert into kn_active (dataset, generation) values ($1, $2)
+           on conflict (dataset) do update set generation = excluded.generation`,
+          [dataset.id, generation],
+        );
+        return previous;
+      });
+    };
+
     return {
+      preservesPipeline: true,
       prepare: async (dataset, generation) => {
         await begin();
         await pool.query(
@@ -499,11 +534,12 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
             key,
           );
           await client.query(
-            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config)
-             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig)
+            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config, pipeline, embedding_model)
+             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig, $9, $10)
              on conflict (dataset, generation, id) do update set
                title = excluded.title, url = excluded.url, fields = excluded.fields,
-               fields_text = excluded.fields_text, config = excluded.config`,
+               fields_text = excluded.fields_text, config = excluded.config, pipeline = excluded.pipeline,
+               embedding_model = excluded.embedding_model`,
             [
               ...key,
               doc.title ?? null,
@@ -511,6 +547,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
               JSON.stringify(doc.fields),
               fieldsText(doc.fields),
               config,
+              doc.pipeline ?? null,
+              doc.embeddingModel ?? null,
             ],
           );
           await client.query(
@@ -527,25 +565,9 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           );
         });
       },
-      promote: async (dataset, generation) => {
-        await begin();
-        return transaction(pool, async (client) => {
-          await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
-            dataset.id,
-          ]);
-          await prepared(client, dataset, generation);
-          const { rows } = await client.query<{ generation: string }>(
-            `select generation from kn_active where dataset = $1`,
-            [dataset.id],
-          );
-          await client.query(
-            `insert into kn_active (dataset, generation) values ($1, $2)
-             on conflict (dataset) do update set generation = excluded.generation`,
-            [dataset.id, generation],
-          );
-          return rows[0]?.generation;
-        });
-      },
+      promote,
+      promoteIfActive: (dataset, generation, expected) =>
+        promote(dataset, generation, { active: expected }),
       drop: async (dataset, generation, options = {}) => {
         await begin();
         await transaction(pool, async (client) => {

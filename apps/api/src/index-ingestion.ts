@@ -533,6 +533,10 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
           : undefined;
       const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset });
       const result = await runIndexIngest({
+        pipeline: {
+          id: job.pipeline.id,
+          ...(job.siblingPipelines !== undefined ? { siblings: job.siblingPipelines } : {}),
+        },
         source: withIngestedAt(
           spec.chunking.metadataStyle === 'none' ? withoutMetadata(source) : source,
           new Date().toISOString(),
