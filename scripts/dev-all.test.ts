@@ -89,10 +89,33 @@ describe('dev:all', () => {
     expect(portal?.env?.VITE_ANSATTPORTEN_ISSUER).toBeUndefined();
   });
 
-  it('names the OIDC callbacks identity.yaml lacks for the ports in use', () => {
+  it('accepts registered mock loopback callbacks on other ports', () => {
     const identity = readFileSync(join(repoRoot, 'apps/api/config/local/identity.yaml'), 'utf8');
 
     expect(missingCallbacks(identity, devProcesses({}))).toEqual([]);
+    expect(
+      missingCallbacks(
+        identity,
+        devProcesses({
+          GENAI_PORTAL_PORT: '8101',
+          GENAI_CONSOLE_PORT: '8102',
+          GENAI_WORKSPACE_PORT: '8103',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    'http://localhost:5174/other',
+    'http://127.0.0.1:5174/callback',
+    'https://localhost:5174/callback',
+    'http://evil.test:5174/callback',
+    'http://localhost:70000/callback',
+    'http://localhost:5174/callback\n',
+  ])('still names a missing mock callback when only %s is registered', (uri) => {
+    const identity = JSON.stringify({
+      clients: [{ clientId: 'local-console', redirectUris: [uri] }],
+    });
     expect(missingCallbacks(identity, devProcesses({ GENAI_CONSOLE_PORT: '8102' }))).toEqual([
       'local-console http://localhost:8102/callback',
     ]);

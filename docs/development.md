@@ -29,7 +29,7 @@ COMPOSE_PROJECT_NAME=genai-second GENAI_POSTGRES_PORT=8110 GENAI_MODEL_PORT=8104
 GENAI_API_PORT=8100 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 npm run dev:all
 ```
 
-Setup writes the ports into the new `.env.local`, and `dev:all` points the Vite proxies and the login issuer at the moved API. Login only works when each app's `http://localhost:<port>/callback` is listed for its client in `apps/api/config/local/identity.yaml`; `dev:all` names the missing ones at start. Stop the copy's database with `COMPOSE_PROJECT_NAME=genai-second docker compose down -v`.
+Setup writes the ports into the new `.env.local`, and `dev:all` points the Vite proxies and the login issuer at the moved API. The mock login accepts registered `http` loopback redirects (`localhost`, `127.0.0.1` or `[::1]`) on any port, for login and logout; every other character must match the registered URI. The default clients in `apps/api/config/local/identity.yaml` therefore work on shifted ports without changes, and `dev:all` names missing callback registrations at start. Real Ansattporten still needs the callback registered for each app's port. Stop the copy's database with `COMPOSE_PROJECT_NAME=genai-second docker compose down -v`.
 
 The apps talk to the live API through a Vite proxy on `/api`. To run one against in-browser mock data instead: `VITE_API=mock npm run dev -w apps/portal`. `npm run dev` starts only the API.
 
