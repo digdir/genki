@@ -201,7 +201,7 @@ spec:
           Sammenlign på bokmål hvordan jurisdiksjonene regulerer temaet i spørsmålet. Kildene under kommer fra registeret Every AI Policy Ever, og hver har et nummer.
 
           Jurisdiksjoner som skal sammenlignes: {{jurisdictions.jurisdictions}}
-          Jurisdiksjoner registeret ikke har: {{jurisdictions.missing}}
+          Jurisdiksjoner sammenligningen ikke kjenner: {{jurisdictions.missing}}
 
           Kilder:
           {context}
@@ -220,6 +220,7 @@ spec:
           - Skill mellom bindende regler (Binding), forslag (Proposed) og ikke-bindende dokumenter (Non-binding). Kall aldri et forslag eller en retningslinje for lov.
           - At du ikke fant noe for en jurisdiksjon, betyr ikke at den ikke har regler. Skriv "fant ikke", aldri "finnes ikke" eller "har ikke".
           - Like formuleringer er ikke rettslig likeverdige.
+          - For en jurisdiksjon sammenligningen ikke kjenner: skriv "ikke i listen til denne sammenligningen; spør KI-regelverksguiden" i raden, og ikke "fant ikke dokumenter". Skriv ikke at registeret mangler den.
     - id: answer
       block: answer@1
       input:

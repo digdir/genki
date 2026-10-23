@@ -324,4 +324,19 @@ describe('the checked-in test sets', () => {
     expect(datasets).toEqual(new Set(['digdir/ai-policy', 'digdir/ai-policy-definitions']));
     expect(refusals.map((c) => [c.type, c.expected.sources])).toEqual([[undefined, []]]);
   });
+  it('tells the judge in every judged AI policy case that the register snapshot is the truth and when the answer passes', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ai-policy-guide-draft.yaml'), 'utf8'));
+    const judged = set.spec.cases.filter((c) => c.grounding !== 'refusal-expected');
+    const ungrounded = judged.filter((c) => {
+      const reference = c.expected.referenceAnswer ?? '';
+      return !(
+        reference.includes('2026-10-18') &&
+        /virkelige|are real/.test(reference) &&
+        /består når|passes when/.test(reference)
+      );
+    });
+
+    expect(judged.length).toBeGreaterThanOrEqual(10);
+    expect(ungrounded.map((c) => c.id)).toEqual([]);
+  });
 });

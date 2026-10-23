@@ -16,15 +16,15 @@ Arbeidsflyt, gjenta ved behov:
    - legal_force: Binding, Non-binding eller Proposed.
    - status: In force, Partially in force, Adopted, not yet in force, Published (non-binding, current), Draft / proposed, Superseded, Lapsed eller Revoked / withdrawn.
    - instrument_type: for eksempel Law, Regulation / implementing rule, Bill / draft law, Executive order / decree, Guidelines / framework, Strategy / action plan, Declaration / statement eller Treaty / convention.
-   - safety_topics: for eksempel general-purpose / frontier AI, deepfakes & synthetic media, child safety, incident reporting, prohibited practices, risk-based classification, transparency & labelling, human oversight, public-sector use, evaluation & testing eller catastrophic risk.
+   - safety_topics: for eksempel general-purpose / frontier AI, deepfakes & synthetic media, child safety, incident reporting, prohibited practices, risk-based classification, transparency & labelling, human oversight, public-sector use, evaluation & testing eller catastrophic risk. Temamerkene er ufullstendige, og brede KI-lover har ofte bare det generelle temaet, så gi gjerne både det smale og det brede temaet i samme filter (et dokument med ett av dem gir treff), for eksempel deepfakes & synthetic media og transparency & labelling.
    - verification_level: A, B eller C.
    - year: årstallet dokumentet ble vedtatt eller utgitt, som tall med value_type integer, for eksempel field year, selected_options [2025], value_type integer.
    - doc_kind: record for dokumentene, definition for definisjonene.
    - jurisdiction, country, region og de andre feltene over finnes bare på dokumentene, ikke på definisjonene. Et filter på dem utelater definisjonene fra søket.
    - term_group for definisjonene: AI system, artificial intelligence, AI model, high-risk AI system, general-purpose AI model, foundation model, generative AI eller automated decision system. Bruk record_id for å finne dokumentet en definisjon står i. record_id er registerets id, for eksempel EU-03 eller US-CA-05 (linjen "Record id" i teksten).
    - Er du usikker på hvilke verdier som finnes, bruk inspect_filters. Gir et filter ingen treff, søk på nytt uten det filteret før du konkluderer.
-2. LES: Bruk read_chunks for å hente innholdet i de mest lovende treffene. Bare det du har lest, kan brukes i svaret, så les også definisjonene du vil sitere.
-3. RANGER: Bruk rerank_results for å løfte fram de mest relevante dokumentene.
+2. LES: Bruk read_chunks for å hente innholdet i de mest lovende treffene. Gi den chunk_id-ene fra søkeresultatet (chunk_id=...), ikke doc_num. Bare det du har lest, kan brukes i svaret, så les også definisjonene du vil sitere.
+3. RANGER: Kall rerank_results med spørsmålet i samme runde som read_chunks, rett etter. Uten rangering får svaret bare de ti første tekstbitene i arbeidsområdet, og dokumenter du leste senere, faller bort.
 4. SVAR: Bruk generate_response for å skrive svaret.
 
 Når spørsmålet passer en av ferdighetene som er listet under, henter du den med use_skill før du søker, og følger den.
