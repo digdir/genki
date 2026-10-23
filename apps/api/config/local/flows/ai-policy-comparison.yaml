@@ -178,52 +178,66 @@ spec:
               items: { type: string }
           required: [jurisdictions, missing, queries]
           additionalProperties: false
-    - id: retrieve
-      name: Søk i hver jurisdiksjon for seg
-      block: retrieve@1
-      input: { query: '{{input.query}}', queries: '{{jurisdictions.queries}}' }
-      params:
-        retrieval: { retrieveTopK: 5 }
-        inOrder: { field: jurisdiction, values: '{{jurisdictions.jurisdictions}}' }
-    - id: context
-      name: Behold rekkefølgen per jurisdiksjon
-      block: rerank@1
-      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
-      params: { keepOrder: true, contextTopK: 24, maxContextLength: 40000 }
-    - id: compare
-      name: Sammenlign side om side
-      block: synthesize@1
-      input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
-      params:
-        temperature: 0.1
-        maxTokens: 2000
-        generationPrompt: |
-          Sammenlign på bokmål hvordan jurisdiksjonene regulerer temaet i spørsmålet. Kildene under kommer fra registeret Every AI Policy Ever, og hver har et nummer.
+    - id: compare-jurisdictions
+      switchOn: jurisdictions.jurisdictions.length
+      cases:
+        - when: 0
+          steps:
+            - id: unknown-jurisdictions
+              block: answer@1
+              input:
+                text: |
+                  {{jurisdictions.missing}}: ikke i listen til denne sammenligningen; spør KI-regelverksguiden.
 
-          Jurisdiksjoner som skal sammenlignes: {{jurisdictions.jurisdictions}}
-          Jurisdiksjoner sammenligningen ikke kjenner: {{jurisdictions.missing}}
+                  Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0).
+                chunks: []
+      else:
+        - id: retrieve
+          name: Søk i hver jurisdiksjon for seg
+          block: retrieve@1
+          input: { query: '{{input.query}}', queries: '{{jurisdictions.queries}}' }
+          params:
+            retrieval: { retrieveTopK: 5 }
+            inOrder: { field: jurisdiction, values: '{{jurisdictions.jurisdictions}}' }
+        - id: context
+          name: Behold rekkefølgen per jurisdiksjon
+          block: rerank@1
+          input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+          params: { keepOrder: true, contextTopK: 24, maxContextLength: 40000 }
+        - id: compare
+          name: Sammenlign side om side
+          block: synthesize@1
+          input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
+          params:
+            temperature: 0.1
+            maxTokens: 2000
+            generationPrompt: |
+              Sammenlign på bokmål hvordan jurisdiksjonene regulerer temaet i spørsmålet. Kildene under kommer fra registeret Every AI Policy Ever, og hver har et nummer.
 
-          Kilder:
-          {context}
+              Jurisdiksjoner som skal sammenlignes: {{jurisdictions.jurisdictions}}
+              Jurisdiksjoner sammenligningen ikke kjenner: {{jurisdictions.missing}}
 
-          Spørsmål: {question}
+              Kilder:
+              {context}
 
-          Skriv svaret i denne rekkefølgen. Skriv ingen nummer og ingen overskrifter som "Tabell" eller "Advarsler":
-          - Én til to setninger med hovedforskjellen.
-          - En tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter, Rettslig status og status per 2026-10-18, Hva de sier om temaet og Verifiseringsnivå. Skriv kildenummeret rett etter hvert dokuments navn, for eksempel "EU AI Act [1]". Fant du ingen kilde om temaet for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden.
-          - To til fire setninger om likheter og forskjeller, med kildenummer for hver påstand.
-          - Bare hvis et dokument har verifiseringsnivå C (ellers ingenting): en advarsel om at posten bygger på sekundærkilder og må sjekkes mot originalen.
-          - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), øyeblikksbilde 2026-10-18."
+              Spørsmål: {question}
 
-          Regler:
-          - Bruk bare det som står i kildene. Fyll aldri inn en rad fra egen kunnskap.
-          - Skill mellom bindende regler (Binding), forslag (Proposed) og ikke-bindende dokumenter (Non-binding). Kall aldri et forslag eller en retningslinje for lov.
-          - At du ikke fant noe for en jurisdiksjon, betyr ikke at den ikke har regler. Skriv "fant ikke", aldri "finnes ikke" eller "har ikke".
-          - Like formuleringer er ikke rettslig likeverdige.
-          - For en jurisdiksjon sammenligningen ikke kjenner: skriv "ikke i listen til denne sammenligningen; spør KI-regelverksguiden" i raden, og ikke "fant ikke dokumenter". Skriv ikke at registeret mangler den.
-    - id: answer
-      block: answer@1
-      input:
-        text: '{{compare.response}}'
-        chunks: '{{context.contextChunks}}'
-        citations: '{{compare.citations}}'
+              Skriv svaret i denne rekkefølgen. Skriv ingen nummer og ingen overskrifter som "Tabell" eller "Advarsler":
+              - Én til to setninger med hovedforskjellen.
+              - En tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter, Rettslig status og status per 2026-10-18, Hva de sier om temaet og Verifiseringsnivå. Skriv kildenummeret rett etter hvert dokuments navn, for eksempel "EU AI Act [1]". Fant du ingen kilde om temaet for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden.
+              - To til fire setninger om likheter og forskjeller, med kildenummer for hver påstand.
+              - Bare hvis et dokument har verifiseringsnivå C (ellers ingenting): en advarsel om at posten bygger på sekundærkilder og må sjekkes mot originalen.
+              - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), øyeblikksbilde 2026-10-18."
+
+              Regler:
+              - Bruk bare det som står i kildene. Fyll aldri inn en rad fra egen kunnskap.
+              - Skill mellom bindende regler (Binding), forslag (Proposed) og ikke-bindende dokumenter (Non-binding). Kall aldri et forslag eller en retningslinje for lov.
+              - At du ikke fant noe for en jurisdiksjon, betyr ikke at den ikke har regler. Skriv "fant ikke", aldri "finnes ikke" eller "har ikke".
+              - Like formuleringer er ikke rettslig likeverdige.
+              - For en jurisdiksjon sammenligningen ikke kjenner: skriv "ikke i listen til denne sammenligningen; spør KI-regelverksguiden" i raden, og ikke "fant ikke dokumenter". Skriv ikke at registeret mangler den.
+        - id: answer
+          block: answer@1
+          input:
+            text: '{{compare.response}}'
+            chunks: '{{context.contextChunks}}'
+            citations: '{{compare.citations}}'
