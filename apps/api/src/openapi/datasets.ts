@@ -156,7 +156,10 @@ const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
 }).openapi('DatasetDetail');
 
-const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec');
+const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
+  description:
+    'Parquet sources accept url (one file), urls with a stable table name, or huggingface with dataset and file, or dataset, table and files (a glob or list). Shards are sorted and downloaded sequentially. mapping.maxRows caps rows across the table before filtering; maxBytes caps each file on disk (default 2 GiB, maximum 20 GiB). Duplicate row ids in sharded tables or any shard failure fail the run without promotion. Single-file document ids stay unchanged.',
+});
 const Pipeline = z
   .object({
     dataset: z.string(),

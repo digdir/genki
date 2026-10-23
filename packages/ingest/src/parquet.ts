@@ -102,6 +102,24 @@ export const huggingFaceFile = z.strictObject({
     .default('main'),
 });
 
+const parquetPath = huggingFaceFile.shape.file;
+const tableName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/);
+export const parquetTableName = tableName;
+export const huggingFaceShards = z.strictObject({
+  dataset: huggingFaceFile.shape.dataset,
+  revision: huggingFaceFile.shape.revision,
+  table: tableName.describe('Stable logical table name, shared by all shards and revisions'),
+  files: z.union([
+    z
+      .string()
+      .max(500)
+      .regex(/^(?!.*\.\.)[A-Za-z0-9_*?][A-Za-z0-9_./*?-]*\.parquet$/, 'must be a .parquet glob'),
+    z.array(parquetPath).min(1).max(1000),
+  ]),
+});
+export const huggingFaceSource = z.union([huggingFaceFile, huggingFaceShards]);
+export type HuggingFaceSource = z.infer<typeof huggingFaceSource>;
+
 export type ParquetCondition = z.infer<typeof parquetCondition>;
 export type ParquetMapping = z.infer<typeof parquetMapping>;
 export type HuggingFaceFile = z.infer<typeof huggingFaceFile>;
@@ -115,10 +133,15 @@ export const huggingFaceFileUrl = (file: HuggingFaceFile) =>
 export const huggingFaceOrigin = (file: Pick<HuggingFaceFile, 'dataset' | 'file'>) =>
   `hf://datasets/${file.dataset}/${file.file}`;
 
+/** Structural AsyncBuffer: the parser can request just a footer or column range. */
+export interface ParquetFile {
+  byteLength: number;
+  slice(start: number, end?: number): ArrayBuffer | Promise<ArrayBuffer>;
+}
 export interface ParquetReader {
-  columns(bytes: Uint8Array): Promise<string[]>;
+  columns(bytes: Uint8Array | ParquetFile): Promise<string[]>;
   rows(
-    bytes: Uint8Array,
+    bytes: Uint8Array | ParquetFile,
     columns: string[],
     maxRows: number,
   ): AsyncIterable<Record<string, unknown>>;
@@ -211,6 +234,7 @@ export interface ParquetSourceOptions {
   rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>;
   mapping: ParquetMapping;
   origin: string;
+  rejectDuplicates?: boolean;
 }
 
 export const parquetSource = (options: ParquetSourceOptions): IngestSource => ({
@@ -225,7 +249,11 @@ export const parquetSource = (options: ParquetSourceOptions): IngestSource => ({
       const sourceId = textOf(row[fields.id]).trim();
       if (sourceId === '') continue;
       const id = documentId(`${options.origin}#${sourceId}`);
-      if (seen.has(id)) continue;
+      if (seen.has(id)) {
+        if (options.rejectDuplicates)
+          throw new Error(`duplicate Parquet row id ${sourceId} in table ${options.origin}`);
+        continue;
+      }
       seen.add(id);
       const title = textOf(row[fields.title]).trim() || sourceId;
       const body = fields.text

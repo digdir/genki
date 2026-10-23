@@ -90,3 +90,27 @@ describe('Parquet reader', () => {
     });
   });
 });
+
+describe('Parquet byte ranges and row groups', () => {
+  it('reads file ranges lazily and never decodes the next row group before it is requested', async () => {
+    const bytes = readFileSync(join(import.meta.dirname, 'fixtures', 'row-groups.parquet'));
+    const ranges: [number, number][] = [];
+    const file = {
+      byteLength: bytes.byteLength,
+      slice: async (start: number, end = bytes.byteLength) => {
+        ranges.push([start, end]);
+        return Uint8Array.from(bytes.subarray(start, end)).buffer;
+      },
+    };
+    const iterator = parquetReader().rows(file, ['id', 'body'], 2)[Symbol.asyncIterator]();
+    expect(ranges).toEqual([]);
+    const first = await iterator.next();
+    expect(first.value).toEqual({ id: 'a', body: 'a'.repeat(600_000) });
+    const before = ranges.length;
+    expect(ranges.every(([start, end]) => end - start < bytes.byteLength)).toBe(true);
+    const second = await iterator.next();
+    expect(second.value).toEqual({ id: 'b', body: 'b'.repeat(600_000) });
+    expect(ranges.length).toBeGreaterThan(before);
+    expect((await iterator.next()).done).toBe(true);
+  });
+});

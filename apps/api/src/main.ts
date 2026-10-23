@@ -405,6 +405,9 @@ const platform = await createPlatform({
     : {}),
   searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
+  ...(process.env.INGEST_WORKING_DIRECTORY
+    ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }
+    : {}),
   secrets,
   definitions: (plugins, sharedSkill, sharedFlow) =>
     db
