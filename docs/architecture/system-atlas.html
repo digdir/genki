@@ -7822,7 +7822,7 @@
             packages: ['@genai/providers-parquet'],
             summary: 'Decodes Parquet files for pipelines with a parquet source.',
             description:
-              "Implements the Parquet reader of the parquet source (ADR 0039) with hyparquet and hyparquet-compressors, pure JavaScript with no native binaries. It lists a file's columns, so the source can name the mapped columns a file lacks, and reads only the mapped columns, in steps, up to the pipeline's row limit. Lists stay lists and nulls stay null. The ingestion fetches the bytes through its guarded fetch before the reader sees them.",
+              "Implements the Parquet reader of the parquet source (ADR 0039) with hyparquet and hyparquet-compressors, JavaScript with embedded WebAssembly for Snappy and no platform-specific native binaries. It lists a file's columns, so the source can name the mapped columns a file lacks, and reads only the mapped columns, in steps, up to the pipeline's row limit. Lists stay lists and nulls stay null. The ingestion fetches the bytes through its guarded fetch before the reader sees them.",
             responsibilities: [
               'Column listing',
               'Row reads of the mapped columns with a row limit',
