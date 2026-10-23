@@ -1,4 +1,4 @@
-import { Button, Chip, Details, Heading, Link, Tag } from '@digdir/designsystemet-react';
+import { Button, Chip, Heading, Link, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import type { PlaygroundResult, PlaygroundSource } from '../../api/playground';
@@ -9,9 +9,9 @@ import {
   formatSecondsShort,
   locationShort,
   searchNoteText,
+  sourceDataset,
   sourceExcerpt,
   sourceFacts,
-  sourceLocation,
   sourceTitle,
   sourceUrl,
 } from '../../data/playground';
@@ -72,6 +72,84 @@ const citeRenderer =
     );
   };
 
+const SourceItem = ({
+  group,
+  openSource,
+  onOpen,
+}: {
+  group: SourceGroup;
+  openSource: string | null;
+  onOpen: (chunkId: string | null) => void;
+}) => {
+  const t = useT();
+  const f = useFormat();
+  const excerptId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const source = group.first;
+  const title = source.title ?? t('playground.untitledSource');
+  const url = sourceUrl(source);
+  const dataset = sourceDataset(source);
+  const facts = sourceFacts(source, f, t);
+  const detailsOpen = group.chunks.some((c) => c.chunkId === openSource);
+  const excerpts = group.chunks.flatMap((chunk) => {
+    const text = sourceExcerpt(chunk);
+    return text ? [{ chunkId: chunk.chunkId, text }] : [];
+  });
+  return (
+    <li {...(group.numbers[0] ? { value: group.numbers[0] } : {})}>
+      <div className="playground-source-row">
+        <div className="playground-source-label">
+          {url ? <Link href={url}>{title}</Link> : <span>{title}</span>}
+          {dataset || facts ? (
+            <span className="playground-subtle">
+              {[dataset, facts].filter(Boolean).join(' · ')}
+            </span>
+          ) : null}
+        </div>
+        <div className="playground-source-actions">
+          {excerpts.length ? (
+            <Button
+              variant="tertiary"
+              data-size="sm"
+              aria-label={t('playground.sourceExcerpt', { title })}
+              aria-expanded={expanded}
+              aria-controls={excerptId}
+              onClick={() => setExpanded((open) => !open)}
+            >
+              <Icon d={expanded ? 'M6 15l6-6 6 6' : icons.chevronDown} size={16} />
+              {t('playground.excerpt')}
+            </Button>
+          ) : null}
+          <Button
+            variant="tertiary"
+            data-size="sm"
+            icon
+            aria-label={t('playground.sourceDetails', { title })}
+            aria-expanded={detailsOpen}
+            onClick={() => onOpen(detailsOpen ? null : source.chunkId)}
+          >
+            <Icon d={icons.info} size={16} />
+          </Button>
+        </div>
+      </div>
+      {excerpts.length ? (
+        <div
+          id={excerptId}
+          className="playground-source-excerpts"
+          role="region"
+          aria-label={t('playground.sourceExcerpt', { title })}
+          tabIndex={0}
+          hidden={!expanded}
+        >
+          {excerpts.map((excerpt) => (
+            <AnswerMarkdown key={excerpt.chunkId} text={excerpt.text} />
+          ))}
+        </div>
+      ) : null}
+    </li>
+  );
+};
+
 const SourceDetail = ({
   source,
   order,
@@ -91,6 +169,9 @@ const SourceDetail = ({
   const next = at >= 0 && at < order.length - 1 ? order[at + 1] : undefined;
   const rows: [string, string][] = [
     [t('playground.detailChunk'), source.chunkId],
+    ...(source.version === undefined || source.version === ''
+      ? []
+      : [[t('playground.detailVersion'), String(source.version)] as [string, string]]),
     ...(source.headers?.length
       ? [[t('playground.detailHeaders'), source.headers.join(' › ')] as [string, string]]
       : []),
@@ -124,7 +205,16 @@ const SourceDetail = ({
           </div>
         ))}
       </dl>
-      {source.text ? <div className="playground-source-text">{source.text}</div> : null}
+      {source.text ? (
+        <div
+          className="playground-source-text"
+          role="region"
+          aria-label={t('playground.sourceExcerpt', { title: sourceTitle(source) })}
+          tabIndex={0}
+        >
+          <AnswerMarkdown text={source.text} />
+        </div>
+      ) : null}
       <div className="playground-answer-actions">
         <Button
           variant="tertiary"
@@ -250,57 +340,15 @@ export const AnswerCard = ({
       {result.sources.length ? (
         <div className="playground-sources">
           <span className="playground-strong">{t('playground.sources')}</span>
-          <ol>
-            {sourceGroups.map((group) => {
-              const s = group.first;
-              const location = [sourceLocation(s), sourceFacts(s, f, t)]
-                .filter(Boolean)
-                .join(' · ');
-              const url = sourceUrl(s);
-              const excerpts = group.chunks.flatMap((chunk) => {
-                const text = sourceExcerpt(chunk);
-                return text ? [{ chunkId: chunk.chunkId, text }] : [];
-              });
-              return (
-                <li key={group.key} {...(group.numbers[0] ? { value: group.numbers[0] } : {})}>
-                  {url ? <Link href={url}>{sourceTitle(s)}</Link> : sourceTitle(s)}
-                  {location ? <span className="playground-subtle"> · {location}</span> : null}
-                  {group.numbers.length ? (
-                    <span className="playground-subtle">
-                      {' '}
-                      {group.numbers.map((n) => `[${n}]`).join(' ')}
-                    </span>
-                  ) : null}
-                  <Button
-                    variant="tertiary"
-                    data-size="sm"
-                    icon
-                    className="playground-source-open"
-                    aria-label={t('playground.sourceDetails', { title: sourceTitle(s) })}
-                    aria-expanded={group.chunks.some((c) => c.chunkId === openSource)}
-                    onClick={() =>
-                      setOpenSource(
-                        group.chunks.some((c) => c.chunkId === openSource)
-                          ? null
-                          : (group.chunks[0]?.chunkId ?? null),
-                      )
-                    }
-                  >
-                    <Icon d={icons.info} size={16} />
-                  </Button>
-                  {excerpts.length ? (
-                    <Details data-size="sm">
-                      <Details.Summary>{t('playground.excerpt')}</Details.Summary>
-                      <Details.Content>
-                        {excerpts.map((e) => (
-                          <p key={e.chunkId}>{e.text}</p>
-                        ))}
-                      </Details.Content>
-                    </Details>
-                  ) : null}
-                </li>
-              );
-            })}
+          <ol aria-label={t('playground.sources')}>
+            {sourceGroups.map((group) => (
+              <SourceItem
+                key={group.key}
+                group={group}
+                openSource={openSource}
+                onOpen={setOpenSource}
+              />
+            ))}
           </ol>
           {detail ? (
             <SourceDetail
