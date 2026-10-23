@@ -513,6 +513,75 @@ describe('index ingestion', () => {
     expect(fetched).toEqual([resolveUrl, 'https://us.aws.cdn.hf.co/xet/records.parquet?sig=1']);
   });
 
+  it.each([
+    'https://[::ffff:127.0.0.1]/data.parquet',
+    'https://[::ffff:a00:1]/data.parquet',
+    'https://[0:0:0:0:0:ffff:a9fe:a9fe]/data.parquet',
+  ])('refuses a Parquet URL at a mapped private address: %s', async (url) => {
+    const fetched: string[] = [];
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      parquet: {
+        reader: { columns: async () => ['id', 'title'], rows: async function* () {} },
+        fetch: (async (input) => {
+          fetched.push(String(input));
+          return new Response(new Uint8Array([1]));
+        }) as typeof fetch,
+      },
+    });
+
+    await expect(
+      backend.run(
+        jobFor({
+          kind: 'parquet',
+          url,
+          mapping: { fields: { id: 'id', title: 'title', text: ['title'] } },
+        }),
+        signal,
+      ),
+    ).rejects.toThrow(/private or reserved/);
+    expect(fetched).toEqual([]);
+  });
+
+  it('aborts the Parquet download when its execution is cancelled', async () => {
+    const started = Promise.withResolvers<AbortSignal | undefined>();
+    const response = Promise.withResolvers<Response>();
+    const controller = new AbortController();
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      web: { resolve: async () => ['93.184.216.34'] },
+      parquet: {
+        reader: { columns: async () => ['id', 'title'], rows: async function* () {} },
+        fetch: (async (_input, init) => {
+          started.resolve(init?.signal ?? undefined);
+          return response.promise;
+        }) as typeof fetch,
+      },
+    });
+    const run = backend.run(
+      jobFor({
+        kind: 'parquet',
+        url: 'https://example.org/data.parquet',
+        mapping: { fields: { id: 'id', title: 'title', text: ['title'] } },
+      }),
+      controller.signal,
+    );
+    const settled = run.catch(() => undefined);
+    const fetchSignal = await started.promise;
+    controller.abort();
+    try {
+      expect(fetchSignal?.aborted).toBe(true);
+    } finally {
+      response.resolve(new Response(new Uint8Array([1])));
+      await settled;
+    }
+    await expect(run).rejects.toThrow(/abort/i);
+  });
+
   it('says Parquet sources are turned off when the platform has no Parquet reader', () => {
     const source = {
       kind: 'parquet',

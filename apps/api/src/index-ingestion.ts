@@ -354,6 +354,7 @@ const parquetSourceOf = async (
   access: ParquetAccess,
   source: ParquetSpec,
   web: GuardedFetchOptions | undefined,
+  signal: AbortSignal,
 ) => {
   const { url, origin } = parquetLocation(source);
   const policy = {
@@ -363,6 +364,7 @@ const parquetSourceOf = async (
   };
   const { bytes } = await guardedFetchBytes(url, policy, source.maxBytes, {
     ...web,
+    signal,
     ...(access.fetch ? { fetch: access.fetch } : {}),
   });
   const missing = missingColumns(source.mapping, await access.reader.columns(bytes));
@@ -453,7 +455,7 @@ const sourceOf = async (
   }
   if (source.kind === 'parquet') {
     if (!options.parquet) throw new Error('Parquet sources are turned off on this platform');
-    return parquetSourceOf(options.parquet, source, options.web);
+    return parquetSourceOf(options.parquet, source, options.web, signal);
   }
   if (source.kind === 'episerver') {
     const root = inside(options.folderRoot ?? '', source.path);
