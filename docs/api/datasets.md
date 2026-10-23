@@ -21,3 +21,27 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 `GET .../pipelines/{id}/versions` lists every saved version, oldest first; each has `deleted`, which is `true` on the version that removed the pipeline.
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.
+
+## Parquet pipelines
+
+A pipeline source can read one public https Parquet file with `url`, or a Hugging Face file with `huggingface: { dataset, file, revision }` (`revision` defaults to `main`). Sharded tables use `urls: [...]` plus a stable `table` name, or `huggingface: { dataset, table, files }`, where `files` is an explicit path list or a glob such as `data/train-*.parquet`. Give each config/split its own table name. Keep that name when updating shard layouts so document ids stay stable.
+
+For example, a source in the pipeline request body:
+
+```json
+{
+  "kind": "parquet",
+  "huggingface": {
+    "dataset": "owner/dataset",
+    "table": "default-train",
+    "files": "data/train-*.parquet"
+  },
+  "mapping": {
+    "fields": { "id": "id", "title": "title", "text": ["body"] },
+    "maxRows": 50000
+  },
+  "maxBytes": 2147483648
+}
+```
+
+`mapping.maxRows` caps input rows across all shards before filtering (default 50,000, maximum 200,000). Files are sorted and processed sequentially; files beyond the row cap are not fetched. `maxBytes` caps each downloaded file on disk (default 2 GiB, maximum 20 GiB). The platform uses `INGEST_WORKING_DIRECTORY` or its OS temp directory for scratch files; provision that disk capacity for each concurrent run. Every download and CDN redirect goes through the public URL guard. A failed shard or duplicate row id in a sharded table fails the run and leaves the active dataset in place. See [ADR 0039](../adr/0039-parquet-sources.md) for mappings, limits and storage details.

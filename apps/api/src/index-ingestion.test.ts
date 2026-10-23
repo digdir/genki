@@ -633,14 +633,14 @@ describe('index ingestion', () => {
 
     const parsed = parse({ huggingface: hf });
     expect(parsed.success && parsed.data.source).toMatchObject({
-      maxBytes: 100 * 1024 * 1024,
+      maxBytes: 2 * 1024 * 1024 * 1024,
       huggingface: { revision: 'main' },
     });
     expect(parse({ url: 'https://example.org/r.parquet' }).success).toBe(true);
     expect(parse({}).success).toBe(false);
     expect(parse({ url: 'https://example.org/r.parquet', huggingface: hf }).success).toBe(false);
     expect(parse({ url: 'http://example.org/r.parquet' }).success).toBe(false);
-    expect(parse({ huggingface: hf, maxBytes: 600 * 1024 * 1024 }).success).toBe(false);
+    expect(parse({ huggingface: hf, maxBytes: 21 * 1024 * 1024 * 1024 }).success).toBe(false);
   });
 
   it('estimates the Kudos documents a pipeline reads from the first list page', async () => {
