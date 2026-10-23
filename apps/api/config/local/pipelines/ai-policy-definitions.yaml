@@ -1,0 +1,17 @@
+dataset: digdir/ai-policy
+id: ai-policy-definitions
+spec:
+  name: Every AI Policy Ever, definitions
+  description: 'Ett dokument per definert begrep fra data/definitions.parquet i Hugging Face-datasettet kelkalot/every-ai-policy-ever (CC-BY-4.0), sitert ordrett fra kilden'
+  source:
+    kind: parquet
+    huggingface: { dataset: kelkalot/every-ai-policy-ever, file: data/definitions.parquet }
+    mapping:
+      fields:
+        id: id
+        title: term
+        text: [definition, english]
+        metadata: [record_id, term, term_group, language, locator]
+        constants: { doc_kind: definition }
+  chunking: { minimumLength: 1 }
+  schedule: weekly

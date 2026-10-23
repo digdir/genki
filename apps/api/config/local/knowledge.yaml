@@ -109,3 +109,25 @@ datasets:
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
     options: { textSearchConfig: english }
+  - id: digdir/ai-policy
+    name: AI-regulering i verden
+    description: Lover, forskrifter, rammeverk, strategier og erklæringer om KI-sikkerhet og KI-regulering fra 87 land og internasjonale organer, med definisjoner av sentrale begreper. Fra Every AI Policy Ever (kelkalot, CC-BY-4.0)
+    endpoint: platform-pg
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    filters:
+      record_id: multiselect
+      doc_kind: multiselect
+      jurisdiction: [multiselect, text]
+      country: [multiselect, text]
+      region: multiselect
+      jurisdiction_level: multiselect
+      instrument_type: [multiselect, text]
+      legal_force: multiselect
+      status: [multiselect, text]
+      verification_level: multiselect
+      safety_topics: multiselect
+      year: [multiselect, range]
+      term: [multiselect, text]
+    valueTypes: { year: integer }
+    options: { textSearchConfig: english }

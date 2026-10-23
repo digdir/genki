@@ -1,0 +1,32 @@
+dataset: digdir/ai-policy
+id: ai-policy-records
+spec:
+  name: Every AI Policy Ever, records
+  description: 'Ett dokument per instrument fra data/records.parquet i Hugging Face-datasettet kelkalot/every-ai-policy-ever (CC-BY-4.0)'
+  source:
+    kind: parquet
+    huggingface: { dataset: kelkalot/every-ai-policy-ever, file: data/records.parquet }
+    mapping:
+      fields:
+        id: id
+        title: title
+        text: [summary, notes]
+        url: official_url
+        date: date_published
+        year: date_published
+        metadata:
+          - { column: id, as: record_id }
+          - jurisdiction
+          - country
+          - region
+          - jurisdiction_level
+          - instrument_type
+          - legal_force
+          - status
+          - verification_level
+          - safety_topics
+          - issuing_body
+          - official_identifier
+        constants: { doc_kind: record }
+  chunking: { minimumLength: 1 }
+  schedule: weekly
