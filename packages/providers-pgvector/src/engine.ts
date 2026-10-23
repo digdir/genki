@@ -494,6 +494,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     };
 
     return {
+      preservesPipeline: true,
       prepare: async (dataset, generation) => {
         await begin();
         await pool.query(

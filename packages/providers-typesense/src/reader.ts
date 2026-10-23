@@ -1,5 +1,4 @@
 import { KnowledgeError, type DatasetConfig, type IndexDocument } from '@genai/port-knowledge';
-import { createHash } from 'node:crypto';
 import type { ReadOnlyClient } from './client.js';
 import type { TypesenseDatasetOptions } from './index.js';
 
@@ -8,10 +7,6 @@ export interface ReadCollections {
   chunks: string;
   phrases?: string;
 }
-
-/** A separate, platform-owned collection; no source field is interpreted as provenance. */
-export const provenanceCollection = (docs: string) =>
-  `genai_provenance_${createHash('sha256').update(docs).digest('hex')}`;
 
 const str = (v: unknown) =>
   typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
@@ -34,21 +29,15 @@ export async function* readTypesenseDocuments(
   batchSize = 100,
 ): AsyncIterable<IndexDocument> {
   const { fields } = dataset.options;
-  const docsCollection = (await client.alias(collections.docs, signal)) ?? collections.docs;
-  const byDocument = async (
-    collection: string | undefined,
-    ids: string[],
-    exclude: string[],
-    field = fields.document,
-  ) => {
+  const byDocument = async (collection: string | undefined, ids: string[], exclude: string[]) => {
     const grouped = new Map<string, Record<string, unknown>[]>();
     if (!collection) return grouped;
     const query = {
-      filter_by: `${field}:=[${ids.map(literal).join(',')}]`,
+      filter_by: `${fields.document}:=[${ids.map(literal).join(',')}]`,
       ...(exclude.length ? { exclude_fields: exclude.join(',') } : {}),
     };
     for await (const record of client.exportDocuments(collection, query, signal)) {
-      const doc = str(record[field]) ?? '';
+      const doc = str(record[fields.document]) ?? '';
       grouped.set(doc, [...(grouped.get(doc) ?? []), record]);
     }
     return grouped;
@@ -58,15 +47,12 @@ export async function* readTypesenseDocuments(
     const ids = records.map((r) => str(r[fields.document]) ?? str(r.id) ?? '');
     const chunks = await byDocument(collections.chunks, ids, []);
     const phrases = await byDocument(collections.phrases, ids, ['phrase_vec']);
-    const provenance = await byDocument(provenanceCollection(docsCollection), ids, [], 'id');
     for (const [i, record] of records.entries()) {
       const id = ids[i] as string;
       const title = str(record[fields.title]);
       const url = str(record[fields.url]);
-      const pipeline = str(provenance.get(id)?.[0]?.pipeline);
       yield {
         id,
-        ...(pipeline === undefined ? {} : { pipeline }),
         ...(title === undefined ? {} : { title }),
         ...(url === undefined ? {} : { url }),
         fields: without(record, ['id', fields.document, fields.title, fields.url, 'total_chunks']),
@@ -95,7 +81,7 @@ export async function* readTypesenseDocuments(
   };
 
   let batch: Record<string, unknown>[] = [];
-  for await (const record of client.exportDocuments(docsCollection, {}, signal)) {
+  for await (const record of client.exportDocuments(collections.docs, {}, signal)) {
     batch.push(record);
     if (batch.length >= batchSize) {
       yield* assemble(batch);

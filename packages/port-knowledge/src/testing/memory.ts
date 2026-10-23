@@ -322,6 +322,7 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
   };
 
   const writer: IndexWriter<MemoryDatasetOptions> = {
+    preservesPipeline: true,
     prepare: async (dataset, generation) => {
       const index = indexOf(dataset);
       if (!index.generations.has(generation)) index.generations.set(generation, new Map());

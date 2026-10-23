@@ -472,6 +472,7 @@ export const indexWriterContract = (
     });
 
     it('round-trips pipeline provenance separately from source metadata and clears it on unattributed replacement', async (ctx) => {
+      if (!target.writer.preservesPipeline) return ctx.skip();
       const read = target.writer.read?.bind(target.writer);
       if (!read) return ctx.skip();
       const attributed = {

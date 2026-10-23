@@ -10,7 +10,7 @@ import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
-import { provenanceCollection, typesense } from '@genai/providers-typesense';
+import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
@@ -130,11 +130,6 @@ const writes: string[] = [];
 
 const exported = (collection: string, filter: string | null) => {
   const ids = filter ? [...filter.matchAll(/`([^`]+)`/g)].map((m) => m[1]) : undefined;
-  if (collection === provenanceCollection('ka_docs'))
-    return [
-      { id: 'tilskudd', pipeline: 'source-a' },
-      { id: 'sky', pipeline: 'source-b' },
-    ].filter((r) => !ids || ids.includes(r.id));
   const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
   return rows.filter((r) => !ids || ids.includes(r.doc_num));
 };
@@ -876,7 +871,7 @@ describe('operators switching the engine of a platform dataset', () => {
     );
     const copiedDocs: IndexDocument[] = [];
     for await (const doc of copied.writer.read?.(copied.dataset) ?? []) copiedDocs.push(doc);
-    expect(copiedDocs.map((d) => d.pipeline).sort()).toEqual(['source-a', 'source-b']);
+    expect(copiedDocs.map((d) => d.pipeline)).toEqual([undefined, undefined]);
     expect(copiedDocs.find((d) => d.id === 'tilskudd')?.fields.ingestion_pipeline).toBe(
       'user-column',
     );

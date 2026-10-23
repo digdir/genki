@@ -55,6 +55,8 @@ export interface DropOptions {
 }
 
 export interface IndexWriter<D = unknown> {
+  /** Whether store/read round trips retain the dedicated pipeline provenance attribute. */
+  readonly preservesPipeline?: boolean;
   prepare(dataset: DatasetConfig<D>, generation: string): Promise<void>;
   store(dataset: DatasetConfig<D>, generation: string, doc: IndexDocument): Promise<void>;
   /** Makes the generation the one searches read and returns the generation it replaced. */

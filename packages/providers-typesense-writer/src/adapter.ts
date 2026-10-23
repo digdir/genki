@@ -14,7 +14,6 @@ import {
   generationSeparator as separator,
   readOnlyClient,
   readTypesenseDocuments,
-  provenanceCollection,
   typesense,
   typesenseDatasetOptions,
   type TypesenseDatasetOptions,
@@ -249,6 +248,7 @@ export const typesenseIndexWriter = (
     };
 
     return {
+      preservesPipeline: false,
       ...{
         enrichment: typesenseEnrichment(
           { request, json },
@@ -265,12 +265,6 @@ export const typesenseIndexWriter = (
           if (await collection(name)) continue;
           await json('POST', '/collections', forCollections(schemas[kind], name, docs, embed));
         }
-        const provenance = provenanceCollection(docs);
-        if (!(await collection(provenance)))
-          await json('POST', '/collections', {
-            name: provenance,
-            fields: [{ name: 'pipeline', type: 'string', optional: true, index: false }],
-          });
       },
 
       store: async (dataset, generation, doc) => {
@@ -295,9 +289,6 @@ export const typesenseIndexWriter = (
             record.phrases.map((p) => p.id),
           );
         }
-        await writer.upsert(provenanceCollection(nameOf(dataset, generation, 'docs') as string), [
-          { id: doc.id, ...(doc.pipeline === undefined ? {} : { pipeline: doc.pipeline }) },
-        ]);
       },
 
       promote: async (dataset, generation) => {
@@ -324,13 +315,7 @@ export const typesenseIndexWriter = (
               throw new Error(`Typesense DELETE /aliases/${alias} answered HTTP ${result.status}`);
           }
         }
-        const provenance = provenanceCollection(nameOf(dataset, generation, 'docs') as string);
-        for (const name of [
-          provenance,
-          ...named(dataset, generation)
-            .reverse()
-            .map((n) => n.name),
-        ]) {
+        for (const { name } of named(dataset, generation).reverse()) {
           const result = await request('DELETE', `/collections/${encodeURIComponent(name)}`);
           if (!result.ok && result.status !== 404)
             throw new Error(`Typesense DELETE /collections/${name} answered HTTP ${result.status}`);
