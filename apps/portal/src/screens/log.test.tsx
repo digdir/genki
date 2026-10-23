@@ -19,7 +19,7 @@ describe('Logg: Kjøringer', () => {
   it('lists recent runs from the API with service, status and trigger and opens the first', async () => {
     await renderAt('#/log');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Kjøringer' }).getAttribute('aria-selected')).toBe(
       'true',
     );
