@@ -2,7 +2,7 @@ apiVersion: genai/v1
 kind: StepFlow
 metadata: { tenant: '991825827', id: ai-policy-comparison, name: AI policy jurisdiction comparison }
 spec:
-  purpose: Compare how two or more jurisdictions regulate an AI topic. Finds the jurisdictions in the question, runs the same retrieval for each one, then writes a side-by-side table with citations and verification levels.
+  purpose: Compare how two to four jurisdictions regulate an AI topic. Retrieves sources for each, then writes a side-by-side table with citations and verification levels. Reports any additional jurisdictions as not compared.
   steps:
     - id: jurisdictions
       name: Finn jurisdiksjonene og lag engelske søk
@@ -11,7 +11,7 @@ spec:
         prompt: |
           Hvilke jurisdiksjoner (land, delstater, EU eller internasjonale organisasjoner) ber spørsmålet om å sammenligne? Oversett navnene til engelsk og velg dem fra listen i skjemaet: Norge er "Norway", Sverige "Sweden", Danmark "Denmark", Island "Iceland", Tyskland "Germany", Frankrike "France", Storbritannia "United Kingdom", Kina "China", Sør-Korea "South Korea", EU "European Union" og USA "United States". En amerikansk delstat skrives med "(US)", for eksempel "California (US)". Legg en jurisdiksjon i missing bare når det engelske navnet ikke står i listen.
 
-          Ta med høyst seks, og bare dem spørsmålet ber om å sammenligne. Nevnes EUs KI-forordning bare som tema, er EU ikke en av jurisdiksjonene. Eksempel: for "Sammenlign Norge, Sverige og Danmark når det gjelder gjennomføringen av EUs KI-forordning" er jurisdiksjonene Norway, Sweden og Denmark.
+          Ta med høyst fire i jurisdictions, og bare dem spørsmålet ber om å sammenligne. Ber spørsmålet om flere, velg de fire første som står i listen og legg alle de øvrige kjente jurisdiksjonene i notCompared. Legg ukjente navn i missing. Alle forespurte jurisdiksjoner skal være med i ett av de tre feltene; utelat aldri et navn stille. Nevnes EUs KI-forordning bare som tema, er EU ikke en av jurisdiksjonene. Eksempel: for "Sammenlign Norge, Sverige og Danmark når det gjelder gjennomføringen av EUs KI-forordning" er jurisdiksjonene Norway, Sweden og Denmark.
 
           Lag også tre til fem korte søk på engelsk om temaet, fordi registeret er skrevet på engelsk. Skriv dem uten navn på jurisdiksjoner, for søket gjøres for hver jurisdiksjon for seg. For eksempel "deepfake labelling requirements" eller "national implementation of the EU AI Act".
 
@@ -24,6 +24,7 @@ spec:
           properties:
             jurisdictions:
               type: array
+              maxItems: 4
               items:
                 type: string
                 enum:
@@ -173,10 +174,13 @@ spec:
             missing:
               type: array
               items: { type: string }
+            notCompared:
+              type: array
+              items: { type: string }
             queries:
               type: array
               items: { type: string }
-          required: [jurisdictions, missing, queries]
+          required: [jurisdictions, missing, notCompared, queries]
           additionalProperties: false
     - id: compare-jurisdictions
       switchOn: jurisdictions.jurisdictions.length
@@ -197,13 +201,13 @@ spec:
           block: retrieve@1
           input: { query: '{{input.query}}', queries: '{{jurisdictions.queries}}' }
           params:
-            retrieval: { retrieveTopK: 5 }
+            retrieval: { retrieveTopK: 3 }
             inOrder: { field: jurisdiction, values: '{{jurisdictions.jurisdictions}}' }
         - id: context
           name: Behold rekkefølgen per jurisdiksjon
           block: rerank@1
           input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
-          params: { keepOrder: true, contextTopK: 24, maxContextLength: 40000 }
+          params: { keepOrder: true, contextTopK: 12, maxContextLength: 80000 }
         - id: compare
           name: Sammenlign side om side
           block: synthesize@1
@@ -216,6 +220,7 @@ spec:
 
               Jurisdiksjoner som skal sammenlignes: {{jurisdictions.jurisdictions}}
               Jurisdiksjoner sammenligningen ikke kjenner: {{jurisdictions.missing}}
+              Jurisdiksjoner utenfor grensen på fire: {{jurisdictions.notCompared}}
 
               Kilder:
               {context}
@@ -235,9 +240,25 @@ spec:
               - At du ikke fant noe for en jurisdiksjon, betyr ikke at den ikke har regler. Skriv "fant ikke", aldri "finnes ikke" eller "har ikke".
               - Like formuleringer er ikke rettslig likeverdige.
               - For en jurisdiksjon sammenligningen ikke kjenner: skriv "ikke i listen til denne sammenligningen; spør KI-regelverksguiden" i raden, og ikke "fant ikke dokumenter". Skriv ikke at registeret mangler den.
+              - Jurisdiksjoner utenfor grensen på fire er ikke sammenlignet. Si det tydelig; skriv aldri at de mangler i listen eller i registeret, eller at du søkte etter dem.
         - id: answer
-          block: answer@1
-          input:
-            text: '{{compare.response}}'
-            chunks: '{{context.contextChunks}}'
-            citations: '{{compare.citations}}'
+          switchOn: jurisdictions.notCompared.length
+          cases:
+            - when: 0
+              steps:
+                - id: complete-comparison
+                  block: answer@1
+                  input:
+                    text: '{{compare.response}}'
+                    chunks: '{{context.contextChunks}}'
+                    citations: '{{compare.citations}}'
+          else:
+            - id: limited-comparison
+              block: answer@1
+              input:
+                text: |
+                  {{compare.response}}
+
+                  Ikke sammenlignet (grensen er fire jurisdiksjoner): {{jurisdictions.notCompared}}.
+                chunks: '{{context.contextChunks}}'
+                citations: '{{compare.citations}}'

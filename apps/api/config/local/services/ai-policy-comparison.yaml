@@ -2,7 +2,7 @@ apiVersion: genai/v1
 kind: Service
 metadata: { tenant: '991825827', id: ai-policy-comparison, name: Sammenlign KI-regelverk }
 spec:
-  purpose: Sammenlign hvordan to eller flere land, delstater eller organisasjoner regulerer et KI-tema, side om side med kilder og verifiseringsnivå, fra registeret Every AI Policy Ever (kelkalot, CC-BY-4.0)
+  purpose: Sammenlign hvordan to til fire land, delstater eller organisasjoner regulerer et KI-tema, side om side med kilder og verifiseringsnivå, fra registeret Every AI Policy Ever (kelkalot, CC-BY-4.0). Ber du om flere, oppgis resten som ikke sammenlignet.
   exampleQuestions:
     - nb: Hvordan regulerer EU, Kina og USA deepfakes?
       en: How do the EU, China and the United States regulate deepfakes?
