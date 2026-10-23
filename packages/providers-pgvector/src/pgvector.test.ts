@@ -22,7 +22,12 @@ import {
   seedCorpus,
 } from '@genai/port-knowledge/testing';
 import { fakeEmbedder } from '@genai/port-embedding/testing';
-import { pgvectorEngine, type PgvectorEngineOptions, type QueryEmbedder } from './index.js';
+import {
+  migrateKnowledge,
+  pgvectorEngine,
+  type PgvectorEngineOptions,
+  type QueryEmbedder,
+} from './index.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
 let container: StartedPostgreSqlContainer;
@@ -124,6 +129,46 @@ const seed = async (writer: IndexWriter, dataset: DatasetConfig, documents: Inde
 };
 
 describe('pgvector engine', () => {
+  it('upgrades legacy document storage without attributing user metadata and persists new provenance separately', async () => {
+    await migrateKnowledge(pool);
+    await pool.query('create schema provenance_upgrade');
+    const legacy = new pg.Pool({
+      connectionString: container.getConnectionUri(),
+      options: '-c search_path=provenance_upgrade,public',
+    });
+    try {
+      await migrateKnowledge(legacy);
+      await legacy.query('alter table kn_docs drop column if exists pipeline');
+      await legacy.query(
+        "insert into kn_generations (dataset, generation) values ('upgrade', 'legacy')",
+      );
+      await legacy.query(
+        "insert into kn_docs (dataset, generation, id, fields, config) values ('upgrade', 'legacy', 'old', $1, 'norwegian')",
+        [JSON.stringify({ ingestion_pipeline: 'b', pipeline: 'user-column' })],
+      );
+      await migrateKnowledge(legacy);
+      await migrateKnowledge(legacy);
+      const upgraded = writerOf(pgvectorEngine({ pool: legacy }));
+      const dataset = config('upgrade');
+      const docs: IndexDocument[] = [];
+      for await (const doc of upgraded.read?.(dataset, 'legacy') ?? []) docs.push(doc);
+      expect(docs[0]?.pipeline).toBeUndefined();
+      expect(docs[0]?.fields).toEqual({ ingestion_pipeline: 'b', pipeline: 'user-column' });
+      await upgraded.store(dataset, 'legacy', {
+        ...single('new', 'New', ['Nytt dokument.']),
+        pipeline: 'a',
+        fields: { ingestion_pipeline: 'b' },
+      });
+      const { rows } = await legacy.query<{ pipeline: string; fields: Record<string, unknown> }>(
+        "select pipeline, fields from kn_docs where id = 'new'",
+      );
+      expect(rows[0]).toEqual({ pipeline: 'a', fields: { ingestion_pipeline: 'b' } });
+    } finally {
+      await legacy.end();
+      await pool.query('drop schema provenance_upgrade cascade');
+    }
+  });
+
   it('hybrid ranks an exact phrase match above a merely similar chunk', async () => {
     const dims = { model: 'fixture', dimensions: 3 };
     const engine = engineWith(() => ({ embed: async (texts) => texts.map(() => [1, 0, 0]) }));

@@ -25,8 +25,6 @@ export interface IndexIngestOptions extends DocumentLoopOptions {
   pipeline?: { id: string; siblings?: readonly string[] };
 }
 
-export const ingestionPipelineField = 'ingestion_pipeline';
-
 export interface IndexIngestResult extends IngestResult {
   generation: string;
   promoted: boolean;
@@ -146,9 +144,7 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
       prepared.phrases,
     );
     const linked = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
-    const doc = pipeline
-      ? { ...linked, fields: { ...linked.fields, [ingestionPipelineField]: pipeline.id } }
-      : linked;
+    const doc = pipeline ? { ...linked, pipeline: pipeline.id } : linked;
     await target.writer.store(
       target.dataset,
       target.generation,
@@ -161,7 +157,7 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
   if (preserving && active !== undefined && read) {
     for await (const doc of read(target.dataset, active)) {
       options.signal?.throwIfAborted();
-      const owner = doc.fields[ingestionPipelineField];
+      const owner = doc.pipeline;
       if (typeof owner === 'string' && siblings.has(owner) && !fresh.has(doc.id))
         await target.writer.store(target.dataset, target.generation, doc);
     }

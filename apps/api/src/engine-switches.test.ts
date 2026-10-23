@@ -8,10 +8,9 @@ import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
-import { ingestionPipelineField } from '@genai/ingest';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
-import { typesense } from '@genai/providers-typesense';
+import { provenanceCollection, typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
@@ -97,7 +96,13 @@ const kudosFetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 const docs = [
-  { id: '1', doc_num: 'tilskudd', title: 'Tilskudd', url: 'https://ka.example/tilskudd' },
+  {
+    id: '1',
+    doc_num: 'tilskudd',
+    title: 'Tilskudd',
+    url: 'https://ka.example/tilskudd',
+    ingestion_pipeline: 'user-column',
+  },
   { id: '2', doc_num: 'sky', title: 'Skyplattform', url: 'https://ka.example/sky' },
 ];
 const chunks = [
@@ -124,8 +129,13 @@ let typesenseUrl: string;
 const writes: string[] = [];
 
 const exported = (collection: string, filter: string | null) => {
-  const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
   const ids = filter ? [...filter.matchAll(/`([^`]+)`/g)].map((m) => m[1]) : undefined;
+  if (collection === provenanceCollection('ka_docs'))
+    return [
+      { id: 'tilskudd', pipeline: 'source-a' },
+      { id: 'sky', pipeline: 'source-b' },
+    ].filter((r) => !ids || ids.includes(r.id));
+  const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
   return rows.filter((r) => !ids || ids.includes(r.doc_num));
 };
 
@@ -858,6 +868,18 @@ describe('operators switching the engine of a platform dataset', () => {
     const ready = await settledAt(booted, id, view.sid);
     expect(ready).toMatchObject({ state: 'ready', progress: { percent: 100, documents: 2 } });
     expect(platformEngineOf(platform, id)).toBe('typesense');
+    const copied = platform.writers.openAt(
+      id,
+      'platform-pg',
+      { signal: new AbortController().signal },
+      { embedding: { model: 'fake/embed', dimensions: 8 } },
+    );
+    const copiedDocs: IndexDocument[] = [];
+    for await (const doc of copied.writer.read?.(copied.dataset) ?? []) copiedDocs.push(doc);
+    expect(copiedDocs.map((d) => d.pipeline).sort()).toEqual(['source-a', 'source-b']);
+    expect(copiedDocs.find((d) => d.id === 'tilskudd')?.fields.ingestion_pipeline).toBe(
+      'user-column',
+    );
 
     const activated = await call(`${operatorBase(id)}/engine-switches/${ready.sid}/activate`, {
       as: 'drift',
@@ -947,7 +969,8 @@ describe('operators switching the engine of a platform dataset', () => {
     await route.writer.prepare(route.dataset, 'old-target');
     await route.writer.store(route.dataset, 'old-target', {
       id: 'stale',
-      fields: { [ingestionPipelineField]: 'kudos' },
+      pipeline: 'kudos',
+      fields: {},
       chunks: [{ id: 'stale-0', position: 0, text: 'Gammelt dokument som skal bort.' }],
       phrases: [],
     });
@@ -970,8 +993,7 @@ describe('operators switching the engine of a platform dataset', () => {
       documents: 2,
     });
     const owners: unknown[] = [];
-    for await (const doc of route.writer.read?.(route.dataset) ?? [])
-      owners.push(doc.fields[ingestionPipelineField]);
+    for await (const doc of route.writer.read?.(route.dataset) ?? []) owners.push(doc.pipeline);
     expect(owners.sort()).toEqual(['arsrapport', 'kudos']);
     expect(writes).toEqual([]);
   });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { envSecrets } from '@genai/kernel';
-import { folderSource, ingestionPipelineField, runIndexIngest } from '@genai/ingest';
+import { folderSource, runIndexIngest } from '@genai/ingest';
 import { fakeEmbedder } from '@genai/port-embedding/testing';
 import {
   IndexWriterRouter,
@@ -142,8 +142,7 @@ describe.each(['memory', 'pgvector'])('pipeline carry-forward on %s', (kind) => 
       });
     const owners = async () => {
       const owners: unknown[] = [];
-      for await (const doc of route.writer.read?.(route.dataset) ?? [])
-        owners.push(doc.fields[ingestionPipelineField]);
+      for await (const doc of route.writer.read?.(route.dataset) ?? []) owners.push(doc.pipeline);
       return owners.sort();
     };
     return { root, id, ingestion, store, backend, target, save, run, route, search, owners };
@@ -246,7 +245,7 @@ describe.each(['memory', 'pgvector'])('pipeline carry-forward on %s', (kind) => 
     const indexed: IndexDocument[] = [];
     for await (const doc of route.writer.read?.(dataset) ?? []) indexed.push(doc);
     expect(indexed).toHaveLength(2);
-    expect(indexed.find((d) => d.fields[ingestionPipelineField] === 'a')).toEqual(original);
+    expect(indexed.find((d) => d.pipeline === 'a')).toEqual(original);
     expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
     expect((await search('foreninger')).hits).toHaveLength(1);
     expect((await search('skyplattform')).hits).toHaveLength(1);

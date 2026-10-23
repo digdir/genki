@@ -308,6 +308,7 @@ const comparable = (docs: IndexDocument[]) =>
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((doc) => ({
       id: doc.id,
+      pipeline: doc.pipeline,
       title: doc.title,
       url: doc.url,
       fields: doc.fields,
@@ -468,6 +469,33 @@ export const indexWriterContract = (
         got.forEach((value, i) => expect(value).toBeCloseTo(vector[i] ?? 0, 5));
       }
       expect((await collect(read(target.dataset, 'g2'))).map((d) => d.id)).toEqual([second.id]);
+    });
+
+    it('round-trips pipeline provenance separately from source metadata and clears it on unattributed replacement', async (ctx) => {
+      const read = target.writer.read?.bind(target.writer);
+      if (!read) return ctx.skip();
+      const attributed = {
+        ...first,
+        pipeline: 'actual-owner',
+        fields: { ...first.fields, ingestion_pipeline: 'user-owner', pipeline: 'user-column' },
+      };
+      await store('g1', attributed);
+      await target.writer.promote(target.dataset, 'g1');
+      const [doc] = await collect(read(target.dataset));
+      expect(doc?.pipeline).toBe('actual-owner');
+      expect(doc?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+      });
+      const legacy: IndexDocument = { ...attributed };
+      delete legacy.pipeline;
+      await target.writer.store(target.dataset, 'g1', docs(legacy)[0] as IndexDocument);
+      const [replaced] = await collect(read(target.dataset));
+      expect(replaced?.pipeline).toBeUndefined();
+      expect(replaced?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+      });
     });
 
     const elsewhere = memoryEngine({ engine: 'contract-elsewhere' });

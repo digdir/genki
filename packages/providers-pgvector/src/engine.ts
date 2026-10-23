@@ -89,6 +89,7 @@ interface HitRow {
 
 interface DocRow {
   id: string;
+  pipeline: string | null;
   title: string | null;
   url: string | null;
   fields: Record<string, unknown>;
@@ -395,7 +396,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       const key = [dataset.id, chosen];
       const docs: DocRow[] = (
         await pool.query<DocRow>(
-          `select id, title, url, fields from kn_docs
+          `select id, pipeline, title, url, fields from kn_docs
              where dataset = $1 and generation = $2 and ($3::text is null or id > $3)
              order by id limit $4`,
           [...key, after, readPage],
@@ -418,6 +419,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       for (const doc of docs)
         yield {
           id: doc.id,
+          ...(doc.pipeline === null ? {} : { pipeline: doc.pipeline }),
           ...(doc.title === null ? {} : { title: doc.title }),
           ...(doc.url === null ? {} : { url: doc.url }),
           fields: doc.fields,
@@ -529,11 +531,11 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
             key,
           );
           await client.query(
-            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config)
-             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig)
+            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config, pipeline)
+             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig, $9)
              on conflict (dataset, generation, id) do update set
                title = excluded.title, url = excluded.url, fields = excluded.fields,
-               fields_text = excluded.fields_text, config = excluded.config`,
+               fields_text = excluded.fields_text, config = excluded.config, pipeline = excluded.pipeline`,
             [
               ...key,
               doc.title ?? null,
@@ -541,6 +543,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
               JSON.stringify(doc.fields),
               fieldsText(doc.fields),
               config,
+              doc.pipeline ?? null,
             ],
           );
           await client.query(

@@ -35,6 +35,8 @@ export interface IndexPhrase {
 
 export interface IndexDocument {
   id: string;
+  /** Internal ingestion provenance, separate from arbitrary source metadata in fields. */
+  pipeline?: string;
   title?: string;
   url?: string;
   fields: Record<string, unknown>;

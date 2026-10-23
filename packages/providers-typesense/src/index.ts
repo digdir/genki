@@ -23,7 +23,7 @@ import { readOnlyClient, searchOnlyClient } from './client.js';
 import { readTypesenseDocuments } from './reader.js';
 
 export { assertReadOnly, assertSearchOnly, readOnlyClient, type ReadOnlyClient } from './client.js';
-export { readTypesenseDocuments, type ReadCollections } from './reader.js';
+export { provenanceCollection, readTypesenseDocuments, type ReadCollections } from './reader.js';
 
 const fieldName = z.string().regex(/^[A-Za-z0-9_.]+$/);
 const reservedParams = new Set([

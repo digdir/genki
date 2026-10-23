@@ -12,7 +12,8 @@ import { memoryEngine, openTarget, type MemoryDatasetOptions } from '@genai/port
 import type { ChatResult, ModelPort } from '@genai/port-model';
 import {
   folderSource,
-  ingestionPipelineField,
+  databaseSource,
+  rowMapping,
   kudosSource,
   memoryPhraseCache,
   runIndexIngest,
@@ -340,7 +341,7 @@ describe('pipeline carry-forward through an index writer', () => {
     });
     const indexed = await documents(writer, dataset);
     expect(indexed).toHaveLength(2);
-    expect(indexed.find((d) => d.fields[ingestionPipelineField] === 'a')).toEqual(original);
+    expect(indexed.find((d) => d.pipeline === 'a')).toEqual(original);
     expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
     expect((await search().search({ query: 'foreninger', profile: 'content' })).hits).toHaveLength(
       1,
@@ -410,9 +411,7 @@ describe('pipeline carry-forward through an index writer', () => {
       pipeline: { id: 'a', siblings: ['c'] },
       target: target('a2'),
     });
-    expect(
-      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
-    ).toEqual(['a', 'c']);
+    expect((await documents(writer, dataset)).map((d) => d.pipeline).sort()).toEqual(['a', 'c']);
   });
 
   it('unattributed legacy documents are replaced and running each pipeline once rebuilds attribution', async () => {
@@ -435,9 +434,7 @@ describe('pipeline carry-forward through an index writer', () => {
       pipeline: { id: 'b', siblings: ['a'] },
       target: target('b1'),
     });
-    expect(
-      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
-    ).toEqual(['a', 'b']);
+    expect((await documents(writer, dataset)).map((d) => d.pipeline).sort()).toEqual(['a', 'b']);
   });
 
   it.each(['read', 'promoteIfActive'] as const)(
@@ -544,9 +541,7 @@ describe('pipeline carry-forward through an index writer', () => {
       target: target('switch', { writer: watched }),
     });
     expect(read).not.toHaveBeenCalled();
-    expect(
-      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
-    ).toEqual(['a', 'b']);
+    expect((await documents(writer, dataset)).map((d) => d.pipeline).sort()).toEqual(['a', 'b']);
   });
 
   it('fresh documents win when a sibling has the same document id', async () => {
@@ -563,9 +558,7 @@ describe('pipeline carry-forward through an index writer', () => {
       pipeline: { id: 'b', siblings: ['a'] },
       target: target('b1'),
     });
-    expect((await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField])).toEqual(
-      ['b'],
-    );
+    expect((await documents(writer, dataset)).map((d) => d.pipeline)).toEqual(['b']);
   });
 
   it('overlapping sibling runs refuse the stale snapshot and a retry keeps the winning documents', async () => {
@@ -623,6 +616,83 @@ describe('pipeline carry-forward through an index writer', () => {
       'Ny',
       'Skyplattform',
     ]);
+  });
+});
+
+describe('database metadata and pipeline provenance', () => {
+  const mapping = rowMapping.parse({
+    table: 'docs',
+    fields: {
+      id: 'id',
+      title: 'title',
+      text: ['text'],
+      metadata: ['ingestion_pipeline', 'pipeline'],
+    },
+  });
+  const source = (rows: Record<string, unknown>[]) =>
+    databaseSource({
+      origin: 'review-table',
+      mapping,
+      rows: (async function* () {
+        yield* rows;
+      })(),
+    });
+  const row = {
+    id: 'old-a',
+    title: 'Old A',
+    text: 'This document was removed from pipeline a.',
+    ingestion_pipeline: 'b',
+    pipeline: 'also-user-data',
+  };
+  const read = async (writer: IndexWriter, dataset: DatasetConfig) => {
+    const docs: IndexDocument[] = [];
+    for await (const doc of writer.read?.(dataset) ?? []) docs.push(doc);
+    return docs;
+  };
+
+  it('preserves a database column named ingestion_pipeline as ordinary metadata in a single-pipeline run', async () => {
+    const { writer, dataset, target } = setup();
+    await runIndexIngest({
+      source: source([row]),
+      chunking,
+      target: target('new'),
+      pipeline: { id: 'a', siblings: [] },
+    });
+    const [doc] = await read(writer, dataset);
+    expect(doc?.fields.ingestion_pipeline).toBe('b');
+    expect(doc?.fields.pipeline).toBe('also-user-data');
+    expect(doc?.pipeline).toBe('a');
+  });
+
+  it('does not trust pre-upgrade database metadata as sibling provenance', async () => {
+    const { writer, dataset, target } = setup();
+    await runIndexIngest({ source: source([row]), chunking, target: target('legacy') });
+    expect((await read(writer, dataset))[0]).toMatchObject({ fields: { ingestion_pipeline: 'b' } });
+    expect((await read(writer, dataset))[0]?.pipeline).toBeUndefined();
+    await runIndexIngest({
+      source: source([]),
+      chunking,
+      target: target('new-a'),
+      pipeline: { id: 'a', siblings: ['b'] },
+    });
+    expect(await read(writer, dataset)).toEqual([]);
+  });
+
+  it('fresh database metadata cannot attribute a removed document to a sibling', async () => {
+    const { writer, dataset, target } = setup();
+    await runIndexIngest({
+      source: source([row]),
+      chunking,
+      target: target('a1'),
+      pipeline: { id: 'a', siblings: ['b'] },
+    });
+    await runIndexIngest({
+      source: source([]),
+      chunking,
+      target: target('a2'),
+      pipeline: { id: 'a', siblings: ['b'] },
+    });
+    expect(await read(writer, dataset)).toEqual([]);
   });
 });
 
