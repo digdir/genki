@@ -158,7 +158,7 @@ const DatasetDetail = DatasetWithStatus.extend({
 
 const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
   description:
-    'Parquet sources accept url (one file), urls with a stable table name, or huggingface with dataset and file, or dataset, table and files (a glob or list). Shards are sorted and downloaded sequentially. mapping.maxRows caps rows across the table before filtering; maxBytes caps each file on disk (default 2 GiB, maximum 20 GiB). Duplicate row ids in sharded tables or any shard failure fail the run without promotion. Single-file document ids stay unchanged.',
+    'Parquet sources accept url (one file), urls with a stable table name, or huggingface with dataset and file, or dataset, table and files (a glob or list). Shards are sorted and downloaded sequentially. mapping.maxRows caps rows across the table before filtering; maxBytes caps each file on disk (default 2 GiB, maximum 20 GiB). Duplicate row ids in sharded tables or any shard failure fail the run without promotion. Single-file document ids stay unchanged. mapping.lookups (at most 3) join fields from another Parquet file on a key: file (same Hugging Face dataset and revision) or url, key (lookup column), on (source column) and fields (columns, optionally renamed with as). Each lookup file is read once per run, before the first shard; a row without a matching key gets no joined fields, the run report counts matches and misses, and a key repeated with different values, more than maxRows rows or more than maxMemoryBytes fails the run. Document ids do not change.',
 });
 const Pipeline = z
   .object({
@@ -205,6 +205,12 @@ const Execution = z
         promoted: z.boolean().optional(),
         previous: z.string().optional(),
         usage: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+        source: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            'Source-specific facts. A Parquet source with lookups reports, per lookup, the file, its rows and keys, and how many documents matched or missed a key.',
+          ),
       })
       .optional(),
     error: z.string().optional(),

@@ -51,6 +51,56 @@ export const parquetCondition = z
       ctx.addIssue({ code: 'custom', path: ['value'], message: `${c.op} needs a single value` });
   });
 
+const parquetFilePath = z
+  .string()
+  .regex(/^(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]*\.parquet$/, 'must be a .parquet path');
+
+const fieldNameOf = (field: z.infer<typeof metadataField>) =>
+  typeof field === 'string' ? field : field.as;
+
+export const parquetLookup = z
+  .strictObject({
+    file: parquetFilePath
+      .optional()
+      .describe('A .parquet path in the same Hugging Face dataset, read at the same revision'),
+    url: z
+      .url({ protocol: /^https$/ })
+      .optional()
+      .describe('An https URL of the lookup file, for a source that is not on Hugging Face'),
+    key: parquetColumn.describe('The column in the lookup file that holds the key'),
+    on: parquetColumn.describe('The column in the source whose value is looked up'),
+    fields: z
+      .array(metadataField)
+      .min(1)
+      .max(30)
+      .describe('Lookup columns stored on each matching document, optionally renamed with as'),
+    maxRows: z
+      .number()
+      .int()
+      .min(1)
+      .max(1_000_000)
+      .default(200_000)
+      .describe('The run fails if the lookup file has more rows'),
+    maxMemoryBytes: z
+      .number()
+      .int()
+      .min(1024)
+      .max(512 * 1024 * 1024)
+      .default(64 * 1024 * 1024)
+      .describe('Estimated memory cap for the key map; the run fails above it'),
+    maxBytes: z
+      .number()
+      .int()
+      .min(1024)
+      .max(20 * 1024 * 1024 * 1024)
+      .default(2 * 1024 * 1024 * 1024)
+      .describe('Disk byte cap for the downloaded lookup file'),
+  })
+  .refine((l) => (l.file === undefined) !== (l.url === undefined), {
+    message: 'a lookup needs exactly one of file and url',
+    path: ['file'],
+  });
+
 export const parquetMapping = z
   .strictObject({
     fields: z.strictObject({
@@ -69,11 +119,17 @@ export const parquetMapping = z
     }),
     filter: z.array(parquetCondition).max(20).default([]),
     maxRows: z.number().int().min(1).max(200_000).default(50_000),
+    lookups: z
+      .array(parquetLookup)
+      .max(3)
+      .default([])
+      .describe('Fields joined from other Parquet files on a key column, read once per run'),
   })
   .superRefine((m, ctx) => {
     const names = [
-      ...m.fields.metadata.map((f) => (typeof f === 'string' ? f : f.as)),
+      ...m.fields.metadata.map(fieldNameOf),
       ...Object.keys(m.fields.constants),
+      ...m.lookups.flatMap((l) => l.fields.map(fieldNameOf)),
     ];
     const seen = new Set<string>();
     for (const name of names) {
@@ -93,9 +149,7 @@ export const huggingFaceFile = z.strictObject({
   dataset: z
     .string()
     .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'must be owner/name'),
-  file: z
-    .string()
-    .regex(/^(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]*\.parquet$/, 'must be a .parquet path'),
+  file: parquetFilePath,
   revision: z
     .string()
     .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/)
@@ -121,6 +175,7 @@ export const huggingFaceSource = z.union([huggingFaceFile, huggingFaceShards]);
 export type HuggingFaceSource = z.infer<typeof huggingFaceSource>;
 
 export type ParquetCondition = z.infer<typeof parquetCondition>;
+export type ParquetLookup = z.infer<typeof parquetLookup>;
 export type ParquetMapping = z.infer<typeof parquetMapping>;
 export type HuggingFaceFile = z.infer<typeof huggingFaceFile>;
 
@@ -162,9 +217,15 @@ export const parquetColumns = (mapping: ParquetMapping) => {
       ...(year ? [year] : []),
       ...metadata.map(columnOf),
       ...mapping.filter.map((c) => c.column),
+      ...(mapping.lookups ?? []).map((l) => l.on),
     ]),
   ];
 };
+
+/** The columns read from a lookup file: the key and the joined fields. */
+export const lookupColumns = (lookup: ParquetLookup) => [
+  ...new Set([lookup.key, ...lookup.fields.map(columnOf)]),
+];
 
 export const missingColumns = (mapping: ParquetMapping, known: string[]) => {
   const present = new Set(known);
@@ -230,80 +291,175 @@ const metadataOf = (row: Record<string, unknown>, mapping: ParquetMapping) =>
     return [[typeof field === 'string' ? field : field.as, value] as const];
   });
 
+type Entries = (readonly [string, unknown])[];
+
+/** A key as text, or undefined for an empty or list value, which never matches. */
+export const lookupKey = (value: unknown) => {
+  const v = plain(value);
+  if (v === null || v === undefined || Array.isArray(v) || typeof v === 'object') return undefined;
+  const key = String(v).trim();
+  return key === '' ? undefined : key;
+};
+
+export interface ParquetLookupTable {
+  /** Where the lookup file came from, for errors and the run report. */
+  file: string;
+  on: string;
+  rows: number;
+  values: Map<string, Entries>;
+}
+
+/**
+ * Builds the in-memory key map for one lookup. The run fails when the file has more rows than
+ * maxRows, when the map's estimated size passes maxMemoryBytes, or when a key appears twice with
+ * different values; repeated identical rows are harmless and kept once.
+ */
+export const parquetLookupTable = async (
+  rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>,
+  lookup: ParquetLookup,
+  file: string,
+): Promise<ParquetLookupTable> => {
+  const values = new Map<string, Entries>();
+  const signatures = new Map<string, string>();
+  let count = 0;
+  let bytes = 0;
+  for await (const row of rows) {
+    count += 1;
+    if (count > lookup.maxRows)
+      throw new Error(`the Parquet lookup ${file} has more than ${lookup.maxRows} rows`);
+    const key = lookupKey(row[lookup.key]);
+    if (key === undefined) continue;
+    const entries: Entries = lookup.fields.flatMap((field) => {
+      const value = plain(row[columnOf(field)]);
+      if (value === null || value === undefined || (Array.isArray(value) && value.length === 0))
+        return [];
+      return [[fieldNameOf(field), value] as const];
+    });
+    const signature = JSON.stringify(entries);
+    const known = signatures.get(key);
+    if (known !== undefined) {
+      if (known !== signature)
+        throw new Error(`the Parquet lookup ${file} has key ${key} twice with different values`);
+      continue;
+    }
+    // UTF-16 strings: two bytes per code unit, plus a rough per-entry overhead.
+    bytes += 2 * (key.length + signature.length) + 64;
+    if (bytes > lookup.maxMemoryBytes)
+      throw new Error(`the Parquet lookup ${file} needs more than ${lookup.maxMemoryBytes} bytes`);
+    signatures.set(key, signature);
+    values.set(key, entries);
+  }
+  return { file, on: lookup.on, rows: count, values };
+};
+
 export interface ParquetSourceOptions {
   rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>;
   mapping: ParquetMapping;
   origin: string;
   rejectDuplicates?: boolean;
+  /** Builds the lookup tables before the first row is read. */
+  lookups?: () => Promise<ParquetLookupTable[]>;
 }
 
-export const parquetSource = (options: ParquetSourceOptions): IngestSource => ({
-  kind: 'parquet',
-  phraseRows: 'pipeline',
-  documents: async function* () {
-    const { fields, filter } = options.mapping;
-    const keep = parquetRowMatches(filter);
-    const seen = new Set<string>();
-    for await (const row of options.rows) {
-      if (!keep(row)) continue;
-      const sourceId = textOf(row[fields.id]).trim();
-      if (sourceId === '') continue;
-      const id = documentId(`${options.origin}#${sourceId}`);
-      if (seen.has(id)) {
-        if (options.rejectDuplicates)
-          throw new Error(`duplicate Parquet row id ${sourceId} in table ${options.origin}`);
-        continue;
-      }
-      seen.add(id);
-      const title = textOf(row[fields.title]).trim() || sourceId;
-      const body = fields.text
-        .map((column) => textOf(row[column]).trim())
-        .filter((t) => t !== '')
-        .join('\n\n');
-      const url = fields.url ? textOf(row[fields.url]).trim() : '';
-      const date = fields.date ? textOf(row[fields.date]).trim() : '';
-      const year = fields.year ? yearOf(row[fields.year]) : undefined;
-      const metadata = metadataOf(row, options.mapping);
-      const lines = [
-        ...metadata.map(([name, value]) => `- ${label(name)}: ${textOf(value)}`),
-        ...(url ? [`- Source: ${url}`] : []),
-      ];
-      const markdown = [`**${title}**`, '', ...(body ? [body, ''] : []), ...lines].join('\n');
-      const name = `${options.origin}#${sourceId}`;
-      yield {
-        key: id,
-        docNum: id,
-        name,
-        ...(body === '' ? { skip: 'no_text' as const } : {}),
-        texts: [markdown],
-        ...(url ? { url, location: { key: 'url' as const, value: url } } : {}),
-        stored: (chunks: Chunk[]) => ({
-          ...Object.fromEntries(metadata),
-          ...fields.constants,
-          id,
-          doc_num: id,
-          title,
-          path: name,
-          url: url || null,
-          ...(date ? { lastmod: date } : {}),
-          ...(year === undefined ? {} : { year }),
-          type: 'parquet',
-          source_origin: options.origin,
-          source_id: sourceId,
-          total_chunks: chunks.length,
-        }),
-        storedChunks: (chunks: Chunk[]) =>
-          chunks.map((c) => ({
-            id: c.chunk_id,
-            chunk_id: c.chunk_id,
-            doc_num: c.doc_num,
-            chunk_index: c.chunk_index,
-            content_markdown: c.content_markdown,
-            content_length: c.content_length,
-            metadata: c.metadata,
+export interface ParquetLookupReport {
+  file: string;
+  rows: number;
+  keys: number;
+  matched: number;
+  missing: number;
+}
+
+export const parquetSource = (options: ParquetSourceOptions): IngestSource => {
+  const reports: ParquetLookupReport[] = [];
+  return {
+    kind: 'parquet',
+    phraseRows: 'pipeline',
+    ...(options.mapping.lookups?.length ? { summary: () => ({ lookups: reports }) } : {}),
+    documents: async function* () {
+      const { fields, filter } = options.mapping;
+      const keep = parquetRowMatches(filter);
+      const seen = new Set<string>();
+      const tables = (await options.lookups?.()) ?? [];
+      reports.splice(
+        0,
+        reports.length,
+        ...tables.map((t) => ({
+          file: t.file,
+          rows: t.rows,
+          keys: t.values.size,
+          matched: 0,
+          missing: 0,
+        })),
+      );
+      for await (const row of options.rows) {
+        if (!keep(row)) continue;
+        const sourceId = textOf(row[fields.id]).trim();
+        if (sourceId === '') continue;
+        const id = documentId(`${options.origin}#${sourceId}`);
+        if (seen.has(id)) {
+          if (options.rejectDuplicates)
+            throw new Error(`duplicate Parquet row id ${sourceId} in table ${options.origin}`);
+          continue;
+        }
+        seen.add(id);
+        const title = textOf(row[fields.title]).trim() || sourceId;
+        const body = fields.text
+          .map((column) => textOf(row[column]).trim())
+          .filter((t) => t !== '')
+          .join('\n\n');
+        const url = fields.url ? textOf(row[fields.url]).trim() : '';
+        const date = fields.date ? textOf(row[fields.date]).trim() : '';
+        const year = fields.year ? yearOf(row[fields.year]) : undefined;
+        const joined = tables.flatMap((table, i) => {
+          const key = lookupKey(row[table.on]);
+          const entries = key === undefined ? undefined : table.values.get(key);
+          const report = reports[i] as ParquetLookupReport;
+          if (entries) report.matched += 1;
+          else report.missing += 1;
+          return entries ?? [];
+        });
+        const metadata = [...metadataOf(row, options.mapping), ...joined];
+        const lines = [
+          ...metadata.map(([name, value]) => `- ${label(name)}: ${textOf(value)}`),
+          ...(url ? [`- Source: ${url}`] : []),
+        ];
+        const markdown = [`**${title}**`, '', ...(body ? [body, ''] : []), ...lines].join('\n');
+        const name = `${options.origin}#${sourceId}`;
+        yield {
+          key: id,
+          docNum: id,
+          name,
+          ...(body === '' ? { skip: 'no_text' as const } : {}),
+          texts: [markdown],
+          ...(url ? { url, location: { key: 'url' as const, value: url } } : {}),
+          stored: (chunks: Chunk[]) => ({
+            ...Object.fromEntries(metadata),
+            ...fields.constants,
+            id,
+            doc_num: id,
+            title,
             path: name,
-          })),
-      };
-    }
-  },
-});
+            url: url || null,
+            ...(date ? { lastmod: date } : {}),
+            ...(year === undefined ? {} : { year }),
+            type: 'parquet',
+            source_origin: options.origin,
+            source_id: sourceId,
+            total_chunks: chunks.length,
+          }),
+          storedChunks: (chunks: Chunk[]) =>
+            chunks.map((c) => ({
+              id: c.chunk_id,
+              chunk_id: c.chunk_id,
+              doc_num: c.doc_num,
+              chunk_index: c.chunk_index,
+              content_markdown: c.content_markdown,
+              content_length: c.content_length,
+              metadata: c.metadata,
+              path: name,
+            })),
+        };
+      }
+    },
+  };
+};

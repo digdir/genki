@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, rm, type FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, matchesGlob } from 'node:path';
 import {
@@ -8,12 +8,16 @@ import {
   huggingFaceFile,
   huggingFaceFileUrl,
   huggingFaceOrigin,
+  lookupColumns,
   missingColumns,
   parquetColumns,
+  parquetLookupTable,
   parquetSource,
   type GuardedFetchOptions,
   type HuggingFaceSource,
   type ParquetFile,
+  type ParquetLookup,
+  type ParquetLookupTable,
 } from '@genai/ingest';
 import type { ParquetAccess } from './index-ingestion.js';
 import type { PipelineSpec } from './ingestion.js';
@@ -24,6 +28,14 @@ const maxShards = 1000;
 
 const hfUrl = (source: HuggingFaceSource, file: string) =>
   huggingFaceFileUrl({ dataset: source.dataset, revision: source.revision, file });
+
+// A lookup file on Hugging Face is read from the same dataset and revision as the source.
+export const lookupUrl = (source: Pick<ParquetSpec, 'huggingface'>, lookup: ParquetLookup) => {
+  if (lookup.url) return lookup.url;
+  if (!source.huggingface || !lookup.file)
+    throw new Error('a lookup file needs a huggingface source; use url otherwise');
+  return hfUrl(source.huggingface, lookup.file);
+};
 
 export const parquetLocation = (
   source: Pick<ParquetSpec, 'url' | 'urls' | 'huggingface' | 'table'>,
@@ -116,82 +128,125 @@ export const parquetSourceOf = (
   web: GuardedFetchOptions = {},
 ) => {
   const fetchOptions = { ...web, ...(access.fetch ? { fetch: access.fetch } : {}) };
-  const rows = async function* () {
-    const urls = await shardUrls(source, access, fetchOptions);
+  const scratch = async () => {
     const root = access.workingDirectory ?? tmpdir();
     await mkdir(root, { recursive: true });
+    return root;
+  };
+  // Downloads one file into a private scratch directory. dispose() closes the file and removes
+  // the directory; a failed download disposes before it rethrows.
+  const download = async (url: string, maxBytes: number, name: string) => {
+    const directory = await mkdtemp(join(await scratch(), 'genki-parquet-'));
+    let handle: FileHandle | undefined;
+    const dispose = async () => {
+      try {
+        await handle?.close();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    };
+    try {
+      const opened = await open(join(directory, name), 'wx+', 0o600);
+      handle = opened;
+      let size = 0;
+      await guardedFetchStream(
+        url,
+        policyFor(access),
+        maxBytes,
+        async (chunk) => {
+          // FileHandle.write may make a short write.
+          let offset = 0;
+          while (offset < chunk.byteLength) {
+            fetchOptions.signal?.throwIfAborted();
+            const { bytesWritten } = await opened.write(
+              chunk,
+              offset,
+              chunk.byteLength - offset,
+              size,
+            );
+            if (bytesWritten === 0)
+              throw new Error('Parquet temporary file write made no progress');
+            offset += bytesWritten;
+            size += bytesWritten;
+          }
+        },
+        fetchOptions,
+      );
+      const file: ParquetFile = {
+        byteLength: size,
+        slice: async (start, end = size) => {
+          fetchOptions.signal?.throwIfAborted();
+          if (start < 0 || end < start || end > size) throw new Error('invalid Parquet file range');
+          const buffer = new Uint8Array(end - start);
+          let offset = 0;
+          while (offset < buffer.byteLength) {
+            fetchOptions.signal?.throwIfAborted();
+            const { bytesRead } = await opened.read(
+              buffer,
+              offset,
+              buffer.byteLength - offset,
+              start + offset,
+            );
+            if (bytesRead === 0) throw new Error('unexpected end of Parquet temporary file');
+            offset += bytesRead;
+          }
+          return buffer.buffer;
+        },
+      };
+      return { file, dispose };
+    } catch (error) {
+      await dispose();
+      throw error;
+    }
+  };
+  // Lookup files are read one at a time before the first shard, so only one file is on disk.
+  const lookups = async () => {
+    const tables: ParquetLookupTable[] = [];
+    for (const lookup of source.mapping.lookups ?? []) {
+      fetchOptions.signal?.throwIfAborted();
+      const label = lookup.url ?? lookup.file ?? '';
+      const temp = await download(lookupUrl(source, lookup), lookup.maxBytes, 'lookup.parquet');
+      try {
+        const known = new Set(await access.reader.columns(temp.file));
+        const missing = lookupColumns(lookup).filter((c) => !known.has(c));
+        if (missing.length > 0)
+          throw new Error(`the Parquet lookup ${label} has no column ${missing.join(', ')}`);
+        tables.push(
+          await parquetLookupTable(
+            access.reader.rows(temp.file, lookupColumns(lookup), lookup.maxRows + 1),
+            lookup,
+            label,
+          ),
+        );
+      } finally {
+        await temp.dispose();
+      }
+    }
+    return tables;
+  };
+  const rows = async function* () {
+    const urls = await shardUrls(source, access, fetchOptions);
     let remaining = source.mapping.maxRows;
     for (const url of urls) {
       if (remaining === 0) break;
       fetchOptions.signal?.throwIfAborted();
-      const directory = await mkdtemp(join(root, 'genki-parquet-'));
+      const temp = await download(url, source.maxBytes, 'shard.parquet');
       try {
-        const handle = await open(join(directory, 'shard.parquet'), 'wx+', 0o600);
-        try {
-          let size = 0;
-          await guardedFetchStream(
-            url,
-            policyFor(access),
-            source.maxBytes,
-            async (chunk) => {
-              // FileHandle.write may make a short write.
-              let offset = 0;
-              while (offset < chunk.byteLength) {
-                fetchOptions.signal?.throwIfAborted();
-                const { bytesWritten } = await handle.write(
-                  chunk,
-                  offset,
-                  chunk.byteLength - offset,
-                  size,
-                );
-                if (bytesWritten === 0)
-                  throw new Error('Parquet temporary file write made no progress');
-                offset += bytesWritten;
-                size += bytesWritten;
-              }
-            },
-            fetchOptions,
-          );
-          const file: ParquetFile = {
-            byteLength: size,
-            slice: async (start, end = size) => {
-              fetchOptions.signal?.throwIfAborted();
-              if (start < 0 || end < start || end > size)
-                throw new Error('invalid Parquet file range');
-              const buffer = new Uint8Array(end - start);
-              let offset = 0;
-              while (offset < buffer.byteLength) {
-                fetchOptions.signal?.throwIfAborted();
-                const { bytesRead } = await handle.read(
-                  buffer,
-                  offset,
-                  buffer.byteLength - offset,
-                  start + offset,
-                );
-                if (bytesRead === 0) throw new Error('unexpected end of Parquet temporary file');
-                offset += bytesRead;
-              }
-              return buffer.buffer;
-            },
-          };
-          const missing = missingColumns(source.mapping, await access.reader.columns(file));
-          if (missing.length > 0)
-            throw new Error(`the Parquet file has no column ${missing.join(', ')}`);
-          for await (const row of access.reader.rows(
-            file,
-            parquetColumns(source.mapping),
-            remaining,
-          )) {
-            fetchOptions.signal?.throwIfAborted();
-            remaining -= 1;
-            yield row;
-            if (remaining === 0) break;
-          }
-        } finally {
-          await handle.close();
+        const missing = missingColumns(source.mapping, await access.reader.columns(temp.file));
+        if (missing.length > 0)
+          throw new Error(`the Parquet file has no column ${missing.join(', ')}`);
+        for await (const row of access.reader.rows(
+          temp.file,
+          parquetColumns(source.mapping),
+          remaining,
+        )) {
+          fetchOptions.signal?.throwIfAborted();
+          remaining -= 1;
+          yield row;
+          if (remaining === 0) break;
         }
       } finally {
-        await rm(directory, { recursive: true, force: true });
+        await temp.dispose();
       }
     }
   };
@@ -201,5 +256,6 @@ export const parquetSourceOf = (
     origin: parquetLocation(source).origin,
     rejectDuplicates:
       source.urls !== undefined || !!(source.huggingface && 'files' in source.huggingface),
+    ...(source.mapping.lookups?.length ? { lookups } : {}),
   });
 };
