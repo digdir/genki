@@ -23,10 +23,17 @@ spec:
           - instrument_type
           - legal_force
           - status
+          - short_title
+          - date_published
+          - date_in_force
+          - date_last_updated
+          - english_version
+          - english_version_by
           - verification_level
           - safety_topics
           - issuing_body
           - official_identifier
+          - verification_note
         constants: { doc_kind: record }
   chunking: { minimumLength: 1 }
   schedule: weekly

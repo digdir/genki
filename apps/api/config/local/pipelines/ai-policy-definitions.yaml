@@ -10,8 +10,15 @@ spec:
       fields:
         id: id
         title: term
-        text: [definition, english]
-        metadata: [record_id, term, term_group, language, locator]
+        text: [definition]
+        metadata:
+          - record_id
+          - term
+          - term_group
+          - language
+          - locator
+          - { column: english, as: english_rendering }
+          - { column: english_by, as: english_rendered_by }
         constants: { doc_kind: definition }
   chunking: { minimumLength: 1 }
   schedule: weekly
