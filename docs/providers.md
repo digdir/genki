@@ -1,6 +1,6 @@
 # Model providers
 
-Strategies use `ModelPort.chat` and `chatStream`; the router handles credentials, capabilities, residency, token ceilings and metering. Model endpoints and deployments belong in the model catalog. See [ADR 0021](adr/0021-model-access-through-protocol-adapters.md) and [ADR 0039](adr/0039-stateless-openai-responses.md).
+Strategies use `ModelPort.chat` and `chatStream`; the router handles credentials, capabilities, residency, token ceilings and metering. Model endpoints and deployments belong in the model catalog. See [ADR 0021](adr/0021-model-access-through-protocol-adapters.md) and [ADR 0040](adr/0040-stateless-openai-responses.md).
 
 ## OpenAI-compatible endpoints
 
