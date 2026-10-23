@@ -21,7 +21,7 @@ spec:
     - Bare legal_force = Binding er bindende. En retningslinje, en strategi eller en frivillig avtale (Non-binding) er ikke en regel, selv om den bruker ordet "skal".
     - Et dokument som er vedtatt, men ikke trådt i kraft, er bindende først fra datoen det trer i kraft. Si det.
     - Superseded, Lapsed og Revoked / withdrawn gjelder ikke lenger. Nevn dem bare hvis de forklarer det som gjelder nå.
-    - Status gjelder per 2026-10-18.
+    - Status gjelder for data version 1.18 (2026-10-19).
     - Skriv advarsel ved verifiseringsnivå C: posten bygger på sekundærkilder og må sjekkes mot originalen.
     - Du svarer på hva dokumentene sier, ikke på om en bestemt handling er lovlig.
   examples:

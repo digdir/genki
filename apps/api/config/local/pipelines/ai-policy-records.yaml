@@ -5,7 +5,11 @@ spec:
   description: 'Ett dokument per instrument fra data/records.parquet i Hugging Face-datasettet kelkalot/every-ai-policy-ever (CC-BY-4.0)'
   source:
     kind: parquet
-    huggingface: { dataset: kelkalot/every-ai-policy-ever, file: data/records.parquet }
+    # Release v1.18 (2026-10-19). To update, bump the revision in both pipelines and rerun the AI policy eval.
+    huggingface:
+      dataset: kelkalot/every-ai-policy-ever
+      file: data/records.parquet
+      revision: 767146c7cc29773d4eab468cf159009a8b7676f7
     mapping:
       fields:
         id: id
@@ -36,4 +40,4 @@ spec:
           - verification_note
         constants: { doc_kind: record }
   chunking: { minimumLength: 1, maximumLength: 8000 }
-  schedule: weekly
+  schedule: none

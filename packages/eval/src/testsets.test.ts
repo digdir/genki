@@ -330,7 +330,7 @@ describe('the checked-in test sets', () => {
     const ungrounded = judged.filter((c) => {
       const reference = c.expected.referenceAnswer ?? '';
       return !(
-        reference.includes('2026-10-18') &&
+        reference.includes('data version 1.18 (2026-10-19)') &&
         /virkelige|are real/.test(reference) &&
         /består når|passes when/.test(reference)
       );

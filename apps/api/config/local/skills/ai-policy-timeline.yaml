@@ -11,7 +11,7 @@ spec:
     1. Finn jurisdiksjonen og skriv den slik registeret gjør, på engelsk: Japan, China, European Union, United States, California (US). Gjelder spørsmålet bare noen år, finn årstallene.
     2. Søk med filter_by på jurisdiction, flere ganger med ulike ord, så du får med lover, forskrifter, forslag, strategier og retningslinjer: for eksempel "law regulation", "strategy action plan", "guidelines framework", "bill draft". Gjelder spørsmålet bestemte år, legg til filter_by på year med value_type integer.
     3. Les alle treffene for jurisdiksjonen med read_chunks, opptil ti i ett kall: en tidslinje trenger mange dokumenter, ikke bare de beste. Finn datoen for hvert dokument (vedtatt eller utgitt), datoen det trådte i kraft, og status.
-    4. Svar med en tabell sortert fra eldst til nyest, med disse kolonnene: Dato, Dokument [N], Type, Rettslig status (Binding, Non-binding eller Proposed), Status per 2026-10-18, Verifiseringsnivå.
+    4. Svar med en tabell sortert fra eldst til nyest, med disse kolonnene: Dato, Dokument [N], Type, Rettslig status (Binding, Non-binding eller Proposed), Status i data version 1.18 (2026-10-19), Verifiseringsnivå.
     5. Skriv deretter to til fire setninger om utviklingen: for eksempel fra strategi til lov, eller et forslag som erstattet et annet.
 
     Regler:
@@ -25,7 +25,7 @@ spec:
       expectedOutput: |
         Blant dokumentene jeg fant:
 
-        | Dato | Dokument | Type | Rettslig status | Status per 2026-10-18 | Nivå |
+        | Dato | Dokument | Type | Rettslig status | Status i data version 1.18 (2026-10-19) | Nivå |
         |---|---|---|---|---|---|
         | 2020-01-14 | Norway National AI Strategy [1] | Strategy / action plan | Non-binding | Published (non-binding, current) | A |
         | 2025-06-30 | Norwegian AI Act draft (KI-loven) [2] | Bill / draft law | Proposed | Draft / proposed | A |
@@ -44,7 +44,7 @@ spec:
         input: Hva har Colorado gjort med KI-regler over tid?
         context: |
           [1] Colorado AI Act (2024). Jurisdiction: Colorado (US). Instrument type: Law. Legal force: Binding. Status: Superseded. Date published: 2024-05-17. Official identifier: Colorado Senate Bill 24-205. Verification level: A. Notes: Approved and effective on 17 May 2024 (Session Laws 2024, chapter 198); the duties of developers and deployers were to apply on and after 1 Feb 2026. SB 25B-004 (2025 Extraordinary Session, chapter 3), approved on 28 Aug 2025 and effective on 25 Nov 2025, extended the effective date of the requirements to 30 Jun 2026. SB 26-189 (US-CO-02), approved on 14 May 2026, repeals and reenacts part 17 as a law on automated decision-making technology in consequential decisions, taking effect on 1 Jan 2027.
-        expected: Svaret viser Colorado AI Act fra 2024-05-17 med kildenummer, sier at den har status Superseded per 2026-10-18 og at den senere ble endret eller erstattet (SB 25B-004 eller SB 26-189), og sier ikke at listen er komplett.
+        expected: Svaret viser Colorado AI Act fra 2024-05-17 med kildenummer, sier at den har status Superseded i data version 1.18 (2026-10-19) og at den senere ble endret eller erstattet (SB 25B-004 eller SB 26-189), og sier ikke at listen er komplett.
       - type: must_reject
         input: Lag en tidslinje over Islands KI-lover fra 2010 til i dag.
         context: |

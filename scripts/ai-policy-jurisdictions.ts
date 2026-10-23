@@ -6,14 +6,17 @@ import { compressors } from 'hyparquet-compressors';
 import { parse as parseYaml } from 'yaml';
 
 // The comparison flow filters each jurisdiction by its exact name, so its extract step picks
-// names from an enum copied from the register. Rerun this when the register adds a jurisdiction:
+// names from an enum copied from the pinned register. Rerun this when its revision changes:
 //   node scripts/ai-policy-jurisdictions.ts            rewrites the enum
 //   node scripts/ai-policy-jurisdictions.ts --check    exits 1 when the enum differs from the register
 
 export const repoRoot = join(import.meta.dirname, '..');
 export const flowPath = join(repoRoot, 'apps/api/config/local/flows/ai-policy-comparison.yaml');
-export const recordsUrl =
-  'https://huggingface.co/datasets/kelkalot/every-ai-policy-ever/resolve/main/data/records.parquet';
+const recordsPipeline = parseYaml(
+  readFileSync(join(repoRoot, 'apps/api/config/local/pipelines/ai-policy-records.yaml'), 'utf8'),
+) as { spec: { source: { huggingface: { dataset: string; file: string; revision: string } } } };
+const source = recordsPipeline.spec.source.huggingface;
+export const recordsUrl = `https://huggingface.co/datasets/${source.dataset}/resolve/${source.revision}/${source.file}`;
 
 export const jurisdictionsOf = (rows: { jurisdiction?: unknown }[]) =>
   [

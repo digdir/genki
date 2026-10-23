@@ -229,10 +229,10 @@ spec:
 
               Skriv svaret i denne rekkefølgen. Skriv ingen nummer og ingen overskrifter som "Tabell" eller "Advarsler":
               - Én til to setninger med hovedforskjellen.
-              - En tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter, Rettslig status og status per 2026-10-18, Hva de sier om temaet og Verifiseringsnivå. Skriv kildenummeret rett etter hvert dokuments navn, for eksempel "EU AI Act [1]". Fant du ingen kilde om temaet for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden.
+              - En tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter, Rettslig status og status i data version 1.18 (2026-10-19), Hva de sier om temaet og Verifiseringsnivå. Skriv kildenummeret rett etter hvert dokuments navn, for eksempel "EU AI Act [1]". Fant du ingen kilde om temaet for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden.
               - To til fire setninger om likheter og forskjeller, med kildenummer for hver påstand.
               - Bare hvis et dokument har verifiseringsnivå C (ellers ingenting): en advarsel om at posten bygger på sekundærkilder og må sjekkes mot originalen.
-              - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), øyeblikksbilde 2026-10-18."
+              - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), data version 1.18 (2026-10-19)."
 
               Regler:
               - Bruk bare det som står i kildene. Fyll aldri inn en rad fra egen kunnskap.
