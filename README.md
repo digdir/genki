@@ -54,6 +54,7 @@ It provides:
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
+- **`services/`**: services in other languages that genki calls over HTTP, built and run on their own: [`marker-pdf-to-markdown`](services/marker-pdf-to-markdown) converts PDFs for `DOCUMENT_CONVERTER=marker`
 - **`infra/`**: the Azure setup for the test environment
 - **`scripts/`**: setup, running everything locally, and building the atlas
 - **`mise.toml`**: the pinned Node version
