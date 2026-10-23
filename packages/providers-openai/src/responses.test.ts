@@ -73,6 +73,7 @@ const setup = (
   url: string,
   options: Record<string, unknown> = { api: 'responses' },
   discovery = false,
+  signal?: AbortSignal,
 ) => {
   const router = new ModelRouter({
     catalog: {
@@ -128,7 +129,7 @@ const setup = (
     maxRetries: 0,
     sources: [{ kind: 'fake', list: async () => [{ deployment: 'gpt-6.1-sol' }] }],
   });
-  const { ctx, metered } = testContext();
+  const { ctx, metered } = testContext(signal);
   const open = (id = 'foundry/gpt-6.1-sol') => router.open({ kind: 'model', id }, ctx);
   return { router, open, metered };
 };
@@ -270,6 +271,26 @@ describe('OpenAI Responses behind the model port', () => {
       { type: 'function_call_output', call_id: 'call_1', output: 'Oslo' },
     ]);
   });
+
+  it.each([false, true])(
+    'reports cancellation after a streamed delta without metering, with terminal snapshot=%s',
+    async (terminalOnly) => {
+      const { url } = await fake(() => ({
+        status: 200,
+        sse: [
+          ...(terminalOnly ? [] : [event('response.output_text.delta', { delta: 'Hei' })]),
+          event('response.completed', { response: response() }),
+        ],
+      }));
+      const controller = new AbortController();
+      const { open, metered } = setup(url, { api: 'responses' }, false, controller.signal);
+      const iterator = open().chatStream(ask)[Symbol.asyncIterator]();
+      expect(await iterator.next()).toMatchObject({ value: { kind: 'delta', text: 'Hei' } });
+      controller.abort();
+      await expect(iterator.next()).rejects.toMatchObject({ code: 'cancelled' });
+      expect(metered).toEqual([]);
+    },
+  );
 
   it.each(['low', 'medium', 'high'] as const)(
     'passes reasoning effort %s and the Responses output ceiling',
