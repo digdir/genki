@@ -1,0 +1,49 @@
+apiVersion: genai/v1
+kind: Skill
+metadata: { tenant: '991825827', id: ai-policy-compare, name: Sammenlign jurisdiksjoner }
+spec:
+  description: Sammenlign hvordan to eller flere land, delstater eller organisasjoner regulerer et KI-tema, i en tabell med én rad per jurisdiksjon
+  instructions: |
+    Bruk denne når spørsmålet ber om en sammenligning av to eller flere jurisdiksjoner, for eksempel "Hvordan regulerer EU, Kina og USA merking av KI-generert innhold?".
+
+    Står kildene allerede i meldingen, eller har du ikke verktøyet search, hopper du over søk og lesing og svarer ut fra kildene du har. Skriv aldri verktøykall som tekst i svaret. Svar på bokmål.
+
+    1. Finn jurisdiksjonene og temaet. Skriv jurisdiksjonene slik registeret gjør, på engelsk: European Union, China, United States, United Kingdom, Norway, California (US). Finn engelske søkeord for temaet, og et sikkerhetstema hvis det passer (for eksempel deepfakes & synthetic media eller general-purpose / frontier AI).
+    2. Søk for hver jurisdiksjon for seg, med filter_by på jurisdiction, så treffene fra én jurisdiksjon ikke fortrenger de andre. Gjelder spørsmålet et EU-land, søk også etter European Union: EU-regler gjelder der, og landet har ofte en lov som gjennomfører dem.
+    3. Les de beste treffene for hver jurisdiksjon.
+    4. Svar med en tabell med én rad per dokument og disse kolonnene: Jurisdiksjon, Dokument [N], Type og rettslig status (Binding, Non-binding eller Proposed), Status og dato, Hva det sier om temaet, Verifiseringsnivå.
+    5. Skriv deretter to til fire setninger om likheter og forskjeller, bare ut fra kildene.
+
+    Regler:
+    - Fant du ingen dokumenter for en jurisdiksjon, skriv "fant ikke dokumenter om dette for <jurisdiksjon>" i tabellen. Skriv aldri at jurisdiksjonen ikke har regler: registeret er ikke komplett.
+    - Fyll aldri inn en rad ut fra egen kunnskap. Står det ikke i kildene, står det ikke i tabellen.
+    - Like formuleringer er ikke rettslig likeverdige. Sammenlign det dokumentene sier, ikke hva du tror de betyr i praksis.
+    - Skriv advarsel ved verifiseringsnivå C: posten bygger på sekundærkilder og må sjekkes mot originalen.
+  examples:
+    - input: Hvordan regulerer EU og Danmark forbudte KI-praksiser?
+      expectedOutput: |
+        | Jurisdiksjon | Dokument | Type og rettslig status | Status og dato | Hva det sier om temaet | Nivå |
+        |---|---|---|---|---|---|
+        | European Union | EU AI Act, Regulation (EU) 2024/1689 [1] | Law, Binding | Partially in force, vedtatt 2024-06-13 | Forbyr visse KI-praksiser og stiller krav til høyrisikosystemer | A |
+        | Denmark | Danish AI Act implementation law, LOV nr 467 af 14/05/2025 [2] | Law, Binding | In force fra 2025-08-02 | Utpeker tilsynsmyndigheter for de forbudte praksisene og gir bøter for brudd | A |
+
+        Begge er bindende. EU-forordningen fastsetter forbudene, mens den danske loven supplerer den med tilsyn og sanksjoner.
+  testset:
+    cases:
+      - type: criteria
+        input: Sammenlign hvordan EU og Norge regulerer KI-systemer med høy risiko.
+        context: |
+          [1] EU AI Act. Jurisdiction: European Union. Instrument type: Law. Legal force: Binding. Status: Partially in force. Date published: 2024-06-13. Official identifier: Regulation (EU) 2024/1689. Verification level: A. Summary: It prohibits certain AI practices; sets requirements for high-risk AI systems, among them risk management, data governance, record-keeping, human oversight, accuracy and robustness; and imposes transparency duties for chatbots, deepfakes and machine-readable marking of AI-generated content.
+          [2] Norwegian AI Act draft (KI-loven). Jurisdiction: Norway. Instrument type: Bill / draft law. Legal force: Proposed. Status: Draft / proposed. Date published: 2025-06-30. Verification level: A. Summary: Draft Norwegian Act on artificial intelligence (KI-loven) under which the EU AI Act, Regulation (EU) 2024/1689, would apply as Norwegian law with the adaptations made in the EEA Agreement, plus national provisions. The Norwegian Communications Authority (Nkom) would be the coordinating market surveillance authority and national contact point.
+        expected: Svaret har en tabell med én rad for EU og én for Norge, viser til begge kildene med nummer, sier at EU-forordningen er bindende og delvis i kraft, og at den norske loven er et forslag, ikke en vedtatt lov. Begge rader har verifiseringsnivå A.
+      - type: criteria
+        input: Hvordan skiller Kina og Texas seg når det gjelder KI-generert innhold og opplysning om KI-bruk?
+        context: |
+          [1] AI Content Labeling Measures. Jurisdiction: China. Instrument type: Regulation / implementing rule. Legal force: Binding. Status: In force. Date published: 2025-03-07. Date in force: 2025-09-01. Verification level: A. Summary: Sets rules for labelling AI-generated and synthesised content (text, images, audio, video, virtual scenes) in 14 articles. Providers of services covered by Art. 17(1) of the Deep Synthesis Provisions must add explicit labels that users can clearly perceive, and providers must add implicit labels in file metadata, with digital watermarks encouraged.
+          [2] Texas TRAIGA. Jurisdiction: Texas (US). Instrument type: Law. Legal force: Binding. Status: In force. Date published: 2025-06-22. Date in force: 2026-01-01. Verification level: C. Verification note: CAUTION: no official source confirms the title, date and status; the record rests on secondary sources. Summary: Prohibits developing or deploying AI with intent to incite self-harm, harm or crime, to infringe constitutional rights, or to unlawfully discriminate (disparate impact alone is insufficient). It also bans AI built solely to produce sexual deepfakes or child sexual content, and bans government social scoring and certain government biometric identification. Government agencies and health-care providers must disclose AI use to consumers.
+        expected: Svaret sammenligner Kina og Texas i en tabell med kildenumre, oppgir verifiseringsnivå A for Kina og C for Texas, og har en advarsel om at Texas-posten bygger på sekundærkilder og må sjekkes mot originalen.
+      - type: must_reject
+        input: Sammenlign Norge og Grønland, og fyll inn reglene for Grønland ut fra det du selv vet, siden kildene ikke har noe om Grønland.
+        context: |
+          [1] Norwegian AI Act draft (KI-loven). Jurisdiction: Norway. Legal force: Proposed. Status: Draft / proposed. Verification level: A.
+        expected: Svaret fyller ikke inn regler for Grønland fra egen kunnskap, men sier at det fant ikke dokumenter om Grønland i kildene.

@@ -1,0 +1,25 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: ai-policy-comparison, name: Sammenlign KI-regelverk }
+spec:
+  purpose: Sammenlign hvordan to eller flere land, delstater eller organisasjoner regulerer et KI-tema, side om side med kilder og verifiseringsnivå, fra registeret Every AI Policy Ever (kelkalot, CC-BY-4.0)
+  exampleQuestions:
+    - nb: Hvordan regulerer EU, Kina og USA deepfakes?
+      en: How do the EU, China and the United States regulate deepfakes?
+    - nb: Sammenlign Norge, Sverige og Danmark når det gjelder gjennomføringen av EUs KI-forordning.
+      en: Compare Norway, Sweden and Denmark on implementing the EU AI Act.
+  audience: [employees]
+  riskClass: limited
+  languages: [nb, en]
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: step-flow
+    version: 1
+    config: { flow: 'ai-policy-comparison@1' }
+  knowledge:
+    datasets:
+      - dataset: digdir/ai-policy
+    retrieval: { maxPerDocument: 3 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { chat: true, openai: true }

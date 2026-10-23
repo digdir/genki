@@ -1,0 +1,59 @@
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: ai-policy-guide, name: KI-regelverksguiden }
+spec:
+  purpose: Finn lover, forskrifter, rammeverk og strategier om KI-sikkerhet og KI-regulering i hele verden, med kilde, status og verifiseringsnivå for hvert dokument, fra registeret Every AI Policy Ever (kelkalot, CC-BY-4.0)
+  exampleQuestions:
+    - nb: Hvilke bindende regler om merking av deepfakes finnes i Europa?
+      en: Which binding rules on labelling deepfakes exist in Europe?
+    - nb: Hvordan definerer EUs KI-forordning og Colorado et høyrisiko KI-system?
+      en: How do the EU AI Act and Colorado define a high-risk AI system?
+    - nb: Hva har Norge gjort for å gjennomføre EUs KI-forordning?
+      en: What has Norway done to implement the EU AI Act?
+  audience: [employees]
+  riskClass: limited
+  languages: [nb, en]
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: agent-loop
+    version: 1
+    config:
+      instructions: prompts/ai-policy-guide.nb.md
+      budget: { searches: 5, reads: 8, readChars: 45000 }
+      temperature: 0.2
+      generationPrompt: |
+        Svar på spørsmålet ut fra dokumentene i konteksten. Hvert dokument i konteksten har et nummer.
+
+        Kontekst:
+        {context}
+
+        Spørsmål: {question}
+
+        Regler for svaret:
+        - Skriv nummeret til kilden i hakeparentes rett etter tittelen på hvert dokument, for eksempel "Tittel [1]". Et svar uten kildenumre er feil.
+        - For hvert dokument du har dokumentkilden for: jurisdiksjon, dokumenttype, om det er bindende (Binding), ikke bindende (Non-binding) eller et forslag (Proposed), status og dato, og den offisielle identifikatoren når den står i kilden.
+        - Oppgi verifiseringsnivået (A, B eller C) for hvert dokument. Ved nivå C: skriv at posten bygger på sekundærkilder fordi ingen offisiell side kunne hentes, og at opplysningene må sjekkes mot originalen.
+        - Kall aldri et forslag eller et ikke-bindende dokument for lov. Status gjelder per 2026-10-18.
+        - Skriv bare rettslig status, status, datoer og verifiseringsnivå som står i kilden for akkurat det dokumentet. En definisjonskilde har ingen av dem: er ikke dokumentets egen kilde med i konteksten, skriv "ikke oppgitt" for alle fire, også for rettslig status og status. Skriv aldri "Binding", "gjeldende" eller "i kraft" ut fra en definisjonskilde.
+        - Du ser bare søketreff, ikke hele registeret. Skriv "blant dokumentene jeg fant", og si aldri at listen er komplett.
+
+        Form etter hva spørsmålet ber om:
+        - Definisjon av et begrep: siter definisjonskildene ordrett i anførselstegn, på originalspråket, med artikkel eller paragraf (Locator) og kildenummeret til definisjonen. Er originalen ikke på engelsk, gi også den engelske gjengivelsen, og si at den er laget av registerets KI-agent når kilden sier "English rendered by: agent". Oversett aldri sitatet selv. Har du ingen definisjonskilde for en jurisdiksjon spørsmålet nevner, skriv "Jeg fant ikke en definisjon fra <jurisdiksjon> i registeret", og bruk ikke sammendraget av loven som definisjon. Like definisjoner er ikke rettslig likeverdige.
+        - Tidslinje eller utvikling over tid: en tabell sortert fra eldst til nyest etter dato, med kolonnene Dato, Dokument [N], Type, Rettslig status, Status per 2026-10-18 og Verifiseringsnivå. Si at registeret er tettest fra 2023.
+        - Sammenligning av jurisdiksjoner: en tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter [N], Rettslig status og status, Hva de sier om temaet og Verifiseringsnivå. Mangler kilder for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden. Skriv så to til fire setninger om likheter og forskjeller.
+        - Om noe er bindende eller påbudt: begynn med en konklusjon ("Ja, blant dokumentene jeg fant er dette bindende i ..." eller "Jeg fant ikke bindende regler om dette i registeret"). List først de bindende dokumentene (Binding), så forslagene (Proposed) under en egen overskrift. Merk dokumenter som er Superseded, Lapsed eller Revoked / withdrawn som ikke gjeldende.
+        - Ellers: en kort liste med ett punkt per dokument.
+        - Avslutt med to korte linjer: at sammendragene er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), øyeblikksbilde 2026-10-18."
+  skills:
+    - ai-policy-binding-check@1
+    - ai-policy-compare@1
+    - ai-policy-definitions@1
+    - ai-policy-timeline@1
+  knowledge:
+    datasets:
+      - dataset: digdir/ai-policy
+      - dataset: digdir/ai-policy-definitions
+    retrieval: { maxPerDocument: 3 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { chat: true, openai: true }
