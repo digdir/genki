@@ -95,6 +95,55 @@ describe('openai-chat adapter', () => {
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
   });
 
+  it('switches to max_tokens for a deployment that refuses max_completion_tokens, and remembers it', async () => {
+    const { url, seen } = await fake((body) =>
+      'max_completion_tokens' in body
+        ? {
+            status: 422,
+            json: {
+              detail: [
+                {
+                  type: 'extra_forbidden',
+                  loc: ['body', 'max_completion_tokens'],
+                  msg: 'Extra inputs are not permitted',
+                  input: 4000,
+                },
+              ],
+            },
+          }
+        : { status: 200, json: completion('Hei') },
+    );
+    const r = router(url);
+    const port = open(r);
+
+    const first = await port.chat({ ...user('hei'), maxTokens: 4000 });
+    const second = await port.chat({ ...user('hei igjen'), maxTokens: 4000 });
+
+    expect([first.content, second.content]).toEqual(['Hei', 'Hei']);
+    expect(seen.map((s) => [s.body.max_completion_tokens, s.body.max_tokens])).toEqual([
+      [4000, undefined],
+      [undefined, 4000],
+      [undefined, 4000],
+    ]);
+    expect(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters).toEqual({});
+  });
+
+  it('does not retry an unrelated 400 or a token refusal when no token limit was sent', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        error: {
+          message: "Unsupported parameter: 'max_completion_tokens' is not supported.",
+          type: 'invalid_request_error',
+        },
+      },
+    }));
+    const port = open(router(url, undefined, 0));
+
+    await expect(port.chat(user('hei'))).rejects.toThrow();
+    expect(seen).toHaveLength(1);
+  });
+
   it('reports the dropped temperature so the platform can suggest a rule', async () => {
     const { url } = await fake((body) =>
       'temperature' in body
