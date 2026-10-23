@@ -1,0 +1,52 @@
+apiVersion: genai/v1
+kind: Skill
+metadata: { tenant: '991825827', id: ai-policy-timeline, name: Lag en tidslinje }
+spec:
+  description: Lag en tidslinje over KI-dokumentene til ett land, én delstat eller én organisasjon, fra eldst til nyest, med status per dokument
+  instructions: |
+    Bruk denne når spørsmålet ber om utviklingen over tid, for eksempel "Hva har Japan vedtatt om KI de siste årene?" eller "Lag en tidslinje over Kinas KI-regler".
+
+    Står kildene allerede i meldingen, eller har du ikke verktøyet search, hopper du over søk og lesing og svarer ut fra kildene du har. Skriv aldri verktøykall som tekst i svaret. Svar på bokmål.
+
+    1. Finn jurisdiksjonen og skriv den slik registeret gjør, på engelsk: Japan, China, European Union, United States, California (US). Gjelder spørsmålet bare noen år, finn årstallene.
+    2. Søk med filter_by på jurisdiction, flere ganger med ulike ord, så du får med lover, forskrifter, forslag, strategier og retningslinjer: for eksempel "law regulation", "strategy action plan", "guidelines framework", "bill draft". Gjelder spørsmålet bestemte år, legg til filter_by på year med value_type integer.
+    3. Les alle treffene for jurisdiksjonen med read_chunks, opptil ti i ett kall: en tidslinje trenger mange dokumenter, ikke bare de beste. Finn datoen for hvert dokument (vedtatt eller utgitt), datoen det trådte i kraft, og status.
+    4. Svar med en tabell sortert fra eldst til nyest, med disse kolonnene: Dato, Dokument [N], Type, Rettslig status (Binding, Non-binding eller Proposed), Status i data version 1.18 (2026-10-19), Verifiseringsnivå.
+    5. Skriv deretter to til fire setninger om utviklingen: for eksempel fra strategi til lov, eller et forslag som erstattet et annet.
+
+    Regler:
+    - Ta bare med dokumenter fra den jurisdiksjonen spørsmålet gjelder. EU-regler gjelder i EU-landene, men hører ikke hjemme i et lands tidslinje uten at du merker dem som EU-regler.
+    - Registeret er tettest fra 2023. At du ikke fant eldre dokumenter, betyr ikke at de ikke finnes. Si det hvis tidslinjen begynner i 2023 eller senere.
+    - Du ser bare søketreffene. Skriv "blant dokumentene jeg fant", og si aldri at tidslinjen er komplett.
+    - Fant du ingen dokumenter for jurisdiksjonen, skriv "Jeg fant ikke dokumenter for <jurisdiksjon> i registeret".
+    - Skriv advarsel ved verifiseringsnivå C: posten bygger på sekundærkilder og må sjekkes mot originalen.
+  examples:
+    - input: Lag en tidslinje over Norges KI-dokumenter.
+      expectedOutput: |
+        Blant dokumentene jeg fant:
+
+        | Dato | Dokument | Type | Rettslig status | Status i data version 1.18 (2026-10-19) | Nivå |
+        |---|---|---|---|---|---|
+        | 2020-01-14 | Norway National AI Strategy [1] | Strategy / action plan | Non-binding | Published (non-binding, current) | A |
+        | 2025-06-30 | Norwegian AI Act draft (KI-loven) [2] | Bill / draft law | Proposed | Draft / proposed | A |
+        | 2026-06-12 | KI Norge [3] | Institutional mandate | Non-binding | Published (non-binding, current) | B |
+
+        Norge gikk fra en nasjonal strategi i 2020 til et lovforslag som skal gjennomføre EUs KI-forordning. Forslaget er ikke vedtatt.
+  testset:
+    cases:
+      - type: criteria
+        input: Lag en tidslinje over Danmarks KI-dokumenter.
+        context: |
+          [1] Danish deepfake (digital imitation) bill. Jurisdiction: Denmark. Instrument type: Bill / draft law. Legal force: Proposed. Status: Draft / proposed. Date published: 2026-10-08. Verification level: B.
+          [2] Danish AI Act implementation law. Jurisdiction: Denmark. Instrument type: Law. Legal force: Binding. Status: In force. Date published: 2025-05-14. Date in force: 2025-08-02. Official identifier: LOV nr 467 af 14/05/2025. Verification level: A.
+        expected: Svaret har en tabell sortert fra eldst til nyest, med loven fra 2025-05-14 [2] før lovforslaget fra 2026-10-08 [1]. Den viser at loven er bindende og i kraft og at lovforslaget er et forslag, og oppgir verifiseringsnivå A og B.
+      - type: criteria
+        input: Hva har Colorado gjort med KI-regler over tid?
+        context: |
+          [1] Colorado AI Act (2024). Jurisdiction: Colorado (US). Instrument type: Law. Legal force: Binding. Status: Superseded. Date published: 2024-05-17. Official identifier: Colorado Senate Bill 24-205. Verification level: A. Notes: Approved and effective on 17 May 2024 (Session Laws 2024, chapter 198); the duties of developers and deployers were to apply on and after 1 Feb 2026. SB 25B-004 (2025 Extraordinary Session, chapter 3), approved on 28 Aug 2025 and effective on 25 Nov 2025, extended the effective date of the requirements to 30 Jun 2026. SB 26-189 (US-CO-02), approved on 14 May 2026, repeals and reenacts part 17 as a law on automated decision-making technology in consequential decisions, taking effect on 1 Jan 2027.
+        expected: Svaret viser Colorado AI Act fra 2024-05-17 med kildenummer, sier at den har status Superseded i data version 1.18 (2026-10-19) og at den senere ble endret eller erstattet (SB 25B-004 eller SB 26-189), og sier ikke at listen er komplett.
+      - type: must_reject
+        input: Lag en tidslinje over Islands KI-lover fra 2010 til i dag.
+        context: |
+          [1] Danish AI Act implementation law. Jurisdiction: Denmark. Instrument type: Law. Legal force: Binding. Status: In force. Date published: 2025-05-14. Verification level: A.
+        expected: Svaret sier at det fant ikke dokumenter for Island i kildene, og lager ikke en tidslinje fra egen kunnskap.

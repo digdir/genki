@@ -5,7 +5,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { InMemoryDefinitionStore, SettingsRegistry, validateDefinition } from '@genai/definitions';
 import { createAdmin } from './admin.js';
 import {
   createDefinitionSourcesModule,
@@ -33,6 +33,28 @@ const gitConfig = (definitions: Record<string, unknown>) => {
     write: (name: string, text: string) => writeFileSync(join(dir, name), text),
   };
 };
+
+const localConfig = (dirs: Record<string, Record<string, unknown>>) => {
+  const root = mkdtempSync(join(tmpdir(), 'definition-sources-'));
+  mkdirSync(join(root, 'prompts'));
+  for (const [path, text] of Object.entries(files))
+    writeFileSync(join(root, path), text as string, 'utf8');
+  for (const [dir, definitions] of Object.entries(dirs)) {
+    mkdirSync(join(root, dir));
+    for (const [name, definition] of Object.entries(definitions))
+      writeFileSync(join(root, dir, name), stringify(definition), 'utf8');
+  }
+  return root;
+};
+
+const skill = (id: string) => ({
+  apiVersion: 'genai/v1',
+  kind: 'Skill',
+  metadata: { tenant: digdir, id, name: id },
+  spec: { description: 'Svar i punktform', instructions: 'Svar i korte punkter.' },
+});
+
+const localConfigDir = join(import.meta.dirname, '..', 'config', 'local');
 
 const setup = () => {
   const store = new InMemoryDefinitionStore(plugins);
@@ -164,5 +186,81 @@ describe('definitions from git', () => {
     expect(await operator.json()).toMatchObject({ summary: { 'not-published': 1 } });
     expect((await get('kari')).status).toBe(403);
     expect((await get('ingen')).status).toBe(401);
+  });
+});
+
+describe('skills from git', () => {
+  it('seeds config/local/skills before services, so a service can pin a skill seeded with it', async () => {
+    const { store, admin } = setup();
+    const pinning = klarsprak();
+    (pinning.spec as Record<string, unknown>).skills = ['zz-punktform@1'];
+    const root = localConfig({
+      skills: { 'zz-punktform.yaml': skill('zz-punktform') },
+      services: { 'klarsprak.yaml': pinning },
+    });
+
+    const outcomes = await seedDefinitions(
+      admin,
+      store,
+      readGitDefinitions(localDefinitionSources(root, {})).definitions,
+    );
+
+    expect(outcomes).toMatchObject([
+      { file: join(root, 'skills', 'zz-punktform.yaml'), state: 'published', version: 1 },
+      { file: join(root, 'services', 'klarsprak.yaml'), state: 'published', version: 1 },
+    ]);
+    expect((await store.get('Service', digdir, 'klarsprak'))?.definition).toMatchObject({
+      spec: { skills: ['zz-punktform@1'] },
+    });
+  });
+
+  it('every skill a local service pins is seeded at version 1 from config/local/skills, before that service', () => {
+    const read = readGitDefinitions(localDefinitionSources(localConfigDir, {})).definitions;
+    const pins = read.flatMap((entry, at) =>
+      entry.kind === 'Service'
+        ? ((entry.definition.spec as { skills?: string[] }).skills ?? []).map((ref) => ({
+            service: entry.id,
+            ref,
+            at,
+          }))
+        : [],
+    );
+
+    const problems = pins.flatMap(({ service, ref, at }) => {
+      const [id, version] = ref.split('@');
+      const seededAt = read.findIndex((e) => e.kind === 'Skill' && e.id === id);
+      if (seededAt < 0) return [`${service} pins ${ref}, which config/local/skills does not have`];
+      if (seededAt > at) return [`${service} is seeded before the skill ${ref} it pins`];
+      if (version !== '1') return [`${service} pins ${ref}, but seeding publishes version 1`];
+      return [];
+    });
+
+    expect(pins.map((p) => `${p.service}:${p.ref}`)).toEqual(
+      expect.arrayContaining([
+        'ai-policy-guide:ai-policy-binding-check@1',
+        'ai-policy-guide:ai-policy-compare@1',
+        'ai-policy-guide:ai-policy-definitions@1',
+        'ai-policy-guide:ai-policy-timeline@1',
+      ]),
+    );
+    expect(problems).toEqual([]);
+  });
+
+  it('every skill in config/local/skills is valid, named after its file, and has a case it must reject', () => {
+    const skills = readGitDefinitions([{ dir: join(localConfigDir, 'skills') }]);
+
+    const problems = skills.definitions.flatMap((entry) => {
+      const validated = validateDefinition(entry.definition, plugins);
+      if (!validated.ok) return [`${entry.file}: ${JSON.stringify(validated.errors)}`];
+      if (validated.definition.kind !== 'Skill') return [`${entry.file} is not a Skill`];
+      if (!entry.file.endsWith(`/${entry.id}.yaml`)) return [`${entry.file} holds ${entry.id}`];
+      if (!validated.definition.spec.testset.cases.some((c) => c.type === 'must_reject'))
+        return [`${entry.id} has no must_reject case`];
+      return [];
+    });
+
+    expect(skills.unreadable).toEqual([]);
+    expect(skills.definitions.length).toBeGreaterThanOrEqual(4);
+    expect(problems).toEqual([]);
   });
 });

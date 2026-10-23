@@ -1,0 +1,69 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: ai-policy-brief, name: AI policy brief }
+spec:
+  purpose: Retrieve the binding AI instruments on a topic from the Every AI Policy Ever register, then write a short brief with a table, citations and verification levels.
+  steps:
+    - id: queries
+      name: Lag engelske søk
+      block: extract@1
+      input:
+        prompt: |
+          Registeret er skrevet på engelsk. Lag tre til fem korte søk på engelsk som finner lover og regler om temaet i spørsmålet, med fagord og vanlige synonymer, for eksempel "deepfake labelling", "AI-generated content marking" og "synthetic media disclosure". Nevner spørsmålet et land eller en region, ta det med i søkene.
+
+          Spørsmål: {{input.query}}
+      params:
+        name: queries
+        temperature: 0
+        schema:
+          type: object
+          properties:
+            queries:
+              type: array
+              items: { type: string }
+          required: [queries]
+          additionalProperties: false
+    - id: retrieve
+      name: Finn bindende dokumenter om temaet
+      block: retrieve@1
+      input: { query: '{{input.query}}', queries: '{{queries.queries}}' }
+      params:
+        inOrder: { field: legal_force, values: [Binding] }
+    - id: context
+      name: Ranger og velg kontekst
+      block: rerank@1
+      input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+      params: { contextTopK: 15, maxContextLength: 60000 }
+    - id: brief
+      name: Skriv notatet
+      block: synthesize@1
+      input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
+      params:
+        temperature: 0.1
+        maxTokens: 2000
+        generationPrompt: |
+          Skriv et kort notat på bokmål om de bindende KI-reglene som spørsmålet gjelder. Kildene under er bindende dokumenter (legal_force Binding) fra registeret Every AI Policy Ever, og hver har et nummer.
+
+          Kilder:
+          {context}
+
+          Spørsmål: {question}
+
+          Skriv notatet i denne rekkefølgen. Skriv ingen nummer og ingen overskrifter som "Tabell" eller "Advarsler":
+          - Én til to setninger med hovedfunnet.
+          - En tabell med én rad per dokument som gjelder spørsmålet, og kolonnene Dokument, Jurisdiksjon, Type, Status i data version 1.18 (2026-10-19), I kraft fra og Verifiseringsnivå. Skriv kildenummeret rett etter dokumentets navn, for eksempel "EU AI Act [1]". Står en opplysning ikke i kilden, skriv "ikke oppgitt".
+          - To til tre korte avsnitt om hva reglene krever, likheter og forskjeller mellom jurisdiksjonene, og hva som gjelder nå og hva som først gjelder senere. Hver påstand skal ha et kildenummer.
+          - Bare hvis et dokument har verifiseringsnivå C (ellers ingenting): en advarsel om at posten bygger på sekundærkilder fordi ingen offisiell side kunne hentes, og at det må sjekkes mot originalen.
+          - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), data version 1.18 (2026-10-19)."
+
+          Regler:
+          - Ta bare med dokumenter som gjelder spørsmålet. Bruk bare det som står i kildene.
+          - Superseded, Lapsed og Revoked / withdrawn gjelder ikke lenger. Ta dem bare med hvis de forklarer det som gjelder nå, og merk dem.
+          - Du ser bare søketreff. Skriv "blant dokumentene jeg fant", og si aldri at oversikten er komplett.
+          - Gjelder ingen av kildene spørsmålet, skriv bare "Jeg fant ikke bindende dokumenter om dette i registeret." og den siste kildelinjen.
+    - id: answer
+      block: answer@1
+      input:
+        text: '{{brief.response}}'
+        chunks: '{{context.contextChunks}}'
+        citations: '{{brief.citations}}'

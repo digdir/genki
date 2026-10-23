@@ -312,4 +312,31 @@ describe('the checked-in test sets', () => {
     expect(criteria.every((c) => c.expected.referenceAnswer?.includes('nynorsk'))).toBe(true);
     expect(set.spec.cases.some((c) => c.type === 'must_reject')).toBe(true);
   });
+  it('keeps the AI policy draft a draft for its guide, with sources in both datasets and a not-covered case that expects a refusal', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ai-policy-guide-draft.yaml'), 'utf8'));
+    const refusals = set.spec.cases.filter((c) => c.grounding === 'refusal-expected');
+    const datasets = new Set(
+      set.spec.cases.flatMap((c) => c.expected.sources.map((s) => s.chunkId?.split('::')[0])),
+    );
+
+    expect(set.spec).toMatchObject({ service: 'ai-policy-guide', provenance: { status: 'draft' } });
+    expect(set.spec.cases.every((c) => c.needsReview)).toBe(true);
+    expect(datasets).toEqual(new Set(['digdir/ai-policy', 'digdir/ai-policy-definitions']));
+    expect(refusals.map((c) => [c.type, c.expected.sources])).toEqual([[undefined, []]]);
+  });
+  it('tells the judge in every judged AI policy case that the register snapshot is the truth and when the answer passes', () => {
+    const set = parseTestSetYaml(readFileSync(join(dir, 'ai-policy-guide-draft.yaml'), 'utf8'));
+    const judged = set.spec.cases.filter((c) => c.grounding !== 'refusal-expected');
+    const ungrounded = judged.filter((c) => {
+      const reference = c.expected.referenceAnswer ?? '';
+      return !(
+        reference.includes('data version 1.18 (2026-10-19)') &&
+        /virkelige|are real/.test(reference) &&
+        /består når|passes when/.test(reference)
+      );
+    });
+
+    expect(judged.length).toBeGreaterThanOrEqual(10);
+    expect(ungrounded.map((c) => c.id)).toEqual([]);
+  });
 });

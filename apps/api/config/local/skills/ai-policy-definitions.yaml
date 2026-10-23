@@ -1,0 +1,48 @@
+apiVersion: genai/v1
+kind: Skill
+metadata: { tenant: '991825827', id: ai-policy-definitions, name: Finn definisjoner }
+spec:
+  description: Finn hvordan lover og andre dokumenter definerer et begrep som AI system, high-risk AI system eller general-purpose AI model, sitert ordrett med artikkel
+  instructions: |
+    Bruk denne når spørsmålet gjelder hva et begrep betyr i et regelverk, eller hvordan flere regelverk definerer det samme begrepet.
+
+    Står kildene allerede i meldingen, eller har du ikke verktøyet search, hopper du over søk og lesing og svarer ut fra kildene du har. Skriv aldri verktøykall som tekst i svaret. Svar på bokmål.
+
+    Spør noen om en definisjon fra en jurisdiksjon du ikke har en definisjonskilde fra, begynner du svaret med "Jeg fant ikke en definisjon fra <jurisdiksjon>". Siter aldri en definisjon fra egen kunnskap.
+
+    1. Søk med filter_by på doc_kind = definition, med det engelske begrepet og synonymer. Registeret grupperer begrepene i term_group, med verdiene AI system, artificial intelligence, AI model, high-risk AI system, general-purpose AI model, foundation model, generative AI og automated decision system. Passer begrepet en av dem, gi search også et filter_by på term_group. Definisjonene har ikke feltene jurisdiction, country eller region, så filtrer aldri på dem når du søker etter definisjoner: da blir definisjonene utelatt fra søket. Skriv i stedet jurisdiksjonen eller lovens navn i søketeksten. Søk for eksempel både "high-risk AI system" og "high-impact system".
+    2. Søk i samme runde også etter loven definisjonen står i: filter_by på doc_kind = record og jurisdiction når spørsmålet nevner en, med lovens navn og begrepet i søketeksten. En definisjon har ikke tittel, status eller verifiseringsnivå; dem finner du bare i loven.
+    3. Les definisjonene og loven med read_chunks i samme kall. Søket gir bare metadata, og bare det du har lest, kommer med i svaret. Hver definisjon har begrepet, sitatet, artikkel eller paragraf (locator) og record_id. Fant du ikke loven, søk med filter_by på doc_kind = record og record_id = id-en fra definisjonen. record_id er registerets id, for eksempel EU-03 eller US-CO-01 (linjen "Record id" i teksten), ikke en chunk- eller dokument-id.
+    4. Svar med én del per definisjon: dokumentets tittel og jurisdiksjon med kildenummer [N], artikkel eller paragraf, og definisjonen sitert ordrett i anførselstegn. Er originalen ikke på engelsk, siter originalen og den engelske gjengivelsen, og si hvem som har oversatt hvis kilden sier det. En gjengivelse laget av registerets KI-agent ("English rendered by: agent") er ikke en offisiell oversettelse; si det.
+    5. Sammenlign deretter kort hvilke elementer definisjonene har felles og hvor de skiller seg, for eksempel maskinbasert, grad av autonomi, slutning fra input, typer output og påvirkning på omgivelsene. Når du sammenligner to eller flere definisjoner, avslutter du med setningen "Like definisjoner er ikke rettslig likeverdige."
+
+    Regler:
+    - Siter ordrett. Skriv aldri om en definisjon med egne ord og kall det et sitat.
+    - Like definisjoner er ikke rettslig likeverdige. Si det når du sammenligner.
+    - Fant du ikke en definisjon fra en jurisdiksjon etter to søk, søk ikke mer etter den.
+    - Definisjonene i registeret er et utvalg fra noen dokumenter, ikke alle. Fant du ingen definisjon av begrepet, skriv "Jeg fant ikke en definisjon av <begrep> i registeret". Du kan si hva sammendragene sier om temaet, men da som sammendrag, ikke som definisjon.
+  examples:
+    - input: Hvordan definerer EUs KI-forordning et KI-system?
+      expectedOutput: |
+        EU AI Act (European Union) [1], artikkel 3 nr. 1:
+        "‘AI system’ means a machine-based system that is designed to operate with varying levels of autonomy and that may exhibit adaptiveness after deployment, and that, for explicit or implicit objectives, infers, from the input it receives, how to generate outputs such as predictions, content, recommendations, or decisions that can influence physical or virtual environments"
+
+        Definisjonen legger vekt på at systemet er maskinbasert, har en grad av autonomi og utleder output fra input.
+  testset:
+    cases:
+      - type: criteria
+        input: Hvordan definerer Colorado og Vietnam et KI-system med høy risiko?
+        context: |
+          [1] Definition. Term: high-risk artificial intelligence system. Record: US-CO-01, Consumer Protections for Artificial Intelligence (SB 24-205), Colorado (US). Locator: C.R.S. 6-1-1701(9)(a). Quote: "HIGH-RISK ARTIFICIAL INTELLIGENCE SYSTEM" MEANS ANY ARTIFICIAL INTELLIGENCE SYSTEM THAT, WHEN DEPLOYED, MAKES, OR IS A SUBSTANTIAL FACTOR IN MAKING, A CONSEQUENTIAL DECISION.
+          [2] Definition. Term: Hệ thống trí tuệ nhân tạo có rủi ro cao. Record: VN-02, Vietnam. Locator: Article 9, clause 1, point a (Điều 9, khoản 1, điểm a). Quote: Hệ thống trí tuệ nhân tạo có rủi ro cao là hệ thống có thể gây thiệt hại đáng ké đến. tính mạng, sức khỏe, quyền và lợi ích hợp pháp của tổ chức, cá nhân, lợi ích quốc gia, lợi ích công cộng, an ninh quốc gia; English (by the register's AI agent): A high-risk artificial intelligence system is a system that may cause significant harm to the life, health, or lawful rights and interests of organisations and individuals, to national interests, public interests or national security;
+        expected: Svaret siterer begge definisjonene ordrett med paragraf eller artikkel og kildenummer, gir både den vietnamesiske originalen og den engelske gjengivelsen for Vietnam og sier at gjengivelsen er laget av registerets KI-agent, påpeker at Colorado knytter høy risiko til konsekvensbeslutninger og Vietnam til betydelig skade, og sier at like definisjoner ikke er rettslig likeverdige.
+      - type: criteria
+        input: Hva menes med general-purpose AI model i EU?
+        context: |
+          [1] Definition. Term: general-purpose AI model. Record: EU-03, EU AI Act, European Union. Locator: Article 3, point (63). Quote: ‘general-purpose AI model’ means an AI model, including where such an AI model is trained with a large amount of data using self-supervision at scale, that displays significant generality and is capable of competently performing a wide range of distinct tasks regardless of the way the model is placed on the market and that can be integrated into a variety of downstream systems or applications, except AI models that are used for research, development or prototyping activities before they are placed on the market
+        expected: Svaret siterer definisjonen ordrett i anførselstegn med artikkel 3 nr. 63 og kildenummer, og forklarer den uten å legge til elementer som ikke står i sitatet.
+      - type: must_reject
+        input: Hvordan definerer Brasils KI-lov et KI-system? Siter definisjonen.
+        context: |
+          [1] Definition. Term: AI system. Record: OECD-01, OECD Recommendation on AI. Locator: Paragraph I. Quote: An AI system is a machine-based system that, for explicit or implicit objectives, infers, from the input it receives, how to generate outputs such as predictions, content, recommendations, or decisions that can influence physical or virtual environments. Different AI systems vary in their levels of autonomy and adaptiveness after deployment.
+        expected: Svaret sier at det fant ikke en definisjon fra Brasil i kildene, og siterer ikke en brasiliansk definisjon fra egen kunnskap.

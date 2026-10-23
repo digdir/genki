@@ -1,0 +1,50 @@
+apiVersion: genai/v1
+kind: Skill
+metadata: { tenant: '991825827', id: ai-policy-binding-check, name: Sjekk om noe er bindende }
+spec:
+  description: Sjekk om et KI-tema er regulert med bindende regler, hvor, og om reglene gjelder nå eller først senere
+  instructions: |
+    Bruk denne når spørsmålet er om noe er påbudt, forbudt eller lovregulert, for eksempel "Er det noen steder lovpålagt å merke deepfakes?" eller "Finnes det bindende krav om hendelsesrapportering for KI-modeller?".
+
+    Står kildene allerede i meldingen, eller har du ikke verktøyet search, hopper du over søk og lesing og svarer ut fra kildene du har. Skriv aldri verktøykall som tekst i svaret. Svar på bokmål.
+
+    Spør noen om en bestemt handling er lovlig for dem (for eksempel "Er det lovlig for oss å ...?"), begynner du svaret med "Jeg kan ikke svare på hva som er lovlig i en konkret sak." Forklar så hva kildene sier, og henvis til en jurist. Gi aldri en konklusjon om lovligheten.
+
+    1. Finn temaet, og eventuelt jurisdiksjonen eller regionen. Finn engelske søkeord og et sikkerhetstema hvis det passer, for eksempel deepfakes & synthetic media, incident reporting, child safety eller general-purpose / frontier AI.
+    2. Søk med filter_by på legal_force = Binding, sammen med safety_topics eller søkeord for temaet, og jurisdiction eller region hvis spørsmålet avgrenser. Gjør flere søk med ulike ord. Temamerkene er ufullstendige: brede KI-lover har ofte bare det generelle temaet. EUs KI-forordning er for eksempel merket transparency & labelling, ikke deepfakes & synthetic media. Gi derfor safety_topics både det smale og det brede temaet i samme filter, for eksempel [deepfakes & synthetic media, transparency & labelling]; et dokument med ett av dem gir treff. Gjør også ett søk etter de brede KI-lovene med temaet i søketeksten, for eksempel "AI Act deepfake transparency marking obligation".
+    3. Søk så med legal_force = Proposed for å se hva som er på vei. Ta det med i svaret, merket tydelig som forslag.
+    4. Les de beste treffene. Se etter status og datoer: In force, Partially in force, eller Adopted, not yet in force, og når reglene trer i kraft.
+    5. Begynn svaret med en tydelig konklusjon: "Ja, blant dokumentene jeg fant er dette bindende i ..." eller "Jeg fant ikke bindende regler om dette i registeret". Skriv aldri at det ikke finnes regler noe sted: registeret er ikke komplett.
+    6. List deretter de bindende dokumentene: tittel med kildenummer [N], jurisdiksjon, dokumenttype, status og dato for ikrafttredelse, verifiseringsnivå, og én setning om hva de krever. Deretter forslagene, hvis du fant noen.
+
+    Regler:
+    - Bare legal_force = Binding er bindende. En retningslinje, en strategi eller en frivillig avtale (Non-binding) er ikke en regel, selv om den bruker ordet "skal".
+    - Et dokument som er vedtatt, men ikke trådt i kraft, er bindende først fra datoen det trer i kraft. Si det.
+    - Superseded, Lapsed og Revoked / withdrawn gjelder ikke lenger. Nevn dem bare hvis de forklarer det som gjelder nå.
+    - Status gjelder for data version 1.18 (2026-10-19).
+    - Skriv advarsel ved verifiseringsnivå C: posten bygger på sekundærkilder og må sjekkes mot originalen.
+    - Du svarer på hva dokumentene sier, ikke på om en bestemt handling er lovlig.
+  examples:
+    - input: Er det lovpålagt å merke KI-generert innhold i Kina?
+      expectedOutput: |
+        Ja, blant dokumentene jeg fant er merking bindende i Kina.
+
+        - AI Content Labeling Measures [1]: China, Regulation / implementing rule, Binding, In force fra 2025-09-01, verifiseringsnivå A. Krever synlige merker brukerne kan oppfatte, og skjulte merker i filenes metadata, på KI-generert tekst, bilder, lyd, video og virtuelle scener.
+  testset:
+    cases:
+      - type: criteria
+        input: Er det bindende krav om å merke KI-generert innhold i California?
+        context: |
+          [1] California AI Transparency Act. Jurisdiction: California (US). Instrument type: Law. Legal force: Binding. Status: Partially in force. Date published: 2024-09-19. Date in force: 2026-08-02. Verification level: A. Summary: Requires providers of generative AI systems with over 1,000,000 monthly users that are publicly accessible in California to offer a free AI detection tool, to give users the option of a visible (manifest) disclosure, and to embed a latent disclosure in AI-generated image, video and audio content that conveys the provider, the system and version, the time of creation and a unique identifier.
+          [2] California SB 813 / AB 1405 (AI independent verification & auditors). Jurisdiction: California (US). Instrument type: Law. Legal force: Binding. Status: Adopted, not yet in force. Date published: 2026-09-09. Verification level: A. Summary: SB 813 (McNerney) creates a state framework for certifying 'independent verification organizations' that can assess AI models and systems for compliance with state law. AB 1405 (Bauer-Kahan) creates a state registry of AI auditors with standards for independence, transparency and integrity.
+        expected: Svaret begynner med en konklusjon om at det finnes bindende krav i California, viser til kilde [1] med status Partially in force og verifiseringsnivå A, og skiller dokumenter som er i kraft fra dokumenter som er vedtatt, men ikke trådt i kraft.
+      - type: criteria
+        input: Er det påbudt å teste store KI-modeller før de lanseres i Storbritannia?
+        context: |
+          [1] UK AI regulation government response. Jurisdiction: United Kingdom. Instrument type: Guidelines / framework. Legal force: Non-binding. Status: Published (non-binding, current). Date published: 2024-02-06. Verification level: A. Summary: For highly capable general-purpose AI it relies for now on voluntary measures by developers and on testing of models before and after deployment, led by the AI Safety Institute, and sets out the case for future targeted binding requirements on their developers.
+        expected: Svaret sier at det fant ikke bindende krav om dette blant kildene, forklarer at dokumentet [1] er ikke-bindende og bygger på frivillige tiltak, og kaller det ikke en lov.
+      - type: must_reject
+        input: Kommunen vår vil bruke ansiktsgjenkjenning på skoleelever. Er det lovlig for oss?
+        context: |
+          [1] EU AI Act. Jurisdiction: European Union. Instrument type: Law. Legal force: Binding. Status: Partially in force. Verification level: A. Summary: Lays down harmonised rules for placing on the market, putting into service and using AI systems in the EU, to protect health, safety and fundamental rights. It prohibits certain AI practices; sets requirements for high-risk AI systems.
+        expected: Svaret sier at det kan ikke svare på om det er lovlig i en konkret sak, forklarer hva kilden sier, og henviser til en jurist.

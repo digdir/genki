@@ -1,0 +1,264 @@
+apiVersion: genai/v1
+kind: StepFlow
+metadata: { tenant: '991825827', id: ai-policy-comparison, name: AI policy jurisdiction comparison }
+spec:
+  purpose: Compare how two to four jurisdictions regulate an AI topic. Retrieves sources for each, then writes a side-by-side table with citations and verification levels. Reports any additional jurisdictions as not compared.
+  steps:
+    - id: jurisdictions
+      name: Finn jurisdiksjonene og lag engelske søk
+      block: extract@1
+      input:
+        prompt: |
+          Hvilke jurisdiksjoner (land, delstater, EU eller internasjonale organisasjoner) ber spørsmålet om å sammenligne? Oversett navnene til engelsk og velg dem fra listen i skjemaet: Norge er "Norway", Sverige "Sweden", Danmark "Denmark", Island "Iceland", Tyskland "Germany", Frankrike "France", Storbritannia "United Kingdom", Kina "China", Sør-Korea "South Korea", EU "European Union" og USA "United States". En amerikansk delstat skrives med "(US)", for eksempel "California (US)". Legg en jurisdiksjon i missing bare når det engelske navnet ikke står i listen.
+
+          Ta med høyst fire i jurisdictions, og bare dem spørsmålet ber om å sammenligne. Ber spørsmålet om flere, velg de fire første som står i listen og legg alle de øvrige kjente jurisdiksjonene i notCompared. Legg ukjente navn i missing. Alle forespurte jurisdiksjoner skal være med i ett av de tre feltene; utelat aldri et navn stille. Nevnes EUs KI-forordning bare som tema, er EU ikke en av jurisdiksjonene. Eksempel: for "Sammenlign Norge, Sverige og Danmark når det gjelder gjennomføringen av EUs KI-forordning" er jurisdiksjonene Norway, Sweden og Denmark.
+
+          Lag også tre til fem korte søk på engelsk om temaet, fordi registeret er skrevet på engelsk. Skriv dem uten navn på jurisdiksjoner, for søket gjøres for hver jurisdiksjon for seg. For eksempel "deepfake labelling requirements" eller "national implementation of the EU AI Act".
+
+          Spørsmål: {{input.query}}
+      params:
+        name: jurisdictions
+        temperature: 0
+        schema:
+          type: object
+          properties:
+            jurisdictions:
+              type: array
+              maxItems: 4
+              items:
+                type: string
+                enum:
+                  [
+                    'AI Action Summit (Paris, 2025)',
+                    'AI Impact Summit (New Delhi, 2026)',
+                    'AI Safety Summit (Bletchley, 2023)',
+                    'AI Seoul Summit (2024)',
+                    'ASEAN',
+                    'African Union',
+                    'Argentina',
+                    'Arkansas (US)',
+                    'Australia',
+                    'Austria',
+                    'Azerbaijan',
+                    'BRICS',
+                    'Bahrain',
+                    'Bangladesh',
+                    'Benin',
+                    'Bolivia',
+                    'Brazil',
+                    'Brunei',
+                    'Bulgaria',
+                    'California (US)',
+                    'Cambodia',
+                    'Canada',
+                    'Chile',
+                    'China',
+                    'Colombia',
+                    'Colorado (US)',
+                    'Connecticut (US)',
+                    'Council of Europe',
+                    'Croatia',
+                    'Cyprus',
+                    'Czechia',
+                    'Denmark',
+                    'Ecuador',
+                    'Egypt',
+                    'Ethiopia',
+                    'European Union',
+                    'Finland',
+                    'Five Country Ministerial (Australia, Canada, New Zealand, United Kingdom, United States)',
+                    'Florida (US)',
+                    'France',
+                    'G20',
+                    'G7',
+                    'Georgia (US)',
+                    'Germany',
+                    'Ghana',
+                    'Greece',
+                    'Hawaii (US)',
+                    'Hiroshima AI Process Friends Group',
+                    'Hong Kong SAR (China)',
+                    'Hungary',
+                    'Iceland',
+                    'Idaho (US)',
+                    'Illinois (US)',
+                    'India',
+                    'Indonesia',
+                    'International AI Safety Report (AI Safety Summit process)',
+                    'International Network of AI Safety Institutes',
+                    'Iowa (US)',
+                    'Ireland',
+                    'Israel',
+                    'Italy',
+                    'Jamaica',
+                    'Japan',
+                    'Jordan',
+                    'Kazakhstan',
+                    'Kentucky (US)',
+                    'Kenya',
+                    'Kyrgyzstan',
+                    'Latvia',
+                    'Lithuania',
+                    'Luxembourg',
+                    'Maine (US)',
+                    'Malaysia',
+                    'Malta',
+                    'Mauritius',
+                    'Mexico',
+                    'Minnesota (US)',
+                    'Montana (US)',
+                    'Montevideo ministerial summit on AI (2024)',
+                    'NATO',
+                    'Nebraska (US)',
+                    'Nepal',
+                    'Netherlands',
+                    'Nevada (US)',
+                    'New Jersey (US)',
+                    'New York (US)',
+                    'New Zealand',
+                    'Nigeria',
+                    'Norway',
+                    'OECD',
+                    'OECD / G7',
+                    'Oman',
+                    'Ontario (Canada)',
+                    'Oregon (US)',
+                    'Pakistan',
+                    'Paraguay',
+                    'Peru',
+                    'Philippines',
+                    'Poland',
+                    'Political Declaration on Responsible Military Use of AI (US-led initiative)',
+                    'Portugal',
+                    'Qatar',
+                    'REAIM Summit',
+                    'REAIM Summit (A Coruña, 2026)',
+                    'REAIM Summit (Seoul, 2024)',
+                    'Rhode Island (US)',
+                    'Romania',
+                    'Russia',
+                    'Rwanda',
+                    'Santiago ministerial summit on AI (2023)',
+                    'Saudi Arabia',
+                    'Senegal',
+                    'Serbia',
+                    'Singapore',
+                    'Slovakia',
+                    'Slovenia',
+                    'South Africa',
+                    'South Korea',
+                    'Spain',
+                    'Sweden',
+                    'Switzerland',
+                    'Taiwan',
+                    'Texas (US)',
+                    'Thailand',
+                    'Türkiye',
+                    'UNESCO',
+                    'Ukraine',
+                    'United Arab Emirates',
+                    'United Kingdom',
+                    'United Nations',
+                    'United States',
+                    'Uruguay',
+                    'Utah (US)',
+                    'Uzbekistan',
+                    'Vermont (US)',
+                    'Vietnam',
+                    'Virginia (US)',
+                    'Washington (US)',
+                    'World AI Cooperation Organization (WAICO)',
+                    'Wyoming (US)',
+                    'Zambia',
+                  ]
+            missing:
+              type: array
+              items: { type: string }
+            notCompared:
+              type: array
+              items: { type: string }
+            queries:
+              type: array
+              items: { type: string }
+          required: [jurisdictions, missing, notCompared, queries]
+          additionalProperties: false
+    - id: compare-jurisdictions
+      switchOn: jurisdictions.jurisdictions.length
+      cases:
+        - when: 0
+          steps:
+            - id: unknown-jurisdictions
+              block: answer@1
+              input:
+                text: |
+                  {{jurisdictions.missing}}: ikke i listen til denne sammenligningen; spør KI-regelverksguiden.
+
+                  Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0).
+                chunks: []
+      else:
+        - id: retrieve
+          name: Søk i hver jurisdiksjon for seg
+          block: retrieve@1
+          input: { query: '{{input.query}}', queries: '{{jurisdictions.queries}}' }
+          params:
+            retrieval: { retrieveTopK: 3 }
+            inOrder: { field: jurisdiction, values: '{{jurisdictions.jurisdictions}}' }
+        - id: context
+          name: Behold rekkefølgen per jurisdiksjon
+          block: rerank@1
+          input: { query: '{{input.query}}', chunks: '{{retrieve.chunks}}' }
+          params: { keepOrder: true, contextTopK: 12, maxContextLength: 80000 }
+        - id: compare
+          name: Sammenlign side om side
+          block: synthesize@1
+          input: { query: '{{input.query}}', contextDocs: '{{context.contextDocs}}' }
+          params:
+            temperature: 0.1
+            maxTokens: 2000
+            generationPrompt: |
+              Sammenlign på bokmål hvordan jurisdiksjonene regulerer temaet i spørsmålet. Kildene under kommer fra registeret Every AI Policy Ever, og hver har et nummer.
+
+              Jurisdiksjoner som skal sammenlignes: {{jurisdictions.jurisdictions}}
+              Jurisdiksjoner sammenligningen ikke kjenner: {{jurisdictions.missing}}
+              Jurisdiksjoner utenfor grensen på fire: {{jurisdictions.notCompared}}
+
+              Kilder:
+              {context}
+
+              Spørsmål: {question}
+
+              Skriv svaret i denne rekkefølgen. Skriv ingen nummer og ingen overskrifter som "Tabell" eller "Advarsler":
+              - Én til to setninger med hovedforskjellen.
+              - En tabell med én rad per jurisdiksjon og kolonnene Jurisdiksjon, Dokumenter, Rettslig status og status i data version 1.18 (2026-10-19), Hva de sier om temaet og Verifiseringsnivå. Skriv kildenummeret rett etter hvert dokuments navn, for eksempel "EU AI Act [1]". Fant du ingen kilde om temaet for en jurisdiksjon, skriv "fant ikke dokumenter om dette" i raden.
+              - To til fire setninger om likheter og forskjeller, med kildenummer for hver påstand.
+              - Bare hvis et dokument har verifiseringsnivå C (ellers ingenting): en advarsel om at posten bygger på sekundærkilder og må sjekkes mot originalen.
+              - To linjer til slutt: at sammendragene i registeret er laget med KI og at juridisk arbeid må sitere originalteksten, ikke sammendraget; og "Kilde: Every AI Policy Ever (kelkalot, CC-BY-4.0), data version 1.18 (2026-10-19)."
+
+              Regler:
+              - Bruk bare det som står i kildene. Fyll aldri inn en rad fra egen kunnskap.
+              - Skill mellom bindende regler (Binding), forslag (Proposed) og ikke-bindende dokumenter (Non-binding). Kall aldri et forslag eller en retningslinje for lov.
+              - At du ikke fant noe for en jurisdiksjon, betyr ikke at den ikke har regler. Skriv "fant ikke", aldri "finnes ikke" eller "har ikke".
+              - Like formuleringer er ikke rettslig likeverdige.
+              - For en jurisdiksjon sammenligningen ikke kjenner: skriv "ikke i listen til denne sammenligningen; spør KI-regelverksguiden" i raden, og ikke "fant ikke dokumenter". Skriv ikke at registeret mangler den.
+              - Jurisdiksjoner utenfor grensen på fire er ikke sammenlignet. Si det tydelig; skriv aldri at de mangler i listen eller i registeret, eller at du søkte etter dem.
+        - id: answer
+          switchOn: jurisdictions.notCompared.length
+          cases:
+            - when: 0
+              steps:
+                - id: complete-comparison
+                  block: answer@1
+                  input:
+                    text: '{{compare.response}}'
+                    chunks: '{{context.contextChunks}}'
+                    citations: '{{compare.citations}}'
+          else:
+            - id: limited-comparison
+              block: answer@1
+              input:
+                text: |
+                  {{compare.response}}
+
+                  Ikke sammenlignet (grensen er fire jurisdiksjoner): {{jurisdictions.notCompared}}.
+                chunks: '{{context.contextChunks}}'
+                citations: '{{compare.citations}}'

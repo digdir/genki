@@ -1,0 +1,157 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: ai-policy-guide-draft
+  name: KI-regelverksguiden, Every AI Policy Ever (draft)
+  version: 1
+spec:
+  service: ai-policy-guide
+  corpus: digdir/ai-policy
+  provenance:
+    status: draft
+    reviewer: ''
+    drafted: 2026-10-23
+    draftedBy: Claude, from records and definitions read back from the indexed Every AI Policy Ever register (data version 1.18 (2026-10-19))
+    sourceIdentity: document + position
+  cases:
+    - id: aipol-norway-ki-loven
+      split: train
+      input: Hva har Norge gjort for å gjennomføre EUs KI-forordning?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::b6b8be6adce7
+            document: digdir/ai-policy::56cf88973ca8
+            position: 0
+        answerPattern: (?i)KI-loven|lovforslag|forslag|proposed
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Norge har sendt på høring et utkast til ny lov om kunstig intelligens (KI-loven), der EUs KI-forordning skal gjelde som norsk lov med EØS-tilpasninger. Det er et forslag (Proposed), ikke en vedtatt lov, publisert 2025-06-30, verifiseringsnivå A. Svaret består når det nevner lovutkastet (KI-loven) og sier at det er et forslag, ikke en vedtatt lov.'
+      grounding: sources-and-answer
+      tags: [norway, implementation, proposed]
+      needsReview: true
+    - id: aipol-eu-gpai-duties
+      split: validation
+      input: Hvilke plikter har leverandører av KI-modeller for allmenne formål etter EUs KI-forordning?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::bcdbeee156f0
+            document: digdir/ai-policy::9fb14f70b605
+            position: 0
+        answerPattern: (?i)dokument|systemisk|systemic
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Leverandører av KI-modeller for allmenne formål må dokumentere modellene. Leverandører av modeller med systemisk risiko må i tillegg evaluere dem, også med adversariell testing, redusere systemiske risikoer og rapportere alvorlige hendelser. EU AI Act (Regulation (EU) 2024/1689) er bindende og delvis i kraft, verifiseringsnivå A. Svaret består når det nevner dokumentasjonsplikten og de ekstra pliktene for modeller med systemisk risiko.'
+      grounding: sources-and-answer
+      tags: [eu, general-purpose-ai, binding]
+      needsReview: true
+    - id: aipol-colorado-high-risk-definition
+      split: holdout
+      input: Hvordan definerer Colorado et høyrisiko KI-system?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy-definitions::6b13e0939daa
+            document: digdir/ai-policy-definitions::f3da4807e6cb
+            position: 0
+        answerPattern: (?i)consequential decision|substantial factor
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Colorado (SB 24-205, C.R.S. 6-1-1701(9)(a)) definerer det slik: "HIGH-RISK ARTIFICIAL INTELLIGENCE SYSTEM" MEANS ANY ARTIFICIAL INTELLIGENCE SYSTEM THAT, WHEN DEPLOYED, MAKES, OR IS A SUBSTANTIAL FACTOR IN MAKING, A CONSEQUENTIAL DECISION. Loven er Superseded i data version 1.18 (2026-10-19). Svaret består når det siterer definisjonen ordrett (consequential decision); status Superseded er ønsket, men "ikke oppgitt" er ikke feil.'
+      grounding: sources-and-answer
+      tags: [definition, colorado, us-state]
+      needsReview: true
+    - id: aipol-china-labelling
+      split: train
+      input: Er det lovpålagt å merke KI-generert innhold i Kina?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::e590dfa34074
+            document: digdir/ai-policy::12376bf8a277
+            position: 0
+        answerPattern: (?i)merk|label
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Ja. AI Content Labeling Measures er bindende og i kraft fra 2025-09-01. Tjenesteleverandører må legge synlige merker som brukerne kan oppfatte, og skjulte merker i filenes metadata, på KI-generert tekst, bilder, lyd, video og virtuelle scener. Verifiseringsnivå A. Svaret består når det sier at merking er bindende i Kina, nevner synlige og skjulte merker og ikrafttredelsen 2025-09-01.'
+      grounding: sources-and-answer
+      tags: [china, labelling, binding]
+      needsReview: true
+    - id: aipol-texas-level-c
+      split: validation
+      input: Hva sier Texas' KI-lov TRAIGA, og kan jeg stole på opplysningene?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::0386d86f6b34
+            document: digdir/ai-policy::df5fc74aa1c4
+            position: 0
+        answerPattern: (?i)sekundærkild|nivå C|level C|verifiseringsnivå:? ?C
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: TRAIGA forbyr blant annet KI utviklet med hensikt å oppfordre til selvskading eller kriminalitet, å krenke grunnlovsrettigheter eller å diskriminere ulovlig, og krever at offentlige etater og helseaktører opplyser om KI-bruk. Loven er bindende og i kraft fra 2026-01-01, men posten har verifiseringsnivå C, bygger på sekundærkilder og må sjekkes mot originalen. Svaret består når det sier hva loven forbyr og at posten har verifiseringsnivå C og må sjekkes mot originalen.'
+      grounding: sources-and-answer
+      tags: [us-state, verification-c, binding]
+      needsReview: true
+    - id: aipol-denmark-authorities
+      split: holdout
+      input: Hvilke myndigheter håndhever KI-forordningen i Danmark?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::6c941540335b
+            document: digdir/ai-policy::b2a9da9434d7
+            position: 0
+        answerPattern: (?i)Digitaliseringsstyrelsen|Datatilsynet|Domstolsstyrelsen
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Den danske loven som supplerer KI-forordningen (LOV nr 467 af 14/05/2025, i kraft 2025-08-02) utpeker Digitaliseringsstyrelsen, Datatilsynet og Domstolsstyrelsen som nasjonale myndigheter. Loven er bindende, verifiseringsnivå A. Svaret består når det nevner de tre myndighetene.'
+      grounding: sources-and-answer
+      tags: [denmark, implementation, binding]
+      needsReview: true
+    - id: aipol-korea-basic-act
+      split: train
+      input: Når trer Sør-Koreas KI-grunnlov i kraft, og hva krever den av generativ KI?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::974b09cc8048
+            document: digdir/ai-policy::bb18830dd3ee
+            position: 0
+        answerPattern: (?i)2026-01-22|22\. januar 2026
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Korea AI Basic Act trer i kraft 2026-01-22. Aktører må på forhånd fortelle brukerne at et produkt bruker høyrisiko- eller generativ KI, merke generativt KI-innhold og merke innhold som er vanskelig å skille fra virkeligheten (art. 31). Bindende, verifiseringsnivå A. Svaret består når det oppgir ikrafttredelsen 2026-01-22 og merkeplikten for generativ KI.'
+      grounding: sources-and-answer
+      tags: [south-korea, generative-ai, binding]
+      needsReview: true
+    - id: aipol-california-sb53
+      split: validation
+      input: What does California's SB 53 require of frontier AI developers?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::67175bafc271
+            document: digdir/ai-policy::8b6f6016b523
+            position: 0
+        answerPattern: (?i)framework|rammeverk|incident|hendelse
+        referenceAnswer: 'Facts from the Every AI Policy Ever register, data version 1.18 (2026-10-19): Large frontier developers must publish a frontier AI framework and send the Office of Emergency Services summaries of their catastrophic-risk assessments; the Office runs a mechanism for reporting critical safety incidents, whistleblowers are protected, and the Attorney General enforces a civil penalty. The Act is binding and in force from 2026-01-01, verification level A. The answer passes when it says that large frontier developers must publish a frontier AI framework and that critical safety incidents can be reported; the dates and laws in the register are real, also those from 2025 and 2026.'
+      grounding: sources-and-answer
+      tags: [us-state, frontier-ai, english, binding]
+      needsReview: true
+    - id: aipol-vietnam-high-risk-definition
+      split: holdout
+      input: Hvordan definerer Vietnam et KI-system med høy risiko?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy-definitions::36885f9d657a
+            document: digdir/ai-policy-definitions::26eda5876a12
+            position: 0
+        answerPattern: (?i)significant harm|rủi ro cao|betydelig skade
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Vietnam (VN-02, artikkel 9 nr. 1 bokstav a) definerer det på vietnamesisk som "Hệ thống trí tuệ nhân tạo có rủi ro cao là hệ thống có thể gây thiệt hại đáng ké đến ..."; registerets KI-agent gjengir det på engelsk som "a system that may cause significant harm to the life, health, or lawful rights and interests of organisations and individuals, to national interests, public interests or national security". Gjengivelsen er ikke en offisiell oversettelse. Svaret består når det gir den vietnamesiske definisjonen og den engelske gjengivelsen og sier at gjengivelsen ikke er offisiell.'
+      grounding: sources-and-answer
+      tags: [definition, vietnam, translation]
+      needsReview: true
+    - id: aipol-deepfake-binding-eu
+      split: train
+      input: Hvilke land har bindende regler om merking av deepfakes, og når trådte de i kraft?
+      expected:
+        sources:
+          - chunkId: digdir/ai-policy::bcdbeee156f0
+            document: digdir/ai-policy::9fb14f70b605
+            position: 0
+        answerPattern: (?i)AI Act|KI-forordning|2024/1689
+        referenceAnswer: 'Fasit fra registeret Every AI Policy Ever, data version 1.18 (2026-10-19). Dokumentene og datoene der er virkelige, også de fra 2025 og 2026, og skal ikke vurderes ut fra egen kunnskap: Blant de bindende reglene er EUs KI-forordning (Regulation (EU) 2024/1689). Den pålegger åpenhetsplikter for deepfakes og maskinlesbar merking av KI-generert innhold, trådte i kraft 2024-08-01, og det meste gjelder fra 2026-08-02; generative KI-systemer som var på markedet før 2026-08-02, må oppfylle merkeplikten i artikkel 50(2) innen 2026-12-02. Andre bindende regler er Kinas AI Content Labeling Measures (i kraft 2025-09-01) og Indias IT Rules amendment om syntetisk generert informasjon (i kraft 2026-02-20). Svaret består når det nevner EUs KI-forordning med merkeplikten for deepfakes og når den trådte i kraft eller gjelder fra.'
+      grounding: sources-and-answer
+      tags: [labelling, deepfakes, eu, binding, recall]
+      notes: On gpt-4o the guide missed EU-03 because its binding-check search filtered safety_topics on deepfakes & synthetic media, a tag EU-03 lacks (it has transparency & labelling).
+      needsReview: true
+    - id: aipol-norway-aquaculture-not-covered
+      split: holdout
+      input: Hvilke regler gjelder for bruk av KI i norsk oppdrettsnæring?
+      expected:
+        sources: []
+        referenceAnswer: Registeret Every AI Policy Ever dekker ikke regler for KI i oppdrettsnæringen. Guiden skal si at den fant ikke slike dokumenter, og kan vise til Norges generelle KI-dokumenter uten å påstå at de regulerer oppdrett.
+      grounding: refusal-expected
+      tags: [not-covered, norway]
+      needsReview: true
