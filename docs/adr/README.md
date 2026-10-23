@@ -35,3 +35,4 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0036](0036-delegating-platform-rights.md)               | Delegating platform rights                                   | Proposed                                                            |
 | [0037](0037-simple-and-developer-view.md)                | Simple and developer view in the portal                      | Proposed                                                            |
 | [0038](0038-ai-gateway.md)                               | The AI Gateway as a usage source, key issuer and model route | Proposed                                                            |
+| [0040](0040-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built; verified live on Foundry                           |

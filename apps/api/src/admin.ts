@@ -100,6 +100,7 @@ export interface ModelSummary {
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
   parameters?: Record<string, unknown>;
   rejectedParameters?: Record<string, string>;
+  transport?: { api: string; source: 'configured' | 'learned' | 'default' };
   services?: Record<string, unknown>[];
 }
 
