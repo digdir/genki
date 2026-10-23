@@ -162,4 +162,51 @@ describe('synthesis context selection', () => {
     expect(out.sources.map((s) => s.chunkId)).toEqual(['c2', 'c1']);
     expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
   });
+
+  it('keeps the latest known rerank score when a later search omits it', async () => {
+    const chunks = [1, 2, 3].map((n) =>
+      chunk(n, { content: `Evidence ${n}.`.repeat(40), contentLength: 1 }),
+    );
+    let searches = 0;
+    const r = retrieval(
+      {
+        search: async () => {
+          searches += 1;
+          const scores = searches === 1 ? [0.9, 0.8, 0.95] : [0.1, undefined, 0];
+          return {
+            chunks: chunks.map(({ content: _content, ...summary }, i) => {
+              const rerankScore = scores[i];
+              return { ...summary, ...(rerankScore === undefined ? {} : { rerankScore }) };
+            }),
+          };
+        },
+      },
+      new Map(chunks.map((c) => [c.chunkId, c])),
+    );
+    const out = await run({
+      retrieval: r.impl,
+      config: {
+        ...baseConfig,
+        strategy: { ...baseConfig.strategy, budget: { readChars: 700 } },
+      },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['evidence'] })]),
+            () => result('', [call('search', { queries: ['targeted evidence'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2', 'c3'] })]),
+            () => result('', [call('generate_response', { query: 'evidence' })]),
+          ],
+          read: [unsure],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+    expect(out.task.status).toBe('completed');
+    expect(promptFrom(out)).toContain(`[1] ${chunks[1]?.content}`);
+    expect(promptFrom(out)).not.toContain(chunks[0]?.content);
+    expect(promptFrom(out)).not.toContain(chunks[2]?.content);
+    expect(out.meta).toEqual({ citations: [{ index: 1, chunkId: 'c2' }] });
+  });
 });

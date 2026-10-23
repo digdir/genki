@@ -347,9 +347,17 @@ export class Workspace {
       ...[...this.claimCoverage.values()].flatMap((c) => c.chunkIds),
       ...this.contradictions.flatMap((c) => c.chunkIds),
     ]);
-    const summaries = new Map(
-      this.searches.flatMap((s) => s.summaries.map((c) => [c['chunk-id'], c] as const)),
-    );
+    const summaries = new Map<string, SearchSummary>();
+    for (const search of this.searches) {
+      for (const summary of search.summaries) {
+        const id = summary['chunk-id'];
+        summaries.set(id, {
+          ...summary,
+          // A degraded search or an unranked tail must not erase a known score.
+          'rerank-score': summary['rerank-score'] ?? summaries.get(id)?.['rerank-score'] ?? null,
+        });
+      }
+    }
     const priority = (c: Chunk) => {
       const summary = summaries.get(c.chunkId);
       return [
