@@ -151,6 +151,7 @@ export const knowledgeErrors = defineNamespace({
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
   datasetGone: 'datasettet finnes ikke lenger',
+  parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url og huggingface',
   engineInUse: 'Søkemotoren brukes av datasett',
   datasetUses: '{tenant}/{dataset} bruker {id}',
   endpointJson: 'send endepunktet som et JSON-objekt',

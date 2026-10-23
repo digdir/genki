@@ -25,6 +25,7 @@ export const datasets = defineNamespace({
   sourceUnknown: 'Ukjent kilde',
   sourceFolder: 'Mappe på serveren',
   sourceDatabase: 'Database',
+  sourceParquet: 'Parquet',
   sourceNone: 'Ingen kilde ennå',
   sourceSharedWithYou: '{source}, delt med dere',
   sharedBy: 'Delt av {owner}',

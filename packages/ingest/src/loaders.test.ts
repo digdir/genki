@@ -151,9 +151,13 @@ describe('website loader', () => {
       '::1',
       'fd00::1',
       '::ffff:10.0.0.1',
+      '::ffff:7f00:1',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+      '0:0:0:0:0:0:0:1',
     ])
       expect(blockedAddress(ip), ip).toBe(true);
     expect(blockedAddress('93.184.216.34')).toBe(false);
+    expect(blockedAddress('::ffff:5db8:d822')).toBe(false);
   });
 
   it('refuses hosts outside the allowlist and redirects that lead to them', async () => {

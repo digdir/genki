@@ -19,6 +19,17 @@ const view: DatasetView = {
 };
 
 describe('a shared dataset ingested outside the platform in the list', () => {
+  it.each(['nb', 'en'] as const)('names a Parquet source in %s', (locale) => {
+    const item = listItemOf(translator(locale), createFormat(locale), {
+      ...view,
+      editable: true,
+      state: 'ready',
+      source: 'parquet',
+    });
+
+    expect(item.sourceText).toBe('Parquet');
+  });
+
   it('says it is shared and ingested outside, names the engine and collection, and counts the documents', () => {
     const item = listItemOf(translator('nb'), createFormat('nb'), view);
 

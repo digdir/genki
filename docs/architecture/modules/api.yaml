@@ -77,6 +77,13 @@ edges:
     witness:
       file: apps/api/src/composition.ts
       imports: '@genai/providers-pgvector'
+  - to: providers-parquet
+    label: Composes the Parquet reader of the parquet source
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/composition.ts
+      imports: '@genai/providers-parquet'
   - to: providers-postgres-source
     label: Composes the read-only database source reader
     kind: call

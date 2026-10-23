@@ -5,6 +5,11 @@ import {
   convertibleExtensions,
   crawlSitemap,
   databaseSource,
+  huggingFaceFileUrl,
+  huggingFaceOrigin,
+  missingColumns,
+  parquetColumns,
+  parquetSource,
   defaultFetchPolicy,
   blobPhraseCache,
   defaultSearchPhrasesPrompt,
@@ -28,6 +33,7 @@ import {
   websiteSource,
   type ChunkDocumentConfig,
   type ChunkStrategy,
+  type ParquetReader,
   type DeclaredPhraseArchive,
   type DocumentConverter,
   type GuardedFetchOptions,
@@ -69,6 +75,12 @@ export interface KudosAccess {
   sleep?: (ms: number) => Promise<void>;
 }
 
+export interface ParquetAccess {
+  reader: ParquetReader;
+  fetch?: typeof fetch;
+  readTimeoutMs?: number;
+}
+
 export interface DatabaseAccess {
   reader: RowReader;
   secrets: { resolve(ref: string): Promise<string | undefined> };
@@ -92,6 +104,7 @@ export interface IngestSourceOptions {
   uploads?: Pick<BlobStore, 'list' | 'get'>;
   kudos?: KudosAccess;
   database?: DatabaseAccess;
+  parquet?: ParquetAccess;
 }
 
 type DatabaseSpec = Extract<PipelineSpec['source'], { kind: 'database' }>;
@@ -221,6 +234,8 @@ const sourceProblem = (spec: PipelineSpec, options: IngestSourceOptions) => {
     return 'uploads are turned off on this platform';
   if (spec.source.kind === 'database' && !options.database)
     return 'database sources are turned off on this platform';
+  if (spec.source.kind === 'parquet' && !options.parquet)
+    return 'Parquet sources are turned off on this platform';
   if (spec.source.kind === 'folder' || spec.source.kind === 'episerver') {
     if (!options.folderRoot) return 'folder sources are turned off on this platform';
     if (!inside(options.folderRoot, spec.source.path))
@@ -326,6 +341,41 @@ export const kudosClientFor = (access: KudosAccess = {}, name?: KudosProfile['na
     ...(access.sleep ? { sleep: access.sleep } : {}),
   });
 
+type ParquetSpec = Extract<PipelineSpec['source'], { kind: 'parquet' }>;
+
+export const parquetLocation = (source: Pick<ParquetSpec, 'url' | 'huggingface'>) =>
+  source.huggingface
+    ? { url: huggingFaceFileUrl(source.huggingface), origin: huggingFaceOrigin(source.huggingface) }
+    : { url: source.url ?? '', origin: source.url ?? '' };
+
+export const parquetReadTimeoutMs = 120_000;
+
+const parquetSourceOf = async (
+  access: ParquetAccess,
+  source: ParquetSpec,
+  web: GuardedFetchOptions | undefined,
+  signal: AbortSignal,
+) => {
+  const { url, origin } = parquetLocation(source);
+  const policy = {
+    ...defaultFetchPolicy,
+    readTimeoutMs: access.readTimeoutMs ?? parquetReadTimeoutMs,
+    allowedHosts: new Set<string>(),
+  };
+  const { bytes } = await guardedFetchBytes(url, policy, source.maxBytes, {
+    ...web,
+    signal,
+    ...(access.fetch ? { fetch: access.fetch } : {}),
+  });
+  const missing = missingColumns(source.mapping, await access.reader.columns(bytes));
+  if (missing.length > 0) throw new Error(`the Parquet file has no column ${missing.join(', ')}`);
+  return parquetSource({
+    rows: access.reader.rows(bytes, parquetColumns(source.mapping), source.mapping.maxRows),
+    mapping: source.mapping,
+    origin,
+  });
+};
+
 const sourceOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
@@ -402,6 +452,10 @@ const sourceOf = async (
       mapping: source.mapping,
       origin: `postgres://${host}:${port}/${database}/${source.mapping.schema}.${source.mapping.table}`,
     });
+  }
+  if (source.kind === 'parquet') {
+    if (!options.parquet) throw new Error('Parquet sources are turned off on this platform');
+    return parquetSourceOf(options.parquet, source, options.web, signal);
   }
   if (source.kind === 'episerver') {
     const root = inside(options.folderRoot ?? '', source.path);
