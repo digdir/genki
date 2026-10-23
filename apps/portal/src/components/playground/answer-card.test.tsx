@@ -286,7 +286,9 @@ describe('source excerpts in Prøveområde', () => {
       inEnglish(
         <AnswerCard
           result={result({
+            text: 'Answer [1].',
             sources: [{ chunkId: 'secret-id', text: 'Excerpt', publishedAt: '2026-03-01' }],
+            citations: [{ index: 1, chunkId: 'secret-id' }],
           })}
           saveExpanded={false}
           onSave={() => {}}
@@ -298,6 +300,20 @@ describe('source excerpts in Prøveområde', () => {
     expect(screen.getByText('Published 1 March 2026')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Excerpt from Untitled source' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Details about Untitled source' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Source 1: Untitled source' })).toBeTruthy();
     expect(screen.queryByText('secret-id')).toBeNull();
+  });
+
+  it.each(['', '   '])('uses the translated fallback for a blank title (%j)', (title) => {
+    card(
+      result({
+        sources: [{ chunkId: 'secret-id', title, url: 'https://example.no', text: 'Utdrag.' }],
+      }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Kilde uten tittel' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Utdrag fra Kilde uten tittel' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Kilde uten tittel' }));
+    expect(screen.getByRole('heading', { name: /Kilde uten tittel/ })).toBeTruthy();
   });
 });

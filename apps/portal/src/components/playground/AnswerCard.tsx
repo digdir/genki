@@ -53,6 +53,9 @@ export const groupSources = (result: PlaygroundResult): SourceGroup[] => {
   return [...groups.values()].map((g) => ({ ...g, numbers: g.numbers.sort((x, y) => x - y) }));
 };
 
+const sourceLabel = (source: PlaygroundSource, t: T) =>
+  source.title?.trim() || t('playground.untitledSource');
+
 const citeRenderer =
   (result: PlaygroundResult, onOpen: (chunkId: string) => void, t: T): CiteRenderer =>
   (n, key) => {
@@ -64,7 +67,7 @@ const citeRenderer =
         key={key}
         type="button"
         className="playground-cite"
-        aria-label={t('playground.sourceCite', { n, title: sourceTitle(source) })}
+        aria-label={t('playground.sourceCite', { n, title: sourceLabel(source, t) })}
         onClick={() => onOpen(chunkId)}
       >
         [{n}]
@@ -86,7 +89,7 @@ const SourceItem = ({
   const excerptId = useId();
   const [expanded, setExpanded] = useState(false);
   const source = group.first;
-  const title = source.title ?? t('playground.untitledSource');
+  const title = sourceLabel(source, t);
   const url = sourceUrl(source);
   const dataset = sourceDataset(source);
   const facts = sourceFacts(source, f, t);
@@ -164,6 +167,7 @@ const SourceDetail = ({
   const t = useT();
   const f = useFormat();
   const headingId = useId();
+  const title = sourceLabel(source, t);
   const at = order.indexOf(source.chunkId);
   const previous = at > 0 ? order[at - 1] : undefined;
   const next = at >= 0 && at < order.length - 1 ? order[at + 1] : undefined;
@@ -193,9 +197,7 @@ const SourceDetail = ({
   return (
     <section className="playground-source-detail" aria-labelledby={headingId}>
       <Heading level={4} data-size="2xs" id={headingId}>
-        {at >= 0
-          ? t('playground.sourceOf', { n: at + 1, total: order.length, title: sourceTitle(source) })
-          : sourceTitle(source)}
+        {at >= 0 ? t('playground.sourceOf', { n: at + 1, total: order.length, title }) : title}
       </Heading>
       <dl className="playground-fields">
         {rows.map(([k, v]) => (
@@ -209,7 +211,7 @@ const SourceDetail = ({
         <div
           className="playground-source-text"
           role="region"
-          aria-label={t('playground.sourceExcerpt', { title: sourceTitle(source) })}
+          aria-label={t('playground.sourceExcerpt', { title })}
           tabIndex={0}
         >
           <AnswerMarkdown text={source.text} />
