@@ -49,7 +49,7 @@ describe('Integrasjoner: oversikt', () => {
   it('shows what needs follow-up and opens the failing system with its fix', async () => {
     await renderAt('#/integrations');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Integrasjoner' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Integrasjoner' })).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: '2 integrasjoner trenger oppfølging' }),
     ).toBeTruthy();
@@ -81,7 +81,7 @@ describe('Integrasjoner: oversikt', () => {
 
   it('validates a new system and adds it', async () => {
     await renderAt('#/integrations');
-    fireEvent.click(screen.getByRole('button', { name: 'Koble til system' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Koble til system' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Koble til' }));
     expect(within(dialog).getByText('Rett opp i dette:')).toBeTruthy();
@@ -100,7 +100,7 @@ describe('Integrasjoner: oversikt', () => {
 
   it('lists frontends and registers one in the test environment', async () => {
     await renderAt('#/integrations?tab=frontends');
-    expect(screen.getByRole('button', { name: /Intranettet/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /Intranettet/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Registrer brukerflate' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Navn'), { target: { value: 'Ny side' } });
@@ -117,7 +117,7 @@ describe('Integrasjoner: utløser feiler', () => {
   it('opens the failing queue and pastes a new key', async () => {
     await renderAt('#/integrations?tab=triggers');
     expect(
-      screen.getByText('Vi får ikke lest fra køen fordi tilgangsnøkkelen er utløpt.'),
+      await screen.findByText('Vi får ikke lest fra køen fordi tilgangsnøkkelen er utløpt.'),
     ).toBeTruthy();
     expect(screen.getByText('Siste hendelser')).toBeTruthy();
     expectAccessible();
@@ -142,7 +142,7 @@ describe('Integrasjoner: utløser feiler', () => {
 
   it('pauses and restarts a trigger', async () => {
     await renderAt('#/integrations?tab=triggers&open=plan-uke');
-    fireEvent.click(screen.getByRole('button', { name: 'Start igjen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start igjen' }));
     expect(await screen.findByText('Hver mandag kl. 06.00 er startet igjen.')).toBeTruthy();
   });
 });
