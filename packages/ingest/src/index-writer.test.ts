@@ -281,8 +281,14 @@ describe('ingest through an index writer', () => {
     expect(await writer.stats(dataset, 'g2')).toEqual({ documents: 1, chunks: 1, phrases: 0 });
   });
 
-  it('does not promote a generation in which every document failed', async () => {
-    const { search, target } = setup();
+  it.each([false, true])('does not promote an all-failed run (siblings: %s)', async (siblings) => {
+    const { search, target, writer, dataset } = setup();
+    await runIndexIngest({
+      source: source(corpus),
+      chunking,
+      pipeline: { id: 'a' },
+      target: target('g0'),
+    });
     const broken = {
       kind: 'folder' as const,
       phraseRows: 'pipeline' as const,
@@ -299,7 +305,12 @@ describe('ingest through an index writer', () => {
       },
     };
 
-    const result = await runIndexIngest({ source: broken, chunking, target: target('g1') });
+    const result = await runIndexIngest({
+      source: broken,
+      chunking,
+      pipeline: { id: 'a', siblings: siblings ? ['b'] : [] },
+      target: target('g1'),
+    });
 
     expect(result).toEqual({
       stored: 0,
@@ -308,7 +319,8 @@ describe('ingest through an index writer', () => {
       generation: 'g1',
       promoted: false,
     });
-    expect((await search().search({ query: 'tilskudd', profile: 'content' })).hits).toEqual([]);
+    expect(await writer.active(dataset)).toBe('g0');
+    expect((await search().search({ query: 'tilskudd', profile: 'content' })).hits).toHaveLength(1);
   });
 });
 
@@ -520,6 +532,34 @@ describe('pipeline carry-forward through an index writer', () => {
       }),
     ).rejects.toThrow('read failed');
     expect(await writer.active(dataset)).toBe('a1');
+  });
+
+  it('a sibling copy failure leaves the served generation untouched', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    const broken = {
+      ...writer,
+      store: async (...args: Parameters<typeof writer.store>) => {
+        if (args[2].pipeline === 'a') throw new Error('copy failed');
+        return writer.store(...args);
+      },
+    };
+    await expect(
+      runIndexIngest({
+        source: source(b),
+        chunking,
+        pipeline: { id: 'b', siblings: ['a'] },
+        target: target('b1', { writer: broken }),
+      }),
+    ).rejects.toThrow('copy failed');
+    expect(await writer.active(dataset)).toBe('a1');
+    expect((await documents(writer, dataset)).map((d) => d.pipeline)).toEqual(['a']);
+    expect((await writer.stats(dataset, 'b1')).documents).toBe(1);
   });
 
   it('shared engine-switch generations attribute every pipeline without reading or copying the previous generation', async () => {
