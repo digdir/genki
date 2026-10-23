@@ -16,6 +16,7 @@ import {
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
+import { skillsSection } from './skills.js';
 import {
   defaultSearchDisplayLimit,
   expandShortDocReads,
@@ -629,7 +630,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   try {
     text = stripSourceLists(
       await env.synthesize(
-        env.systemPrompt,
+        env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
         generationPromptFor(
           env.generationPrompt ?? defaultGenerationPrompt,
           context,
