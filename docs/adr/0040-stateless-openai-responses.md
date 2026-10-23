@@ -1,6 +1,6 @@
-# 0039 Stateless OpenAI Responses behind the model port
+# 0040 Stateless OpenAI Responses behind the model port
 
-Status: accepted, 2026-10-23 (built; live Foundry verification pending)
+Status: accepted, 2026-10-23 (built; verified live on Foundry with gpt-6.1-sol)
 
 ## Decision
 
