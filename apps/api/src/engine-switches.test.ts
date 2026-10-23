@@ -3,12 +3,12 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
-import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
+import { fakeEmbeddingAdapter, fakeVector, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
 import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
@@ -557,6 +557,62 @@ describe('switching the search engine of a dataset', () => {
     expect(back.status).toBe(200);
     expect(engineOf(platform, 'ka-kopi')).toBe('typesense');
   });
+
+  it.each(['fake/embed', 'fake/other', undefined])(
+    'copy switches preserve provenance and reuse only vectors from the target model (stored model: %s)',
+    async (embeddingModel) => {
+      const booted = await boot();
+      const { platform } = booted;
+      const id = `ka-model-copy-${embeddingModel?.split('/')[1] ?? 'unknown'}`;
+      await createDataset(booted, id, undefined, {
+        embedding: { model: 'fake/embed', dimensions: 8 },
+      });
+      const text = 'Kommunen gir tilskudd til foreninger.';
+      const vector = [1, 0, 0, 0, 0, 0, 0, 0];
+      const original: IndexDocument = {
+        id: 'tilskudd',
+        pipeline: 'pipeline-a',
+        ...(embeddingModel ? { embeddingModel } : {}),
+        fields: { embeddingModel: 'user-model' },
+        chunks: [{ id: 'tilskudd-0', position: 0, text, vector }],
+        phrases: [],
+      };
+      const open = platform.knowledge.open.bind(platform.knowledge);
+      const watched = vi.spyOn(platform.knowledge, 'open').mockImplementation((...args) => {
+        const port = open(...args);
+        return args[0].id === `${digdir}/${id}`
+          ? {
+              ...port,
+              export: {
+                vectors: true,
+                count: async () => 1,
+                documents: async function* () {
+                  yield structuredClone(original);
+                },
+              },
+            }
+          : port;
+      });
+      try {
+        expect(await switchTo(booted, id)).toMatchObject({ state: 'ready' });
+        const route = pgRoute(platform, id);
+        const copied: IndexDocument[] = [];
+        for await (const doc of route.writer.read?.(route.dataset) ?? []) copied.push(doc);
+        expect(copied).toHaveLength(1);
+        expect(copied[0]).toMatchObject({
+          pipeline: 'pipeline-a',
+          embeddingModel: 'fake/embed',
+          fields: { embeddingModel: 'user-model' },
+        });
+        const expected = embeddingModel === 'fake/embed' ? vector : fakeVector(text, 8);
+        expected.forEach((value, index) =>
+          expect(copied[0]?.chunks[0]?.vector?.[index]).toBeCloseTo(value, 5),
+        );
+      } finally {
+        watched.mockRestore();
+      }
+    },
+  );
 
   it('activating a worse engine needs a 20-character reason', async () => {
     const booted = await boot();

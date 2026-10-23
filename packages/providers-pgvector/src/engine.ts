@@ -90,6 +90,7 @@ interface HitRow {
 interface DocRow {
   id: string;
   pipeline: string | null;
+  embedding_model: string | null;
   title: string | null;
   url: string | null;
   fields: Record<string, unknown>;
@@ -396,7 +397,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       const key = [dataset.id, chosen];
       const docs: DocRow[] = (
         await pool.query<DocRow>(
-          `select id, pipeline, title, url, fields from kn_docs
+          `select id, pipeline, embedding_model, title, url, fields from kn_docs
              where dataset = $1 and generation = $2 and ($3::text is null or id > $3)
              order by id limit $4`,
           [...key, after, readPage],
@@ -420,6 +421,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
         yield {
           id: doc.id,
           ...(doc.pipeline === null ? {} : { pipeline: doc.pipeline }),
+          ...(doc.embedding_model === null ? {} : { embeddingModel: doc.embedding_model }),
           ...(doc.title === null ? {} : { title: doc.title }),
           ...(doc.url === null ? {} : { url: doc.url }),
           fields: doc.fields,
@@ -532,11 +534,12 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
             key,
           );
           await client.query(
-            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config, pipeline)
-             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig, $9)
+            `insert into kn_docs (dataset, generation, id, title, url, fields, fields_text, config, pipeline, embedding_model)
+             values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig, $9, $10)
              on conflict (dataset, generation, id) do update set
                title = excluded.title, url = excluded.url, fields = excluded.fields,
-               fields_text = excluded.fields_text, config = excluded.config, pipeline = excluded.pipeline`,
+               fields_text = excluded.fields_text, config = excluded.config, pipeline = excluded.pipeline,
+               embedding_model = excluded.embedding_model`,
             [
               ...key,
               doc.title ?? null,
@@ -545,6 +548,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
               fieldsText(doc.fields),
               config,
               doc.pipeline ?? null,
+              doc.embeddingModel ?? null,
             ],
           );
           await client.query(

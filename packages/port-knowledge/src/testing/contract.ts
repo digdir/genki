@@ -309,6 +309,7 @@ const comparable = (docs: IndexDocument[]) =>
     .map((doc) => ({
       id: doc.id,
       pipeline: doc.pipeline,
+      embeddingModel: doc.embeddingModel,
       title: doc.title,
       url: doc.url,
       fields: doc.fields,
@@ -478,24 +479,37 @@ export const indexWriterContract = (
       const attributed = {
         ...first,
         pipeline: 'actual-owner',
-        fields: { ...first.fields, ingestion_pipeline: 'user-owner', pipeline: 'user-column' },
+        embeddingModel: 'actual-model',
+        fields: {
+          ...first.fields,
+          ingestion_pipeline: 'user-owner',
+          pipeline: 'user-column',
+          embeddingModel: 'user-model',
+        },
       };
       await store('g1', attributed);
       await target.writer.promote(target.dataset, 'g1');
       const [doc] = await collect(read(target.dataset));
       expect(doc?.pipeline).toBe('actual-owner');
+      expect(doc?.embeddingModel).toBe('actual-model');
       expect(doc?.fields).toMatchObject({
         ingestion_pipeline: 'user-owner',
         pipeline: 'user-column',
+        embeddingModel: 'user-model',
       });
+      await store('g2', doc as IndexDocument);
+      expect((await collect(read(target.dataset, 'g2')))[0]?.embeddingModel).toBe('actual-model');
       const legacy: IndexDocument = { ...attributed };
       delete legacy.pipeline;
+      delete legacy.embeddingModel;
       await target.writer.store(target.dataset, 'g1', docs(legacy)[0] as IndexDocument);
       const [replaced] = await collect(read(target.dataset));
       expect(replaced?.pipeline).toBeUndefined();
+      expect(replaced?.embeddingModel).toBeUndefined();
       expect(replaced?.fields).toMatchObject({
         ingestion_pipeline: 'user-owner',
         pipeline: 'user-column',
+        embeddingModel: 'user-model',
       });
     });
 

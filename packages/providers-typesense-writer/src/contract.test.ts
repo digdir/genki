@@ -221,7 +221,12 @@ describe('typesense index writer', () => {
       await writer.store(config, 'g1', {
         id: 'a',
         pipeline: 'actual-owner',
-        fields: { ingestion_pipeline: 'user-owner', pipeline: 'user-column' },
+        embeddingModel: 'actual-model',
+        fields: {
+          ingestion_pipeline: 'user-owner',
+          pipeline: 'user-column',
+          embeddingModel: 'user-model',
+        },
         chunks: [{ id: 'a0', position: 0, text: 'Tilskudd til lag.' }],
         phrases: [],
       });
@@ -234,9 +239,11 @@ describe('typesense index writer', () => {
       expect(roundTrip).toHaveLength(1);
       expect(roundTrip[0]?.chunks).toHaveLength(1);
       expect(roundTrip[0]?.pipeline).toBeUndefined();
+      expect(roundTrip[0]?.embeddingModel).toBeUndefined();
       expect(roundTrip[0]?.fields).toMatchObject({
         ingestion_pipeline: 'user-owner',
         pipeline: 'user-column',
+        embeddingModel: 'user-model',
       });
       const exporter = openTarget(target, dataset).export;
       if (!exporter) throw new Error('Typesense needs document export');
@@ -245,9 +252,11 @@ describe('typesense index writer', () => {
       for await (const doc of exporter.documents()) exported.push(doc);
       expect(exported).toHaveLength(1);
       expect(exported[0]?.pipeline).toBeUndefined();
+      expect(exported[0]?.embeddingModel).toBeUndefined();
       expect(exported[0]?.fields).toMatchObject({
         ingestion_pipeline: 'user-owner',
         pipeline: 'user-column',
+        embeddingModel: 'user-model',
       });
       expect(
         requests

@@ -201,55 +201,80 @@ describe.each(['memory', 'pgvector'])('pipeline carry-forward on %s', (kind) => 
     expect(await owners()).toEqual(['a', 'b']);
   });
 
-  it('copies stored sibling vectors unchanged through the real writer without another embed call', async () => {
-    const { root, route, search } = await boot();
-    const embedder = fakeEmbedder({ dimensions: 8 });
-    const dataset = { ...route.dataset, embedding: { model: 'fake/embedder', dimensions: 8 } };
-    const source = (name: string) =>
-      folderSource({
-        entries: [{ path: `${root}/${name}.md`, lastmod: '1' }],
-        basePath: `${root}/`,
-        read: async () =>
-          name === 'a'
-            ? '# Tilskudd\n\nTilskudd til foreninger.'
-            : '# Skyplattform\n\nEn skyplattform.',
+  it.each(['same model', 'changed model with siblings', 'changed model without siblings'])(
+    'copies stored vectors only with compatible model provenance: %s',
+    async (scenario) => {
+      const { root, route, search } = await boot();
+      const embedder = fakeEmbedder({ dimensions: 8 });
+      const dataset = { ...route.dataset, embedding: { model: 'fake/embedder', dimensions: 8 } };
+      const source = (name: string) =>
+        folderSource({
+          entries: [{ path: `${root}/${name}.md`, lastmod: '1' }],
+          basePath: `${root}/`,
+          read: async () =>
+            name === 'a'
+              ? '# Tilskudd\n\nTilskudd til foreninger.'
+              : '# Skyplattform\n\nEn skyplattform.',
+        });
+      const target = (generation: string) => ({
+        dataset,
+        writer: route.writer,
+        generation,
+        needs: { vectors: true },
+        embedder,
       });
-    const target = (generation: string) => ({
-      dataset,
-      writer: route.writer,
-      generation,
-      needs: { vectors: true },
-      embedder,
-    });
-    const chunking = {
-      strategy: { kind: 'header-based' as const },
-      minimumLength: 1,
-      maximumLength: 4000,
-      metadataStyle: 'pr' as const,
-    };
-    await runIndexIngest({
-      source: source('a'),
-      chunking,
-      pipeline: { id: 'a', siblings: ['b'] },
-      target: target('a1'),
-    });
-    let original: IndexDocument | undefined;
-    for await (const doc of route.writer.read?.(dataset) ?? []) original = doc;
-    const calls = embedder.calls.length;
-    await runIndexIngest({
-      source: source('b'),
-      chunking,
-      pipeline: { id: 'b', siblings: ['a'] },
-      target: target('b1'),
-    });
-    const indexed: IndexDocument[] = [];
-    for await (const doc of route.writer.read?.(dataset) ?? []) indexed.push(doc);
-    expect(indexed).toHaveLength(2);
-    expect(indexed.find((d) => d.pipeline === 'a')).toEqual(original);
-    expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
-    expect((await search('foreninger')).hits).toHaveLength(1);
-    expect((await search('skyplattform')).hits).toHaveLength(1);
-  });
+      const chunking = {
+        strategy: { kind: 'header-based' as const },
+        minimumLength: 1,
+        maximumLength: 4000,
+        metadataStyle: 'pr' as const,
+      };
+      await runIndexIngest({
+        source: source('a'),
+        chunking,
+        pipeline: { id: 'a', siblings: ['b'] },
+        target: target('a1'),
+      });
+      let original: IndexDocument | undefined;
+      for await (const doc of route.writer.read?.(dataset) ?? []) original = doc;
+      const calls = embedder.calls.length;
+      expect(original?.embeddingModel).toBe('fake/embedder');
+      const changed = scenario !== 'same model';
+      const next = changed ? fakeEmbedder({ id: 'new-model', dimensions: 8 }) : embedder;
+      const result = runIndexIngest({
+        source: source('b'),
+        chunking,
+        pipeline: { id: 'b', siblings: scenario === 'changed model without siblings' ? [] : ['a'] },
+        target: {
+          ...target('b1'),
+          dataset: { ...dataset, embedding: { model: next.info().id, dimensions: 8 } },
+          embedder: next,
+        },
+      });
+      if (scenario === 'changed model with siblings') {
+        await expect(result).rejects.toThrow(/embedding model changed.*combined rebuild/);
+        expect(next.calls).toEqual([]);
+        expect(await route.writer.active(dataset)).toBe('a1');
+        expect((await search('foreninger')).hits).toHaveLength(1);
+        return;
+      }
+      expect(await result).toMatchObject({ promoted: true });
+      const indexed: IndexDocument[] = [];
+      for await (const doc of route.writer.read?.(dataset) ?? []) indexed.push(doc);
+      if (changed) {
+        expect(indexed).toHaveLength(1);
+        expect(indexed[0]?.embeddingModel).toBe('new-model');
+        expect((await search('foreninger')).hits).toHaveLength(0);
+        expect((await search('skyplattform')).hits).toHaveLength(1);
+        return;
+      }
+      expect(indexed).toHaveLength(2);
+      expect(indexed.find((d) => d.pipeline === 'a')).toEqual(original);
+      expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
+      expect((await search('foreninger')).hits).toHaveLength(1);
+      expect((await search('skyplattform')).hits).toHaveLength(1);
+    },
+  );
 
   it('overlapping service instances cannot promote a stale sibling snapshot and a retry keeps both sources', async () => {
     let overlapping = false,

@@ -95,7 +95,12 @@ export const embedIndexDocument = async (
     ...item,
     vector: vectors.get(item.text) as number[],
   });
-  return { ...doc, chunks: doc.chunks.map(withVector), phrases: doc.phrases.map(withVector) };
+  return {
+    ...doc,
+    embeddingModel: embedder.info().id,
+    chunks: doc.chunks.map(withVector),
+    phrases: doc.phrases.map(withVector),
+  };
 };
 
 export const checkIndexTarget = (target: IndexTarget) => {
@@ -112,6 +117,12 @@ export const checkIndexTarget = (target: IndexTarget) => {
     throw new KnowledgeError(
       'bad_request',
       `${name} expects ${expected} dimensions, but embedder ${target.embedder.info().id} returns ${actual}`,
+    );
+  const model = target.dataset.embedding?.model;
+  if (model !== undefined && model !== target.embedder.info().id)
+    throw new KnowledgeError(
+      'bad_request',
+      `${name} expects embedding model ${model}, but the embedder is ${target.embedder.info().id}`,
     );
 };
 
@@ -134,6 +145,20 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
     );
   const active = conditional ? await target.writer.active(target.dataset) : undefined;
   const embedder = target.needs.vectors ? target.embedder : undefined;
+  const embeddingModel = target.dataset.embedding?.model ?? embedder?.info().id;
+  const checkEmbeddingModel = (doc: IndexDocument) => {
+    if (doc.embeddingModel !== embeddingModel)
+      throw new KnowledgeError(
+        'bad_request',
+        `dataset ${target.dataset.id} embedding model changed; run a combined rebuild (re-ingest switch or run every pipeline with the new model)`,
+      );
+  };
+  if (preserving && active !== undefined && read) {
+    for await (const doc of read(target.dataset, active)) {
+      options.signal?.throwIfAborted();
+      if (doc.pipeline !== undefined && siblings.has(doc.pipeline)) checkEmbeddingModel(doc);
+    }
+  }
   const fresh = new Set<string>();
   await target.writer.prepare(target.dataset, target.generation);
   const result = await ingestDocuments(options, async (document, prepared) => {
@@ -144,7 +169,11 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
       prepared.phrases,
     );
     const linked = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
-    const doc = pipeline ? { ...linked, pipeline: pipeline.id } : linked;
+    const doc = {
+      ...linked,
+      ...(pipeline ? { pipeline: pipeline.id } : {}),
+      ...(embeddingModel ? { embeddingModel } : {}),
+    };
     await target.writer.store(
       target.dataset,
       target.generation,
@@ -158,8 +187,10 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
     for await (const doc of read(target.dataset, active)) {
       options.signal?.throwIfAborted();
       const owner = doc.pipeline;
-      if (typeof owner === 'string' && siblings.has(owner) && !fresh.has(doc.id))
+      if (typeof owner === 'string' && siblings.has(owner) && !fresh.has(doc.id)) {
+        checkEmbeddingModel(doc);
         await target.writer.store(target.dataset, target.generation, doc);
+      }
     }
   }
   options.signal?.throwIfAborted();

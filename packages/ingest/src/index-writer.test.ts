@@ -176,7 +176,17 @@ describe('ingest through an index writer', () => {
     const { ctx, metered } = testContext();
     const embedder = router.open({ kind: 'embedder', id: 'foundry/embed-small' }, ctx);
 
-    await runIndexIngest({ source: source(corpus), chunking, target: target('g1', { embedder }) });
+    await runIndexIngest({
+      source: source(corpus),
+      chunking,
+      target: target('g1', {
+        embedder,
+        dataset: {
+          ...target('g1').dataset,
+          embedding: { ...embedding, model: 'foundry/embed-small' },
+        },
+      }),
+    });
 
     expect(metered.length).toBeGreaterThan(0);
     expect(
@@ -214,6 +224,13 @@ describe('ingest through an index writer', () => {
         target: target('g1', { writer: watched, embedder: fakeEmbedder({ dimensions: 4 }) }),
       }),
     ).rejects.toThrow(/expects 8 dimensions/);
+    await expect(
+      runIndexIngest({
+        source: source(corpus),
+        chunking,
+        target: target('g1', { writer: watched, embedder: fakeEmbedder({ id: 'wrong-model' }) }),
+      }),
+    ).rejects.toThrow(/expects embedding model fake\/embedder/);
     expect(writes).toEqual([]);
   });
 
@@ -353,6 +370,8 @@ describe('pipeline carry-forward through an index writer', () => {
     });
     const indexed = await documents(writer, dataset);
     expect(indexed).toHaveLength(2);
+    expect(original?.embeddingModel).toBe(embedding.model);
+    expect(indexed.map((d) => d.embeddingModel)).toEqual([embedding.model, embedding.model]);
     expect(indexed.find((d) => d.pipeline === 'a')).toEqual(original);
     expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
     expect((await search().search({ query: 'foreninger', profile: 'content' })).hits).toHaveLength(
@@ -372,6 +391,137 @@ describe('pipeline carry-forward through an index writer', () => {
       (await search().search({ query: 'skyplattform', profile: 'content' })).hits,
     ).toHaveLength(1);
     expect((await writer.stats(dataset, 'a2')).documents).toBe(2);
+  });
+
+  it.each([8, 4])(
+    'an embedding model change with siblings refuses before prepare or embed (%i dimensions)',
+    async (dimensions) => {
+      const { writer, dataset, target } = setup({ vectors: true, withEmbedding: true });
+      await runIndexIngest({
+        source: source(a),
+        chunking,
+        pipeline: { id: 'a', siblings: ['b'] },
+        target: target('a1', { embedder: fakeEmbedder() }),
+      });
+      const prepare = vi.fn(writer.prepare);
+      const embedder = fakeEmbedder({ id: 'new-model', dimensions });
+      await expect(
+        runIndexIngest({
+          source: source(b),
+          chunking,
+          pipeline: { id: 'b', siblings: ['a'] },
+          target: target('b1', {
+            dataset: { ...dataset, embedding: { model: 'new-model', dimensions } },
+            writer: { ...writer, prepare },
+            embedder,
+          }),
+        }),
+      ).rejects.toMatchObject({
+        code: 'bad_request',
+        message: expect.stringMatching(/embedding model changed.*combined rebuild/),
+      });
+      expect(prepare).not.toHaveBeenCalled();
+      expect(embedder.calls).toEqual([]);
+      expect(await writer.active(dataset)).toBe('a1');
+      expect((await documents(writer, dataset)).map((d) => d.pipeline)).toEqual(['a']);
+    },
+  );
+
+  it('a single-pipeline embedding model change replaces its documents without reading old vectors', async () => {
+    const { writer, dataset, target } = setup({ vectors: true, withEmbedding: true });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: [] },
+      target: target('a1', { embedder: fakeEmbedder() }),
+    });
+    const read = vi.fn(() => {
+      throw new Error('single pipeline must not read old vectors');
+    });
+    const changed = { ...dataset, embedding: { model: 'new-model', dimensions: 8 } };
+    const embedder = fakeEmbedder({ id: 'new-model' });
+    const result = await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'a', siblings: [] },
+      target: target('a2', { dataset: changed, embedder, writer: { ...writer, read } }),
+    });
+    expect(result.promoted).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+    expect(embedder.calls).toHaveLength(1);
+    expect(await writer.active(changed)).toBe('a2');
+    expect((await documents(writer, changed)).map((d) => d.embeddingModel)).toEqual(['new-model']);
+  });
+
+  it('an attributed sibling without embedding provenance requires a combined rebuild', async () => {
+    const { writer, dataset, target } = setup({ vectors: true, withEmbedding: true });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1', { embedder: fakeEmbedder() }),
+    });
+    const [doc] = await documents(writer, dataset);
+    if (!doc) throw new Error('the initial run needs a document');
+    delete doc.embeddingModel;
+    await writer.store(dataset, 'a1', doc);
+    await expect(
+      runIndexIngest({
+        source: source(b),
+        chunking,
+        pipeline: { id: 'b', siblings: ['a'] },
+        target: target('b1', { embedder: fakeEmbedder() }),
+      }),
+    ).rejects.toThrow(/embedding model changed.*combined rebuild/);
+    expect(await writer.active(dataset)).toBe('a1');
+  });
+
+  it('unattributed legacy documents do not block a new embedding model and are not copied', async () => {
+    const { writer, dataset, target } = setup({ vectors: true, withEmbedding: true });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      target: target('old', { embedder: fakeEmbedder() }),
+    });
+    const changed = { ...dataset, embedding: { model: 'new-model', dimensions: 8 } };
+    expect(
+      await runIndexIngest({
+        source: source(b),
+        chunking,
+        pipeline: { id: 'b', siblings: ['a'] },
+        target: target('new', { dataset: changed, embedder: fakeEmbedder({ id: 'new-model' }) }),
+      }),
+    ).toMatchObject({ promoted: true });
+    expect((await documents(writer, changed)).map((d) => d.pipeline)).toEqual(['b']);
+  });
+
+  it('an embedding model mismatch discovered during copying refuses before promotion', async () => {
+    const { writer, dataset, target } = setup({ vectors: true, withEmbedding: true });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1', { embedder: fakeEmbedder() }),
+    });
+    let reads = 0;
+    const watched = {
+      ...writer,
+      read: async function* (...args: Parameters<NonNullable<typeof writer.read>>) {
+        const copying = ++reads > 1;
+        for await (const doc of writer.read?.(...args) ?? [])
+          yield copying ? { ...doc, embeddingModel: 'other-model' } : doc;
+      },
+    };
+    await expect(
+      runIndexIngest({
+        source: source(b),
+        chunking,
+        pipeline: { id: 'b', siblings: ['a'] },
+        target: target('b1', { embedder: fakeEmbedder(), writer: watched }),
+      }),
+    ).rejects.toThrow(/embedding model changed.*combined rebuild/);
+    expect(await writer.active(dataset)).toBe('a1');
+    expect((await writer.stats(dataset, 'b1')).documents).toBe(1);
   });
 
   it('a single pipeline replaces its own documents without reading previous documents', async () => {

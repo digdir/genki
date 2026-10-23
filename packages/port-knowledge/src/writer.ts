@@ -37,6 +37,7 @@ export interface IndexDocument {
   id: string;
   /** Internal ingestion provenance, separate from arbitrary source metadata in fields. */
   pipeline?: string;
+  embeddingModel?: string;
   title?: string;
   url?: string;
   fields: Record<string, unknown>;
@@ -55,7 +56,7 @@ export interface DropOptions {
 }
 
 export interface IndexWriter<D = unknown> {
-  /** Whether store/read round trips retain the dedicated pipeline provenance attribute. */
+  /** Whether store/read round trips retain pipeline and embedding model provenance. */
   readonly preservesPipeline?: boolean;
   prepare(dataset: DatasetConfig<D>, generation: string): Promise<void>;
   store(dataset: DatasetConfig<D>, generation: string, doc: IndexDocument): Promise<void>;

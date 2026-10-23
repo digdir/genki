@@ -139,12 +139,19 @@ describe('pgvector engine', () => {
     try {
       await migrateKnowledge(legacy);
       await legacy.query('alter table kn_docs drop column if exists pipeline');
+      await legacy.query('alter table kn_docs drop column if exists embedding_model');
       await legacy.query(
         "insert into kn_generations (dataset, generation) values ('upgrade', 'legacy')",
       );
       await legacy.query(
         "insert into kn_docs (dataset, generation, id, fields, config) values ('upgrade', 'legacy', 'old', $1, 'norwegian')",
-        [JSON.stringify({ ingestion_pipeline: 'b', pipeline: 'user-column' })],
+        [
+          JSON.stringify({
+            ingestion_pipeline: 'b',
+            pipeline: 'user-column',
+            embeddingModel: 'user-model',
+          }),
+        ],
       );
       await migrateKnowledge(legacy);
       await migrateKnowledge(legacy);
@@ -153,16 +160,28 @@ describe('pgvector engine', () => {
       const docs: IndexDocument[] = [];
       for await (const doc of upgraded.read?.(dataset, 'legacy') ?? []) docs.push(doc);
       expect(docs[0]?.pipeline).toBeUndefined();
-      expect(docs[0]?.fields).toEqual({ ingestion_pipeline: 'b', pipeline: 'user-column' });
+      expect(docs[0]?.embeddingModel).toBeUndefined();
+      expect(docs[0]?.fields).toEqual({
+        ingestion_pipeline: 'b',
+        pipeline: 'user-column',
+        embeddingModel: 'user-model',
+      });
       await upgraded.store(dataset, 'legacy', {
         ...single('new', 'New', ['Nytt dokument.']),
         pipeline: 'a',
+        embeddingModel: 'actual-model',
         fields: { ingestion_pipeline: 'b' },
       });
-      const { rows } = await legacy.query<{ pipeline: string; fields: Record<string, unknown> }>(
-        "select pipeline, fields from kn_docs where id = 'new'",
-      );
-      expect(rows[0]).toEqual({ pipeline: 'a', fields: { ingestion_pipeline: 'b' } });
+      const { rows } = await legacy.query<{
+        pipeline: string;
+        embedding_model: string;
+        fields: Record<string, unknown>;
+      }>("select pipeline, embedding_model, fields from kn_docs where id = 'new'");
+      expect(rows[0]).toEqual({
+        pipeline: 'a',
+        embedding_model: 'actual-model',
+        fields: { ingestion_pipeline: 'b' },
+      });
     } finally {
       await legacy.end();
       await pool.query('drop schema provenance_upgrade cascade');
