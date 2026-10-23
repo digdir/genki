@@ -111,7 +111,7 @@ datasets:
     options: { textSearchConfig: english }
   - id: digdir/ai-policy
     name: AI-regulering i verden
-    description: Lover, forskrifter, rammeverk, strategier og erklæringer om KI-sikkerhet og KI-regulering fra 87 land og internasjonale organer, med definisjoner av sentrale begreper. Fra Every AI Policy Ever (kelkalot, CC-BY-4.0)
+    description: Lover, forskrifter, rammeverk, strategier og erklæringer om KI-sikkerhet og KI-regulering fra 87 land og internasjonale organer. Definisjonene ligger i datasettet Definisjoner i KI-regulering. Fra Every AI Policy Ever (kelkalot, CC-BY-4.0)
     endpoint: platform-pg
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
@@ -128,6 +128,18 @@ datasets:
       verification_level: multiselect
       safety_topics: multiselect
       year: [multiselect, range]
-      term: [multiselect, text]
     valueTypes: { year: integer }
+    options: { textSearchConfig: english }
+  - id: digdir/ai-policy-definitions
+    name: Definisjoner i KI-regulering
+    description: Sentrale begreper som «KI-system» og «modell», sitert ordrett fra lover og rammeverk i datasettet AI-regulering i verden, med artikkel og engelsk gjengivelse. Fra Every AI Policy Ever (kelkalot, CC-BY-4.0)
+    endpoint: platform-pg
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    filters:
+      record_id: multiselect
+      doc_kind: multiselect
+      term: [multiselect, text]
+      term_group: [multiselect, text]
+      language: multiselect
     options: { textSearchConfig: english }

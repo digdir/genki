@@ -1,4 +1,4 @@
-dataset: digdir/ai-policy
+dataset: digdir/ai-policy-definitions
 id: ai-policy-definitions
 spec:
   name: Every AI Policy Ever, definitions

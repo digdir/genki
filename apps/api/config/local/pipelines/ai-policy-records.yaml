@@ -35,5 +35,5 @@ spec:
           - official_identifier
           - verification_note
         constants: { doc_kind: record }
-  chunking: { minimumLength: 1 }
+  chunking: { minimumLength: 1, maximumLength: 8000 }
   schedule: weekly
