@@ -92,6 +92,43 @@ describe('document loop', () => {
     expect(result).toMatchObject({ stored: 2, failed: ['b'] });
   });
 
+  it('skips a document whose text yields no chunk as no_chunks and stores nothing for it', async () => {
+    const stored: string[] = [];
+    const source: IngestSource = {
+      kind: 'folder',
+      phraseRows: 'pipeline',
+      documents: async function* () {
+        for (const [key, text] of [
+          ['kort', 'Ja.'],
+          ['lang', '# Lang\n\nEn tekst som er lang nok til å bli en del.'],
+        ] as const)
+          yield {
+            key,
+            docNum: key,
+            name: `${key}.md`,
+            texts: [text],
+            stored: () => ({ id: key }),
+            storedChunks: (chunks) => chunks.map((c) => ({ id: c.chunk_id })),
+          } satisfies SourceDocument;
+      },
+    };
+
+    const result = await runIngest({
+      source,
+      chunking: { ...chunking, minimumLength: 20 },
+      collections: { docs: 'd', chunks: 'c', phrases: 'p' },
+      sink: { ...sink(), storeDocument: async (_n, docNum) => void stored.push(docNum) },
+      done: new Set(),
+    });
+
+    expect(result).toMatchObject({
+      stored: 1,
+      skipped: 1,
+      skippedDocuments: [{ document: 'kort.md', reason: 'no_chunks' }],
+    });
+    expect(stored).toEqual(['lang']);
+  });
+
   it('stops at the next document once the run is cancelled', async () => {
     const controller = new AbortController();
     const loaded: string[] = [];

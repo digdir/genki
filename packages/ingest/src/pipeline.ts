@@ -19,7 +19,12 @@ import {
 } from './phrases.js';
 
 export type SkipReason =
-  'no_text' | 'unsupported_type' | 'outside_access' | 'conversion_failed' | 'unreachable';
+  | 'no_text'
+  | 'unsupported_type'
+  | 'outside_access'
+  | 'conversion_failed'
+  | 'unreachable'
+  | 'no_chunks';
 
 export interface SkippedDocument {
   document: string;
@@ -113,6 +118,7 @@ export const prepareDocument = async (
     doc: document.stored(withPhrases),
     chunks: document.storedChunks(withPhrases),
     phrases: rows,
+    chunkCount: withPhrases.length,
   };
 };
 
@@ -173,6 +179,11 @@ export const ingestDocuments = async (
         options.source.phraseRows,
         options.phrases,
       );
+      if (prepared.chunkCount === 0) {
+        skip({ document: document.name ?? document.key, reason: 'no_chunks' });
+        await options.onDocument?.({ key: document.key, status: 'skipped' });
+        return;
+      }
       await store(document, prepared);
       done.add(document.key);
       result.stored += 1;

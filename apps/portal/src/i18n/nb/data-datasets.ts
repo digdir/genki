@@ -65,6 +65,8 @@ export const datasets = defineNamespace({
   skipNoText: 'Skannet PDF uten tekst. Tekstgjenkjenning er ikke slått på.',
   skipUnsupported: 'Filtypen støttes ikke. Bruk PDF, Word (docx), tekst, Markdown eller HTML.',
   skipConversion: 'Kunne ikke lese dokumentet.',
+  skipNoChunks:
+    'Teksten er kortere eller lengre enn det oppdelingen tillater, så ingen del av den kan søkes i.',
   skipOutsideAccess: 'Dokumentet ligger utenfor det plattformen har tilgang til.',
   skipTooLarge: 'Filen er større enn 50 MB.',
   skipDefault: 'Ble hoppet over.',
