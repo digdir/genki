@@ -73,6 +73,12 @@ beforeAll(async () => {
         audiences: [OTHER_API],
       },
       {
+        clientId: 'local-portal',
+        redirectUris: ['http://localhost:5173/callback'],
+        postLogoutRedirectUris: ['http://localhost:5173/'],
+        audience: API,
+      },
+      {
         clientId: 'genai-backend',
         redirectUris: ['https://backend.test/callback'],
         audience: API,
@@ -1006,6 +1012,26 @@ describe('mock Ansattporten tokens have the real shape', () => {
       name: 'Kari Nordmann',
       locale: 'nb',
     });
+  });
+
+  it('accepts a registered loopback redirect on any port, as RFC 8252 allows, and nothing looser', async () => {
+    const { ansattporten } = setup();
+    const authorize = (redirect_uri: string) =>
+      ansattporten.app.request(
+        `/authorize?${new URLSearchParams({ client_id: 'local-portal', response_type: 'code', code_challenge: 'x', code_challenge_method: 'S256', redirect_uri })}`,
+      );
+
+    expect((await authorize('http://localhost:5173/callback')).status).toBe(200);
+    expect((await authorize('http://localhost:8281/callback')).status).toBe(200);
+    expect((await authorize('http://localhost:8281/other')).status).toBe(400);
+    expect((await authorize('http://127.0.0.1:8281/callback')).status).toBe(400);
+    expect((await authorize('https://localhost:8281/callback')).status).toBe(400);
+    expect((await authorize('http://evil.test:5173/callback')).status).toBe(400);
+
+    const logout = await ansattporten.app.request(
+      `/logout?client_id=local-portal&post_logout_redirect_uri=${encodeURIComponent('http://localhost:8281/')}`,
+    );
+    expect(logout.headers.get('location')).toBe('http://localhost:8281/');
   });
 
   it('redirects after logout only to a registered address', async () => {

@@ -438,10 +438,23 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
   app.get('/jwks.json', (c) => c.json(jwks()));
   app.get('/jwks', (c) => c.json(jwks()));
 
+  // RFC 8252 §7.3: a loopback redirect URI may use any port, chosen when the request is made,
+  // so a local stack started on other ports can still sign in.
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  const withoutLoopbackPort = (uri: string) => {
+    if (!URL.canParse(uri)) return uri;
+    const url = new URL(uri);
+    if (url.protocol !== 'http:' || !loopbackHosts.has(url.hostname)) return uri;
+    url.port = '';
+    return url.toString();
+  };
+  const registered = (uris: readonly string[], uri: string) =>
+    uris.includes(uri) || uris.map(withoutLoopbackPort).includes(withoutLoopbackPort(uri));
+
   app.get('/authorize', (c) => {
     const q = c.req.query();
     const client = data.clients.find((x) => x.clientId === q.client_id);
-    if (!client || !q.redirect_uri || !client.redirectUris.includes(q.redirect_uri))
+    if (!client || !q.redirect_uri || !registered(client.redirectUris, q.redirect_uri))
       return c.json(
         { error: 'invalid_request', error_description: 'unknown client or redirect_uri' },
         400,
@@ -647,7 +660,7 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
     }
     const client = data.clients.find((x) => x.clientId === clientId);
     const target = q.post_logout_redirect_uri;
-    if (client && target && client.postLogoutRedirectUris.includes(target)) {
+    if (client && target && registered(client.postLogoutRedirectUris, target)) {
       const url = new URL(target);
       if (q.state) url.searchParams.set('state', q.state);
       return c.redirect(url.toString(), 302);
