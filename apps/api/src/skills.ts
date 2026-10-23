@@ -10,6 +10,7 @@ import {
 import {
   contractAssertions,
   criteriaJudgePrompt,
+  defaultObserve,
   rubricJudge,
   type EvalContext,
   type Observation,
@@ -808,11 +809,12 @@ export const skillsModule: PlatformModuleFactory = (deps: ModuleDeps) => {
           ? (json.json as Record<string, unknown>)
           : undefined;
       const observation: Observation = {
+        ...defaultObserve(outcome.parts, []),
         answer: outcome.answer,
-        retrieved: [],
-        citations: [],
         ...(fields ? { fields } : {}),
       };
+      if (testCase.context)
+        observation.retrieved.push({ document: 'skill-test-context', text: testCase.context });
       const evalCase = {
         id: `case-${index + 1}`,
         split: 'validation',
