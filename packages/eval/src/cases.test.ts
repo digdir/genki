@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Event } from '@genai/contracts';
 import { caseFrom, caseView, criteriaJudgePrompt, gradeAnswer } from './cases.js';
 import type { JudgeMessage, JudgeModel } from './evaluators.js';
 import { defaultObserve, type ObservedSource } from './observe.js';
@@ -99,6 +100,47 @@ describe('criteria judge grounding', () => {
     expect(calls[0]?.[1]?.content).toBe(
       'Question:\nWhen is the deadline?\n\nAnswer to check:\n1 May 2026\n\nCriteria:\n- criteria: 1 May 2026',
     );
+  });
+
+  it('enriches retrieval notices and citations from full source parts', async () => {
+    const { judge, calls } = recordingJudge();
+    const sources = Array.from({ length: 12 }, (_, i) => ({
+      chunkId: `chunk-${i}`,
+      title: `Policy ${i}`,
+      text: `Deadline for policy ${i}: 1 May 2026.`,
+    }));
+    const observed = defaultObserve(
+      [
+        { mime: 'application/vnd.genai.sources+json', body: { kind: 'json', json: { sources } } },
+        {
+          mime: 'text/plain',
+          body: { kind: 'text', text: '1 May 2026' },
+          meta: { citations: [{ chunkId: 'chunk-11' }] },
+        },
+      ],
+      [
+        {
+          type: 'kernel.notice',
+          data: {
+            kind: 'retrieval',
+            hits: sources.map((source) => ({ id: source.chunkId, title: source.title })),
+          },
+        } as Event,
+      ],
+    );
+
+    await gradeAnswer(criteriaCase(), { text: observed.answer, ...observed }, { judge, context });
+
+    const user = calls[0]?.[1]?.content ?? '';
+    const section = user.slice(user.indexOf('\n\nSources from the run'));
+    const sent = JSON.parse(section.slice(section.indexOf('{'))) as {
+      retrieved: ObservedSource[];
+      citations: ObservedSource[];
+    };
+    expect(sent.citations).toEqual([sources[11]]);
+    expect(sent.retrieved[0]).toEqual(sources[0]);
+    expect(sent.retrieved).toHaveLength(10);
+    expect(section.length).toBeLessThanOrEqual(16_000);
   });
 
   it('passes citation-only evidence to the judge', async () => {

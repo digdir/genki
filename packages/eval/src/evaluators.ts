@@ -198,10 +198,10 @@ const judgeSources = (observation: Observation): string => {
   };
   for (const kind of ['citations', 'retrieved'] as const) {
     for (const source of observation[kind].slice(0, 10)) {
-      const enriched =
-        kind === 'citations'
-          ? { ...observation.retrieved.find((r) => sameSource(source, r)), ...source }
-          : source;
+      const evidence =
+        observation.retrieved.find((r) => sameSource(source, r) && r.text !== undefined) ??
+        observation.retrieved.find((r) => sameSource(source, r));
+      const enriched = { ...evidence, ...source };
       const bounded: ObservedSource = {
         ...(enriched.position === undefined ? {} : { position: enriched.position }),
       };
