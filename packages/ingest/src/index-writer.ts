@@ -21,7 +21,11 @@ export interface IndexTarget {
 
 export interface IndexIngestOptions extends DocumentLoopOptions {
   target: IndexTarget;
+  /** Omit siblings when rebuilding all pipelines into a shared generation. */
+  pipeline?: { id: string; siblings?: readonly string[] };
 }
+
+export const ingestionPipelineField = 'ingestion_pipeline';
 
 export interface IndexIngestResult extends IngestResult {
   generation: string;
@@ -116,7 +120,23 @@ export const checkIndexTarget = (target: IndexTarget) => {
 export const runIndexIngest = async (options: IndexIngestOptions): Promise<IndexIngestResult> => {
   const { target } = options;
   checkIndexTarget(target);
+  const pipeline = options.pipeline;
+  const siblings = new Set(pipeline?.siblings ?? []);
+  if (pipeline) siblings.delete(pipeline.id);
+  const preserving = siblings.size > 0;
+  const read = target.writer.read?.bind(target.writer);
+  const conditional =
+    pipeline?.siblings !== undefined
+      ? target.writer.promoteIfActive?.bind(target.writer)
+      : undefined;
+  if (preserving && (!read || !conditional))
+    throw new KnowledgeError(
+      'unsupported',
+      'keeping sibling pipelines requires an index writer with read and conditional promotion',
+    );
+  const active = conditional ? await target.writer.active(target.dataset) : undefined;
   const embedder = target.needs.vectors ? target.embedder : undefined;
+  const fresh = new Set<string>();
   await target.writer.prepare(target.dataset, target.generation);
   const result = await ingestDocuments(options, async (document, prepared) => {
     const indexed = toIndexDocument(
@@ -125,17 +145,31 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
       prepared.chunks,
       prepared.phrases,
     );
-    const doc = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
+    const linked = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
+    const doc = pipeline
+      ? { ...linked, fields: { ...linked.fields, [ingestionPipelineField]: pipeline.id } }
+      : linked;
     await target.writer.store(
       target.dataset,
       target.generation,
       embedder ? await embedIndexDocument(doc, embedder, target.embedBatchSize) : doc,
     );
+    if (preserving) fresh.add(doc.id);
   });
-  if (result.stored + result.skipped === 0)
+  if (result.stored + result.skipped === 0 && (!preserving || result.failed.length > 0))
     return { ...result, generation: target.generation, promoted: false };
+  if (preserving && active !== undefined && read) {
+    for await (const doc of read(target.dataset, active)) {
+      options.signal?.throwIfAborted();
+      const owner = doc.fields[ingestionPipelineField];
+      if (typeof owner === 'string' && siblings.has(owner) && !fresh.has(doc.id))
+        await target.writer.store(target.dataset, target.generation, doc);
+    }
+  }
   options.signal?.throwIfAborted();
-  const previous = await target.writer.promote(target.dataset, target.generation);
+  const previous = conditional
+    ? await conditional(target.dataset, target.generation, active)
+    : await target.writer.promote(target.dataset, target.generation);
   return {
     ...result,
     generation: target.generation,

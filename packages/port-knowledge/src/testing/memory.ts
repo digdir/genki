@@ -336,6 +336,17 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
       index.active = generation;
       return previous;
     },
+    promoteIfActive: async (dataset, generation, expected) => {
+      generationOf(dataset, generation);
+      const index = indexOf(dataset);
+      if (index.active !== expected)
+        throw new KnowledgeError(
+          'bad_request',
+          `dataset ${dataset.id} changed during ingestion; run the pipeline again`,
+        );
+      index.active = generation;
+      return expected;
+    },
     drop: async (dataset, generation, options = {}) => {
       const index = indexOf(dataset);
       if (index.active === generation) {

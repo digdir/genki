@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { envSecrets } from '@genai/kernel';
 import { EmbeddingRouter } from '@genai/port-embedding';
 import {
@@ -7,11 +7,12 @@ import {
   fakeVector,
   testContext,
 } from '@genai/port-embedding/testing';
-import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
+import type { DatasetConfig, IndexDocument, IndexWriter } from '@genai/port-knowledge';
 import { memoryEngine, openTarget, type MemoryDatasetOptions } from '@genai/port-knowledge/testing';
 import type { ChatResult, ModelPort } from '@genai/port-model';
 import {
   folderSource,
+  ingestionPipelineField,
   kudosSource,
   memoryPhraseCache,
   runIndexIngest,
@@ -307,6 +308,321 @@ describe('ingest through an index writer', () => {
       promoted: false,
     });
     expect((await search().search({ query: 'tilskudd', profile: 'content' })).hits).toEqual([]);
+  });
+});
+
+describe('pipeline carry-forward through an index writer', () => {
+  const a = { '/docs/tilskudd.md': corpus['/docs/tilskudd.md'] };
+  const b = { '/docs/skyplattform.md': corpus['/docs/skyplattform.md'] };
+  const documents = async (writer: IndexWriter, dataset: DatasetConfig) => {
+    const docs: IndexDocument[] = [];
+    for await (const doc of writer.read?.(dataset) ?? []) docs.push(doc);
+    return docs;
+  };
+
+  it('running a then b keeps both searchable and copies sibling vectors and phrases without embedding again', async () => {
+    const { writer, dataset, target, search } = setup({ vectors: true, withEmbedding: true });
+    const embedder = fakeEmbedder({ dimensions: 8 });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      phrases,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1', { embedder }),
+    });
+    const original = (await documents(writer, dataset))[0];
+    const calls = embedder.calls.length;
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'b', siblings: ['a'] },
+      target: target('b1', { embedder }),
+    });
+    const indexed = await documents(writer, dataset);
+    expect(indexed).toHaveLength(2);
+    expect(indexed.find((d) => d.fields[ingestionPipelineField] === 'a')).toEqual(original);
+    expect(embedder.calls.slice(calls).flat()).toEqual([expect.stringContaining('skyplattform')]);
+    expect((await search().search({ query: 'foreninger', profile: 'content' })).hits).toHaveLength(
+      1,
+    );
+    expect(
+      (await search().search({ query: 'skyplattform', profile: 'content' })).hits,
+    ).toHaveLength(1);
+    await runIndexIngest({
+      source: source({ '/docs/ny.md': '# Frist\n\nNy søknadsfrist.' }),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a2', { embedder }),
+    });
+    expect((await search().search({ query: 'foreninger', profile: 'content' })).hits).toEqual([]);
+    expect(
+      (await search().search({ query: 'skyplattform', profile: 'content' })).hits,
+    ).toHaveLength(1);
+    expect((await writer.stats(dataset, 'a2')).documents).toBe(2);
+  });
+
+  it('a single pipeline replaces its own documents without reading previous documents', async () => {
+    const { writer, target, dataset } = setup();
+    const read = vi.fn(() => {
+      throw new Error('single pipeline must not read documents');
+    });
+    const watched = { ...writer, read };
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: [] },
+      target: target('a1', { writer: watched }),
+    });
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'a', siblings: [] },
+      target: target('a2', { writer: watched }),
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect((await writer.stats(dataset, 'a2')).documents).toBe(1);
+    expect((await documents(writer, dataset)).map((d) => d.title)).toEqual(['Skyplattform']);
+  });
+
+  it('a deleted or disabled sibling drops out when the next run omits it from the enabled siblings', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b', 'c'] },
+      target: target('a1'),
+    });
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'b', siblings: ['a', 'c'] },
+      target: target('b1'),
+    });
+    await runIndexIngest({
+      source: source({ '/docs/c.md': '# C\n\nEt tredje dokument.' }),
+      chunking,
+      pipeline: { id: 'c', siblings: ['a', 'b'] },
+      target: target('c1'),
+    });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['c'] },
+      target: target('a2'),
+    });
+    expect(
+      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('unattributed legacy documents are replaced and running each pipeline once rebuilds attribution', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source({ '/docs/legacy.md': '# Legacy\n\nDokument uten eier.' }),
+      chunking,
+      target: target('old'),
+    });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    expect((await documents(writer, dataset)).map((d) => d.title)).toEqual(['Tilskudd']);
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'b', siblings: ['a'] },
+      target: target('b1'),
+    });
+    expect(
+      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
+    ).toEqual(['a', 'b']);
+  });
+
+  it.each(['read', 'promoteIfActive'] as const)(
+    'refuses a multi-pipeline run before preparing or embedding when the writer has no %s',
+    async (capability) => {
+      const { writer, target, dataset } = setup();
+      await runIndexIngest({ source: source(a), chunking, target: target('old') });
+      const prepare = vi.fn(writer.prepare);
+      const incomplete: IndexWriter = { ...writer, prepare };
+      if (capability === 'read') delete incomplete.read;
+      else delete incomplete.promoteIfActive;
+      await expect(
+        runIndexIngest({
+          source: source(b),
+          chunking,
+          pipeline: { id: 'b', siblings: ['a'] },
+          target: target('new', { writer: incomplete }),
+        }),
+      ).rejects.toMatchObject({ code: 'unsupported' });
+      expect(prepare).not.toHaveBeenCalled();
+      expect(await writer.active(dataset)).toBe('old');
+    },
+  );
+
+  it('a writer without read still supports a single pipeline', async () => {
+    const { writer, target, dataset } = setup();
+    const incomplete: IndexWriter = { ...writer };
+    delete incomplete.read;
+    delete incomplete.promoteIfActive;
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: [] },
+      target: target('a1', { writer: incomplete }),
+    });
+    expect(await writer.active(dataset)).toBe('a1');
+  });
+
+  it('an empty source removes its old documents while keeping enabled siblings', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'b', siblings: ['a'] },
+      target: target('b1'),
+    });
+    const result = await runIndexIngest({
+      source: source({}),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a2'),
+    });
+    expect(result).toMatchObject({ stored: 0, failed: [], promoted: true });
+    expect((await documents(writer, dataset)).map((d) => d.title)).toEqual(['Skyplattform']);
+  });
+
+  it('a carry-forward read failure leaves the served generation untouched', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    const broken = {
+      ...writer,
+      read: () => {
+        throw new Error('read failed');
+      },
+    };
+    await expect(
+      runIndexIngest({
+        source: source(b),
+        chunking,
+        pipeline: { id: 'b', siblings: ['a'] },
+        target: target('b1', { writer: broken }),
+      }),
+    ).rejects.toThrow('read failed');
+    expect(await writer.active(dataset)).toBe('a1');
+  });
+
+  it('shared engine-switch generations attribute every pipeline without reading or copying the previous generation', async () => {
+    const { writer, target, dataset } = setup();
+    const read = vi.fn(() => {
+      throw new Error('shared rebuild must not carry forward');
+    });
+    const watched = { ...writer, read };
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a' },
+      target: target('switch', { writer: watched }),
+    });
+    await runIndexIngest({
+      source: source(b),
+      chunking,
+      pipeline: { id: 'b' },
+      target: target('switch', { writer: watched }),
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(
+      (await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField]).sort(),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('fresh documents win when a sibling has the same document id', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'b', siblings: ['a'] },
+      target: target('b1'),
+    });
+    expect((await documents(writer, dataset)).map((d) => d.fields[ingestionPipelineField])).toEqual(
+      ['b'],
+    );
+  });
+
+  it('overlapping sibling runs refuse the stale snapshot and a retry keeps the winning documents', async () => {
+    const { writer, target, dataset } = setup();
+    await runIndexIngest({
+      source: source(a),
+      chunking,
+      pipeline: { id: 'a', siblings: ['b'] },
+      target: target('a1'),
+    });
+    let arrived = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const promote = writer.promoteIfActive?.bind(writer);
+    if (!promote) throw new Error('the memory writer needs conditional promotion');
+    const watched = {
+      ...writer,
+      promoteIfActive: async (...args: Parameters<typeof promote>) => {
+        if (++arrived === 2) release();
+        await gate;
+        return promote(...args);
+      },
+    };
+    const updates = [
+      {
+        id: 'a',
+        siblings: ['b'],
+        files: { '/docs/ny.md': '# Frist\n\nNy søknadsfrist.' },
+        generation: 'a2',
+      },
+      { id: 'b', siblings: ['a'], files: b, generation: 'b1' },
+    ];
+    const results = await Promise.allSettled(
+      updates.map((p) =>
+        runIndexIngest({
+          source: source(p.files),
+          chunking,
+          pipeline: p,
+          target: target(p.generation, { writer: watched }),
+        }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const losing = updates[results[0]?.status === 'rejected' ? 0 : 1];
+    if (!losing) throw new Error('no losing run');
+    await runIndexIngest({
+      source: source(losing.files),
+      chunking,
+      pipeline: losing,
+      target: target('retry'),
+    });
+    expect((await documents(writer, dataset)).map((d) => d.title).sort()).toEqual([
+      'Ny',
+      'Skyplattform',
+    ]);
   });
 });
 

@@ -20,4 +20,6 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 
 `GET .../pipelines/{id}/versions` lists every saved version, oldest first; each has `deleted`, which is `true` on the version that removed the pipeline.
 
+A dataset may have several pipelines. A normal run replaces its own documents and carries forward documents of enabled siblings without embedding them again. Disabling or deleting a pipeline removes its documents at the next successful sibling run. Writers need document reads and conditional promotion for multiple pipelines; pgvector supports both. Existing documents without pipeline attribution require one sequential run of every enabled pipeline. Overlapping runs on separate instances can fail if another run promoted first; rerun the failed pipeline to include the latest sibling documents. See [ADR 0025](../adr/0025-search-engine-switching.md#independent-pipeline-runs-issue-107-prototype-2026-10-23) for migration, cost and identity rules.
+
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.

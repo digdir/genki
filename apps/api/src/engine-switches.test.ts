@@ -8,6 +8,7 @@ import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
+import { ingestionPipelineField } from '@genai/ingest';
 import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
 import { typesense } from '@genai/providers-typesense';
@@ -51,6 +52,23 @@ const principals: Record<string, Principal> = {
 };
 
 const kudosPages: Record<string, unknown> = {
+  'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Arsrapport': {
+    data: [
+      {
+        id: 9,
+        title: 'Rapport 2025',
+        type: 'Arsrapport',
+        files: [
+          {
+            url: 'https://93.184.216.34/filer/9.pdf',
+            mimetype: 'application/pdf',
+            sha256: createHash('sha256').update('%PDF-1.7').digest('hex'),
+          },
+        ],
+      },
+    ],
+    meta: { current_page: 1, last_page: 1 },
+  },
   'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Tildelingsbrev': {
     data: [
       {
@@ -74,7 +92,7 @@ const kudosPages: Record<string, unknown> = {
 const kudosFetch = (async (input: string | URL | Request) => {
   const url = String(input);
   if (url in kudosPages) return Response.json(kudosPages[url]);
-  if (url === 'https://93.184.216.34/filer/7.pdf') return new Response('%PDF-1.7');
+  if (/^https:\/\/93\.184\.216\.34\/filer\/(7|9)\.pdf$/.test(url)) return new Response('%PDF-1.7');
   return new Response('', { status: 404 });
 }) as typeof fetch;
 
@@ -888,7 +906,7 @@ describe('operators switching the engine of a platform dataset', () => {
     });
   });
 
-  it('re-ingests Kudos into platform-pg through the converter', async () => {
+  it('re-ingests all enabled pipelines into one generation without carrying old target documents', async () => {
     const booted = await boot();
     const { call, platform } = booted;
     const id = 'digdir/kudos-ny';
@@ -904,9 +922,36 @@ describe('operators switching the engine of a platform dataset', () => {
     });
     expect(saved.status).toBe(201);
     expect(
+      (
+        await call(`${operatorBase(id)}/pipelines`, {
+          as: 'drift',
+          body: {
+            id: 'arsrapport',
+            name: 'Rapporter',
+            source: { kind: 'kudos', types: ['Arsrapport'] },
+            chunking: { minimumLength: 1 },
+          },
+        })
+      ).status,
+    ).toBe(201);
+    expect(
       await json(await call(`${operatorBase(id)}/pipelines/kudos/estimate`, { as: 'drift' })),
     ).toMatchObject({ source: 'kudos', documents: 1, exact: true });
 
+    const route = platform.writers.openAt(
+      id,
+      'platform-pg',
+      { signal: new AbortController().signal },
+      { embedding: { model: 'fake/embed', dimensions: 8 } },
+    );
+    await route.writer.prepare(route.dataset, 'old-target');
+    await route.writer.store(route.dataset, 'old-target', {
+      id: 'stale',
+      fields: { [ingestionPipelineField]: 'kudos' },
+      chunks: [{ id: 'stale-0', position: 0, text: 'Gammelt dokument som skal bort.' }],
+      phrases: [],
+    });
+    await route.writer.promote(route.dataset, 'old-target');
     const started = await call(`${operatorBase(id)}/engine-switches`, {
       as: 'drift',
       body: {
@@ -919,19 +964,15 @@ describe('operators switching the engine of a platform dataset', () => {
     const ready = await settledAt(booted, id, (await json<EngineSwitchView>(started)).sid);
     expect(ready).toMatchObject({ state: 'ready', progress: { percent: 100 } });
 
-    const route = platform.writers.openAt(
-      id,
-      'platform-pg',
-      {
-        signal: new AbortController().signal,
-      },
-      { embedding: { model: 'fake/embed', dimensions: 8 } },
-    );
     const generation = await route.writer.active(route.dataset);
     expect(generation).toBeDefined();
     expect(await route.writer.stats(route.dataset, generation as string)).toMatchObject({
-      documents: 1,
+      documents: 2,
     });
+    const owners: unknown[] = [];
+    for await (const doc of route.writer.read?.(route.dataset) ?? [])
+      owners.push(doc.fields[ingestionPipelineField]);
+    expect(owners.sort()).toEqual(['arsrapport', 'kudos']);
     expect(writes).toEqual([]);
   });
 });

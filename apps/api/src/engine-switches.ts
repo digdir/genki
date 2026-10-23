@@ -675,6 +675,7 @@ export const createEngineSwitchesModule =
       });
       const target = { dataset: item.id, endpoint: spec.to, collections: {} };
       const replaced: string[] = [];
+      // Every pipeline writes this shared generation; sibling carry-forward stays omitted.
       for (const [index, pipeline] of pipelines.entries()) {
         const unavailable = backend.unavailableFor?.(target, pipeline);
         if (unavailable) throw new Error(unavailable);

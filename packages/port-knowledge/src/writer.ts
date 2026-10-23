@@ -57,6 +57,12 @@ export interface IndexWriter<D = unknown> {
   store(dataset: DatasetConfig<D>, generation: string, doc: IndexDocument): Promise<void>;
   /** Makes the generation the one searches read and returns the generation it replaced. */
   promote(dataset: DatasetConfig<D>, generation: string): Promise<string | undefined>;
+  /** Atomically refuses promotion if the active generation changed since it was read. */
+  promoteIfActive?(
+    dataset: DatasetConfig<D>,
+    generation: string,
+    expected: string | undefined,
+  ): Promise<string | undefined>;
   /** Refuses the active generation unless forced; a forced drop still refuses the served one. */
   drop(dataset: DatasetConfig<D>, generation: string, options?: DropOptions): Promise<void>;
   active(dataset: DatasetConfig<D>): Promise<string | undefined>;

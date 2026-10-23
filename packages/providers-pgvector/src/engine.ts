@@ -461,6 +461,36 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       await migrated();
     };
 
+    const promote = async (
+      dataset: Dataset,
+      generation: string,
+      expected?: { active: string | undefined },
+    ) => {
+      await begin();
+      return transaction(pool, async (client) => {
+        await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
+          dataset.id,
+        ]);
+        await prepared(client, dataset, generation);
+        const { rows } = await client.query<{ generation: string }>(
+          `select generation from kn_active where dataset = $1`,
+          [dataset.id],
+        );
+        const previous = rows[0]?.generation;
+        if (expected && previous !== expected.active)
+          throw new KnowledgeError(
+            'bad_request',
+            `dataset ${dataset.id} changed during ingestion; run the pipeline again`,
+          );
+        await client.query(
+          `insert into kn_active (dataset, generation) values ($1, $2)
+           on conflict (dataset) do update set generation = excluded.generation`,
+          [dataset.id, generation],
+        );
+        return previous;
+      });
+    };
+
     return {
       prepare: async (dataset, generation) => {
         await begin();
@@ -527,25 +557,9 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           );
         });
       },
-      promote: async (dataset, generation) => {
-        await begin();
-        return transaction(pool, async (client) => {
-          await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
-            dataset.id,
-          ]);
-          await prepared(client, dataset, generation);
-          const { rows } = await client.query<{ generation: string }>(
-            `select generation from kn_active where dataset = $1`,
-            [dataset.id],
-          );
-          await client.query(
-            `insert into kn_active (dataset, generation) values ($1, $2)
-             on conflict (dataset) do update set generation = excluded.generation`,
-            [dataset.id, generation],
-          );
-          return rows[0]?.generation;
-        });
-      },
+      promote,
+      promoteIfActive: (dataset, generation, expected) =>
+        promote(dataset, generation, { active: expected }),
       drop: async (dataset, generation, options = {}) => {
         await begin();
         await transaction(pool, async (client) => {
