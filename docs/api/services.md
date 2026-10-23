@@ -44,6 +44,41 @@ When the assistant cannot answer, the turn has `status: unavailable` and a `reas
 
 Sharing: an operator shares one of Digdir's recipes with every organisation with `PUT /operator/recipes/shares/{flow}` and stops with `DELETE` (both need `change-reason` and are audited); `GET /operator/recipes/shares` lists Digdir's recipes and whether each is shared. A service names an exact version (`flow@N`), so a newer version of a shared recipe changes nothing until the owner updates the variant. After unsharing, no new service can use the recipe, while services already published keep their pinned version.
 
+### Dataset facets in a step flow
+
+`facets@1` reads current facet values from the service's configured datasets using the same knowledge port and access grants as retrieval. It takes no input. Params are `fields` (1–20 declared filter fields) and `maxValues` (1–1000 values per field, default 200). It cannot select another dataset. In a document-scoped run, facet reads include the document filter; when the dataset cannot filter by document, they return empty arrays. Undeclared fields, missing facet support and backend failures fail the step; normal `onError` policies apply.
+
+The output contains `values.<field>` (an array of strings) and `facets.<field>` (an array of `{value, count}`). Only requested fields are returned, capped per field in backend order; values beyond the cap are omitted. Counts retain the knowledge port's semantics. The underlying facet port has no limit argument, so the cap bounds what reaches the flow, not what the engine computes.
+
+A whole-value template preserves the array inside a later step's schema:
+
+```yaml
+- id: facets
+  block: facets@1
+  params: { fields: [jurisdiction], maxValues: 500 }
+- id: jurisdictions
+  block: extract@1
+  input: { prompt: 'Choose the jurisdictions in this question: {{input.query}}' }
+  params:
+    schema:
+      type: object
+      properties:
+        jurisdictions:
+          type: array
+          items:
+            type: string
+            enum: '{{facets.values.jurisdiction}}'
+      required: [jurisdictions]
+      additionalProperties: false
+- id: retrieve
+  block: retrieve@1
+  input: { query: '{{input.query}}' }
+  params:
+    inOrder: { field: jurisdiction, values: '{{jurisdictions.jurisdictions}}' }
+```
+
+`retrieve@1` keeps exact, case-sensitive `inOrder` matching. Use the facet strings unchanged. A `match: contains` mode is not supported. Dataset values are data; a facet value that contains template syntax is not evaluated again.
+
 ## Build and edit a service from your own admin UI
 
 The portal is one client of these routes; another admin UI, or one an LLM generates from `/openapi.json`, needs nothing else. Every text the routes return comes in bokmål and English.

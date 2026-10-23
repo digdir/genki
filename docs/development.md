@@ -121,4 +121,4 @@ Quality of answers is measured, not assumed: `packages/eval` runs test sets with
 
 ## Building blocks today
 
-Step flow blocks today: `model`, `extract`, `classify`, `retrieve`, `rerank`, `synthesize`, `evidence-gate`, `overview-finalize`, `answer`, `template`, `route`, `approval`, `agent`, `documents`, `read-document`, `table`, `tool`. Guardrails: `pii-before-model`, `pii-out-of-log`, `require-sources`, `language`, `refuse-topics`, `human-approval`, `custom-rules`.
+Step flow blocks today: `model`, `extract`, `classify`, `facets`, `retrieve`, `rerank`, `synthesize`, `evidence-gate`, `overview-finalize`, `answer`, `template`, `route`, `approval`, `agent`, `documents`, `read-document`, `table`, `tool`. Guardrails: `pii-before-model`, `pii-out-of-log`, `require-sources`, `language`, `refuse-topics`, `human-approval`, `custom-rules`.

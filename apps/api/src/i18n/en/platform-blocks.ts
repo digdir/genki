@@ -67,6 +67,9 @@ export const platformBlocks = {
   blockAgentName: 'Let the model search by itself',
   blockAgentDescription:
     'Lets the model search, read and answer by itself, as one step in the flow.',
+  blockFacetsName: 'Fetch facet values',
+  blockFacetsDescription:
+    'Reads bounded facet values and counts from the service datasets for later steps.',
   blockDocumentsName: 'Find documents',
   blockDocumentsDescription:
     "Lists documents from the service's datasets by type, organisation, year or id. Writes no text.",
