@@ -63,6 +63,8 @@ export const problems = {
   required: 'required',
   unsupported: 'unsupported',
   notValidId: 'not a valid id',
+  datasetHasPipeline:
+    "dataset {dataset} is already filled by pipeline {id}; each run replaces the dataset's index, so a second pipeline would replace its documents. Use another dataset",
   anotherTenant: 'another tenant',
   aReasonIsRequired: 'a reason is required',
   aNameIsRequired: 'a name is required',

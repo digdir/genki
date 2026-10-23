@@ -417,6 +417,17 @@ export class IngestionService {
             message: i.message,
           })),
         };
+      const other = (await this.list(input.scope, input.dataset)).find((p) => p.id !== input.id);
+      if (other)
+        return {
+          ok: false,
+          errors: [
+            {
+              path: 'id',
+              message: `dataset ${input.dataset} is already filled by pipeline ${other.id}; each run replaces the dataset's index, so a second pipeline would replace its documents. Use another dataset`,
+            },
+          ],
+        };
       try {
         const saved = await appendVersion(this.options.store, {
           kind,

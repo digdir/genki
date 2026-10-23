@@ -62,6 +62,8 @@ export const problems = defineNamespace({
   required: 'påkrevd',
   unsupported: 'støttes ikke',
   notValidId: 'ikke en gyldig id',
+  datasetHasPipeline:
+    'datasettet {dataset} fylles allerede av innlesingen {id}; hver kjøring erstatter datasettets indeks, så en ny innlesing ville erstattet dokumentene dens. Bruk et annet datasett',
   anotherTenant: 'en annen virksomhet',
   aReasonIsRequired: 'en begrunnelse er påkrevd',
   aNameIsRequired: 'et navn er påkrevd',
