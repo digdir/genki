@@ -440,13 +440,10 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
 
   // RFC 8252 §7.3: a loopback redirect URI may use any port, chosen when the request is made,
   // so a local stack started on other ports can still sign in.
-  const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
   const withoutLoopbackPort = (uri: string) => {
     if (!URL.canParse(uri)) return uri;
-    const url = new URL(uri);
-    if (url.protocol !== 'http:' || !loopbackHosts.has(url.hostname)) return uri;
-    url.port = '';
-    return url.toString();
+    // Preserve every other character; URL serialization also normalizes hosts and paths.
+    return uri.replace(/^(http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]))(?::\d+)?(?=[/?#]|$)/, '$1');
   };
   const registered = (uris: readonly string[], uri: string) =>
     uris.includes(uri) || uris.map(withoutLoopbackPort).includes(withoutLoopbackPort(uri));
