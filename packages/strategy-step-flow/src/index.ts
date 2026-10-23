@@ -7,6 +7,7 @@ export * from './services.js';
 export * from './validate.js';
 export { agentBlock, approvalBlock, routeBlock, templateBlock } from './blocks/control.js';
 export { documentsBlock, readDocumentBlock } from './blocks/documents.js';
+export { facetsBlock } from './blocks/facets.js';
 export {
   callModel,
   citedSchema,

@@ -1,6 +1,7 @@
 import { BlockRegistry } from './blocks.js';
 import { agentBlock, approvalBlock, routeBlock, templateBlock } from './blocks/control.js';
 import { documentsBlock, readDocumentBlock } from './blocks/documents.js';
+import { facetsBlock } from './blocks/facets.js';
 import { classifyBlock, extractBlock, modelBlock } from './blocks/model.js';
 import {
   answerBlock,
@@ -19,6 +20,7 @@ export const builtinBlocks = () =>
     .register(extractBlock)
     .register(classifyBlock)
     .register(retrieveBlock)
+    .register(facetsBlock)
     .register(rerankBlock)
     .register(synthesizeBlock)
     .register(evidenceGateBlock)

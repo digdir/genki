@@ -82,7 +82,10 @@ export const scopeToDocument = (
         : Promise.all(requests.map(ranked)),
     fetch: async (ids) => (await port.fetch(ids)).filter(own),
     range: async (doc, from, to) => (doc === document ? port.range(doc, from, to) : []),
-    facets: (fields, filters) => port.facets(fields, filtered ? withScope(filters) : filters),
+    facets: (fields, filters) =>
+      filtered
+        ? port.facets(fields, withScope(filters))
+        : Promise.resolve(Object.fromEntries(fields.map((f) => [f, []]))),
     documents: async (request) => {
       if (request.ids && !request.ids.includes(document)) return { documents: [], found: 0 };
       if (!port.documents) return { documents: [], found: 0 };
