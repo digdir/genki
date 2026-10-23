@@ -27,9 +27,14 @@ export const skillCatalog = (skills: RuntimeSkill[]) =>
         .map((s) => `- ${s.name}: ${s.description}`)
         .join('\n')}`;
 
-export const useSkill = (skills: RuntimeSkill[], args: unknown) => {
+export const useSkill = (
+  skills: RuntimeSkill[],
+  args: unknown,
+  loadedSkills?: Map<string, RuntimeSkill>,
+) => {
   const name = (args as { name?: unknown } | null)?.name;
   const skill = skills.find((s) => s.name === name);
+  if (skill) loadedSkills?.set(skill.ref, skill);
   return skill
     ? skillText(skill)
     : `Error: unknown skill ${String(name)}. Available skills: ${skills.map((s) => s.name).join(', ')}`;
