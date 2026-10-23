@@ -108,6 +108,8 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 | Client            | `client` (`@genai/client`, typed client for your own frontend), `schema-forms` (forms and results drawn from a service's JSON Schema)                                                                                                                                                                                |
 | Apps              | `api`, `worker`, `portal`, `workspace`, `console`, `parity` (records headless-rag and compares against it)                                                                                                                                                                                                           |
 
+Model provider APIs and catalog options are documented in [providers.md](providers.md).
+
 Vendor SDKs live only in `packages/providers-*`, and only composition roots may import those providers. `npm run boundaries` enforces both.
 
 ## Quality

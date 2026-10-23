@@ -22,6 +22,7 @@ import type {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
+import { responsesParams, responsesResult, responsesStream } from './responses.js';
 
 const withoutTrailingSlashes = (url: string) => {
   let end = url.length;
@@ -33,6 +34,7 @@ const cached = (tokens: number | undefined) => (tokens ? { cachedInputTokens: to
 
 const endpointOptions = z.strictObject({});
 const modelOptions = z.strictObject({
+  api: z.enum(['chat-completions', 'responses']).optional(),
   tokenParam: z.enum(['max_tokens', 'max_completion_tokens']).default('max_completion_tokens'),
 });
 type ModelOptions = z.infer<typeof modelOptions>;
@@ -132,31 +134,78 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
     });
 
     const fixedTemperature = new Set<string>();
+    const learnedResponses = new Set<string>();
+    const apiFor = (model: DeploymentConfig<ModelOptions>) =>
+      model.options.api ??
+      (learnedResponses.has(model.deployment) ? 'responses' : 'chat-completions');
     const create = async <T>(
       model: DeploymentConfig<ModelOptions>,
       request: ChatRequest,
-      send: (body: ChatCompletionCreateParamsBase) => Promise<T>,
+      send: (api: 'chat-completions' | 'responses', omitTemperature: boolean) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
-      const dropsKnown =
-        request.temperature !== undefined && fixedTemperature.has(model.deployment);
-      try {
-        return {
-          response: await send(params(model, request, fixedTemperature.has(model.deployment))),
-          dropped: dropsKnown ? ['temperature'] : [],
-        };
-      } catch (error) {
-        if (request.temperature === undefined || !rejectsTemperature(error)) throw error;
-        fixedTemperature.add(model.deployment);
-        return { response: await send(params(model, request, true)), dropped: ['temperature'] };
+      for (;;) {
+        const api = apiFor(model);
+        const key = `${api}/${model.deployment}`;
+        const omit = fixedTemperature.has(key);
+        try {
+          return {
+            response: await send(api, omit),
+            dropped: request.temperature !== undefined && omit ? ['temperature'] : [],
+          };
+        } catch (error) {
+          if (request.temperature !== undefined && !omit && rejectsTemperature(error)) {
+            fixedTemperature.add(key);
+          } else if (
+            api === 'chat-completions' &&
+            model.options.api === undefined &&
+            request.tools?.length &&
+            error instanceof APIError &&
+            error.status === 400 &&
+            /^Function tools with reasoning_effort are not supported for \S+ in \/v1\/chat\/completions\. To use function tools, use \/v1\/responses or set reasoning_effort to 'none'\.$/.test(
+              (error.error as { message?: string } | undefined)?.message ?? '',
+            )
+          ) {
+            learnedResponses.add(model.deployment);
+          } else throw error;
+        }
       }
     };
 
     return {
+      describe: (model) => ({
+        api: apiFor(model),
+        source: model.options.api
+          ? 'configured'
+          : learnedResponses.has(model.deployment)
+            ? 'learned'
+            : 'default',
+      }),
       chat: async (model, request, signal): Promise<ChatResult> => {
         try {
-          const { response, dropped } = await create(model, request, (body) =>
-            client.chat.completions.create({ ...body, stream: false }, { signal }),
-          );
+          const { response: result, dropped } = await create(model, request, async (api, omit) => {
+            if (api === 'responses') {
+              return {
+                api,
+                response: await client.responses.create(
+                  { ...responsesParams(model, request, omit), stream: false },
+                  { signal },
+                ),
+              } as const;
+            }
+            return {
+              api,
+              response: await client.chat.completions.create(
+                { ...params(model, request, omit), stream: false },
+                { signal },
+              ),
+            } as const;
+          });
+          if (result.api === 'responses')
+            return {
+              ...responsesResult(result.response),
+              ...(dropped.length ? { droppedParameters: dropped } : {}),
+            };
+          const response = result.response;
           const choice = response.choices[0];
           return {
             content: choice?.message.content ?? '',
@@ -188,14 +237,37 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
         const calls = new Map<number, ToolCall>();
         const dropped: TunableParameter[] = [];
         try {
-          const opened = await create(model, request, (body) =>
-            client.chat.completions.create(
-              { ...body, stream: true, stream_options: { include_usage: true } },
-              { signal },
-            ),
-          );
+          const opened = await create(model, request, async (api, omit) => {
+            if (api === 'responses')
+              return {
+                api,
+                stream: await client.responses.create(
+                  { ...responsesParams(model, request, omit), stream: true },
+                  { signal },
+                ),
+              } as const;
+            return {
+              api,
+              stream: await client.chat.completions.create(
+                {
+                  ...params(model, request, omit),
+                  stream: true,
+                  stream_options: { include_usage: true },
+                },
+                { signal },
+              ),
+            } as const;
+          });
           dropped.push(...opened.dropped);
-          for await (const chunk of opened.response) {
+          if (opened.response.api === 'responses') {
+            for await (const chunk of responsesStream(opened.response.stream)) {
+              yield chunk.kind === 'done' && dropped.length
+                ? { kind: 'done', result: { ...chunk.result, droppedParameters: dropped } }
+                : chunk;
+            }
+            return;
+          }
+          for await (const chunk of opened.response.stream) {
             served = chunk.model || served;
             if (chunk.usage) {
               usage = {
