@@ -44,6 +44,8 @@ export interface IngestSource {
   phraseRows: 'legacy' | 'pipeline';
   documents(): AsyncIterable<SourceDocument>;
   skipped?: SkippedDocument[];
+  /** Source-specific facts for the run report, read after documents() is done. */
+  summary?(): Record<string, unknown>;
 }
 
 export interface IndexSink {

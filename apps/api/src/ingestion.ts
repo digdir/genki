@@ -110,6 +110,10 @@ export const pipelineSpec = z.strictObject({
       .refine((s) => (s.urls ? s.table !== undefined : s.table === undefined), {
         message: 'table is required exactly when urls is set',
         path: ['table'],
+      })
+      .refine((s) => s.huggingface !== undefined || s.mapping.lookups.every((l) => !l.file), {
+        message: 'a lookup file needs a huggingface source; use url otherwise',
+        path: ['mapping', 'lookups'],
       }),
     z.strictObject({
       kind: z.literal('database'),
@@ -189,6 +193,8 @@ export interface IngestionReport {
   promoted?: boolean;
   previous?: string;
   usage?: Record<string, Usage>;
+  /** Source-specific facts, such as how many rows a Parquet lookup matched. */
+  source?: Record<string, unknown>;
 }
 
 export interface IngestionBackend {

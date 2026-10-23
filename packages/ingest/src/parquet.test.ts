@@ -6,6 +6,9 @@ import {
   huggingFaceOrigin,
   missingColumns,
   parquetColumns,
+  lookupKey,
+  parquetLookup,
+  parquetLookupTable,
   parquetMapping,
   parquetSource,
   type SourceDocument,
@@ -167,5 +170,43 @@ describe('Parquet source', () => {
       'legal_force',
       'safety_topics',
     ]);
+  });
+});
+
+describe('Parquet lookup keys', () => {
+  it('matches keys as trimmed text, so a number and its text form are the same key, and never matches an empty or list key', async () => {
+    const lookup = parquetLookup.parse({
+      url: 'https://x.example/l.parquet',
+      key: 'id',
+      on: 'ref',
+      fields: ['name'],
+    });
+    const table = await parquetLookupTable(
+      [
+        { id: 5, name: 'five' },
+        { id: ' A-1 ', name: 'a' },
+        { id: '', name: 'empty' },
+        { id: ['x'], name: 'list' },
+        { id: null, name: 'none' },
+      ],
+      lookup,
+      'l.parquet',
+    );
+
+    expect([...table.values.keys()]).toEqual(['5', 'A-1']);
+    expect(table.rows).toBe(5);
+    expect([lookupKey('5'), lookupKey(5), lookupKey(5n), lookupKey('A-1 ')]).toEqual([
+      '5',
+      '5',
+      '5',
+      'A-1',
+    ]);
+    expect([
+      lookupKey(''),
+      lookupKey('  '),
+      lookupKey(['5']),
+      lookupKey(null),
+      lookupKey({}),
+    ]).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 });

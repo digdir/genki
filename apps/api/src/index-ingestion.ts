@@ -583,6 +583,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
         promoted: result.promoted,
         ...(result.previous === undefined ? {} : { previous: result.previous }),
         ...(Object.keys(usage).length > 0 ? { usage } : {}),
+        ...(source.summary ? { source: source.summary() } : {}),
       };
     },
   };
