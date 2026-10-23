@@ -103,10 +103,10 @@ const params = (
     : {}),
 });
 
-const toModelError = (error: unknown): ModelError => {
-  if (error instanceof ModelError) return error;
-  if (error instanceof APIUserAbortError)
+const toModelError = (error: unknown, signal: AbortSignal): ModelError => {
+  if (signal.aborted || error instanceof APIUserAbortError)
     return new ModelError('cancelled', 'the request was cancelled');
+  if (error instanceof ModelError) return error;
   if (error instanceof APIError) {
     const code = (error.error as { code?: string } | undefined)?.code ?? error.code ?? undefined;
     return errorFromStatus(error.status, error.message, code);
@@ -225,7 +225,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
             ...(dropped.length ? { droppedParameters: dropped } : {}),
           };
         } catch (error) {
-          throw toModelError(error);
+          throw toModelError(error, signal);
         }
       },
 
@@ -261,6 +261,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
           dropped.push(...opened.dropped);
           if (opened.response.api === 'responses') {
             for await (const chunk of responsesStream(opened.response.stream)) {
+              if (signal.aborted) throw new APIUserAbortError();
               yield chunk.kind === 'done' && dropped.length
                 ? { kind: 'done', result: { ...chunk.result, droppedParameters: dropped } }
                 : chunk;
@@ -295,7 +296,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
             }
           }
         } catch (error) {
-          throw toModelError(error);
+          throw toModelError(error, signal);
         }
         yield {
           kind: 'done',
