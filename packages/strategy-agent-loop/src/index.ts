@@ -529,7 +529,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ? noToolCallHonestMiss
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
-        fallbackMessages = initialMessages;
+        fallbackMessages = workspace.loadedSkills.size ? messages : initialMessages;
         finalized = true;
         break;
       }
@@ -584,7 +584,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             yield { type: 'kernel.notice', data: { kind: 'read', ...outcome.read } };
           if (call.name === 'generate_response') generated = true;
         } else if (skills.length && call.name === useSkillTool.name) {
-          content = useSkill(skills, args.value);
+          content = useSkill(skills, args.value, workspace.loadedSkills);
         } else {
           const tool = extra.find((t) => t.spec.name === call.name);
           if (!tool)
