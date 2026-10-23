@@ -49,7 +49,7 @@ describe('Forbruk', () => {
     const { calls, fetch } = recording();
     await renderAt('#/usage', fetch);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Forbruk' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Forbruk' })).toBeTruthy();
     expect(screen.getByText('Henter forbruk')).toBeTruthy();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
