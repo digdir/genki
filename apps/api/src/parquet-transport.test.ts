@@ -131,4 +131,41 @@ describe('Parquet downloads through the pinned transport', () => {
     expect(state.selected.filter(blockedAddress)).toEqual([]);
     expect(await readdir(state.root)).toEqual([]);
   });
+
+  it('pins the lookup download and revalidates DNS before fetching the source shard', async () => {
+    const state = await networkFixture();
+    const spec = pipelineSpec.parse({
+      name: 'pinned lookup',
+      source: {
+        kind: 'parquet',
+        urls: [state.url('shard.parquet')],
+        table: 'train',
+        mapping: {
+          fields: { id: 'id', title: 'title', text: ['body'] },
+          lookups: [
+            {
+              url: state.url('lookup.parquet'),
+              on: 'id',
+              key: 'id',
+              fields: [{ column: 'title', as: 'lookup_title' }],
+            },
+          ],
+        },
+      },
+    });
+    if (spec.source.kind !== 'parquet') throw new Error('expected a Parquet source');
+    const source = parquetSourceOf(
+      { reader: parquetReader(), workingDirectory: state.root },
+      spec.source,
+      { resolve: state.resolve },
+    );
+
+    await expect(collect(source.documents())).rejects.toThrow(/private or reserved/);
+
+    expect(state.requests).toEqual(['/lookup.parquet']);
+    expect(state.resolve).toHaveBeenCalledTimes(2);
+    expect(state.selected).toEqual([publicAddress]);
+    expect(state.selected.filter(blockedAddress)).toEqual([]);
+    expect(await readdir(state.root)).toEqual([]);
+  });
 });
