@@ -128,7 +128,7 @@ describe('openai-chat adapter', () => {
     expect(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters).toEqual({});
   });
 
-  it('does not retry an unrelated 400 or a token refusal when no token limit was sent', async () => {
+  it('does not retry a token refusal when no token limit was sent', async () => {
     const { url, seen } = await fake(() => ({
       status: 400,
       json: {
@@ -142,6 +142,152 @@ describe('openai-chat adapter', () => {
 
     await expect(port.chat(user('hei'))).rejects.toThrow();
     expect(seen).toHaveLength(1);
+  });
+
+  it('does not switch token parameters when a different validation error forbids an extra field', async () => {
+    const { url, seen } = await fake((_body, attempt) =>
+      attempt === 1
+        ? {
+            status: 422,
+            json: {
+              detail: [
+                {
+                  type: 'less_than_equal',
+                  loc: ['body', 'max_completion_tokens'],
+                  msg: 'Input should be less than or equal to 1000',
+                  input: 4000,
+                },
+                {
+                  type: 'extra_forbidden',
+                  loc: ['body', 'stream_options'],
+                  msg: 'Extra inputs are not permitted',
+                },
+              ],
+            },
+          }
+        : { status: 200, json: completion('ok') },
+    );
+    const port = open(router(url, undefined, 0));
+    const stream = port.chatStream({ ...user('hei'), maxTokens: 4000 });
+
+    await expect(stream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
+      code: 'bad_request',
+    });
+    expect(seen).toHaveLength(1);
+    await port.chat({ ...user('hei'), maxTokens: 500 });
+    expect(seen[1]?.body).toMatchObject({ max_completion_tokens: 500 });
+    expect(seen[1]?.body).not.toHaveProperty('max_tokens');
+  });
+
+  it('does not switch token parameters when the error identifies another parameter', async () => {
+    const { url, seen } = await fake(() => ({
+      status: 400,
+      json: {
+        error: {
+          param: 'reasoning_effort',
+          message:
+            "Unsupported parameter: 'reasoning_effort'. Use 'max_completion_tokens' without reasoning_effort.",
+        },
+      },
+    }));
+
+    await expect(
+      open(router(url, undefined, 0)).chat({ ...user('hei'), maxTokens: 4000, reasoning: 'low' }),
+    ).rejects.toMatchObject({ code: 'bad_request' });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('switches a configured max_tokens deployment, and remembers it', async () => {
+    const { url, seen } = await fake((body) =>
+      body.model === 'borealis' && 'max_tokens' in body
+        ? {
+            status: 400,
+            json: { error: { message: "Unrecognized parameter: 'max_tokens'." } },
+          }
+        : { status: 200, json: completion('ok') },
+    );
+    const r = router(url, undefined, 0);
+    const port = open(r, 'aivar/borealis');
+
+    await port.chat({ ...user('hei'), maxTokens: 10 });
+    await port.chat({ ...user('hei igjen'), maxTokens: 20 });
+    await open(r).chat({ ...user('hei'), maxTokens: 30 });
+
+    expect(
+      seen.map((s) => [s.body.model, s.body.max_tokens, s.body.max_completion_tokens]),
+    ).toEqual([
+      ['borealis', 10, undefined],
+      ['borealis', undefined, 10],
+      ['borealis', undefined, 20],
+      ['gpt-4o-prod', undefined, 30],
+    ]);
+  });
+
+  it.each(['temperature', 'max_completion_tokens'])(
+    'streams after refusing %s first, then the other parameter, and shares the learned adjustments with chat',
+    async (first) => {
+      const { url, seen } = await fake((body) => {
+        const rejected = [
+          first,
+          first === 'temperature' ? 'max_completion_tokens' : 'temperature',
+        ].find((param) => param in body);
+        if (rejected)
+          return {
+            status: 400,
+            json: { error: { message: `Unsupported parameter: '${rejected}'.` } },
+          };
+        return body.stream
+          ? {
+              status: 200,
+              sse: [
+                {
+                  data: {
+                    id: 'c1',
+                    object: 'chat.completion.chunk',
+                    created: 0,
+                    model: 'gpt-4o-prod',
+                    choices: [{ index: 0, delta: { content: 'Hei' }, finish_reason: 'stop' }],
+                  },
+                },
+                { data: '[DONE]' },
+              ],
+            }
+          : { status: 200, json: completion('Hei') };
+      });
+      const r = router(url, undefined, 0);
+      const port = open(r);
+      const request = { ...user('hei'), temperature: 0, maxTokens: 50 };
+      const chunks = [];
+
+      for await (const c of port.chatStream(request)) chunks.push(c);
+      expect(chunks).toMatchObject([
+        { kind: 'delta', text: 'Hei' },
+        { kind: 'done', result: { content: 'Hei' } },
+      ]);
+      expect((await port.chat(request)).content).toBe('Hei');
+      expect(seen).toHaveLength(4);
+      expect(seen.slice(2).map((s) => s.body.max_tokens)).toEqual([50, 50]);
+      expect(seen.slice(2).every((s) => !('temperature' in s.body))).toBe(true);
+      expect(
+        Object.keys(r.describe().find((m) => m.id === 'foundry/gpt-4o')?.rejectedParameters ?? {}),
+      ).toEqual(['temperature']);
+    },
+  );
+
+  it('caps retries when a deployment refuses both token parameters', async () => {
+    const { url, seen } = await fake((body) => ({
+      status: 400,
+      json: {
+        error: {
+          message: `Unknown parameter: '${'max_tokens' in body ? 'max_tokens' : 'max_completion_tokens'}'.`,
+        },
+      },
+    }));
+
+    await expect(
+      open(router(url, undefined, 0)).chat({ ...user('hei'), maxTokens: 50 }),
+    ).rejects.toMatchObject({ code: 'bad_request' });
+    expect(seen).toHaveLength(4);
   });
 
   it('reports the dropped temperature so the platform can suggest a rule', async () => {

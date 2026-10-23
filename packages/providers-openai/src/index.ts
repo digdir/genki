@@ -69,14 +69,30 @@ const rejectsTemperature = (error: unknown) =>
 
 type TokenParam = ModelOptions['tokenParam'];
 
-/** A deployment that refuses the configured token parameter by name, e.g. Mistral refusing max_completion_tokens. */
-const rejectsTokenParam = (error: unknown, param: TokenParam) =>
-  error instanceof APIError &&
-  (error.status === 400 || error.status === 422) &&
-  error.message.includes(param) &&
-  /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i.test(
-    error.message,
-  );
+const rejectsTokenParam = (error: unknown, param: TokenParam) => {
+  if (
+    !(error instanceof APIError) ||
+    (error.status !== 400 && error.status !== 422) ||
+    (error.param && error.param !== param)
+  )
+    return false;
+
+  const refusal = /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i;
+  const details = (error.error as { detail?: unknown } | undefined)?.detail;
+  if (Array.isArray(details))
+    return details.some((item: unknown) => {
+      if (!item || typeof item !== 'object') return false;
+      const { loc, type, msg } = item as { loc?: unknown; type?: unknown; msg?: unknown };
+      return (
+        Array.isArray(loc) &&
+        loc.length === 2 &&
+        loc[0] === 'body' &&
+        loc[1] === param &&
+        (type === 'extra_forbidden' || (typeof msg === 'string' && refusal.test(msg)))
+      );
+    });
+  return error.message.includes(param) && refusal.test(error.message);
+};
 
 interface Adjustments {
   fixedTemperature: boolean;
