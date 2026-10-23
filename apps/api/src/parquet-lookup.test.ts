@@ -8,8 +8,14 @@ import { envSecrets } from '@genai/kernel';
 import { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
 import { memoryEngine } from '@genai/port-knowledge/testing';
 import { parquetReader } from '@genai/providers-parquet';
+import { InMemoryConfigEntryStore } from './config-store.js';
 import { indexIngestionBackend } from './index-ingestion.js';
-import { pipelineSpec, type IngestionJob } from './ingestion.js';
+import {
+  InMemoryExecutionStore,
+  IngestionService,
+  pipelineSpec,
+  type IngestionJob,
+} from './ingestion.js';
 
 const fixture = (name: string) =>
   new Uint8Array(
@@ -150,6 +156,52 @@ const fieldsOf = (doc: Record<string, unknown> | undefined) =>
   (doc?.fields ?? {}) as Record<string, unknown>;
 
 describe('Parquet lookups through the ingestion backend and real reader', () => {
+  it.each([
+    {
+      name: 'single file',
+      source: { url: definitions, mapping: mapping([]) },
+      stored: 26,
+    },
+    {
+      name: 'sharded table',
+      source: {
+        urls: ['https://data.example/a.parquet', 'https://data.example/b.parquet'],
+        table: 'train',
+        mapping: { fields: { id: 'id', title: 'title', text: ['body'] } },
+      },
+      stored: 4,
+    },
+  ])('runs a stored pipeline saved before lookups existed: $name', async ({ source, stored }) => {
+    const state = await setup();
+    const legacy = job(source);
+    if (legacy.pipeline.spec.source.kind !== 'parquet') throw new Error('expected Parquet');
+    Reflect.deleteProperty(legacy.pipeline.spec.source.mapping, 'lookups');
+    const store = new InMemoryConfigEntryStore();
+    await store.append({
+      ...legacy.pipeline,
+      kind: 'ingestion-pipeline',
+      scope: 'tenant',
+      id: 'tenant/docs#p',
+      deleted: false,
+    });
+    const service = new IngestionService({
+      store,
+      executions: new InMemoryExecutionStore(),
+      backend: state.backend,
+    });
+    const pipeline = await service.get('tenant', 'tenant/docs', 'p');
+    if (!pipeline) throw new Error('expected stored pipeline');
+
+    const execution = await service.execute({ pipeline, target: legacy.target, by: 'test' });
+
+    if (!execution.ok) throw new Error('expected accepted execution');
+    expect(await execution.done).toMatchObject({
+      status: 'succeeded',
+      report: { stored, promoted: true },
+    });
+    expect(await readdir(state.root)).toEqual([]);
+  });
+
   it('joins each definition to its record and stores the joined fields as filterable metadata', async () => {
     const state = await setup();
 

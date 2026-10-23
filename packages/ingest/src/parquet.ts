@@ -217,7 +217,7 @@ export const parquetColumns = (mapping: ParquetMapping) => {
       ...(year ? [year] : []),
       ...metadata.map(columnOf),
       ...mapping.filter.map((c) => c.column),
-      ...mapping.lookups.map((l) => l.on),
+      ...(mapping.lookups ?? []).map((l) => l.on),
     ]),
   ];
 };
@@ -374,7 +374,7 @@ export const parquetSource = (options: ParquetSourceOptions): IngestSource => {
   return {
     kind: 'parquet',
     phraseRows: 'pipeline',
-    ...(options.mapping.lookups.length > 0 ? { summary: () => ({ lookups: reports }) } : {}),
+    ...(options.mapping.lookups?.length ? { summary: () => ({ lookups: reports }) } : {}),
     documents: async function* () {
       const { fields, filter } = options.mapping;
       const keep = parquetRowMatches(filter);

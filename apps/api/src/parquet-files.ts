@@ -202,7 +202,7 @@ export const parquetSourceOf = (
   // Lookup files are read one at a time before the first shard, so only one file is on disk.
   const lookups = async () => {
     const tables: ParquetLookupTable[] = [];
-    for (const lookup of source.mapping.lookups) {
+    for (const lookup of source.mapping.lookups ?? []) {
       fetchOptions.signal?.throwIfAborted();
       const label = lookup.url ?? lookup.file ?? '';
       const temp = await download(lookupUrl(source, lookup), lookup.maxBytes, 'lookup.parquet');
@@ -256,6 +256,6 @@ export const parquetSourceOf = (
     origin: parquetLocation(source).origin,
     rejectDuplicates:
       source.urls !== undefined || !!(source.huggingface && 'files' in source.huggingface),
-    ...(source.mapping.lookups.length > 0 ? { lookups } : {}),
+    ...(source.mapping.lookups?.length ? { lookups } : {}),
   });
 };
