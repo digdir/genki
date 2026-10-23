@@ -103,6 +103,7 @@ export const playgroundUi = {
     timelineEmpty: 'Her ser du søk, kilder, modellkall og tokens når du sender et spørsmål.',
     sourceCite: 'Kilde {n}: {title}',
     detailChunk: 'Tekstbit',
+    detailVersion: 'Versjon',
     detailHeaders: 'Overskrifter',
     detailDocument: 'Dokument',
     detailPosition: 'Plassering',
@@ -120,6 +121,9 @@ export const playgroundUi = {
     sources: 'Kilder',
     sourceDetails: 'Detaljer om {title}',
     excerpt: 'Utdrag',
+    sourceExcerpt: 'Utdrag fra {title}',
+    sourcePublished: 'Publisert {date}',
+    untitledSource: 'Kilde uten tittel',
     sourceVersion: 'versjon {version}',
     searchNote: 'Søkemerknad:',
     searchNoteText: {

@@ -253,11 +253,53 @@
   gap: 4px;
 }
 
-.playground-sources ol {
+.playground-sources > ol {
   margin: 0;
   padding-left: 20px;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.playground-sources > ol > li {
+  padding-block: var(--ds-size-2);
+}
+
+.playground-sources > ol > li + li {
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.playground-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-size-1) var(--ds-size-3);
+}
+
+.playground-source-label {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.playground-source-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-1);
+}
+
+.playground-source-excerpts {
+  max-height: 20rem;
+  overflow: auto;
+  margin-top: var(--ds-size-2);
+  padding: var(--ds-size-3);
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-neutral-background-tinted);
+}
+
+.playground-source-excerpts > .playground-markdown + .playground-markdown {
+  margin-top: var(--ds-size-4);
 }
 
 .playground-note {
@@ -436,10 +478,6 @@
   cursor: pointer;
 }
 
-.playground-source-open {
-  vertical-align: middle;
-}
-
 .playground-source-detail {
   display: flex;
   flex-direction: column;
@@ -455,7 +493,10 @@
   overflow: auto;
   font-size: 14px;
   line-height: 1.55;
-  white-space: pre-wrap;
+}
+
+.playground-source-detail dd {
+  overflow-wrap: anywhere;
 }
 
 .playground-models {

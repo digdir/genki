@@ -362,29 +362,20 @@ export const sourceUrl = (source: PlaygroundSource) => {
   return undefined;
 };
 
-export const sourceExcerpt = (source: PlaygroundSource, max = 300) => {
-  const flat = (source.excerpt ?? source.text ?? '').replace(/\s+/g, ' ').trim();
-  if (flat.length <= max) return flat || undefined;
-  const cut = flat.slice(0, max - 1);
-  const space = cut.lastIndexOf(' ');
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
-};
+export const sourceExcerpt = (source: PlaygroundSource) =>
+  (source.excerpt ?? source.text ?? '').trim() || undefined;
 
 export const sourceFacts = (source: PlaygroundSource, f: Format = nbFormat, t: T = nbT) => {
   const date = source.publishedAt ? new Date(source.publishedAt) : undefined;
-  return [
-    ...(source.version !== undefined && source.version !== ''
-      ? [t('playground.sourceVersion', { version: source.version })]
-      : []),
-    ...(date && !Number.isNaN(date.getTime()) ? [f.date(date, 'long')] : []),
-  ].join(', ');
+  return date && !Number.isNaN(date.getTime())
+    ? t('playground.sourcePublished', { date: f.date(date, 'long') })
+    : undefined;
 };
 
-export const sourceLocation = (source: PlaygroundSource) =>
-  [
-    ...(source.document && source.document !== sourceTitle(source) ? [source.document] : []),
-    ...(source.headers ?? []),
-  ].join(', ');
+export const sourceDataset = (source: PlaygroundSource) => {
+  const qualifiedId = [source.document, source.chunkId].find((id) => id?.includes('::'));
+  return qualifiedId?.split('::')[0];
+};
 
 const valueText = (value: unknown): string =>
   Array.isArray(value)
