@@ -176,7 +176,7 @@ describe('OpenAI Responses behind the model port', () => {
       { role: 'developer', content: 'Be helpful' },
       { role: 'user', content: 'Finn Oslo' },
       reasoning,
-      { role: 'assistant', content: 'Looking' },
+      { type: 'message', role: 'assistant', content: 'Looking' },
       { type: 'function_call', call_id: 'call_1', name: 'search', arguments: '{"q":"Oslo"}' },
       { type: 'function_call_output', call_id: 'call_1', output: 'Capital: Oslo' },
     ]);
@@ -191,6 +191,84 @@ describe('OpenAI Responses behind the model port', () => {
     }
     expect(metered).toHaveLength(2);
     expect(router.describe()[0]?.transport).toEqual({ api: 'responses', source: 'configured' });
+  });
+
+  it.each([false, true])(
+    'replays assistant phases and output order with stream=%s',
+    async (stream) => {
+      const output = [
+        { ...text('Checking Oslo'), phase: 'commentary' },
+        reasoning,
+        call(),
+        { ...text('Waiting for search'), id: 'msg_2', phase: 'final_answer' },
+      ];
+      const { url, seen } = await fake((body, attempt) => ({
+        status: 200,
+        ...(body.stream
+          ? { sse: [event('response.completed', { response: response(output) })] }
+          : { json: response(attempt === 1 ? output : [text('Oslo')]) }),
+      }));
+      const { open } = setup(url);
+      const port = open();
+      const first = stream
+        ? (await collect(port.chatStream({ ...ask, tools }))).find((chunk) => chunk.kind === 'done')
+            ?.result
+        : await port.chat({ ...ask, tools });
+      expect(first).toBeDefined();
+      if (!first) throw new Error('the stream ended without a result');
+      await port.chat({
+        messages: [
+          ...ask.messages,
+          {
+            role: 'assistant',
+            content: first.content,
+            toolCalls: first.toolCalls,
+            continuation: first.continuation,
+          },
+          { role: 'tool', toolCallId: 'call_1', content: 'Capital: Oslo' },
+        ],
+        tools,
+      });
+      expect(seen[1]?.body.input).toEqual([
+        ...ask.messages,
+        { type: 'message', role: 'assistant', content: 'Checking Oslo', phase: 'commentary' },
+        reasoning,
+        { type: 'function_call', call_id: 'call_1', name: 'search', arguments: '{"q":"Oslo"}' },
+        {
+          type: 'message',
+          role: 'assistant',
+          content: 'Waiting for search',
+          phase: 'final_answer',
+        },
+        { type: 'function_call_output', call_id: 'call_1', output: 'Capital: Oslo' },
+      ]);
+    },
+  );
+
+  it('accepts an older reasoning-only continuation', async () => {
+    const { url, seen } = await fake(() => ({ status: 200, json: response() }));
+    await setup(url)
+      .open()
+      .chat({
+        messages: [
+          ...ask.messages,
+          {
+            role: 'assistant',
+            content: 'Looking',
+            toolCalls: [{ id: 'call_1', name: 'search', arguments: '{}' }],
+            continuation: { api: 'openai-responses', reasoning: [reasoning] },
+          },
+          { role: 'tool', toolCallId: 'call_1', content: 'Oslo' },
+        ],
+        tools,
+      });
+    expect(seen[0]?.body.input).toEqual([
+      ...ask.messages,
+      reasoning,
+      { role: 'assistant', content: 'Looking' },
+      { type: 'function_call', call_id: 'call_1', name: 'search', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'Oslo' },
+    ]);
   });
 
   it.each(['low', 'medium', 'high'] as const)(
@@ -278,7 +356,7 @@ describe('OpenAI Responses behind the model port', () => {
         finishReason: 'tool_calls',
         usage: { inputTokens: 21, outputTokens: 8, cachedInputTokens: 13, requests: 1 },
         servedModel: 'gpt-6.1-sol-served',
-        continuation: { api: 'openai-responses', reasoning: [reasoning] },
+        continuation: { api: 'openai-responses', output: expect.arrayContaining([reasoning]) },
       },
     });
     expect(seen[0]?.body).toMatchObject({ stream: true, store: false });

@@ -14,17 +14,63 @@ import type {
 } from 'openai/resources/responses/responses';
 import { z } from 'zod';
 
-const continuationSchema = z.object({
-  api: z.literal('openai-responses'),
-  reasoning: z.array(
-    z.object({
-      type: z.literal('reasoning'),
-      id: z.string(),
-      summary: z.array(z.object({ type: z.literal('summary_text'), text: z.string() })),
-      encrypted_content: z.string(),
-    }),
-  ),
+const reasoningSchema = z.object({
+  type: z.literal('reasoning'),
+  id: z.string(),
+  summary: z.array(z.object({ type: z.literal('summary_text'), text: z.string() })),
+  encrypted_content: z.string(),
 });
+const replayItemSchema = z
+  .discriminatedUnion('type', [
+    reasoningSchema,
+    z.object({
+      type: z.literal('message'),
+      role: z.literal('assistant'),
+      content: z.string(),
+      phase: z.enum(['commentary', 'final_answer']).nullable().optional(),
+    }),
+    z.object({
+      type: z.literal('function_call'),
+      call_id: z.string(),
+      name: z.string(),
+      arguments: z.string(),
+    }),
+  ])
+  .transform((item) => {
+    if (item.type !== 'message') return item;
+    const { phase, ...message } = item;
+    return { ...message, ...(phase === undefined ? {} : { phase }) };
+  });
+const continuationSchema = z.union([
+  z.object({ api: z.literal('openai-responses'), output: z.array(replayItemSchema) }),
+  z.object({ api: z.literal('openai-responses'), reasoning: z.array(reasoningSchema) }),
+]);
+
+const replayOutput = (output: ResponseOutputItem[]): z.infer<typeof replayItemSchema>[] =>
+  output.flatMap<z.infer<typeof replayItemSchema>>((item) => {
+    if (item.type === 'reasoning' && item.encrypted_content) return [reasoningSchema.parse(item)];
+    if (item.type === 'message')
+      return [
+        {
+          type: 'message',
+          role: 'assistant',
+          content: item.content
+            .flatMap((part) => (part.type === 'output_text' ? [part.text] : []))
+            .join(''),
+          ...(item.phase === undefined ? {} : { phase: item.phase }),
+        },
+      ];
+    if (item.type === 'function_call')
+      return [
+        {
+          type: 'function_call',
+          call_id: item.call_id,
+          name: item.name,
+          arguments: item.arguments,
+        },
+      ];
+    return [];
+  });
 
 export const responsesParams = (
   model: DeploymentConfig,
@@ -41,7 +87,13 @@ export const responsesParams = (
       });
     } else if (message.role === 'assistant') {
       const continuation = continuationSchema.safeParse(message.continuation);
-      if (continuation.success) input.push(...continuation.data.reasoning);
+      if (continuation.success) {
+        if ('output' in continuation.data) {
+          input.push(...continuation.data.output);
+          continue;
+        }
+        input.push(...continuation.data.reasoning);
+      }
       if (message.content) input.push({ role: 'assistant', content: message.content });
       for (const call of message.toolCalls ?? []) {
         input.push({
@@ -143,7 +195,9 @@ export const responsesResult = (response: Response): ChatResult => {
       requests: 1,
     },
     servedModel: response.model,
-    ...(reasoning.length ? { continuation: { api: 'openai-responses', reasoning } } : {}),
+    ...(reasoning.length || output.some((item) => item.type === 'message' && item.phase != null)
+      ? { continuation: { api: 'openai-responses', output: replayOutput(output) } }
+      : {}),
   };
 };
 
