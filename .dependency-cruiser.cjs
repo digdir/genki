@@ -30,7 +30,7 @@ module.exports = {
       severity: 'error',
       from: { pathNot: '^packages/providers-' },
       to: {
-        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth)/',
+        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth|hyparquet|hyparquet-compressors)/',
       },
     },
     {

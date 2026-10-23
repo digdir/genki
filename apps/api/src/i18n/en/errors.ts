@@ -152,6 +152,7 @@ export const knowledgeErrors = {
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
   datasetGone: 'the dataset is gone',
+  parquetOneLocation: 'a Parquet source needs exactly one of url and huggingface',
   engineInUse: 'The search engine is used by datasets',
   datasetUses: '{tenant}/{dataset} uses {id}',
   endpointJson: 'send the endpoint as a JSON object',
