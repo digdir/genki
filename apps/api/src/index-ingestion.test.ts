@@ -483,3 +483,35 @@ describe('index ingestion', () => {
     ).toEqual({ documents: 100, exact: false, basis: { listed: 200, sampled: 4, matching: 2 } });
   });
 });
+
+describe('website ingestion cancellation', () => {
+  it('passes execution cancellation into an in-flight sitemap fetch', async () => {
+    const controller = new AbortController();
+    const started = Promise.withResolvers<AbortSignal>();
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      web: {
+        resolve: async () => ['93.184.216.34'],
+        fetch: async (_url, init) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error('missing download signal');
+          started.resolve(signal);
+          return new Promise<Response>((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      },
+    });
+    const running = backend.run(
+      jobFor({ kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' }),
+      controller.signal,
+    );
+    const downloadSignal = await started.promise;
+    controller.abort(new Error('execution cancelled'));
+
+    expect(downloadSignal.aborted).toBe(true);
+    await expect(running).rejects.toThrow(/execution cancelled/);
+  });
+});
