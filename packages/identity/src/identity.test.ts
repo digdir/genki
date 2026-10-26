@@ -289,6 +289,7 @@ describe('mock Ansattporten', () => {
         kind: 'employee',
         issuer: ISSUER,
         subject: expect.stringMatching(/^[\w-]{43}$/),
+        client: 'genai-portal',
         assurance: 'high',
         authorizedFor: [{ org: DIGDIR, resource: KA, actions: [] }],
         tenant: DIGDIR,
