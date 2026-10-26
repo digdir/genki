@@ -36,7 +36,7 @@ const localPeople = async () => {
     key,
     testData: testData as IdentityTestDataInput,
   });
-  const operators = operatorDirectory(operatorPids);
+  const operators = operatorDirectory({ pids: operatorPids, mockIssuer: issuer });
   const verifier = operators.watch(
     withPdpActions(
       createTokenVerifier({

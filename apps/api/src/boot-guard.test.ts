@@ -57,6 +57,47 @@ describe('booting the API', () => {
     ]);
   });
 
+  it('startup refuses lockdown Entra groups without a client allowlist', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_ENTRA_GROUPS: '0f0e0d0c-0b0a-4908-8706-050403020100',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, GENAI_DEV_MODE: 'true' })).toEqual([
+      expect.stringContaining('OPERATOR_CLIENT_IDS'),
+    ]);
+    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
+  });
+
+  it('startup refuses bare OPERATOR_SUBJECTS outside dev mode', () => {
+    const pair = 'https://test.ansattporten.no|subject-1';
+
+    expect(
+      bootProblems({
+        ...real,
+        OPERATOR_SUBJECTS: `${pair},subject-2`,
+        OPERATOR_CLIENT_IDS: 'genki-console',
+      }),
+    ).toEqual([expect.stringContaining('issuer|subject')]);
+    expect(
+      bootProblems({ ...real, OPERATOR_SUBJECTS: pair, OPERATOR_CLIENT_IDS: 'genki-console' }),
+    ).toEqual([]);
+    expect(bootProblems({ ...dev, OPERATOR_SUBJECTS: 'subject-2' })).toEqual([]);
+    expect(bootProblems({ ...dev, OPERATOR_SUBJECTS: '|subject-2' })).toEqual([
+      expect.stringContaining('OPERATOR_SUBJECTS'),
+    ]);
+  });
+
+  it('startup refuses OPERATOR_SUBJECTS without OPERATOR_CLIENT_IDS outside dev mode', () => {
+    const pair = 'https://test.ansattporten.no|subject-1';
+
+    expect(bootProblems({ ...real, OPERATOR_SUBJECTS: pair })).toEqual([
+      expect.stringContaining('OPERATOR_CLIENT_IDS'),
+    ]);
+  });
+
   it('names every missing setting when none is set', () => {
     const problems = bootProblems({});
     expect(problems).toHaveLength(3);
