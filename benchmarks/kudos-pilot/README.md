@@ -65,6 +65,8 @@ cd ../.. && npx tsx --conditions=source packages/eval/src/scripts/kudos-pilot-co
 
 ## Output
 
+The results the pilot reported are kept in [`results/`](results/README.md), with the commands to recheck them.
+
 | File                             | Holds                                                                  |
 | -------------------------------- | ---------------------------------------------------------------------- |
 | `sample.json`                    | The pilot's documents, with role, old numeric id and files (committed) |

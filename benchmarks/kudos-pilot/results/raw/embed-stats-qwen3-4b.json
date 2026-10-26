@@ -1,0 +1,1 @@
+{"model":"Qwen/Qwen3-Embedding-4B","device":"mps","dtype":"torch.float16","dimensions":2560,"max_seq_length":8192,"requests":0,"texts":0,"tokens":0,"seconds":0.0}

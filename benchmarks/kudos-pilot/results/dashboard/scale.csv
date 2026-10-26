@@ -1,0 +1,9 @@
+id,scenario,vectors,dimensions,disk_gb,index_gb,azure_compute,usd_per_month,usd_per_month_with_ha
+s0,"Full Kudos, one vector per page",2.7M,1536,42,11,E4 (32 GiB),504,1008
+s1,10M vectors,10M,768,57,20,E8 (64 GiB),988,1976
+s2,10M vectors,10M,1536,103,41,E16 (128 GiB),1978,3956
+s3,Typesense-like: 26M phrase vectors + 2.7M pages,28.7M,384,94,41,E16 (128 GiB),1958,3916
+s4,25M vectors,25M,1536,227,102,E32 (256 GiB),3955,7910
+s5,50M vectors,50M,768,204,102,E32 (256 GiB),3955,7910
+s6,50M vectors,50M,1536,435,205,E48 (384 GiB),5972,11944
+s7,"50M vectors, binary-quantised index",50M,1536,460,25,E8 (64 GiB),1124,2248

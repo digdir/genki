@@ -1,0 +1,8 @@
+key,model,dimensions,parameters,licence,max_tokens,prompts,runtime,embed_tokens,embed_seconds,tokens_per_second,bytes_per_vector,status
+baseline,text-embedding-3-large,1536,–,Azure OpenAI (paid per token),"8,191",none,"Azure, remote",13504576,491,27522,3080,done
+borealis,NbAiLab/borealis-embed-212m,768,212M,NB-License 1.0 (no press-substitution services),"8,192",none,PyTorch MPS,9600135,1743,5509,1544,done
+bge-m3,BAAI/bge-m3,1024,568M,MIT,"8,192",none,PyTorch MPS,11222556,3071,3655,2056,done
+arctic-l-v2,Snowflake/snowflake-arctic-embed-l-v2.0,1024,568M,Apache-2.0,"8,192",query only,PyTorch MPS,11222556,3644,3080,2056,done
+qwen3-0-6b,Qwen/Qwen3-Embedding-0.6B,1024,0.6B,Apache-2.0,"32,768",query only,MLX,14973428,6756,2216,2056,done
+qwen3-4b,Qwen/Qwen3-Embedding-4B,2560,4B,Apache-2.0,"32,768",query only,MLX,15044197,27808,541,5128,done
+qwen3-8b,Qwen/Qwen3-Embedding-8B,4096,7.6B,Apache-2.0,"32,768",query only,MLX,15044197,50520,298,8200,done

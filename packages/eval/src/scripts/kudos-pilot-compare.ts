@@ -100,7 +100,8 @@ const typesenseChunks = knowledge.datasets.find((d) => d.id === 'digdir/kudos-lo
   ?.options?.collections?.chunks;
 const typesense = {
   url: process.env.TYPESENSE_LOCAL_URL ?? 'http://127.0.0.1:8108',
-  key: readFileSync(join(out, 'typesense-local-key'), 'utf8').trim(),
+  // Read when a run looks up chunk ids, so `compare` works on saved runs without the local Typesense
+  key: () => readFileSync(join(out, 'typesense-local-key'), 'utf8').trim(),
 };
 
 interface Case {
@@ -180,7 +181,7 @@ const holdersOf = async (chunks: string[]): Promise<Record<string, string[]>> =>
     });
     const response = await fetch(
       `${typesense.url}/collections/${typesenseChunks}/documents/search?${params}`,
-      { headers: { 'X-TYPESENSE-API-KEY': typesense.key } },
+      { headers: { 'X-TYPESENSE-API-KEY': typesense.key() } },
     );
     const body = (await response.json()) as {
       found?: number;
@@ -338,6 +339,7 @@ const compare = (files: string[], baseline: Side, candidate: Side) => {
     `Latency over every call: ${sides.map((s) => `${labelOf(s)} ${latency(s)}`).join('; ')}.`,
     '',
   ].join('\n');
+  mkdirSync(out, { recursive: true });
   const reportFile = join(out, `report-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
   writeFileSync(reportFile, report);
   console.log(report);

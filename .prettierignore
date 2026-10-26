@@ -1,2 +1,5 @@
 package-lock.json
 services/*/venv/
+# Benchmark results are written by scripts; only their index is formatted
+benchmarks/*/results/**
+!benchmarks/*/results/README.md

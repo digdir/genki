@@ -1,0 +1,31 @@
+id,step,what,minutes,time,rate
+s00,Convert PDFs with Marker (once),"306 PDFs, 16,611 pages",1168.3,19.5 h,0.24 pages/s
+s01,Write questions with gpt-4o,"750 pages, 600 questions",5.2,5 min,
+s02,"Embed 20,040 pages",NbAiLab/borealis-embed-212m (PyTorch MPS),29.0,29 min,"5,509 tokens/s"
+s03,"Embed 20,040 pages",BAAI/bge-m3 (PyTorch MPS),51.2,51 min,"3,655 tokens/s"
+s04,"Embed 20,040 pages",Snowflake/snowflake-arctic-embed-l-v2.0 (PyTorch MPS),60.7,61 min,"3,080 tokens/s"
+s05,"Embed 20,040 pages",Qwen/Qwen3-Embedding-0.6B (MLX),112.6,1.9 h,"2,216 tokens/s"
+s06,"Embed 20,040 pages",Qwen/Qwen3-Embedding-4B (MLX),463.5,7.7 h,541 tokens/s
+s07,"Embed 20,040 pages",Qwen/Qwen3-Embedding-8B (MLX),842.0,14.0 h,298 tokens/s
+s08,genki ingest of 300 documents,digdir/kudos-next-qwen3-0-6b,2.6,3 min,vectors from the cache
+s09,genki ingest of 300 documents,digdir/kudos-next,2.7,3 min,vectors from the cache
+s10,genki ingest of 300 documents,digdir/kudos-next-qwen3-4b,2.7,3 min,vectors from the cache
+s11,genki ingest of 300 documents,digdir/kudos-next-borealis,25.7,26 min,"4,649 tokens/s over the wall time"
+s12,genki ingest of 300 documents,digdir/kudos-next-qwen3-8b,2.7,3 min,vectors from the cache
+s13,genki ingest of 300 documents,digdir/kudos-next-bge-m3,51.6,52 min,"3,626 tokens/s over the wall time"
+s14,genki ingest of 300 documents,digdir/kudos-next,8.2,8 min,"27,522 tokens/s over the wall time"
+s15,genki ingest of 300 documents,digdir/kudos-next-arctic-l-v2,61.3,61 min,"3,051 tokens/s over the wall time"
+s16,"Vector-only scoring, 676 questions",Snowflake/snowflake-arctic-embed-l-v2.0,0.6,1 min,exact search p50 36.4 ms
+s17,"Vector-only scoring, 676 questions",text-embedding-3-large,0.7,1 min,exact search p50 51.8 ms
+s18,"Vector-only scoring, 676 questions",BAAI/bge-m3,0.6,1 min,exact search p50 39.2 ms
+s19,"Vector-only scoring, 676 questions",NbAiLab/borealis-embed-212m,0.4,0 min,exact search p50 30.1 ms
+s20,"Vector-only scoring, 676 questions",Qwen/Qwen3-Embedding-0.6B,0.7,1 min,exact search p50 37.2 ms
+s21,"Vector-only scoring, 676 questions",Qwen/Qwen3-Embedding-4B,2.6,3 min,exact search p50 94.0 ms
+s22,"Vector-only scoring, 676 questions",Qwen/Qwen3-Embedding-8B,3.9,4 min,exact search p50 118.2 ms
+s23,genki search runs,5 sides x 76 questions x 3 rounds (with planner),78.3,78 min,
+s24,genki search runs,"Qwen3-4B, 76 questions x 3 rounds (with planner)",20.1,20 min,
+s25,genki search runs,"Qwen3-8B, 76 questions x 3 rounds (with planner)",28.5,29 min,
+s26,genki search runs,5 sides x 676 questions (no planner),62.4,62 min,
+s27,genki search runs,"Qwen3-4B, 676 questions (no planner)",9.7,10 min,
+s28,genki search runs,"Qwen3-8B, 676 questions (no planner)",14.5,15 min,
+s29,Index and scale benchmark,"100k to 1M vectors, every index",55.0,55 min,

@@ -1,0 +1,1 @@
+{"model":"NbAiLab/borealis-embed-212m","device":"mps","dtype":"torch.float32","dimensions":768,"max_seq_length":8192,"requests":494,"texts":20046,"tokens":9600135,"seconds":1742.6654090478842}
