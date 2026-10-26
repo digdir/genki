@@ -505,7 +505,9 @@ describe('building blocks API', () => {
     expect(direct).toMatchObject({ ok: false, errors: [{ message }] });
     expect(await connections.list(digdir)).toEqual([]);
     expect(sent.filter((r) => JSON.stringify(r.headers).includes('hemmelig-verdi'))).toEqual([]);
-    expect(sent.filter((r) => r.target.startsWith('https://annen.example.com'))).toEqual([]);
+    expect(sent.filter((r) => new URL(r.target).origin === 'https://annen.example.com')).toEqual(
+      [],
+    );
   });
 
   it('the refusal of a secret bound to another host is in English when asked for', async () => {
