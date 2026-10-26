@@ -11,19 +11,37 @@ export type EndpointAuth =
 
 export type TokenProviders = Record<string, () => Promise<string>>;
 
+export class SecretHostError extends Error {
+  constructor(readonly origin: string) {
+    super(`the secret is not set for ${origin}`);
+    this.name = 'SecretHostError';
+  }
+}
+
+const boundSecret = async (secrets: SecretResolver, ref: string, target?: string) => {
+  const hosts = target ? await secrets.hostsFor?.(ref) : undefined;
+  if (hosts && target) {
+    const origin = new URL(target).origin;
+    if (!hosts.includes(origin)) throw new SecretHostError(origin);
+  }
+  return secrets.resolve(ref);
+};
+
 export const credentialFor = (
   auth: EndpointAuth,
   secrets: SecretResolver,
   tokenProviders: TokenProviders = {},
+  target?: string,
 ): Credential => {
   if (auth.kind === 'api-key') {
     return {
       kind: 'api-key',
-      key: () => secrets.resolve(auth.secret),
+      key: () => boundSecret(secrets, auth.secret, target),
       ...(auth.header ? { header: auth.header } : {}),
     };
   }
-  if (auth.kind === 'bearer') return { kind: 'bearer', token: () => secrets.resolve(auth.secret) };
+  if (auth.kind === 'bearer')
+    return { kind: 'bearer', token: () => boundSecret(secrets, auth.secret, target) };
   const provider = tokenProviders[auth.provider];
   if (!provider) throw new Error(`unknown token provider ${auth.provider}`);
   return { kind: 'bearer', token: provider };

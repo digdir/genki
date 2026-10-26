@@ -6,6 +6,7 @@ import { InMemoryEvalRunStore } from '@genai/eval';
 import {
   InMemoryConnections,
   McpToolSource,
+  TenantSecrets,
   type EgressRequest,
   type EgressResponse,
   type RemoteTool,
@@ -137,7 +138,12 @@ const setup = async () => {
     tenants: async () => [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
     extensions: {
       ...adminExtensions({
-        tools: { connections, source, onToolsChanged: async () => undefined },
+        tools: {
+          connections,
+          source,
+          secrets: new TenantSecrets({ resolve: async () => 'secret' }),
+          onToolsChanged: async () => undefined,
+        },
         directory: new TenantDirectory(),
       }),
       ...blocks.handlers,

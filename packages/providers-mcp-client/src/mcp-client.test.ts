@@ -9,6 +9,7 @@ import {
   isPrivateAddress,
   McpToolSource,
   RegistrationError,
+  SecretBindingError,
   SecretNamespaceError,
   TenantSecrets,
   toolSlug,
@@ -35,7 +36,10 @@ interface ServerScript {
 }
 
 const servers: Server[] = [];
+const bound = new Set<string>(['https://saker.example.no']);
 afterEach(async () => {
+  bound.clear();
+  bound.add('https://saker.example.no');
   await Promise.all(
     servers.splice(0).map(
       (s) =>
@@ -137,6 +141,24 @@ const testGuard = (lookup?: (host: string) => Promise<string[]>) =>
 const secrets = {
   resolve: async (ref: string) =>
     ref === `secret://tenant/${TENANT}/case-api` ? 'tool-token' : 'wrong',
+  hostsFor: async (ref: string) =>
+    ref === `secret://tenant/${TENANT}/case-api` ? [...bound] : undefined,
+};
+
+const fakeTokenServer = async (token = 'access-from-token-server') => {
+  const seen: { headers: IncomingHttpHeaders; body: string }[] = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c: Buffer) => (raw += c.toString()));
+    req.on('end', () => {
+      seen.push({ headers: req.headers, body: raw });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ access_token: token, expires_in: 300 }));
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { port: (server.address() as AddressInfo).port, seen };
 };
 
 const context = (tenant = TENANT, signal = new AbortController().signal) => {
@@ -171,6 +193,7 @@ const setup = async (script: ServerScript = {}, connection: Partial<Connection> 
     pending: [],
   };
   await registry.save(state);
+  bound.add(`http://127.0.0.1:${port}`);
   const source = new McpToolSource({ registry, secrets, guard: testGuard() });
   return { source, registry, seen, port };
 };
@@ -503,10 +526,14 @@ describe('tenant secrets and registration', () => {
     const tenantSecrets = new TenantSecrets(secrets);
 
     await expect(
-      tenantSecrets.resolveFor(TENANT, `secret://tenant/${OTHER}/case-api`),
+      tenantSecrets.resolveFor(TENANT, `secret://tenant/${OTHER}/case-api`, [
+        'https://saker.example.no/mcp',
+      ]),
     ).rejects.toBeInstanceOf(SecretNamespaceError);
     await expect(
-      tenantSecrets.resolveFor(TENANT, `secret://tenant/${TENANT}/case-api`),
+      tenantSecrets.resolveFor(TENANT, `secret://tenant/${TENANT}/case-api`, [
+        'https://saker.example.no/mcp',
+      ]),
     ).resolves.toBe('tool-token');
 
     const { source } = await setup(
@@ -514,6 +541,154 @@ describe('tenant secrets and registration', () => {
       { auth: { kind: 'bearer', secret: `secret://tenant/${OTHER}/case-api` } },
     );
     await expect(source.sync(TENANT, 'saker')).rejects.toThrow(/another tenant/);
+  });
+
+  it('never sends a tenant secret to an origin the secret is not set for', async () => {
+    const { port, seen } = await fakeMcp();
+    const registry = new InMemoryConnections();
+    await registry.save({
+      connection: {
+        id: 'annen',
+        tenant: TENANT,
+        name: 'Annen tjener',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [{ host: '127.0.0.1', port }],
+        auth: { kind: 'bearer', secret: `secret://tenant/${TENANT}/case-api` },
+      },
+      tools: [],
+      pending: [],
+    });
+    const source = new McpToolSource({ registry, secrets, guard: testGuard() });
+
+    await expect(source.sync(TENANT, 'annen')).rejects.toBeInstanceOf(SecretBindingError);
+    expect(seen).toEqual([]);
+  });
+
+  it('refuses a secret that is not set for any host', async () => {
+    const tenantSecrets = new TenantSecrets({ resolve: async () => 'tool-token' });
+    await expect(
+      tenantSecrets.resolveFor(TENANT, `secret://tenant/${TENANT}/case-api`, [
+        'https://saker.example.no/mcp',
+      ]),
+    ).rejects.toBeInstanceOf(SecretBindingError);
+    await expect(
+      tenantSecrets.resolveFor(TENANT, `secret://tenant/${TENANT}/case-api`, []),
+    ).rejects.toBeInstanceOf(SecretBindingError);
+  });
+
+  it('does not carry the secret along a redirect to another origin', async () => {
+    const other = await fakeMcp();
+    const redirecting = await fakeMcp({ redirect: `http://127.0.0.1:${other.port}/mcp` });
+    bound.add(`http://127.0.0.1:${redirecting.port}`);
+    const registry = new InMemoryConnections();
+    await registry.save({
+      connection: {
+        id: 'saker',
+        tenant: TENANT,
+        name: 'Saksarkiv',
+        endpoint: `http://127.0.0.1:${redirecting.port}/mcp`,
+        version: '1',
+        allow: [
+          { host: '127.0.0.1', port: redirecting.port },
+          { host: '127.0.0.1', port: other.port },
+        ],
+        auth: { kind: 'bearer', secret: `secret://tenant/${TENANT}/case-api` },
+      },
+      tools: [],
+      pending: [],
+    });
+    const source = new McpToolSource({ registry, secrets, guard: testGuard() });
+
+    await expect(source.sync(TENANT, 'saker')).rejects.toMatchObject({
+      code: 'redirect_refused',
+    });
+    expect(other.seen).toEqual([]);
+  });
+
+  it('sends the client secret only to a token address the secret is set for', async () => {
+    const token = await fakeTokenServer();
+    const { port, seen } = await fakeMcp();
+    bound.add(`http://127.0.0.1:${port}`);
+    const registry = new InMemoryConnections();
+    await registry.save({
+      connection: {
+        id: 'med-token',
+        tenant: TENANT,
+        name: 'Med token',
+        endpoint: `http://127.0.0.1:${port}/mcp`,
+        version: '1',
+        allow: [
+          { host: '127.0.0.1', port },
+          { host: '127.0.0.1', port: token.port },
+        ],
+        auth: {
+          kind: 'oauth-client-credentials',
+          tokenUrl: `http://127.0.0.1:${token.port}/token`,
+          clientId: 'genki-token-test',
+          secret: `secret://tenant/${TENANT}/case-api`,
+        },
+      },
+      tools: [],
+      pending: [],
+    });
+    const source = new McpToolSource({ registry, secrets, guard: testGuard() });
+
+    await expect(source.sync(TENANT, 'med-token')).rejects.toBeInstanceOf(SecretBindingError);
+    expect(token.seen).toEqual([]);
+    expect(seen).toEqual([]);
+
+    bound.add(`http://127.0.0.1:${token.port}`);
+    await source.sync(TENANT, 'med-token');
+    expect(token.seen[0]?.body).toContain('client_secret=tool-token');
+    expect(seen.at(-1)?.headers.authorization).toBe('Bearer access-from-token-server');
+  });
+
+  it('keeps a cached access token to the connection, token address and secret it was issued for', async () => {
+    const connectionAt = (mcpPort: number, tokenPort: number) => ({
+      connection: {
+        id: 'med-token',
+        tenant: TENANT,
+        name: 'Med token',
+        endpoint: `http://127.0.0.1:${mcpPort}/mcp`,
+        version: '1',
+        allow: [
+          { host: '127.0.0.1', port: mcpPort },
+          { host: '127.0.0.1', port: tokenPort },
+        ],
+        auth: {
+          kind: 'oauth-client-credentials' as const,
+          tokenUrl: `http://127.0.0.1:${tokenPort}/token`,
+          clientId: 'genki-token-test',
+          secret: `secret://tenant/${TENANT}/case-api`,
+        },
+      },
+      tools: [],
+      pending: [],
+    });
+    const firstToken = await fakeTokenServer('first-token');
+    const first = await fakeMcp();
+    const secondToken = await fakeTokenServer('second-token');
+    const second = await fakeMcp();
+    for (const port of [firstToken.port, first.port, secondToken.port, second.port])
+      bound.add(`http://127.0.0.1:${port}`);
+
+    const registered = new InMemoryConnections();
+    await registered.save(connectionAt(first.port, firstToken.port));
+    await new McpToolSource({ registry: registered, secrets, guard: testGuard() }).sync(
+      TENANT,
+      'med-token',
+    );
+    const other = new InMemoryConnections();
+    await other.save(connectionAt(second.port, secondToken.port));
+    await new McpToolSource({ registry: other, secrets, guard: testGuard() }).sync(
+      TENANT,
+      'med-token',
+    );
+
+    expect(second.seen.map((s) => s.headers.authorization)).not.toContain('Bearer first-token');
+    expect(second.seen.at(-1)?.headers.authorization).toBe('Bearer second-token');
+    expect(secondToken.seen).toHaveLength(1);
   });
 
   it('turns remote tool names into valid tool references', () => {

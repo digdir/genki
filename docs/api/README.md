@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-10-16: tenant secrets are bound to hosts
+
+- A tenant secret is used only for the hosts it is set for. `PUT /tenants/{tenant}/secrets/{name}` takes `allowedHosts`, required for a new secret. `PUT /tenants/{tenant}/secrets/{name}/hosts` changes them and needs `manage-services`. See [access.md](access.md#tenant-secrets).
+- `GET /tenants/{tenant}/building-blocks/secrets` lists `allowedHosts` for each secret.
+- Registering a tool connection whose secret is not set for its addresses answers `400`.
+
 ### 2026-10-12: one consistent API
 
 Changes a client may notice. The rules behind them are in the sections above; tests in `apps/api/src/api-consistency.test.ts`, `admin-tasks.test.ts` and `openapi/coverage.test.ts` check every route against them.

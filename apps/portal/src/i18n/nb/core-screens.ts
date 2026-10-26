@@ -173,6 +173,7 @@ export const changes = defineNamespace({
   proposalDecide: 'avgjorde forslaget',
   proposalStatus: 'endret status på forslaget',
   secretsSet: 'lagret hemmeligheten',
+  secretsHosts: 'endret adressene til hemmeligheten',
   secretsDelete: 'fjernet hemmeligheten',
   serviceDraftDelete: 'slettet utkastet til',
   serviceDraftRebase: 'oppdaterte utkastet til',
