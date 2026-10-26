@@ -27,6 +27,10 @@ const model = z.strictObject({
   residency: z.enum(residencies),
   dimensions: z.number().int().positive(),
   maxBatch: z.number().int().positive().optional(),
+  // Text the model wants before each input, such as multilingual-e5's 'query: ' and 'passage: '
+  prompts: z
+    .strictObject({ query: z.string().optional(), document: z.string().optional() })
+    .optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 

@@ -20,9 +20,17 @@ export interface EmbedderInfo {
   maxBatch?: number;
 }
 
+// What the texts are for: questions to search with, or passages to store. Some models embed the two differently
+export type EmbedPurpose = 'query' | 'document';
+
+export interface EmbedOptions {
+  purpose?: EmbedPurpose;
+}
+
 export interface EmbeddingPort {
   info(): EmbedderInfo;
-  embed(texts: string[]): Promise<EmbedResult>;
+  // Passages unless the purpose says otherwise
+  embed(texts: string[], options?: EmbedOptions): Promise<EmbedResult>;
 }
 
 export type EmbeddingErrorCode =

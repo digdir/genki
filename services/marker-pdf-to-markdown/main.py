@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import os
 from contextlib import asynccontextmanager
+from importlib import metadata as package_metadata
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from fastapi.responses import JSONResponse, FileResponse
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.config.parser import ConfigParser
+from marker.renderers.json import JSONRenderer
+from marker.renderers.markdown import MarkdownRenderer
 
 
 @asynccontextmanager
@@ -77,14 +80,7 @@ converter: Optional[PdfConverter] = None
 
 def create_converter() -> PdfConverter:
     """Create a Marker PDF converter instance."""
-    config_dict = {
-        "output_format": "markdown",
-        "languages": "no,en",
-        "disable_image_extraction": True,
-        "paginate_output": True,
-        "page_separator": "___PAGE_SEPARATOR___",
-    }
-    config_parser = ConfigParser(config_dict)
+    config_parser = ConfigParser(dict(MARKER_SETTINGS))
     return PdfConverter(
         config=config_parser.generate_config_dict(),
         artifact_dict=create_model_dict(),
@@ -106,33 +102,73 @@ def compute_file_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def get_cached_result(file_hash: str) -> Optional[list[str]]:
-    """Retrieve cached pages result if it exists."""
+def get_cached_result(file_hash: str) -> Optional[dict]:
+    """Retrieve a cached conversion result if it exists.
+
+    Older deploys cached only the list of pages; those entries come back as pages alone."""
     import json
     cache_file = CACHE_DIR / f"{file_hash}.json"
     if cache_file.exists():
-        return json.loads(cache_file.read_text(encoding="utf-8"))
+        stored = json.loads(cache_file.read_text(encoding="utf-8"))
+        return {"pages": stored} if isinstance(stored, list) else stored
     return None
 
 
-def save_to_cache(file_hash: str, pdf_content: bytes, pages: list[str]) -> None:
-    """Save PDF and pages to cache."""
+def is_current(result: dict) -> bool:
+    """Whether a cached result was made by the Marker version and settings running now."""
+    return result.get("marker_version") == marker_version() and result.get("settings") == MARKER_SETTINGS
+
+
+def save_to_cache(file_hash: str, pdf_content: bytes, result: dict) -> None:
+    """Save the PDF and its conversion result to cache."""
     import json
     pdf_file = CACHE_DIR / f"{file_hash}.pdf"
     pdf_file.write_bytes(pdf_content)
-    pages_file = CACHE_DIR / f"{file_hash}.json"
-    pages_file.write_text(json.dumps(pages), encoding="utf-8")
+    result_file = CACHE_DIR / f"{file_hash}.json"
+    result_file.write_text(json.dumps(result), encoding="utf-8")
 
 
 PAGE_SEPARATOR = "___PAGE_SEPARATOR___"
 
+# Stored with every conversion, so a result made with other settings is never mistaken for this one
+MARKER_SETTINGS = {
+    "output_format": "markdown",
+    "languages": "no,en",
+    "disable_image_extraction": True,
+    "paginate_output": True,
+    "page_separator": PAGE_SEPARATOR,
+}
 
-def process_conversion(conv: PdfConverter, task: ConversionTask) -> list[str]:
-    """Process a single PDF conversion (blocking). Returns list of page strings."""
-    result = conv(str(task.pdf_path))
-    # Split by page separator and return as list
-    pages = result.markdown.split(PAGE_SEPARATOR)
-    return pages
+
+def marker_version() -> str:
+    """The installed marker-pdf version, stored with every conversion."""
+    return package_metadata.version("marker-pdf")
+
+
+def without_images(block: dict) -> dict:
+    """A JSON block without its base64 images: they would be most of the bytes and are never searched."""
+    kept = {key: value for key, value in block.items() if key != "images"}
+    if block.get("children"):
+        kept["children"] = [without_images(child) for child in block["children"]]
+    return kept
+
+
+def process_conversion(conv: PdfConverter, task: ConversionTask) -> dict:
+    """Process a single PDF conversion (blocking). Returns the pages and Marker's raw output.
+
+    The PDF is converted once; the markdown and the JSON are two renderings of the same document."""
+    document = conv.build_document(str(task.pdf_path))
+    markdown = conv.resolve_dependencies(MarkdownRenderer)(document).markdown
+    output = conv.resolve_dependencies(JSONRenderer)(document).model_dump(mode="json")
+    metadata = output.pop("metadata")
+    output["children"] = [without_images(page) for page in output["children"]]
+    return {
+        "pages": markdown.split(PAGE_SEPARATOR),
+        "json": output,
+        "metadata": metadata,
+        "marker_version": marker_version(),
+        "settings": MARKER_SETTINGS,
+    }
 
 
 async def worker(worker_id: int):
@@ -170,16 +206,16 @@ async def worker(worker_id: int):
         try:
             # Run blocking conversion in thread pool
             loop = asyncio.get_event_loop()
-            pages = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None, process_conversion, conv, task
             )
 
             # Cache if requested
             if task.cache:
-                save_to_cache(task.file_hash, task.pdf_content, pages)
+                save_to_cache(task.file_hash, task.pdf_content, result)
 
             # Signal completion
-            task.future.set_result(pages)
+            task.future.set_result(result)
             print(f"[WORKER-{worker_id}] Completed task: {task.file_hash[:8]}...")
 
         except Exception as e:
@@ -257,10 +293,10 @@ async def marker_pdf_to_markdown_v1(
         # Check cache first
         if cache:
             cached_result = get_cached_result(file_hash)
-            if cached_result:
+            if cached_result and is_current(cached_result):
                 return JSONResponse(content={
                     "success": True,
-                    "pages": cached_result,
+                    **cached_result,
                     "cached": True,
                     "file_hash": file_hash,
                 })
@@ -290,11 +326,11 @@ async def marker_pdf_to_markdown_v1(
             print(f"[API] Queued normal task: {file_hash[:8]}...")
 
         # Wait for result
-        pages = await future
+        result = await future
 
         return JSONResponse(content={
             "success": True,
-            "pages": pages,
+            **result,
             "cached": False,
             "file_hash": file_hash if cache else None,
         })
@@ -310,13 +346,13 @@ async def marker_pdf_to_markdown_v1(
 
 @app.get("/api/v1/cache/{file_hash}")
 async def get_cached_pages(file_hash: str, api_key: str = Depends(verify_api_key)):
-    """Retrieve cached pages result by file hash."""
+    """Retrieve a cached conversion result by file hash."""
     cached_result = get_cached_result(file_hash)
 
     if cached_result:
         return JSONResponse(content={
             "success": True,
-            "pages": cached_result,
+            **cached_result,
             "file_hash": file_hash,
         })
 

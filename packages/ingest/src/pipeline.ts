@@ -74,10 +74,17 @@ export interface IngestOptions {
   }) => Promise<void> | void;
 }
 
+export interface FailedDocument {
+  document: string;
+  reason: string;
+}
+
 export interface IngestResult {
   stored: number;
   skipped: number;
   failed: string[];
+  /** Why each document in `failed` failed: the error's message. */
+  failures?: FailedDocument[];
   skippedDocuments?: SkippedDocument[];
 }
 
@@ -180,6 +187,10 @@ export const ingestDocuments = async (
     } catch (error) {
       if (options.signal?.aborted || stop !== undefined) return;
       result.failed.push(listed.key);
+      (result.failures ??= []).push({
+        document: listed.key,
+        reason: error instanceof Error ? error.message : String(error),
+      });
       await options.onDocument?.({ key: listed.key, status: 'failed', error });
       if (result.failed.length >= budget) stop = new FailureBudgetExceeded(result.failed, error);
     }

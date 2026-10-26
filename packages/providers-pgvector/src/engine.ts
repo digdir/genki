@@ -515,13 +515,13 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           );
           await client.query(
             `insert into kn_chunks (dataset, generation, id, doc_id, position, text, metadata, config, vec)
-             select $1, $2, x.id, $3, x.position, x.text, x.metadata, $4::regconfig, x.vec::vector
+             select $1, $2, x.id, $3, x.position, x.text, x.metadata, $4::regconfig, x.vec::halfvec
              from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, vec text)`,
             [...key, config, JSON.stringify(chunks)],
           );
           await client.query(
             `insert into kn_phrases (dataset, generation, id, doc_id, chunk_id, text, config, vec)
-             select $1, $2, x.id, $3, x.chunk_id, x.text, $4::regconfig, x.vec::vector
+             select $1, $2, x.id, $3, x.chunk_id, x.text, $4::regconfig, x.vec::halfvec
              from jsonb_to_recordset($5::jsonb) as x(id text, chunk_id text, text text, vec text)`,
             [...key, config, JSON.stringify(phrases)],
           );

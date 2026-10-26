@@ -375,6 +375,7 @@ export const prepareWebsiteChunks = (baseUrl: string | undefined, chunks: Chunk[
       'content_markdown',
       'content_length',
       'metadata',
+      'page',
     ]),
     id: c.chunk_id,
     url: makeRelativeUrl(baseUrl, c.url ?? ''),

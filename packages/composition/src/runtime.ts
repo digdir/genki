@@ -337,7 +337,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       const port = embedders.open({ kind: 'embedder', id: model }, ctx, {
         ...(residency ? { maxResidency: residency } : {}),
       });
-      return (await port.embed(texts)).vectors;
+      return (await port.embed(texts, { purpose: 'query' })).vectors;
     },
   });
   const pgvector = input.knowledgePool

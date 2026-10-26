@@ -22,6 +22,8 @@ import {
   seedCorpus,
 } from '@genai/port-knowledge/testing';
 import { fakeEmbedder } from '@genai/port-embedding/testing';
+import { describeContract } from '@genai/plugins/testing';
+import { knowledgeContract, knowledgeContractSubject } from '@genai/port-knowledge/contract';
 import { pgvectorEngine, type PgvectorEngineOptions, type QueryEmbedder } from './index.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
@@ -52,7 +54,8 @@ const config = (id: string, extra: Partial<DatasetConfig> = {}): DatasetConfig =
 });
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
+  // The pgvector version Azure Database for PostgreSQL runs
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = new pg.Pool({ connectionString: container.getConnectionUri() });
 }, 120_000);
 
@@ -75,6 +78,13 @@ const seeded =
   };
 
 knowledgeAdapterContract('pgvector', seeded(false));
+
+// The read-only contract a search engine plugin must pass, as the Typesense fake and the memory engine do
+describeContract('pgvector', knowledgeContract, async () => {
+  const engine = engineWith();
+  await seedCorpus(writerOf(engine), config('contract/runtime'));
+  return { subject: knowledgeContractSubject({ adapter: engine.adapter, datasetOptions: {} }) };
+});
 
 knowledgeAdapterContract('pgvector with embedding', seeded(true));
 
@@ -277,5 +287,100 @@ describe('pgvector engine', () => {
     } finally {
       await unreachable.end();
     }
+  });
+});
+
+describe('pgvector vectors as halfvec', () => {
+  const vecType = async (db: pg.Pool) =>
+    (
+      await db.query<{ t: string }>(
+        `select format_type(atttypid, atttypmod) as t from pg_attribute
+         where attrelid = 'kn_chunks'::regclass and attname = 'vec'`,
+      )
+    ).rows[0]?.t;
+
+  it('converts vectors stored before halfvec and keeps them searchable', async () => {
+    const admin = new pg.Pool({ connectionString: container.getConnectionUri() });
+    await admin.query('create database before_halfvec');
+    await admin.end();
+    const old = new pg.Pool({
+      connectionString: container.getConnectionUri().replace(/\/[^/]+$/, '/before_halfvec'),
+    });
+    try {
+      const dims = { model: 'fixture', dimensions: 3 };
+      const dataset = config('pgvector/gammel', { embedding: dims, filters: {} });
+      const embedder = () => ({ embed: async (texts: string[]) => texts.map(() => [1, 0, 0]) });
+      await seed(writerOf(pgvectorEngine({ pool: old, embedder })), dataset, [
+        single('naer', 'Nær', ['Søknadsfrist for tilskudd.'], [[1, 0, 0]]),
+        single('fjern', 'Fjern', ['Rapporter leveres årlig.'], [[0, 0, 1]]),
+      ]);
+      // The tables as they were before halfvec: vec of type vector, indexed on vec::vector(3)
+      const { rows } = await old.query<{ indexname: string }>(
+        `select indexname from pg_indexes where indexdef like '%hnsw%'`,
+      );
+      for (const { indexname } of rows) await old.query(`drop index ${indexname}`);
+      for (const table of ['kn_chunks', 'kn_phrases'])
+        await old.query(`alter table ${table} alter column vec type vector using vec::vector`);
+      await old.query(
+        `create index kn_chunks_vec_gammel on kn_chunks using hnsw ((vec::vector(3)) vector_cosine_ops)
+         where dataset = 'pgvector/gammel'`,
+      );
+      expect(await vecType(old)).toBe('vector');
+
+      const engine = pgvectorEngine({ pool: old, embedder });
+      const port = openTarget({ adapter: engine.adapter, endpoint, embedding: dims }, dataset);
+      const result = await port.search({ query: 'tilskudd', limit: 2 });
+
+      expect(result.warning).toBeUndefined();
+      expect(result.hits[0]?.document).toBe('naer');
+      expect(await vecType(old)).toBe('halfvec');
+    } finally {
+      await old.end();
+    }
+  });
+
+  it('indexes datasets of up to 4,000 dimensions, so 3,072-dimension vectors are not searched exactly', async () => {
+    const dims = { model: 'fixture', dimensions: 3072 };
+    const engine = engineWith();
+    const dataset = config('pgvector/stor', { embedding: dims, filters: {} });
+    await seed(writerOf(engine), dataset, [
+      single('stor', 'Stor', ['Tilskudd.'], [fixtureVector('Tilskudd.', 3072)]),
+    ]);
+
+    const { rows } = await pool.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes
+       where tablename = 'kn_chunks' and indexdef like '%hnsw%' and indexdef like '%pgvector/stor%'`,
+    );
+
+    expect(rows.map((r) => r.indexdef).join('\n')).toContain('halfvec(3072)');
+  });
+
+  it('returns the page a chunk came from on its hit', async () => {
+    const engine = engineWith();
+    const dataset = config('pgvector/sider', { filters: {} });
+    await seed(writerOf(engine), dataset, [
+      {
+        id: 'rapport',
+        title: 'Rapport',
+        fields: {},
+        chunks: [
+          { id: 'rapport-0', position: 0, text: 'Forside.', metadata: { page: 1 } },
+          {
+            id: 'rapport-1',
+            position: 1,
+            text: 'Fristen for innsyn er tre virkedager.',
+            metadata: { page: 2 },
+          },
+        ],
+        phrases: [],
+      },
+    ]);
+    const port = openTarget({ adapter: engine.adapter, endpoint }, dataset);
+
+    const { hits } = await port.search({ query: 'innsyn', limit: 1 });
+
+    expect(hits.map((h) => [h.text, h.fields.page])).toEqual([
+      ['Fristen for innsyn er tre virkedager.', 2],
+    ]);
   });
 });

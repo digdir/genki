@@ -3,7 +3,17 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**'] },
+  // services/*/venv: a Python service's local virtualenv (services/marker-pdf-to-markdown);
+  // benchmarks/*/.data: a benchmark's git-ignored downloads, results and virtualenv
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'coverage/**',
+      'services/*/venv/**',
+      'benchmarks/*/.data/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {

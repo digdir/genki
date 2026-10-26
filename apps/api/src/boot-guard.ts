@@ -1,5 +1,6 @@
 import {
   databaseRequirement,
+  knowledgeDatabaseWarnings,
   lockdownEntraProblems,
   platformTenantProblems,
   unmetOutsideDevMode,
@@ -30,6 +31,8 @@ export const bootProblems = (env: Env): string[] => [
     },
   ]),
 ];
+
+export const bootWarnings = (env: Env): string[] => [...knowledgeDatabaseWarnings(env)];
 
 export const devModeWarning =
   'GENAI_DEV_MODE=true: mock Ansattporten and Altinn may issue operator tokens and storage may be in memory. Never use this outside local development.';

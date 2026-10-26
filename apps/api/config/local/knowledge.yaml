@@ -3,6 +3,10 @@ endpoints:
     engine: typesense
     baseURL: ${TYPESENSE_URL}
     auth: { kind: api-key, secret: secret://env/typesense-key }
+  pilot-typesense:
+    engine: typesense
+    baseURL: ${TYPESENSE_LOCAL_URL}
+    auth: { kind: api-key, secret: secret://env/typesense-local-key }
   platform-pg:
     engine: pgvector
     options: { connection: platform }
@@ -109,3 +113,61 @@ datasets:
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
     options: { textSearchConfig: english }
+  - id: digdir/kudos-next
+    name: Kudos på pgvector (pilot)
+    description: Kudos lest inn på nytt fra KUDOS-API-et, konvertert med Marker og delt opp side for side. Pilot, ikke koblet til en tjeneste
+    endpoint: platform-pg
+    residency: global
+    embedding: { model: foundry/text-embedding-3-large-1536, dimensions: 1536 }
+  # The Kudos pilot (genki issue 92): digdir/kudos as it is, on a local Typesense holding only the pilot's documents
+  - id: digdir/kudos-local-typesense
+    name: Kudos på lokal Typesense (pilot)
+    endpoint: pilot-typesense
+    residency: norway
+    links: kudos-legacy
+    filters:
+      type: multiselect
+      concerned_years: multiselect
+      orgs_short: multiselect
+      orgs_long: multiselect
+      doc_num: multiselect
+      title: text
+    valueTypes: { concerned_years: integer }
+    options:
+      collections:
+        docs: KUDOS_preprod_v4_documents_ab897fbdedfa
+        chunks: KUDOS_preprod_v4_chunks_ab897fbdedfa
+        phrases: KUDOS_preprod_v4_phrases_ab897fbdedfa
+      docFields: [url, title, total_chunks, orgs_long, orgs_short, file_sha256, files, publish_date]
+      maxFacetValues: 1000
+      profiles:
+        phrase:
+          collection: phrases
+          queryBy: [search_phrase, phrase_vec]
+          textField: search_phrase
+          include: [chunk_id, search_phrase, doc_num]
+          exclude: [phrase_vec]
+          score: fusion
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        metadata:
+          collection: chunks
+          queryBy: [metadata]
+          textField: metadata
+          include: [chunk_id, metadata]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        content:
+          collection: chunks
+          queryBy: [content_markdown]
+          textField: content_markdown
+          include: [chunk_id, content_markdown]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }
+        doc-title:
+          collection: docs
+          queryBy: [title]
+          textField: title
+          include: [doc_num, total_chunks, title]
+          params:
+            { sort_by: '_text_match:desc', prioritize_exact_match: false, drop_tokens_threshold: 5 }

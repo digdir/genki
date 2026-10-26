@@ -7,18 +7,23 @@ color: '#8fa8b3'
 status: Provider
 packages:
   - '@genai/providers-pgvector'
-summary: Built-in search engine and index writer in the platform's own Postgres.
+summary: Built-in search engine and index writer in Postgres, on the knowledge server when there is one.
 description: Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement.
   Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay
-  invisible until promoted. It runs only in the platform database (ADR 0023).
+  invisible until promoted. Vectors are stored as halfvec and indexed up to 4,000 dimensions. It runs
+  on the knowledge server when KNOWLEDGE_DATABASE_URL is set, else in the platform database (ADR 0022),
+  and never on a connection a tenant names (ADR 0023). Beside the index it keeps Marker's results and
+  the embeddings ingestion reuses.
 responsibilities:
   - Text, vector and hybrid search
   - Filters, facets, fetch and range
   - Index writer with generations
+  - Stored Marker conversions and cached embeddings for ingestion
 files:
   - packages/providers-pgvector/src/engine.ts
   - packages/providers-pgvector/src/schema.ts
   - packages/providers-pgvector/src/sql.ts
+  - packages/providers-pgvector/src/stores.ts
 input: Searches and index documents
 output: SQL
 replaces:
@@ -32,8 +37,15 @@ edges:
     witness:
       file: packages/providers-pgvector/src/engine.ts
       imports: '@genai/port-knowledge'
+  - to: ingest
+    label: Stores ingestion's conversions and embeddings
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-pgvector/src/stores.ts
+      imports: '@genai/ingest'
   - to: postgres-db
-    label: SQL over the platform pool
+    label: SQL over the knowledge pool
     kind: sql
     target: sql
     witness:

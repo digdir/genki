@@ -5104,10 +5104,11 @@
             summary:
               'Loads Kudos, websites and folders, converts and chunks them, and builds phrases.',
             description:
-              'Source loaders and the ingest pipeline. Document ids are derived with valuehash so they match the ids headless-rag gave the same documents.',
+              "Source loaders and the ingest pipeline. Document ids are derived with valuehash so they match the ids headless-rag gave the same documents. A file Marker has converted once is read from the stored conversion after that, text embedded once is not sent to the model again, and the page strategy chunks Marker's text page by page, with the page on every chunk.",
             responsibilities: [
               'Kudos, website and folder loaders',
-              'Conversion and chunking',
+              'Conversion and chunking, by heading, width or page',
+              'Reusing stored conversions and cached embeddings',
               'Phrase extraction with a model',
             ],
             files: [
@@ -5115,6 +5116,9 @@
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
               'packages/ingest/src/chunking.ts',
+              'packages/ingest/src/chunk-document.ts',
+              'packages/ingest/src/stored-conversions.ts',
+              'packages/ingest/src/embedding-cache.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -6621,10 +6625,11 @@
             packages: ['@genai/port-embedding'],
             summary: 'Turns text into vectors through a catalog of embedding models.',
             description:
-              'Same router shape as the model and rerank ports. Checks residency and dimensions, batches input and meters usage to the caller, so search engines without built-in embedding can use vectors.',
+              "Same router shape as the model and rerank ports. Checks residency and dimensions, batches input and meters usage to the caller, so search engines without built-in embedding can use vectors. Callers say whether texts are questions or passages; the router puts the model's prompt for that purpose before each text, for models that embed the two differently.",
             responsibilities: [
               'Embedding catalog',
               'Residency and dimension checks',
+              'Query and passage prompts',
               'Batching and metering',
             ],
             files: [
@@ -6743,6 +6748,11 @@
                             type: 'integer',
                             exclusiveMinimum: 0,
                             maximum: 9007199254740991,
+                          },
+                          prompts: {
+                            type: 'object',
+                            properties: { query: { type: 'string' }, document: { type: 'string' } },
+                            additionalProperties: false,
                           },
                           options: {
                             default: {},
@@ -7763,18 +7773,21 @@
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-pgvector'],
-            summary: "Built-in search engine and index writer in the platform's own Postgres.",
+            summary:
+              'Built-in search engine and index writer in Postgres, on the knowledge server when there is one.',
             description:
-              'Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs only in the platform database (ADR 0023).',
+              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. Vectors are stored as halfvec and indexed up to 4,000 dimensions. It runs on the knowledge server when KNOWLEDGE_DATABASE_URL is set, else in the platform database (ADR 0022), and never on a connection a tenant names (ADR 0023). Beside the index it keeps Marker's results and the embeddings ingestion reuses.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
               'Index writer with generations',
+              'Stored Marker conversions and cached embeddings for ingestion',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
               'packages/providers-pgvector/src/schema.ts',
               'packages/providers-pgvector/src/sql.ts',
+              'packages/providers-pgvector/src/stores.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',
@@ -7791,8 +7804,18 @@
                 },
               },
               {
+                to: 'ingest',
+                label: "Stores ingestion's conversions and embeddings",
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-pgvector/src/stores.ts',
+                  imports: '@genai/ingest',
+                },
+              },
+              {
                 to: 'postgres-db',
-                label: 'SQL over the platform pool',
+                label: 'SQL over the knowledge pool',
                 kind: 'sql',
                 target: 'sql',
                 witness: { file: 'packages/providers-pgvector/src/schema.ts', contains: 'vector' },

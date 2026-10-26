@@ -130,6 +130,7 @@ export const prepareFolderChunks = (config: { basePath?: string }, chunks: Chunk
       'content_markdown',
       'content_length',
       'metadata',
+      'page',
     ]),
     id: c.chunk_id,
     path: makeRelativePath(config.basePath, c.path ?? ''),

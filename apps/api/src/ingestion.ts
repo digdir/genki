@@ -4,6 +4,7 @@ import {
   readableTextExtensions,
   rowMapping,
   type SkipReason,
+  type FailedDocument,
   type SkippedDocument,
 } from '@genai/ingest';
 import { nextRun, parseCron } from '@genai/jobs';
@@ -29,6 +30,10 @@ const chunkStrategy = z.discriminatedUnion('kind', [
     kind: z.literal('fixed-width'),
     width: z.number().int().positive(),
     overlap: z.number().int().min(0),
+  }),
+  z.strictObject({
+    kind: z.literal('page'),
+    splitMaxLength: z.number().int().positive().optional(),
   }),
 ]);
 
@@ -70,6 +75,8 @@ export const pipelineSpec = z.strictObject({
       types: z.array(z.string().min(1)).default([]),
       since: z.iso.date().optional(),
       orgs: z.array(z.string().min(1)).optional(),
+      // The documents to read, by KUDOS UUID: each is fetched on its own and nothing is listed
+      ids: z.array(z.uuid()).max(5000).optional(),
     }),
     z.strictObject({
       kind: z.literal('episerver'),
@@ -103,6 +110,8 @@ export const pipelineSpec = z.strictObject({
     .optional(),
   parallelism: z.number().int().min(1).max(16).default(2),
   maxDocumentFailures: z.number().int().positive().max(100_000).default(10),
+  // Convert files again although the platform keeps their Marker results, for example after a Marker upgrade
+  reconvert: z.boolean().default(false),
   enabled: z.boolean().default(true),
   schedule: z.enum(['none', 'daily', 'weekly']).default('none'),
 });
@@ -112,16 +121,22 @@ export type PipelineSpec = z.infer<typeof pipelineSpec>;
 export const scheduleCron = { daily: '0 3 * * *', weekly: '0 3 * * 1' } as const;
 
 export const unboundedKudos = (spec: { source?: unknown }) => {
-  const source = (spec.source ?? {}) as { kind?: unknown; types?: unknown; since?: unknown };
+  const source = (spec.source ?? {}) as {
+    kind?: unknown;
+    types?: unknown;
+    since?: unknown;
+    ids?: unknown;
+  };
   return (
     source.kind === 'kudos' &&
     !(Array.isArray(source.types) && source.types.length > 0) &&
+    !(Array.isArray(source.ids) && source.ids.length > 0) &&
     !source.since
   );
 };
 
 export const unboundedKudosMessage =
-  'En innlesing fra Kudos må avgrenses med dokumenttyper eller en startdato, ellers leses hele arkivet inn.';
+  'En innlesing fra Kudos må avgrenses med dokumenttyper, en startdato eller en liste med dokumenter, ellers leses hele arkivet inn.';
 
 export interface Pipeline {
   dataset: string;
@@ -154,6 +169,7 @@ export interface IngestionReport {
   skipped: number;
   skippedDocuments?: SkippedDocument[];
   failed: string[];
+  failures?: FailedDocument[];
   generation?: string;
   promoted?: boolean;
   previous?: string;

@@ -1,0 +1,85 @@
+{
+  "comment": "The self-hosted embedding models the Kudos pilot compares (genki issue 92). Each gets an embedding server (embed_server.py) on `server`, its own platform and knowledge databases, its own API on `api`, a dataset digdir/kudos-next-<key> and a service kudos-pilot-<key>-retrieve-only. `prompts` are the model's own query/document prompts from its config_sentence_transformers.json; genki puts them before each text. `dtype` and `batch` are the server's; `maxBatch` keeps one embedding call under ~25 s on an M3 Pro.",
+  "models": [
+    {
+      "key": "borealis",
+      "hf": "NbAiLab/borealis-embed-212m",
+      "revision": "2ae20a7ca72bbfaf526d9b1b371c6b326ccfc7f2",
+      "dimensions": 768,
+      "dtype": "float32",
+      "batch": 16,
+      "maxBatch": 64,
+      "prompts": {},
+      "server": 8201,
+      "api": 8301
+    },
+    {
+      "key": "bge-m3",
+      "hf": "BAAI/bge-m3",
+      "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 64,
+      "prompts": {},
+      "server": 8202,
+      "api": 8302
+    },
+    {
+      "key": "arctic-l-v2",
+      "hf": "Snowflake/snowflake-arctic-embed-l-v2.0",
+      "revision": "ac6544c8a46e00af67e330e85a9028c66b8cfd9a",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 64,
+      "prompts": {
+        "query": "query: "
+      },
+      "server": 8203,
+      "api": 8303
+    },
+    {
+      "key": "qwen3-0-6b",
+      "hf": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 32,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8204,
+      "api": 8304
+    },
+    {
+      "key": "qwen3-4b",
+      "hf": "Qwen/Qwen3-Embedding-4B",
+      "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+      "dimensions": 2560,
+      "dtype": "float16",
+      "batch": 8,
+      "maxBatch": 4,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8205,
+      "api": 8305
+    },
+    {
+      "key": "qwen3-8b",
+      "hf": "Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+      "dimensions": 4096,
+      "dtype": "float16",
+      "batch": 4,
+      "maxBatch": 2,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8206,
+      "api": 8306
+    }
+  ]
+}

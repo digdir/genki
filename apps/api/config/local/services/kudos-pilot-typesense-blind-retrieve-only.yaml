@@ -1,0 +1,30 @@
+# The Kudos pilot (genki issue 92): kudos-pilot-typesense-retrieve-only with the planner's corpus step off, so it writes its
+# queries in one model call as it does on pgvector. The search still uses the phrase profile and its vectors.
+apiVersion: genai/v1
+kind: Service
+metadata:
+  {
+    tenant: '991825827',
+    id: kudos-pilot-typesense-blind-retrieve-only,
+    name: 'Kudos-piloten på lokal Typesense, bare søk, uten fraseoppslag i planen',
+  }
+spec:
+  purpose: Finn kilder i Kudos uten å lage et svar
+  audience: [employees]
+  riskClass: minimal
+  variants:
+    - id: default
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: rag-single-shot
+    version: 1
+    config: { generate: false }
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos-local-typesense
+    reranker: colbert
+    retrieval: { maxPerDocument: 10 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { mcp: true, openai: true, rest: true }
+  settings: { planner.expansionMode: blind }
