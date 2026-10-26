@@ -67,17 +67,51 @@ const toOpenAi = (m: ChatMessage): ChatCompletionMessageParam => {
 const rejectsTemperature = (error: unknown) =>
   error instanceof APIError && rejectedParameter(error.status, error.message) === 'temperature';
 
+type TokenParam = ModelOptions['tokenParam'];
+
+const rejectsTokenParam = (error: unknown, param: TokenParam) => {
+  if (
+    !(error instanceof APIError) ||
+    (error.status !== 400 && error.status !== 422) ||
+    (error.param && error.param !== param)
+  )
+    return false;
+
+  const refusal = /extra_forbidden|extra inputs|unsupported|not supported|unrecognized|unknown/i;
+  const details = (error.error as { detail?: unknown } | undefined)?.detail;
+  if (Array.isArray(details))
+    return details.some((item: unknown) => {
+      if (!item || typeof item !== 'object') return false;
+      const { loc, type, msg } = item as { loc?: unknown; type?: unknown; msg?: unknown };
+      return (
+        Array.isArray(loc) &&
+        loc.length === 2 &&
+        loc[0] === 'body' &&
+        loc[1] === param &&
+        (type === 'extra_forbidden' || (typeof msg === 'string' && refusal.test(msg)))
+      );
+    });
+  return error.message.includes(param) && refusal.test(error.message);
+};
+
+interface Adjustments {
+  fixedTemperature: boolean;
+  tokenParam?: TokenParam;
+}
+
 const params = (
   model: DeploymentConfig<ModelOptions>,
   request: ChatRequest,
-  fixedTemperature = false,
+  adjust: Adjustments = { fixedTemperature: false },
 ): ChatCompletionCreateParamsBase => ({
   model: model.deployment,
   messages: request.messages.map(toOpenAi),
-  ...(request.temperature === undefined || fixedTemperature
+  ...(request.temperature === undefined || adjust.fixedTemperature
     ? {}
     : { temperature: request.temperature }),
-  ...(request.maxTokens === undefined ? {} : { [model.options.tokenParam]: request.maxTokens }),
+  ...(request.maxTokens === undefined
+    ? {}
+    : { [adjust.tokenParam ?? model.options.tokenParam]: request.maxTokens }),
   ...(request.reasoning ? { reasoning_effort: request.reasoning } : {}),
   ...(request.tools?.length
     ? {
@@ -131,23 +165,40 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
       timeout: endpoint.timeoutMs,
     });
 
+    // What each deployment has refused, learned from its errors and applied to later requests.
     const fixedTemperature = new Set<string>();
+    const tokenParams = new Map<string, TokenParam>();
     const create = async <T>(
       model: DeploymentConfig<ModelOptions>,
       request: ChatRequest,
       send: (body: ChatCompletionCreateParamsBase) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
-      const dropsKnown =
-        request.temperature !== undefined && fixedTemperature.has(model.deployment);
-      try {
-        return {
-          response: await send(params(model, request, fixedTemperature.has(model.deployment))),
-          dropped: dropsKnown ? ['temperature'] : [],
+      for (let attempt = 0; ; attempt += 1) {
+        const tokenParam = tokenParams.get(model.deployment);
+        const adjust: Adjustments = {
+          fixedTemperature: fixedTemperature.has(model.deployment),
+          ...(tokenParam ? { tokenParam } : {}),
         };
-      } catch (error) {
-        if (request.temperature === undefined || !rejectsTemperature(error)) throw error;
-        fixedTemperature.add(model.deployment);
-        return { response: await send(params(model, request, true)), dropped: ['temperature'] };
+        const dropped: TunableParameter[] =
+          request.temperature !== undefined && adjust.fixedTemperature ? ['temperature'] : [];
+        try {
+          return { response: await send(params(model, request, adjust)), dropped };
+        } catch (error) {
+          if (attempt >= 3) throw error;
+          const current = tokenParam ?? model.options.tokenParam;
+          if (
+            request.temperature !== undefined &&
+            !adjust.fixedTemperature &&
+            rejectsTemperature(error)
+          )
+            fixedTemperature.add(model.deployment);
+          else if (request.maxTokens !== undefined && rejectsTokenParam(error, current))
+            tokenParams.set(
+              model.deployment,
+              current === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens',
+            );
+          else throw error;
+        }
       }
     };
 
