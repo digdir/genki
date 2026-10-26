@@ -71,6 +71,56 @@ describe('postgres event log', () => {
     await expect(migrate(pool)).resolves.toBeUndefined();
   });
 
+  it('existing connections keep their secret after the migration binds it once to their hosts', async () => {
+    const stores = await openStores(newPool(), wrapper);
+    const tenant = '991825827';
+    await stores.tenantSecrets.set(tenant, 'arkiv-nokkel', 'verdi');
+    await stores.tenantSecrets.set(tenant, 'ubrukt', 'verdi');
+    await stores.connections.register({
+      id: 'arkiv',
+      tenant,
+      name: 'Arkiv',
+      endpoint: 'https://arkiv.example.no/mcp',
+      version: '1',
+      allow: [{ host: 'arkiv.example.no' }, { host: 'token.example.no', port: 8443 }],
+      auth: {
+        kind: 'oauth-client-credentials',
+        tokenUrl: 'https://token.example.no:8443/token',
+        clientId: 'genki',
+        secret: `secret://tenant/${tenant}/arkiv-nokkel`,
+      },
+    });
+    await pool.query('alter table tenant_secrets drop column allowed_hosts');
+
+    await migrate(pool);
+
+    expect(await stores.tenantSecrets.hosts(tenant, 'arkiv-nokkel')).toEqual([
+      'https://arkiv.example.no',
+      'https://token.example.no:8443',
+    ]);
+    expect(await stores.tenantSecrets.hosts(tenant, 'ubrukt')).toBeUndefined();
+    expect(await stores.tenantSecrets.get(tenant, 'arkiv-nokkel')).toBe('verdi');
+
+    await stores.tenantSecrets.setHosts(tenant, 'arkiv-nokkel', ['https://ny.example.no']);
+    await migrate(pool);
+    expect(await stores.tenantSecrets.hosts(tenant, 'arkiv-nokkel')).toEqual([
+      'https://ny.example.no',
+    ]);
+    await stores.close();
+  });
+
+  it('keeps the hosts of a tenant secret when only its value changes', async () => {
+    const stores = await openStores(newPool(), wrapper);
+    await stores.tenantSecrets.set('991825827', 'bundet', 'en', ['https://api.example.no']);
+    await stores.tenantSecrets.set('991825827', 'bundet', 'to');
+    expect(await stores.tenantSecrets.hosts('991825827', 'bundet')).toEqual([
+      'https://api.example.no',
+    ]);
+    expect(await stores.tenantSecrets.get('991825827', 'bundet')).toBe('to');
+    expect(await stores.tenantSecrets.setHosts('991825827', 'finnes-ikke', [])).toBe(false);
+    await stores.close();
+  });
+
   it('numbers events per task, encrypts content at rest and keeps envelope events readable', async () => {
     const stores = await openStores(pool, wrapper);
     await stores.log.append(event('t-seq', 'kernel.task.status', { status: 'queued' }), scope);

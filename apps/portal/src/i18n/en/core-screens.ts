@@ -178,6 +178,7 @@ export const changes = {
   proposalDecide: 'decided on the proposal',
   proposalStatus: 'changed the status of the proposal',
   secretsSet: 'saved the secret',
+  secretsHosts: 'changed the hosts of the secret',
   secretsDelete: 'removed the secret',
   serviceDraftDelete: 'deleted the draft of',
   serviceDraftRebase: 'brought up to date the draft of',

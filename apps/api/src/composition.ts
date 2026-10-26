@@ -66,6 +66,7 @@ import {
 } from './runtime-documents.js';
 import {
   EgressGuard,
+  TenantSecrets,
   type AllowedHost,
   type ConnectionRegistry,
   type EgressOptions,
@@ -1654,7 +1655,12 @@ export const createPlatform = async (input: PlatformInput) => {
 
   const extensions = {
     ...adminExtensions({
-      tools: { connections, source: mcp, onToolsChanged: refreshTools },
+      tools: {
+        connections,
+        source: mcp,
+        secrets: new TenantSecrets(vault.resolver(input.secrets)),
+        onToolsChanged: refreshTools,
+      },
       directory,
     }),
     ...portalAdminHandlers({ apiKeys }),
