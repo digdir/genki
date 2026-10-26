@@ -1,13 +1,16 @@
 """Paths, settings and HTTP shared by the benchmark scripts."""
 import os
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
+sys.path.insert(0, str(HERE.parent))
 DATA = Path(os.environ.get("INGESTION_BENCHMARK_DATA", HERE / ".data"))
-RESULTS = DATA / "results"
+# What the scripts publish (committed): per-page and per-document checks, the pairing, the summary, the run record
+RESULTS = HERE / "results"
 SAMPLE = HERE / "sample.json"
 CHECKS = ["coverage", "similarity", "noise", "numbers", "language", "unicode", "glued_spaced", "duplicated"]
 

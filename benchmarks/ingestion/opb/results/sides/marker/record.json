@@ -1,0 +1,37 @@
+{
+  "benchmark": "ingestion/opb",
+  "code": "22198e6fc59e3f59ab0ab806d75e807886eaf4290a760cd7bc750f450c958012",
+  "git": {
+    "commit": "59b1a619ef733cb62e52aa15135393a696bac212",
+    "dirty": true
+  },
+  "items": "2b161ec8ed4ddf8eee20fce45a43d201b13102e7794ab1ba1fb2e03e54a46264",
+  "packages": {
+    "markdown-it-py": "4.2.0",
+    "omni-parse-bench": "0.2.0",
+    "pymupdf": "2.0"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "2deebfd82fe47040d8fc141c0c96c75d9ea189a75e540b9c6073f4c535f0ef63",
+  "schema": 1,
+  "settings": {
+    "markdown_to_html": "omni_parse_bench.markdown.to_html",
+    "outputs": "html; no layout tests",
+    "scorer": "omni-parse-bench 0.2.0"
+  },
+  "side": "marker",
+  "side_settings": {
+    "conversions": "03f29d488c799600b53832f7a07d7aa4d563bcf56bb8e567d3abcd8ee7033a4f",
+    "marker_version": "1.10.2",
+    "pages": "split as genki's page chunker splits Marker's output",
+    "settings": {
+      "disable_image_extraction": true,
+      "languages": "no,en",
+      "output_format": "markdown",
+      "page_separator": "___PAGE_SEPARATOR___",
+      "paginate_output": true
+    }
+  },
+  "time": "2026-10-26T12:46:01+00:00"
+}

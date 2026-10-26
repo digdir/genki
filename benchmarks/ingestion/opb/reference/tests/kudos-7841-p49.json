@@ -1,0 +1,177 @@
+{
+ "tests": [
+  {
+   "id": "kudos-7841-p49-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Endra tilsynsarbeid",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi ser at vi får større effekt av tilsynsarbeidet vårt når vi bruker det som eit førebyggande tiltak",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Auka behov for kunnskap og analyse",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Mellom anna ser vi at ansvarlegheit blir eit stadig viktigare element i reguleringa av pengespel internasjonalt.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Pengespelpolitikk blir stadig diskutert i media, men vi opplever brei politisk semje",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Den norske einerettsmodellen er i tråd med",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Likevel blir det i rettslege prosessar og i media",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Gjeldande regulering er i 2019 stadfesta av Oslo tingrett, men dommen er anka.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "uansett kor mange operatørar vi har i marknaden",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Konsekvensar på lengre sikt",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-7841-p49-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Vi trur at dersom vi lukkast med gjennomføring av strategien vår, vil vi òg lukkast med samfunnsoppdraget vårt.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

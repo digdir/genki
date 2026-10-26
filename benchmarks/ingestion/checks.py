@@ -38,7 +38,8 @@ import fitz
 from lingua import Language, LanguageDetectorBuilder
 from rapidfuzz.distance import Levenshtein
 
-from common import CHECKS, DATA, RESULTS, SAMPLE
+from common import CHECKS, DATA, DICTIONARIES, HERE, KUDOS_API, RESULTS, SAMPLE, TS_CHUNKS
+from benchlib import record
 
 SHINGLE_MIN = 0.8
 LANG_MIN = 0.75
@@ -563,7 +564,17 @@ def main():
             w = csv.DictWriter(f, fieldnames=list(rows[0]))
             w.writeheader()
             w.writerows(rows)
-    print(f"wrote {len(doc_rows)} docs, {len(page_rows)} pages to {RESULTS}", file=sys.stderr)
+    record.write(RESULTS / "record.json", record.make(
+        "ingestion", root=HERE, code=sorted(HERE.glob("*.py")) + [HERE.parent / "benchlib"], reference=None,
+        items=[SAMPLE], side="kudos and ours",
+        side_settings={
+            "kudos": {"source": f"{KUDOS_API}/{{uuid}}/contents",
+                      "text": record.tree_hash([DATA / "kudos" / f'{s["uuid"]}.txt' for s in sample])},
+            "ours": {"source": f"Typesense {TS_CHUNKS}, chunks rebuilt into pages",
+                     "chunks": record.tree_hash([DATA / "ours" / f'{s["doc_num"]}.jsonl' for s in sample])}},
+        settings={"shingle_min": SHINGLE_MIN, "lang_min": LANG_MIN, "dictionaries": DICTIONARIES},
+        packages=("lingua-language-detector", "PyMuPDF", "RapidFuzz", "spylls")))
+    print(f"wrote {len(doc_rows)} docs, {len(page_rows)} pages and the run record to {RESULTS}", file=sys.stderr)
 
 
 if __name__ == "__main__":

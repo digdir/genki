@@ -1,0 +1,12 @@
+{"tests": [
+ {"id": "kudos-51214-p5-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "FOLLDALS HISTORIE I KORTE TREKK", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51214-p5-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "I forhistorisk tid", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-51214-p5-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Etter siste istid smeltet isdekket sakte over en periode på flere tusen år", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-51214-p5-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Boplassen er datert til eldre steinalder, ca. 6500 år f.Kr.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-51214-p5-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "Forhistoriske perioder i Norge:", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51214-p5-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Eldre bronsealder: 1800 – 1100 f.Kr.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51214-p5-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"before": {"text": "høyere opp i fjellet.", "max_diffs": 1}, "after": {"text": "For 5-6000 år siden begynte folk i sør", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51214-p5-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "Tidlig aktivitet i Folldalsområdet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51214-p5-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Nær det store rusefangstanlegget ved Einsethø har man funnet hustufter; «Tøftom»", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-51214-p5-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "En grav ved veien opp mot Mesætre er datert til omkring år 900.", "max_diffs": 2}}, "settings": {}}
+]}

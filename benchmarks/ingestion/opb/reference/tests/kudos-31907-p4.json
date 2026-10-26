@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-31907-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Tilknytningsform", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-31907-p4-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Den høyere påtalemyndighet er et ordinært bruttobudsjettert forvaltningsorgan", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31907-p4-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Ledelsen av virksomheten og ansvarsavklaring og krav til samarbeid med andre virksomheter", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31907-p4-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Den høyere påtalemyndighet fører regnskap etter kontantprinsippet", "max_diffs": 2}, "after": {"text": "Ledelsen av virksomheten og ansvarsavklaring", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31907-p4-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Økokrim er både et statsadvokatembete med nasjonal myndighet og et særorgan i politiet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31907-p4-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Spesialenheten for politisaker, Generaladvokatembetet og Sysselmesteren på Svalbard.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31907-p4-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "Sysselmesteren på Svalbard.", "max_diffs": 2}, "after": {"text": "Den årlige styringsdialogen mellom Justis- og beredskapsdepartementet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31907-p4-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Overordnet risikovurdering av virksomhetens måloppnåelse", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31907-p4-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Supplerende tildelingsbrev i løpet av året", "max_diffs": 1}, "after": {"text": "Årsrapport og årsregnskap", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-31907-p4-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Departementet fører referat fra alle møter som inngår i styringsdialogen.", "max_diffs": 2}}, "settings": {}}
+]}

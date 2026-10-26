@@ -1,0 +1,8 @@
+{"tests": [
+ {"id": "kudos-51059-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "eng", "Latn"], "args": {"content": {"text": "Contents", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-51059-p4-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"], "args": {"content": {"text": "Bias correction methods", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51059-p4-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"], "args": {"content": {"text": "Results and discussion", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51059-p4-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"], "args": {"content": {"text": "Interpolation methods", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51059-p4-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"], "args": {"before": {"text": "Preparation of data", "max_diffs": 1}, "after": {"text": "Bias correction methods", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-51059-p4-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["eng", "Latn"], "args": {"before": {"text": "NGCD type 2", "max_diffs": 0}, "after": {"text": "Results and discussion", "max_diffs": 0}}, "settings": {}}
+]}

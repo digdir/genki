@@ -1,0 +1,16 @@
+{"tests": [
+ {"id": "kudos-26404-p3-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Departementet ber om å bli holdt orientert underveis om fremdriften i utredningsarbeidet.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-26404-p3-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "dersom det på grunnlag av dette mandatet viser seg behov for å gjøre vesentlige endringer av prosjektorganisasjonen", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-26404-p3-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Med hilsen", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-26404-p3-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "utredningsleder", "max_diffs": 1}, "after": {"text": "seniorrådgiver", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-26404-p3-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Dokumentet er elektronisk signert og har derfor ikke håndskrevne signaturer", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-26404-p3-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Med hilsen", "max_diffs": 1}, "after": {"text": "Dokumentet er elektronisk signert", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-26404-p3-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Riksrevisjonen", "max_diffs": 0}}, "settings": {}}
+]}

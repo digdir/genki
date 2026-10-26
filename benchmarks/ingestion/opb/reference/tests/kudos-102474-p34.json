@@ -1,0 +1,215 @@
+{
+ "tests": [
+  {
+   "id": "kudos-102474-p34-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "NOTE 6 FINANSINNTEKTER OG FINANSKOSTNADER",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "206 932 833",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Kostnadsført leiebetaling for perioden",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "SUM",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Nasjonalbiblioteket har husleieavtale med varighet på 5 år i rapporteringstidspunktet.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t04",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "2 423",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Valutatap (disagio)",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2023",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Sum finanskostnader",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "NOTE 7 SAMMENHENG MELLOM AVREGNET MED STATSKASSEN",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t06",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "67 703 716",
+     "max_diffs": 0
+    },
+    "left_heading": {
+     "text": "Avregnet med statskassen i balansen",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "31.12.2022",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "I tillegg hensyntas enkelte transaksjoner som ikke er knyttet til virksomhetens drift",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "98 372 530",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Det er endringer på konto 1990 (Mellomværende statskassen) og 1993 (korrigering avsetning feriepenger)",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-102474-p34-t10",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "footnote",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Resultat av periodens aktiviteter før avregning mot statskassen",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "skal stemme med periodens endring ovenfor",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

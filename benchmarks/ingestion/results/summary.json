@@ -1,0 +1,840 @@
+{
+  "step1_pairing": {
+    "ours": 10064,
+    "paired": 9749,
+    "no_kudos_file_with_same_sha256": 147,
+    "ours_multi_file_skipped": 132,
+    "kudos_doc_has_attachments": 157,
+    "matched_file_not_primary_in_kudos": 36,
+    "sha256_in_several_kudos_docs": 16,
+    "kudos_listed": 45902
+  },
+  "sample": {
+    "docs": 150,
+    "pages": 7044,
+    "by_type": {
+      "Evaluering": 19,
+      "Instruks": 19,
+      "Melding til Stortinget": 19,
+      "Proposisjon til Stortinget": 19,
+      "Statusrapport": 19,
+      "Strategi/plan": 19,
+      "Tildelingsbrev": 18,
+      "Årsrapport": 18
+    },
+    "by_pdf_class": {
+      "born-digital": 131,
+      "scanned": 10,
+      "mixed": 9
+    },
+    "by_publish_year": {
+      "2020": 38,
+      "2021": 30,
+      "2022": 20,
+      "2023": 18,
+      "2024": 26,
+      "2025": 18
+    },
+    "scan_proxy_vs_measured": {
+      "scan? -> born-digital": 59,
+      "scan? -> scanned": 10,
+      "digital? -> born-digital": 72,
+      "scan? -> mixed": 3,
+      "digital? -> mixed": 6
+    },
+    "page_kinds": {
+      "digital": 6350,
+      "scan+text": 182,
+      "blank": 370,
+      "image-only": 142
+    },
+    "pages_without_text_layer": 512
+  },
+  "page_alignment": {
+    "kudos_matches_pdf": 143,
+    "ours_matches_pdf": 141,
+    "pages_meta_matches_pdf": 150,
+    "kudos_mismatches": [
+      {
+        "doc_num": "5200",
+        "uuid": "58811396-ba13-46ee-a4e8-a1319299b0a1",
+        "type": "Instruks",
+        "pdf_class": "scanned",
+        "pdf_pages": "8",
+        "kudos_pages": "1"
+      },
+      {
+        "doc_num": "23102",
+        "uuid": "347ae7ea-385a-4617-a772-1f6fafd9a1f5",
+        "type": "Instruks",
+        "pdf_class": "scanned",
+        "pdf_pages": "9",
+        "kudos_pages": "1"
+      },
+      {
+        "doc_num": "23509",
+        "uuid": "ea77a85b-9b7f-4314-9b9f-742bf539f1c1",
+        "type": "Instruks",
+        "pdf_class": "scanned",
+        "pdf_pages": "6",
+        "kudos_pages": "1"
+      },
+      {
+        "doc_num": "395605",
+        "uuid": "eec00941-3099-44bb-a28c-5562495bfc72",
+        "type": "Statusrapport",
+        "pdf_class": "mixed",
+        "pdf_pages": "47",
+        "kudos_pages": "46"
+      },
+      {
+        "doc_num": "5379",
+        "uuid": "9d5d30ec-e25e-49c4-8354-ece8fd6653a1",
+        "type": "Tildelingsbrev",
+        "pdf_class": "scanned",
+        "pdf_pages": "31",
+        "kudos_pages": "1"
+      },
+      {
+        "doc_num": "75814",
+        "uuid": "73b8a416-7746-4816-b7bc-de228880168a",
+        "type": "Årsrapport",
+        "pdf_class": "scanned",
+        "pdf_pages": "34",
+        "kudos_pages": "1"
+      },
+      {
+        "doc_num": "96452",
+        "uuid": "8e022e00-1c5f-4d48-9f54-de55e2669abf",
+        "type": "Årsrapport",
+        "pdf_class": "born-digital",
+        "pdf_pages": "98",
+        "kudos_pages": "58"
+      }
+    ],
+    "ours_mismatches": [
+      {
+        "doc_num": "32728",
+        "type": "Evaluering",
+        "pdf_pages": "48",
+        "ours_pages": "47",
+        "ours_chunks": "61"
+      },
+      {
+        "doc_num": "51781",
+        "type": "Evaluering",
+        "pdf_pages": "118",
+        "ours_pages": "117",
+        "ours_chunks": "150"
+      },
+      {
+        "doc_num": "19553",
+        "type": "Melding til Stortinget",
+        "pdf_pages": "114",
+        "ours_pages": "112",
+        "ours_chunks": "229"
+      },
+      {
+        "doc_num": "94541",
+        "type": "Melding til Stortinget",
+        "pdf_pages": "102",
+        "ours_pages": "84",
+        "ours_chunks": "118"
+      },
+      {
+        "doc_num": "372605",
+        "type": "Statusrapport",
+        "pdf_pages": "18",
+        "ours_pages": "17",
+        "ours_chunks": "13"
+      },
+      {
+        "doc_num": "395605",
+        "type": "Statusrapport",
+        "pdf_pages": "47",
+        "ours_pages": "46",
+        "ours_chunks": "63"
+      },
+      {
+        "doc_num": "88654",
+        "type": "Årsrapport",
+        "pdf_pages": "56",
+        "ours_pages": "55",
+        "ours_chunks": "63"
+      },
+      {
+        "doc_num": "355302",
+        "type": "Årsrapport",
+        "pdf_pages": "26",
+        "ours_pages": "25",
+        "ours_chunks": "25"
+      },
+      {
+        "doc_num": "90723",
+        "type": "Årsrapport",
+        "pdf_pages": "122",
+        "ours_pages": "112",
+        "ours_chunks": "192"
+      }
+    ]
+  },
+  "pages_flagged_pct": {
+    "plan": {
+      "coverage": 22.1,
+      "similarity": 41.6,
+      "noise": 1.3,
+      "numbers": 33.7,
+      "language": 1.7,
+      "unicode": 1.3,
+      "glued_spaced": 2.7,
+      "duplicated": 2.2,
+      "any": 57.9
+    },
+    "tuned": {
+      "coverage": 6.0,
+      "similarity": 11.8,
+      "noise": 0.7,
+      "numbers": 8.6,
+      "language": 1.3,
+      "unicode": 1.3,
+      "glued_spaced": 2.1,
+      "duplicated": 0.2,
+      "any": 21.6
+    }
+  },
+  "verdicts": {
+    "docs": 150,
+    "plan_inspect": 149,
+    "tuned_inspect": 131
+  },
+  "corpus_estimate_docs_pct": {
+    "plan_any_flag": {
+      "pct": 100.0,
+      "ci95": [
+        99.9,
+        100.0
+      ]
+    },
+    "tuned_any_flag": {
+      "pct": 86.7,
+      "ci95": [
+        78.1,
+        94.6
+      ]
+    },
+    "tuned_over_10pct_pages": {
+      "pct": 72.0,
+      "ci95": [
+        61.2,
+        82.1
+      ]
+    },
+    "tuned_over_25pct_pages": {
+      "pct": 42.2,
+      "ci95": [
+        31.8,
+        52.4
+      ]
+    },
+    "tuned_over_50pct_pages": {
+      "pct": 10.3,
+      "ci95": [
+        4.1,
+        18.0
+      ]
+    },
+    "tuned_coverage": {
+      "pct": 37.6,
+      "ci95": [
+        28.6,
+        47.4
+      ]
+    },
+    "tuned_similarity": {
+      "pct": 74.5,
+      "ci95": [
+        65.1,
+        84.1
+      ]
+    },
+    "tuned_noise": {
+      "pct": 22.5,
+      "ci95": [
+        13.3,
+        33.2
+      ]
+    },
+    "tuned_numbers": {
+      "pct": 66.6,
+      "ci95": [
+        56.0,
+        76.5
+      ]
+    },
+    "tuned_language": {
+      "pct": 30.0,
+      "ci95": [
+        20.2,
+        40.2
+      ]
+    },
+    "tuned_unicode": {
+      "pct": 21.3,
+      "ci95": [
+        12.1,
+        31.2
+      ]
+    },
+    "tuned_glued_spaced": {
+      "pct": 15.7,
+      "ci95": [
+        9.2,
+        22.8
+      ]
+    },
+    "tuned_duplicated": {
+      "pct": 13.9,
+      "ci95": [
+        5.7,
+        23.3
+      ]
+    }
+  },
+  "tuned_flagged_page_share_per_doc": {
+    "median_pct": 18.059,
+    "docs_over_10pct": 107,
+    "docs_over_25pct": 51,
+    "docs_over_50pct": 19
+  },
+  "by_pdf_class": {
+    "born-digital": {
+      "pages": 6531,
+      "plan_flagged_pct": 56.5,
+      "tuned_flagged_pct": 20.6,
+      "tuned_by_check_pct": {
+        "coverage": 5.0,
+        "similarity": 11.7,
+        "noise": 0.6,
+        "numbers": 7.9,
+        "language": 1.0,
+        "unicode": 1.3,
+        "glued_spaced": 2.1,
+        "duplicated": 0.2
+      },
+      "median_char_similarity": 0.941,
+      "median_5gram_f1": 0.969,
+      "median_oov_kudos": 0.069,
+      "median_oov_ours": 0.065,
+      "docs": 131,
+      "plan_inspect": 130,
+      "tuned_inspect": 113
+    },
+    "mixed": {
+      "pages": 337,
+      "plan_flagged_pct": 71.8,
+      "tuned_flagged_pct": 22.3,
+      "tuned_by_check_pct": {
+        "coverage": 4.2,
+        "similarity": 15.1,
+        "noise": 2.7,
+        "numbers": 3.6,
+        "language": 5.9,
+        "unicode": 0.9,
+        "glued_spaced": 2.4,
+        "duplicated": 0.3
+      },
+      "median_char_similarity": 0.743,
+      "median_5gram_f1": 0.876,
+      "median_oov_kudos": 0.067,
+      "median_oov_ours": 0.059,
+      "docs": 9,
+      "plan_inspect": 9,
+      "tuned_inspect": 8
+    },
+    "scanned": {
+      "pages": 176,
+      "plan_flagged_pct": 81.8,
+      "tuned_flagged_pct": 58.5,
+      "tuned_by_check_pct": {
+        "coverage": 47.7,
+        "similarity": 9.1,
+        "noise": 0.6,
+        "numbers": 46.0,
+        "language": 0.6,
+        "unicode": 0.0,
+        "glued_spaced": 0.0,
+        "duplicated": 1.1
+      },
+      "median_char_similarity": 0.0,
+      "median_5gram_f1": 0.0,
+      "median_oov_kudos": 0.067,
+      "median_oov_ours": 0.074,
+      "docs": 10,
+      "plan_inspect": 10,
+      "tuned_inspect": 10
+    }
+  },
+  "by_page_kind": {
+    "blank": {
+      "pages": 370,
+      "plan_flagged_pct": 44.9,
+      "tuned_flagged_pct": 23.2,
+      "tuned_by_check_pct": {
+        "coverage": 19.5,
+        "similarity": 3.0,
+        "noise": 0.5,
+        "numbers": 20.0,
+        "language": 0.0,
+        "unicode": 0.0,
+        "glued_spaced": 0.3,
+        "duplicated": 0.3
+      },
+      "median_char_similarity": 0.94,
+      "median_5gram_f1": 0.422,
+      "median_oov_kudos": 0.065,
+      "median_oov_ours": 0.092
+    },
+    "digital": {
+      "pages": 6350,
+      "plan_flagged_pct": 57.4,
+      "tuned_flagged_pct": 20.6,
+      "tuned_by_check_pct": {
+        "coverage": 4.1,
+        "similarity": 12.5,
+        "noise": 0.6,
+        "numbers": 7.0,
+        "language": 1.1,
+        "unicode": 1.4,
+        "glued_spaced": 2.2,
+        "duplicated": 0.2
+      },
+      "median_char_similarity": 0.941,
+      "median_5gram_f1": 0.969,
+      "median_oov_kudos": 0.068,
+      "median_oov_ours": 0.064
+    },
+    "image-only": {
+      "pages": 142,
+      "plan_flagged_pct": 83.1,
+      "tuned_flagged_pct": 64.8,
+      "tuned_by_check_pct": {
+        "coverage": 59.9,
+        "similarity": 4.9,
+        "noise": 0.7,
+        "numbers": 55.6,
+        "language": 0.7,
+        "unicode": 0.0,
+        "glued_spaced": 0.0,
+        "duplicated": 1.4
+      },
+      "median_char_similarity": 0.0,
+      "median_5gram_f1": 0.0,
+      "median_oov_kudos": 0.07,
+      "median_oov_ours": 0.078
+    },
+    "scan+text": {
+      "pages": 182,
+      "plan_flagged_pct": 83.5,
+      "tuned_flagged_pct": 20.3,
+      "tuned_by_check_pct": {
+        "coverage": 4.4,
+        "similarity": 11.5,
+        "noise": 4.9,
+        "numbers": 6.6,
+        "language": 8.2,
+        "unicode": 0.0,
+        "glued_spaced": 2.7,
+        "duplicated": 0.0
+      },
+      "median_char_similarity": 0.118,
+      "median_5gram_f1": 0.181,
+      "median_oov_kudos": 0.103,
+      "median_oov_ours": 0.07
+    }
+  },
+  "by_type": {
+    "Evaluering": {
+      "pages": 1217,
+      "plan_flagged_pct": 46.4,
+      "tuned_flagged_pct": 16.6,
+      "tuned_by_check_pct": {
+        "coverage": 4.3,
+        "similarity": 8.6,
+        "noise": 0.4,
+        "numbers": 6.2,
+        "language": 0.8,
+        "unicode": 0.7,
+        "glued_spaced": 0.4,
+        "duplicated": 0.3
+      },
+      "median_char_similarity": 0.953,
+      "median_5gram_f1": 0.981,
+      "median_oov_kudos": 0.065,
+      "median_oov_ours": 0.059,
+      "docs": 19,
+      "plan_inspect": 19,
+      "tuned_inspect": 19
+    },
+    "Instruks": {
+      "pages": 142,
+      "plan_flagged_pct": 81.0,
+      "tuned_flagged_pct": 38.7,
+      "tuned_by_check_pct": {
+        "coverage": 16.9,
+        "similarity": 8.5,
+        "noise": 0.7,
+        "numbers": 19.0,
+        "language": 0.7,
+        "unicode": 12.0,
+        "glued_spaced": 0.0,
+        "duplicated": 0.0
+      },
+      "median_char_similarity": 0.912,
+      "median_5gram_f1": 0.936,
+      "median_oov_kudos": 0.094,
+      "median_oov_ours": 0.088,
+      "docs": 19,
+      "plan_inspect": 18,
+      "tuned_inspect": 15
+    },
+    "Melding til Stortinget": {
+      "pages": 1633,
+      "plan_flagged_pct": 61.8,
+      "tuned_flagged_pct": 15.6,
+      "tuned_by_check_pct": {
+        "coverage": 0.8,
+        "similarity": 11.3,
+        "noise": 0.6,
+        "numbers": 3.7,
+        "language": 0.6,
+        "unicode": 0.2,
+        "glued_spaced": 1.2,
+        "duplicated": 0.0
+      },
+      "median_char_similarity": 0.946,
+      "median_5gram_f1": 0.979,
+      "median_oov_kudos": 0.062,
+      "median_oov_ours": 0.06,
+      "docs": 19,
+      "plan_inspect": 19,
+      "tuned_inspect": 17
+    },
+    "Proposisjon til Stortinget": {
+      "pages": 760,
+      "plan_flagged_pct": 63.6,
+      "tuned_flagged_pct": 19.7,
+      "tuned_by_check_pct": {
+        "coverage": 6.7,
+        "similarity": 8.0,
+        "noise": 0.5,
+        "numbers": 8.2,
+        "language": 0.8,
+        "unicode": 2.0,
+        "glued_spaced": 0.3,
+        "duplicated": 0.3
+      },
+      "median_char_similarity": 0.926,
+      "median_5gram_f1": 0.949,
+      "median_oov_kudos": 0.078,
+      "median_oov_ours": 0.07,
+      "docs": 19,
+      "plan_inspect": 19,
+      "tuned_inspect": 13
+    },
+    "Statusrapport": {
+      "pages": 1108,
+      "plan_flagged_pct": 45.8,
+      "tuned_flagged_pct": 13.4,
+      "tuned_by_check_pct": {
+        "coverage": 1.5,
+        "similarity": 7.9,
+        "noise": 1.4,
+        "numbers": 3.2,
+        "language": 2.5,
+        "unicode": 1.1,
+        "glued_spaced": 1.0,
+        "duplicated": 0.2
+      },
+      "median_char_similarity": 0.966,
+      "median_5gram_f1": 0.986,
+      "median_oov_kudos": 0.057,
+      "median_oov_ours": 0.051,
+      "docs": 19,
+      "plan_inspect": 19,
+      "tuned_inspect": 19
+    },
+    "Strategi/plan": {
+      "pages": 804,
+      "plan_flagged_pct": 50.7,
+      "tuned_flagged_pct": 17.2,
+      "tuned_by_check_pct": {
+        "coverage": 1.9,
+        "similarity": 9.6,
+        "noise": 0.4,
+        "numbers": 4.2,
+        "language": 1.0,
+        "unicode": 1.0,
+        "glued_spaced": 7.0,
+        "duplicated": 0.2
+      },
+      "median_char_similarity": 0.952,
+      "median_5gram_f1": 0.949,
+      "median_oov_kudos": 0.089,
+      "median_oov_ours": 0.082,
+      "docs": 19,
+      "plan_inspect": 19,
+      "tuned_inspect": 17
+    },
+    "Tildelingsbrev": {
+      "pages": 137,
+      "plan_flagged_pct": 81.8,
+      "tuned_flagged_pct": 51.1,
+      "tuned_by_check_pct": {
+        "coverage": 22.6,
+        "similarity": 19.7,
+        "noise": 2.2,
+        "numbers": 30.7,
+        "language": 2.2,
+        "unicode": 5.8,
+        "glued_spaced": 0.0,
+        "duplicated": 2.2
+      },
+      "median_char_similarity": 0.778,
+      "median_5gram_f1": 0.857,
+      "median_oov_kudos": 0.102,
+      "median_oov_ours": 0.096,
+      "docs": 18,
+      "plan_inspect": 18,
+      "tuned_inspect": 13
+    },
+    "Årsrapport": {
+      "pages": 1243,
+      "plan_flagged_pct": 70.8,
+      "tuned_flagged_pct": 40.5,
+      "tuned_by_check_pct": {
+        "coverage": 17.8,
+        "similarity": 22.5,
+        "noise": 0.7,
+        "numbers": 21.9,
+        "language": 1.9,
+        "unicode": 1.4,
+        "glued_spaced": 4.3,
+        "duplicated": 0.2
+      },
+      "median_char_similarity": 0.802,
+      "median_5gram_f1": 0.893,
+      "median_oov_kudos": 0.07,
+      "median_oov_ours": 0.069,
+      "docs": 18,
+      "plan_inspect": 18,
+      "tuned_inspect": 18
+    }
+  },
+  "noise": {
+    "noise_worse_side": {
+      "ours": 44,
+      "kudos": 49
+    },
+    "pages_with": {
+      "mojibake": {
+        "kudos": 2,
+        "ours": 0
+      },
+      "fffd": {
+        "kudos": 2,
+        "ours": 0
+      },
+      "ligature": {
+        "kudos": 4,
+        "ours": 0
+      },
+      "pua": {
+        "kudos": 81,
+        "ours": 7
+      },
+      "nfd": {
+        "kudos": 2,
+        "ours": 0
+      },
+      "broken_hyphen": {
+        "kudos": 206,
+        "ours": 49
+      },
+      "glued": {
+        "kudos": 81,
+        "ours": 89
+      },
+      "spaced_runs": {
+        "kudos": 341,
+        "ours": 266
+      },
+      "split_words": {
+        "kudos": 772,
+        "ours": 424
+      },
+      "duplicates": {
+        "kudos": 127,
+        "ours": 141
+      }
+    },
+    "totals": {
+      "split_words": {
+        "kudos": 1552,
+        "ours": 672
+      },
+      "spaced_runs": {
+        "kudos": 900,
+        "ours": 680
+      },
+      "glued": {
+        "kudos": 96,
+        "ours": 103
+      }
+    },
+    "median_boilerplate_page_share": {
+      "kudos": 0.575,
+      "ours": 0.0
+    }
+  },
+  "language": {
+    "pairs": {
+      "nb/nb": 4649,
+      "nn/nn": 1151,
+      "-/-": 532,
+      "en/en": 255,
+      "-/nb": 218,
+      "nb/-": 92,
+      "nn/-": 42,
+      "nb/nn": 35,
+      "nn/nb": 24,
+      "-/nn": 23,
+      "en/-": 16,
+      "nb/en": 5,
+      "-/en": 1,
+      "nn/en": 1
+    },
+    "low_conf_pages": {
+      "kudos": 57,
+      "ours": 36
+    }
+  },
+  "numbers": {
+    "pages_kudos_missing_ours_number": 608,
+    "pages_ours_missing_kudos_number": 2008
+  },
+  "tuned_flagged_pages": {
+    "count": 1522,
+    "hints": {
+      "none": 266,
+      "table": 654,
+      "kudos_extra": 396,
+      "multi_column": 379,
+      "toc_like": 70,
+      "no_text_layer": 178,
+      "ours_page_missing": 2
+    },
+    "pdf_kind": {
+      "digital": 1307,
+      "scan+text": 37,
+      "blank": 86,
+      "image-only": 92
+    }
+  },
+  "kudos_extra_pages_pct": 12.6,
+  "missing_content": {
+    "kudos": {
+      "pages": 249,
+      "docs": 18,
+      "docs_corpus_estimate": {
+        "pct": 6.9,
+        "ci95": [
+          3.0,
+          11.4
+        ]
+      },
+      "share_of_our_text_pct": 3.4
+    },
+    "ours": {
+      "pages": 170,
+      "docs": 69
+    }
+  },
+  "tuned_flagged_by_cause": {
+    "all": {
+      "Other": 418,
+      "Table": 520,
+      "Scan or image page": 281,
+      "Multi-column": 303
+    },
+    "Evaluering": {
+      "pages": 1217,
+      "Other": 64,
+      "Table": 88,
+      "Scan or image page": 46,
+      "Multi-column": 4
+    },
+    "Instruks": {
+      "pages": 142,
+      "Scan or image page": 26,
+      "Other": 25,
+      "Table": 4
+    },
+    "Melding til Stortinget": {
+      "pages": 1633,
+      "Table": 49,
+      "Multi-column": 144,
+      "Other": 59,
+      "Scan or image page": 2
+    },
+    "Proposisjon til Stortinget": {
+      "pages": 760,
+      "Other": 29,
+      "Table": 52,
+      "Multi-column": 32,
+      "Scan or image page": 37
+    },
+    "Statusrapport": {
+      "pages": 1108,
+      "Other": 67,
+      "Multi-column": 22,
+      "Table": 59,
+      "Scan or image page": 1
+    },
+    "Strategi/plan": {
+      "pages": 804,
+      "Other": 47,
+      "Scan or image page": 6,
+      "Table": 32,
+      "Multi-column": 53
+    },
+    "Tildelingsbrev": {
+      "pages": 137,
+      "Table": 31,
+      "Other": 8,
+      "Scan or image page": 31
+    },
+    "Årsrapport": {
+      "pages": 1243,
+      "Scan or image page": 132,
+      "Table": 205,
+      "Other": 119,
+      "Multi-column": 48
+    }
+  },
+  "gate_docs_corpus_estimate": {
+    "page_breaks_or_image_pages": {
+      "pct": 8.4,
+      "ci95": [
+        3.7,
+        13.7
+      ]
+    },
+    "plus_flagged_table_pages": {
+      "pct": 73.1,
+      "ci95": [
+        62.9,
+        83.0
+      ]
+    }
+  }
+}

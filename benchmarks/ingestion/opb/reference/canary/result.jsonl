@@ -1,0 +1,14 @@
+{"test_id": "kudos-16278-p2-c10", "verdict": "fix", "args": {"cell": {"text": "103 618", "max_diffs": 0}, "top_heading": {"text": "Tildeling før tillegg", "max_diffs": 0}, "right": {"text": "5 268", "max_diffs": 0}}, "note": "column heading is printed 'Tildeling før tillegg', not 'Tildleing'; cell and right neighbour are right"}
+{"test_id": "kudos-363804-p86-c02", "verdict": "fix", "args": {"content": {"text": "Digi.no 4. desember 2024", "max_diffs": 0}}, "note": "rotated label beside the digi.no clipping reads '4. desember', not '8. desember' (8. is the Aftenposten date); max_diffs set to 0 since a date with 1 allowed edit would still pass the wrong day"}
+{"test_id": "kudos-19474-p4-c05", "verdict": "ok", "note": ""}
+{"test_id": "kudos-76611-p2-c07", "verdict": "ok", "note": ""}
+{"test_id": "kudos-16278-p2-c13", "verdict": "ok", "note": ""}
+{"test_id": "kudos-102474-p34-c12", "verdict": "fix", "args": {"cell": {"text": "206 932 833", "max_diffs": 0}, "left_heading": {"text": "Kostnadsført leiebetaling for perioden", "max_diffs": 0}, "top_heading": {"text": "SUM", "max_diffs": 0}}, "note": "column heading is printed 'SUM', not 'SUMs'; cell and row label are right"}
+{"test_id": "kudos-185498-p86-c04", "verdict": "fix", "args": {"content": {"text": "Foto: Ole Berg-Rusten / NTB", "max_diffs": 1}}, "note": "credit line in the photo caption reads 'Foto: Ole Berg-Rusten / NTB'; the first name 'Ole' was missing"}
+{"test_id": "kudos-414790-p26-c11", "verdict": "ok", "note": ""}
+{"test_id": "kudos-5330-p1-c03", "verdict": "ok", "note": ""}
+{"test_id": "kudos-376716-p1-c01", "verdict": "ok", "note": ""}
+{"test_id": "kudos-19632-p46-c09", "verdict": "ok", "note": ""}
+{"test_id": "kudos-19553-p62-c00", "verdict": "fix", "args": {"content": {"text": "Every year, between 200,000 and 300,000 people apply for renewal of their driving licence, or right to drive", "max_diffs": 3}}, "note": "printed 'between 200,000 and 300,000', not '000,000'"}
+{"test_id": "kudos-60076-p9-c06", "verdict": "fix", "args": {"before": {"text": "I hvilken grad er det satt i gang egnede prosesser", "max_diffs": 1}, "after": {"text": "I hvilken grad framstår tiltak som er i gang som relevante?", "max_diffs": 1}}, "note": "order was reversed: 'I hvilken grad er det satt i gang egnede prosesser' is the second sub-item under item 2, printed above item 3 'I hvilken grad framstår tiltak ...'; passages swapped, text is exact"}
+{"test_id": "kudos-213997-p2-c08", "verdict": "fix", "args": {"before": {"text": "sjette ledd blir fjerde og femte ledd.", "max_diffs": 1}, "after": {"text": "Loven gjelder fra 1. januar 2025", "max_diffs": 1}}, "note": "order was reversed: 'sjette ledd blir fjerde og femte ledd.' ends section I in the left column, 'Loven gjelder fra 1. januar 2025' is section II in the right column, so section I is read first; passages swapped, text is exact"}

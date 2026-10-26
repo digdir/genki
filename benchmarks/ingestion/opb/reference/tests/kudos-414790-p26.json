@@ -1,0 +1,191 @@
+{
+ "tests": [
+  {
+   "id": "kudos-414790-p26-t01",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Middels",
+     "max_diffs": 0
+    },
+    "top_heading": {
+     "text": "Prioritet",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t02",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Ny statistikk",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "Prioritet",
+     "max_diffs": 0
+    },
+    "right": {
+     "text": "Kontaktperson AID",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t03",
+   "test_type": "table_cell",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "cell": {
+     "text": "Kontaktperson AVDir",
+     "max_diffs": 0
+    },
+    "left": {
+     "text": "Kontaktperson AID",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utvikling av statistikk knyttet til oppfølgingen av NOU 2022: 7 Et forbedret pensjonssystem.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Utvidelse av «Antall opptjeningsår 1954–1959 kullene» fra sliterstatistikken.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Kommentar: Stortingsmeldingen om oppfølging",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Utvikling av ny statistikk for å følge utviklingstrekk",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "endringene i AAP-regelverket fra 01.07.22",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Status: venter på konkretisert bestilling fra departementet/VPA.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-414790-p26-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "table",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Antall aktive brukere av hjelpemidler, inndelt etter alder og kjønn",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Antall tolkeoppdrag, inndelt etter arbeid og utdanning",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

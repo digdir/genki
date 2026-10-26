@@ -1,0 +1,182 @@
+{
+ "tests": [
+  {
+   "id": "kudos-96452-p59-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Kapittel VI Årsrekneskap",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t02",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "LEIARKOMMENTAR TIL REKNESKAPEN FOR 2020",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Høgskulen på Vestlandet gjennomfører statsoppdraget innanfor dei rammer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Rekneskapen gir eit dekkande bilde av HVL sine rekneskapsførte inntekter, utgifter, eigendelar, verksemdskapital og gjeld.",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Institusjonens revisor er Riksrevisjonen.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Avvik mellom budsjett og rekneskap og vurdering av institusjonen si drift i perioden",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "47,4 mill. kr.",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "88,2%",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Den samla bidrags- og oppdragsfinansierte verksemda (BOA) utgjer 224 mill.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Dette gir eit avvik på 35 mill. kr. og utgjer ein differanse på 1,6%.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-96452-p59-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Inntektsfordeling",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

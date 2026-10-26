@@ -1,0 +1,117 @@
+{
+ "tests": [
+  {
+   "id": "kudos-18590-p1-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "HVORDAN LYKKES MED GJENNOMFØRING AV INNOVASJONPROSJEKTER I KOMMUNESEKTOREN",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-18590-p1-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "CASESTUDIE AV PROSJEKTER FRA TRE AV NORGES FORSKNINGSRÅDS PROGRAMMER",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-18590-p1-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "MENON-PUBLIKASJON NR. 18/2020",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-18590-p1-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Av Kaja Høiseth-Gilje, Christine Mee Lie, Sigrid M. Hernes, Jon Espen Riiser og Erland Skogli",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-18590-p1-t05",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "INNOVASJONPROSJEKTER I KOMMUNESEKTOREN",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "CASESTUDIE AV PROSJEKTER FRA TRE",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-18590-p1-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "MENON-PUBLIKASJON NR. 18/2020",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Av Kaja Høiseth-Gilje, Christine Mee Lie",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

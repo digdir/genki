@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-97214-p32-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Opplæringen i samfunnskunnskap skal ta utgangspunkt i deltakernes kunnskaper og livssituasjon.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-97214-p32-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "På overordnet nivå, har de to læreplanene et klart avtrykk fra sentrale forhold ved den ideologiske læreplanen.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-97214-p32-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Fagfornyelsen framhever betydningen av læreres profesjonelle skjønn og dømmekraft.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97214-p32-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Evaluators overordnede refleksjon", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-97214-p32-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "underviserne i noen særlig grad en del av et pedagogisk fagfellesskap.", "max_diffs": 2}, "after": {"text": "Evaluators overordnede refleksjon", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97214-p32-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Gjennom større harmonisering, vil overgangene mellom utdanninger i teorien fremstå mer sømløse.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-97214-p32-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I tillegg rettes noe kritikk mot koplingen til Fagfornyelsen.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-97214-p32-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "fra 50 til 75 timer", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-97214-p32-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Det er disse endringene som vil ha størst innvirkning på det daglige arbeidet på voksenopplæringsstedene.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-97214-p32-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "adressat for en del av denne kritikken.", "max_diffs": 1}, "after": {"text": "ser videre ut til å måtte bære noe av ansvaret", "max_diffs": 1}}, "settings": {}}
+]}

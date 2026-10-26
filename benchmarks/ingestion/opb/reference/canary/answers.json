@@ -1,0 +1,72 @@
+{
+ "kudos-19553-p62-c00": {
+  "corrupt": true,
+  "how": "changed a digit",
+  "from": "kudos-19553-p62-t02"
+ },
+ "kudos-376716-p1-c01": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-376716-p1-t03"
+ },
+ "kudos-363804-p86-c02": {
+  "corrupt": true,
+  "how": "changed a digit",
+  "from": "kudos-363804-p86-t01"
+ },
+ "kudos-5330-p1-c03": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-5330-p1-t02"
+ },
+ "kudos-185498-p86-c04": {
+  "corrupt": true,
+  "how": "dropped a word",
+  "from": "kudos-185498-p86-t02"
+ },
+ "kudos-19474-p4-c05": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-19474-p4-t10"
+ },
+ "kudos-60076-p9-c06": {
+  "corrupt": true,
+  "how": "swapped before and after",
+  "from": "kudos-60076-p9-t08"
+ },
+ "kudos-76611-p2-c07": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-76611-p2-t05"
+ },
+ "kudos-213997-p2-c08": {
+  "corrupt": true,
+  "how": "swapped before and after",
+  "from": "kudos-213997-p2-t08"
+ },
+ "kudos-19632-p46-c09": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-19632-p46-t04"
+ },
+ "kudos-16278-p2-c10": {
+  "corrupt": true,
+  "how": "top_heading: swapped two letters",
+  "from": "kudos-16278-p2-t05"
+ },
+ "kudos-414790-p26-c11": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-414790-p26-t01"
+ },
+ "kudos-102474-p34-c12": {
+  "corrupt": true,
+  "how": "top_heading: swapped two letters",
+  "from": "kudos-102474-p34-t02"
+ },
+ "kudos-16278-p2-c13": {
+  "corrupt": false,
+  "how": "unchanged",
+  "from": "kudos-16278-p2-t04"
+ }
+}

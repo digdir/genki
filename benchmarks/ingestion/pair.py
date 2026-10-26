@@ -5,13 +5,13 @@ Strata: document type x likely-scanned (PDF bytes per page). Hard cells are over
 each sampled document carries a weight (stratum size / stratum sample) for corpus estimates.
 
 Writes sample.json next to this script (committed, so reruns check the same documents) and
-.data/pairing-summary.json.
+results/pairing-summary.json (committed).
 """
 import collections
 import json
 import random
 
-from common import DATA, SAMPLE
+from common import DATA, RESULTS, SAMPLE
 
 SAMPLE_SIZE = 150
 SCAN_BYTES_PER_PAGE = 150_000
@@ -105,7 +105,8 @@ def main():
         "sample_pages_total": sum(s["pages_meta"] or 0 for s in sample),
     }
     SAMPLE.write_text(json.dumps(sample, ensure_ascii=False, indent=2) + "\n")
-    (DATA / "pairing-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    (RESULTS / "pairing-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(summary, ensure_ascii=False, indent=1))
 
 

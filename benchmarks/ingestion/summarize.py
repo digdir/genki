@@ -1,16 +1,23 @@
-"""Summarize Steps 1-2 into .data/results/summary.json (and print it)."""
+"""Summarize Steps 1-2 into results/summary.json, from results/ and sample.json alone.
+
+Corpus estimates are weighted shares of documents with a 95% interval from resampling documents
+within each stratum (benchlib.stats.compare), each estimate with its own seeded draws.
+"""
 import collections
 import csv
 import json
-import random
+import math
 import statistics
 
 from common import CHECKS, DATA, RESULTS as R, SAMPLE
+from benchlib import stats, tables
+
+SEED = 20261021
 
 docs = list(csv.DictReader(open(R / "docs.csv")))
 pages = list(csv.DictReader(open(R / "pages.csv")))
 sample = {s["doc_num"]: s for s in json.loads(SAMPLE.read_text())}
-pairing_file = DATA / "pairing-summary.json"
+pairing_file = R / "pairing-summary.json"
 pairing = json.loads(pairing_file.read_text()) if pairing_file.exists() else {"pairing": {}, "kudos_listed": None}
 
 
@@ -45,22 +52,15 @@ def doc_stats(rows):
 
 
 def weighted_share(rows, key):
-    w = [float(r["weight"]) for r in rows]
-    return sum(wi for wi, r in zip(w, rows) if key(r)) / sum(w)
+    return math.fsum(float(r["weight"]) for r in rows if key(r)) / math.fsum(float(r["weight"]) for r in rows)
 
 
-def bootstrap(rows, key, reps=4000, seed=1):
-    """95% CI of the weighted share, resampling documents within each stratum."""
-    rng = random.Random(seed)
-    strata = collections.defaultdict(list)
-    for r in rows:
-        strata[r["stratum"]].append(r)
-    out = sorted(weighted_share([rng.choice(v) for v in strata.values() for _ in v], key) for _ in range(reps))
-    return round(100 * out[int(0.025 * reps)], 1), round(100 * out[int(0.975 * reps) - 1], 1)
-
-
-def estimate(key):
-    return {"pct": round(100 * weighted_share(docs, key), 1), "ci95": bootstrap(docs, key)}
+def estimate(label, key):
+    units = {d["doc_num"]: d for d in docs}
+    c = stats.compare(units, ("docs",), lambda rows, side: weighted_share(rows, key), seed=SEED, label=label,
+                      strata={d["doc_num"]: d["stratum"] for d in docs})
+    low, high = c.intervals["docs"]
+    return {"pct": round(100 * c.scores["docs"], 1), "ci95": [round(100 * low, 1), round(100 * high, 1)]}
 
 
 def flagged_share_over(threshold):
@@ -101,7 +101,8 @@ def gate_fails(r):
     return r["kudos_page_aligned"] != "True" or r["doc_num"] in lost_docs
 
 
-with open(R / "step3-candidates.csv", "w", newline="") as f:
+DATA.mkdir(parents=True, exist_ok=True)
+with open(DATA / "step3-candidates.csv", "w", newline="") as f:
     keep = ("doc_num", "uuid", "type", "page", "pdf_kind", "flags_tuned", "hints", "chars_kudos", "chars_ours",
             "shingle_f1", "ours_words_in_kudos", "numbers_missing_in_kudos", "oov_kudos", "oov_ours",
             "lang_kudos", "lang_ours")
@@ -142,12 +143,12 @@ summary = {
     },
     "verdicts": doc_stats(docs),
     "corpus_estimate_docs_pct": {
-        "plan_any_flag": estimate(lambda r: r["verdict"] == "inspect by hand"),
-        "tuned_any_flag": estimate(lambda r: r["verdict_tuned"] == "inspect by hand"),
-        "tuned_over_10pct_pages": estimate(flagged_share_over(0.10)),
-        "tuned_over_25pct_pages": estimate(flagged_share_over(0.25)),
-        "tuned_over_50pct_pages": estimate(flagged_share_over(0.50)),
-        **{f"tuned_{c}": estimate(lambda r, c=c: int(r[f"tuned_{c}"]) > 0) for c in CHECKS},
+        "plan_any_flag": estimate("plan_any_flag", lambda r: r["verdict"] == "inspect by hand"),
+        "tuned_any_flag": estimate("tuned_any_flag", lambda r: r["verdict_tuned"] == "inspect by hand"),
+        "tuned_over_10pct_pages": estimate("tuned_over_10pct_pages", flagged_share_over(0.10)),
+        "tuned_over_25pct_pages": estimate("tuned_over_25pct_pages", flagged_share_over(0.25)),
+        "tuned_over_50pct_pages": estimate("tuned_over_50pct_pages", flagged_share_over(0.50)),
+        **{f"tuned_{c}": estimate(f"tuned_{c}", lambda r, c=c: int(r[f"tuned_{c}"]) > 0) for c in CHECKS},
     },
     "tuned_flagged_page_share_per_doc": {
         "median_pct": med(100 * int(d["flagged_pages_tuned"]) / int(d["pdf_pages"]) for d in docs),
@@ -195,7 +196,7 @@ summary = {
         "kudos": {
             "pages": sum(missing_in_kudos(p) for p in pages),
             "docs": len(lost_docs),
-            "docs_corpus_estimate": estimate(lambda r: r["doc_num"] in lost_docs),
+            "docs_corpus_estimate": estimate("missing_in_kudos_docs", lambda r: r["doc_num"] in lost_docs),
             "share_of_our_text_pct": pct(
                 sum(int(p["chars_ours"]) - int(p["chars_kudos"]) for p in pages if missing_in_kudos(p)),
                 sum(int(p["chars_ours"]) for p in pages)),
@@ -212,9 +213,9 @@ summary = {
            for by_type in [[p for p in pages if p["type"] == t]]},
     },
     "gate_docs_corpus_estimate": {
-        "page_breaks_or_image_pages": estimate(gate_fails),
-        "plus_flagged_table_pages": estimate(lambda r: gate_fails(r) or r["doc_num"] in table_docs),
+        "page_breaks_or_image_pages": estimate("gate_page_breaks_or_image_pages", gate_fails),
+        "plus_flagged_table_pages": estimate("gate_plus_flagged_table_pages", lambda r: gate_fails(r) or r["doc_num"] in table_docs),
     },
 }
-(R / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
-print(json.dumps(summary, ensure_ascii=False, indent=1))
+tables.write_json(R / "summary.json", summary, sort_keys=False)
+print(f"wrote {R / 'summary.json'}")

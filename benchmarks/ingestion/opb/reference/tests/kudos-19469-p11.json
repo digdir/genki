@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-19469-p11-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Frist for å treffe vedtak om utvisning", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19469-p11-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Selv om det åpnes for unntak fra ettårsfristen påpeker Oslo politidistrikt at det er svært viktig at sakene prioriteres", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-19469-p11-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "PU og UNE viser for øvrig til at lang saksbehandlingstid uansett vil være et moment", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19469-p11-t04", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "endringer som bidrar til å skape usikkerhet for", "max_diffs": 2}, "after": {"text": "og mener det bør gjelde en absolutt frist for utvisning", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-19469-p11-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Tilfeller med sammenhengende straffbart forhold", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-19469-p11-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Ut fra dette virker det naturlig og logisk at utlendingen ikke bør nyte godt av det utvidede vernet", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-19469-p11-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Departementets vurdering", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-19469-p11-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Valg av hjemmel for utvisning når den midlertidig oppholdstillatelsen er bortfalt", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19469-p11-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "Dersom utlendingen var uten oppholdstillatelse på gjerningstidspunktet, avgjøres saken", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-19469-p11-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "nob", "Latn"],
+  "args": {"before": {"text": "vedtakstidspunktet har permanent oppholdstillatelse", "max_diffs": 2}, "after": {"text": "Utlendingsloven har imidlertid ingen uttrykkelig regulering", "max_diffs": 2}}, "settings": {}}
+]}

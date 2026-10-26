@@ -6,7 +6,7 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | -------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
 | [0001](0001-foundations.md)                              | Foundations                              | Accepted, partly built                                              |
 | [0002](0002-paradigm-neutral-kernel.md)                  | A paradigm-neutral kernel                | Accepted, built                                                     |
-| [0003](0003-evaluation-is-part-of-the-platform.md)       | Evaluation is part of the platform       | Accepted, built                                                     |
+| [0003](0003-evaluation-is-part-of-the-platform.md)       | Evaluation is part of the platform       | Accepted, built; component comparisons partly built                 |
 | [0004](0004-service-capability-and-version.md)           | Service, capability and version          | Accepted, built                                                     |
 | [0005](0005-definition-store-authority.md)               | Definition store authority               | Accepted, built                                                     |
 | [0006](0006-configuration-layers.md)                     | Configuration layers and resolution      | Accepted, built                                                     |
