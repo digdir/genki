@@ -37,6 +37,39 @@ describe('a knowledge port scoped to one document', () => {
     ]);
   });
 
+  it('document-scoped facets reveal no global values when the dataset cannot filter by document', async () => {
+    const port = await open();
+    expect((await port.facets(['kategori'])).kategori?.length).toBeGreaterThan(0);
+    const scoped = scopeToDocument(port, 'dok-1');
+
+    expect(await scoped.facets(['kategori', 'virksomheter'])).toEqual({
+      kategori: [],
+      virksomheter: [],
+    });
+  });
+
+  it('document-scoped facets enforce the document filter while preserving other caller filters', async () => {
+    const port = await open({ ...fixtureFilters, doc_num: 'select' });
+    const calls: unknown[] = [];
+    const scoped = scopeToDocument(
+      {
+        ...port,
+        facets: async (fields, filters) => {
+          calls.push({ fields, filters });
+          return { kategori: [{ value: 'Veiledning', count: 1 }] };
+        },
+      },
+      'dok-1',
+    );
+
+    expect(await scoped.facets(['kategori'], { doc_num: ['dok-2'], aar: { gte: 2020 } })).toEqual({
+      kategori: [{ value: 'Veiledning', count: 1 }],
+    });
+    expect(calls).toEqual([
+      { fields: ['kategori'], filters: { doc_num: ['dok-1'], aar: { gte: 2020 } } },
+    ]);
+  });
+
   it('answers nothing from a dataset the document is not in', async () => {
     const empty = unreachableKnowledge(await open());
 

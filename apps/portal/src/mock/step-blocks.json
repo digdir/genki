@@ -715,6 +715,98 @@
     }
   },
   {
+    "ref": "facets@1",
+    "name": "facets",
+    "version": "1",
+    "description": "Read bounded facet values and counts from the service datasets",
+    "title": {
+      "nb": "Hent fasettverdier",
+      "en": "Fetch facet values"
+    },
+    "summary": {
+      "nb": "Henter avgrensede fasettverdier og antall fra tjenestens datasett til senere steg.",
+      "en": "Reads bounded facet values and counts from the service datasets for later steps."
+    },
+    "input": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "minItems": 1,
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "x-label": {
+            "nb": "Fasettfelt",
+            "en": "Facet fields"
+          },
+          "x-widget": "list"
+        },
+        "maxValues": {
+          "default": 200,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "x-label": {
+            "nb": "Flest verdier per felt",
+            "en": "Most values per field"
+          },
+          "x-widget": "number"
+        }
+      },
+      "required": ["fields"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "facets": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                }
+              },
+              "required": ["value", "count"],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "required": ["values", "facets"],
+      "additionalProperties": false
+    }
+  },
+  {
     "ref": "model@1",
     "name": "model",
     "version": "1",

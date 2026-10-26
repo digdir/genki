@@ -985,7 +985,7 @@ describe('platform building block texts', () => {
   });
 
   it('shows platform step flows and step blocks in bokmål and English, and tenant text as written', async () => {
-    const { send, store } = await setup({ blockRefs: ['retrieve@1'] });
+    const { send, store } = await setup({ blockRefs: ['retrieve@1', 'facets@1'] });
     await store.publish(flow('basic-rag', 'Basic RAG', 'Plan queries'), 'test', 'første versjon');
     await store.publish(flow('egen-flyt', 'Min flyt', 'Skrevet av oss'), 'test', 'første versjon');
     const list = async (language?: string) =>
@@ -1008,6 +1008,8 @@ describe('platform building block texts', () => {
     });
     expect(nb.find((b) => b.id === 'retrieve@1')).toMatchObject({ name: 'Søk' });
     expect(en.find((b) => b.id === 'retrieve@1')).toMatchObject({ name: 'Search' });
+    expect(nb.find((b) => b.id === 'facets@1')).toMatchObject({ name: 'Hent fasettverdier' });
+    expect(en.find((b) => b.id === 'facets@1')).toMatchObject({ name: 'Fetch facet values' });
     for (const found of [nb, en])
       expect(found.find((b) => b.id === 'egen-flyt')).toMatchObject({
         name: 'Min flyt',

@@ -279,13 +279,14 @@ const boot = async (
   access?: Partial<Pick<Parameters<typeof createPlatform>[0], 'policy' | 'authenticate'>>,
   extra: {
     knowledge?: unknown;
+    searchReply?: Parameters<typeof fakeHttp>[0];
     settings?: SettingsRegistry;
     prices?: Parameters<typeof createPlatform>[0]['prices'];
     log?: InMemoryEventLog;
   } = {},
 ) => {
   const model = await fakeHttp(modelReply);
-  const search = await fakeHttp(typesenseReply);
+  const search = await fakeHttp(extra.searchReply ?? typesenseReply);
   const colbert = await fakeHttp((body) => ({
     status: 200,
     json: (body.documents as unknown[]).map((_, i) => ({
@@ -503,6 +504,105 @@ describe('the composed platform', () => {
     );
     const turns = model.seen.filter((r) => Array.isArray(r.body.tools));
     expect(turns.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('flow facets respect only the flow service datasets and reach an extract enum through the real knowledge port', async () => {
+    const knowledge = yaml('knowledge.yaml') as { datasets: Record<string, unknown>[] };
+    const own = knowledge.datasets[0];
+    if (!own) throw new Error('missing fixture dataset');
+    const other = {
+      ...own,
+      id: 'digdir/other',
+      aliases: [],
+      options: {
+        ...(own.options as object),
+        collections: { docs: 'other_documents', chunks: 'other_chunks', phrases: 'other_phrases' },
+      },
+    };
+    const { platform, search, model } = await boot(undefined, {
+      knowledge: { ...knowledge, datasets: [own, other] },
+      searchReply: (body) => ({
+        status: 200,
+        json: {
+          results: (body.searches as Record<string, unknown>[]).map((request) => ({
+            hits: [],
+            facet_counts: [
+              {
+                field_name: 'orgs_short',
+                counts: [
+                  {
+                    value: String(request.collection).startsWith('other') ? 'OTHER' : 'DIGDIR',
+                    count: 4,
+                  },
+                  { value: 'DFØ', count: 2 },
+                ],
+              },
+            ],
+          })),
+        },
+      }),
+    });
+    const tenant = kari.tenant;
+    const flow = {
+      apiVersion: 'genai/v1',
+      kind: 'StepFlow',
+      metadata: { tenant, id: 'facet-flow' },
+      spec: {
+        purpose: 'Choose from current facets',
+        steps: [
+          { id: 'facets', block: 'facets@1', params: { fields: ['orgs_short'], maxValues: 1 } },
+          {
+            id: 'choose',
+            block: 'extract@1',
+            input: { prompt: 'Choose an organisation' },
+            params: {
+              schema: {
+                type: 'object',
+                properties: { org: { type: 'string', enum: '{{facets.values.orgs_short}}' } },
+                required: ['org'],
+                additionalProperties: false,
+              },
+            },
+          },
+          { id: 'answer', block: 'answer@1', input: { text: '{{choose.org}}' } },
+        ],
+      },
+    };
+    const source = yaml('services/kunnskapsassistenten-retrieve-only.yaml') as {
+      metadata: object;
+      spec: object;
+    };
+    const service = {
+      ...source,
+      metadata: { tenant, id: 'facet-service' },
+      spec: {
+        ...source.spec,
+        knowledge: { datasets: [{ dataset: 'digdir/kudos' }] },
+        strategy: { id: 'step-flow', version: 1, config: { flow: 'facet-flow@1' } },
+      },
+    };
+    const publishedFlow = await platform.definitions.publish(flow, 'test', 'test facets');
+    expect(publishedFlow.ok ? [] : publishedFlow.errors).toEqual([]);
+    const publishedService = await platform.definitions.publish(service, 'test', 'test facets');
+    expect(publishedService.ok ? [] : publishedService.errors).toEqual([]);
+
+    const invocation = await platform.kernel.invoke(kari, `${tenant}/facet-service/default`, {
+      data: { query: 'Who?' },
+    });
+    expect(JSON.stringify(await invocation.result)).toContain('DIGDIR');
+    const searches = search.seen.flatMap(
+      (request) => request.body.searches as Record<string, unknown>[],
+    );
+    expect(searches).toHaveLength(1);
+    expect(searches[0]).toMatchObject({
+      collection: 'KUDOS_preprod_v4_documents_ab897fbdedfa',
+      facet_by: 'orgs_short',
+    });
+    const extraction = model.seen.find((request) => request.body.response_format)?.body
+      .response_format;
+    expect(extraction).toMatchObject({
+      json_schema: { schema: { properties: { org: { enum: ['DIGDIR'] } } } },
+    });
   });
 
   it("serves KA's datasets and facets over REST from the knowledge catalog", async () => {

@@ -456,6 +456,23 @@ export const createRagRetrieval = (options: RetrievalFactoryOptions) => {
   return {
     plan: backend.plan,
     rerank: backend.rerank,
+    facets: async (fields: string[], maxValues: number, signal: AbortSignal) => {
+      signal.throwIfAborted();
+      if (!Number.isInteger(maxValues) || maxValues < 1 || maxValues > 1000)
+        throw new Error('facets maxValues must be an integer from 1 to 1000');
+      if (fields.length < 1 || fields.length > 20)
+        throw new Error('facets needs between 1 and 20 fields');
+      const declared = options.knowledge.info().filters;
+      for (const field of fields)
+        if (!Object.hasOwn(declared, field))
+          throw new Error(`the service datasets have no filter field ${field}`);
+      const requested = [...new Set(fields)];
+      const values = await options.knowledge.facets(requested, options.filters);
+      signal.throwIfAborted();
+      return Object.fromEntries(
+        requested.map((field) => [field, (values[field] ?? []).slice(0, maxValues)]),
+      );
+    },
     documents: (query: DocumentQuery, signal: AbortSignal) =>
       listDocuments(options.knowledge, query, options.filters, signal),
     readDocument: async (document: string, maxChunks: number, signal: AbortSignal) => {
