@@ -158,6 +158,9 @@ export const assistantUi = {
       'Accepted suggestions are sent to the test set. It becomes a test case when the owner of the test set accepts it.',
     testsTally: '{sent} sent to the test set · {rejected} rejected',
     improveMessage: 'Improve the instructions',
+    draftInstructions: 'Suggest instructions',
+    draftInstructionsMessage: 'Suggest instructions based on the purpose: {purpose}',
+    draftNeedsPurpose: 'Write the purpose first, then the assistant can make a suggestion.',
     suggestMessage: 'Suggest test cases',
     apiEyebrow: 'API call for this message to the assistant',
     apiIntro:

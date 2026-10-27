@@ -18,6 +18,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { ApiCallLink } from '../../components/ApiCall';
+import { useDeveloperView } from '../../components/developer-view';
 import { alwaysProvided, type FlowInputCheck } from '../../data/flow-inputs';
 import {
   fieldIds,
@@ -327,6 +328,7 @@ export const InputFormEditor = ({
   tenant,
 }: Props) => {
   const t = useT();
+  const developer = useDeveloperView();
   const [selected, setSelected] = useState<number | null>(fields.length > 0 ? 0 : null);
   const [flash, setFlash] = useState('');
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -848,17 +850,19 @@ export const InputFormEditor = ({
               </ul>
             </section>
           ) : null}
-          <Details>
-            <Details.Summary>{t('inputForm.schemaSummary')}</Details.Summary>
-            <Details.Content>
-              <div className="stack-xs">
-                <Paragraph data-size="sm">
-                  {t.rich('inputForm.schemaText', { code: (c) => <code>{c}</code> })}
-                </Paragraph>
-                <pre className="if-pre">{schemaOf(fields)}</pre>
-              </div>
-            </Details.Content>
-          </Details>
+          {developer ? (
+            <Details>
+              <Details.Summary>{t('inputForm.schemaSummary')}</Details.Summary>
+              <Details.Content>
+                <div className="stack-xs">
+                  <Paragraph data-size="sm">
+                    {t.rich('inputForm.schemaText', { code: (c) => <code>{c}</code> })}
+                  </Paragraph>
+                  <pre className="if-pre">{schemaOf(fields)}</pre>
+                </div>
+              </Details.Content>
+            </Details>
+          ) : null}
           {serviceId && tenant ? (
             <ApiCallLink
               call={{

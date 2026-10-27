@@ -1,6 +1,7 @@
 import { Button, Chip, Field, Label, Spinner, Tag, Textarea } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
+import { useDeveloperView } from '../../components/developer-view';
 import { Icon, icons } from '../../components/Icon';
 import { useT } from '../../i18n';
 import type { ChangeCard, ChatMessage } from '../../data/services';
@@ -92,6 +93,7 @@ export const AssistantPanel = ({
   onAction,
 }: Props) => {
   const t = useT();
+  const developer = useDeveloperView();
   const log = useRef<HTMLDivElement>(null);
   const [call, setCall] = useState<MessageCall | null>(null);
   const [policyDone, setPolicyDone] = useState<Record<string, boolean>>({});
@@ -256,7 +258,7 @@ export const AssistantPanel = ({
                   ))}
                 </div>
               ) : null}
-              {showCall ? (
+              {showCall && developer ? (
                 <Button
                   variant="tertiary"
                   data-size="sm"

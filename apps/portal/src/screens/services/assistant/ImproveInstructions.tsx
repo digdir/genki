@@ -9,7 +9,11 @@ export const ImproveInstructions = ({
   onApply,
   onUndo,
   onClose,
+  draft = false,
+  needsPurpose = false,
 }: {
+  draft?: boolean;
+  needsPurpose?: boolean;
   state: ImproveState;
   off: boolean;
   onToggle: () => void;
@@ -26,11 +30,12 @@ export const ImproveInstructions = ({
         data-size="sm"
         className="align-start"
         aria-expanded={open}
-        aria-disabled={off || state.status === 'busy' || undefined}
-        onClick={() => !off && state.status !== 'busy' && onToggle()}
+        aria-disabled={off || needsPurpose || state.status === 'busy' || undefined}
+        onClick={() => !off && !needsPurpose && state.status !== 'busy' && onToggle()}
       >
-        {t('assistant.improve')}
+        {t(draft ? 'assistant.draftInstructions' : 'assistant.improve')}
       </Button>
+      {needsPurpose ? <span className="meta">{t('assistant.draftNeedsPurpose')}</span> : null}
       {state.status === 'busy' ? (
         <span role="status" className="ax-spinner-line">
           <Spinner aria-hidden data-size="xs" />

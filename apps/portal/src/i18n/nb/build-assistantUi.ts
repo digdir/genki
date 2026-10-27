@@ -156,6 +156,9 @@ export const assistantUi = {
       'Godtatte forslag er sendt til testsettet. Det blir et testtilfelle når eieren av testsettet godtar det.',
     testsTally: '{sent} sendt til testsettet · {rejected} avvist',
     improveMessage: 'Forbedre instruksjonene',
+    draftInstructions: 'Lag forslag til instruksjoner',
+    draftInstructionsMessage: 'Lag et forslag til instruksjoner ut fra formålet: {purpose}',
+    draftNeedsPurpose: 'Skriv formålet først, så kan assistenten lage et forslag.',
     suggestMessage: 'Foreslå testtilfeller',
     apiEyebrow: 'API-kall for denne meldingen til assistenten',
     apiIntro:
