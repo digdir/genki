@@ -109,7 +109,7 @@ describe('Entra logins through Ansattporten in lockdown', () => {
       });
   });
 
-  it('an Entra login through a registered tenant client is not an operator', async () => {
+  it('lets a trusted Entra login in through a registered tenant client, confined to that client', async () => {
     const registered: ClientRegistry = {
       byClientId: async (clientId) =>
         clientId === 'genki-test-portal'
@@ -123,9 +123,12 @@ describe('Entra logins through Ansattporten in lockdown', () => {
           : undefined,
     };
 
-    await expect(
-      verifier(trusted, registered).verify(await sign(entraClaims())),
-    ).rejects.toMatchObject({ code: 'entra_not_trusted' });
+    const identity = await verifier(trusted, registered).verify(await sign(entraClaims()));
+    expect(identity.principal.confinedTo).toEqual({
+      tenant: PLATFORM,
+      service: 'klarsprak',
+      client: 'tenant-app',
+    });
   });
 
   it('refuses an Entra login outside the configured groups', async () => {
