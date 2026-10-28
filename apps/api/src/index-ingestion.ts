@@ -24,6 +24,7 @@ import {
   tableQuery,
   uploadSource,
   websiteFetchPolicy,
+  websiteFetchPath,
   websiteSkipReasonFor,
   websiteSource,
   type ChunkDocumentConfig,
@@ -351,6 +352,12 @@ const sourceOf = async (
   const problem = sourceProblem(spec, options);
   if (problem) throw new Error(problem);
   if (source.kind === 'website') {
+    const cite = source.cite
+      ? {
+          ...source.cite,
+          fetchBaseUrl: source.cite.fetchBaseUrl ?? new URL('.', source.sitemap).href,
+        }
+      : undefined;
     const policy = websiteFetchPolicy({
       sitemapUrl: source.sitemap,
       ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
@@ -361,7 +368,13 @@ const sourceOf = async (
         signal,
         includeHtml: true,
       })
-    ).filter((e) => selected(new URL(e.loc).pathname, source.include, source.exclude));
+    ).filter((e) =>
+      selected(
+        cite ? websiteFetchPath(e.loc, cite.fetchBaseUrl) : new URL(e.loc).pathname,
+        source.include,
+        source.exclude,
+      ),
+    );
     const skipOf = (loc: string) => websiteSkip(loc, policy.allowedHosts, converter);
     const documentLimit = (loc: string) =>
       convertibleExtensions(converter).includes(extname(new URL(loc).pathname).toLowerCase())
@@ -370,6 +383,7 @@ const sourceOf = async (
     return withSkipped(
       listed.flatMap((e) => skipOf(e.loc) ?? []),
       websiteSource({
+        ...(cite ? { cite } : {}),
         entries: listed.filter((e) => !skipOf(e.loc)),
         ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
         ...(converter ? { converter } : {}),

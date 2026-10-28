@@ -26,12 +26,16 @@ import {
 } from './kudos.js';
 import type { IngestSource, SkipReason, SourceDocument } from './pipeline.js';
 import {
+  citedWebsiteUrl,
+  deriveLanguageFromUrl,
   mergeFrontmatter,
   prepareWebsiteChunks,
   prepareWebsiteDoc,
   urlToDoc,
   type FetchedBody,
   type SitemapEntry,
+  type ResolvedWebsiteCitation,
+  websiteFetchPath,
 } from './website.js';
 
 export interface KudosSourceOptions {
@@ -107,6 +111,7 @@ export const kudosSource = (options: KudosSourceOptions): IngestSource => ({
 export interface WebsiteSourceOptions {
   entries: SitemapEntry[];
   baseUrl?: string;
+  cite?: ResolvedWebsiteCitation;
   fetchMarkdown?(entry: SitemapEntry): Promise<string | WebPage>;
   fetchBody?(entry: SitemapEntry): Promise<FetchedBody>;
   converter?: DocumentConverter;
@@ -147,7 +152,13 @@ export const websiteSource = (options: WebsiteSourceOptions): IngestSource => ({
     for (const entry of options.entries) {
       const read = await readWebsiteEntry(options, entry);
       const markdown = 'text' in read ? read.text : '';
-      const merged = mergeFrontmatter(urlToDoc(entry), markdown);
+      const url = options.cite ? citedWebsiteUrl(entry.loc, options.cite) : entry.loc;
+      const metadata = urlToDoc({ ...entry, loc: url });
+      if (options.cite)
+        metadata.language =
+          deriveLanguageFromUrl(`/${websiteFetchPath(entry.loc, options.cite.fetchBaseUrl)}`) ??
+          null;
+      const merged = mergeFrontmatter(metadata, markdown);
       const doc = 'title' in read && read.title ? { ...merged, title: read.title } : merged;
       yield {
         key: doc.id,
@@ -155,10 +166,14 @@ export const websiteSource = (options: WebsiteSourceOptions): IngestSource => ({
         name: entry.loc,
         ...('skip' in read ? { skip: read.skip } : {}),
         texts: [markdown],
-        location: { key: 'url', value: entry.loc },
+        location: { key: 'url', value: url },
         stored: (chunks: Chunk[]) =>
-          prepareWebsiteDoc(options.baseUrl, { ...doc, total_chunks: chunks.length }),
-        storedChunks: (chunks: Chunk[]) => prepareWebsiteChunks(options.baseUrl, chunks),
+          prepareWebsiteDoc(options.cite ? undefined : options.baseUrl, {
+            ...doc,
+            total_chunks: chunks.length,
+          }),
+        storedChunks: (chunks: Chunk[]) =>
+          prepareWebsiteChunks(options.cite ? undefined : options.baseUrl, chunks),
       };
     }
   },
