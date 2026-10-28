@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-46870-p23-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Vedlegg: Nasjonal bibliotekstrategi – status på tiltakene", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-46870-p23-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Tiltak i kursiv ligger under ansvarsområdet til Utdanningsdirektoratet.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-46870-p23-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "Tiltak i grått er gjennomført.", "max_diffs": 1}, "after": {"text": "Nasjonalbiblioteket skal årlig lyse ut midler til aktiv formidling", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-46870-p23-t04", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Dette er justert (se tiltak 5.)", "max_diffs": 1}, "top_heading": {"text": "Kommentar", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-46870-p23-t05", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Alle Nasjonalbibliotekets arrangement formidles digitalt gjennom nb.no, på facebook, og som podkast", "max_diffs": 3}, "top_heading": {"text": "Kommentar", "max_diffs": 3}, "left": {"text": "Løpende", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-46870-p23-t06", "test_type": "table_cell", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"cell": {"text": "Det er laget en nettside for skolebesøk inkl. Kartsenteret: https://www.nb.no/skole/", "max_diffs": 3}, "top_heading": {"text": "Kommentar", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-46870-p23-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "samlet søknadssum 24 mill. kroner", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-46870-p23-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "Tredje utlysning høsten 2022 søknadssum 12 mill. kroner.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-46870-p23-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"content": {"text": "Nasjonalbiblioteket skal sette i gang prosjekter knyttet til oppsøkende bibliotekvirksomhet for å nå fram til nye brukergrupper/lesere, blant annet i skolen.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-46870-p23-t10", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["table", "nob", "Latn"],
+  "args": {"before": {"text": "Nasjonalbiblioteket skal utvikle nettsider for Kartsenteret", "max_diffs": 2}, "after": {"text": "Nasjonalbiblioteket skal formidle egne arrangementer gjennom", "max_diffs": 2}}, "settings": {}}
+]}

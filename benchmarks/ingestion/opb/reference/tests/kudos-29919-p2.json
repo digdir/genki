@@ -1,0 +1,18 @@
+{"tests": [
+ {"id": "kudos-29919-p2-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Utredningen skal ta utgangspunkt i Nasjonal strategi for digital sikkerhet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-29919-p2-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Responsmiljøet bør utnytte allerede eksisterende ressurser og kompetanse i SVV og øvrige veimyndigheter og veiselskapet.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-29919-p2-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "SVV bes også om å ta kontakt med Jernbanedirektoratet, som har mottatt tilsvarende oppdrag innenfor jernbane og kollektiv", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-29919-p2-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I brevet av 01.04.22 skisseres et forslag om å ta sikte på å etablere et «sikkerhetsforum»", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-29919-p2-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "og ber om at SD orienteres på egnet måte når dette forumet er etablert.", "max_diffs": 2}, "after": {"text": "Med hilsen", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-29919-p2-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "avdelingsdirektør", "max_diffs": 0}, "after": {"text": "underdirektør", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-29919-p2-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Dokumentet er elektronisk signert og har derfor ikke håndskrevne signaturer", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-29919-p2-t08", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "Dokumentet er elektronisk signert", "max_diffs": 0}, "after": {"text": "Riksrevisjonen", "max_diffs": 0}}, "settings": {}}
+]}

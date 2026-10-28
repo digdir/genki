@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-31196-p23-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Er det mulig å gjenfinne læringsutbyttebeskrivelsene fra kompetanseområdet «profesjonalitet» i den nye studieplanen?", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-31196-p23-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "kompetanseområdet «sikker og effektiv praksis»» i den nye studieplanen?", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31196-p23-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "«pasient- og brukersentrert omsorg» i den nye studieplanen?", "max_diffs": 2}, "after": {"text": "brukersentrert omsorg» kan gjenkjennes i studieplanen.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31196-p23-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Vurder i hvilken grad studieplanen ivaretar retningslinjenes krav til studiets oppbygging", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31196-p23-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "«tannpleierrollen i samfunnet» kan gjenkjennes i studieplanen.", "max_diffs": 2}, "after": {"text": "Vurder i hvilken grad studieplanen ivaretar", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31196-p23-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Den praktiske ferdighetstreningen er fordelt over alle tre studieår og oppøves med individuell pasientbehandling", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-31196-p23-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Eksempler på samarbeid med andre er bachelor i folkehelse og årsenhet mat, ernæring og helse.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-31196-p23-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Det fremkommer ikke hvorvidt det finnes samarbeid med tannlegeutdanning.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31196-p23-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"before": {"text": "om i forskrift om nasjonal retningslinje for tannpleierutdanning.", "max_diffs": 2}, "after": {"text": "med unntak av bruk av den digitale læringsplattformen Canvas.", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-31196-p23-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Ut fra materialet som ligger til grunn for vurderingen, synes det å være sammenheng og god progresjon i studieplanen.", "max_diffs": 4}}, "settings": {}}
+]}

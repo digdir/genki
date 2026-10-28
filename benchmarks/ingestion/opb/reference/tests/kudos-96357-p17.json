@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-96357-p17-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"content": {"text": "Mentorprogrammet: for solister og kammermusikere", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-96357-p17-t02", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "nob", "Latn"],
+  "args": {"before": {"text": "Crescendo har fra 2018 to programmer:", "max_diffs": 1}, "after": {"text": "Ung Filharmoni: For unge orkestermusikere", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-96357-p17-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I 2017 har et eksternt utvalg evaluert programmets første driftsperiode 2016-2018", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-96357-p17-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "på 160-180 musikere hvor de unge sitter \"side-by-side\" med Oslo-filharmonien.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-96357-p17-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Veien videre på talentfeltet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-96357-p17-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "slik at de kan knytte gode og tette bånd seg imellom.", "max_diffs": 2}, "after": {"text": "Veien videre på talentfeltet", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-96357-p17-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "For å lykkes som utøvende musiker i et globalt marked må spesialiseringen påbegynnes langt tidligere enn etter inntak til høyere utdanning.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-96357-p17-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "implementert ved BDM og Senter for talentutvikling BD", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-96357-p17-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "En bachelor med etterfølgende master er stipulert til 6 år, mens det reelle forløpet er på minst 10 år.", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-96357-p17-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Vårt fokus er ikke først og fremst rettet mot å finne løsninger for BDM", "max_diffs": 2}}, "settings": {}}
+]}

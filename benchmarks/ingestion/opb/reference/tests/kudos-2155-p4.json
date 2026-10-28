@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-2155-p4-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "I tillegg til kontroller som anvist i økonomiregelverket skal det foretas kontroller på aggregert nivå", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-2155-p4-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "ANDRE KRAV TIL UNIT", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-2155-p4-t03", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "ANDRE KRAV TIL UNIT", "max_diffs": 1}, "after": {"text": "Unit skal ha systemer og rutiner som sikrer at regelverket", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-2155-p4-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Administrerende direktør må sikre nødvendig kompetanse og etablere gode rutiner", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-2155-p4-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "inngår i ledelsens internkontroll", "max_diffs": 1}, "after": {"text": "Unit skal sørge for at det arbeides systematisk med sikkerhet", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-2155-p4-t06", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Lov om nasjonal sikkerhet (sikkerhetsloven) gjelder for alle statlige forvaltningsorganer.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-2155-p4-t07", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Hendelser som truer eller kompromitterer informasjonssikkerheten skal rapporteres.", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-2155-p4-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"content": {"text": "Andre forhold m.m.", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-2155-p4-t09", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"],
+  "args": {"before": {"text": "informasjonssikkerheten skal rapporteres", "max_diffs": 1}, "after": {"text": "Andre forhold m.m.", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-2155-p4-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"],
+  "args": {"content": {"text": "Departementet kan gi Unit særskilt fullmakt til å inngå forlik eller innrømme erstatningsansvar", "max_diffs": 4}}, "settings": {}}
+]}

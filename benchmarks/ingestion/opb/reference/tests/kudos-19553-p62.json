@@ -1,0 +1,196 @@
+{
+ "tests": [
+  {
+   "id": "kudos-19553-p62-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Box 8.1 Digital administration of driving entitlements",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Every year, between 200,000 and 300,000 people apply for renewal of their driving licence, or right to drive",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t03",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Efforts had been ongoing for ten years",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "before the directorates established a project",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "The potential gain is estimated to have a net present value of NOK 940 million over ten years.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Source: Norwegian Digitalisation Agency",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Agility",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t07",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Box 8.1 shows an example of a StimuLab project.",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "In work methods based on agile or lean processes",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "the same team works on needs, solutions, testing and implementation",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "ICT projects are increasingly moving away from large projects",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t09",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "multi_column",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "To look into the future is a practice that fosters innovation.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-19553-p62-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "footnote",
+    "eng",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "OECD (2019), Public Value in Public Service Transformation: Working with Change, OECD Publishing, Paris",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

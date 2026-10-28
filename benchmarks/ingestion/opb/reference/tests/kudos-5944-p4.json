@@ -1,0 +1,192 @@
+{
+ "tests": [
+  {
+   "id": "kudos-5944-p4-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Administrerende direktør tilsettes av Kongen i statsråd for seks år med adgang til fornyet tilsetting én gang.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Strategisk råd",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Formålet med rådet er strategisk dialog med, og rådgivning til, administrasjonen.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "etaten selv innenfor etatens til enhver tid gjeldende rammer.",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Krav til den interne styringen",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Internkontrollen skal forhindre styringssvikt, feil og mangler, og oppfylle kravene til god internkontroll",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t06",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Styring og forvaltning av tilskudd",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Regelverk for tilskudd til norsk deltakelse i utbyggingen av det europeiske satellittnavigasjonssystemet Galileo fastsatt 16. mars 2010",
+     "max_diffs": 4
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t08",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Retningslinjer for ordningen med offentlige tilskudd til nasjonale følgeprogrammer",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Regelverk for forvaltning av tilskudd til nasjonal infrastruktur",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t09",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "list",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "satellittnavigasjonssystemet Galileo fastsatt 16. mars 2010",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Det vises til årlige tildelingsbrev for eventuelle føringer",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-5944-p4-t10",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Eventuelle nye tilskuddsordninger vil bli omtalt i tildelingsbrevet.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

@@ -1,1 +1,5 @@
 package-lock.json
+
+# Benchmark data: written by scripts and rebuilt byte for byte (benchmarks/README.md)
+benchmarks/**/*.json
+benchmarks/**/results/

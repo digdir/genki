@@ -1,0 +1,22 @@
+{"tests": [
+ {"id": "kudos-8285-p8-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "UTDANNING OG FORSKNING", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-8285-p8-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "Evaluation Series of NORHED: Theory of Change and Evaluation Methods", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8285-p8-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "Synthesis Study: On Best Practice and Innovative Approaches to Capacity Development in Low Income African Countries", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-8285-p8-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "A Baseline Study of Norwegian Development Cooperation within the Areas of Environment and Natural Resources Management in Myanmar", "max_diffs": 4}}, "settings": {}},
+ {"id": "kudos-8285-p8-t05", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "Country Report: Democratic Republic of Congo", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-8285-p8-t06", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"before": {"text": "Study: Norwegian Environmental Action Plan", "max_diffs": 2}, "after": {"text": "Facing the Resource Curse: Norway’s Oil for Development Program", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8285-p8-t07", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"before": {"text": "Evaluation of Norwegian Development Support to Zambia", "max_diffs": 2}, "after": {"text": "Mapping of Norwegian Efforts to Include Persons with Disabilities", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8285-p8-t08", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "Making Evaluation Work for the Achievement of SDG 4.5 Equality and Inclusion in Education", "max_diffs": 3}}, "settings": {}},
+ {"id": "kudos-8285-p8-t09", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["list", "multi_column", "eng", "Latn"],
+  "args": {"content": {"text": "Joint Evaluation of Nepal’s Education for All", "max_diffs": 2}}, "settings": {}},
+ {"id": "kudos-8285-p8-t10", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "multi_column", "nob", "Latn"],
+  "args": {"content": {"text": "FN-ORGANISASJONER OG MULTILATERALE FINANSINSTITUSJONER", "max_diffs": 2}}, "settings": {}}
+]}

@@ -1,0 +1,23 @@
+{
+ "tests": [
+  {
+   "id": "kudos-32223-p20-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "tiny",
+    "nno",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Reiselivsmuseet i Balestrand",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

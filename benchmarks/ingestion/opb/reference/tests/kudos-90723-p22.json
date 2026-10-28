@@ -1,0 +1,117 @@
+{
+ "tests": [
+  {
+   "id": "kudos-90723-p22-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Våre samarbeidspartnere",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-90723-p22-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Samarbeid med organisasjoner som har spisskompetanse innenfor sine fagfelt, styrker arbeidet vårt.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-90723-p22-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Samarbeid gir oss også større påvirkning, anledning til erfaringsutveksling",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-90723-p22-t04",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "andre typer aktiviteter enn om vi jobber alene",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Andre alkoholmonopol:",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-90723-p22-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Samarbeidspartnere knyttet til anstendig arbeid og menneskerettigheter",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-90723-p22-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Samarbeidspartnere knyttet til klima, miljø og emballasje",
+     "max_diffs": 2
+    },
+    "after": {
+     "text": "Samarbeidspartnere og nettverk",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

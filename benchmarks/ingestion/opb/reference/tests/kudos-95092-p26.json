@@ -1,0 +1,161 @@
+{
+ "tests": [
+  {
+   "id": "kudos-95092-p26-t01",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tegninger - Alternativ 1",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t02",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tegning 7 - Utsnitt fra vedlegg: A40-2 Fasader planlagt.pdf",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t03",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Tegningen viser forslag til fasade tilpasset valgt planalternativ.",
+     "max_diffs": 2
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t04",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Endring av vindusstørrelser og -plassering, nye balkonger og ny stående kledning, som i dag.",
+     "max_diffs": 3
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t05",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "VI foreslår lik farge som dagens kledning.",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t06",
+   "test_type": "order",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "heading",
+    "caption",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "before": {
+     "text": "Tegninger - Alternativ 1",
+     "max_diffs": 1
+    },
+    "after": {
+     "text": "Tegning 7 - Utsnitt fra vedlegg",
+     "max_diffs": 1
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t07",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fasade Nord",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  },
+  {
+   "id": "kudos-95092-p26-t08",
+   "test_type": "present",
+   "output_type": "html",
+   "derivation": "model_panel",
+   "tags": [
+    "figure",
+    "rotated",
+    "nob",
+    "Latn"
+   ],
+   "args": {
+    "content": {
+     "text": "Fasade Øst",
+     "max_diffs": 0
+    }
+   },
+   "settings": {}
+  }
+ ]
+}

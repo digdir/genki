@@ -1,0 +1,7 @@
+{"tests": [
+ {"id": "kudos-63252-p1-t01", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "Meld. St. 5", "max_diffs": 0}}, "settings": {}},
+ {"id": "kudos-63252-p1-t02", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Melding til Stortinget", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-63252-p1-t03", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"content": {"text": "En motstandsdyktig helseberedskap", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-63252-p1-t04", "test_type": "present", "output_type": "html", "derivation": "model_panel", "tags": ["nob", "Latn"], "args": {"content": {"text": "Fra pandemi til krig i Europa", "max_diffs": 1}}, "settings": {}},
+ {"id": "kudos-63252-p1-t05", "test_type": "order", "output_type": "html", "derivation": "model_panel", "tags": ["heading", "nob", "Latn"], "args": {"before": {"text": "Melding til Stortinget", "max_diffs": 1}, "after": {"text": "En motstandsdyktig helseberedskap", "max_diffs": 1}}, "settings": {}}
+]}
