@@ -192,6 +192,7 @@ export interface RegistrationInput {
 export interface TenantSecretName {
   name: string;
   ref: string;
+  allowedHosts?: string[];
 }
 
 export interface AgentCardSummary {

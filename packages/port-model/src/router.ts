@@ -141,7 +141,12 @@ export class ModelRouter implements PortProvider<ModelPort> {
       )
         throw new Error(`endpoint ${name} uses unknown token provider ${endpoint.auth.provider}`);
       const adapter = this.#adapters.get(endpoint.protocol) as ModelAdapter;
-      const credential = credentialFor(endpoint.auth, options.secrets, options.tokenProviders);
+      const credential = credentialFor(
+        endpoint.auth,
+        options.secrets,
+        options.tokenProviders,
+        endpoint.baseURL,
+      );
       credentials.set(name, credential);
       const guarded = options.fetchFor?.(name);
       connections.set(

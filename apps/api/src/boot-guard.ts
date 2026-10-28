@@ -4,6 +4,7 @@ import {
   platformTenantProblems,
   unmetOutsideDevMode,
 } from '@genai/composition';
+import { operatorSubjectProblems } from './operators.js';
 
 export { isDevMode, isProduction } from '@genai/composition';
 
@@ -16,6 +17,7 @@ export const hasIdentityProvider = (env: Env) =>
 export const bootProblems = (env: Env): string[] => [
   ...platformTenantProblems(env),
   ...lockdownEntraProblems(env),
+  ...operatorSubjectProblems(env),
   ...unmetOutsideDevMode(env, [
     {
       met: hasIdentityProvider(env),

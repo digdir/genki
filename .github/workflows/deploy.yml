@@ -155,6 +155,7 @@ jobs:
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
           LOCKDOWN_ENTRA_GROUPS: ${{ vars.LOCKDOWN_ENTRA_GROUPS }}
           LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
+          OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \

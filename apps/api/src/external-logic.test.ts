@@ -109,11 +109,11 @@ const boot = async () => {
     'content-type': 'application/json',
     ...extra,
   });
-  const secret = (name: string, value: string) =>
+  const secret = (name: string, value: string, port: number) =>
     app.request(`/tenants/${tenant}/secrets/${name}`, {
       method: 'PUT',
       headers: as({ 'change-reason': 'test av endringen' }),
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, allowedHosts: [`http://127.0.0.1:${port}`] }),
     });
   const reader = kernelTaskReader(platform.kernel, kari);
   const steps = async (id: string) => {
@@ -171,7 +171,7 @@ describe('bringing your own logic', () => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(turnReply);
     });
-    expect((await secret('agent-token', 'ekstern-token')).status).toBe(200);
+    expect((await secret('agent-token', 'ekstern-token', port)).status).toBe(200);
     const published = await platform.definitions.publish(
       remoteService(`http://127.0.0.1:${port}/turn`),
       'test',
@@ -217,7 +217,7 @@ describe('bringing your own logic', () => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(turnReply);
     });
-    await secret('agent-token', 'ekstern-token');
+    await secret('agent-token', 'ekstern-token', port);
     const service = remoteService(`http://127.0.0.1:${port}/turn`);
     const published = await platform.definitions.publish(
       { ...service, spec: { ...service.spec, model: { residency: 'eu' } } },
@@ -244,7 +244,7 @@ describe('bringing your own logic', () => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(turnReply);
     });
-    await secret('agent-token', 'ekstern-token');
+    await secret('agent-token', 'ekstern-token', agent);
     await platform.definitions.publish(
       remoteService(`http://127.0.0.1:${agent}/turn`),
       'test',
@@ -273,7 +273,10 @@ describe('bringing your own logic', () => {
     });
     const source = new McpToolSource({
       registry,
-      secrets: { resolve: async () => 'kari' },
+      secrets: {
+        resolve: async () => 'kari',
+        hostsFor: async () => [`http://127.0.0.1:${port}`],
+      },
       guard: new EgressGuard({
         testOverride: { allowLoopback: true, allowHttp: true },
         timeoutMs: 5000,
@@ -308,7 +311,7 @@ describe('bringing your own logic', () => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(turnReply);
     });
-    await secret('agent-token', 'ekstern-token');
+    await secret('agent-token', 'ekstern-token', port);
     await platform.definitions.publish(
       remoteService(`http://127.0.0.1:${port}/turn`),
       'test',
@@ -375,7 +378,7 @@ describe('bringing your own logic', () => {
       res.writeHead(400);
       res.end();
     });
-    await secret('case-api', 'tool-token');
+    await secret('case-api', 'tool-token', port);
     await platform.connections.save({
       connection: {
         id: 'saker',
