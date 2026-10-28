@@ -1,0 +1,57 @@
+{
+  "benchmark": "kudos-pilot/embeddings",
+  "code": "168b7032dee6b472351de9174ebb87590fdd4629d2fa10fe45ec3fdf5d03e883",
+  "git": {
+    "commit": "6d7339a0d7da7208d2c7221cb8be561070b2a2f9",
+    "dirty": true
+  },
+  "items": "ace4ba6f8fbd10e679b45a07f7c95aaa385190c421253c3e8443de7b267a8cf6",
+  "packages": {
+    "mlx": "0.32.4",
+    "mlx-lm": "0.32.2",
+    "sentence-transformers": "6.2.0",
+    "torch": "2.14.1",
+    "transformers": "5.20.2"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "eae429d250799c9cb833dc8371cef4392146d82d94438360d44503abf326bade",
+  "schema": 1,
+  "settings": {
+    "documents": 300,
+    "full": "kudos-pilot-<side>-retrieve-only: gpt-4o planner, then the same search; 3 rounds of the draft questions",
+    "passages": 20248,
+    "search": "kudos-pilot-<side>-noplan-retrieve-only: keywords and vectors fused with RRF, ColBERT, 10 passages",
+    "search-<step>": "kudos-pilot-<side>-noplan-<step>-retrieve-only (setup_models.search_step): vector or fusion search alone, each with or without ColBERT, or the whole search without ColBERT",
+    "vectors": "exact search over every page passage in the side's own database, top 100"
+  },
+  "side": "te3-small",
+  "side_settings": {
+    "catalog_model": "foundry/text-embedding-3-small",
+    "dimensions": 1536,
+    "dtype": null,
+    "environment": null,
+    "model": "text-embedding-3-small",
+    "prompts": {},
+    "remote_code": false,
+    "revision": null,
+    "runtime": "Azure OpenAI (Foundry)",
+    "scored": {
+      "full": "full-search-te3-small.json",
+      "search": "2026-10-27T11:09:48+00:00",
+      "vectors": "2026-10-27T10:59:20+00:00"
+    },
+    "shortened_from": null,
+    "timing": {
+      "embed_runtime": "Azure OpenAI, the ingest's wall time",
+      "embed_seconds": 547.8,
+      "embed_tokens": 14380821,
+      "exact_search_p50_ms": 58.5,
+      "questions_embed_seconds": 25.4,
+      "search_p50_ms": 868,
+      "search_p95_ms": 1429,
+      "tokens_per_second": 26254
+    }
+  },
+  "time": "2026-10-28T08:26:25+00:00"
+}

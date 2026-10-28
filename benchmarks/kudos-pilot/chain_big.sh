@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The last part of the Kudos pilot's unattended run (genki issue 92), after the index benchmark:
+# The last part of the Kudos pilot's chained run (genki issue 92), after the index benchmark:
 # - in parallel: the search without the planner (score_search.py) for the baseline and the four small models;
 # - Qwen3-Embedding-4B, then -8B: pages embedded on MLX into the cache, ingest, vector scores (run_model.sh), the
 #   full genki search with the planner (3 rounds), and the search without the planner. 4B's server and API stop

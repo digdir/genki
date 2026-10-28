@@ -38,10 +38,11 @@ def model_settings(key):
 def embed(model, texts):
     prompt = model["prompts"].get("query", "")
     inputs = [prompt + t for t in texts]
-    if model["key"] == "baseline":
+    if model["key"] == "baseline" or model.get("catalogModel"):
+        # OpenAI's models on Foundry, as genki calls them (text-embedding-3-large shortened to 1,536)
         url = setting("FOUNDRY_OPENAI_BASE_URL").rstrip("/") + "/embeddings"
         headers = {"api-key": setting("FOUNDRY_OPENAI_KEY")}
-        body = {"model": "text-embedding-3-large", "input": inputs, "dimensions": 1536, "encoding_format": "float"}
+        body = {"model": model["hf"], "input": inputs, "dimensions": model["dimensions"], "encoding_format": "float"}
     else:
         url, headers = f"http://127.0.0.1:{model['server']}/v1/embeddings", {}
         body = {"model": model["hf"], "input": inputs}
@@ -139,7 +140,7 @@ def main():
             results.append(result)
     out = DATA / f"vectors-{key}.json"
     out.write_text(json.dumps({
-        "model": model["hf"], "key": key, "dimensions": model["dimensions"], "passages": count,
+        "model": model.get("name", model["hf"]), "key": key, "dimensions": model["dimensions"], "passages": count,
         "questions": len(results), "embed_seconds": round(embed_seconds, 1),
         "search_ms_p50": round(1000 * sorted(search_seconds)[len(search_seconds) // 2], 1),
         "results": results,

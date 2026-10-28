@@ -1,5 +1,5 @@
 {
-  "comment": "The self-hosted embedding models the Kudos pilot compares (genki issue 92). Each gets an embedding server (embed_server.py) on `server`, its own platform and knowledge databases, its own API on `api`, a dataset digdir/kudos-next-<key> and a service kudos-pilot-<key>-retrieve-only. `prompts` are the model's own query/document prompts from its config_sentence_transformers.json; genki puts them before each text. `dtype` and `batch` are the server's; `maxBatch` keeps one embedding call under ~25 s on an M3 Pro.",
+  "comment": "The self-hosted embedding models the Kudos pilot compares (genki issue 92). Each gets an embedding server (embed_server.py) on `server`, its own platform and knowledge databases, its own API on `api`, a dataset digdir/kudos-next-<key> and a service kudos-pilot-<key>-retrieve-only. `prompts` are the model's own query/document prompts from its config_sentence_transformers.json; genki puts them before each text. `dtype` and `batch` are the server's; `maxBatch` keeps one embedding call under ~25 s on an M3 Pro. `mlx`: the pages are embedded on MLX first (pre_embed.py, Qwen3 architecture only). `trustRemoteCode`: the model loads Python code from its repository, read and pinned at `revision` (and `codeRevision` for code in another repository). `venv`: the Python environment in .data that serves the model, when not embed-venv (gte's 2024 code needs transformers 4.x; see the README). `round`: 2 for the models added in the second round; their bootstrap draws come from their own random sequence, so the first round's published intervals stay as they were. Round 3 adds `name` (the label in reports, when it differs from `hf`), `shortenedFrom` (a model whose stored page vectors are cut to `dimensions` by shorten.py, while the server cuts the questions the same way) and `catalogModel` (an embedding model already in genki's catalog, such as foundry/text-embedding-3-small: no local server).",
   "models": [
     {
       "key": "borealis",
@@ -11,7 +11,9 @@
       "maxBatch": 64,
       "prompts": {},
       "server": 8201,
-      "api": 8301
+      "api": 8301,
+      "mlx": false,
+      "trustRemoteCode": false
     },
     {
       "key": "bge-m3",
@@ -23,7 +25,9 @@
       "maxBatch": 64,
       "prompts": {},
       "server": 8202,
-      "api": 8302
+      "api": 8302,
+      "mlx": false,
+      "trustRemoteCode": false
     },
     {
       "key": "arctic-l-v2",
@@ -37,7 +41,9 @@
         "query": "query: "
       },
       "server": 8203,
-      "api": 8303
+      "api": 8303,
+      "mlx": false,
+      "trustRemoteCode": false
     },
     {
       "key": "qwen3-0-6b",
@@ -51,7 +57,9 @@
         "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       },
       "server": 8204,
-      "api": 8304
+      "api": 8304,
+      "mlx": true,
+      "trustRemoteCode": false
     },
     {
       "key": "qwen3-4b",
@@ -65,7 +73,9 @@
         "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       },
       "server": 8205,
-      "api": 8305
+      "api": 8305,
+      "mlx": true,
+      "trustRemoteCode": false
     },
     {
       "key": "qwen3-8b",
@@ -79,7 +89,185 @@
         "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       },
       "server": 8206,
-      "api": 8306
+      "api": 8306,
+      "mlx": true,
+      "trustRemoteCode": false
+    },
+    {
+      "key": "gte-ml-base",
+      "hf": "Alibaba-NLP/gte-multilingual-base",
+      "revision": "9bbca17d9273fd0d03d5725c7a4b0f6b45142062",
+      "codeRevision": {
+        "repo": "Alibaba-NLP/new-impl",
+        "revision": "40ced75c3017eb27626c9d4ea981bde21a2662f4"
+      },
+      "dimensions": 768,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 64,
+      "prompts": {},
+      "server": 8207,
+      "api": 8307,
+      "mlx": false,
+      "trustRemoteCode": true,
+      "venv": "embed-venv-tf4",
+      "round": 2
+    },
+    {
+      "key": "pplx-0-6b",
+      "hf": "perplexity-ai/pplx-embed-v1-0.6b",
+      "revision": "2c4d510dd4a732063c31a0f70193e35067b51fd8",
+      "dimensions": 1024,
+      "dtype": "float32",
+      "batch": 16,
+      "maxBatch": 16,
+      "prompts": {},
+      "server": 8208,
+      "api": 8308,
+      "mlx": false,
+      "trustRemoteCode": true,
+      "round": 2
+    },
+    {
+      "key": "f2llm-0-6b",
+      "hf": "codefuse-ai/F2LLM-v2-0.6B",
+      "revision": "8786315a8711c242ee03ec67c74dd9ad0a61e2cf",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 32,
+      "prompts": {
+        "query": "Instruct: Given a question, retrieve passages that can help answer the question.\nQuery: "
+      },
+      "server": 8209,
+      "api": 8309,
+      "mlx": true,
+      "trustRemoteCode": false,
+      "round": 2
+    },
+    {
+      "key": "harrier-0-6b",
+      "hf": "microsoft/harrier-oss-v1-0.6b",
+      "revision": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 32,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+      },
+      "server": 8210,
+      "api": 8310,
+      "mlx": true,
+      "trustRemoteCode": false,
+      "round": 2
+    },
+    {
+      "key": "te3-small",
+      "name": "text-embedding-3-small",
+      "hf": "text-embedding-3-small",
+      "catalogModel": "foundry/text-embedding-3-small",
+      "dimensions": 1536,
+      "prompts": {},
+      "api": 8316,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
+    },
+    {
+      "key": "arctic-l-v2-512",
+      "name": "Snowflake/snowflake-arctic-embed-l-v2.0 @512",
+      "hf": "Snowflake/snowflake-arctic-embed-l-v2.0",
+      "revision": "ac6544c8a46e00af67e330e85a9028c66b8cfd9a",
+      "shortenedFrom": "arctic-l-v2",
+      "dimensions": 512,
+      "dtype": "float16",
+      "batch": 16,
+      "maxBatch": 64,
+      "prompts": {
+        "query": "query: "
+      },
+      "server": 8215,
+      "api": 8315,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
+    },
+    {
+      "key": "qwen3-4b-1024",
+      "name": "Qwen/Qwen3-Embedding-4B @1024",
+      "hf": "Qwen/Qwen3-Embedding-4B",
+      "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+      "shortenedFrom": "qwen3-4b",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 8,
+      "maxBatch": 4,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8213,
+      "api": 8313,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
+    },
+    {
+      "key": "qwen3-4b-1536",
+      "name": "Qwen/Qwen3-Embedding-4B @1536",
+      "hf": "Qwen/Qwen3-Embedding-4B",
+      "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+      "shortenedFrom": "qwen3-4b",
+      "dimensions": 1536,
+      "dtype": "float16",
+      "batch": 8,
+      "maxBatch": 4,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8214,
+      "api": 8314,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
+    },
+    {
+      "key": "qwen3-8b-1024",
+      "name": "Qwen/Qwen3-Embedding-8B @1024",
+      "hf": "Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+      "shortenedFrom": "qwen3-8b",
+      "dimensions": 1024,
+      "dtype": "float16",
+      "batch": 4,
+      "maxBatch": 2,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8211,
+      "api": 8311,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
+    },
+    {
+      "key": "qwen3-8b-1536",
+      "name": "Qwen/Qwen3-Embedding-8B @1536",
+      "hf": "Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+      "shortenedFrom": "qwen3-8b",
+      "dimensions": 1536,
+      "dtype": "float16",
+      "batch": 4,
+      "maxBatch": 2,
+      "prompts": {
+        "query": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      "server": 8212,
+      "api": 8312,
+      "mlx": false,
+      "trustRemoteCode": false,
+      "round": 3
     }
   ]
 }

@@ -1,7 +1,0 @@
-id,item,volume,usd,status
-c1,text-embedding-3-large for the pilot ingest,13.5M tokens,1.8,done
-c2,"gpt-4o planner, retrieval runs before this benchmark","≈ 1,230 calls",3.6,done
-c3,gpt-4o writing the generated questions,750 pages,2.5,done
-c4,"gpt-4o planner, full search per model","1,596 calls",4.6,done
-c5,text-embedding-3-large for question vectors,"≈ 52,000 tokens",0.01,done
-c6,"Self-hosted models, databases, index benchmark, ColBERT (Digdir's server)",on this Mac,0,free

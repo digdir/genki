@@ -1,6 +1,0 @@
-id,rows,what,inserted,insert_rows_per_second,vacuum_seconds,clients,queries_per_second
-100000-qps,100000,throughput,,,,8,2266.3
-250000-qps,250000,throughput,,,,8,2297.3
-500000-qps,500000,throughput,,,,8,2127.0
-1000000-qps,1000000,throughput,,,,8,1958.7
-1000000-write,1000000,write,10000,280.4,460.9,,

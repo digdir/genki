@@ -1,9 +1,0 @@
-{
- "model": "Qwen/Qwen3-Embedding-0.6B",
- "runtime": "mlx float16",
- "passages": 19976,
- "tokens": 14973428,
- "seconds": 6756.0,
- "tokens_per_second": 2216.0,
- "note": "restored from .data/pre-embed-qwen3-0-6b.log; 64 more passages were embedded by a first, stopped run; the GPU was shared with the BGE-M3 and Arctic ingests for about the first hour"
-}

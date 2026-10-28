@@ -1,8 +1,9 @@
-"""Embed every distinct page passage of the Kudos pilot for one Qwen3 model on Apple's MLX (mlx_qwen3.py) and store
-the vectors in that model's genki embedding cache (kn_embeddings in knowledge_<key>, keyed by model, dimensions and
-the sha256 of the text, as packages/ingest/src/embedding-cache.ts reads it). The genki ingest that follows then
-finds every vector cached and sends nothing to the model. MLX runs these models faster than PyTorch on this Mac's
-GPU and gives the same vectors (cosine ≥ 0.9997 against sentence-transformers on real pages).
+"""Embed every distinct page passage of the Kudos pilot for one Qwen3-architecture model (`mlx` in models.json) on
+Apple's MLX (mlx_qwen3.py) and store the vectors in that model's genki embedding cache (kn_embeddings in
+knowledge_<key>, keyed by model, dimensions and the sha256 of the text, as packages/ingest/src/embedding-cache.ts
+reads it). The genki ingest that follows then finds every vector cached and sends nothing to the model. MLX runs
+these models faster than PyTorch on this Mac's GPU and gives the same vectors (cosine ≥ 0.9997 against
+sentence-transformers on real pages).
 
 The passages are the ones genki makes from the stored Marker output: the same in every model's database, so they
 are read from the pilot's own knowledge database. Restartable: texts already cached are skipped.

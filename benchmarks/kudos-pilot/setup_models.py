@@ -3,8 +3,9 @@
 - .data/config: a copy of apps/api/config/local plus, per model, an embedding endpoint (its embed_server.py), an
   embedding model with the model's prompts, a dataset digdir/kudos-next-<key> and a retrieve-only service
   kudos-pilot-<key>-retrieve-only, with a -noplan twin that searches with the question as asked (planner.enabled
-  false: no model call, so it costs nothing). The baseline gets kudos-pilot-noplan-retrieve-only. The committed
-  config stays as it is; the per-model APIs run with CONFIG_DIR.
+  false: no model call, so it costs nothing). The baseline gets kudos-pilot-noplan-retrieve-only. For the keys in
+  common.STEP_KEYS, the -noplan service also comes cut down to each of common.SEARCH_STEPS (search_step), and their
+  datasets get a vector-only profile. The committed config stays as it is; the per-model APIs run with CONFIG_DIR.
 - Per model, a platform database genai_<key> and a knowledge database knowledge_<key> on the pilot's two Postgres
   containers, the knowledge one with a copy of src_conversions so the ingest reuses the stored Marker output.
 
@@ -21,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from common import DATA, REPO
+from common import DATA, REPO, SEARCH_STEPS, STEP_KEYS
 
 HERE = Path(__file__).resolve().parent
 CONFIG = DATA / "config"
@@ -78,6 +79,35 @@ def without_planner(service):
     return copy
 
 
+# pgvector's default profiles (defaultPgvectorProfiles), plus vector search alone on the passages for the steps
+STEP_PROFILES = {
+    "content": {"target": "chunks", "mode": "hybrid"},
+    "metadata": {"target": "docs", "mode": "text"},
+    "phrase": {"target": "phrases", "mode": "hybrid"},
+    "doc-title": {"target": "docs", "mode": "text", "fields": ["title"]},
+    "vector": {"target": "chunks", "mode": "vector"},
+}
+
+
+def search_step(service, step):
+    """The search without the planner cut down to one step (common.SEARCH_STEPS): vector or fusion search the
+    passages with one search and nothing else (no metadata or phrase search, no query-aware boosts, no filters
+    guessed from the question); -colbert reranks that with ColBERT; nocolbert is the whole search without ColBERT."""
+    copy = json.loads(json.dumps(service))
+    copy["metadata"]["name"] = f"{copy['metadata']['name']}, steg {step}"
+    knowledge = copy["spec"]["knowledge"]
+    if step != "nocolbert":
+        knowledge["retrieval"] = {
+            "maxPerDocument": knowledge.get("retrieval", {}).get("maxPerDocument", 10),
+            "strategies": [{"name": "content", "profiles": ["vector" if step.startswith("vector") else "content"]}],
+            "queryAwareBoost": False,
+            "autoFilter": {"enabled": False},
+        }
+    if not step.endswith("-colbert"):
+        knowledge.pop("reranker", None)
+    return copy
+
+
 def write_config(chosen):
     if CONFIG.exists():
         shutil.rmtree(CONFIG)
@@ -86,35 +116,51 @@ def write_config(chosen):
     knowledge = yaml.safe_load((CONFIG / "knowledge.yaml").read_text())
     template = yaml.safe_load((CONFIG / "services" / "kudos-pilot-retrieve-only.yaml").read_text())
     for m in chosen:
-        embeddings["endpoints"][f"local-{m['key']}"] = {
-            "protocol": "openai-embeddings",
-            "baseURL": f"http://127.0.0.1:{m['server']}/v1",
-            "auth": {"kind": "api-key", "secret": "secret://env/local-embeddings-key"},
-        }
-        embeddings["models"].append({
-            "id": f"local/{m['key']}",
-            "endpoint": f"local-{m['key']}",
-            "deployment": m["hf"],
-            "residency": "norway",
-            "dimensions": m["dimensions"],
-            "maxBatch": m["maxBatch"],
-            **({"prompts": m["prompts"]} if m["prompts"] else {}),
-        })
+        label = m.get("name", m["hf"])
+        # A model from genki's own catalog (catalogModel) has its endpoint already; the others get their server
+        if not m.get("catalogModel"):
+            embeddings["endpoints"][f"local-{m['key']}"] = {
+                "protocol": "openai-embeddings",
+                "baseURL": f"http://127.0.0.1:{m['server']}/v1",
+                "auth": {"kind": "api-key", "secret": "secret://env/local-embeddings-key"},
+            }
+            embeddings["models"].append({
+                "id": f"local/{m['key']}",
+                "endpoint": f"local-{m['key']}",
+                "deployment": m["hf"],
+                "residency": "norway",
+                "dimensions": m["dimensions"],
+                "maxBatch": m["maxBatch"],
+                **({"prompts": m["prompts"]} if m["prompts"] else {}),
+            })
         knowledge["datasets"].append({
             "id": f"digdir/kudos-next-{m['key']}",
-            "name": f"Kudos på pgvector, {m['hf']} (pilot)",
-            "description": f"Kudos-piloten med vektorer fra {m['hf']}, kjørt lokalt",
+            "name": f"Kudos på pgvector, {label} (pilot)",
+            "description": f"Kudos-piloten med vektorer fra {label}" + ("" if m.get("catalogModel") else ", kjørt lokalt"),
             "endpoint": "platform-pg",
-            "residency": "norway",
-            "embedding": {"model": f"local/{m['key']}", "dimensions": m["dimensions"]},
+            # A catalog model runs on Foundry (residency global, as digdir/kudos-next); local ones stay in Norway
+            "residency": "global" if m.get("catalogModel") else "norway",
+            "embedding": {"model": m.get("catalogModel") or f"local/{m['key']}", "dimensions": m["dimensions"]},
         })
         service = json.loads(json.dumps(template))
         service["metadata"]["id"] = f"kudos-pilot-{m['key']}-retrieve-only"
-        service["metadata"]["name"] = f"Kudos-piloten, {m['hf']}, bare søk"
+        service["metadata"]["name"] = f"Kudos-piloten, {label}, bare søk"
         service["spec"]["knowledge"]["datasets"] = [{"dataset": f"digdir/kudos-next-{m['key']}"}]
         write_service(service, f"kudos-pilot-{m['key']}-retrieve-only")
         write_service(without_planner(service), f"kudos-pilot-{m['key']}-noplan-retrieve-only")
+        if m["key"] in STEP_KEYS:
+            for step in SEARCH_STEPS:
+                write_service(search_step(without_planner(service), step),
+                              f"kudos-pilot-{m['key']}-noplan-{step}-retrieve-only")
     write_service(without_planner(json.loads(json.dumps(template))), "kudos-pilot-noplan-retrieve-only")
+    if "baseline" in STEP_KEYS:
+        for step in SEARCH_STEPS:
+            write_service(search_step(without_planner(json.loads(json.dumps(template))), step),
+                          f"kudos-pilot-noplan-{step}-retrieve-only")
+    for dataset in knowledge["datasets"]:
+        key = "baseline" if dataset["id"] == "digdir/kudos-next" else dataset["id"].removeprefix("digdir/kudos-next-")
+        if key in STEP_KEYS:
+            dataset["options"] = {**(dataset.get("options") or {}), "profiles": STEP_PROFILES}
     for name, data in (("embeddings.yaml", embeddings), ("knowledge.yaml", knowledge)):
         (CONFIG / name).write_text(
             f"# Generated by benchmarks/kudos-pilot/setup_models.py from apps/api/config/local\n"

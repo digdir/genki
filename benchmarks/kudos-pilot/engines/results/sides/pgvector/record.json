@@ -1,0 +1,28 @@
+{
+  "benchmark": "kudos-pilot/engines",
+  "code": "3bb5f8550519abcca72b3ffe9f8172940e7d8cf892df2d3f1bfeecfe93f91a74",
+  "git": {
+    "commit": "6d7339a0d7da7208d2c7221cb8be561070b2a2f9",
+    "dirty": true
+  },
+  "items": "205e970f1ff1731e132a251c1a0c31a027bdfad5df0b286438a3c900d537451e",
+  "packages": {},
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "67f647486eee24c8c02e04adad4ed61a7ec4a9915f4bf2d8e41864e81cac4be9",
+  "schema": 1,
+  "settings": {
+    "documents": 299,
+    "reranker": "ColBERT",
+    "rounds": 3,
+    "service": "Kunnskapsassistenten's retrieve-only service (rag-single-shot, no answer), gpt-4o planner"
+  },
+  "side": "pgvector",
+  "side_settings": {
+    "engine": "pgvector 0.8.2: digdir/kudos-next, page passages, text-embedding-3-large at 1,536",
+    "planner": "blind: writes its searches in one model call",
+    "run": "typesense-vs-pgvector.json",
+    "service": "kudos-pilot-retrieve-only"
+  },
+  "time": "2026-10-26T14:41:33+00:00"
+}

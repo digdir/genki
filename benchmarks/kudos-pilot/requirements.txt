@@ -1,0 +1,14 @@
+# The pilot's main environment (.data/embed-venv): embedding servers, MLX batch embedding, scoring.
+# Python 3.13; pinned to what produced the published results. gte-multilingual-base uses requirements-tf4.txt.
+fastapi==0.161.1
+mlx==0.32.4
+mlx-lm==0.32.2
+numpy==2.5.4
+pgvector==0.5.1
+psycopg[binary]==3.3.6
+pyarrow==26.0.0
+PyYAML==6.0.3
+sentence-transformers==6.2.0
+torch==2.14.1
+transformers==5.20.2
+uvicorn==0.54.0

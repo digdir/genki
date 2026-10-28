@@ -1,1 +1,0 @@
-{"model":"Snowflake/snowflake-arctic-embed-l-v2.0","device":"mps","dtype":"torch.float16","dimensions":1024,"max_seq_length":8192,"requests":492,"texts":20040,"tokens":11222556,"seconds":3643.966043001332}

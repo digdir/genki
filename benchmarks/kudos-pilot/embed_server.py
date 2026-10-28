@@ -8,7 +8,9 @@ embeddings.yaml), so the model's own default prompt is never applied here. Vecto
 
 Settings: EMBED_MODEL (Hugging Face id), EMBED_REVISION (a commit; default the cached snapshot), EMBED_PORT,
 EMBED_DTYPE (float32, float16 or bfloat16), EMBED_BATCH (texts per forward pass, default 16), EMBED_MAX_TOKENS
-(default 8192), EMBED_DIMENSIONS (shorten a Matryoshka model's vectors), HF_HOME (default .data/hf).
+(default 8192), EMBED_DIMENSIONS (shorten a Matryoshka model's vectors), EMBED_TRUST_REMOTE_CODE=1 (load Python
+code from the model's repository; only for models whose code was read and pinned in models.json), HF_HOME
+(default .data/hf). Downloads are off (HF_HUB_OFFLINE), so a model and its code run from the cached snapshot.
 Standard library plus the packages in .data/embed-venv (torch, sentence-transformers, fastapi, uvicorn).
 """
 import os
@@ -38,12 +40,14 @@ model = SentenceTransformer(
     MODEL,
     revision=os.environ.get("EMBED_REVISION"),
     device=DEVICE,
-    trust_remote_code=False,
+    trust_remote_code=os.environ.get("EMBED_TRUST_REMOTE_CODE") == "1",
     model_kwargs={"torch_dtype": DTYPE},
     truncate_dim=DIMENSIONS,
 )
 model.max_seq_length = min(int(os.environ.get("EMBED_MAX_TOKENS", "8192")), model.max_seq_length or 8192)
 tokenizer = model.tokenizer
+# sentence-transformers 6 renamed the method; gte's environment (embed-venv-tf4) has 3.x
+dimension = getattr(model, "get_embedding_dimension", None) or model.get_sentence_embedding_dimension
 lock = threading.Lock()  # one forward pass at a time; MPS does not share well
 stats = {"requests": 0, "texts": 0, "tokens": 0, "seconds": 0.0}
 
@@ -63,7 +67,7 @@ def health():
         "model": MODEL,
         "device": DEVICE,
         "dtype": str(DTYPE),
-        "dimensions": model.get_embedding_dimension(),
+        "dimensions": dimension(),
         "max_seq_length": model.max_seq_length,
         **stats,
     }

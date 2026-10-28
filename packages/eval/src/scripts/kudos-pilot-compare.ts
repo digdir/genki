@@ -6,11 +6,13 @@
 //
 //   npx tsx --conditions=source packages/eval/src/scripts/kudos-pilot-compare.ts run [rounds] [side,side]
 //   npx tsx --conditions=source packages/eval/src/scripts/kudos-pilot-compare.ts compare <run.json>... [baseline candidate]
+//   npx tsx --conditions=source packages/eval/src/scripts/kudos-pilot-compare.ts verdicts <dir> <run.json>... [side,side]
 //
 // `run` asks each question of every side back to back (typesense and pgvector by default), in `rounds` rounds (3 by
 // default), so the sides meet the same load and the same planner variance; `compare` scores candidate against
 // baseline (typesense and pgvector by default), each question averaged over its rounds, taking each side's rounds
-// from whichever run files hold it.
+// from whichever run files hold it. `verdicts` writes each side's per-question scores, averaged over its rounds, to
+// <dir>/<side>.jsonl for the benchmarks' report.py (benchmarks/kudos-pilot/engines and embeddings).
 //
 // Needs a running API in dev mode (KUDOS_PILOT_API, default http://localhost:8096) and DEV_API_KEY. Looks up shared
 // chunk ids in the local Typesense (TYPESENSE_LOCAL_URL, default http://127.0.0.1:8108, key in
@@ -40,7 +42,7 @@ interface SideOption {
 }
 const localModels = (
   JSON.parse(readFileSync(join(pilot, 'models.json'), 'utf8')) as {
-    models: { key: string; hf: string; api: number }[];
+    models: { key: string; hf: string; name?: string; api: number }[];
   }
 ).models;
 const sideOptions: Record<string, SideOption> = {
@@ -65,7 +67,7 @@ const sideOptions: Record<string, SideOption> = {
       {
         service: `kudos-pilot-${m.key}-retrieve-only__default`,
         engine: 'pgvector' as const,
-        label: `pgvector, ${m.hf}`,
+        label: `pgvector, ${m.name ?? m.hf}`,
         api: `http://localhost:${m.api}`,
       },
     ]),
@@ -252,13 +254,61 @@ const scores = (expected: string[], ranked: string[]) => {
 const metrics = ['Recall@10', 'Recall@5', 'MRR', 'nDCG@10'] as const;
 type Scores = ReturnType<typeof scores>;
 
-const compare = (files: string[], baseline: Side, candidate: Side) => {
+// Each side's rounds, from whichever of the run files asked it
+const roundsFrom = (files: string[]) => {
   const loaded = files.map(
     (f) => (JSON.parse(readFileSync(f, 'utf8')) as { rounds: Round[] }).rounds,
   );
-  // Each side's rounds, from whichever files asked it
-  const roundsOf = (side: Side): Record<string, Answer>[] =>
+  return (side: Side): Record<string, Answer>[] =>
     loaded.flatMap((rounds) => rounds.flatMap((r) => (r[side] ? [r[side]] : [])));
+};
+
+// One question's scores averaged over a side's rounds; only a Typesense side can be credited
+const averagedOver = (
+  rounds: Record<string, Answer>[],
+  side: Side,
+  c: Case,
+  credited: boolean,
+): Scores => {
+  const each = rounds.map((r) =>
+    scores(
+      c.expected,
+      ranking(side, r[c.id] as Answer, credited && engineOf(side) === 'typesense'),
+    ),
+  );
+  return Object.fromEntries(
+    metrics.map((m) => [m, each.reduce((sum, s) => sum + s[m], 0) / each.length]),
+  ) as Scores;
+};
+
+// Per side, one line per question: its scores as served and credited, averaged over the side's rounds
+const verdicts = (dir: string, files: string[], named: Side[]) => {
+  const roundsOf = roundsFrom(files);
+  const held = Object.keys(sideOptions).filter((s) => roundsOf(s).length > 0);
+  mkdirSync(dir, { recursive: true });
+  for (const side of named.length > 0 ? named : held) {
+    const rounds = roundsOf(side);
+    if (rounds.length === 0) throw new Error(`no rounds for ${side} in ${files.join(', ')}`);
+    const lines = cases.map((c) => {
+      const answered = rounds.filter((r) => r[c.id] && !r[c.id]?.error);
+      return JSON.stringify({
+        item: c.id,
+        split: c.split,
+        documents: c.expected,
+        rounds: rounds.length,
+        errors: rounds.length - answered.length,
+        latencyMs: answered.map((r) => (r[c.id] as Answer).latencyMs),
+        served: answered.length === rounds.length ? averagedOver(rounds, side, c, false) : null,
+        credited: answered.length === rounds.length ? averagedOver(rounds, side, c, true) : null,
+      });
+    });
+    writeFileSync(join(dir, `${side}.jsonl`), lines.join('\n') + '\n');
+    console.log(`wrote ${join(dir, `${side}.jsonl`)} (${rounds.length} rounds)`);
+  }
+};
+
+const compare = (files: string[], baseline: Side, candidate: Side) => {
+  const roundsOf = roundsFrom(files);
   const sides = [baseline, candidate];
   const missing = sides.filter((s) => roundsOf(s).length === 0);
   if (missing.length > 0)
@@ -266,18 +316,8 @@ const compare = (files: string[], baseline: Side, candidate: Side) => {
   const usable = cases.filter((c) =>
     sides.every((s) => roundsOf(s).every((r) => r[c.id] && !r[c.id]?.error)),
   );
-  // Each question's scores averaged over the side's rounds; only a Typesense side can be credited
-  const averaged = (side: Side, c: Case, credited: boolean): Scores => {
-    const each = roundsOf(side).map((r) =>
-      scores(
-        c.expected,
-        ranking(side, r[c.id] as Answer, credited && engineOf(side) === 'typesense'),
-      ),
-    );
-    return Object.fromEntries(
-      metrics.map((m) => [m, each.reduce((sum, s) => sum + s[m], 0) / each.length]),
-    ) as Scores;
-  };
+  const averaged = (side: Side, c: Case, credited: boolean): Scores =>
+    averagedOver(roundsOf(side), side, c, credited);
   const pct = (x: number) => (x * 100).toFixed(1);
   const header = `| Metric (document level) | ${labelOf(baseline)} | ${labelOf(candidate)} | Difference | 95% CI |\n| --- | --- | --- | --- | --- |`;
   const table = (selected: Case[], credited: boolean) =>
@@ -370,7 +410,17 @@ else if (command === 'compare' && args.some((a) => a.endsWith('.json'))) {
     baseline,
     candidate,
   );
+} else if (command === 'verdicts' && args[0] && args.some((a) => a.endsWith('.json'))) {
+  const [dir, ...rest] = args;
+  const named = rest.filter((a) => !a.endsWith('.json'));
+  verdicts(
+    dir,
+    rest.filter((a) => a.endsWith('.json')),
+    named.length > 0 ? sidesFrom(named.join(',')) : [],
+  );
 } else {
-  console.error('usage: run [rounds] [side,side], or compare <run.json>... [baseline candidate]');
+  console.error(
+    'usage: run [rounds] [side,side], compare <run.json>... [baseline candidate], or verdicts <dir> <run.json>... [side,side]',
+  );
   process.exit(1);
 }

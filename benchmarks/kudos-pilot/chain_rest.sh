@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The rest of the Kudos pilot's unattended run (genki issue 92), after the small models: the full genki search for
+# The rest of the Kudos pilot's chained run (genki issue 92), after the small models: the full genki search for
 # them, the index and scale benchmark, then Qwen3-Embedding-4B and -8B end to end with their full search. Each
 # step logs to .data and the next step starts even if one fails; .data/chain-rest.log says what happened.
 set -uo pipefail
@@ -26,7 +26,7 @@ done
 
 step "index bench: start"
 while ! grep -q "^exit 0" "$data/dbpedia-download.log" 2>/dev/null; do sleep 60; done
-"$data/embed-venv/bin/python" "$here/bench_index.py" > "$data/index-bench.log" 2>&1 \
+"$data/embed-venv/bin/python" "$here/indexes/bench_index.py" > "$data/index-bench.log" 2>&1 \
   && step "index bench: done" || step "index bench: FAILED"
 docker stop genki-kudos-pilot-bench > /dev/null 2>&1
 

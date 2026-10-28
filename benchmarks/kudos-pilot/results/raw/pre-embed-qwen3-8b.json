@@ -1,8 +1,0 @@
-{
- "model": "Qwen/Qwen3-Embedding-8B",
- "runtime": "mlx float16",
- "passages": 20040,
- "tokens": 15044197,
- "seconds": 50520.2,
- "tokens_per_second": 297.8
-}

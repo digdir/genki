@@ -5,8 +5,10 @@ page through the pilot database (the ids, documents and pages are the same in ev
 answer is scored per page and per document like score_vectors.py. Each question goes to every side back to back.
 
     .data/embed-venv/bin/python score_search.py baseline borealis bge-m3 arctic-l-v2 qwen3-0-6b
+    .data/embed-venv/bin/python score_search.py --step fusion baseline pplx-0-6b
 
-The baseline is text-embedding-3-large@1536 on the pilot API (KUDOS_PILOT_API, default http://localhost:8096,
+--step runs one of common.SEARCH_STEPS instead: the -noplan-<step> services setup_models.py writes for the keys in
+common.STEP_KEYS, written to .data/search-<step>-<key>.json. The baseline is text-embedding-3-large@1536 on the pilot API (KUDOS_PILOT_API, default http://localhost:8096,
 which must run with CONFIG_DIR=.data/config to have the no-planner service); each model on its own API from
 models.json. Needs DEV_API_KEY (environment or .env.local). Writes .data/search-<key>.json.
 """
@@ -18,19 +20,20 @@ import urllib.request
 
 import psycopg
 
-from common import DATA, HERE
+from common import DATA, HERE, SEARCH_STEPS
 from gen_questions import setting
 from score_vectors import questions, scores
 
 
-def side(key):
+def side(key, step=None):
+    noplan = f"noplan-{step}" if step else "noplan"
     if key == "baseline":
         return {"key": key, "model": "text-embedding-3-large", "dimensions": 1536,
                 "api": os.environ.get("KUDOS_PILOT_API", "http://localhost:8096"),
-                "service": "kudos-pilot-noplan-retrieve-only__default"}
+                "service": f"kudos-pilot-{noplan}-retrieve-only__default"}
     m = next(m for m in json.loads((HERE / "models.json").read_text())["models"] if m["key"] == key)
-    return {"key": key, "model": m["hf"], "dimensions": m["dimensions"], "api": f"http://localhost:{m['api']}",
-            "service": f"kudos-pilot-{key}-noplan-retrieve-only__default"}
+    return {"key": key, "model": m.get("name", m["hf"]), "dimensions": m["dimensions"], "api": f"http://localhost:{m['api']}",
+            "service": f"kudos-pilot-{key}-{noplan}-retrieve-only__default"}
 
 
 def ask(s, question, key):
@@ -53,7 +56,11 @@ def ask(s, question, key):
 
 
 def main():
-    sides = [side(k) for k in sys.argv[1:]]
+    args = sys.argv[1:]
+    step = args[args.index("--step") + 1] if "--step" in args else None
+    if step is not None and step not in SEARCH_STEPS:
+        raise SystemExit(f"--step takes one of {', '.join(SEARCH_STEPS)}")
+    sides = [side(k, step) for k in args if k not in ("--step", step)]
     key = setting("DEV_API_KEY")
     asked, old_of = questions()
     with psycopg.connect("postgresql://genai:genai-local-only@127.0.0.1:55443/knowledge") as c:
@@ -81,9 +88,10 @@ def main():
             print(f"{i + 1}/{len(asked)} questions", flush=True)
     for s in sides:
         ms = sorted(latency[s["key"]])
-        out = DATA / f"search-{s['key']}.json"
+        out = DATA / (f"search-{step}-{s['key']}.json" if step else f"search-{s['key']}.json")
         out.write_text(json.dumps({
-            "model": s["model"], "key": s["key"], "dimensions": s["dimensions"], "passages": len(where),
+            "model": s["model"], "key": s["key"], **({"step": step} if step else {}), "service": s["service"],
+            "dimensions": s["dimensions"], "passages": len(where),
             "questions": len(results[s["key"]]), "errors": sum(1 for r in results[s["key"]] if "error" in r),
             "latency_ms_p50": round(ms[len(ms) // 2]), "latency_ms_p95": round(ms[int(0.95 * len(ms))]),
             "seconds_total": round(sum(ms) / 1000, 1), "embed_seconds": "–",

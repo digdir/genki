@@ -78,7 +78,7 @@ def main():
             texts = s.get("texts", s.get("passages", 0))
             if runtime.startswith("PyTorch") and texts < 1000:
                 continue  # a server that only embedded questions
-            lines.append(f"| {m['hf']} | {runtime} ({m['dtype']}) | {tokens:,} | {minutes(seconds)} | "
+            lines.append(f"| {m.get('name', m['hf'])} | {runtime} ({m['dtype']}) | {tokens:,} | {minutes(seconds)} | "
                          f"{tokens / seconds:,.0f} | {texts / seconds:.1f} |")
     lines.append("")
 
@@ -126,10 +126,10 @@ def main():
                                  f"{r['size'] / max(r['seconds'], 1e-9):,.0f} |")
             lines.append("")
 
-    chain = DATA / "chain-rest.log"
-    if chain.exists():
-        lines += ["## The unattended run, step by step\n", "```", (DATA / "chain-small.log").read_text().strip()
-                  if (DATA / "chain-small.log").exists() else "", chain.read_text().strip(), "```", ""]
+    logs = [DATA / f"chain-{name}.log" for name in ("small", "rest", "big", "round2")]
+    if any(log.exists() for log in logs):
+        lines += ["## The chained runs, step by step\n", "```",
+                  *(log.read_text().strip() for log in logs if log.exists()), "```", ""]
     report = "\n".join(lines) + "\n"
     (DATA / "timings.md").write_text(report)
     print(report)

@@ -1,7 +1,8 @@
-"""Qwen3-Embedding on Apple's MLX: the same weights and tokenizer as sentence-transformers, last-token pooling and
-normalisation, for the Kudos pilot's batch embedding (pre_embed.py). Weights load in float16, as the PyTorch
-server runs them. One text per forward pass, so there is no padding to get wrong. MLX keeps freed buffers for
-reuse, and every new text length needs new ones, so its cache is capped and cleared after each batch.
+"""Qwen3-architecture embedding models (Qwen3-Embedding, F2LLM-v2, harrier-oss-v1) on Apple's MLX: the same weights
+and tokenizer as sentence-transformers, last-token pooling and normalisation, for the Kudos pilot's batch embedding
+(pre_embed.py). Weights load in float16, as the PyTorch server runs them. One text per forward pass, so there is
+no padding to get wrong. MLX keeps freed buffers for reuse, and every new text length needs new ones, so its cache
+is capped and cleared after each batch.
 
     .data/embed-venv/bin/python mlx_qwen3.py <snapshot dir> [check]   # check: compare with sentence-transformers
 """
