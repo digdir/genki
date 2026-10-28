@@ -7,7 +7,7 @@ Status: accepted, 2026-10-12 (built; secrets bound to hosts, 2026-10-16). Propos
 - Agencies extend the platform with their own MCP or OpenAPI servers, never with code inside the platform.
 - Each tool connection is registered by a tenant admin with its domain. Calls go through an isolated egress path with an allowlist per tenant, no access to the platform's network, and limits on response size and time.
 - A tool call carries a credential for that tenant's connection. It never carries the user's inbound token or any platform credential.
-- Tool results are marked as untrusted content. Guardrails and the strategy treat them like retrieved documents, not like instructions.
+- Tool results are marked as untrusted content. Guardrails and the strategy treat them like retrieved documents, not like instructions. The agent loop gives untrusted tool results and the chunks it reads to the model inside `<untrusted_data>` framing.
 - Tool descriptions are pinned at registration. A changed description must be approved again before it is used.
 - Secrets are written through a write-only API into a tenant namespace, referenced as `secret://tenant/<orgnr>/<name>`. The resolver refuses a reference to another tenant's secret.
 - A tenant secret is used only for the hosts it is set for. Each secret stores `allowedHosts`, a list of origins (scheme, host and port), in `tenant_secrets.allowed_hosts`. A new secret needs them. Changing them needs `manage-services` (`PUT /tenants/{tenant}/secrets/{name}/hosts`, action `platform.secrets.hosts`); `register-building-blocks` may set a new secret or replace a value, not move one to other hosts.

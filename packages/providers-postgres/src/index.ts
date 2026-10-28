@@ -28,7 +28,11 @@ import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
 import { PostgresIngestionExecutions } from './executions.js';
 import { PostgresRateLimiter } from './rate-limits.js';
-import { PostgresRetentionStore, PostgresThreadRetention } from './retention.js';
+import {
+  PostgresRetentionStore,
+  PostgresThreadErasure,
+  PostgresThreadRetention,
+} from './retention.js';
 
 export {
   createPool,
@@ -54,7 +58,11 @@ export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresLeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
-export { PostgresRetentionStore, PostgresThreadRetention } from './retention.js';
+export {
+  PostgresRetentionStore,
+  PostgresThreadErasure,
+  PostgresThreadRetention,
+} from './retention.js';
 export { PostgresConfigEntries, type PostgresConfigEntry } from './config-entries.js';
 export { PostgresConnections } from './connections.js';
 export {
@@ -179,6 +187,7 @@ export const createPostgresStores = async (
     rateLimits: new PostgresRateLimiter(pool),
     retention: new PostgresRetentionStore(pool),
     threadRetention: new PostgresThreadRetention(pool, keys),
+    threadErasure: new PostgresThreadErasure(pool, keys),
     erase: (tenant: string, scope: string) => keys.erase(tenant, scope),
     pool: owner,
     runtimePool: pool,

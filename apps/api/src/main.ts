@@ -468,6 +468,7 @@ const platform = await createPlatform({
   ...(db
     ? {
         conversations: db.conversations,
+        threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,

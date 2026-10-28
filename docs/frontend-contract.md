@@ -208,7 +208,7 @@ Older platforms without `_pickable` can fall back to `_chat || _default`.
 - With a conversation the platform loads the history itself. Send only the new user message; earlier turns in `messages` are ignored.
 - An unknown or foreign id answers `404` with code `conversation_not_found`. A failed run stores no assistant turn.
 - A request that fails before the run starts (any `400`, `403`, `404`, `409` or `503` answer) creates no conversation, so `genai_conversation: true` on a refused request leaves nothing behind. A run that fails without streaming (`500`) removes the conversation it just created. A streamed run has already announced its id; it keeps the user turn and no assistant turn.
-- The conversation routes (`/api/conversations`) list, read, rename and delete the same conversations. A new conversation is titled from the first line of its first question (60 characters); until then its `topic` is the default.
+- The conversation routes (`/api/conversations`) list, read, rename and delete the same conversations. Deleting a conversation also erases the content of the tasks its turns ran as. A new conversation is titled from the first line of its first question (60 characters); until then its `topic` is the default.
 
 Shapes:
 

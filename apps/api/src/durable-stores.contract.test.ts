@@ -33,7 +33,12 @@ import {
   type TaskIndex,
   type TenantDirectoryStore,
 } from './extensions.js';
-import { InMemoryExecutionStore, type Execution, type ExecutionStore } from './ingestion.js';
+import {
+  InMemoryExecutionStore,
+  staleRunMessage,
+  type Execution,
+  type ExecutionStore,
+} from './ingestion.js';
 import { postgresTaskIndex, postgresTenantDirectory } from './postgres-adapters.js';
 import { InMemoryTenantApiKeys, registerPortalRoutes } from './routes/portal-routes.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
@@ -190,8 +195,9 @@ const people: Record<string, Principal> = {
   operator,
 };
 
-const platformOn = async (configEntries: ConfigEntryStore) => {
+const platformOn = async (configEntries: ConfigEntryStore, executions?: ExecutionStore) => {
   const platform = await createPlatform({
+    ...(executions ? { ingestionExecutions: executions } : {}),
     catalogs: {
       models: {
         endpoints: {
@@ -301,6 +307,40 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
       ['e2', 'failed'],
       ['e1', 'succeeded'],
     ]);
+  });
+
+  it('marks runs left running for more than six hours as failed when the platform starts and keeps newer ones', async () => {
+    const { executions } = backend().stores();
+    const stale = execution(`${name}-stale`, '2026-10-07T01:00:00.000Z', { pipeline: 'restart' });
+    const fresh = execution(`${name}-fresh`, new Date().toISOString(), { pipeline: 'restart' });
+    await executions.save(stale);
+    await executions.save(fresh);
+
+    const reopened = await backend().reopen();
+    await platformOn(reopened.configEntries, reopened.executions);
+
+    expect(await reopened.executions.get(stale.id)).toMatchObject({
+      status: 'failed',
+      endedAt: expect.any(String),
+      error: staleRunMessage,
+    });
+    expect((await reopened.executions.get(fresh.id))?.status).toBe('running');
+  });
+
+  it('does not mark a run this process holds as stale', async () => {
+    const { executions } = backend().stores();
+    const held = execution(`${name}-held`, '2026-10-06T01:00:00.000Z', { pipeline: 'restart' });
+    await executions.save(held);
+
+    const changed = await executions.failStale({
+      startedBefore: '2026-10-06T02:00:00.000Z',
+      except: [held.id],
+      endedAt: '2026-10-07T08:00:00.000Z',
+      error: staleRunMessage,
+    });
+
+    expect(changed).toBe(0);
+    expect((await executions.get(held.id))?.status).toBe('running');
   });
 
   it("shows a tenant's runs in the portal after a restart", async () => {
