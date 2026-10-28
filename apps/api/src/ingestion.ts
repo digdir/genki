@@ -1,6 +1,8 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
+  FailureBudgetExceeded,
+  type FailedDocument,
   huggingFaceSource,
   parquetTableName,
   parquetMapping,
@@ -191,6 +193,7 @@ export interface IngestionReport {
   skipped: number;
   skippedDocuments?: SkippedDocument[];
   failed: string[];
+  failedDocuments?: FailedDocument[];
   generation?: string;
   promoted?: boolean;
   previous?: string;
@@ -604,6 +607,9 @@ export class IngestionService {
             : {
                 ...execution,
                 status: 'failed',
+                ...(error instanceof FailureBudgetExceeded && error.result
+                  ? { report: { ...error.result, generation: execution.id, promoted: false } }
+                  : {}),
                 error: error instanceof Error ? error.message : String(error),
                 endedAt: this.#now(),
               },

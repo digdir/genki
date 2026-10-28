@@ -128,6 +128,7 @@ const SkippedDocument = z.object({
     'outside_access',
     'conversion_failed',
     'unreachable',
+    'not_found',
   ]),
 });
 
@@ -201,6 +202,7 @@ const Execution = z
         skipped: z.number().int(),
         skippedDocuments: z.array(SkippedDocument).optional(),
         failed: z.array(z.string()),
+        failedDocuments: z.array(z.object({ document: z.string(), reason: z.string() })).optional(),
         generation: z.string().optional(),
         promoted: z.boolean().optional(),
         previous: z.string().optional(),

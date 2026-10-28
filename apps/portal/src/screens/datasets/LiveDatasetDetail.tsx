@@ -143,7 +143,9 @@ const Run = ({
             <p className="meta">
               {t('datasets.documentsFailed', {
                 count: run.report.failed.length,
-                names: run.report.failed.join(', '),
+                names: run.report.failedDocuments
+                  ? run.report.failedDocuments.map((d) => `${d.document}: ${d.reason}`).join(', ')
+                  : run.report.failed.join(', '),
               })}
             </p>
           ) : null}

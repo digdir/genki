@@ -22,6 +22,14 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.
 
+## Website runs and document failures
+
+Website pages are fetched and prepared independently. A page returning HTTP 404 or 410 is skipped with reason `not_found`: the sitemap points to a document that does not exist, so this does not spend the failure budget. Other HTTP errors, timeouts, connection errors, oversized bodies and redirect-limit or missing-location refusals count as document failures. Pages are fetched once per run, without automatic retries.
+
+`maxDocumentFailures` defaults to 10. As with other document failures, reaching that number fails the run and prevents generation promotion; the active dataset stays in place. Below that limit, the run can succeed and promote the other pages. URL guard refusals (including private addresses and disallowed redirect hosts) and failures fetching any sitemap stop the run regardless of the budget.
+
+The executions endpoint returns counts in `report.stored` and `report.skipped`, skipped URLs and reasons in `report.skippedDocuments`, and failed document keys in `report.failed`. The optional `report.failedDocuments` lists each failed URL (or document name) and its error message. An execution stopped by the failure budget retains this partial report with `promoted: false`; stored counts then describe the unpromoted generation.
+
 ## Parquet pipelines
 
 A pipeline source can read one public https Parquet file with `url`, or a Hugging Face file with `huggingface: { dataset, file, revision }` (`revision` defaults to `main`). Sharded tables use `urls: [...]` plus a stable `table` name, or `huggingface: { dataset, table, files }`, where `files` is an explicit path list or a glob such as `data/train-*.parquet`. Give each config/split its own table name. Keep that name when updating shard layouts so document ids stay stable.
