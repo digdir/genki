@@ -189,6 +189,7 @@ const RequestForm = ({
   onSent: () => void;
 }) => {
   const t = useT();
+  const namedByLogin = Boolean(organisation.name) && organisation.name !== organisation.orgNumber;
   const [form, setForm] = useState({
     orgName: organisation.name,
     contactName,
@@ -288,9 +289,11 @@ const RequestForm = ({
           id="f-navn"
           className="request-wide"
           label={t('unregistered.orgName')}
+          {...(namedByLogin
+            ? { description: t('unregistered.orgNumberHelp'), readOnly: true }
+            : { onChange: (e) => setForm({ ...form, orgName: e.target.value }) })}
           value={form.orgName}
           error={shown.orgName}
-          onChange={(e) => setForm({ ...form, orgName: e.target.value })}
         />
         <Textfield
           id="f-kontakt"

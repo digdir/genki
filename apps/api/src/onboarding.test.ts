@@ -142,6 +142,25 @@ describe('self-service onboarding', () => {
     );
   });
 
+  it('keeps the organisation name from the login, not the one typed in the form', async () => {
+    const named = {
+      ...people,
+      ingrid: { ...(people.ingrid as Principal), orgNames: { [testdep]: 'Testdepartementet' } },
+    };
+    const { send } = await bootPlatform({ people: named });
+
+    await send('/onboarding/requests', 'ingrid', {
+      body: request(testdep, { orgName: 'Feil navn' }),
+    });
+    const queue = await json<{ data: { org: string; orgName: string }[] }>(
+      await send('/operator/onboarding/requests?status=pending', 'drift'),
+    );
+
+    expect(queue.data).toEqual([
+      expect.objectContaining({ org: testdep, orgName: 'Testdepartementet' }),
+    ]);
+  });
+
   it('records a rejection with its reason and keeps the organisation out', async () => {
     const { send } = await bootPlatform({ people });
     const { id } = await json<{ id: string }>(

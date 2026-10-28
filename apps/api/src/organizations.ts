@@ -14,7 +14,9 @@ export interface OrganizationLookupOptions {
 export const organizationLookup =
   (options: OrganizationLookupOptions) =>
   async (orgNumber: string): Promise<Organization | undefined> => {
-    const known = (await options.tenants()).find((t) => t.orgNumber === orgNumber);
+    const known = (await options.tenants()).find(
+      (t) => t.orgNumber === orgNumber && t.name !== orgNumber,
+    );
     if (known) return { orgNumber, name: known.name, source: 'platform' };
     if (!options.registryUrl) return undefined;
     const send = options.fetch ?? fetch;

@@ -826,9 +826,11 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         organisations: orgs.map((orgNumber) => ({
           orgNumber,
           name:
-            directory.find((d) => d.orgNumber === orgNumber)?.name ??
-            options.organisationName?.(orgNumber) ??
-            orgNumber,
+            [
+              directory.find((d) => d.orgNumber === orgNumber)?.name,
+              principal.orgNames?.[orgNumber],
+              options.organisationName?.(orgNumber),
+            ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
       },

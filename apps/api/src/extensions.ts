@@ -192,16 +192,10 @@ export const adminExtensions = (deps: {
         target,
       };
     const name = String(input.name ?? '').trim() || org;
-    await deps.directory.add(
-      { orgNumber: org, name, status: 'onboarding' },
-      `${principal.issuer}:${principal.subject}`,
-    );
-    return {
-      ok: true,
-      value: { orgNumber: org, name, status: 'onboarding' },
-      target,
-      audit: { scope: 'platform' },
-    };
+    const existing = (await deps.directory.list()).find((e) => e.orgNumber === org);
+    const entry = { orgNumber: org, name, status: existing?.status ?? 'onboarding' } as const;
+    await deps.directory.add(entry, `${principal.issuer}:${principal.subject}`);
+    return { ok: true, value: entry, target, audit: { scope: 'platform' } };
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;
