@@ -293,6 +293,7 @@ describe('mock Ansattporten', () => {
         assurance: 'high',
         authorizedFor: [{ org: DIGDIR, resource: KA, actions: [] }],
         tenant: DIGDIR,
+        orgNames: { [DIGDIR]: 'DIGITALISERINGSDIREKTORATET' },
         expiresAt: expect.any(String),
       },
       personId: '45840375084',

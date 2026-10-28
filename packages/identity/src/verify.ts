@@ -140,6 +140,13 @@ const claim = (...values: unknown[]) =>
 
 const named = (name: string | undefined) => (name ? { name } : {});
 
+const orgNamesOf = (parties: { org: string; name: string | undefined }[]) => {
+  const names = Object.fromEntries(
+    parties.flatMap(({ org, name }) => (name ? [[org, name] as const] : [])),
+  );
+  return Object.keys(names).length > 0 ? { orgNames: names } : {};
+};
+
 const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
@@ -198,7 +205,15 @@ const employee = (
       (d.authorized_parties ?? []).flatMap((p) => {
         const org = fromOrgNo(p.orgno);
         return org
-          ? [{ org, resource: d.resource, actions: p.actions ?? [], listed: !p.actions }]
+          ? [
+              {
+                org,
+                resource: d.resource,
+                actions: p.actions ?? [],
+                listed: !p.actions,
+                name: claim(p.name),
+              },
+            ]
           : [];
       }),
     );
@@ -222,6 +237,7 @@ const employee = (
         actions,
       })),
       ...(orgs.length === 1 ? { tenant: orgs[0] } : {}),
+      ...orgNamesOf(authorizedFor),
       ...expiresAt(payload),
     },
     ...(pid ? { personId: pid } : {}),

@@ -53,3 +53,30 @@ describe('the access request API preview', () => {
     expect(shownBody().acceptedTerms).toBe(true);
   });
 });
+
+describe('the organisation name in the access request', () => {
+  const formFor = async (name: string) => {
+    const auth = mockAnsattporten({
+      name: 'Erik Larsen',
+      organisations: [{ orgNumber: '999888777', name, actions: ['use-services'] }],
+    });
+    await auth.login();
+    window.location.hash = '#/overview';
+    render(<App auth={auth} fetch={unregistered()} live />);
+    const form = await screen.findByRole('form', { name: 'Be om tilgang' });
+    return within(form).getByLabelText('Navn på virksomheten') as HTMLInputElement;
+  };
+
+  it('takes the name from the login and does not let it be changed', async () => {
+    const field = await formFor('Testetaten');
+
+    expect(field.value).toBe('Testetaten');
+    expect(field.readOnly).toBe(true);
+  });
+
+  it('lets the person type the name when the login carries only the number', async () => {
+    const field = await formFor('999888777');
+
+    expect(field.readOnly).toBe(false);
+  });
+});

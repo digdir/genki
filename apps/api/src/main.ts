@@ -96,6 +96,8 @@ if (isDevMode(process.env)) {
   log('dev mode', { warning: devModeWarning });
 }
 const platformTenant = platformTenantFrom(process.env);
+const enhetsregisteret =
+  process.env.ENHETSREGISTERET_URL ?? 'https://data.brreg.no/enhetsregisteret/api/enheter';
 log('platform tenant', { tenant: platformTenant });
 
 const identityFile = (() => {
@@ -416,9 +418,7 @@ const platform = await createPlatform({
       }
     : {}),
   ...(db ? { databasePing: () => db.pool.query('select 1') } : {}),
-  ...(process.env.ENHETSREGISTERET_URL
-    ? { organizationRegistry: { url: process.env.ENHETSREGISTERET_URL } }
-    : {}),
+  ...(enhetsregisteret ? { organizationRegistry: { url: enhetsregisteret } } : {}),
   searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
   ...(process.env.INGEST_WORKING_DIRECTORY

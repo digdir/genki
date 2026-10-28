@@ -45,6 +45,7 @@ export interface Principal {
   client?: string;
   assurance?: Assurance;
   authorizedFor?: { org: string; resource?: string; actions?: string[] }[];
+  orgNames?: Record<string, string>;
   scopes?: string[];
   supplier?: string;
   systemUser?: string;
