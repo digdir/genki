@@ -101,8 +101,8 @@ describe('an expired session', () => {
 });
 
 describe('shell', () => {
-  it('the side menu lists the eleven items in design order and marks the current one with aria-current=page', async () => {
-    await renderAt('#/usage');
+  it('the side menu groups the items in design order and marks the current one with aria-current=page', async () => {
+    await renderAt('#/statistics');
 
     expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' }).getAttribute('href')).toBe(
       '#hovedinnhold',
@@ -110,8 +110,13 @@ describe('shell', () => {
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(
       within(menu)
-        .getAllByRole('link')
-        .map((a) => a.firstChild?.textContent),
+        .getAllByRole('heading', { level: 2 })
+        .map((h) => h.textContent),
+    ).toEqual(['Bygg', 'Analyse', 'Administrasjon']);
+    expect(
+      within(menu)
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('a')?.firstChild?.textContent),
     ).toEqual([
       'Oversikt',
       'Tjenester',
@@ -119,19 +124,33 @@ describe('shell', () => {
       'Datasett',
       'Byggeklosser',
       'Prøveområde',
-      'Tilgang',
-      'Forbruk',
-      'Integrasjoner',
+      'Statistikk',
       'Logg',
+      'Tilbakemeldinger',
+      'Tilgang',
+      'Integrasjoner',
       'Innstillinger',
-      'Brukerveiledning',
-      'Driftsstatus',
-      'Kontakt Digdir',
     ]);
-    expect(within(menu).getByRole('link', { name: 'Forbruk' }).getAttribute('aria-current')).toBe(
-      'page',
-    );
+    expect(
+      within(menu).getByRole('link', { name: 'Statistikk' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.queryByRole('banner')).toBeNull();
     expect(document.documentElement.lang || 'nb').toBe('nb');
+  });
+
+  it('sends the old usage address on to Statistikk', async () => {
+    await renderAt('#/usage');
+    await waitFor(() => expect(window.location.hash).toBe('#/statistics'));
+  });
+
+  it('hides the sidebar and remembers it', async () => {
+    await renderAt('#/overview');
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul sidepanelet' }));
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    expect(within(menu).queryByRole('link', { name: 'Tjenester' })).toBeNull();
+    expect(localStorage.getItem('genki.sidebarCollapsed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Vis sidepanelet' }));
+    expect(within(menu).getByRole('link', { name: 'Tjenester' })).toBeTruthy();
   });
 
   it('switches organisation from the org switcher and shows role per organisation', async () => {
@@ -146,13 +165,26 @@ describe('shell', () => {
     expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
   });
 
-  it('shows rights from Altinn in the user menu and closes it with Escape', async () => {
+  it('lists the profile menu in design order and closes it with Escape', async () => {
     await renderAt('#/overview');
 
     fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
     const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-    expect(within(menu).getByText('Se forbruk og kostnad')).toBeTruthy();
-    expect(within(menu).getByRole('link', { name: /Se eller endre i Altinn/ })).toBeTruthy();
+    expect(
+      within(menu)
+        .getAllByRole('link')
+        .map((a) => a.firstChild?.textContent),
+    ).toEqual([
+      'Onboarding',
+      'Tilbakemelding',
+      'Endringslogg',
+      'Profil',
+      'Utviklerverktøy',
+      'Kontakt Digdir',
+    ]);
+    fireEvent.click(within(menu).getByRole('button', { name: 'Om tjenesten' }));
+    expect(within(menu).getByRole('link', { name: 'Brukerveiledning' })).toBeTruthy();
+    expect(within(menu).getByRole('button', { name: 'Logg ut' })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
@@ -209,7 +241,7 @@ describe('shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
     const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-    fireEvent.mouseDown(within(menu).getByText('Rettighetene dine'));
+    fireEvent.mouseDown(within(menu).getByText('Profil'));
     expect(screen.getByRole('dialog', { name: 'Brukermeny' })).toBeTruthy();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
@@ -296,8 +328,8 @@ describe('login through Ansattporten in live mode', () => {
     render(<App auth={callbackClient()} fetch={mockFetch()} live />);
 
     expect(await screen.findByText('Testdepartementet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    go('#/profile');
+    const menu = screen.getByRole('main');
     expect(within(menu).getByText('Lese')).toBeTruthy();
     expect(within(menu).getByText('Skrive')).toBeTruthy();
   });
@@ -326,10 +358,10 @@ describe('login through Ansattporten in live mode', () => {
       login: () => Promise.reject(new Error('unused')),
       logout: async () => undefined,
     };
+    window.location.hash = '#/profile';
     render(<App auth={auth} fetch={mockFetch()} live />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    const menu = await screen.findByRole('main');
     expect(
       within(menu)
         .getAllByText(/./, { selector: '.ds-tag' })
@@ -383,7 +415,7 @@ it('derives rights from the old read and write actions the same way as the API',
   expect(rightsFor(['read', 'write', 'use-services']).labels).toEqual(['Bruke tjenester']);
 });
 
-describe('language choice in the user menu', () => {
+describe('language choice on the profile page', () => {
   it('follows the browser until the person picks a language, saves it and sends it to the API', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
@@ -400,8 +432,8 @@ describe('language choice in the user menu', () => {
     };
     render(<App auth={auth} fetch={recording} languages={['en-GB', 'nb']} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Kari Nordmann, open user menu' }));
-    const choice = screen.getByRole('group', { name: 'Språk / Language' });
+    window.location.hash = '#/profile';
+    const choice = await screen.findByRole('group', { name: 'Språk / Language' });
     expect(within(choice).getByRole('radio', { name: 'Same as browser' })).toHaveProperty(
       'checked',
       true,

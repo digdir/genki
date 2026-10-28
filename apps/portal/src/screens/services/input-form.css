@@ -255,7 +255,7 @@
 
 .if-preview {
   position: sticky;
-  top: 88px;
+  top: calc(var(--header-offset) + 21px);
   display: flex;
   flex-direction: column;
   gap: 14px;

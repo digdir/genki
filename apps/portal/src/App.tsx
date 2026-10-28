@@ -10,6 +10,8 @@ import { Access } from './screens/Access';
 import { ApiReference } from './screens/ApiReference';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { DataHandling, PublicDataHandling } from './screens/DataHandling';
+import { DeveloperTools, NotDesigned } from './screens/DeveloperTools';
+import { Profile } from './screens/Profile';
 import { Contact, Guide, Status } from './screens/FooterPages';
 import { Datasets } from './screens/Datasets';
 import { Integrations } from './screens/Integrations';
@@ -52,6 +54,23 @@ const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
 const chosen = (session: Session, org: string | null) =>
   session.organisations.find((o) => o.orgNumber === org) ?? session.organisations[0];
 
+/** Pages with a place in the menu but no design yet. */
+const plannedPages = {
+  feedback: { title: 'shell.navFeedback', icon: 'M4 4h16v12H8l-4 4z' },
+  organisation: { title: 'shell.orgSettingsTitle', icon: 'M4 20V9l8-5 8 5v11M9 20v-5h6v5' },
+  onboarding: { title: 'shell.menuOnboarding', icon: 'M5 12l5 5 9-10' },
+  'send-feedback': { title: 'shell.menuSendFeedback', icon: 'M4 4h16v12H8l-4 4z' },
+  changelog: { title: 'shell.menuChangelog', icon: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4' },
+} as const;
+
+/** Sends an old address on to where the page lives now, keeping the rest of the route. */
+const MovedTo = ({ area }: { area: string }) => {
+  useEffect(() => {
+    window.location.replace(window.location.hash.replace(/^#\/[^/?]+/, `#/${area}`));
+  }, [area]);
+  return null;
+};
+
 const footerPages = {
   help: 'shell.guide',
   status: 'shell.status',
@@ -80,7 +99,21 @@ const Page = ({
   if (area === 'skills') return <Skills {...props} />;
   if (area === 'playground') return <Playground {...props} />;
   if (area === 'access') return <Access {...props} />;
-  if (area === 'usage') return <Usage {...props} />;
+  if (area === 'usage') return <MovedTo area="statistics" />;
+  if (area === 'statistics') return <Usage {...props} />;
+  if (area === 'developer') return <DeveloperTools {...props} />;
+  if (area === 'profile') return <Profile />;
+  if (area in plannedPages) {
+    const page = plannedPages[area as keyof typeof plannedPages];
+    return (
+      <>
+        <Heading level={1} data-size="lg">
+          {t(page.title)}
+        </Heading>
+        <NotDesigned icon={page.icon} />
+      </>
+    );
+  }
   if (area === 'integrations') return <Integrations {...props} />;
   if (area === 'api-reference') return <ApiReference {...props} />;
   if (area === 'log') return <Log {...props} />;

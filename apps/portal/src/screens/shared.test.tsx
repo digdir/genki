@@ -39,7 +39,9 @@ describe('Fellestjenester: liste', () => {
     await renderAt('#/shared-services', fetch);
     expect(await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' })).toBeTruthy();
     expect(urls.some((u) => u.endsWith('/shared-services'))).toBe(true);
-    const cards = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    const cards = within(screen.getByRole('main'))
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent);
     expect(cards).toEqual([
       'Klarspråk',
       'Bokmål til nynorsk',

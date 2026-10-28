@@ -1,5 +1,9 @@
 import type { Translation } from '@genai/i18n';
-import type { app as appSource, shell as shellSource } from '../nb/core-shell';
+import type {
+  app as appSource,
+  devTools as devToolsSource,
+  shell as shellSource,
+} from '../nb/core-shell';
 
 export const shell = {
   navOverview: 'Overview',
@@ -44,6 +48,22 @@ export const shell = {
   guide: 'User guide',
   status: 'Service status',
   contact: 'Contact Digdir',
+  navStatistics: 'Statistics',
+  navFeedback: 'Feedback',
+  groupBuild: 'Build',
+  groupAnalyse: 'Analyse',
+  groupAdmin: 'Administration',
+  hideSidebar: 'Hide the sidebar',
+  showSidebar: 'Show the sidebar',
+  orgSettingsTitle: 'Settings for the organisation',
+  menuOnboarding: 'Onboarding',
+  menuSendFeedback: 'Send feedback',
+  menuChangelog: 'Changelog',
+  menuNew: 'New',
+  menuProfile: 'Profile',
+  menuDeveloper: 'Developer tools',
+  menuAbout: 'About the service',
+  menuDataHandling: 'How we handle data',
   badgeIngest: {
     one: '{count} ingestion needs follow-up',
     other: '{count} ingestions need follow-up',
@@ -92,3 +112,35 @@ export const app = {
   unknownUser: 'Unknown user',
   languageReason: 'Changed the language in the user menu',
 } satisfies Translation<typeof appSource>;
+
+export const devTools = {
+  title: 'Developer tools',
+  menu: 'Developer tools',
+  notDesigned: 'This page is not designed yet',
+  livesElsewhere: 'The content lives elsewhere in the portal until it moves here.',
+  status: 'Service status',
+  statusDesc: 'Status of the services right now.',
+  runs: 'Runs and tracing',
+  runsDesc: 'Detailed log with steps, tokens and raw view, together with tracing.',
+  systems: 'Systems',
+  systemsDesc: 'Connections to external systems and tools.',
+  frontends: 'Frontends',
+  frontendsDesc: 'Client registration.',
+  triggers: 'Triggers',
+  triggersDesc: 'Triggers that start services.',
+  keys: 'Keys',
+  keysDesc: 'API keys.',
+  hooks: 'Hooks',
+  stepFlows: 'Step flows',
+  stepFlowsDesc: 'Editing step flows.',
+  guardrails: 'Safety filters',
+  guardrailsDesc: 'Guardrail rules, which today live on each service.',
+  api: 'API reference and documentation',
+  apiDesc: 'The API reference and documentation for developers.',
+  openLog: 'Open Log',
+  openTracing: 'Open tracing',
+  openIntegrations: 'Open Integrations',
+  openStepFlows: 'Open Step flows',
+  openApiReference: 'Open the API reference',
+  openDocs: 'Open the documentation',
+} satisfies Translation<typeof devToolsSource>;

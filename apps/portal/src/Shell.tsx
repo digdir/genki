@@ -1,4 +1,12 @@
-import { Alert, Avatar, Button, Link, SkipLink, Tag } from '@digdir/designsystemet-react';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Divider,
+  Heading,
+  SkipLink,
+  Tag,
+} from '@digdir/designsystemet-react';
 import {
   createContext,
   useCallback,
@@ -8,7 +16,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { LanguageChoice } from '@genai/i18n/react';
 import type { ApiClient } from './api';
 import { Icon, icons } from './components/Icon';
 import { formatOrgNumber, profileFor } from './data/organisations';
@@ -18,19 +25,59 @@ import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
-export const navigation = [
-  { path: '/overview', label: 'shell.navOverview' },
-  { path: '/services', label: 'shell.navServices', also: ['/step-flows'] },
-  { path: '/shared-services', label: 'shell.navSharedServices' },
-  { path: '/datasets', label: 'shell.navDatasets' },
-  { path: '/building-blocks', label: 'shell.navBuildingBlocks', also: ['/skills'] },
-  { path: '/playground', label: 'shell.navPlayground' },
-  { path: '/access', label: 'shell.navAccess' },
-  { path: '/usage', label: 'shell.navUsage' },
-  { path: '/integrations', label: 'shell.navIntegrations', also: ['/api-reference'] },
-  { path: '/log', label: 'shell.navLog' },
-  { path: '/settings', label: 'shell.navSettings' },
-] as const satisfies readonly { path: string; label: PlainKey; also?: readonly string[] }[];
+type NavItem = { path: string; label: PlainKey; also?: readonly string[] };
+
+export const navigationGroups = [
+  { items: [{ path: '/overview', label: 'shell.navOverview' }] },
+  {
+    heading: 'shell.groupBuild',
+    items: [
+      { path: '/services', label: 'shell.navServices', also: ['/step-flows'] },
+      { path: '/shared-services', label: 'shell.navSharedServices' },
+      { path: '/datasets', label: 'shell.navDatasets' },
+      { path: '/building-blocks', label: 'shell.navBuildingBlocks', also: ['/skills'] },
+      { path: '/playground', label: 'shell.navPlayground' },
+    ],
+  },
+  {
+    heading: 'shell.groupAnalyse',
+    items: [
+      { path: '/statistics', label: 'shell.navStatistics' },
+      { path: '/log', label: 'shell.navLog' },
+      { path: '/feedback', label: 'shell.navFeedback' },
+    ],
+  },
+  {
+    heading: 'shell.groupAdmin',
+    items: [
+      { path: '/access', label: 'shell.navAccess' },
+      { path: '/integrations', label: 'shell.navIntegrations', also: ['/api-reference'] },
+      { path: '/organisation', label: 'shell.navSettings' },
+    ],
+  },
+] as const satisfies readonly { heading?: PlainKey; items: readonly NavItem[] }[];
+
+export const navigation: readonly NavItem[] = navigationGroups.flatMap(
+  (g): readonly NavItem[] => g.items,
+);
+
+const collapsedKey = 'genki.sidebarCollapsed';
+
+const readCollapsed = () => {
+  try {
+    return localStorage.getItem(collapsedKey) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const storeCollapsed = (collapsed: boolean) => {
+  try {
+    localStorage.setItem(collapsedKey, String(collapsed));
+  } catch {
+    // Remembering is a convenience; the panel still works without storage.
+  }
+};
 
 const initials = (name: string) =>
   name
@@ -99,10 +146,24 @@ const UserNameContext = createContext('');
 
 export const useUserName = () => useContext(UserNameContext);
 
-const isActive = (path: string, item: (typeof navigation)[number]) => {
-  const roots: readonly string[] = [item.path, ...('also' in item ? item.also : [])];
+const RightLabelsContext = createContext<readonly string[]>([]);
+
+/** The rights as Altinn names them for this person, including the older read and write. */
+export const useRightLabels = () => useContext(RightLabelsContext);
+
+const isActive = (path: string, item: NavItem) => {
+  const roots: readonly string[] = [item.path, ...(item.also ?? [])];
   return roots.some((root) => path === root || path.startsWith(`${root}/`));
 };
+
+const userMenuLinks: readonly (readonly [string, PlainKey, boolean?])[] = [
+  ['#/onboarding', 'shell.menuOnboarding'],
+  ['#/send-feedback', 'shell.menuSendFeedback'],
+  ['#/changelog', 'shell.menuChangelog', true],
+  ['#/profile', 'shell.menuProfile'],
+  ['#/developer', 'shell.menuDeveloper'],
+  ['#/contact', 'shell.contact'],
+];
 
 const readableUnregistered = ['api-reference', 'shared-services', 'data-handling'];
 
@@ -154,29 +215,44 @@ const NavLinks = ({
 }) => {
   const t = useT();
   return (
-    <ul className="nav-list">
-      {navigation.map((item) => {
-        const active = isActive(path, item);
-        const badge = badges?.[item.path];
+    <div className="nav-groups">
+      {navigationGroups.map((group, i) => {
+        const headingId = 'heading' in group ? `nav-group-${i}` : undefined;
         return (
-          <li key={item.path}>
-            <a
-              href={`#${item.path}`}
-              aria-current={active ? 'page' : undefined}
-              className={active ? 'active' : undefined}
-              onClick={onNavigate}
-            >
-              {t(item.label)}
-              {badge && badge.count > 0 ? (
-                <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
-                  {badge.count}
-                </Tag>
-              ) : null}
-            </a>
-          </li>
+          <div key={i} className="nav-group">
+            {i > 0 ? <Divider /> : null}
+            {'heading' in group ? (
+              <Heading level={2} data-size="2xs" id={headingId} className="nav-group-heading">
+                {t(group.heading)}
+              </Heading>
+            ) : null}
+            <ul className="nav-list" aria-labelledby={headingId}>
+              {group.items.map((item: NavItem) => {
+                const active = isActive(path, item);
+                const badge = badges?.[item.path];
+                return (
+                  <li key={item.path}>
+                    <a
+                      href={`#${item.path}`}
+                      aria-current={active ? 'page' : undefined}
+                      className={active ? 'active' : undefined}
+                      onClick={onNavigate}
+                    >
+                      {t(item.label)}
+                      {badge && badge.count > 0 ? (
+                        <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
+                          {badge.count}
+                        </Tag>
+                      ) : null}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 };
 
@@ -195,7 +271,14 @@ export const Shell = ({
   const t = useT();
   const narrow = useNarrow();
   const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
+  const toggleCollapsed = () =>
+    setCollapsed((c) => {
+      storeCollapsed(!c);
+      return !c;
+    });
   useEscape(open !== undefined, closeAll);
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
@@ -227,172 +310,226 @@ export const Shell = ({
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const toggle = (which: 'org' | 'user' | 'menu') =>
     setOpen((o) => (o === which ? undefined : which));
+  // The sidebar holds the brand and the user menu; without one (narrow, unregistered) they stay in the header.
+  const userInSidebar = !narrow && !unregistered;
+  const brand = (
+    <a className="brand" href="#/overview">
+      <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
+      {userInSidebar && collapsed ? (
+        <span className="visually-hidden">{t('shell.brandFull')}</span>
+      ) : (
+        <span className="brand-text">
+          <span className="brand-owner">{t('shell.owner')}</span>
+          <span className="brand-name">
+            {narrow ? t('shell.brandShort') : t('shell.brandFull')}
+          </span>
+        </span>
+      )}
+    </a>
+  );
+  const userMenu = (
+    <div className={userInSidebar ? 'popover-anchor sidebar-user' : 'popover-anchor'}>
+      <Button
+        variant="tertiary"
+        data-size="sm"
+        aria-expanded={open === 'user'}
+        aria-haspopup="true"
+        aria-label={t('shell.userMenuButton', { name: session.name })}
+        onClick={() => toggle('user')}
+      >
+        <Avatar data-size="sm" aria-hidden="true">
+          {initials(session.name)}
+        </Avatar>
+        {narrow || (userInSidebar && collapsed) ? null : <span>{session.name}</span>}
+      </Button>
+      {open === 'user' ? (
+        <div role="dialog" aria-label={t('shell.userMenu')} className="popover user-menu">
+          <div className="popover-head">
+            <span className="popover-title">{session.name}</span>
+            <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
+          </div>
+          <ul className="user-menu-list">
+            {userMenuLinks.map(([href, label, isNew]) => (
+              <li key={href}>
+                <a href={href} onClick={closeAll}>
+                  {t(label)}
+                  {isNew ? (
+                    <span className="new-dot">
+                      <span className="visually-hidden">{t('shell.menuNew')}</span>
+                    </span>
+                  ) : null}
+                </a>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="user-menu-sub"
+                aria-expanded={aboutOpen}
+                onClick={() => setAboutOpen((o) => !o)}
+              >
+                {t('shell.menuAbout')}
+                <Icon d={aboutOpen ? icons.chevronDown : icons.chevronRight} size={16} />
+              </button>
+              {aboutOpen ? (
+                <ul className="user-menu-list nested">
+                  <li>
+                    <a href="#/help" onClick={closeAll}>
+                      {t('shell.guide')}
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#/data-handling" onClick={closeAll}>
+                      {t('shell.menuDataHandling')}
+                    </a>
+                  </li>
+                </ul>
+              ) : null}
+            </li>
+          </ul>
+          <Divider />
+          <Button variant="secondary" data-size="sm" onClick={onLogout}>
+            {t('shell.logout')}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const orgChooser = (
+    <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
+      {multi ? (
+        <Button
+          variant="secondary"
+          data-size="sm"
+          aria-expanded={open === 'org'}
+          aria-haspopup="true"
+          aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
+            name: organisation.name,
+            orgNr,
+          })}
+          onClick={() => toggle('org')}
+        >
+          <span className="org-button">
+            <span className="org-name">{organisation.name}</span>
+            {narrow ? null : <span className="meta">{orgMeta}</span>}
+          </span>
+          <Icon d={icons.chevronDown} size={16} />
+        </Button>
+      ) : (
+        <div className="org-static">
+          <span className="visually-hidden">{t('shell.actingForLabel')} </span>
+          <span className="org-button">
+            <span className="org-name">{organisation.name}</span>
+            {narrow ? null : <span className="meta">{orgMeta}</span>}
+          </span>
+        </div>
+      )}
+      {open === 'org' && multi ? (
+        <div role="dialog" aria-label={t('shell.chooseOrg')} className="popover">
+          <div className="popover-head">
+            <span className="popover-title">{t('shell.chooseOrg')}</span>
+            <span className="meta">{t('shell.chooseOrgHelp')}</span>
+          </div>
+          <fieldset className="org-options">
+            <legend className="visually-hidden">{t('shell.organisations')}</legend>
+            {session.organisations.map((org) => {
+              const p = profileFor(org.orgNumber, org.name);
+              const checked = org.orgNumber === organisation.orgNumber;
+              return (
+                <label
+                  key={org.orgNumber}
+                  className={checked ? 'org-option checked' : 'org-option'}
+                >
+                  <input
+                    className="ds-input"
+                    type="radio"
+                    name="org"
+                    checked={checked}
+                    onChange={() => {
+                      onSwitch(org);
+                      closeAll();
+                    }}
+                  />
+                  <span className="org-option-text">
+                    <span className="org-option-name">{org.name}</span>
+                    <span className="meta">
+                      {checked && unregistered
+                        ? t('shell.orgOptionUnregistered', {
+                            orgNr: formatOrgNumber(org.orgNumber),
+                          })
+                        : p.role
+                          ? t('shell.orgOptionRole', {
+                              orgNr: formatOrgNumber(org.orgNumber),
+                              role: p.role,
+                            })
+                          : t('shell.orgOptionMeta', {
+                              orgNr: formatOrgNumber(org.orgNumber),
+                            })}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
-    <div className="shell">
+    <div className={userInSidebar ? 'shell no-header' : 'shell'}>
       <SkipLink href="#hovedinnhold">{t('shell.skipToContent')}</SkipLink>
-      <header className="header">
-        <div className="header-bar">
-          {narrow && !unregistered ? (
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              aria-expanded={open === 'menu'}
-              aria-controls="hovedmeny"
-              onClick={() => toggle('menu')}
-            >
-              <Icon d={icons.menu} />
-              <span>{t('shell.menu')}</span>
-            </Button>
-          ) : null}
-          <a className="brand" href="#/overview">
-            <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
-            <span className="brand-text">
-              <span className="brand-owner">{t('shell.owner')}</span>
-              <span className="brand-name">
-                {narrow ? t('shell.brandShort') : t('shell.brandFull')}
-              </span>
-            </span>
-          </a>
-          <div className="header-spacer" />
-          <div className="popover-anchor">
-            {multi ? (
+      {userInSidebar ? null : (
+        <header className="header">
+          <div className="header-bar">
+            {narrow && !unregistered ? (
               <Button
-                variant="secondary"
+                variant="tertiary"
                 data-size="sm"
-                aria-expanded={open === 'org'}
-                aria-haspopup="true"
-                aria-label={t(unregistered ? 'shell.orgButtonUnregistered' : 'shell.orgButton', {
-                  name: organisation.name,
-                  orgNr,
-                })}
-                onClick={() => toggle('org')}
+                aria-expanded={open === 'menu'}
+                aria-controls="hovedmeny"
+                onClick={() => toggle('menu')}
               >
-                <span className="org-button">
-                  <span className="org-name">{organisation.name}</span>
-                  {narrow ? null : <span className="meta">{orgMeta}</span>}
-                </span>
-                <Icon d={icons.chevronDown} size={16} />
+                <Icon d={icons.menu} />
+                <span>{t('shell.menu')}</span>
               </Button>
-            ) : (
-              <div className="org-static">
-                <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-                <span className="org-button">
-                  <span className="org-name">{organisation.name}</span>
-                  {narrow ? null : <span className="meta">{orgMeta}</span>}
-                </span>
-              </div>
-            )}
-            {open === 'org' && multi ? (
-              <div role="dialog" aria-label={t('shell.chooseOrg')} className="popover">
-                <div className="popover-head">
-                  <span className="popover-title">{t('shell.chooseOrg')}</span>
-                  <span className="meta">{t('shell.chooseOrgHelp')}</span>
-                </div>
-                <fieldset className="org-options">
-                  <legend className="visually-hidden">{t('shell.organisations')}</legend>
-                  {session.organisations.map((org) => {
-                    const p = profileFor(org.orgNumber, org.name);
-                    const checked = org.orgNumber === organisation.orgNumber;
-                    return (
-                      <label
-                        key={org.orgNumber}
-                        className={checked ? 'org-option checked' : 'org-option'}
-                      >
-                        <input
-                          className="ds-input"
-                          type="radio"
-                          name="org"
-                          checked={checked}
-                          onChange={() => {
-                            onSwitch(org);
-                            closeAll();
-                          }}
-                        />
-                        <span className="org-option-text">
-                          <span className="org-option-name">{org.name}</span>
-                          <span className="meta">
-                            {checked && unregistered
-                              ? t('shell.orgOptionUnregistered', {
-                                  orgNr: formatOrgNumber(org.orgNumber),
-                                })
-                              : p.role
-                                ? t('shell.orgOptionRole', {
-                                    orgNr: formatOrgNumber(org.orgNumber),
-                                    role: p.role,
-                                  })
-                                : t('shell.orgOptionMeta', {
-                                    orgNr: formatOrgNumber(org.orgNumber),
-                                  })}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </fieldset>
-              </div>
             ) : null}
+            {brand}
+            <div className="header-spacer" />
+            {orgChooser}
+            {userMenu}
           </div>
-          <div className="popover-anchor">
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              aria-expanded={open === 'user'}
-              aria-haspopup="true"
-              aria-label={t('shell.userMenuButton', { name: session.name })}
-              onClick={() => toggle('user')}
-            >
-              <Avatar data-size="sm" aria-hidden="true">
-                {initials(session.name)}
-              </Avatar>
-              {narrow ? null : <span>{session.name}</span>}
-            </Button>
-            {open === 'user' ? (
-              <div role="dialog" aria-label={t('shell.userMenu')} className="popover user-menu">
-                <div className="popover-head">
-                  <span className="popover-title">{session.name}</span>
-                  <span className="meta">
-                    {t('shell.actingFor', { name: organisation.name, orgNr })}
-                  </span>
-                </div>
-                <div className="user-rights">
-                  <span className="meta">{t('shell.yourRights')}</span>
-                  <div className="tag-row">
-                    {labels.map((r) => (
-                      <Tag key={r} data-color="neutral" data-size="sm">
-                        {r}
-                      </Tag>
-                    ))}
-                  </div>
-                  <span className="small">{t('shell.rightsGivenBy')}</span>
-                  <Link href="https://www.altinn.no" target="_blank" rel="noopener">
-                    {t('shell.seeInAltinn')}
-                  </Link>
-                </div>
-                <LanguageChoice className="user-language" />
-                <Button variant="secondary" data-size="sm" onClick={onLogout}>
-                  {t('shell.logout')}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        {narrow && open === 'menu' && !unregistered ? (
-          <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
-            <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-          </nav>
-        ) : null}
-      </header>
+          {narrow && open === 'menu' && !unregistered ? (
+            <nav id="hovedmeny" aria-label={t('shell.mainMenu')} className="narrow-nav">
+              <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+            </nav>
+          ) : null}
+        </header>
+      )}
       <div className="body">
         {narrow || unregistered ? null : (
-          <nav aria-label={t('shell.mainMenu')} className="sidebar">
-            <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-            <div className="sidebar-spacer" />
-            <div className="sidebar-links">
-              <Link href="#/help">{t('shell.guide')}</Link>
-              <Link href="#/status">{t('shell.status')}</Link>
-              <Link href="#/contact">{t('shell.contact')}</Link>
+          <nav
+            aria-label={t('shell.mainMenu')}
+            className={collapsed ? 'sidebar collapsed' : 'sidebar'}
+          >
+            <div className="sidebar-top">
+              {brand}
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                icon
+                aria-expanded={!collapsed}
+                aria-label={t(collapsed ? 'shell.showSidebar' : 'shell.hideSidebar')}
+                onClick={toggleCollapsed}
+              >
+                <Icon d={icons.sidebar} />
+              </Button>
             </div>
+            {collapsed ? null : <NavLinks path={path} badges={badges} onNavigate={closeAll} />}
+            <div className="sidebar-spacer" />
+            {collapsed ? null : orgChooser}
+            {userMenu}
           </nav>
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
@@ -409,7 +546,11 @@ export const Shell = ({
               />
             ) : (
               <UserNameContext.Provider value={session.name}>
-                <RightsContext.Provider value={rights}>{children}</RightsContext.Provider>
+                <RightsContext.Provider value={rights}>
+                  <RightLabelsContext.Provider value={labels}>
+                    {children}
+                  </RightLabelsContext.Provider>
+                </RightsContext.Provider>
               </UserNameContext.Provider>
             )}
           </div>

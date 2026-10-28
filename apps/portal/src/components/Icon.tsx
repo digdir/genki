@@ -2,6 +2,8 @@ export const icons = {
   plus: 'M12 5v14M5 12h14',
   menu: 'M4 7h16M4 12h16M4 17h16',
   chevronDown: 'M6 9l6 6 6-6',
+  chevronRight: 'M9 6l6 6-6 6',
+  sidebar: 'M4 5h16v14H4zM9 5v14',
   close: 'M6 6l12 12M18 6L6 18',
   check: 'M5 12l5 5 9-10',
   code: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
