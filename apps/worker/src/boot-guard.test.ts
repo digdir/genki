@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workerBootProblems } from './boot-guard.js';
+import { workerBootProblems, workerBootWarnings } from './boot-guard.js';
 
 describe('booting the worker', () => {
   it('the worker refuses to start without a database unless dev mode is on', () => {
@@ -25,5 +25,20 @@ describe('booting the worker', () => {
     expect(workerBootProblems({ GENAI_DEV_MODE: 'true', GENAI_ENV: 'production' })).toEqual([
       expect.stringContaining('production'),
     ]);
+  });
+
+  it('warns outside dev mode when search data would share the platform database', () => {
+    expect(workerBootWarnings({ PGHOST: 'genki-test-pg.postgres.database.azure.com' })).toEqual([
+      expect.stringContaining('KNOWLEDGE_DATABASE_URL'),
+    ]);
+    expect(
+      workerBootWarnings({
+        DATABASE_URL: 'postgres://db/genai',
+        KNOWLEDGE_DATABASE_URL: 'postgres://knowledge/genai',
+      }),
+    ).toEqual([]);
+    expect(
+      workerBootWarnings({ GENAI_DEV_MODE: 'true', DATABASE_URL: 'postgres://db/genai' }),
+    ).toEqual([]);
   });
 });

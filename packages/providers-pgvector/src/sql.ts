@@ -164,7 +164,7 @@ export const searchSql = (input: SearchSql) => {
     const dims = input.dataset.embedding?.dimensions ?? input.vector?.length ?? 0;
     const table = target === 'phrases' ? 'kn_phrases' : 'kn_chunks';
     const id = target === 'phrases' ? 'x.chunk_id' : 'x.id';
-    const distance = `x.vec::vector(${dims}) <=> ${params.add(JSON.stringify(input.vector))}::vector(${dims})`;
+    const distance = `x.vec::halfvec(${dims}) <=> ${params.add(JSON.stringify(input.vector))}::halfvec(${dims})`;
     ctes.push(`v as (
       select id, max(s) as s from (
         select ${id} as id, (1 - (${distance}))::float8 as s

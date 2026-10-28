@@ -601,7 +601,7 @@ describe('ingestion pipelines', () => {
     });
     expect(unbounded.status).toBe(422);
     expect(await json(unbounded)).toMatchObject({
-      title: expect.stringContaining('dokumenttyper eller en startdato'),
+      title: expect.stringContaining('dokumenttyper, en startdato eller en liste med dokumenter'),
     });
 
     const saved = await call(base, 'drift', {

@@ -1,0 +1,59 @@
+{
+  "benchmark": "kudos-pilot/embeddings",
+  "code": "168b7032dee6b472351de9174ebb87590fdd4629d2fa10fe45ec3fdf5d03e883",
+  "git": {
+    "commit": "6d7339a0d7da7208d2c7221cb8be561070b2a2f9",
+    "dirty": true
+  },
+  "items": "ace4ba6f8fbd10e679b45a07f7c95aaa385190c421253c3e8443de7b267a8cf6",
+  "packages": {
+    "mlx": "0.32.4",
+    "mlx-lm": "0.32.2",
+    "sentence-transformers": "6.2.0",
+    "torch": "2.14.1",
+    "transformers": "5.20.2"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.16",
+  "reference": "eae429d250799c9cb833dc8371cef4392146d82d94438360d44503abf326bade",
+  "schema": 1,
+  "settings": {
+    "documents": 300,
+    "full": "kudos-pilot-<side>-retrieve-only: gpt-4o planner, then the same search; 3 rounds of the draft questions",
+    "passages": 20248,
+    "search": "kudos-pilot-<side>-noplan-retrieve-only: keywords and vectors fused with RRF, ColBERT, 10 passages",
+    "search-<step>": "kudos-pilot-<side>-noplan-<step>-retrieve-only (setup_models.search_step): vector or fusion search alone, each with or without ColBERT, or the whole search without ColBERT",
+    "vectors": "exact search over every page passage in the side's own database, top 100"
+  },
+  "side": "arctic-l-v2",
+  "side_settings": {
+    "catalog_model": null,
+    "dimensions": 1024,
+    "dtype": "float16",
+    "environment": "embed-venv",
+    "model": "Snowflake/snowflake-arctic-embed-l-v2.0",
+    "prompts": {
+      "query": "query: "
+    },
+    "remote_code": false,
+    "revision": "ac6544c8a46e00af67e330e85a9028c66b8cfd9a",
+    "runtime": "PyTorch MPS",
+    "scored": {
+      "full": "full-search-3-large-and-small-models.json",
+      "search": "2026-10-23T19:43:59+00:00",
+      "vectors": "2026-10-23T15:48:17+00:00"
+    },
+    "shortened_from": null,
+    "timing": {
+      "embed_runtime": "PyTorch MPS float16",
+      "embed_seconds": 3644.0,
+      "embed_tokens": 11222556,
+      "exact_search_p50_ms": 36.4,
+      "questions_embed_seconds": 10.8,
+      "search_p50_ms": 1033,
+      "search_p95_ms": 1436,
+      "tokens_per_second": 3080
+    }
+  },
+  "time": "2026-10-28T08:26:25+00:00"
+}

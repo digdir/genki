@@ -92,6 +92,19 @@ describe('document loop', () => {
     expect(result).toMatchObject({ stored: 2, failed: ['b'] });
   });
 
+  it('reports why each failed document failed', async () => {
+    const result = await run(
+      lazySource(['a', 'b'], async (key) => {
+        if (key === 'b') throw new Error('Kudos-filen kunne ikke lastes ned innen 120 sekunder');
+      }),
+      { maxDocumentFailures: 2 },
+    );
+
+    expect(result.failures).toEqual([
+      { document: 'b', reason: 'Kudos-filen kunne ikke lastes ned innen 120 sekunder' },
+    ]);
+  });
+
   it('stops at the next document once the run is cancelled', async () => {
     const controller = new AbortController();
     const loaded: string[] = [];

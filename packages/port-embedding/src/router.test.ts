@@ -59,6 +59,11 @@ describe('embedding catalog', () => {
       'models.0.dimensions',
     ]);
 
+    const prompts = parseEmbeddingCatalog(catalog({ prompts: { question: 'q: ' } }), [
+      fakeEmbeddingAdapter(),
+    ]);
+    expect(!prompts.ok && prompts.errors.map((e) => e.path)).toEqual(['models.0.prompts']);
+
     const unknown = parseEmbeddingCatalog(catalog(), [fakeEmbeddingAdapter('other')]);
     expect(!unknown.ok && unknown.errors.map((e) => e.path)).toEqual([
       'endpoints.foundry.protocol',
@@ -94,6 +99,29 @@ describe('embedding router', () => {
     expect(adapter.calls.map((c) => c.texts)).toEqual([['a', 'b'], ['c', 'd'], ['e']]);
     expect(result.vectors).toEqual(texts.map((t) => fakeVector(t, 16)));
     expect(result.usage).toEqual({ inputTokens: 5 });
+  });
+
+  it("puts the model's query prompt before questions and its document prompt before passages", async () => {
+    const { router, adapter } = setup({ prompts: { query: 'query: ', document: 'passage: ' } });
+    const port = router.open(ref, testContext().ctx);
+
+    const question = await port.embed(['skatt'], { purpose: 'query' });
+    const passage = await port.embed(['skatt']);
+
+    expect(adapter.calls.map((c) => c.texts)).toEqual([['query: skatt'], ['passage: skatt']]);
+    expect(question.vectors).toEqual([fakeVector('query: skatt', 16)]);
+    expect(passage.vectors).toEqual([fakeVector('passage: skatt', 16)]);
+  });
+
+  it('embeds texts unchanged for a model without prompts, whatever the purpose', async () => {
+    const { router, adapter } = setup({ prompts: { query: 'Instruct: finn kilder\nQuery: ' } });
+    const plain = setup();
+
+    await router.open(ref, testContext().ctx).embed(['skatt']);
+    await plain.router.open(ref, testContext().ctx).embed(['skatt'], { purpose: 'query' });
+
+    expect(adapter.calls.map((c) => c.texts)).toEqual([['skatt']]);
+    expect(plain.adapter.calls.map((c) => c.texts)).toEqual([['skatt']]);
   });
 
   it('skips the call for no texts', async () => {

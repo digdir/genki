@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import importlib.util
+import json
 import threading
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import httpx
 import pytest
 
 import main
-from conftest import API_KEY, FakeConverter
+from conftest import API_KEY, MARKER_VERSION, FakeConverter
 
 CONVERT = "/api/v1/marker-pdf-to-markdown"
 
@@ -68,12 +69,55 @@ def test_configures_marker_to_separate_pages_with_the_separator_it_splits_on(cli
 def test_returns_markers_output_split_on_the_page_separator(client):
     response = client.post(CONVERT, files=pdf(b"One|Two"))
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert {key: body[key] for key in ("success", "pages", "cached", "file_hash")} == {
         "success": True,
         "pages": ["\n\n{0}", "\n\nOne\n\n{1}", "\n\nTwo"],
         "cached": False,
         "file_hash": None,
     }
+
+
+def test_returns_markers_json_metadata_version_and_settings_beside_the_pages(client):
+    body = client.post(CONVERT, files=pdf(b"One|Two")).json()
+    assert body["pages"] == ["\n\n{0}", "\n\nOne\n\n{1}", "\n\nTwo"]
+    assert body["json"]["block_type"] == "Document"
+    assert [page["block_type"] for page in body["json"]["children"]] == ["Page", "Page"]
+    assert body["json"]["children"][1]["children"][0]["html"] == "<p>Two</p>"
+    assert "metadata" not in body["json"]
+    assert body["metadata"]["page_stats"] == [
+        {"page_id": 0, "text_extraction_method": "pdftext", "block_counts": [["Text", 1]]},
+        {"page_id": 1, "text_extraction_method": "pdftext", "block_counts": [["Text", 1]]},
+    ]
+    assert [entry["title"] for entry in body["metadata"]["table_of_contents"]] == ["One", "Two"]
+    assert body["marker_version"] == MARKER_VERSION
+    assert body["settings"] == {
+        "output_format": "markdown",
+        "languages": "no,en",
+        "disable_image_extraction": True,
+        "paginate_output": True,
+        "page_separator": "___PAGE_SEPARATOR___",
+    }
+
+
+def test_renders_markdown_and_json_from_one_conversion_of_the_pdf(client):
+    body = client.post(CONVERT, files=pdf(b"One|Two")).json()
+    assert len(body["pages"]) == 3
+    assert len(body["json"]["children"]) == 2
+    assert FakeConverter.converted == [b"One|Two"]
+
+
+def blocks_in(blocks):
+    for block in blocks or []:
+        yield block
+        yield from blocks_in(block.get("children"))
+
+
+def test_leaves_images_out_of_the_json(client):
+    body = client.post(CONVERT, files=pdf(b"A picture|Two")).json()
+    blocks = list(blocks_in(body["json"]["children"]))
+    assert "Picture" in [block["block_type"] for block in blocks]
+    assert [block for block in blocks if "images" in block] == []
 
 
 def test_accepts_a_pdf_by_its_file_name_when_the_content_type_is_generic(client):
@@ -105,13 +149,53 @@ def test_serves_a_cached_result_without_converting_the_pdf_again(client):
     first = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
     again = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
     assert first["cached"] is False
-    assert again == {
+    assert first["file_hash"] == sha256(content)
+    assert again == {**first, "cached": True}
+    assert FakeConverter.converted == [content]
+
+
+def test_serves_a_cached_result_only_from_the_same_marker_version(client, monkeypatch):
+    content = b"one|two"
+    client.post(CONVERT, files=pdf(content), params={"cache": "true"})
+    same = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
+    monkeypatch.setattr(main, "marker_version", lambda: "1.11.0-test")
+    upgraded = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
+    assert (same["cached"], same["marker_version"]) == (True, MARKER_VERSION)
+    assert (upgraded["cached"], upgraded["marker_version"]) == (False, "1.11.0-test")
+    assert FakeConverter.converted == [content, content]
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        ["\n\n{0}", "\n\nold"],
+        {
+            "pages": ["\n\n{0}", "\n\nold"],
+            "json": {"children": [], "block_type": "Document"},
+            "metadata": {},
+            "marker_version": MARKER_VERSION,
+            "settings": {"languages": "en"},
+        },
+    ],
+    ids=["pages only", "other settings"],
+)
+def test_converts_again_when_the_cache_holds_an_entry_from_an_older_deploy(client, stored):
+    content = b"one|two"
+    (main.CACHE_DIR / f"{sha256(content)}.json").write_text(json.dumps(stored))
+    body = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
+    assert body["cached"] is False
+    assert FakeConverter.converted == [content]
+    assert client.get(f"/api/v1/cache/{sha256(content)}").json()["settings"] == body["settings"]
+
+
+def test_returns_the_pages_of_a_cache_entry_from_an_older_deploy(client):
+    content = b"one|two"
+    (main.CACHE_DIR / f"{sha256(content)}.json").write_text(json.dumps(["\n\n{0}", "\n\nold"]))
+    assert client.get(f"/api/v1/cache/{sha256(content)}").json() == {
         "success": True,
-        "pages": first["pages"],
-        "cached": True,
+        "pages": ["\n\n{0}", "\n\nold"],
         "file_hash": sha256(content),
     }
-    assert FakeConverter.converted == [content]
 
 
 def test_stores_nothing_when_the_cache_is_off(client):
@@ -128,11 +212,12 @@ def test_keeps_only_the_pdf_and_its_pages_when_the_cache_is_on(client):
     assert names == [f"{sha256(content)}.json", f"{sha256(content)}.pdf"]
 
 
-def test_returns_cached_pages_and_the_cached_pdf_by_hash(client):
+def test_returns_the_cached_result_and_the_cached_pdf_by_hash(client):
     content = b"one|two"
     converted = client.post(CONVERT, files=pdf(content), params={"cache": "true"}).json()
-    pages = client.get(f"/api/v1/cache/{sha256(content)}")
-    assert pages.json() == {"success": True, "pages": converted["pages"], "file_hash": sha256(content)}
+    cached = client.get(f"/api/v1/cache/{sha256(content)}")
+    assert cached.json() == {key: value for key, value in converted.items() if key != "cached"}
+    assert cached.json()["json"]["children"][0]["children"][0]["html"] == "<p>one</p>"
     stored = client.get(f"/api/v1/cache/{sha256(content)}/pdf")
     assert stored.headers["content-type"] == "application/pdf"
     assert stored.content == content

@@ -432,7 +432,8 @@ export const indexWriterContract = (
         if (!vector) continue;
         const got = stored.get(id) ?? [];
         expect(got, id).toHaveLength(vector.length);
-        got.forEach((value, i) => expect(value).toBeCloseTo(vector[i] ?? 0, 5));
+        // An engine may keep vectors at 16-bit precision, as pgvector's halfvec does
+        got.forEach((value, i) => expect(value).toBeCloseTo(vector[i] ?? 0, 3));
       }
       expect((await collect(read(target.dataset, 'g2'))).map((d) => d.id)).toEqual([second.id]);
     });

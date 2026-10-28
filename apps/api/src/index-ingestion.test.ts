@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DocumentConverter } from '@genai/ingest';
+import {
+  inMemoryConversionStore,
+  inMemoryEmbeddingCache,
+  type DocumentConverter,
+} from '@genai/ingest';
+import { fakeEmbedder } from '@genai/port-embedding/testing';
 import { mayUseModels } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import { envSecrets } from '@genai/kernel';
@@ -350,6 +355,56 @@ describe('index ingestion', () => {
     expect(String(at) >= before).toBe(true);
   });
 
+  it('stores each chunk with its PDF page when the pipeline chunks by page', async () => {
+    const tenant = '991825827';
+    const dataset = `${tenant}/opplastet`;
+    const dashes = '-'.repeat(48);
+    const blobs = new InMemoryBlobStore();
+    await blobs.put(
+      { tenant, path: `${uploadPrefix(dataset, tenant)}rapport.md` },
+      new TextEncoder().encode(
+        `\n\n{0}\n\n${dashes}\n\n\n\nForside.\n\n{1}\n\n${dashes}\n\n\n\nFristen for innsyn er tre virkedager.`,
+      ),
+      'text/markdown',
+    );
+    const job = jobFor({ kind: 'upload' }, dataset, tenant);
+    job.pipeline.spec = pipelineSpec.parse({
+      name: 'Rapporter',
+      source: { kind: 'upload' },
+      chunking: { strategy: { kind: 'page' }, minimumLength: 1 },
+    });
+    await indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      uploads: blobs,
+    }).run(job, signal);
+
+    const port = new KnowledgeRouter({
+      catalog: {
+        endpoints: { local: { engine: 'memory' } },
+        datasets: [{ id: dataset, endpoint: 'local', residency: 'norway' }],
+      },
+      adapters: [engine.adapter],
+      secrets: envSecrets({}),
+    }).open(
+      { kind: 'dataset', id: dataset },
+      {
+        tenant,
+        principal: { kind: 'employee', issuer: 'test', subject: 'kari', tenant },
+        task: 't1',
+        signal,
+        meter: async () => undefined,
+      },
+    );
+    const found = await port.search({ query: 'innsyn', profile: port.info().profiles[0] ?? '' });
+
+    expect(found.hits.map((h) => [h.text, h.fields.page])).toContainEqual([
+      'Fristen for innsyn er tre virkedager.',
+      2,
+    ]);
+  });
+
   it.each([
     { admitted: true, rule: 'lets an ingestion run that lockdown admitted use its phrase model' },
     { admitted: false, rule: 'keeps the phrase model of an ingestion run nobody admitted locked' },
@@ -464,6 +519,110 @@ describe('index ingestion', () => {
     expect(fetched.filter((u) => u.includes('files.kudos'))).toEqual([
       'https://files.kudos.example/1.pdf',
     ]);
+  });
+
+  it('ingests exactly the Kudos documents a pipeline names by UUID, without listing', async () => {
+    const ids = ['de77ffc7-1a57-456a-af49-167e699a4e6e', '44f20067-c3be-4a58-9e58-e6e60da24721'];
+    const fetched: string[] = [];
+    const fake = (async (input: string | URL | Request) => {
+      const url = String(input);
+      fetched.push(url);
+      const id = ids.find((i) => url === `https://kudos.dfo.no/api/v0/documents/${i}`);
+      if (id)
+        return Response.json({
+          uuid: id,
+          title: `Dokument ${id.slice(0, 8)}`,
+          type: 'Statusrapport',
+          publish_date: '2022-02-25',
+          files: [
+            {
+              url: `https://files.kudos.example/${id}.pdf`,
+              mimetype: 'application/pdf',
+              sha256: pdfSha,
+            },
+          ],
+        });
+      if (url.startsWith('https://files.kudos.example/')) return new Response('%PDF-1.7');
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      converter,
+      web: { resolve: async () => ['93.184.216.34'] },
+      kudos: { fetch: fake, sleep: async () => undefined },
+    });
+    const job = jobFor({ kind: 'kudos', ids });
+
+    expect(backend.unavailableFor?.(job.target, job.pipeline)).toBeUndefined();
+    const report = await backend.run(job, signal);
+
+    expect(report).toMatchObject({ stored: 2, failed: [] });
+    expect(fetched.filter((u) => u.includes('/api/v0/'))).toEqual(
+      ids.map((id) => `https://kudos.dfo.no/api/v0/documents/${id}`),
+    );
+  });
+
+  it('converts no file and embeds no text again when the platform keeps conversions and embeddings', async () => {
+    const tenant = '991825827';
+    const dataset = `${tenant}/vektorer`;
+    const vectorEngine = memoryEngine({ vectors: true });
+    const vectorWriters = new IndexWriterRouter({
+      catalog: {
+        endpoints: { local: { engine: 'memory' } },
+        datasets: [
+          {
+            id: dataset,
+            endpoint: 'local',
+            residency: 'norway',
+            embedding: { model: 'fake/embedder', dimensions: 8 },
+          },
+        ],
+      },
+      adapters: [vectorEngine.writer],
+      knowledgeAdapters: [vectorEngine.adapter],
+      secrets: envSecrets({}),
+    });
+    const blobs = new InMemoryBlobStore();
+    await blobs.put(
+      { tenant, path: `${uploadPrefix(dataset, tenant)}rapport.pdf` },
+      new TextEncoder().encode('%PDF-1.7'),
+      'application/pdf',
+    );
+    const conversions: string[] = [];
+    const marker: DocumentConverter = {
+      toMarkdown: async () => 'ubrukt',
+      convert: async (file) => {
+        conversions.push(file.name);
+        return {
+          markdown: 'Fristen for innsyn er tre virkedager.',
+          raw: { producer: 'marker', version: '1.10.2', settings: {}, output: {} },
+        };
+      },
+    };
+    const model = fakeEmbedder({ id: 'fake/embedder', dimensions: 8 });
+    const backend = indexIngestionBackend({
+      writers: vectorWriters,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      uploads: blobs,
+      converter: marker,
+      embedders: { has: () => true, open: () => model },
+      conversions: inMemoryConversionStore(),
+      embeddingCache: inMemoryEmbeddingCache(),
+    });
+    const job = (execution: string) => ({
+      ...jobFor({ kind: 'upload' }, dataset, tenant),
+      execution,
+      target: { dataset, endpoint: 'local', collections: {} },
+    });
+
+    expect(await backend.run(job('x1'), signal)).toMatchObject({ stored: 1 });
+    expect(await backend.run(job('x2'), signal)).toMatchObject({ stored: 1 });
+
+    expect(conversions).toEqual(['rapport.pdf']);
+    expect(model.calls).toEqual([['Fristen for innsyn er tre virkedager.']]);
   });
 
   it('estimates the Kudos documents a pipeline reads from the first list page', async () => {

@@ -16,6 +16,14 @@ export const databaseRequirement = (env: Env): BootRequirement => ({
     'set DATABASE_URL, or PGHOST for Entra ID login; in-memory storage runs only with GENAI_DEV_MODE=true',
 });
 
+/** Search data belongs on its own server; without one it still runs in the platform database, with a warning. */
+export const knowledgeDatabaseWarnings = (env: Env): string[] =>
+  !isDevMode(env) && (env.DATABASE_URL || env.PGHOST) && !env.KNOWLEDGE_DATABASE_URL
+    ? [
+        'KNOWLEDGE_DATABASE_URL is not set, so search data shares the platform database; point it at the knowledge server',
+      ]
+    : [];
+
 export const unmetOutsideDevMode = (env: Env, requirements: BootRequirement[]): string[] => {
   if (isDevMode(env))
     return isProduction(env) ? ['GENAI_DEV_MODE=true is not allowed in production; remove it'] : [];

@@ -1,5 +1,6 @@
 import {
   databaseRequirement,
+  knowledgeDatabaseWarnings,
   platformTenantProblems,
   unmetOutsideDevMode,
 } from '@genai/composition';
@@ -9,6 +10,10 @@ export { isDevMode } from '@genai/composition';
 export const workerBootProblems = (env: Record<string, string | undefined>): string[] => [
   ...platformTenantProblems(env),
   ...unmetOutsideDevMode(env, [databaseRequirement(env)]),
+];
+
+export const workerBootWarnings = (env: Record<string, string | undefined>): string[] => [
+  ...knowledgeDatabaseWarnings(env),
 ];
 
 export const workerDevModeWarning =

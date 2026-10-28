@@ -233,6 +233,7 @@ describe('pluggable search engines over the API', () => {
               deployment: 'e',
               residency: 'norway',
               dimensions: 8,
+              prompts: { query: 'spørsmål: ', document: 'tekst: ' },
             },
           ],
         },
@@ -279,7 +280,9 @@ describe('pluggable search engines over the API', () => {
     }
     expect(run).toMatchObject({ status: 'succeeded', report: { stored: 2, promoted: true } });
     expect(run?.report?.usage).toHaveProperty(['embedder:fake/embed']);
-    expect(adapter.calls.length).toBeGreaterThan(0);
+    const stored = adapter.calls.flatMap((c) => c.texts);
+    expect(stored.length).toBeGreaterThan(0);
+    expect(stored.every((text) => text.startsWith('tekst: '))).toBe(true);
 
     const { ctx, metered } = testContext();
     const port = platform.knowledge.open(
@@ -289,6 +292,7 @@ describe('pluggable search engines over the API', () => {
     expect(port.info().capabilities).toContain('search.hybrid');
     const result = await port.search({ query: 'tilskudd', profile: knowledgeProfiles.content });
     expect(result.hits[0]?.text).toContain('tilskudd');
+    expect(adapter.calls.at(-1)?.texts).toEqual(['spørsmål: tilskudd']);
     expect(metered.some((m) => m.model?.kind === 'embedder')).toBe(true);
   });
 

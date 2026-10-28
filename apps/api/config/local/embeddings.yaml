@@ -16,3 +16,11 @@ models:
     residency: global
     dimensions: 3072
     maxBatch: 64
+  # The same model shortened to 1,536 dimensions, as Kudos on pgvector stores it (halfvec)
+  - id: foundry/text-embedding-3-large-1536
+    endpoint: foundry-embeddings
+    deployment: text-embedding-3-large
+    residency: global
+    dimensions: 1536
+    maxBatch: 64
+    options: { sendDimensions: true }

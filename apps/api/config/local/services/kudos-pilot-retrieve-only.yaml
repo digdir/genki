@@ -1,0 +1,23 @@
+# The Kudos pilot (genki issue 92): Kunnskapsassistenten's retrieve-only service on digdir/kudos-next in pgvector, for comparison with Typesense.
+apiVersion: genai/v1
+kind: Service
+metadata: { tenant: '991825827', id: kudos-pilot-retrieve-only, name: 'Kudos-piloten, bare søk' }
+spec:
+  purpose: Finn kilder i Kudos uten å lage et svar
+  audience: [employees]
+  riskClass: minimal
+  variants:
+    - id: default
+  input: { accepts: [text/plain] }
+  output: { kind: answer, withSources: true }
+  strategy:
+    id: rag-single-shot
+    version: 1
+    config: { generate: false }
+  knowledge:
+    datasets:
+      - dataset: digdir/kudos-next
+    reranker: colbert
+    retrieval: { maxPerDocument: 10 }
+  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  exposure: { mcp: true, openai: true, rest: true }

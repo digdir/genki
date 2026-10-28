@@ -157,11 +157,13 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
         dimensions: model.dimensions,
         ...(model.maxBatch === undefined ? {} : { maxBatch: model.maxBatch }),
       }),
-      embed: async (texts) => {
+      embed: async (texts, { purpose = 'document' } = {}) => {
         if (texts.length === 0) return { vectors: [], usage: { inputTokens: 0 } };
+        const prompt = model.prompts?.[purpose] ?? '';
+        const inputs = prompt ? texts.map((t) => prompt + t) : texts;
         const vectors: number[][] = [];
         let inputTokens = 0;
-        for (const batch of batches(texts, model.maxBatch)) {
+        for (const batch of batches(inputs, model.maxBatch)) {
           const result = await call(batch);
           vectors.push(...result.vectors);
           inputTokens += result.usage.inputTokens;

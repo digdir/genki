@@ -38,7 +38,7 @@ const migrations: string[] = [
      metadata jsonb not null default '{}',
      config regconfig not null,
      tsv tsvector generated always as (to_tsvector(config, text)) stored,
-     vec vector,
+     vec halfvec,
      primary key (dataset, generation, id)
    )`,
   `create index if not exists kn_chunks_doc on kn_chunks (dataset, generation, doc_id, position)`,
@@ -52,11 +52,49 @@ const migrations: string[] = [
      text text not null,
      config regconfig not null,
      tsv tsvector generated always as (to_tsvector(config, text)) stored,
-     vec vector,
+     vec halfvec,
      primary key (dataset, generation, id)
    )`,
   `create index if not exists kn_phrases_doc on kn_phrases (dataset, generation, doc_id)`,
   `create index if not exists kn_phrases_tsv on kn_phrases using gin (tsv)`,
+  // Vectors stored before halfvec: drop their vector indexes, convert once; ensureVectorIndexes builds new ones
+  `do $$
+   declare
+     t text;
+     idx record;
+   begin
+     foreach t in array array['kn_chunks', 'kn_phrases'] loop
+       if (select format_type(atttypid, atttypmod) from pg_attribute
+           where attrelid = t::regclass and attname = 'vec') = 'vector' then
+         for idx in select indexname from pg_indexes
+                    where tablename = t and indexdef like '%vector_cosine_ops%' loop
+           execute format('drop index %I', idx.indexname);
+         end loop;
+         execute format('alter table %I alter column vec type halfvec using vec::halfvec', t);
+       end if;
+     end loop;
+   end $$`,
+  // What a converter such as Marker made of a file, so the text can be rebuilt without converting again
+  `create table if not exists src_conversions (
+     sha256 text not null,
+     producer text not null,
+     version text not null,
+     settings jsonb not null,
+     settings_key text generated always as (md5(settings::text)) stored,
+     markdown text not null,
+     output jsonb not null,
+     saved_at timestamptz not null default clock_timestamp(),
+     primary key (sha256, producer, version, settings_key)
+   )`,
+  `create index if not exists src_conversions_latest on src_conversions (sha256, producer, saved_at desc)`,
+  // Vectors by the sha256 of their text, per embedding model and number of dimensions
+  `create table if not exists kn_embeddings (
+     model text not null,
+     dimensions integer not null,
+     hash text not null,
+     vec halfvec not null,
+     primary key (model, dimensions, hash)
+   )`,
 ];
 
 export const transaction = async <T>(
@@ -83,7 +121,8 @@ export const migrateKnowledge = (pool: Pool) =>
     for (const sql of migrations) await client.query(sql);
   });
 
-export const maxIndexedDimensions = 2000;
+// pgvector indexes halfvec up to 4,000 dimensions (vector only to 2,000)
+export const maxIndexedDimensions = 4000;
 
 /** One partial HNSW index per dataset over vec cast to its dimension; larger dimensions search exactly. */
 export const ensureVectorIndexes = (pool: Pool, dataset: string, dimensions: number) => {
@@ -95,7 +134,7 @@ export const ensureVectorIndexes = (pool: Pool, dataset: string, dimensions: num
     for (const table of ['kn_chunks', 'kn_phrases'])
       await client.query(
         `create index if not exists ${table}_vec_${suffix} on ${table}
-           using hnsw ((vec::vector(${dimensions})) vector_cosine_ops)
+           using hnsw ((vec::halfvec(${dimensions})) halfvec_cosine_ops)
            where dataset = ${client.escapeLiteral(dataset)}`,
       );
   });

@@ -144,7 +144,11 @@ import {
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import {
+  pgvectorConversionStore,
+  pgvectorEmbeddingCache,
+  type PgvectorEngineOptions,
+} from '@genai/providers-pgvector';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
   builderStrategyId,
@@ -1062,6 +1066,13 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestFolderRoot ? { folderRoot: input.ingestFolderRoot } : {}),
     ...(input.documentConverter ? { converter: input.documentConverter } : {}),
     ...(input.kudos ? { kudos: input.kudos } : {}),
+    // Marker's results and the embeddings live beside the index, on the knowledge server
+    ...(input.knowledgePool
+      ? {
+          conversions: pgvectorConversionStore(input.knowledgePool),
+          embeddingCache: pgvectorEmbeddingCache(input.knowledgePool),
+        }
+      : {}),
     database: {
       reader: postgresRowReader({
         resolveHost: (host, allowed) => databaseGuard.address(host, allowed),

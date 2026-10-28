@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bootProblems } from './boot-guard.js';
+import { bootProblems, bootWarnings } from './boot-guard.js';
 
 const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
@@ -87,5 +87,14 @@ describe('booting the API', () => {
       expect(bootProblems({ ...flag, ...dev, ...real })).toEqual([
         expect.stringContaining('GENAI_DEV_MODE'),
       ]);
+  });
+
+  it('warns outside dev mode when search data would share the platform database', () => {
+    expect(bootWarnings(real)).toEqual([expect.stringContaining('KNOWLEDGE_DATABASE_URL')]);
+    expect(bootWarnings({ ...real, KNOWLEDGE_DATABASE_URL: 'postgres://knowledge/genai' })).toEqual(
+      [],
+    );
+    expect(bootWarnings({ ...dev, DATABASE_URL: real.DATABASE_URL })).toEqual([]);
+    expect(bootWarnings(dev)).toEqual([]);
   });
 });

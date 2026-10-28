@@ -11,9 +11,12 @@ summary: Turns text into vectors through a catalog of embedding models.
 description:
   Same router shape as the model and rerank ports. Checks residency and dimensions, batches
   input and meters usage to the caller, so search engines without built-in embedding can use vectors.
+  Callers say whether texts are questions or passages; the router puts the model's prompt for that
+  purpose before each text, for models that embed the two differently.
 responsibilities:
   - Embedding catalog
   - Residency and dimension checks
+  - Query and passage prompts
   - Batching and metering
 files:
   - packages/port-embedding/src/port.ts

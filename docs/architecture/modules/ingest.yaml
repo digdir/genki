@@ -9,16 +9,22 @@ packages:
   - '@genai/ingest'
 summary: Loads Kudos, websites and folders, converts and chunks them, and builds phrases.
 description: Source loaders and the ingest pipeline. Document ids are derived with valuehash so they
-  match the ids headless-rag gave the same documents.
+  match the ids headless-rag gave the same documents. A file Marker has converted once is read from
+  the stored conversion after that, text embedded once is not sent to the model again, and the page
+  strategy chunks Marker's text page by page, with the page on every chunk.
 responsibilities:
   - Kudos, website and folder loaders
-  - Conversion and chunking
+  - Conversion and chunking, by heading, width or page
+  - Reusing stored conversions and cached embeddings
   - Phrase extraction with a model
 files:
   - packages/ingest/src/pipeline.ts
   - packages/ingest/src/kudos.ts
   - packages/ingest/src/website.ts
   - packages/ingest/src/chunking.ts
+  - packages/ingest/src/chunk-document.ts
+  - packages/ingest/src/stored-conversions.ts
+  - packages/ingest/src/embedding-cache.ts
 input: Source config
 output: Documents, chunks and phrases
 replaces:

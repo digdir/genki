@@ -279,6 +279,7 @@ export const uploadSource = (options: UploadSourceOptions): IngestSource => ({
             content_markdown: c.content_markdown,
             content_length: c.content_length,
             metadata: c.metadata,
+            ...(c.page === undefined ? {} : { page: c.page }),
             path: name,
           })),
       };

@@ -2,8 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
 import type { Principal, Ref, Usage } from '@genai/contracts';
 import {
+  cachingEmbedder,
   convertibleExtensions,
   crawlSitemap,
+  storingConverter,
   databaseSource,
   defaultFetchPolicy,
   blobPhraseCache,
@@ -28,8 +30,10 @@ import {
   websiteSource,
   type ChunkDocumentConfig,
   type ChunkStrategy,
+  type ConversionStore,
   type DeclaredPhraseArchive,
   type DocumentConverter,
+  type EmbeddingCache,
   type GuardedFetchOptions,
   type IngestSource,
   type KudosDocument,
@@ -92,6 +96,10 @@ export interface IngestSourceOptions {
   uploads?: Pick<BlobStore, 'list' | 'get'>;
   kudos?: KudosAccess;
   database?: DatabaseAccess;
+  /** Marker's results by file: a file with one is not converted again unless a pipeline asks to reconvert */
+  conversions?: ConversionStore;
+  /** Vectors by text, model and size: text embedded before is not sent to the model again */
+  embeddingCache?: EmbeddingCache;
 }
 
 type DatabaseSpec = Extract<PipelineSpec['source'], { kind: 'database' }>;
@@ -148,11 +156,16 @@ const metadataStyles: Record<PipelineSpec['chunking']['metadataStyle'], Metadata
 const strategyOf = (spec: PipelineSpec['chunking']['strategy']): ChunkStrategy =>
   spec.kind === 'fixed-width'
     ? { kind: 'fixed-width', width: spec.width, overlap: spec.overlap }
-    : {
-        kind: 'header-based',
-        ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
-        ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
-      };
+    : spec.kind === 'page'
+      ? {
+          kind: 'page',
+          ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
+        }
+      : {
+          kind: 'header-based',
+          ...(spec.splitMaxLength === undefined ? {} : { splitMaxLength: spec.splitMaxLength }),
+          ...(spec.overlap === undefined ? {} : { overlap: spec.overlap }),
+        };
 
 export const chunkingOf = (spec: PipelineSpec['chunking']): ChunkDocumentConfig => ({
   strategy: strategyOf(spec.strategy),
@@ -258,6 +271,7 @@ interface KudosFilter {
   types?: string[] | undefined;
   since?: string | undefined;
   orgs?: string[] | undefined;
+  ids?: string[] | undefined;
 }
 
 const kudosMatcher = (filter: KudosFilter) => {
@@ -282,6 +296,13 @@ const kudosDocuments = async function* (
   filter: KudosFilter,
 ) {
   const matches = kudosMatcher(filter);
+  if (filter.ids && filter.ids.length > 0) {
+    for (const id of filter.ids) {
+      const doc = await client.document(id);
+      if (matches(doc)) yield doc;
+    }
+    return;
+  }
   for (const search of kudosSearches(filter))
     for await (const doc of client.documents(filter.startingPage ?? 1, search))
       if (matches(doc)) yield doc;
@@ -501,13 +522,26 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
       const route = options.writers.open(job.target.dataset, { signal });
       const embedding = route.needs.vectors ? route.dataset.embedding : undefined;
       const residency = options.residencyOf(job.target.dataset);
-      const embedder =
+      const opened =
         embedding && options.embedders
           ? options.embedders.open({ kind: 'embedder', id: embedding.model }, ctx, {
               ...(residency ? { maxResidency: residency } : {}),
             })
           : undefined;
+      const embedder =
+        opened && options.embeddingCache
+          ? cachingEmbedder({ cache: options.embeddingCache, embedder: opened })
+          : opened;
       const spec = job.pipeline.spec;
+      const converter =
+        options.converter && options.conversions
+          ? storingConverter({
+              store: options.conversions,
+              converter: options.converter,
+              producer: 'marker',
+              reconvert: spec.reconvert,
+            })
+          : options.converter;
       const modelRef = (id: string): Ref => ({
         kind: 'model',
         id,
@@ -531,7 +565,11 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
               },
             }
           : undefined;
-      const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset });
+      const source = await sourceOf(
+        spec,
+        { ...options, ...(converter ? { converter } : {}) },
+        { tenant, dataset: job.target.dataset },
+      );
       const result = await runIndexIngest({
         source: withIngestedAt(
           spec.chunking.metadataStyle === 'none' ? withoutMetadata(source) : source,
@@ -556,6 +594,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
         skipped: result.skipped,
         ...(result.skippedDocuments ? { skippedDocuments: result.skippedDocuments } : {}),
         failed: result.failed,
+        ...(result.failures ? { failures: result.failures } : {}),
         generation: result.generation,
         promoted: result.promoted,
         ...(result.previous === undefined ? {} : { previous: result.previous }),

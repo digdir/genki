@@ -6,9 +6,24 @@ export interface DocumentFile {
   mimetype?: string;
 }
 
+/** What a converter produced besides the text, kept as it came so the text can be rebuilt without converting again. */
+export interface RawConversion {
+  producer: string;
+  version: string;
+  settings: unknown;
+  output: unknown;
+}
+
+export interface Conversion {
+  markdown: string;
+  raw?: RawConversion;
+}
+
 export interface DocumentConverter {
   extensions?: readonly string[];
   toMarkdown(file: DocumentFile): Promise<string>;
+  /** The text and the converter's own output; converters that have none only offer toMarkdown. */
+  convert?(file: DocumentFile): Promise<Conversion>;
 }
 
 export class NoTextLayerError extends Error {
@@ -62,7 +77,7 @@ export interface MarkerOptions {
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export const markerConverter = (options: MarkerOptions): DocumentConverter => {
-  const once = async (file: DocumentFile) => {
+  const once = async (file: DocumentFile): Promise<Conversion> => {
     const form = new FormData();
     form.append(
       'file',
@@ -80,32 +95,50 @@ export const markerConverter = (options: MarkerOptions): DocumentConverter => {
     const body = (await response.json().catch(() => ({}))) as {
       success?: boolean;
       pages?: string[];
+      json?: unknown;
+      metadata?: unknown;
+      marker_version?: string;
+      settings?: unknown;
     };
     if (!response.ok || !body.success)
       throw new MarkerFailed(
         response.status,
         `Marker conversion failed for ${file.name} with HTTP ${response.status}`,
       );
-    return (body.pages ?? []).join(markerPageSeparator);
+    const markdown = (body.pages ?? []).join(markerPageSeparator);
+    // A service that predates Marker's raw output sends pages alone
+    return body.marker_version === undefined
+      ? { markdown }
+      : {
+          markdown,
+          raw: {
+            producer: 'marker',
+            version: body.marker_version,
+            settings: body.settings ?? {},
+            output: { pages: body.pages ?? [], json: body.json, metadata: body.metadata },
+          },
+        };
+  };
+  const convert = async (file: DocumentFile) => {
+    const delays = [...(options.retryDelaysMs ?? markerRetryDelaysMs)];
+    for (;;) {
+      try {
+        return await once(file);
+      } catch (error) {
+        const delay = delays.shift();
+        if (
+          delay === undefined ||
+          !(error instanceof MarkerFailed && retryableMarkerStatuses.has(error.status))
+        )
+          throw error;
+        await (options.sleep ?? pause)(delay);
+      }
+    }
   };
   return {
     extensions: ['.pdf'],
-    toMarkdown: async (file) => {
-      const delays = [...(options.retryDelaysMs ?? markerRetryDelaysMs)];
-      for (;;) {
-        try {
-          return await once(file);
-        } catch (error) {
-          const delay = delays.shift();
-          if (
-            delay === undefined ||
-            !(error instanceof MarkerFailed && retryableMarkerStatuses.has(error.status))
-          )
-            throw error;
-          await (options.sleep ?? pause)(delay);
-        }
-      }
-    },
+    convert,
+    toMarkdown: async (file) => (await convert(file)).markdown,
   };
 };
 
@@ -113,16 +146,21 @@ export const byExtension = (
   converters: { converter: DocumentConverter; extensions: readonly string[] }[],
 ): DocumentConverter => {
   const all = converters.flatMap((c) => c.extensions.map((e) => e.toLowerCase()));
+  const choose = (file: DocumentFile) => {
+    const ext = (/\.[^./]+$/.exec(file.name.toLowerCase()) ?? [''])[0];
+    const mime = (file.mimetype ?? '').split(';')[0]?.trim().toLowerCase();
+    const wanted = mime === 'application/pdf' ? '.pdf' : ext;
+    const chosen =
+      converters.find((c) => c.extensions.includes(wanted)) ?? converters[converters.length - 1];
+    if (!chosen) throw new Error(`no converter for ${file.name}`);
+    return chosen.converter;
+  };
   return {
     extensions: [...new Set(all)],
-    toMarkdown: async (file) => {
-      const ext = (/\.[^./]+$/.exec(file.name.toLowerCase()) ?? [''])[0];
-      const mime = (file.mimetype ?? '').split(';')[0]?.trim().toLowerCase();
-      const wanted = mime === 'application/pdf' ? '.pdf' : ext;
-      const chosen =
-        converters.find((c) => c.extensions.includes(wanted)) ?? converters[converters.length - 1];
-      if (!chosen) throw new Error(`no converter for ${file.name}`);
-      return chosen.converter.toMarkdown(file);
+    toMarkdown: async (file) => choose(file).toMarkdown(file),
+    convert: async (file) => {
+      const chosen = choose(file);
+      return chosen.convert ? chosen.convert(file) : { markdown: await chosen.toMarkdown(file) };
     },
   };
 };

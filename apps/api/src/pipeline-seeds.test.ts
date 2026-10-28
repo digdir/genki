@@ -38,6 +38,7 @@ const seed = (name: string) => ({
     },
     parallelism: 2,
     maxDocumentFailures: 10,
+    reconvert: false,
     enabled: true,
     schedule: 'none' as const,
   },

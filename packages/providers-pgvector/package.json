@@ -15,12 +15,14 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@genai/ingest": "0.0.0",
     "@genai/port-knowledge": "0.0.0",
     "pg": "^8.23.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@genai/kernel": "0.0.0",
+    "@genai/plugins": "0.0.0",
     "@genai/port-embedding": "0.0.0",
     "@genai/providers-postgres": "0.0.0"
   }

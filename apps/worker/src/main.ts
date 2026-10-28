@@ -42,6 +42,7 @@ import {
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
+  createPool,
   createPostgresStores,
   LocalKeyWrapper,
   PostgresDefinitionStore,
@@ -49,7 +50,12 @@ import {
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
-import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
+import {
+  isDevMode,
+  workerBootProblems,
+  workerBootWarnings,
+  workerDevModeWarning,
+} from './boot-guard.js';
 import { followPublished } from './follow.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
@@ -69,6 +75,7 @@ if (isDevMode(process.env)) {
   console.warn(`\n*** DEV MODE ***\n${workerDevModeWarning}\n`);
   log('dev mode', { warning: workerDevModeWarning });
 }
+for (const warning of workerBootWarnings(process.env)) log('boot warning', { warning });
 
 const servicesDir = process.env.WORKER_SERVICES_DIR ?? join(root, 'packages', 'jobs', 'examples');
 const configDir = process.env.CONFIG_DIR ?? join(root, 'apps', 'api', 'config', 'local');
@@ -98,6 +105,17 @@ const db = databaseSource
     )
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
+
+// Search data lives on its own server when KNOWLEDGE_DATABASE_URL is set, else in the platform database
+const knowledgeServer = process.env.KNOWLEDGE_DATABASE_URL
+  ? createPool({ connectionString: process.env.KNOWLEDGE_DATABASE_URL }).on('error', (error) =>
+      log('knowledge database connection error', { error: String(error) }),
+    )
+  : undefined;
+const knowledgePool = knowledgeServer ?? db?.pool;
+log('search storage', {
+  kind: knowledgeServer ? 'knowledge server' : db ? 'platform database' : 'none',
+});
 
 const secrets = envSecrets();
 const catalogs = {
@@ -214,14 +232,18 @@ const runtime = await createRuntime({
     platformHosts: [
       'localhost',
       '127.0.0.1',
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
+      ...databaseHosts(
+        process.env.DATABASE_URL,
+        process.env.DATABASE_RUNTIME_URL,
+        process.env.KNOWLEDGE_DATABASE_URL,
+      ),
       ...(process.env.PGHOST ? [process.env.PGHOST] : []),
     ],
   },
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
+  ...(knowledgePool ? { knowledgePool } : {}),
   ...(db
     ? {
-        knowledgePool: db.pool,
         connections: db.connections,
         modelClassifications: db.modelClassifications,
       }
@@ -386,6 +408,7 @@ const stop = () => {
     await retentionLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();
+    await knowledgeServer?.end();
   })().finally(() => process.exit(0));
 };
 process.on('SIGINT', stop);

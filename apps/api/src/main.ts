@@ -22,6 +22,7 @@ import {
 } from '@genai/kernel';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
+  createPool,
   createPostgresStores,
   LocalKeyWrapper,
   PostgresDefinitionStore,
@@ -66,7 +67,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
+import { bootProblems, bootWarnings, devModeWarning, isDevMode } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -95,6 +96,7 @@ if (isDevMode(process.env)) {
   console.warn(`\n*** DEV MODE ***\n${devModeWarning}\n`);
   log('dev mode', { warning: devModeWarning });
 }
+for (const warning of bootWarnings(process.env)) log('boot warning', { warning });
 const platformTenant = platformTenantFrom(process.env);
 log('platform tenant', { tenant: platformTenant });
 
@@ -148,6 +150,16 @@ const db = databaseSource
     )
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
+
+// Search data lives on its own server when KNOWLEDGE_DATABASE_URL is set, else in the platform database
+const knowledgePool = process.env.KNOWLEDGE_DATABASE_URL
+  ? createPool({ connectionString: process.env.KNOWLEDGE_DATABASE_URL }).on('error', (error) =>
+      log('knowledge database connection error', { error: String(error) }),
+    )
+  : db?.pool;
+log('search storage', {
+  kind: process.env.KNOWLEDGE_DATABASE_URL ? 'knowledge server' : db ? 'platform database' : 'none',
+});
 
 let mockRegistration: ClientListener = {};
 const clients = notifyingClients(db?.clients ?? new InMemoryClients(), {
@@ -389,7 +401,8 @@ const platform = await createPlatform({
     rerank: catalogs.rerank.catalog,
     embeddings: catalogs.embeddings.catalog,
   },
-  ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(db ? { changes: db.changes } : {}),
+  ...(knowledgePool ? { knowledgePool } : {}),
   ...(db
     ? {
         rateLimits: {
@@ -430,7 +443,11 @@ const platform = await createPlatform({
       'localhost',
       '127.0.0.1',
       `localhost:${port}`,
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
+      ...databaseHosts(
+        process.env.DATABASE_URL,
+        process.env.DATABASE_RUNTIME_URL,
+        process.env.KNOWLEDGE_DATABASE_URL,
+      ),
       ...(process.env.PGHOST ? [process.env.PGHOST] : []),
     ],
   },
