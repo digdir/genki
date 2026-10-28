@@ -16,6 +16,7 @@ import {
   kudosClient,
   memoryPhraseCache,
   mergeFrontmatter,
+  withPipelineLanguage,
   pathToDoc,
   prepareKudosDoc,
   runIngest,
@@ -354,6 +355,38 @@ describe('website loader', () => {
     expect(mergeFrontmatter({ id: 'x', language: 'nb' }, '---\nlang: en\n---\n').language).toBe(
       'nb',
     );
+  });
+
+  it('records where a language came from: the URL or the frontmatter', () => {
+    expect(urlToDoc({ loc: 'https://docs.example.test/nb/guide/index.md' })).toMatchObject({
+      language: 'nb',
+      language_source: 'url',
+    });
+    const none = urlToDoc({ loc: 'https://docs.example.test/docs/guide.md' });
+    expect(none).not.toHaveProperty('language_source');
+    expect(mergeFrontmatter(none, '---\nlang: nn\n---\n')).toMatchObject({
+      language: 'nn',
+      language_source: 'frontmatter',
+    });
+  });
+
+  it('applies a pipeline language only when the URL and frontmatter gave none', () => {
+    const english =
+      'The client must validate the token before it is used, and it should not be stored in the browser.';
+    const none = { id: 'x', language: null as string | null };
+    expect(withPipelineLanguage(none, english, 'nb')).toMatchObject({
+      language: 'nb',
+      language_source: 'pipeline',
+    });
+    expect(withPipelineLanguage(none, english, 'detect')).toMatchObject({
+      language: 'en',
+      language_source: 'detected',
+    });
+    expect(withPipelineLanguage(none, 'testside', 'detect')).toEqual(none);
+    expect(withPipelineLanguage(none, english, undefined)).toEqual(none);
+    const fromUrl = { id: 'x', language: 'nb', language_source: 'url' };
+    expect(withPipelineLanguage(fromUrl, english, 'detect')).toEqual(fromUrl);
+    expect(withPipelineLanguage(fromUrl, english, 'en')).toEqual(fromUrl);
   });
 });
 

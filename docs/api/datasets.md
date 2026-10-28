@@ -22,6 +22,18 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.
 
+## Website languages
+
+A website document's `language` (`nb`, `nn` or `en`) comes from, in this order:
+
+1. its URL (`/nb/…`, `/en/…`);
+2. its frontmatter `lang` or `language` (`nb`, `nn`, `en`, `no`, or forms like `nb-NO`);
+3. the pipeline's `source.language`.
+
+Set `source.language` to `nb`, `nn` or `en` for a site written in one language. Set it to `detect` for a site that mixes them: each document is classified from its own text. The classifier first decides Norwegian or English from common words, then bokmål or nynorsk from words where the two differ; code blocks, inline code and URLs are ignored. A document with too little text to decide keeps no language.
+
+`language_source` records where the value came from: `url`, `frontmatter`, `pipeline` or `detected`.
+
 ## Parquet pipelines
 
 A pipeline source can read one public https Parquet file with `url`, or a Hugging Face file with `huggingface: { dataset, file, revision }` (`revision` defaults to `main`). Sharded tables use `urls: [...]` plus a stable `table` name, or `huggingface: { dataset, table, files }`, where `files` is an explicit path list or a glob such as `data/train-*.parquet`. Give each config/split its own table name. Keep that name when updating shard layouts so document ids stay stable.

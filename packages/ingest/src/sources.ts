@@ -30,7 +30,9 @@ import {
   prepareWebsiteChunks,
   prepareWebsiteDoc,
   urlToDoc,
+  withPipelineLanguage,
   type FetchedBody,
+  type PipelineLanguage,
   type SitemapEntry,
 } from './website.js';
 
@@ -111,6 +113,8 @@ export interface WebsiteSourceOptions {
   fetchBody?(entry: SitemapEntry): Promise<FetchedBody>;
   converter?: DocumentConverter;
   extract?: ContentExtractor;
+  /** For documents whose URL and frontmatter give no language. */
+  language?: PipelineLanguage;
 }
 
 const readWebsiteEntry = async (
@@ -147,7 +151,11 @@ export const websiteSource = (options: WebsiteSourceOptions): IngestSource => ({
     for (const entry of options.entries) {
       const read = await readWebsiteEntry(options, entry);
       const markdown = 'text' in read ? read.text : '';
-      const merged = mergeFrontmatter(urlToDoc(entry), markdown);
+      const merged = withPipelineLanguage(
+        mergeFrontmatter(urlToDoc(entry), markdown),
+        markdown,
+        options.language,
+      );
       const doc = 'title' in read && read.title ? { ...merged, title: read.title } : merged;
       yield {
         key: doc.id,

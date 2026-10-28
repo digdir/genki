@@ -4,6 +4,7 @@ import { Agent, Dispatcher1Wrapper } from 'undici';
 import { parse as parseYaml } from 'yaml';
 import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
+import { detectLanguage, type DocumentLanguage } from './language.js';
 import { capitalize, javaSplit } from './text.js';
 
 export interface FetchPolicy {
@@ -419,7 +420,7 @@ export const urlToDoc = (entry: SitemapEntry) => {
     url: entry.loc,
     lastmod: entry.lastmod ?? null,
     title: extractTitleFromUrl(entry.loc),
-    ...(language ? { language } : { language: null }),
+    ...(language ? { language, language_source: 'url' } : { language: null }),
     type: 'website',
   };
 };
@@ -473,8 +474,27 @@ export const mergeFrontmatter = <D extends object>(doc: D, markdown: string) => 
       ? { diataxis: String(fm.diataxis).replace(/^diataxis_/, '') }
       : {}),
     ...(product ? { product } : {}),
-    ...(language && !urlLanguage ? { language } : {}),
+    ...(language && !urlLanguage ? { language, language_source: 'frontmatter' } : {}),
   };
+};
+
+/** A pipeline's language: a fixed one for single-language sources, or `detect` per document. */
+export type PipelineLanguage = DocumentLanguage | 'detect';
+
+/**
+ * Applies a pipeline's language to a document that has none from its URL or frontmatter.
+ * `language_source` records where the value came from: `pipeline` or `detected`.
+ */
+export const withPipelineLanguage = <D extends { language?: string | null }>(
+  doc: D,
+  markdown: string,
+  language: PipelineLanguage | undefined,
+) => {
+  if (doc.language || !language) return doc;
+  const value = language === 'detect' ? detectLanguage(markdown) : language;
+  return value
+    ? { ...doc, language: value, language_source: language === 'detect' ? 'detected' : 'pipeline' }
+    : doc;
 };
 
 const websiteDocFields = [
@@ -486,6 +506,7 @@ const websiteDocFields = [
   'diataxis',
   'product',
   'language',
+  'language_source',
   'url',
   'lastmod',
   'type',

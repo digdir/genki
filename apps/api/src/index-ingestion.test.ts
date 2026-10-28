@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DocumentConverter } from '@genai/ingest';
+import { documentId, type DocumentConverter } from '@genai/ingest';
 import { mayUseModels } from '@genai/composition';
 import type { Principal } from '@genai/contracts';
 import { envSecrets } from '@genai/kernel';
@@ -167,6 +167,46 @@ describe('index ingestion', () => {
       { document: 'https://www.example.no/rapport.pdf', reason: 'unsupported_type' },
       { document: 'https://annen.example.com/notat.md', reason: 'outside_access' },
     ]);
+  });
+
+  it('a website pipeline language reaches the stored documents, and only known languages are accepted', async () => {
+    const pages: Record<string, string> = {
+      'https://www.example.no/sitemap.xml':
+        '<urlset><url><loc>https://www.example.no/docs/token.md</loc></url></urlset>',
+      'https://www.example.no/docs/token.md':
+        '# Access token\n\nThe access token enables the client to access APIs on behalf of the user, and it must be validated before it is used.',
+    };
+    const website = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      web: {
+        resolve: async () => ['93.184.216.34'],
+        fetch: async (url) => {
+          const body = pages[String(url)];
+          return body === undefined ? new Response('', { status: 404 }) : new Response(body);
+        },
+      },
+    });
+    const stored = async () => {
+      const route = writers.open('testetaten/rapporter', { signal });
+      const generation = await route.writer.active(route.dataset);
+      if (!route.writer.read || !generation) throw new Error('no readable generation');
+      const docs = [];
+      for await (const doc of route.writer.read(route.dataset, generation)) docs.push(doc);
+      return docs
+        .filter((d) => d.id === documentId('https://www.example.no/docs/token.md'))
+        .map((d) => [d.fields.language, d.fields.language_source]);
+    };
+    const source = { kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' };
+
+    await website.run(jobFor({ ...source, language: 'detect' }), signal);
+    expect(await stored()).toEqual([['en', 'detected']]);
+    await website.run(jobFor({ ...source, language: 'nb' }), signal);
+    expect(await stored()).toEqual([['nb', 'pipeline']]);
+    expect(
+      pipelineSpec.safeParse({ name: 'X', source: { ...source, language: 'de' } }).success,
+    ).toBe(false);
   });
 
   it('a folder pipeline reads YAML files only when its extensions allow .yaml', async () => {

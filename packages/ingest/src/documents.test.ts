@@ -184,6 +184,33 @@ describe('web content', () => {
 
     expect(docs[0]).toMatchObject({ product: 'Maskinporten', language: 'nb' });
   });
+
+  it('a website source detects the language of a page whose URL and frontmatter give none', async () => {
+    const pages: Record<string, string> = {
+      'https://docs.example.test/docs/token.md':
+        '# Access token\n\nThe access token enables the client to access APIs on behalf of the user, and it must be validated before it is used.',
+      'https://docs.example.test/docs/brukarar.md':
+        '# Brukarar\n\nDet er mogeleg å motta pålogging for brukarar som ikkje har norsk eID, og dei fleste testane må gjennomførast før ein kan ta i bruk tenesta.',
+      'https://docs.example.test/en/guide.md':
+        '# Guide\n\nDette er en norsk tekst som ikke er på engelsk, og den har en engelsk URL.',
+    };
+    const { docs } = await ingest(
+      websiteSource({
+        entries: Object.keys(pages).map((loc) => ({ loc })),
+        language: 'detect',
+        fetchBody: async (entry) => ({
+          bytes: new TextEncoder().encode(pages[entry.loc] ?? ''),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs.map((d) => [d.url, d.language, d.language_source])).toEqual([
+      ['https://docs.example.test/docs/token.md', 'en', 'detected'],
+      ['https://docs.example.test/docs/brukarar.md', 'nn', 'detected'],
+      ['https://docs.example.test/en/guide.md', 'en', 'url'],
+    ]);
+  });
 });
 
 describe('documents through a converter', () => {
