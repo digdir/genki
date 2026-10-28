@@ -85,7 +85,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const setup = async (send?: (url: string) => Response | Promise<Response>) => {
+const setup = async (send?: (url: string) => Response | Promise<Response>, maxBytes?: number) => {
   const root = await mkdtemp(join(tmpdir(), 'parquet-lookup-test-'));
   roots.push(root);
   const engine = memoryEngine();
@@ -119,7 +119,12 @@ const setup = async (send?: (url: string) => Response | Promise<Response>) => {
     platformTenant: 'tenant',
     residencyOf: () => undefined,
     web: { resolve: async () => ['93.184.216.34'] },
-    parquet: { reader: parquetReader(), fetch: fetcher, workingDirectory: root },
+    parquet: {
+      reader: parquetReader(),
+      fetch: fetcher,
+      workingDirectory: root,
+      ...(maxBytes ? { maxBytes } : {}),
+    },
   });
   const route = writers.open('tenant/docs', { signal: new AbortController().signal });
   const documents = async () => {
@@ -299,6 +304,15 @@ describe('Parquet lookups through the ingestion backend and real reader', () => 
     await expect(
       state.backend.run(definitionsJob([lookup({ maxRows: 12 })], 'exact'), signal()),
     ).resolves.toMatchObject({ promoted: true });
+  });
+
+  it('caps a lookup download at the platform ceiling even when the lookup allows more', async () => {
+    const state = await setup(undefined, 256);
+
+    await expect(
+      state.backend.run(definitionsJob([lookup({ maxBytes: 1024 * 1024 })]), signal()),
+    ).rejects.toThrow(/size limit/);
+    expect(await readdir(state.root)).toEqual([]);
   });
 
   it('fails the run when the key map passes maxMemoryBytes', async () => {

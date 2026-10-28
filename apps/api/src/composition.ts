@@ -412,6 +412,7 @@ export interface PlatformInput {
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
   ingestWorkingDirectory?: string;
+  ingestParquetMaxBytes?: number;
   changes?: ChangeFeed;
   modules?: PlatformModuleFactory[];
   hookSender?: HookSender;
@@ -1067,6 +1068,7 @@ export const createPlatform = async (input: PlatformInput) => {
     parquet: {
       reader: parquetReader(),
       ...(input.ingestWorkingDirectory ? { workingDirectory: input.ingestWorkingDirectory } : {}),
+      ...(input.ingestParquetMaxBytes ? { maxBytes: input.ingestParquetMaxBytes } : {}),
     },
     database: {
       reader: postgresRowReader({

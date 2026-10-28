@@ -24,6 +24,7 @@ import type { PipelineSpec } from './ingestion.js';
 
 type ParquetSpec = Extract<PipelineSpec['source'], { kind: 'parquet' }>;
 export const parquetReadTimeoutMs = 120_000;
+export const defaultParquetMaxBytes = 1024 * 1024 * 1024;
 const maxShards = 1000;
 
 const hfUrl = (source: HuggingFaceSource, file: string) =>
@@ -152,7 +153,7 @@ export const parquetSourceOf = (
       await guardedFetchStream(
         url,
         policyFor(access),
-        maxBytes,
+        Math.min(maxBytes, access.maxBytes ?? defaultParquetMaxBytes),
         async (chunk) => {
           // FileHandle.write may make a short write.
           let offset = 0;

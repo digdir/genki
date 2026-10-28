@@ -408,6 +408,9 @@ const platform = await createPlatform({
   ...(process.env.INGEST_WORKING_DIRECTORY
     ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }
     : {}),
+  ...(process.env.INGEST_PARQUET_MAX_BYTES
+    ? { ingestParquetMaxBytes: Number(process.env.INGEST_PARQUET_MAX_BYTES) }
+    : {}),
   secrets,
   definitions: (plugins, sharedSkill, sharedFlow) =>
     db

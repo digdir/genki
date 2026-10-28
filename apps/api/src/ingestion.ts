@@ -100,8 +100,10 @@ export const pipelineSpec = z.strictObject({
           .int()
           .min(1024)
           .max(20 * 1024 * 1024 * 1024)
-          .default(2 * 1024 * 1024 * 1024)
-          .describe('Disk byte cap per shard; shards download sequentially'),
+          .default(1024 * 1024 * 1024)
+          .describe(
+            'Disk byte cap per shard, up to the platform ceiling; shards download sequentially',
+          ),
       })
       .refine((s) => [s.url, s.urls, s.huggingface].filter((v) => v !== undefined).length === 1, {
         message: 'a Parquet source needs exactly one of url, urls and huggingface',

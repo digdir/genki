@@ -49,7 +49,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const setup = async (send?: typeof fetch, reader: ParquetReader = parquetReader()) => {
+const setup = async (
+  send?: typeof fetch,
+  reader: ParquetReader = parquetReader(),
+  maxBytes?: number,
+) => {
   const root = await mkdtemp(join(tmpdir(), 'parquet-shards-test-'));
   roots.push(root);
   const engine = memoryEngine();
@@ -73,7 +77,7 @@ const setup = async (send?: typeof fetch, reader: ParquetReader = parquetReader(
     platformTenant: 'tenant',
     residencyOf: () => undefined,
     web: { resolve: async () => ['93.184.216.34'] },
-    parquet: { reader, fetch: fetcher, workingDirectory: root },
+    parquet: { reader, fetch: fetcher, workingDirectory: root, ...(maxBytes ? { maxBytes } : {}) },
   });
   const route = writers.open('tenant/docs', { signal: new AbortController().signal });
   const documents = async () => {
@@ -280,6 +284,18 @@ describe('Parquet tables through the ingestion backend and real reader', () => {
     );
     expect(report.stored).toBe(1);
     expect(checked).toBe(true);
+    expect(await readdir(state.root)).toEqual([]);
+  });
+
+  it('caps each shard at the platform ceiling even when the pipeline allows more', async () => {
+    const state = await setup(
+      (async () => new Response(new Uint8Array(4096))) as typeof fetch,
+      parquetReader(),
+      1024,
+    );
+    await expect(
+      state.backend.run(job({ url: a, maxBytes: 1024 * 1024 }), signal()),
+    ).rejects.toThrow(/size limit/);
     expect(await readdir(state.root)).toEqual([]);
   });
 
