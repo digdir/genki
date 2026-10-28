@@ -43,6 +43,7 @@
     "@genai/providers-openapi-tools": "0.0.0",
     "@genai/providers-pgvector": "0.0.0",
     "@genai/providers-postgres": "0.0.0",
+    "@genai/providers-parquet": "0.0.0",
     "@genai/providers-postgres-source": "0.0.0",
     "@genai/providers-typesense": "0.0.0",
     "@genai/providers-typesense-writer": "0.0.0",

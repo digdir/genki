@@ -50,6 +50,7 @@
 - providers-langfuse
 - providers-postgres
 - providers-pgvector
+- providers-parquet
 - providers-postgres-source
 - azure-foundry
 - typesense-cluster

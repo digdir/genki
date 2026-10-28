@@ -25,6 +25,7 @@ const datasets = {
   sourceUnknown: 'Unknown source',
   sourceFolder: 'Folder on the server',
   sourceDatabase: 'Database',
+  sourceParquet: 'Parquet',
   sourceNone: 'No source yet',
   sourceSharedWithYou: '{source}, shared with you',
   sharedBy: 'Shared by {owner}',

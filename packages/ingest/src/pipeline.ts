@@ -40,7 +40,7 @@ export interface SourceDocument {
 }
 
 export interface IngestSource {
-  kind: 'kudos' | 'website' | 'folder' | 'upload' | 'database' | 'episerver';
+  kind: 'kudos' | 'website' | 'folder' | 'upload' | 'database' | 'episerver' | 'parquet';
   phraseRows: 'legacy' | 'pipeline';
   documents(): AsyncIterable<SourceDocument>;
   skipped?: SkippedDocument[];

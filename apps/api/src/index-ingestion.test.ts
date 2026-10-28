@@ -466,6 +466,183 @@ describe('index ingestion', () => {
     ]);
   });
 
+  it('ingests a Parquet file from Hugging Face, following the redirect to its CDN, with the injected reader', async () => {
+    const resolveUrl =
+      'https://huggingface.co/datasets/kelkalot/every-ai-policy-ever/resolve/main/data/records.parquet';
+    const fetched: string[] = [];
+    const fake = (async (input: string | URL | Request) => {
+      const url = String(input);
+      fetched.push(url);
+      if (url === resolveUrl)
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://us.aws.cdn.hf.co/xet/records.parquet?sig=1' },
+        });
+      if (url.startsWith('https://us.aws.cdn.hf.co/')) return new Response(new Uint8Array([1, 2]));
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const reader = {
+      columns: async () => ['id', 'title', 'summary', 'legal_force'],
+      rows: async function* () {
+        yield { id: 'EU-03', title: 'AI Act', summary: 'Rules by risk.', legal_force: 'Binding' };
+        yield { id: 'US-01', title: 'EO', summary: 'Order.', legal_force: 'Non-binding' };
+      },
+    };
+    const source = {
+      kind: 'parquet',
+      huggingface: { dataset: 'kelkalot/every-ai-policy-ever', file: 'data/records.parquet' },
+      mapping: {
+        fields: { id: 'id', title: 'title', text: ['summary'], metadata: ['legal_force'] },
+        filter: [{ column: 'legal_force', op: 'eq', value: 'Binding' }],
+      },
+    };
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      web: { resolve: async () => ['93.184.216.34'] },
+      parquet: { reader, fetch: fake },
+    });
+
+    expect(
+      backend.unavailableFor?.(jobFor(source).target, jobFor(source).pipeline),
+    ).toBeUndefined();
+    const report = await backend.run(jobFor(source), signal);
+
+    expect(report).toMatchObject({ stored: 1, failed: [] });
+    expect(fetched).toEqual([resolveUrl, 'https://us.aws.cdn.hf.co/xet/records.parquet?sig=1']);
+  });
+
+  it.each([
+    'https://[::ffff:127.0.0.1]/data.parquet',
+    'https://[::ffff:a00:1]/data.parquet',
+    'https://[0:0:0:0:0:ffff:a9fe:a9fe]/data.parquet',
+  ])('refuses a Parquet URL at a mapped private address: %s', async (url) => {
+    const fetched: string[] = [];
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      parquet: {
+        reader: { columns: async () => ['id', 'title'], rows: async function* () {} },
+        fetch: (async (input) => {
+          fetched.push(String(input));
+          return new Response(new Uint8Array([1]));
+        }) as typeof fetch,
+      },
+    });
+
+    await expect(
+      backend.run(
+        jobFor({
+          kind: 'parquet',
+          url,
+          mapping: { fields: { id: 'id', title: 'title', text: ['title'] } },
+        }),
+        signal,
+      ),
+    ).rejects.toThrow(/private or reserved/);
+    expect(fetched).toEqual([]);
+  });
+
+  it('aborts the Parquet download when its execution is cancelled', async () => {
+    const started = Promise.withResolvers<AbortSignal | undefined>();
+    const response = Promise.withResolvers<Response>();
+    const controller = new AbortController();
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      web: { resolve: async () => ['93.184.216.34'] },
+      parquet: {
+        reader: { columns: async () => ['id', 'title'], rows: async function* () {} },
+        fetch: (async (_input, init) => {
+          started.resolve(init?.signal ?? undefined);
+          return response.promise;
+        }) as typeof fetch,
+      },
+    });
+    const run = backend.run(
+      jobFor({
+        kind: 'parquet',
+        url: 'https://example.org/data.parquet',
+        mapping: { fields: { id: 'id', title: 'title', text: ['title'] } },
+      }),
+      controller.signal,
+    );
+    const settled = run.catch(() => undefined);
+    const fetchSignal = await started.promise;
+    controller.abort();
+    try {
+      expect(fetchSignal?.aborted).toBe(true);
+    } finally {
+      response.resolve(new Response(new Uint8Array([1])));
+      await settled;
+    }
+    await expect(run).rejects.toThrow(/abort/i);
+  });
+
+  it('says Parquet sources are turned off when the platform has no Parquet reader', () => {
+    const source = {
+      kind: 'parquet',
+      url: 'https://example.org/data.parquet',
+      mapping: { fields: { id: 'id', title: 'title', text: ['summary'] } },
+    };
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+    });
+
+    expect(backend.unavailableFor?.(jobFor(source).target, jobFor(source).pipeline)).toMatch(
+      /Parquet sources are turned off/,
+    );
+  });
+
+  it('fails a Parquet run that maps a column the file does not have, naming the column', async () => {
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway' as const,
+      platformTenant: 'digdir',
+      web: { resolve: async () => ['93.184.216.34'] },
+      parquet: {
+        reader: { columns: async () => ['id', 'title'], rows: async function* () {} },
+        fetch: (async () => new Response(new Uint8Array([1]))) as typeof fetch,
+      },
+    });
+    const job = jobFor({
+      kind: 'parquet',
+      url: 'https://example.org/data.parquet',
+      mapping: { fields: { id: 'id', title: 'title', text: ['summary'] } },
+    });
+
+    await expect(backend.run(job, signal)).rejects.toThrow(/no column summary/);
+  });
+
+  it('takes exactly one of url and huggingface for a Parquet source, and caps its size', () => {
+    const parse = (source: Record<string, unknown>) =>
+      pipelineSpec.safeParse({
+        name: 'p',
+        source: {
+          kind: 'parquet',
+          mapping: { fields: { id: 'id', title: 'title', text: ['summary'] } },
+          ...source,
+        },
+      });
+    const hf = { dataset: 'o/n', file: 'data/r.parquet' };
+
+    const parsed = parse({ huggingface: hf });
+    expect(parsed.success && parsed.data.source).toMatchObject({
+      maxBytes: 1024 * 1024 * 1024,
+      huggingface: { revision: 'main' },
+    });
+    expect(parse({ url: 'https://example.org/r.parquet' }).success).toBe(true);
+    expect(parse({}).success).toBe(false);
+    expect(parse({ url: 'https://example.org/r.parquet', huggingface: hf }).success).toBe(false);
+    expect(parse({ url: 'http://example.org/r.parquet' }).success).toBe(false);
+    expect(parse({ huggingface: hf, maxBytes: 21 * 1024 * 1024 * 1024 }).success).toBe(false);
+  });
+
   it('estimates the Kudos documents a pipeline reads from the first list page', async () => {
     const fake = (async () =>
       Response.json({

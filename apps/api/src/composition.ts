@@ -146,6 +146,7 @@ import {
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
 import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
   builderStrategyId,
@@ -411,6 +412,8 @@ export interface PlatformInput {
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
+  ingestWorkingDirectory?: string;
+  ingestParquetMaxBytes?: number;
   changes?: ChangeFeed;
   modules?: PlatformModuleFactory[];
   hookSender?: HookSender;
@@ -1063,6 +1066,11 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestFolderRoot ? { folderRoot: input.ingestFolderRoot } : {}),
     ...(input.documentConverter ? { converter: input.documentConverter } : {}),
     ...(input.kudos ? { kudos: input.kudos } : {}),
+    parquet: {
+      reader: parquetReader(),
+      ...(input.ingestWorkingDirectory ? { workingDirectory: input.ingestWorkingDirectory } : {}),
+      ...(input.ingestParquetMaxBytes ? { maxBytes: input.ingestParquetMaxBytes } : {}),
+    },
     database: {
       reader: postgresRowReader({
         resolveHost: (host, allowed) => databaseGuard.address(host, allowed),

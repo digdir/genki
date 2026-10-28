@@ -35,6 +35,7 @@ export const sourceText: Record<DatasetSourceKind, PlainKey> = {
   kudos: 'datasets.sourceKudos',
   folder: 'datasets.sourceFolder',
   database: 'datasets.sourceDatabase',
+  parquet: 'datasets.sourceParquet',
   none: 'datasets.sourceNone',
 };
 

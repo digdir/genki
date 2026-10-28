@@ -1,0 +1,22 @@
+{
+  "name": "@genai/providers-parquet",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/ingest": "0.0.0",
+    "hyparquet": "^1.31.5",
+    "hyparquet-compressors": "^1.1.2"
+  }
+}

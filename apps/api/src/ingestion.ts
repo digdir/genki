@@ -1,6 +1,9 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
+  huggingFaceSource,
+  parquetTableName,
+  parquetMapping,
   readableTextExtensions,
   rowMapping,
   type SkipReason,
@@ -80,6 +83,36 @@ export const pipelineSpec = z.strictObject({
       limit: z.number().int().positive().optional(),
       baseUrl: z.url().optional(),
     }),
+    z
+      .strictObject({
+        kind: z.literal('parquet'),
+        url: z.url({ protocol: /^https$/ }).optional(),
+        huggingface: huggingFaceSource.optional(),
+        urls: z
+          .array(z.url({ protocol: /^https$/ }))
+          .min(1)
+          .max(1000)
+          .optional(),
+        table: parquetTableName.optional(),
+        mapping: parquetMapping,
+        maxBytes: z
+          .number()
+          .int()
+          .min(1024)
+          .max(20 * 1024 * 1024 * 1024)
+          .default(1024 * 1024 * 1024)
+          .describe(
+            'Disk byte cap per shard, up to the platform ceiling; shards download sequentially',
+          ),
+      })
+      .refine((s) => [s.url, s.urls, s.huggingface].filter((v) => v !== undefined).length === 1, {
+        message: 'a Parquet source needs exactly one of url, urls and huggingface',
+        path: ['url'],
+      })
+      .refine((s) => (s.urls ? s.table !== undefined : s.table === undefined), {
+        message: 'table is required exactly when urls is set',
+        path: ['table'],
+      }),
     z.strictObject({
       kind: z.literal('database'),
       connection: databaseConnection,

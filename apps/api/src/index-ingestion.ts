@@ -28,6 +28,7 @@ import {
   websiteSource,
   type ChunkDocumentConfig,
   type ChunkStrategy,
+  type ParquetReader,
   type DeclaredPhraseArchive,
   type DocumentConverter,
   type GuardedFetchOptions,
@@ -40,6 +41,8 @@ import {
   type RowReader,
   type SkippedDocument,
 } from '@genai/ingest';
+import { parquetSourceOf } from './parquet-files.js';
+export { parquetLocation, parquetReadTimeoutMs } from './parquet-files.js';
 import { withModelAdmission } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
@@ -69,6 +72,14 @@ export interface KudosAccess {
   sleep?: (ms: number) => Promise<void>;
 }
 
+export interface ParquetAccess {
+  reader: ParquetReader;
+  workingDirectory?: string;
+  maxBytes?: number;
+  fetch?: typeof fetch;
+  readTimeoutMs?: number;
+}
+
 export interface DatabaseAccess {
   reader: RowReader;
   secrets: { resolve(ref: string): Promise<string | undefined> };
@@ -92,6 +103,7 @@ export interface IngestSourceOptions {
   uploads?: Pick<BlobStore, 'list' | 'get'>;
   kudos?: KudosAccess;
   database?: DatabaseAccess;
+  parquet?: ParquetAccess;
 }
 
 type DatabaseSpec = Extract<PipelineSpec['source'], { kind: 'database' }>;
@@ -221,6 +233,8 @@ const sourceProblem = (spec: PipelineSpec, options: IngestSourceOptions) => {
     return 'uploads are turned off on this platform';
   if (spec.source.kind === 'database' && !options.database)
     return 'database sources are turned off on this platform';
+  if (spec.source.kind === 'parquet' && !options.parquet)
+    return 'Parquet sources are turned off on this platform';
   if (spec.source.kind === 'folder' || spec.source.kind === 'episerver') {
     if (!options.folderRoot) return 'folder sources are turned off on this platform';
     if (!inside(options.folderRoot, spec.source.path))
@@ -402,6 +416,10 @@ const sourceOf = async (
       mapping: source.mapping,
       origin: `postgres://${host}:${port}/${database}/${source.mapping.schema}.${source.mapping.table}`,
     });
+  }
+  if (source.kind === 'parquet') {
+    if (!options.parquet) throw new Error('Parquet sources are turned off on this platform');
+    return parquetSourceOf(options.parquet, source, { ...options.web, signal });
   }
   if (source.kind === 'episerver') {
     const root = inside(options.folderRoot ?? '', source.path);

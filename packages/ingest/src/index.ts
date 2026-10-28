@@ -12,6 +12,7 @@ export * from './index-writer.js';
 export * from './kudos.js';
 export * from './phrase-archive.js';
 export * from './phrases.js';
+export * from './parquet.js';
 export * from './pipeline.js';
 export * from './prompts.js';
 export * from './sources.js';

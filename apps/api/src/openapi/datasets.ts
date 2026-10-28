@@ -136,7 +136,16 @@ const DatasetWithStatus = Dataset.extend({
   embeddingResidency: Residency.nullable().optional(),
   editable: z.boolean(),
   state: z.enum(['needs-pipeline', 'configured', 'running', 'ready', 'degraded', 'external']),
-  source: z.enum(['website', 'upload', 'kudos', 'folder', 'database', 'episerver', 'none']),
+  source: z.enum([
+    'website',
+    'upload',
+    'kudos',
+    'folder',
+    'database',
+    'parquet',
+    'episerver',
+    'none',
+  ]),
   documents: z.number().int().nullable(),
   chunks: z.number().int().nullable(),
   lastExecution: LastExecution.nullable(),
@@ -147,7 +156,10 @@ const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
 }).openapi('DatasetDetail');
 
-const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec');
+const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
+  description:
+    'Parquet sources accept url (one file), urls with a stable table name, or huggingface with dataset and file, or dataset, table and files (a glob or list). Shards are sorted and downloaded sequentially. mapping.maxRows caps rows across the table before filtering; maxBytes caps each file on disk (default 1 GiB, maximum 20 GiB), never above the platform ceiling. Pages and row groups have decompression limits. Duplicate row ids in sharded tables or any shard failure fail the run without promotion. Single-file document ids stay unchanged.',
+});
 const Pipeline = z
   .object({
     dataset: z.string(),

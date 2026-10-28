@@ -123,6 +123,9 @@
       "path": "../../packages/providers-pgvector"
     },
     {
+      "path": "../../packages/providers-parquet"
+    },
+    {
       "path": "../../packages/providers-postgres-source"
     },
     {
