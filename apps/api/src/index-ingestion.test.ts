@@ -633,7 +633,7 @@ describe('index ingestion', () => {
 
     const parsed = parse({ huggingface: hf });
     expect(parsed.success && parsed.data.source).toMatchObject({
-      maxBytes: 2 * 1024 * 1024 * 1024,
+      maxBytes: 1024 * 1024 * 1024,
       huggingface: { revision: 'main' },
     });
     expect(parse({ url: 'https://example.org/r.parquet' }).success).toBe(true);

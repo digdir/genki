@@ -114,3 +114,20 @@ describe('Parquet byte ranges and row groups', () => {
     expect((await iterator.next()).done).toBe(true);
   });
 });
+
+describe('Parquet decompression limits', () => {
+  it('refuses a page that declares more uncompressed bytes than the page limit', async () => {
+    await expect(
+      collect(parquetReader({ maxPageBytes: 16 }).rows(fixture, ['id', 'definition'], 100)),
+    ).rejects.toThrow(/page declares .* over the .* limit/);
+  });
+
+  it('refuses a row group that declares more bytes than the row-group limit, before decoding it', async () => {
+    const bytes = new Uint8Array(
+      readFileSync(join(import.meta.dirname, 'fixtures', 'row-groups.parquet')),
+    );
+    await expect(
+      collect(parquetReader({ maxRowGroupBytes: 1024 }).rows(bytes, ['id', 'body'], 10)),
+    ).rejects.toBeInstanceOf(ParquetReadError);
+  });
+});

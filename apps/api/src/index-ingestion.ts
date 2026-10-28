@@ -75,6 +75,7 @@ export interface KudosAccess {
 export interface ParquetAccess {
   reader: ParquetReader;
   workingDirectory?: string;
+  maxBytes?: number;
   fetch?: typeof fetch;
   readTimeoutMs?: number;
 }
