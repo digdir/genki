@@ -169,6 +169,21 @@ describe('web content', () => {
       frontmatter_title: 'Gi abonnenter tilgang',
     });
   });
+
+  it('a Markdown page keeps its frontmatter product and language as fields', async () => {
+    const markdown = '---\ntitle: Kom i gang\nproduct: Maskinporten\nlang: nb\n---\n\nTekst.\n';
+    const { docs } = await ingest(
+      websiteSource({
+        entries: [{ loc: 'https://docs.example.test/docs/Maskinporten/kom_i_gang.md' }],
+        fetchBody: async () => ({
+          bytes: new TextEncoder().encode(markdown),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs[0]).toMatchObject({ product: 'Maskinporten', language: 'nb' });
+  });
 });
 
 describe('documents through a converter', () => {
