@@ -109,3 +109,12 @@ datasets:
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
     options: { textSearchConfig: english }
+  - id: digdir/altinn-docs
+    name: Altinn-dokumentasjon
+    description: Dokumentasjonen på docs.altinn.studio (Altinn Studio, Autorisasjon, Dialogporten, Varslinger og mer), på norsk og engelsk
+    endpoint: platform-pg
+    residency: global
+    embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
+    filters:
+      language: multiselect
+      diataxis: multiselect

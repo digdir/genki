@@ -1,0 +1,18 @@
+dataset: digdir/altinn-docs
+id: altinn-docs
+spec:
+  name: Altinn-dokumentasjonen
+  description: docs.altinn.studio på norsk og engelsk, lest som Markdown fra en ukentlig speiling, med lenker til den offentlige siden
+  source:
+    kind: website
+    sitemap: https://bdb-dd.github.io/altinn-docs-markdown-mirror/sitemap-markdown.xml
+    include: [en/**, nb/**]
+    # The sitemap lists the language home pages, but the mirror does not build them.
+    exclude: [en/index.md, nb/index.md]
+    cite:
+      baseUrl: https://docs.altinn.studio/
+      dropIndexMd: true
+  chunking:
+    minimumLength: 333
+  maxDocumentFailures: 25
+  schedule: weekly
