@@ -598,6 +598,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     caps: CompiledCapability[],
     tasks: Task[],
     withInput: boolean,
+    withUsage: boolean,
   ) => {
     const actors = await taskActors(tasks, tenant);
     const names = new Map<string, string>();
@@ -614,7 +615,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const base = taskBase(caps, t);
         const excerpt = withInput ? excerptOf(await inputTextOf(t.id)) : '';
         return {
-          ...(await taskRow(caps, t)),
+          ...(withUsage ? await taskRow(caps, t) : base),
           serviceName: names.get(base.service) ?? base.service,
           ...(excerpt ? { excerpt } : {}),
           actor: actors.get(t.id) ?? { kind: 'system' as const },
@@ -767,13 +768,16 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     );
     const start = now();
     const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-    const usage = await usageOver(g.tenant, month, start);
+    const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
+    const usage = seesUsage ? await usageOver(g.tenant, month, start) : undefined;
     const connections = await deps.connections.list(g.tenant);
     const dayAgo = start.getTime() - 86_400_000;
     return c.json({
       services,
-      recentTasks: await Promise.all(tasks.slice(0, 5).map((t) => taskRow(caps, t))),
-      usageThisMonth: usage.totals,
+      recentTasks: await Promise.all(
+        tasks.slice(0, 5).map((t) => (seesUsage ? taskRow(caps, t) : taskBase(caps, t))),
+      ),
+      ...(usage ? { usageThisMonth: usage.totals } : {}),
       qualityWarnings: (await deps.qualityWarnings?.(g.tenant)) ?? [],
       review: {
         pendingToolChanges: connections.reduce((n, s) => n + s.pending.length, 0),
@@ -1013,6 +1017,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       caps,
       rows.slice(0, limit).map((r) => byId.get(r.id) as Task),
       requireRight(g.principal, g.tenant, 'manage-services').ok,
+      requireRight(g.principal, g.tenant, 'view-usage').ok,
     );
     return c.json({ data, total: rows.length });
   });
@@ -1069,6 +1074,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       await capabilitiesOf(g.tenant),
       [found],
       requireRight(g.principal, g.tenant, 'manage-services').ok,
+      requireRight(g.principal, g.tenant, 'view-usage').ok,
     );
     return c.json(view);
   });

@@ -17,8 +17,14 @@ import { VersionConflict, type ConfigEntry } from './config-store.js';
 import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
-import { rightsOf, type Right } from './rights.js';
-import { runSummary, runView, serviceEval, type ServiceDraft } from './service-eval.js';
+import { rightsOf, seesUsage, type Right } from './rights.js';
+import {
+  runSummary,
+  runView,
+  serviceEval,
+  type ServiceDraft,
+  type ServiceRun,
+} from './service-eval.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
 
@@ -67,6 +73,15 @@ const setSummary = (set: TestSet) => {
     ...(only ? { split: only } : {}),
   };
 };
+
+const costless =
+  <T extends { cost?: unknown; tokens?: unknown }>(view: (run: ServiceRun) => T) =>
+  (run: ServiceRun) => {
+    const shown: Partial<T> = { ...view(run) };
+    delete shown.cost;
+    delete shown.tokens;
+    return shown;
+  };
 
 export const serviceDraftActions = [
   'platform.service.draft.save',
@@ -462,7 +477,10 @@ export const createQualityModule =
           const guard = await member(c);
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
-          return c.json({ data: runs.map(runSummary) });
+          const shown = seesUsage(guard.principal, guard.tenant)
+            ? runSummary
+            : costless(runSummary);
+          return c.json({ data: runs.map(shown) });
         });
 
         app.get('/tenants/:tenant/eval-runs/:runId', async (c) => {
@@ -470,7 +488,8 @@ export const createQualityModule =
           if (guard.response) return guard.response;
           const id = param(c, 'runId');
           const run = await evals.runOf(guard.tenant, id);
-          if (run) return c.json({ kind: 'service' as const, ...runView(run) });
+          const shown = seesUsage(guard.principal, guard.tenant) ? runView : costless(runView);
+          if (run) return c.json({ kind: 'service' as const, ...shown(run) });
           const stored = await deps.evalStores.runs.get(id);
           if (stored?.tenant !== guard.tenant) return problem(c, 404, 'Fant ikke');
           return c.json({
