@@ -44,6 +44,9 @@ export const requireRight = (principal: Principal, tenant: string, right: Right)
     ? { ok: true }
     : { ok: false, problem: rightProblem(right) };
 
+export const seesUsage = (principal: Principal, tenant: string) =>
+  rightsOf(principal, tenant).has('view-usage');
+
 export const rightRefused = (c: Context, problem: RightProblem) =>
   c.json(problem, 403, { 'content-type': 'application/problem+json' });
 

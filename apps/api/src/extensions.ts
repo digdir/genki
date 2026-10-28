@@ -204,7 +204,11 @@ export const adminExtensions = (deps: {
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;
-    const connection = (input.connection ?? {}) as Record<string, unknown>;
+    const given = (input.connection ?? {}) as Record<string, unknown>;
+    const connection =
+      principal.kind === 'operator' || given.writes === undefined
+        ? given
+        : { ...given, writes: false };
     const target = `tool-connection:${tenant}/${String(connection.id ?? '')}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator registers tools');

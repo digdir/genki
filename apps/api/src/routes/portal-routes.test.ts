@@ -146,6 +146,12 @@ Object.assign(principals, {
       { org: digdir, actions: ['use-services', 'manage-services', 'view-usage'] },
     ],
   },
+  per: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'per',
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-services'] }],
+  },
 });
 
 const operatorPrincipal: Principal = {
@@ -239,6 +245,52 @@ describe('portal routes', () => {
     expect(body.recentTasks[0]?.service).toBe('klarsprak');
     expect(body.usageThisMonth.inputTokens).toBe(2000);
     expect(body.review.failedTasksLastDay).toBe(1);
+  });
+
+  it('leaves usage this month out of the overview for a person without view-usage', async () => {
+    const { send } = await setup();
+
+    const res = await send(`/tenants/${digdir}/overview`, 'per');
+    const body = await json<Record<string, unknown>>(res);
+
+    expect(res.status).toBe(200);
+    expect(body).not.toHaveProperty('usageThisMonth');
+    expect(body.services).toEqual([expect.objectContaining({ id: 'klarsprak' })]);
+  });
+
+  it('leaves per-task usage out of the overview recent tasks for a person without view-usage', async () => {
+    const { send } = await setup();
+
+    const without = await json<{ recentTasks: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/overview`, 'per'),
+    );
+    const withUsage = await json<{ recentTasks: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/overview`, 'ingrid'),
+    );
+
+    expect(without.recentTasks.map((t) => t.id)).toEqual(['t2', 't1']);
+    for (const task of without.recentTasks) expect(task).not.toHaveProperty('usage');
+    for (const task of withUsage.recentTasks) expect(task).toHaveProperty('usage');
+  });
+
+  it('leaves per-task usage out of the task list and the single task for a person without view-usage', async () => {
+    const { send } = await setup();
+
+    const list = await json<{ data: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'per'),
+    );
+    const one = await json<Record<string, unknown>>(
+      await send(`/tenants/${digdir}/tasks/t1`, 'per'),
+    );
+    const seen = await json<{ data: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'ingrid'),
+    );
+
+    expect(list.data.map((t) => t.id)).toEqual(['t2', 't1']);
+    for (const task of list.data) expect(task).not.toHaveProperty('usage');
+    expect(one).toMatchObject({ id: 't1' });
+    expect(one).not.toHaveProperty('usage');
+    for (const task of seen.data) expect(task).toHaveProperty('usage');
   });
 
   it('lists tasks newest first, filtered by status and service, without other tenants', async () => {

@@ -29,7 +29,7 @@ import {
   type Pipeline,
 } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
 import type { GateRegistry, GuardrailRuleRegistry, ScopedResult } from './scoped-registry.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { datasetStatus } from './dataset-status.js';
@@ -1032,8 +1032,16 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       const refusedKey = keyRefused(c, guard.principal, item);
       if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
+      const executions = await deps.ingestion.executions(item.id, param(c, 'id'));
       return c.json({
-        data: await deps.ingestion.executions(item.id, param(c, 'id')),
+        data: seesUsage(guard.principal, guard.scope)
+          ? executions
+          : executions.map(({ report, ...rest }) => {
+              if (!report) return rest;
+              const shown = { ...report };
+              delete shown.usage;
+              return { ...rest, report: shown };
+            }),
         backend: deps.ingestion.availability(ingestionTarget(item)),
         nextRunAt: pipeline ? await deps.ingestion.nextRunAt(guard.scope, pipeline) : null,
       });

@@ -16,7 +16,8 @@ import {
 import { refusedRight, type Access } from './access.js';
 import type { ActorNames } from './actor-names.js';
 import { actorOf, type Admin } from './admin.js';
-import { confirmedBy, riskConfirmationProblems } from './governance.js';
+import { confirmedBy } from './governance.js';
+import { riskConfirmationProblems } from './risk-confirmation.js';
 import { t } from './i18n/index.js';
 import {
   type Authenticator,

@@ -113,7 +113,7 @@ export interface PlatformModule {
     capability: KernelCapability,
     context: CapabilityContext,
   ): KernelCapability | Promise<KernelCapability>;
-  checkPublish?(definition: unknown): Promise<ValidationError[]>;
+  checkPublish?(definition: unknown, publisher: string): Promise<ValidationError[]>;
   onFeedback?(feedback: FeedbackGiven): Promise<void>;
   qualityOverview?(): Promise<Record<string, unknown>>;
 }

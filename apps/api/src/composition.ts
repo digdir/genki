@@ -1126,12 +1126,12 @@ export const createPlatform = async (input: PlatformInput) => {
       : undefined;
   };
 
-  const checkBeforePublish = async (definition: unknown) => {
+  const checkBeforePublish = async (definition: unknown, publisher: string) => {
     const validated = validateDefinition(definition, plugins);
     if (!validated.ok) return undefined;
     const d = validated.definition;
     for (const module of modules) {
-      const problems = (await module.checkPublish?.(d)) ?? [];
+      const problems = (await module.checkPublish?.(d, publisher)) ?? [];
       if (problems.length > 0) return problems;
     }
     if (d.kind === 'StepFlow') {
@@ -1195,7 +1195,7 @@ export const createPlatform = async (input: PlatformInput) => {
     resolve: (...args) => store.resolve(...args),
     capabilities: () => store.capabilities(),
     publish: async (...args) => {
-      const problems = await checkBeforePublish(args[0]);
+      const problems = await checkBeforePublish(args[0], args[1]);
       if (problems) return { ok: false, errors: problems };
       const result = await store.publish(...args);
       if (result.ok) await sync();

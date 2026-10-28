@@ -992,7 +992,9 @@ const AnalysesTab = ({
                         version: String(run.version),
                       }),
                       f.dateTime(run.startedAt),
-                      ...(run.costMicroNok !== null ? [kroner(run.costMicroNok, f)] : []),
+                      ...(run.costMicroNok !== null && run.costMicroNok !== undefined
+                        ? [kroner(run.costMicroNok, f)]
+                        : []),
                     ].join(' · ')}
                   </span>
                   {run.newSince > 0 ? (

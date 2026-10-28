@@ -647,6 +647,43 @@ describe('subscriptions to new documents', () => {
     expect(env.state.modelCalls).toHaveLength(1);
   });
 
+  it('shows the cost of project runs and subscriptions only with view-usage or to the person who started the run', async () => {
+    const env = await boot();
+    const id = String((await createProject(env)).id);
+    await subscribe(env, id, { mode: 'run', service: 'oppsummering', maxCostNok: 20 });
+    env.world.docs.push(report(5, 'NAV'));
+    env.world.time.fire();
+    await env.settled();
+    const estimate = await env.send('POST', `${base}/${id}/runs/estimate`, 'erik', {
+      service: 'oppsummering',
+      selection: 'arsrapporter',
+    });
+    const own = await env.send('POST', `${base}/${id}/runs`, 'erik', {
+      estimate: estimate.body.id,
+      selection: 'arsrapporter',
+      maxCostNok: 10,
+    });
+    await env.settled();
+
+    const runsFor = async (who: string) =>
+      (await env.send('GET', `${base}/${id}/runs`, who)).body.data as Record<string, unknown>[];
+    const subscriptionFor = async (who: string) =>
+      (
+        (await env.send('GET', `${base}/${id}/subscriptions`, who)).body.data as Record<
+          string,
+          unknown
+        >[]
+      )[0];
+    const analyst = await runsFor('erik');
+    const usage = await runsFor('lise');
+
+    expect(analyst.find((r) => r.trigger === 'subscription')).not.toHaveProperty('costMicroNok');
+    expect(analyst.find((r) => r.id === own.body.id)).toHaveProperty('costMicroNok');
+    expect(usage.every((r) => 'costMicroNok' in r)).toBe(true);
+    expect(await subscriptionFor('erik')).not.toHaveProperty('spentThisMonth');
+    expect(await subscriptionFor('lise')).toHaveProperty('spentThisMonth');
+  });
+
   it('reacts when an ingestion into the dataset completes', async () => {
     const env = await boot();
     const id = String((await createProject(env)).id);

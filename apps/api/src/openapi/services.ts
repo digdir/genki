@@ -195,8 +195,8 @@ const EvalRunSummary = z
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
-    cost: z.number().nullable(),
-    tokens,
+    cost: z.number().nullable().optional(),
+    tokens: tokens.optional(),
     error: z.string().optional(),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
@@ -310,8 +310,10 @@ const BatchRun = z
     status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'stopped']),
     total: z.number().int(),
     concurrency: z.number().int(),
-    cap: z.object({ costMicroNok: z.number().optional(), tokens: z.number().optional() }),
-    perItem,
+    cap: z
+      .object({ costMicroNok: z.number().optional(), tokens: z.number().optional() })
+      .optional(),
+    perItem: perItem.optional(),
     maxOutputTokens: z.number().int().optional(),
     pass: z.number().int(),
     startedAt: z.string(),
@@ -319,8 +321,8 @@ const BatchRun = z
     error: z.string().optional(),
     errorCode: z.string().optional(),
     counts: z.record(batchItemStatus, z.number().int()),
-    tokens,
-    costMicroNok: z.number().nullable(),
+    tokens: tokens.optional(),
+    costMicroNok: z.number().nullable().optional(),
   })
   .openapi('BatchRun');
 
@@ -347,8 +349,8 @@ const BatchItem = z
       }),
     ),
     models: z.array(z.string()),
-    tokens,
-    costMicroNok: z.number(),
+    tokens: tokens.optional(),
+    costMicroNok: z.number().optional(),
     startedAt: z.string().optional(),
     endedAt: z.string().optional(),
   })
@@ -382,8 +384,8 @@ const BatchExport = z
         service: z.string(),
         version: z.number().int(),
         models: z.array(z.string()),
-        tokens,
-        costMicroNok: z.number().nullable(),
+        tokens: tokens.optional(),
+        costMicroNok: z.number().nullable().optional(),
         task: z.string().nullable(),
         attempts: z.number().int(),
         approved: z.boolean().optional(),

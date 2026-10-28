@@ -204,7 +204,10 @@ const Execution = z
         generation: z.string().optional(),
         promoted: z.boolean().optional(),
         previous: z.string().optional(),
-        usage: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+        usage: z
+          .record(z.string(), z.record(z.string(), z.unknown()))
+          .optional()
+          .describe('Only for callers with view-usage'),
         source: z
           .record(z.string(), z.unknown())
           .optional()
