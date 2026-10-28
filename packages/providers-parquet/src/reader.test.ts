@@ -90,3 +90,44 @@ describe('Parquet reader', () => {
     });
   });
 });
+
+describe('Parquet byte ranges and row groups', () => {
+  it('reads file ranges lazily and never decodes the next row group before it is requested', async () => {
+    const bytes = readFileSync(join(import.meta.dirname, 'fixtures', 'row-groups.parquet'));
+    const ranges: [number, number][] = [];
+    const file = {
+      byteLength: bytes.byteLength,
+      slice: async (start: number, end = bytes.byteLength) => {
+        ranges.push([start, end]);
+        return Uint8Array.from(bytes.subarray(start, end)).buffer;
+      },
+    };
+    const iterator = parquetReader().rows(file, ['id', 'body'], 2)[Symbol.asyncIterator]();
+    expect(ranges).toEqual([]);
+    const first = await iterator.next();
+    expect(first.value).toEqual({ id: 'a', body: 'a'.repeat(600_000) });
+    const before = ranges.length;
+    expect(ranges.every(([start, end]) => end - start < bytes.byteLength)).toBe(true);
+    const second = await iterator.next();
+    expect(second.value).toEqual({ id: 'b', body: 'b'.repeat(600_000) });
+    expect(ranges.length).toBeGreaterThan(before);
+    expect((await iterator.next()).done).toBe(true);
+  });
+});
+
+describe('Parquet decompression limits', () => {
+  it('refuses a page that declares more uncompressed bytes than the page limit', async () => {
+    await expect(
+      collect(parquetReader({ maxPageBytes: 16 }).rows(fixture, ['id', 'definition'], 100)),
+    ).rejects.toThrow(/page declares .* over the .* limit/);
+  });
+
+  it('refuses a row group that declares more bytes than the row-group limit, before decoding it', async () => {
+    const bytes = new Uint8Array(
+      readFileSync(join(import.meta.dirname, 'fixtures', 'row-groups.parquet')),
+    );
+    await expect(
+      collect(parquetReader({ maxRowGroupBytes: 1024 }).rows(bytes, ['id', 'body'], 10)),
+    ).rejects.toBeInstanceOf(ParquetReadError);
+  });
+});

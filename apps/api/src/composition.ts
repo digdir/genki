@@ -412,6 +412,8 @@ export interface PlatformInput {
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
+  ingestWorkingDirectory?: string;
+  ingestParquetMaxBytes?: number;
   changes?: ChangeFeed;
   modules?: PlatformModuleFactory[];
   hookSender?: HookSender;
@@ -1064,7 +1066,11 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestFolderRoot ? { folderRoot: input.ingestFolderRoot } : {}),
     ...(input.documentConverter ? { converter: input.documentConverter } : {}),
     ...(input.kudos ? { kudos: input.kudos } : {}),
-    parquet: { reader: parquetReader() },
+    parquet: {
+      reader: parquetReader(),
+      ...(input.ingestWorkingDirectory ? { workingDirectory: input.ingestWorkingDirectory } : {}),
+      ...(input.ingestParquetMaxBytes ? { maxBytes: input.ingestParquetMaxBytes } : {}),
+    },
     database: {
       reader: postgresRowReader({
         resolveHost: (host, allowed) => databaseGuard.address(host, allowed),

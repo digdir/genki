@@ -5,11 +5,6 @@ import {
   convertibleExtensions,
   crawlSitemap,
   databaseSource,
-  huggingFaceFileUrl,
-  huggingFaceOrigin,
-  missingColumns,
-  parquetColumns,
-  parquetSource,
   defaultFetchPolicy,
   blobPhraseCache,
   defaultSearchPhrasesPrompt,
@@ -46,6 +41,8 @@ import {
   type RowReader,
   type SkippedDocument,
 } from '@genai/ingest';
+import { parquetSourceOf } from './parquet-files.js';
+export { parquetLocation, parquetReadTimeoutMs } from './parquet-files.js';
 import { withModelAdmission } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
@@ -77,6 +74,8 @@ export interface KudosAccess {
 
 export interface ParquetAccess {
   reader: ParquetReader;
+  workingDirectory?: string;
+  maxBytes?: number;
   fetch?: typeof fetch;
   readTimeoutMs?: number;
 }
@@ -341,41 +340,6 @@ export const kudosClientFor = (access: KudosAccess = {}, name?: KudosProfile['na
     ...(access.sleep ? { sleep: access.sleep } : {}),
   });
 
-type ParquetSpec = Extract<PipelineSpec['source'], { kind: 'parquet' }>;
-
-export const parquetLocation = (source: Pick<ParquetSpec, 'url' | 'huggingface'>) =>
-  source.huggingface
-    ? { url: huggingFaceFileUrl(source.huggingface), origin: huggingFaceOrigin(source.huggingface) }
-    : { url: source.url ?? '', origin: source.url ?? '' };
-
-export const parquetReadTimeoutMs = 120_000;
-
-const parquetSourceOf = async (
-  access: ParquetAccess,
-  source: ParquetSpec,
-  web: GuardedFetchOptions | undefined,
-  signal: AbortSignal,
-) => {
-  const { url, origin } = parquetLocation(source);
-  const policy = {
-    ...defaultFetchPolicy,
-    readTimeoutMs: access.readTimeoutMs ?? parquetReadTimeoutMs,
-    allowedHosts: new Set<string>(),
-  };
-  const { bytes } = await guardedFetchBytes(url, policy, source.maxBytes, {
-    ...web,
-    signal,
-    ...(access.fetch ? { fetch: access.fetch } : {}),
-  });
-  const missing = missingColumns(source.mapping, await access.reader.columns(bytes));
-  if (missing.length > 0) throw new Error(`the Parquet file has no column ${missing.join(', ')}`);
-  return parquetSource({
-    rows: access.reader.rows(bytes, parquetColumns(source.mapping), source.mapping.maxRows),
-    mapping: source.mapping,
-    origin,
-  });
-};
-
 const sourceOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
@@ -455,7 +419,7 @@ const sourceOf = async (
   }
   if (source.kind === 'parquet') {
     if (!options.parquet) throw new Error('Parquet sources are turned off on this platform');
-    return parquetSourceOf(options.parquet, source, options.web, signal);
+    return parquetSourceOf(options.parquet, source, { ...options.web, signal });
   }
   if (source.kind === 'episerver') {
     const root = inside(options.folderRoot ?? '', source.path);
