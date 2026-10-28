@@ -91,6 +91,14 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     expect(platformRightsOf(principal, '999999999', RESOURCE)).toEqual([]);
   });
 
+  it('names a trusted Entra login by its name claim, or by its email when the token has none', async () => {
+    const named = await verifier().verify(await sign(entraClaims({ name: 'Kari Tester' })));
+    const unnamed = await verifier().verify(await sign(entraClaims()));
+
+    expect(named.principal.name).toBe('Kari Tester');
+    expect(unnamed.principal.name).toBe('Kari.Tester@Digdir.example');
+  });
+
   it('matches group ids without regard to case', async () => {
     const token = await sign(entraClaims({ groups: [TRUSTED_GROUP.toUpperCase()] }));
 

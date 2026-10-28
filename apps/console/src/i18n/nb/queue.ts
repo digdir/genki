@@ -36,6 +36,7 @@ export const queue = defineNamespace({
   subSkill: 'Ferdighet · versjon {version}',
   subProposal: 'Krever endring i plattformen',
   subAccess: 'Ny virksomhet',
+  assistantFor: 'Byggeassistenten, for {name}',
   assistant: 'Byggeassistenten',
   decPlanned: 'Tatt med i planen',
   decApproved: 'Godkjent',

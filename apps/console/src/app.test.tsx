@@ -681,6 +681,33 @@ describe('revisjon', () => {
     expect(await within(second).findByText('Person i Testetaten')).toBeTruthy();
   });
 
+  it('names platform actions, like loading the local configuration, as the platform', async () => {
+    const base = mockFetch();
+    const raw: typeof fetch = async (input, init) =>
+      String(input).endsWith('/operator/audit')
+        ? Response.json({
+            data: [
+              {
+                task: 'a1',
+                tenant: '991825827',
+                action: 'platform.service.publish',
+                actor: 'platform:seed',
+                at: new Date().toISOString(),
+                outcome: 'applied',
+                target: 'definition:991825827/klarsprak@1',
+                reason: 'local configuration',
+              },
+            ],
+          })
+        : base(input, init);
+    await signedIn('#/audit', [operatorRole], raw);
+
+    const log = await screen.findByRole('region', { name: 'Revisjonslogg' });
+    const row = within(log).getByText('local configuration').closest('tr') as HTMLElement;
+    expect(within(row).getByText('Plattformen')).toBeTruthy();
+    expect(row.textContent).not.toMatch(/Person i/);
+  });
+
   it('shows the person and the service a publish concerns, with a link to the service', async () => {
     const base = mockFetch();
     const raw: typeof fetch = async (input, init) =>

@@ -132,6 +132,14 @@ const assuranceOf = (acr: unknown): Assurance | undefined => {
 const expiresAt = (payload: JWTPayload) =>
   payload.exp === undefined ? {} : { expiresAt: new Date(payload.exp * 1000).toISOString() };
 
+const claim = (...values: unknown[]) =>
+  values
+    .find((v): v is string => typeof v === 'string' && v.trim() !== '')
+    ?.trim()
+    .slice(0, 120);
+
+const named = (name: string | undefined) => (name ? { name } : {});
+
 const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
@@ -155,6 +163,7 @@ const trustedEntraLogin = (
       kind: 'employee',
       issuer,
       subject: payload.sub as string,
+      ...named(claim(payload.name, payload.email)),
       assurance: 'entraid',
       tenant: trusted.tenant,
       authorizedFor: [
@@ -204,6 +213,7 @@ const employee = (
       kind: 'employee',
       issuer: issuer.issuer,
       subject: payload.sub as string,
+      ...named(claim(payload.name)),
       ...(typeof payload.client_id === 'string' ? { client: payload.client_id } : {}),
       assurance,
       authorizedFor: authorizedFor.map(({ org, resource, actions }) => ({
@@ -301,6 +311,7 @@ const operator = (
       kind: 'operator',
       issuer: issuer.issuer,
       subject: payload.oid,
+      ...named(claim(payload.name, payload.preferred_username, payload.email)),
       assurance: 'entraid',
       roles,
       ...expiresAt(payload),

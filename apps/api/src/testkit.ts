@@ -72,6 +72,13 @@ export const plugins: PluginSchemas = {
 export const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
+  kristin: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kristin@digdir.example',
+    name: 'Kristin Entra',
+    tenant: digdir,
+  },
   operator: { kind: 'operator', issuer: 'test', subject: 'drift', tenant: digdir },
   'other-operator': { kind: 'operator', issuer: 'test', subject: 'vakt', tenant: digdir },
 };
@@ -138,15 +145,16 @@ export const setup = (
   const store = new InMemoryDefinitionStore(plugins, now);
   const settings = new SettingsRegistry(settingDefinitions, now);
   let ids = 0;
+  const names = actorNames(new InMemoryConfigEntryStore());
   const admin = createAdmin({
     store,
     plugins,
     settings,
     now,
+    names,
     newId: () => `id-${++ids}`,
     ...(options.minutes ? { maxSupportMinutes: options.minutes } : {}),
   });
-  const names = actorNames(new InMemoryConfigEntryStore());
   const app = createApp('test', {
     platform: {
       names,

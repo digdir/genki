@@ -40,6 +40,7 @@ export interface Principal {
   kind: PrincipalKind;
   issuer: string;
   subject: string;
+  name?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;

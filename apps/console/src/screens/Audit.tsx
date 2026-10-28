@@ -157,7 +157,11 @@ const describe = (name: (orgNumber: string) => string, t: T) => {
       : tenantLabel(e.tenant, e.tenantName ?? name(e.tenant), t);
   const orgOf = (e: AuditEntry) =>
     e.actorOrg ?? (e.actor.startsWith('operator:') ? 'Digdir' : tenantOf(e));
-  const personOf = (e: AuditEntry) => e.actorName ?? t('audit.personIn', { org: orgOf(e) });
+  const personOf = (e: AuditEntry) =>
+    e.actorName ??
+    (/^(platform|worker):/.test(e.actor)
+      ? t('audit.platformActor')
+      : t('audit.personIn', { org: orgOf(e) }));
   return { tenantOf, orgOf, personOf };
 };
 

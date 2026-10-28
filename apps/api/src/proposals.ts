@@ -9,6 +9,7 @@ import {
   type ProposalTest,
 } from '@genai/strategy-builder';
 import type { Context, Env, Hono, Schema } from 'hono';
+import { actorNames } from './actor-names.js';
 import { actorOf, type Admin, type AdminHandler, type AdminOutcome } from './admin.js';
 import { appendVersion, serialized, type ConfigEntry } from './config-store.js';
 import type { ModuleDeps, MountDeps, PlatformModuleFactory } from './platform-modules.js';
@@ -55,6 +56,8 @@ export interface CatalogProposal {
   title?: string;
   level: StoredLevel;
   createdBy: 'assistant';
+  requestedBy?: string;
+  requestedByName?: string;
   forService: { id: string; name: string };
   createdAt: string;
   ask?: string;
@@ -139,6 +142,8 @@ const itemFor = (proposal: AssistantProposal, tenant: string): ProposalItem | un
       }
     : undefined;
 
+const optionalName = (name: string | undefined) => (name ? { requestedByName: name } : {});
+
 export const endpointOf = (proposal: CatalogProposal) =>
   proposal.permissions.find((p) => p.type === 'network' && /^https?:\/\//.test(p.value))?.value;
 
@@ -194,6 +199,10 @@ export const createProposalsModule =
             title: proposal.title,
             level: proposal.level,
             createdBy: 'assistant',
+            requestedBy: actorName(principal),
+            ...((principal.actor ?? principal).name
+              ? { requestedByName: (principal.actor ?? principal).name }
+              : {}),
             forService,
             createdAt: now().toISOString(),
             ...(typeof input.ask === 'string' && input.ask.trim() ? { ask: input.ask.trim() } : {}),
@@ -568,9 +577,22 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     const level = c.req.query('level');
     const status = c.req.query('status');
     const names = await admin.tenantNames();
-    const data = (await list())
-      .map(({ tenant, proposal }) => ({
+    const found = await Promise.all(
+      (await list()).map(async ({ tenant, proposal }) => ({
+        tenant,
+        proposal,
+        requester:
+          proposal.requestedBy ??
+          (await deps.configEntries.history(proposalKind, tenant, proposal.id)).at(0)?.by,
+      })),
+    );
+    const people = await actorNames(deps.configEntries).namesOf(
+      found.flatMap(({ requester }) => (requester ? [requester] : [])),
+    );
+    const data = found
+      .map(({ tenant, proposal, requester }) => ({
         ...proposal,
+        ...(proposal.requestedByName || !requester ? {} : optionalName(people.get(requester))),
         tenant,
         tenantName: names.get(tenant) ?? tenant,
         title: proposal.title ?? proposal.item?.name ?? proposal.platformChange?.summary ?? '',
