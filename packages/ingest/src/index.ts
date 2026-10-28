@@ -8,6 +8,7 @@ export * from './enrichment.js';
 export * from './folder.js';
 export * from './html.js';
 export * from './ids.js';
+export * from './language.js';
 export * from './index-writer.js';
 export * from './kudos.js';
 export * from './phrase-archive.js';

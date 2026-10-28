@@ -375,6 +375,7 @@ const sourceOf = async (
       websiteSource({
         entries: listed.filter((e) => !skipOf(e.loc)),
         ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
+        ...(source.language ? { language: source.language } : {}),
         ...(converter ? { converter } : {}),
         fetchBody: (entry) =>
           guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), {

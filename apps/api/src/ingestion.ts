@@ -1,6 +1,7 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
+  documentLanguages,
   huggingFaceSource,
   parquetTableName,
   parquetMapping,
@@ -45,6 +46,12 @@ export const pipelineSpec = z.strictObject({
       include: z.array(glob).default([]),
       exclude: z.array(glob).default([]),
       baseUrl: z.url().optional(),
+      language: z
+        .enum([...documentLanguages, 'detect'])
+        .optional()
+        .describe(
+          'For documents whose URL and frontmatter give no language: nb, nn or en, or detect per document',
+        ),
     }),
     z.strictObject({
       kind: z.literal('folder'),
