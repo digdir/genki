@@ -210,3 +210,47 @@ describe('Parquet lookup keys', () => {
     ]).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 });
+
+describe('Parquet lookup memory', () => {
+  const lookup = (n: number, maxMemoryBytes: number) => ({
+    url: `https://x.example/l${n}.parquet`,
+    key: 'id',
+    on: 'ref',
+    fields: [{ column: 'name', as: `name_${n}` }],
+    maxMemoryBytes,
+  });
+  const parse = (...caps: number[]) =>
+    parquetMapping.safeParse({
+      fields: { id: 'id', title: 'title', text: ['summary'] },
+      lookups: caps.map((cap, n) => lookup(n, cap)),
+    }).success;
+
+  it("refuses lookups whose maxMemoryBytes add up to more than the platform's total", () => {
+    const mb = 1024 * 1024;
+    expect(parse(128 * mb, 64 * mb, 64 * mb)).toBe(true);
+    expect(parse(128 * mb, 128 * mb, 64 * mb)).toBe(false);
+  });
+
+  it('keeps one entry for a key repeated with identical values, and refuses one repeated with different values', async () => {
+    const one = parquetLookup.parse(lookup(0, 1024 * 1024));
+    const table = await parquetLookupTable(
+      [
+        { id: 'a', name: 'x' },
+        { id: 'a', name: 'x' },
+      ],
+      one,
+      'l.parquet',
+    );
+    expect(table.values.size).toBe(1);
+    await expect(
+      parquetLookupTable(
+        [
+          { id: 'a', name: 'x' },
+          { id: 'a', name: 'y' },
+        ],
+        one,
+        'l.parquet',
+      ),
+    ).rejects.toThrow(/twice with different values/);
+  });
+});

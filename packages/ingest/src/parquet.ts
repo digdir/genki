@@ -58,6 +58,8 @@ const parquetFilePath = z
 const fieldNameOf = (field: z.infer<typeof metadataField>) =>
   typeof field === 'string' ? field : field.as;
 
+export const parquetLookupsMaxMemoryBytes = 256 * 1024 * 1024;
+
 export const parquetLookup = z
   .strictObject({
     file: parquetFilePath
@@ -85,7 +87,7 @@ export const parquetLookup = z
       .number()
       .int()
       .min(1024)
-      .max(512 * 1024 * 1024)
+      .max(parquetLookupsMaxMemoryBytes)
       .default(64 * 1024 * 1024)
       .describe('Estimated memory cap for the key map; the run fails above it'),
     maxBytes: z
@@ -93,7 +95,7 @@ export const parquetLookup = z
       .int()
       .min(1024)
       .max(20 * 1024 * 1024 * 1024)
-      .default(2 * 1024 * 1024 * 1024)
+      .default(1024 * 1024 * 1024)
       .describe('Disk byte cap for the downloaded lookup file'),
   })
   .refine((l) => (l.file === undefined) !== (l.url === undefined), {
@@ -143,6 +145,13 @@ export const parquetMapping = z
         ctx.addIssue({ code: 'custom', path: ['fields'], message: `${name} is stored twice` });
       seen.add(name);
     }
+    const lookupBytes = m.lookups.reduce((sum, l) => sum + l.maxMemoryBytes, 0);
+    if (lookupBytes > parquetLookupsMaxMemoryBytes)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['lookups'],
+        message: `the lookups' maxMemoryBytes add up to more than ${parquetLookupsMaxMemoryBytes} bytes`,
+      });
   });
 
 export const huggingFaceFile = z.strictObject({
@@ -309,18 +318,13 @@ export interface ParquetLookupTable {
   values: Map<string, Entries>;
 }
 
-/**
- * Builds the in-memory key map for one lookup. The run fails when the file has more rows than
- * maxRows, when the map's estimated size passes maxMemoryBytes, or when a key appears twice with
- * different values; repeated identical rows are harmless and kept once.
- */
+/** Builds the in-memory key map for one lookup, within its row and memory caps. */
 export const parquetLookupTable = async (
   rows: AsyncIterable<Record<string, unknown>> | Iterable<Record<string, unknown>>,
   lookup: ParquetLookup,
   file: string,
 ): Promise<ParquetLookupTable> => {
   const values = new Map<string, Entries>();
-  const signatures = new Map<string, string>();
   let count = 0;
   let bytes = 0;
   for await (const row of rows) {
@@ -335,18 +339,16 @@ export const parquetLookupTable = async (
         return [];
       return [[fieldNameOf(field), value] as const];
     });
-    const signature = JSON.stringify(entries);
-    const known = signatures.get(key);
+    const known = values.get(key);
     if (known !== undefined) {
-      if (known !== signature)
+      if (JSON.stringify(known) !== JSON.stringify(entries))
         throw new Error(`the Parquet lookup ${file} has key ${key} twice with different values`);
       continue;
     }
     // UTF-16 strings: two bytes per code unit, plus a rough per-entry overhead.
-    bytes += 2 * (key.length + signature.length) + 64;
+    bytes += 2 * (key.length + JSON.stringify(entries).length) + 64;
     if (bytes > lookup.maxMemoryBytes)
       throw new Error(`the Parquet lookup ${file} needs more than ${lookup.maxMemoryBytes} bytes`);
-    signatures.set(key, signature);
     values.set(key, entries);
   }
   return { file, on: lookup.on, rows: count, values };
