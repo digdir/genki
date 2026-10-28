@@ -101,6 +101,27 @@ describe('website citation storage', () => {
     expect(stored.map((s) => s.doc.language)).toEqual([null, 'en', 'nb']);
   });
 
+  it('maps other Markdown files to .html pages with pageSuffix, and index.md still to its directory', async () => {
+    const paths = ['index.md', 'docs/idporten/oidc_guide.md', 'resources/begrep/index.md'];
+    const stored = await ingest(site.mirror, paths, {
+      cite: {
+        baseUrl: 'https://docs.digdir.no/',
+        fetchBaseUrl: site.mirror,
+        dropIndexMd: true,
+        pageSuffix: '.html',
+      },
+    });
+    const urls = [
+      'https://docs.digdir.no/',
+      'https://docs.digdir.no/docs/idporten/oidc_guide.html',
+      'https://docs.digdir.no/resources/begrep/',
+    ];
+    expect(stored.map((s) => s.doc.url)).toEqual(urls);
+    stored.forEach((s, i) => {
+      for (const chunk of s.chunks) expect(chunk.url).toBe(urls[i]);
+    });
+  });
+
   it('keeps document and chunk ids stable when switching from mirror to the real host', async () => {
     const cite = { baseUrl: site.real, fetchBaseUrl: site.mirror, dropIndexMd: true };
     const mirror = await ingest(site.mirror, ['en/authorization/index.md'], { cite });

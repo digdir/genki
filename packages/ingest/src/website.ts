@@ -68,6 +68,10 @@ export const websiteCitation = z.strictObject({
     .boolean()
     .default(false)
     .describe('Map index.md to / and other .md pages to trailing-slash URLs'),
+  pageSuffix: z
+    .enum(['/', '.html'])
+    .optional()
+    .describe("With dropIndexMd: what other .md pages map to, '/' (default) or '.html'"),
 });
 
 export type WebsiteCitation = z.infer<typeof websiteCitation>;
@@ -84,7 +88,8 @@ export const websiteFetchPath = (loc: string, fetchBaseUrl: string) => {
 
 export const citedWebsiteUrl = (loc: string, cite: ResolvedWebsiteCitation) => {
   let path = websiteFetchPath(loc, cite.fetchBaseUrl);
-  if (cite.dropIndexMd) path = path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '/');
+  if (cite.dropIndexMd)
+    path = path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, cite.pageSuffix ?? '/');
   // Assign pathname so paths beginning with / cannot change the citation authority.
   const url = new URL(cite.baseUrl);
   url.pathname += path;
