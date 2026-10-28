@@ -2,12 +2,13 @@
 
 A benchmark compares the component genki uses now with a candidate for replacing it (a document converter, an embedding model, a search engine, an index, a reranker) against a **reference**: the known-right answers every side is measured against. It answers one question, such as "can Marker 1.11 replace 1.10.2 for Kudos?", in a way that can be rerun, checked and trusted. [ADR 0003](../docs/adr/0003-evaluation-is-part-of-the-platform.md) says when one is needed.
 
-| Folder                                          | Question                                                                                              | Shape                         |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------- |
-| [`ingestion/opb`](ingestion/opb)                | Marker or KUDOS text, graded on page tests                                                            | This one                      |
-| [`ingestion`](ingestion)                        | Where KUDOS text and the indexed Marker text disagree; no reference. Also the data the page tests use | This one, without a reference |
-| `kudos-pilot` (branch `feat/kudos-local-pilot`) | Search engine, embedding models, indexes                                                              | Older; moves when next used   |
-| [`benchlib`](benchlib)                          | Shared code for all of them                                                                           |                               |
+| Folder                                                 | Question                                                                                                                                  | Shape                                            |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| [`ingestion/opb`](ingestion/opb)                       | Marker or KUDOS text, graded on page tests                                                                                                | This one                                         |
+| [`ingestion`](ingestion)                               | Where KUDOS text and the indexed Marker text disagree; no reference. Also the data the page tests use                                     | This one, without a reference                    |
+| `kudos-pilot` (branch `feat/kudos-local-pilot`)        | Search engine, embedding models, indexes                                                                                                  | Older; moves when next used                      |
+| `knowledge-spikes` (branch `spike/knowledge-database`) | Whether the knowledge database's design holds: partitions under search load, in-place churn, pg-boss, read isolation (ADR 0039, ADR 0040) | Design checks, no reference; stays on its branch |
+| [`benchlib`](benchlib)                                 | Shared code for all of them                                                                                                               |                                                  |
 
 ## Rules
 
