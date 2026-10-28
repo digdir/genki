@@ -75,7 +75,12 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
         name,
         adapter.connect({
           baseURL: endpoint.baseURL,
-          credential: credentialFor(endpoint.auth, options.secrets, options.tokenProviders),
+          credential: credentialFor(
+            endpoint.auth,
+            options.secrets,
+            options.tokenProviders,
+            endpoint.baseURL,
+          ),
           options: adapter.endpointOptions.parse(endpoint.options),
           maxRetries: options.maxRetries ?? 3,
           timeoutMs: options.timeoutMs ?? 60_000,

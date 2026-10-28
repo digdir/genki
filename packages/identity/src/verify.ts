@@ -51,6 +51,7 @@ export interface ClientRegistry {
 
 export interface TrustedEntra {
   groups: readonly string[];
+  clientIds: readonly string[];
   emailDomain?: string;
   tenant: string;
   resource: string;
@@ -135,7 +136,13 @@ const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
   payload: JWTPayload,
+  registered: boolean,
 ): VerifiedIdentity => {
+  if (
+    !registered &&
+    (typeof payload.client_id !== 'string' || !trusted.clientIds.includes(payload.client_id))
+  )
+    throw new AuthenticationError('entra_not_trusted', 'the login comes from an untrusted client');
   const configured = new Set(trusted.groups.map((g) => g.toLowerCase()));
   const groups = Array.isArray(payload.groups) ? payload.groups : [];
   if (!groups.some((g) => typeof g === 'string' && configured.has(g.toLowerCase())))
@@ -162,11 +169,12 @@ const trustedEntraLogin = (
 const employee = (
   issuer: Extract<TrustedIssuer, { kind: 'ansattporten' }>,
   payload: JWTPayload,
+  registered: boolean,
 ): VerifiedIdentity => {
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
   if (assurance === 'entraid' && issuer.trustedEntra)
-    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload);
+    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered);
   if (assurance === 'entraid' && !issuer.acceptEntraId)
     throw new AuthenticationError('insufficient_assurance', 'Entra ID logins are not accepted');
   if (issuer.minAssurance === 'high' && assurance !== 'high')
@@ -196,6 +204,7 @@ const employee = (
       kind: 'employee',
       issuer: issuer.issuer,
       subject: payload.sub as string,
+      ...(typeof payload.client_id === 'string' ? { client: payload.client_id } : {}),
       assurance,
       authorizedFor: authorizedFor.map(({ org, resource, actions }) => ({
         org,
@@ -352,7 +361,7 @@ export const createTokenVerifier = (options: TokenVerifierOptions) => ({
     if (issuer.kind === 'ansattporten') {
       if (typeof payload.sub !== 'string')
         throw new AuthenticationError('invalid_token', 'missing sub');
-      const verified = employee(issuer, payload);
+      const verified = employee(issuer, payload, registered !== undefined);
       return registered ? confineToClient(verified, registered) : verified;
     }
     if (issuer.kind === 'entra') return operator(issuer, payload);

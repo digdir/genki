@@ -1,5 +1,6 @@
 export interface SecretResolver {
   resolve(ref: string): Promise<string>;
+  hostsFor?(ref: string): Promise<readonly string[] | undefined>;
 }
 
 export const secretRefPattern = /^secret:\/\/[a-z0-9-]+\/[a-z0-9._-]+$/;

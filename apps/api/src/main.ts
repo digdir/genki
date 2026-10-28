@@ -64,7 +64,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
-import { operatorDirectory, splitOperators } from './operators.js';
+import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
@@ -73,7 +73,7 @@ import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
-import { isLockdown, trustedEntraFrom } from './lockdown.js';
+import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -115,10 +115,6 @@ const identityFile = (() => {
   };
 })();
 const testData = identityFile.testData;
-const operators = operatorDirectory(
-  identityFile.operatorPids,
-  (process.env.OPERATOR_SUBJECTS ?? '').split(',').filter(Boolean),
-);
 const altinnPdp = altinnPdpFrom(process.env, testData);
 log('altinn pdp', {
   kind: altinnPdp.kind,
@@ -160,9 +156,10 @@ const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
   log('lockdown: Entra logins in the configured groups get the whole platform', {
     groups: trustedEntra.groups.length,
+    clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });
-const { trusted, mock } = await loginIssuers({
+const { trusted, mock, mockIssuer } = await loginIssuers({
   env: process.env,
   port,
   audience,
@@ -190,7 +187,26 @@ if (mock)
       if (client.spec.oidc) mock.clients.remove(client.spec.oidc.clientId);
     },
   };
-const reservedClientIds = (testData.clients ?? []).map((c) => c.clientId);
+const operatorSubjects = operatorSubjectsFrom(process.env);
+const operators = operatorDirectory({
+  pids: identityFile.operatorPids,
+  subjects: operatorSubjects,
+  clientIds: operatorClientIds(process.env),
+  ...(mockIssuer ? { mockIssuer } : {}),
+});
+if (!mock && identityFile.operatorPids.length > 0)
+  log('ignoring operator: true in identity.yaml; it applies only to the dev-mode mock login', {
+    persons: identityFile.operatorPids.length,
+  });
+const bareSubjects = operatorSubjects.filter((s) => !s.includes('|')).length;
+if (!mock && bareSubjects > 0)
+  log('ignoring OPERATOR_SUBJECTS entries without an issuer; they apply only to the mock login', {
+    entries: bareSubjects,
+  });
+const reservedClientIds = [
+  ...(testData.clients ?? []).map((c) => c.clientId),
+  ...operatorClientIds(process.env),
+];
 const verifier = operators.watch(
   asPlatformResource(
     withPdpActions(createTokenVerifier({ issuers: trusted }), altinnPdp, resource, (error) =>
@@ -613,7 +629,7 @@ if (mock) {
     if (!person) return unknownTestPerson(c);
     const tokens = await mock.testTokens(person.pid, 'local-portal', [resource]);
     const verified = await verifier.verify(tokens.access_token);
-    if (operator) operators.add(verified.principal.subject);
+    if (operator) operators.add(verified.principal);
     const orgs = [...new Set((verified.principal.authorizedFor ?? []).map((a) => a.org))];
     return c.json({
       token: tokens.access_token,

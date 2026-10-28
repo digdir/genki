@@ -86,6 +86,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.proposal.decide': 'changes.proposalDecide',
   'platform.proposal.status': 'changes.proposalStatus',
   'platform.secrets.set': 'changes.secretsSet',
+  'platform.secrets.hosts': 'changes.secretsHosts',
   'platform.secrets.delete': 'changes.secretsDelete',
   'platform.service.draft.delete': 'changes.serviceDraftDelete',
   'platform.service.draft.rebase': 'changes.serviceDraftRebase',

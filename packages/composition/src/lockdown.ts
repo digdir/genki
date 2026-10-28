@@ -37,6 +37,12 @@ const entraGroups = (env: Env) =>
     .map((g) => g.trim())
     .filter(Boolean);
 
+export const operatorClientIds = (env: Env) =>
+  (env.OPERATOR_CLIENT_IDS ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+
 const entraDomain = (env: Env) => env.LOCKDOWN_ENTRA_EMAIL_DOMAIN?.trim().replace(/^@/, '') ?? '';
 
 export const lockdownEntraProblems = (env: Env): string[] => {
@@ -49,6 +55,9 @@ export const lockdownEntraProblems = (env: Env): string[] => {
     ...(emailDomain && !domain.test(emailDomain)
       ? [`LOCKDOWN_ENTRA_EMAIL_DOMAIN must be a domain such as digdir.no, got "${emailDomain}"`]
       : []),
+    ...(isLockdown(env) && entraGroups(env).length > 0 && operatorClientIds(env).length === 0
+      ? ['LOCKDOWN_ENTRA_GROUPS needs OPERATOR_CLIENT_IDS, the client ids whose Entra logins count']
+      : []),
   ];
 };
 
@@ -60,5 +69,11 @@ export const trustedEntraFrom = (
   const groups = entraGroups(env);
   if (!isLockdown(env) || groups.length === 0) return undefined;
   const emailDomain = entraDomain(env);
-  return { groups, tenant, resource, ...(emailDomain ? { emailDomain } : {}) };
+  return {
+    groups,
+    clientIds: operatorClientIds(env),
+    tenant,
+    resource,
+    ...(emailDomain ? { emailDomain } : {}),
+  };
 };

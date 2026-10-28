@@ -44,10 +44,7 @@ const listen = async (server: http.Server) => {
   return (server.address() as AddressInfo).port;
 };
 
-// Exercise the real Agent, HTTP/TLS sockets and fetch body handling without real DNS
-// or external traffic. At the OS boundary only, route public fixture addresses to
-// loopback; record the original selected address before that routing. If pinning is
-// removed, the simulated OS resolver uses the same adversarial DNS answers.
+// Real sockets: public fixture addresses are routed to loopback only at the OS boundary.
 const localNetwork = (resolve: HostResolver) => {
   const selected: string[] = [];
   const names: Array<string | undefined> = [];
@@ -348,6 +345,18 @@ describe('IPv6 destination rules', () => {
         }),
       ).rejects.toThrow(/private or reserved/);
     }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('refuses a zone-scoped DNS answer as a private address', async () => {
+    const send = vi.fn<typeof fetch>();
+    expect(blockedAddress('fe80::1%eth0')).toBe(true);
+    await expect(
+      guardedFetchBytes('http://docs.example.test/', policy, 100, {
+        resolve: async () => ['fe80::1%eth0'],
+        fetch: send,
+      }),
+    ).rejects.toThrow(/private or reserved/);
     expect(send).not.toHaveBeenCalled();
   });
 
