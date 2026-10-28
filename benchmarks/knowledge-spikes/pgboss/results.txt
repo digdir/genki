@@ -1,0 +1,11 @@
+PASS install as a role with only CREATE on the database: {"schemaVersion":46,"startMs":120}
+PASS send inside a rolled-back transaction leaves no job: {"rolledBackFound":false,"committedFound":true}
+PASS one queued job per singletonKey: {"first":true,"duplicate":null,"other":true,"queuedPerKey":[{"singleton_key":"sha256:abc","n":1},{"singleton_key":"sha256:def","n":1}]}
+PASS jobs are taken in priority order: {"order":[10,5,1]}
+PASS a job that always fails lands in the dead-letter queue: {"attempts":3,"state":"failed","dlqQueued":1,"dlqTotal":1,"secondsToDlq":57}
+PASS a killed worker's job is retried within heartbeat + 60 s: {"secondsFromKillToRetry":30,"retryCount":1,"firstStartedBy":"W-kill-1"}
+PASS the retried job completes: {"by":"W-kill-2"}
+PASS connections held by boss_app (4 processes): {"connections":6}
+PASS Node's default fetch fails a 6-minute call after about 300 s (genki's Marker client uses it): {"outcome":"error","error":"UND_ERR_HEADERS_TIMEOUT","secondsUntil":302}
+PASS a 10-minute job with heartbeats is handed out once: {"starts":1,"state":"completed","minutes":10}
+SUMMARY 10/10 passed

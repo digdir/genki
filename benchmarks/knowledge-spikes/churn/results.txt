@@ -1,0 +1,26 @@
+start recall: 0.9951
+round 1 vacuum_ms=4302
+round 2 vacuum_ms=4665
+round 3 vacuum_ms=5187
+round 4 vacuum_ms=7575
+round 5 vacuum_ms=6450
+round 6 vacuum_ms=4808
+round 7 vacuum_ms=4643
+round 8 vacuum_ms=4444
+round 9 vacuum_ms=4415
+round 10 vacuum_ms=5084
+round 11 vacuum_ms=4966
+round 12 vacuum_ms=5126
+round 13 vacuum_ms=4192
+round 14 vacuum_ms=5344
+round 15 vacuum_ms=5853
+round 16 vacuum_ms=5435
+round 17 vacuum_ms=5559
+round 18 vacuum_ms=4736
+round 19 vacuum_ms=4433
+round 20 vacuum_ms=4039
+rows: 18000
+churned recall: 0.9960
+fresh-build recall: 0.9945
+same rows in both tables: t
+
