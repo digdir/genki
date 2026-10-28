@@ -15,8 +15,15 @@ describe('Entra logins in lockdown', () => {
   it('trusts Entra groups only in lockdown and only when groups are configured', () => {
     const locked = { GENAI_LOCKDOWN: 'true', LOCKDOWN_ENTRA_GROUPS: ` ${group} ` };
 
-    expect(trustedEntraFrom(locked, '312521172', resource)).toEqual({
+    expect(
+      trustedEntraFrom(
+        { ...locked, OPERATOR_CLIENT_IDS: ' console , portal ' },
+        '312521172',
+        resource,
+      ),
+    ).toEqual({
       groups: [group],
+      clientIds: ['console', 'portal'],
       tenant: '312521172',
       resource,
     });

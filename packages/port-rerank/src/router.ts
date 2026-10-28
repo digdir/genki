@@ -58,7 +58,12 @@ export class RerankRouter implements PortProvider<RerankPort> {
         name,
         adapter.connect({
           baseURL: endpoint.baseURL,
-          credential: credentialFor(endpoint.auth, options.secrets, options.tokenProviders),
+          credential: credentialFor(
+            endpoint.auth,
+            options.secrets,
+            options.tokenProviders,
+            endpoint.baseURL,
+          ),
           options: adapter.endpointOptions.parse(endpoint.options),
           timeoutMs: options.timeoutMs ?? 10_000,
           ...(guarded ? { fetch: guarded } : {}),

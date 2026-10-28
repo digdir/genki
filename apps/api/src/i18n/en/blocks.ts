@@ -40,6 +40,11 @@ export const blocks = {
   operationsMissing: 'Not found in the file: {names}.',
   noOperations: 'No operations are selected. Select at least one.',
   operationsUndescribed: '{lacking} of {total} operations are missing a description: {names}.',
+  secretNotForHosts:
+    'The secret «{secret}» is not set up for {hosts}. Ask someone with the right «Manage services» to add the address to the secret.',
+  secretHostsRequired: 'Enter the addresses the secret is for, for example https://api.example.no.',
+  secretHostInvalid: '«{host}» is not a valid address. Enter for example https://api.example.no.',
+  secretNotFound: 'The secret «{name}» does not exist.',
   noTools: 'The server has no tools.',
   toolsLacking: '{lacking} of {total} tools are missing a description or inputSchema: {names}.',
   listNotAnswered: 'Not run because the server did not respond to tools/list.',

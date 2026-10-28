@@ -17,7 +17,7 @@ import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
 import { operatorDirectory, splitOperators } from './operators.js';
-import { requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
+import { refusedAction, requireRight, rightsByOrg, rightsOf, type Right } from './rights.js';
 
 const issuer = 'http://localhost:8080/mock/ansattporten';
 const resource = 'urn:altinn:resource:digdir-genai-platform';
@@ -36,7 +36,7 @@ const localPeople = async () => {
     key,
     testData: testData as IdentityTestDataInput,
   });
-  const operators = operatorDirectory(operatorPids);
+  const operators = operatorDirectory({ pids: operatorPids, mockIssuer: issuer });
   const verifier = operators.watch(
     withPdpActions(
       createTokenVerifier({
@@ -151,5 +151,44 @@ describe('platform rights in the API', () => {
     const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
     expect(requireRight(kari, digdir, 'register-building-blocks')).toEqual({ ok: true });
     expect(requireRight(kari, '889640782', 'use-services').ok).toBe(false);
+  });
+});
+
+describe('database pipelines that name a tenant secret', () => {
+  const datasetAdmin: Principal = {
+    kind: 'employee',
+    issuer,
+    subject: 'ingrid',
+    scopes: [],
+    authorizedFor: [{ org: digdir, resource, actions: ['manage-datasets'] }],
+  };
+  const pipeline = (password: string) => ({
+    dataset: `${digdir}/arkiv`,
+    id: 'kobling',
+    spec: {
+      source: {
+        kind: 'database',
+        connection: { engine: 'postgres', host: 'db.example.no', password },
+      },
+    },
+  });
+
+  it("need manage-services unless the secret is the connector's own", () => {
+    expect(
+      refusedAction(
+        datasetAdmin,
+        'platform.pipeline.save',
+        digdir,
+        pipeline(`secret://tenant/${digdir}/arkiv-token`),
+      ),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(
+        datasetAdmin,
+        'platform.pipeline.save',
+        digdir,
+        pipeline(`secret://tenant/${digdir}/connector-arkiv`),
+      ),
+    ).toBeUndefined();
   });
 });

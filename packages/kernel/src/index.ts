@@ -24,6 +24,7 @@ export {
   authenticatedFetch,
   authHeaders,
   credentialFor,
+  SecretHostError,
   type Credential,
   type EndpointAuth,
   type TokenProviders,
