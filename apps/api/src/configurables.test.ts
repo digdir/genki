@@ -768,6 +768,47 @@ describe('ingestion pipelines', () => {
     expect(platform.ingestion.backend.available).toBe(true);
     expect((await call(`/tenants/${other}/datasets/sider/pipelines`, 'ola')).status).toBe(404);
   });
+
+  it('refuses a tenant pipeline whose phrase models are unreleased', async () => {
+    const { call, platform } = await boot();
+    await platform.catalog.publish({
+      kind: 'model',
+      scope: 'platform',
+      id: 'fake/ny',
+      spec: { endpoint: 'fake', deployment: 'ny', residency: 'norway', release: 'candidate' },
+      by: 'operator:test:drift',
+      reason: 'ny modell',
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+
+    const refused = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt', fallbackModel: 'fake/ny' } },
+    });
+    const saved = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt' } },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'spec.phrases.fallbackModel' }],
+    });
+    expect(saved.status).toBe(201);
+  });
 });
 
 describe('test set write API', () => {

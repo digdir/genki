@@ -388,6 +388,52 @@ describe('index ingestion', () => {
     expect(asked.map(mayUseModels)).toEqual([admitted]);
   });
 
+  it('refuses a tenant run whose phrase model is unreleased or owned by another tenant, but not a platform run', async () => {
+    const tenant = '991825827';
+    const catalog = {
+      get: (_kind: string, id: string) =>
+        ({
+          'fake/ny': { scope: 'platform', spec: { release: 'candidate' } },
+          'fake/privat': { scope: 'platform', spec: { tenants: ['974760673'] } },
+        })[id],
+    } as unknown as NonNullable<Parameters<typeof indexIngestionBackend>[0]['catalog']>;
+    const opened: string[] = [];
+    const backend = indexIngestionBackend({
+      writers,
+      residencyOf: () => 'norway',
+      platformTenant: 'digdir',
+      uploads: new InMemoryBlobStore(),
+      catalog,
+      models: {
+        open: (ref) => {
+          opened.push(ref.id);
+          throw new Error('no model here');
+        },
+      },
+    });
+    const withPhrases = (phrases: Record<string, string>, owner?: string) => {
+      const job = jobFor({ kind: 'upload' }, `${tenant}/opplastet`, owner);
+      job.pipeline.spec = pipelineSpec.parse({
+        name: 'Rapporter',
+        source: { kind: 'upload' },
+        chunking: { minimumLength: 1 },
+        phrases,
+      });
+      return job;
+    };
+
+    await expect(backend.run(withPhrases({ model: 'fake/ny' }, tenant), signal)).rejects.toThrow(
+      'not released yet',
+    );
+    await expect(
+      backend.run(withPhrases({ model: 'fake/gpt', fallbackModel: 'fake/privat' }, tenant), signal),
+    ).rejects.toThrow('belongs to another tenant');
+    expect(opened).toEqual([]);
+
+    await backend.run(withPhrases({ model: 'fake/ny' }), signal).catch(() => undefined);
+    expect(opened).toEqual(['fake/ny']);
+  });
+
   it('ingests Kudos documents of the chosen types, since a date and from the chosen orgs', async () => {
     const owner = (name: string) => ({ alternative_names: [{ name, type: 'display' }] });
     const doc = (id: number, type: string, date: string, org: string) => ({

@@ -607,7 +607,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
   const contextFor = (l: Live): InvocationContext => {
     const budget: Budget = {
       remaining: () => l.budget.remaining(),
-      charge: (usage) => chargeLive(l, usage),
+      charge: (usage, model) => chargeLive(l, usage, model ? { model } : {}),
     };
     return {
       principal: l.principal,

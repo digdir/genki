@@ -111,7 +111,7 @@ import {
   type TenantSecretStore,
 } from './extensions.js';
 import type { DeclaredPhraseArchive, DocumentConverter } from '@genai/ingest';
-import { datasetEnrichmentModule } from './dataset-enrichment.js';
+import { datasetEnrichmentModule, enrichmentOutputTokens } from './dataset-enrichment.js';
 import { publicDatasetState } from './dataset-status.js';
 import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
@@ -189,9 +189,15 @@ import {
   clientAddress,
   keyRateLimited,
   publicCardsPerMinute,
+  quotaExhausted,
+  quotaExhaustedDetail,
+  quotaExhaustedTitle,
+  quotaExhaustedType,
+  secondsToNextMonth,
   tooManyRequests,
   type RateLimiter,
 } from './rate-limit.js';
+import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
@@ -958,6 +964,12 @@ export const createPlatform = async (input: PlatformInput) => {
     config: {},
     grants: [],
   };
+  const enrichmentWork = trackedWork({
+    id: 'platform/dataset-enrichment',
+    title: 'Berikelse av datasett',
+    platformTenant,
+    outputTokens: enrichmentOutputTokens,
+  });
   let modules: PlatformModule[] = [];
   const decorate = decorateWith(() => modules);
   const sharedTools = new Map<string, string>();
@@ -989,12 +1001,13 @@ export const createPlatform = async (input: PlatformInput) => {
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
       createOptimiser() as Strategy,
+      enrichmentWork.strategy,
     ],
     extraStrategyConfigs: [builderStrategyId, optimiserStrategyId].map((id) => [
       strategyKey(id, 1),
       platformServiceConfig,
     ]),
-    platformCapabilities: [evalCapability],
+    platformCapabilities: [evalCapability, enrichmentWork.capability],
     ...(input.state ? { state: input.state } : {}),
     ...(input.observe ? { observe: input.observe } : {}),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
@@ -1103,6 +1116,7 @@ export const createPlatform = async (input: PlatformInput) => {
         open: (...args) => embedders.open(...args),
       },
       models,
+      catalog: runtime.catalog,
       platformTenant,
       ...ingestSources,
     }),
@@ -1383,12 +1397,14 @@ export const createPlatform = async (input: PlatformInput) => {
     if (!fresh && cached && cached.month === month && at.getTime() - cached.at < 15_000)
       return cached.tokens;
     let tokens = 0;
-    for (const tracked of await taskIndex.all(tenant)) {
-      const task = (await taskStore.get(tracked.task))?.task;
-      if (!task || task.tenant !== tenant || task.createdAt < month) continue;
-      if (originOf(task.service.capability.id) === 'assistant') continue;
-      tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
-    }
+    if (taskIndex.tokensUsed) tokens = await taskIndex.tokensUsed(tenant, month);
+    else
+      for (const tracked of await taskIndex.all(tenant)) {
+        const task = (await taskStore.get(tracked.task))?.task;
+        if (!task || task.tenant !== tenant || task.createdAt < month) continue;
+        if (originOf(task.service.capability.id) === 'assistant') continue;
+        tokens += (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+      }
     usageCache.set(tenant, { at: at.getTime(), month, tokens });
     return tokens;
   };
@@ -1458,16 +1474,9 @@ export const createPlatform = async (input: PlatformInput) => {
             'Too many requests',
             `The organisation allows ${perMinute} calls per minute.`,
           );
-    if (invokes(c) && (await quota(tenant)).exhausted) {
-      const now = new Date();
-      const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
-      return tooManyRequests(
-        c,
-        Math.ceil((next - now.getTime()) / 1000),
-        'urn:genai:problem:quota-exhausted',
-        'The monthly token quota is used up',
-        `The organisation has used its ${numberSetting(tenant, quotaSettingKey, defaultMonthlyTokens)} tokens for this month.`,
-      );
+    if (invokes(c)) {
+      const used = await quota(tenant);
+      if (used.exhausted) return quotaExhausted(c, used.monthlyTokens);
     }
     return next();
   };
@@ -1602,6 +1611,7 @@ export const createPlatform = async (input: PlatformInput) => {
       return (await pin(compiled, version))?.capability.descriptor.id;
     },
     kernel,
+    enrichmentTask: enrichmentWork.run(() => kernel),
     tasks: taskIndex,
     task: async (id) => (await taskStore.get(id))?.task,
     events: (task) => log.read(task, 0, () => false),
@@ -1707,6 +1717,7 @@ export const createPlatform = async (input: PlatformInput) => {
       '/api/facets',
       '/api/conversations',
       '/api/conversations/*',
+      '/tenants/:tenant/datasets/:id/enrichment/hypothetical-questions/proposals',
     ])
       app.use(path, serviceLimitsGate);
     if (admin)
@@ -1829,6 +1840,18 @@ export const createPlatform = async (input: PlatformInput) => {
         overridePolicy,
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
+        quotaExhausted: async (principal) => {
+          if (!principal.tenant) return undefined;
+          const used = await quota(principal.tenant);
+          return used.exhausted
+            ? {
+                type: quotaExhaustedType,
+                title: quotaExhaustedTitle,
+                detail: quotaExhaustedDetail(used.monthlyTokens),
+                retryAfterSeconds: secondsToNextMonth(),
+              }
+            : undefined;
+        },
       }),
     );
     app.route(

@@ -72,6 +72,13 @@ export interface McpConversations {
   append(request: Request, conversationId: string, turn: ConversationTurn): Promise<void>;
 }
 
+export interface QuotaRefusal {
+  type: string;
+  title: string;
+  detail: string;
+  retryAfterSeconds: number;
+}
+
 export interface McpAppOptions {
   kernel: Kernel;
   resolver: CapabilityResolver;
@@ -93,6 +100,7 @@ export interface McpAppOptions {
   heartbeatMs?: number;
   overridePolicy?: OverridePolicy;
   modelsOf?: (task: string) => Promise<string[]>;
+  quotaExhausted?: (principal: Principal) => Promise<QuotaRefusal | undefined>;
 }
 
 type Response = JsonRpcResult | JsonRpcError;
@@ -104,6 +112,7 @@ interface CallOutcome {
 }
 
 const versionHeader = 'genai-version';
+const quotaExhaustedCode = -32029;
 
 const readVersion = (value: string | undefined): { version?: number } | { error: string } => {
   if (value === undefined || value.trim() === '') return {};
@@ -580,6 +589,18 @@ export const createMcpApp = (options: McpAppOptions) => {
         const pinned = readVersion(c.req.header(versionHeader));
         if ('error' in pinned)
           return json(c, 400, invalidParams(id, pinned.error, { code: 'invalid_version' }));
+        const refusal = await options.quotaExhausted?.(principal);
+        if (refusal)
+          return json(
+            c,
+            429,
+            rpcError(id, quotaExhaustedCode, refusal.title, {
+              type: refusal.type,
+              status: 429,
+              detail: refusal.detail,
+            }),
+            { 'Retry-After': String(refusal.retryAfterSeconds) },
+          );
         const meta = isRecord(params._meta) ? params._meta : {};
         const token = meta.progressToken ?? meta.progress_token;
         if (token !== undefined && token !== null)

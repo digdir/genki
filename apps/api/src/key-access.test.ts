@@ -502,6 +502,38 @@ describe('rate limits and quota', () => {
     expect(await refused.json()).toMatchObject({ type: 'urn:genai:problem:quota-exhausted' });
     expect((await send('/v1/models', 'veileder')).status).toBe(200);
   });
+
+  it('refuses every MCP tool call once the monthly token quota is used, with or without the Mcp-Method header', async () => {
+    const { send } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    const call = (meta: Record<string, unknown>) =>
+      send('/api/mcp', 'veileder', {
+        body: {
+          jsonrpc: '2.0',
+          id: 7,
+          method: 'tools/call',
+          params: { name: 'veileder__default', arguments: { query: 'hei' }, _meta: meta },
+        },
+        headers: { 'MCP-Protocol-Version': '2025-06-18' },
+      });
+
+    for (const refused of [await call({}), await call({ progressToken: 'p1' })]) {
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get('retry-after')).toMatch(/^\d+$/);
+      expect(await refused.json()).toMatchObject({
+        jsonrpc: '2.0',
+        id: 7,
+        error: {
+          code: -32029,
+          data: { type: 'urn:genai:problem:quota-exhausted', status: 429 },
+        },
+      });
+    }
+  });
+
+  it('still answers MCP tools/list when the monthly token quota is used', async () => {
+    const { mcp } = await boot({ monthlyTokens: 100, usedTokens: 150 });
+    expect((await mcp('veileder', 'tools/list')).status).toBe(200);
+  });
 });
 
 describe('unregistered organisations', () => {

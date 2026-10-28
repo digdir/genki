@@ -23,6 +23,17 @@ export const ownedElsewhere = (
   return owner !== undefined && owner !== tenant;
 };
 
+export const tenantModelRefusal = (
+  catalog: Pick<CatalogRegistry, 'get'>,
+  model: string,
+  tenant: string,
+): string | undefined => {
+  if (isCandidate(catalog, model))
+    return `model ${model} is not released yet; it is waiting for the quality matrix`;
+  if (ownedElsewhere(catalog, model, tenant)) return `model ${model} belongs to another tenant`;
+  return undefined;
+};
+
 export const modelsForTenant = (
   deps: { catalog: Pick<CatalogRegistry, 'get'>; models: { describe(): ModelDescription[] } },
   tenant: string,

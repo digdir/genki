@@ -178,6 +178,8 @@ export const knowledgeErrors = {
   noEnrichmentProfile: 'The dataset has no search profile for the enrichment {profile}',
   enrichmentModelFailed: 'The model could not propose questions',
   enrichmentWriteFailed: 'The questions could not be stored',
+  enrichmentModelRefused: 'The model cannot be used',
+  enrichmentUncounted: 'Model use cannot be counted, so no questions are proposed',
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',

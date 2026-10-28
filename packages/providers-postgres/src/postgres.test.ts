@@ -262,6 +262,53 @@ describe('postgres task and state stores', () => {
     await stores.close();
   });
 
+  it('sums the tokens of every task a tenant started this month, past the newest thousand, without builder assistant turns', async () => {
+    const stores = await openStores(pool, wrapper);
+    const tenant = '444555666';
+    const principal: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
+    const put = (id: string, capability: string, createdAt: string, tokens: number) =>
+      stores.tasks.put(
+        {
+          task: {
+            id,
+            service: {
+              capability: { id: capability, version: '1' },
+              strategy: { id: 's', version: '1' },
+              configHash: 'h',
+            },
+            principal: { kind: 'employee', id: 'kari', tenant },
+            tenant,
+            owner: tenant,
+            status: 'completed',
+            artifacts: [],
+            usage: { inputTokens: tokens, outputTokens: tokens },
+            createdAt,
+          },
+          principal,
+          lastSeq: 1,
+        },
+        { tenant, key: 'thread:quota' },
+      );
+    for (let i = 0; i < 1001; i++)
+      await put(
+        `q-${i}`,
+        `${tenant}/svar`,
+        `2026-10-${String(2 + (i % 20)).padStart(2, '0')}T08:00:00.000Z`,
+        1,
+      );
+    await put('q-assistant', 'platform/builder-assistant', '2026-10-05T08:00:00.000Z', 500);
+    await put('q-september', `${tenant}/svar`, '2026-09-30T23:00:00.000Z', 500);
+
+    expect(
+      await stores.tasks.tokensUsed({
+        tenant,
+        since: '2026-10-01T00:00:00.000Z',
+        excludeCapabilityPrefix: 'platform/builder-assistant',
+      }),
+    ).toBe(2002);
+    await stores.close();
+  });
+
   it('refuses a state write when the value changed since it was read', async () => {
     const stores = await openStores(pool, wrapper);
     const v = await stores.state.put('counter', 1, scope);

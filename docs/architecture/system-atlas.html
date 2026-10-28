@@ -1730,7 +1730,7 @@
             summary:
               'Exposes published service variants as MCP tools, with the headers, errors and progress KA expects.',
             description:
-              'Implements the current MCP revision on /api/mcp: discovery, tools/list and tools/call, SSE progress and the three result channels. Each tool is a capability invoked through the kernel; bodies over 1 MiB are refused (ADR 0017).',
+              'Implements the current MCP revision on /api/mcp: discovery, tools/list and tools/call, SSE progress and the three result channels. Each tool is a capability invoked through the kernel; bodies over 1 MiB are refused (ADR 0017). Every tools/call checks the monthly token quota and answers 429 with a JSON-RPC quota-exhausted error once it is used.',
             responsibilities: [
               'MCP protocol handling and version negotiation',
               'Map tools to capabilities and invoke them via the kernel',

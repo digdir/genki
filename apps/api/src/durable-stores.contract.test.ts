@@ -495,3 +495,23 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     ]);
   });
 });
+
+describe('the postgres task index and the monthly quota', () => {
+  it('sums the tokens of this month in the store and leaves builder assistant turns out, as the quota does', async () => {
+    const stores = await postgresBackend.reopen();
+    const quotaOrg = '444555777';
+    const assistant: Task = {
+      ...task('quota-assistant', quotaOrg, '2026-10-10T08:00:00.000Z'),
+      service: {
+        capability: { id: 'platform/builder-assistant', version: '1' },
+        strategy: { id: 'builder-assistant', version: '1' },
+        configHash: 'h',
+      },
+    };
+    await record(stores, task('quota-now', quotaOrg, '2026-10-09T08:00:00.000Z'));
+    await record(stores, task('quota-before', quotaOrg, '2026-09-29T08:00:00.000Z'));
+    await record(stores, assistant);
+
+    expect(await stores.taskIndex.tokensUsed?.(quotaOrg, '2026-10-01T00:00:00.000Z')).toBe(120);
+  });
+});
