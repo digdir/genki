@@ -175,7 +175,6 @@ describe('shell', () => {
         .map((a) => a.firstChild?.textContent),
     ).toEqual([
       'Onboarding',
-      'Tilbakemelding',
       'Endringslogg',
       'Profil',
       'Utviklerverktøy',

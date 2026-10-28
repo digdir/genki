@@ -59,7 +59,6 @@ const plannedPages = {
   feedback: { title: 'shell.navFeedback', icon: 'M4 4h16v12H8l-4 4z' },
   organisation: { title: 'shell.orgSettingsTitle', icon: 'M4 20V9l8-5 8 5v11M9 20v-5h6v5' },
   onboarding: { title: 'shell.menuOnboarding', icon: 'M5 12l5 5 9-10' },
-  'send-feedback': { title: 'shell.menuSendFeedback', icon: 'M4 4h16v12H8l-4 4z' },
   changelog: { title: 'shell.menuChangelog', icon: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4' },
 } as const;
 

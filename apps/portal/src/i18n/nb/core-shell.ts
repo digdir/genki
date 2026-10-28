@@ -52,7 +52,6 @@ export const shell = defineNamespace({
   showSidebar: 'Vis sidepanelet',
   orgSettingsTitle: 'Innstillinger for virksomheten',
   menuOnboarding: 'Onboarding',
-  menuSendFeedback: 'Tilbakemelding',
   menuChangelog: 'Endringslogg',
   menuNew: 'Nytt',
   menuProfile: 'Profil',

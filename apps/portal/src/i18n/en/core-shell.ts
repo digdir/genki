@@ -57,7 +57,6 @@ export const shell = {
   showSidebar: 'Show the sidebar',
   orgSettingsTitle: 'Settings for the organisation',
   menuOnboarding: 'Onboarding',
-  menuSendFeedback: 'Send feedback',
   menuChangelog: 'Changelog',
   menuNew: 'New',
   menuProfile: 'Profile',

@@ -158,7 +158,6 @@ const isActive = (path: string, item: NavItem) => {
 
 const userMenuLinks: readonly (readonly [string, PlainKey, boolean?])[] = [
   ['#/onboarding', 'shell.menuOnboarding'],
-  ['#/send-feedback', 'shell.menuSendFeedback'],
   ['#/changelog', 'shell.menuChangelog', true],
   ['#/profile', 'shell.menuProfile'],
   ['#/developer', 'shell.menuDeveloper'],
