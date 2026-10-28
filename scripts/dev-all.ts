@@ -208,7 +208,9 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       cwd: options.cwd,
       env: { ...process.env, ...p.env, FORCE_COLOR: options.colour ? '1' : '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      // A process group lets stop() signal grandchildren on POSIX. On Windows a detached child
+      // gets its own console window instead, and closing that window stops the service.
+      detached: process.platform !== 'win32',
     });
     children.push(child);
     for (const stream of [child.stdout, child.stderr]) {
