@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 const run = promisify(execFile);
 
 /** Generate fresh TLS credentials for local tests; never persist them in the repository. */
-export const testTlsCertificate = async () => {
+export const testTlsCertificate = async (hosts = ['docs.example.test']) => {
   const directory = await mkdtemp(join(tmpdir(), 'genki-test-tls-'));
   const keyPath = join(directory, 'key.pem');
   const certPath = join(directory, 'cert.pem');
@@ -23,7 +23,7 @@ export const testTlsCertificate = async () => {
         '-subj',
         '/CN=docs.example.test',
         '-addext',
-        'subjectAltName=DNS:docs.example.test',
+        `subjectAltName=${hosts.map((host) => `DNS:${host}`).join(',')}`,
         '-days',
         '1',
         '-keyout',

@@ -112,6 +112,33 @@ const withDataset = async () => {
 };
 
 describe('dataset, knowledge and catalogue API reference', () => {
+  it('publishes the website citation fields and their defaults in OpenAPI', async () => {
+    const { app } = await boot();
+    const doc = (await (await app.request('/openapi.json')).json()) as {
+      components: {
+        schemas: Record<
+          string,
+          {
+            properties: { source: { oneOf: { properties: { cite?: unknown } }[] } };
+          }
+        >;
+      };
+    };
+    const website = doc.components.schemas.IngestionPipelineSpec?.properties.source.oneOf.find(
+      (source) => source.properties.cite,
+    );
+    expect(website?.properties.cite).toMatchObject({
+      type: 'object',
+      required: ['baseUrl'],
+      additionalProperties: false,
+      properties: {
+        baseUrl: { type: 'string', format: 'uri' },
+        fetchBaseUrl: { type: 'string', format: 'uri' },
+        dropIndexMd: { type: 'boolean', default: false },
+      },
+    });
+  });
+
   it('documents every dataset, knowledge and catalogue operation with request and response schemas', async () => {
     const { app } = await boot();
     const doc = (await (await app.request('/openapi.json')).json()) as Document;

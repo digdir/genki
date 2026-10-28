@@ -44,6 +44,9 @@ export const catalogErrors = defineNamespace({
   indexRequired: 'en indeks er påkrevd',
   datasetExists: 'datasettet {datasetId} finnes',
   pipelineExists: 'innlesingen {pipelineId} finnes',
+  websiteCitationDirectory:
+    'Bruk en HTTPS-mappeadresse som slutter med /, uten brukernavn, passord, spørring eller fragment',
+  websiteCitationOutsideRoot: 'Nettadressen er utenfor hentemappen for kildehenvisninger: {loc}',
   cannotEstimate: 'Antallet dokumenter kan ikke anslås for denne kilden',
   ingestionUnavailable: 'Innlesing er ikke tilgjengelig',
   modelOtherTenant: 'modellen {model} tilhører en annen virksomhet',
