@@ -14,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
 import type { ApiClient } from './api';
@@ -51,7 +52,6 @@ export const navigationGroups = [
     heading: 'shell.groupAdmin',
     items: [
       { path: '/access', label: 'shell.navAccess' },
-      { path: '/integrations', label: 'shell.navIntegrations', also: ['/api-reference'] },
       { path: '/organisation', label: 'shell.navSettings' },
     ],
   },
@@ -308,8 +308,15 @@ export const Shell = ({
   const { rights, labels } = rightsFor(organisation.actions ?? profile.rights, t);
   const gated = unregistered && !readableUnregistered.includes(area);
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
-  const toggle = (which: 'org' | 'user' | 'menu') =>
+  const [above, setAbove] = useState<CSSProperties>();
+  // In the sidebar a menu opens above its button, placed from where the button is now.
+  const toggle = (which: 'org' | 'user' | 'menu', from?: HTMLElement) => {
+    if (from) {
+      const box = from.getBoundingClientRect();
+      setAbove({ left: box.left, bottom: window.innerHeight - box.top + 8 });
+    }
     setOpen((o) => (o === which ? undefined : which));
+  };
   // The sidebar holds the brand and the user menu; without one (narrow, unregistered) they stay in the header.
   const userInSidebar = !narrow && !unregistered;
   const brand = (
@@ -335,7 +342,7 @@ export const Shell = ({
         aria-expanded={open === 'user'}
         aria-haspopup="true"
         aria-label={t('shell.userMenuButton', { name: session.name })}
-        onClick={() => toggle('user')}
+        onClick={(e) => toggle('user', e.currentTarget)}
       >
         <Avatar data-size="sm" aria-hidden="true">
           {initials(session.name)}
@@ -343,7 +350,12 @@ export const Shell = ({
         {narrow || (userInSidebar && collapsed) ? null : <span>{session.name}</span>}
       </Button>
       {open === 'user' ? (
-        <div role="dialog" aria-label={t('shell.userMenu')} className="popover user-menu">
+        <div
+          role="dialog"
+          aria-label={t('shell.userMenu')}
+          className="popover user-menu"
+          style={userInSidebar ? above : undefined}
+        >
           <div className="popover-head">
             <span className="popover-title">{session.name}</span>
             <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
@@ -408,7 +420,7 @@ export const Shell = ({
             name: organisation.name,
             orgNr,
           })}
-          onClick={() => toggle('org')}
+          onClick={(e) => toggle('org', e.currentTarget)}
         >
           <span className="org-button">
             <span className="org-name">{organisation.name}</span>
@@ -426,7 +438,12 @@ export const Shell = ({
         </div>
       )}
       {open === 'org' && multi ? (
-        <div role="dialog" aria-label={t('shell.chooseOrg')} className="popover">
+        <div
+          role="dialog"
+          aria-label={t('shell.chooseOrg')}
+          className="popover"
+          style={userInSidebar ? above : undefined}
+        >
           <div className="popover-head">
             <span className="popover-title">{t('shell.chooseOrg')}</span>
             <span className="meta">{t('shell.chooseOrgHelp')}</span>
@@ -528,8 +545,10 @@ export const Shell = ({
             </div>
             {collapsed ? null : <NavLinks path={path} badges={badges} onNavigate={closeAll} />}
             <div className="sidebar-spacer" />
-            {collapsed ? null : orgChooser}
-            {userMenu}
+            <div className="sidebar-account">
+              {userMenu}
+              {collapsed ? null : orgChooser}
+            </div>
           </nav>
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>

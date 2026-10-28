@@ -1,6 +1,6 @@
 import { Alert, Badge, Button, Heading, Paragraph, Tabs } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { NotAvailable } from '../components/NotAvailable';
 import type { TriggerView } from '../api/triggers';
 import { API_BASE, endpoints } from '../data/api-reference';
@@ -17,6 +17,7 @@ import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey, type T } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
+import { developerPageFor, IntegrationTab } from './DeveloperTools';
 import { CallFromCode, LiveCallFromCode } from './integrations/CallFromCode';
 import { Connections } from './integrations/Connections';
 import { Frontends } from './integrations/Frontends';
@@ -92,7 +93,8 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const f = useFormat();
   const tRef = useRef(t);
   tRef.current = t;
-  const queryTab = route.query.get('tab');
+  const only = useContext(IntegrationTab);
+  const queryTab = only ?? route.query.get('tab');
   const tab = tabFrom(queryTab);
   const [open, setOpen] = useState<string | undefined>(
     () => route.query.get('open') ?? defaultOpen[tab],
@@ -124,7 +126,11 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
 
   const say = (text: string, color: Flash['color'] = 'success') => setFlash({ text, color });
   const choose = (next: Tab, id?: string) =>
-    navigate(`#/integrations?tab=${next}${id ? `&open=${id}` : ''}`);
+    navigate(
+      only
+        ? `#/developer/${developerPageFor(next)}${id ? `?open=${id}` : ''}`
+        : `#/integrations?tab=${next}${id ? `&open=${id}` : ''}`,
+    );
 
   const failingSystems = systems.filter((x) => x.status === 'Feiler');
   const failingTriggers = triggers.filter((x) => x.status === 'Feiler');
@@ -426,17 +432,19 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
 
   return (
     <div className="stack int">
-      <div className="int-head">
-        <div className="stack-xs int-intro-text">
-          <Heading level={1} data-size="lg">
-            {t('integrations.heading')}
-          </Heading>
-          <p className="lead">{t('integrations.lead')}</p>
+      {only ? null : (
+        <div className="int-head">
+          <div className="stack-xs int-intro-text">
+            <Heading level={1} data-size="lg">
+              {t('integrations.heading')}
+            </Heading>
+            <p className="lead">{t('integrations.lead')}</p>
+          </div>
+          <Button variant="secondary" onClick={() => navigate('#/integrations/code')}>
+            {t('integrations.callFromCode')}
+          </Button>
         </div>
-        <Button variant="secondary" onClick={() => navigate('#/integrations/code')}>
-          {t('integrations.callFromCode')}
-        </Button>
-      </div>
+      )}
       {problems.length ? (
         <Alert data-color="warning">
           <Heading level={2} data-size="2xs">
@@ -467,7 +475,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
         ) : null}
       </div>
       <Tabs value={tab} onChange={(v) => choose(tabFrom(v))}>
-        <Tabs.List aria-label={t('integrations.heading')}>
+        <Tabs.List aria-label={t('integrations.heading')} hidden={only !== undefined}>
           {tabs.map(([id, label]) => {
             const n = badges[id] ?? 0;
             return (

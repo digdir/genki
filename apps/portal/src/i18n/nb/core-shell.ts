@@ -133,9 +133,6 @@ export const devTools = defineNamespace({
   api: 'API-referanse og dokumentasjon',
   apiDesc: 'Referansen til API-et og dokumentasjon for utviklere.',
   openLog: 'Åpne Logg',
-  openTracing: 'Åpne sporing',
-  openIntegrations: 'Åpne Integrasjoner',
   openStepFlows: 'Åpne Stegflyter',
   openApiReference: 'Åpne API-referansen',
-  openDocs: 'Åpne dokumentasjonen',
 });

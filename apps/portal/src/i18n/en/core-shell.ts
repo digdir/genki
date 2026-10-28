@@ -138,9 +138,6 @@ export const devTools = {
   api: 'API reference and documentation',
   apiDesc: 'The API reference and documentation for developers.',
   openLog: 'Open Log',
-  openTracing: 'Open tracing',
-  openIntegrations: 'Open Integrations',
   openStepFlows: 'Open Step flows',
   openApiReference: 'Open the API reference',
-  openDocs: 'Open the documentation',
 } satisfies Translation<typeof devToolsSource>;

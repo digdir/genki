@@ -275,9 +275,18 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   --header-offset: 0px;
 }
 
-.sidebar-org {
-  padding: 8px 4px;
-  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+/* Sticky makes the sidebar its own layer; lift it so its menus open over the page. */
+.sidebar {
+  z-index: 25;
+}
+
+/* The person and the organisation, set apart from the menu above. */
+.sidebar-account {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+  margin-top: var(--ds-size-4);
+  padding-top: var(--ds-size-10);
 }
 
 .sidebar-org .org-static {
@@ -289,25 +298,28 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   justify-content: space-between;
 }
 
-/* Fixed, like the user menu, so the sidebar does not clip it; opens upwards. */
-.sidebar-org .popover {
-  position: fixed;
-  top: auto;
-  right: auto;
-  left: 12px;
-  bottom: 132px;
-}
-
+/* Same left edge as the menu labels (their 12px inset), and room before the menu starts. */
 .sidebar-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: var(--ds-size-2);
+  padding: var(--ds-size-2) 0 var(--ds-size-8) 12px;
+}
+
+/* Centre the hide button on the 32px emblem instead of aligning their tops. */
+.sidebar-top > .ds-button {
+  margin-top: calc((32px - var(--ds-size-12)) / 2);
+}
+
+.sidebar-top .brand {
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
-  padding: 0 0 20px 8px;
 }
 
 .sidebar-top .brand-name {
-  max-width: 130px;
+  max-width: 150px;
 }
 
 .sidebar.collapsed {
@@ -319,6 +331,10 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   flex-direction: column;
   align-items: center;
   padding-left: 0;
+}
+
+.sidebar.collapsed .sidebar-top > .ds-button {
+  margin-top: 0;
 }
 
 .nav-group > .ds-divider {
@@ -413,6 +429,12 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   font-size: 16px;
 }
 
+.dev-tools-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-4);
+}
+
 .dev-tools-page {
   display: flex;
   flex-direction: column;
@@ -431,13 +453,11 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   }
 }
 
-/* Fixed, so the sidebar's scroll area does not clip it; opens upwards from the button. */
-.sidebar-user .popover {
+/* Fixed, so the sidebar's scroll area does not clip it; Shell places it above the button. */
+.sidebar-account .popover {
   position: fixed;
   top: auto;
   right: auto;
-  left: 12px;
-  bottom: 72px;
 }
 
 .main {

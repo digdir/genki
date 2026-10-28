@@ -1,4 +1,5 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
+import { createContext, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
@@ -22,7 +23,12 @@ interface Tool {
   icon: string;
   /** Where the content lives today, until it moves in here. */
   links?: readonly (readonly [string, PlainKey])[];
+  /** The Integrasjoner tab whose content this page shows. */
+  tab?: string;
 }
+
+/** The Integrasjoner tab to show on its own, when a developer tools page holds it. */
+export const IntegrationTab = createContext<string | undefined>(undefined);
 
 const statusTool: Tool = {
   id: 'status',
@@ -38,44 +44,42 @@ const tools: readonly Tool[] = [
     label: 'devTools.runs',
     desc: 'devTools.runsDesc',
     icon: 'M4 6h16M4 12h10M4 18h6',
-    links: [
-      ['#/log', 'devTools.openLog'],
-      ['#/integrations?tab=tracing', 'devTools.openTracing'],
-    ],
+    tab: 'tracing',
+    links: [['#/log', 'devTools.openLog']],
   },
   {
     id: 'systems',
     label: 'devTools.systems',
     desc: 'devTools.systemsDesc',
     icon: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
-    links: [['#/integrations?tab=systems', 'devTools.openIntegrations']],
+    tab: 'systems',
   },
   {
     id: 'frontends',
     label: 'devTools.frontends',
     desc: 'devTools.frontendsDesc',
     icon: 'M4 5h16v11H4zM8 20h8M12 16v4',
-    links: [['#/integrations?tab=frontends', 'devTools.openIntegrations']],
+    tab: 'frontends',
   },
   {
     id: 'triggers',
     label: 'devTools.triggers',
     desc: 'devTools.triggersDesc',
     icon: 'M13 3L5 14h6l-1 7 8-11h-6z',
-    links: [['#/integrations?tab=triggers', 'devTools.openIntegrations']],
+    tab: 'triggers',
   },
   {
     id: 'keys',
     label: 'devTools.keys',
     desc: 'devTools.keysDesc',
     icon: 'M14 10a4 4 0 1 0-4 4l2 2h2v2h2v2h4v-4z',
-    links: [['#/integrations?tab=keys', 'devTools.openIntegrations']],
+    tab: 'keys',
   },
   {
     id: 'hooks',
     label: 'devTools.hooks',
     icon: 'M10 4v8a4 4 0 1 0 8 0M18 12l-2-2M18 12l2-2',
-    links: [['#/integrations?tab=hooks', 'devTools.openIntegrations']],
+    tab: 'hooks',
   },
   {
     id: 'step-flows',
@@ -95,16 +99,24 @@ const tools: readonly Tool[] = [
     label: 'devTools.api',
     desc: 'devTools.apiDesc',
     icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
-    links: [
-      ['#/api-reference', 'devTools.openApiReference'],
-      ['#/integrations?tab=docs', 'devTools.openDocs'],
-    ],
+    tab: 'docs',
+    links: [['#/api-reference', 'devTools.openApiReference']],
   },
 ];
 
-export const DeveloperTools = ({ api, route }: ScreenProps) => {
+/** The developer tools page that shows an Integrasjoner tab, for old links to that tab. */
+export const developerPageFor = (tab: string | null) =>
+  tools.find((tool) => tool.tab === (tab ?? 'systems'))?.id ?? 'systems';
+
+/** The Utviklerverktøy heading and submenu around one of its pages. */
+export const DeveloperToolsFrame = ({
+  currentId,
+  children,
+}: {
+  currentId: string;
+  children: ReactNode;
+}) => {
   const t = useT();
-  const current = tools.find((tool) => tool.id === route.segments[1]) ?? statusTool;
   return (
     <>
       <Heading level={1} data-size="lg">
@@ -114,7 +126,7 @@ export const DeveloperTools = ({ api, route }: ScreenProps) => {
         <nav aria-label={t('devTools.menu')} className="dev-tools-nav">
           <ul className="nav-list">
             {tools.map((tool) => {
-              const active = tool.id === current.id;
+              const active = tool.id === currentId;
               return (
                 <li key={tool.id}>
                   <a
@@ -130,36 +142,53 @@ export const DeveloperTools = ({ api, route }: ScreenProps) => {
             })}
           </ul>
         </nav>
-        <section className="dev-tools-page" aria-labelledby="dev-tool-heading">
-          <div>
-            <Heading level={2} data-size="xs" id="dev-tool-heading">
-              {t(current.label)}
-            </Heading>
-            {current.desc ? <Paragraph className="meta">{t(current.desc)}</Paragraph> : null}
-          </div>
-          {current.id === 'status' ? (
-            <Status api={api} />
-          ) : current.links ? (
-            <div className="empty-state">
-              <Icon d={current.icon} size={32} />
-              <Paragraph>{t('devTools.livesElsewhere')}</Paragraph>
-              {current.links.map(([href, label]) => (
-                <a
-                  key={href}
-                  className="ds-button"
-                  data-variant="secondary"
-                  data-size="sm"
-                  href={href}
-                >
-                  {t(label)}
-                </a>
-              ))}
-            </div>
-          ) : (
-            <NotDesigned icon={current.icon} />
-          )}
-        </section>
+        <div className="dev-tools-page">{children}</div>
       </div>
     </>
+  );
+};
+
+export const DeveloperTools = ({
+  integrations,
+  ...props
+}: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
+  const { api, route } = props;
+  const t = useT();
+  const current = tools.find((tool) => tool.id === route.segments[1]) ?? statusTool;
+  return (
+    <DeveloperToolsFrame currentId={current.id}>
+      <div>
+        <Heading level={2} data-size="xs">
+          {t(current.label)}
+        </Heading>
+        {current.desc ? <Paragraph className="meta">{t(current.desc)}</Paragraph> : null}
+      </div>
+      {current.links ? (
+        <div className="dev-tools-links">
+          {current.links.map(([href, label]) => (
+            <a key={href} href={href}>
+              {t(label)}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {current.id === 'status' ? (
+        <Status api={api} />
+      ) : current.tab ? (
+        <IntegrationTab.Provider value={current.tab}>{integrations(props)}</IntegrationTab.Provider>
+      ) : current.links ? (
+        <div className="empty-state">
+          <Icon d={current.icon} size={32} />
+          <Paragraph>{t('devTools.livesElsewhere')}</Paragraph>
+          {current.links.map(([href, label]) => (
+            <a key={href} className="ds-button" data-variant="secondary" data-size="sm" href={href}>
+              {t(label)}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <NotDesigned icon={current.icon} />
+      )}
+    </DeveloperToolsFrame>
   );
 };

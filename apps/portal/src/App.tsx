@@ -64,10 +64,10 @@ const plannedPages = {
 } as const;
 
 /** Sends an old address on to where the page lives now, keeping the rest of the route. */
-const MovedTo = ({ area }: { area: string }) => {
+const MovedTo = ({ hash }: { hash: string }) => {
   useEffect(() => {
-    window.location.replace(window.location.hash.replace(/^#\/[^/?]+/, `#/${area}`));
-  }, [area]);
+    window.location.replace(hash);
+  }, [hash]);
   return null;
 };
 
@@ -99,9 +99,11 @@ const Page = ({
   if (area === 'skills') return <Skills {...props} />;
   if (area === 'playground') return <Playground {...props} />;
   if (area === 'access') return <Access {...props} />;
-  if (area === 'usage') return <MovedTo area="statistics" />;
+  if (area === 'usage')
+    return <MovedTo hash={window.location.hash.replace(/^#\/usage/, '#/statistics')} />;
   if (area === 'statistics') return <Usage {...props} />;
-  if (area === 'developer') return <DeveloperTools {...props} />;
+  if (area === 'developer')
+    return <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />;
   if (area === 'profile') return <Profile />;
   if (area in plannedPages) {
     const page = plannedPages[area as keyof typeof plannedPages];

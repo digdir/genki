@@ -128,7 +128,6 @@ describe('shell', () => {
       'Logg',
       'Tilbakemeldinger',
       'Tilgang',
-      'Integrasjoner',
       'Innstillinger',
     ]);
     expect(
