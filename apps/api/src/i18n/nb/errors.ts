@@ -177,6 +177,8 @@ export const knowledgeErrors = defineNamespace({
   noEnrichmentProfile: 'Datasettet har ingen søkeprofil for berikelsen {profile}',
   enrichmentModelFailed: 'Modellen kunne ikke foreslå spørsmål',
   enrichmentWriteFailed: 'Spørsmålene kunne ikke lagres',
+  enrichmentModelRefused: 'Modellen kan ikke brukes',
+  enrichmentUncounted: 'Bruken av modellen kan ikke telles, så det blir ikke foreslått spørsmål',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',

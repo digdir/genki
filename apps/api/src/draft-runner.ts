@@ -21,6 +21,7 @@ import {
   type CompiledCapability,
   type PluginSchemas,
 } from '@genai/definitions';
+import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { Capability as KernelCapability, CapabilityRegistry, Kernel } from '@genai/kernel';
 import { blobPart, type BlobStore } from '@genai/port-blob';
 import { residencies, type Residency } from '@genai/port-model';
@@ -53,7 +54,7 @@ export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 const draftPrefix = 'platform/draft/';
 
 export const originOf = (capabilityId: string): RunOrigin => {
-  if (capabilityId.startsWith('platform/builder-assistant')) return 'assistant';
+  if (capabilityId.startsWith(assistantCapabilityPrefix)) return 'assistant';
   if (!capabilityId.startsWith(draftPrefix)) return serviceOrigin;
   const segment = capabilityId.slice(draftPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';

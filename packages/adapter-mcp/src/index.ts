@@ -5,6 +5,7 @@ export {
   type McpAppOptions,
   type McpConversations,
   type OpenedConversation,
+  type QuotaRefusal,
   type TurnChunk,
 } from './app.js';
 export { progressTracker } from './progress.js';

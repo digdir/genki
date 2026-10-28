@@ -30,6 +30,7 @@ import type { HookRuntime } from './hooks.js';
 import type { ContractSetup, PluginRegistry } from '@genai/plugins';
 import type { ExternalPlugin, PluginRuntime } from './external-plugins.js';
 import type { ConnectionToolSource } from '@genai/providers-mcp-client';
+import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   platformTenant: string;
@@ -61,6 +62,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   drafts: DraftRunner;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
+  enrichmentTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
   events(task: string): AsyncIterable<Event>;

@@ -60,6 +60,8 @@ import {
   type PipelineSpec,
   type SourceEstimate,
 } from './ingestion.js';
+import type { CatalogRegistry } from './catalog-registry.js';
+import { tenantModelRefusal } from './model-access.js';
 
 export interface EmbedderSource {
   has(model: string): boolean;
@@ -129,6 +131,7 @@ export interface IndexIngestionOptions extends IngestSourceOptions {
   residencyOf(dataset: string): Residency | undefined;
   embedders?: EmbedderSource;
   models?: { open(ref: Ref, ctx: PortContext): ModelPort };
+  catalog?: Pick<CatalogRegistry, 'get'>;
   platformTenant: string;
 }
 
@@ -504,6 +507,17 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
     },
     run: async (job: IngestionJob, signal: AbortSignal): Promise<IngestionReport> => {
       const tenant = job.tenant ?? options.platformTenant;
+      const phraseModels = [
+        job.pipeline.spec.phrases?.model,
+        job.pipeline.spec.phrases?.fallbackModel,
+      ];
+      for (const model of phraseModels) {
+        const refused =
+          job.tenant && model && options.catalog
+            ? tenantModelRefusal(options.catalog, model, job.tenant)
+            : undefined;
+        if (refused) throw new Error(refused);
+      }
       const usage: Record<string, Usage> = {};
       const system: Principal = {
         kind: 'agency-system',

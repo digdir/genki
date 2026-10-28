@@ -64,6 +64,7 @@ export interface TrackedTask {
 export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
+  tokensUsed?(tenant: string, since: string): Promise<number>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
