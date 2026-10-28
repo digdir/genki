@@ -1065,6 +1065,7 @@ const uploadRoutes: RouteConfig[] = (() => {
         201: json(UploadResult, 'What was stored and what was skipped'),
         400: problem('Not multipart/form-data, no files, or a missing reason'),
         ...failures,
+        413: problem('Too many files, or the request is too large'),
       },
     }),
     createRoute({

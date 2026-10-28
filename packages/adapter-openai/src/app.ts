@@ -18,6 +18,7 @@ import {
 } from '@genai/contracts';
 import { KernelError, type Kernel, type Run } from '@genai/kernel';
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   answerOf,
   answerSourcesOf,
@@ -302,6 +303,13 @@ export const toolProblem = (status: number, code: string, message: string) => ({
 
 const problemHeaders = { 'content-type': 'application/problem+json' };
 
+export const bodyLimits = {
+  chat: 16 * 1024 * 1024,
+  tools: 1024 * 1024,
+};
+
+const tooLarge = (limit: number) => `The request body is larger than ${limit} bytes.`;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -529,6 +537,13 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     return c.json(locale ? localizeSchema(schema, locale) : schema);
   });
 
+  app.use(
+    '/v1/chat/completions',
+    bodyLimit({
+      maxSize: bodyLimits.chat,
+      onError: (c) => fail(c, 'request_too_large', tooLarge(bodyLimits.chat), 413),
+    }),
+  );
   app.post('/v1/chat/completions', async (c) => {
     const principal = c.get('principal');
     let body: Record<string, unknown>;
@@ -947,6 +962,18 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     }
   });
 
+  app.use(
+    '/api/tools/call/:tool',
+    bodyLimit({
+      maxSize: bodyLimits.tools,
+      onError: (c) =>
+        c.json(
+          toolProblem(413, 'request_too_large', tooLarge(bodyLimits.tools)),
+          413,
+          problemHeaders,
+        ),
+    }),
+  );
   app.post('/api/tools/call/:tool', async (c) => {
     const principal = c.get('principal');
     const tool = c.req.param('tool');

@@ -152,7 +152,7 @@ export const ingestDocuments = async (
   const result: IngestResult = { stored: 0, skipped: 0, failed: [] };
   const skip = (skipped: SkippedDocument) => {
     result.skipped += 1;
-    result.skippedDocuments = [...(result.skippedDocuments ?? []), skipped];
+    (result.skippedDocuments ??= []).push(skipped);
   };
   for (const skipped of options.source.skipped ?? []) skip(skipped);
   let stop: unknown;

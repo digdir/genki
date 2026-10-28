@@ -2688,6 +2688,7 @@ const protocolRoutes: RouteConfig[] = [
       403: toolError('The key may not reach this service or mode'),
       404: toolError('No such tool'),
       409: toolError('No such published version'),
+      413: toolError('The request body is too large'),
       429: RateLimited,
       500: toolError('Internal error'),
       503: toolError('The service is paused'),
