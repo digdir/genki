@@ -1,0 +1,2324 @@
+apiVersion: genai/v1
+kind: TestSet
+metadata:
+  tenant: '991825827'
+  id: altinn-docs-website-111
+  name: Altinn docs website goldens (111)
+  version: 1
+spec:
+  corpus: digdir/altinn-docs
+  provenance:
+    from: headless-rag-website-118
+    files:
+      - packages/eval/testsets/headless-rag-website-118.yaml
+    imported: '2026-10-28'
+    sourceIdentity: chunk-id
+    mapping: 're-anchored against digdir/altinn-docs generation 8271ec57-4b71-410e-b0ab-198e5828ef01 on 2026-10-28: legacy documents matched by URL (sha256 of the legacy localhost loc), moved pages by search on question and reference answer; gold chunks chosen from chunk text against the reference answer'
+    dropped:
+      - case: wg-corr-04-a2-a3-differences
+        reason: No candidate is the Altinn 2 vs Altinn 3 Correspondence comparison; candidates only touch isolated topics (Markdown support, attachment reuse, Dialogporten dialog creation) and lack the plain-text summary, ReplyOptions, 200-recipient mass send, simplified notification templates, authorization-model and archiving facts.
+      - case: wg-api-07-systemregister-validation-errors-nb
+        reason: The page now contains only the request schema and two example bodies; none of the AUTH.VLD-00000 to 00008 validation error codes appear in any candidate.
+      - case: wg-broker-05-transition-considerations-nb
+        reason: No candidate describes the Altinn 2 to 3 Broker transition solution (ServiceCode/ServiceEdition routing via Broker Bridge, 1 GB limit, pseudo-receipts, manifest file); only general broker/DPIA pages are present.
+      - case: wg-broker-06-transition-considerations-en
+        reason: No candidate describes the Broker transition solution details (SC/SE routing via Broker Bridge, 1 GB max filesize, pseudo receipt with receiptId 0, Manifest file); candidates are generic broker/DPIA/news pages.
+      - case: wg-broker-07-soap-transition-steps-en
+        reason: No candidate mentions the Altinn 2 SOAP transition interface or InitiateBrokerServiceBasic, StreamedPayloadBasicBE or GetAvailableFilesBasic; hits are Altinn 3 REST broker docs.
+      - case: wg-tech-03-ioption-properties
+        reason: No candidate describes the Altinn CLI IOption interface or its Name/ApiName/Value/IsAssigned/Description/Range/GetValue members; hits are about code-list options and DPIA pages.
+      - case: wg-tech-04-cli-commands
+        reason: No candidate describes the Altinn CLI Application/GetInstances, Batch/CreateInstancesA2 or Storage/GetData/GetInstance commands; hits are the unrelated Altinn Studio upgrade CLI and storage API pages.
+  cases:
+    - id: wg-notif-01-ordrestatus-verdier
+      split: validation
+      input: Hvilke statusverdier kan en varslingsordre (OrderProcessingState) ha i Altinn Notifications, og hva betyr hver av dem?
+      tags:
+        - altinn-notifications
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: ead03d35367d
+      expected:
+        answerPattern: (?i)Registered|Processing|Processed|Completed|SendConditionNotMet|Cancelled
+        referenceAnswer:
+          'En varslingsordre i Altinn Notifications kan ha seks OrderProcessingState-verdier (API-statusstreng i parentes):
+
+          1. Registered (Order_Registered) – ordren er opprettet og lagret, men behandlingen har ikke startet ennå (midlertidig).
+
+          2. Processing (Order_Processing) – ordren behandles nå (mottakeroppslag, evaluering av sendebetingelser osv.) (midlertidig).
+
+          3. Processed (Order_Processed) – ordren er ferdig behandlet og overlevert til e-post- og SMS-kanalene (midlertidig).
+
+          4. Completed (Order_Completed) – ordren er ferdig behandlet, og alle varsler har fått endelig leveringsstatus (endelig).
+
+          5. SendConditionNotMet (Order_SendConditionNotMet) – sendebetingelsen var ikke oppfylt, derfor ble ingen varsler sendt (endelig).
+
+          6. Cancelled (Order_Cancelled) – ordren ble kansellert før utsending (endelig).
+
+          Forskjellen på Processed og Completed: Processed betyr at alle varsler er opprettet men at sluttstatus for leveringen fortsatt følges opp, mens Completed betyr at både ordren og alle tilhørende varsler har fått endelig leveringsstatus.'
+        sources:
+          - chunkId: e495755481b4
+            document: 2801ab13e173
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-events-01-abonnement-pakrevde-filtre
+      split: train
+      input: Hvilke filterfelt er påkrevd når man setter opp et abonnement i Altinn Events, og når kan subjectFilter utelates?
+      tags:
+        - altinn-events
+        - compound
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: a7d7ed7a67e4
+      expected:
+        answerPattern: (?i)resourceFilter|subjectFilter|tjenesteeier
+        referenceAnswer: 'To filterfelt er påkrevd for et abonnement i Altinn Events: resourceFilter (filter for hendelseskilden; påkrevd, men Altinn Events kan fylle det ut automatisk basert på source-verdien hvis den er en gyldig URL til en Altinn Studio App) og subjectFilter (filter for cloud event-subjektet, med eksakt treff-sammenligning). subjectFilter er påkrevd med mindre du er tjenesteeier – tjenesteeiere kan utelate feltet og abonnere på alle hendelser på tvers av alle parter/subjekter. Å sette subjectFilter til en tom streng fører til at abonnementet stille feiler med å levere hendelser.'
+        sources:
+          - chunkId: a2d49f81e6fe
+            document: 2c94045af64d
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-events-02-query-responskoder
+      split: holdout
+      input: What HTTP response codes can the Altinn Events 'GET /events' query API return, and what does each mean?
+      tags:
+        - altinn-events
+        - compound
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: ddd9d7bf9e6d
+      expected:
+        answerPattern: (?i)200|400|401|403
+        referenceAnswer: 'The Altinn Events GET /events query API can return four response codes: 200 OK – events matching the query set are returned; 400 Bad Request – an invalid set of query parameters (refer to the problem details in the response body for more information); 401 Unauthorized – a missing, invalid or expired authorization header; and 403 Forbidden – missing the required scope for subscribing to events.'
+        sources:
+          - chunkId: 063a1b40e896
+            document: f60b7f89f126
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-corr-01-varslingskanaler
+      split: train
+      input: Which notification channels can you choose when adding a notification to an Altinn 3 Correspondence message?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 0af9eaceae9e
+      expected:
+        answerPattern: (?i)Email|Sms|EmailPreferred|SmsPreferred|EmailAndSms
+        referenceAnswer: 'When adding a notification to a Correspondence message, the notificationChannel field accepts five values: Email (0), Sms (1), EmailPreferred (2), SmsPreferred (3), and EmailAndSms (4). The same five channels are also available for the reminderNotificationChannel field used for reminders.'
+        sources:
+          - chunkId: 94165455a672
+            document: 97f7a7704107
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-corr-02-varsling-tidspunkt
+      split: holdout
+      input: When are notifications and reminders sent for an Altinn 3 Correspondence message, and what time-of-day rule applies to SMS?
+      tags:
+        - altinn-correspondence
+        - compound
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 0af9eaceae9e
+      expected:
+        answerPattern: (?i)5 minutes|7 days|reminder|9:00|5:00
+        referenceAnswer: "A notification is sent 5 minutes after the message's publication time (or 5 minutes after the current time if the publication time is in the past). If a reminder is activated, it is sent after 7 days if the message has not been read (in the test and staging environments the reminder is currently sent after 1 day). Notifications can be sent via email or SMS: email has no time window, but SMS notifications are only sent between 9:00 AM and 5:00 PM — if the send time falls outside that window, the SMS is sent the following day."
+        sources:
+          - chunkId: 94165455a672
+            document: 97f7a7704107
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-dialog-01-fce-cps-validering
+      split: train
+      input: When a Content Provision Service (CPS) receives a front-channel-embed request from an end-user system in Dialogporten, what must it validate before responding?
+      tags:
+        - altinn-dialogporten
+        - hard
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: cd18fc1e47aa
+      expected:
+        answerPattern: (?i)signature|JWK|expired|Origin
+        referenceAnswer: The CPS must validate the received dialog token by checking the token signature against the JWKs published by Dialogporten and by checking that the token is not expired. It may perform additional validations (for example checking the 'actions' claim). It may validate the Origin header, but must not rely on this header alone for authorization purposes, because it can be easily spoofed. Given successful authorization and no other errors, the CPS must respond with 200 OK (or 204 No Content if the body is empty) and a Content-Type header matching the FCE media type (currently text/markdown or text/html).
+        sources:
+          - chunkId: '496074185296'
+            document: b2b80d8afe81
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-studio-01-page-settings-properties
+      split: holdout
+      input: Which settings can be configured in the pages object of Settings.json for a layout set in an Altinn app?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 7df452fd81ec
+      expected:
+        answerPattern: (?i)hideCloseButton|showLanguageSelector|showExpandWidthButton|showProgress|pdfLayoutName|order|groups|excludeFromPdf|expandedWidth
+        referenceAnswer: 'The pages object in Settings.json supports the following settings: hideCloseButton (Boolean) - whether the back-to-inbox button in the upper left corner is hidden; showLanguageSelector (Boolean) - whether the language selector is visible so the user can switch language after opening the form; showExpandWidthButton (Boolean) - whether the expand-width button is visible so the user can expand the page to fill the browser window; showProgress (Boolean) - shows a progress indicator; pdfLayoutName (String) - custom PDF layout configuration; order (Array) - the order of pages/tasks in a side menu; groups (Array) - grouping pages; excludeFromPdf (Array) - pages excluded from the PDF; and expandedWidth (Boolean) - expanded form width.'
+        sources:
+          - chunkId: 896a93369824
+            document: cbda6c6a6886
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-02-sideinnstillinger
+      split: train
+      input: Hvilke innstillinger kan settes i pages-objektet i Settings.json for sidene i en Altinn-app?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: d2209cafc7cc
+      expected:
+        answerPattern: (?i)hideCloseButton|showLanguageSelector|showExpandWidthButton|showProgress|pdfLayoutName|order|groups|excludeFromPdf|expandedWidth
+        referenceAnswer: 'pages-objektet i Settings.json støtter følgende innstillinger: hideCloseButton (Boolean) - om tilbake-til-innboks-knappen øverst i venstre hjørne skal skjules; showLanguageSelector (Boolean) - om språkvelgeren skal vises slik at brukeren kan bytte språk etter at skjemaet er åpnet; showExpandWidthButton (Boolean) - om utvid-bredde-knappen skal vises slik at brukeren kan utvide siden til å fylle hele nettleservinduet; showProgress (Boolean) - viser en fremdriftsindikator; pdfLayoutName (String) - egendefinert PDF-konfigurasjon; order (Array) - rekkefølgen på sider/oppgaver i en sidemeny; groups (Array) - gruppere sider; excludeFromPdf (Array) - sider som utelates fra PDF; og expandedWidth (Boolean) - utvidet skjemabredde.'
+        sources:
+          - chunkId: f98434bf32fc
+            document: 0f6c815488c9
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-studio-03-correspondence-scopes
+      split: validation
+      input: Which Maskinporten scopes does a client need to use the Altinn correspondence (melding) service?
+      tags:
+        - altinn-studio
+        - list
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 9f86a931737c
+      expected:
+        answerPattern: (?i)altinn:serviceowner|altinn:correspondence\.read|altinn:correspondence\.write
+        referenceAnswer: 'To use the correspondence service, a Maskinporten client needs access to the following three scopes: altinn:serviceowner, altinn:correspondence.read, and altinn:correspondence.write.'
+        sources:
+          - chunkId: 0070f8c2866c
+            document: 56f9a976c3ed
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-studio-04-maskinporten-settings-fields
+      split: train
+      input: What fields make up the MaskinportenSettings configuration object in App/appsettings.json for the correspondence client?
+      tags:
+        - altinn-studio
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 1f2453a07f5a
+      expected:
+        answerPattern: (?i)Authority|ClientId|JwkBase64
+        referenceAnswer: 'MaskinportenSettings-objektet i App/appsettings.json består av tre felter: Authority (f.eks. "https://test.maskinporten.no/"), ClientId (klient-id-en) og JwkBase64 (en base64-kodet jwk).'
+        sources:
+          - chunkId: 6d668d720a1c
+            document: 0ac15504e259
+            position: 1
+      grounding: sources-and-answer
+      needsReview: true
+      notes: 'Re-anchor (medium): Chunk shows the Maskinporten config fields Authority, ClientId and JwkBase64 (base64-encoded jwk), but via a ConfigureMaskinportenClient delegate in Program.cs; the page no longer shows an App/appsettings.json MaskinportenSettings block, saying Studio mounts it.'
+    - id: wg-studio-05-options-text-properties
+      split: train
+      input: Which text properties can be set on an option (svaralternativ) in an Altinn app, and which are required?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5ed2cd9de2f8
+      expected:
+        answerPattern: (?i)label|value|description|helpText|required|RadioButtons|Checkboxes
+        referenceAnswer: 'An option can have these text properties: label (the text displayed to the user), value (the value stored in the data model), description, and helpText. Both label and value are required properties for an option. The description and helpText properties provide additional information and can be displayed by the RadioButtons and Checkboxes components. Labels, descriptions and help texts can be plain text or a key pointing to a text resource (and can be dynamic expressions when options come from a repeating structure in the data model).'
+        sources:
+          - chunkId: 8899bfdad9cf
+            document: a7e50c11108a
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-studio-06-options-ways-to-add
+      split: train
+      input: What are the ways to add options to a component in Altinn Studio (manually vs code lists)?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 71fd50fc407f
+      expected:
+        answerPattern: (?i)options|optionsId|source|code list|secure
+        referenceAnswer: 'Options can be added in three ways: (1) Manually using the options property - select "Manuelt", click "Legg til flere", and provide a label and value for each option; (2) From a code list using optionsId - a predefined list referenced by a code list ID, optionally with secure set to true for secured dynamic code lists; and (3) From form data within the app using source, which links the component to a code list based on a repeating group in the data model (with group, label, value, description and helpText).'
+        sources:
+          - chunkId: 548876eddb05
+            document: 639e9b122572
+            position: 0
+          - chunkId: 2939902921c0
+            document: 639e9b122572
+            position: 1
+          - chunkId: 258c04a04c56
+            document: 639e9b122572
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-07-custom-template-fields
+      split: holdout
+      input: What are the properties of the template.json file for a custom Altinn Studio template, and which are required?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: d50859b0c399
+      expected:
+        answerPattern: (?i)schemaVersion|id|owner|name|description|remove|packageReferences|nextSteps
+        referenceAnswer: 'The template.json file has these properties: schemaVersion (string, required) - which JSON Schema version the template follows, currently only 0.1 is supported; id (string, required) - unique ID for the template; owner (string, required) - owner of the template (organization short name); name (string, required) - name of the template; description (string, required) - description of the template; remove (array, optional) - list of relative file paths or globs to remove from the application repo; packageReferences (array, optional) - list of NuGet packages to add to specified .csproj files; and nextSteps (array, optional) - list of next steps to guide users after the template is applied.'
+        sources:
+          - chunkId: aec3c51c7e95
+            document: 0a6f342ffad7
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-08-packagereferences-fields
+      split: train
+      input: What fields does each entry in the packageReferences array of a custom template require?
+      tags:
+        - altinn-studio
+        - list
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 4dc141857cd4
+      expected:
+        answerPattern: (?i)project|include|version
+        referenceAnswer: 'Hvert element i packageReferences-arrayet krever tre felter, alle påkrevd: project (string) - relativ bane eller glob-mønster til .csproj-fil(er), absolutte baner er ikke tillatt; include (string) - NuGet-pakkenavn (f.eks. "Newtonsoft.Json"); og version (string) - pakkeversjon (f.eks. "1.2.3", "1.2.3-preview", "[1.2.3]", "1.2.*"). Hvis pakken finnes oppdateres versjonen; finnes den ikke legges den til i en eksisterende eller ny ItemGroup, og prosjektmønsteret må matche nøyaktig én .csproj-fil.'
+        sources:
+          - chunkId: 6bc695548de6
+            document: 0a3be2299806
+            position: 4
+      grounding: sources-and-answer
+    - id: wg-studio-09-footer-component-types
+      split: train
+      input: Which component types can be added to the footer in an Altinn app, and what properties do they have?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: e634cc87c46b
+      expected:
+        answerPattern: (?i)Email|Phone|Link|Text|type|title|target|icon
+        referenceAnswer: 'The footer supports four component types: Email (properties: type, title, target = the email address), Phone (type, title, target = the phone number), Link (type, title, target = the URL, and icon which is one of information, email or phone), and Text (type and title; the Text title supports formatting whereas Email, Phone and Link titles do not). The footer is defined in App/ui/footer.json and new components are added to the footer array.'
+        sources:
+          - chunkId: 46b943e17258
+            document: 60c77b804ae6
+            position: 0
+          - chunkId: baaa77d9c707
+            document: 60c77b804ae6
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-studio-10-footer-komponenter
+      split: validation
+      input: Hvilke komponenttyper kan legges til i bunnteksten (footer) i en Altinn-app, og hvilke egenskaper har de?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 202e00ceb574
+      expected:
+        answerPattern: (?i)Email|Phone|Link|Text|type|title|target|icon
+        referenceAnswer: 'Bunnteksten støtter fire komponenttyper: Email (egenskaper: type, title, target = e-postadressen), Phone (type, title, target = telefonnummeret), Link (type, title, target = URLen, og icon som er en av information, email eller phone) og Text (type og title; title for Text støtter formattering, mens title for Email, Phone og Link ikke gjør det). Bunnteksten defineres i App/ui/footer.json, og nye komponenter legges til i footer-listen.'
+        sources:
+          - chunkId: 02ad68fa89f9
+            document: 7c559dac74bb
+            position: 0
+          - chunkId: 633e5b741b0b
+            document: 7c559dac74bb
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-studio-11-file-validation-steps
+      split: validation
+      input: Hvordan tar jeg i bruk MIME-type-validering av filopplastinger i en Altinn-app, og hvilke steg kreves?
+      tags:
+        - altinn-studio
+        - extraction
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 615cd25de844
+      expected:
+        answerPattern: (?i)Altinn\.FileAnalyzers|AddMimeTypeValidation|enabledFileAnalysers|enabledFileValidators|mimeTypeAnalyser|mimeTypeValidator|JsonObjectInDataResponse
+        referenceAnswer: 'For å ta i bruk MIME-type-validering kreves fire steg: (1) Legg til en referanse til Altinn.FileAnalyzers NuGet-pakken ved å kjøre `nuget install Altinn.FileAnalyzers` i App-mappen; (2) Registrer tjenesten med `services.AddMimeTypeValidation();`; (3) Konfigurer validatoren per datatype i applicationmetadata.json ved å sette enabledFileAnalysers til ["mimeTypeAnalyser"] og enabledFileValidators til ["mimeTypeValidator"] (sammen med f.eks. allowedContentTypes, taskId, maxSize, maxCount, minCount); og (4) Legg til støtte for JSON-objekter i dataresponsen ved å sette FeatureManagement.JsonObjectInDataResponse til true, slik at frontend ser etter JSON i svaret for å gi en feilmelding.'
+        sources:
+          - chunkId: a5db0b81b628
+            document: bf17e59d131e
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-12-accordiongroup-component-types
+      split: validation
+      input: Which component types appear in the AccordionGroup layout example in the Altinn component reference?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: ad3766fbf4d6
+      expected:
+        answerPattern: (?i)AccordionGroup|Accordion|Paragraph|Button
+        referenceAnswer: 'The AccordionGroup layout example (in App/ui/layouts/{page}.json) uses four component types: AccordionGroup (the parent, with children accordion1 and accordion2), Accordion (accordion1 and accordion2, the latter with headingLevel 2), Paragraph (paragraph1, paragraph2 and paragraph3), and Button (the ok-button). The AccordionGroup contains Accordion children, and each Accordion contains Paragraph and/or Button children.'
+        sources:
+          - chunkId: 69fe7c4185f9
+            document: 3f7001eab992
+            position: 4
+      grounding: sources-and-answer
+    - id: wg-studio-13-multipage-group
+      split: validation
+      input: How do I split the fill-out of a repeating group over multiple pages in an Altinn app?
+      tags:
+        - altinn-studio
+        - compound
+        - extraction
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 528fad885093
+      expected:
+        answerPattern: (?i)children|prefix|0:|1:|multiPage|edit|repeating
+        referenceAnswer: 'To split a repeating group''s fill-out over multiple pages, prefix each component in the children list with a number indicating which page it appears on, followed by a colon. The count starts at 0, so components on the first page are prefixed 0:, the second page 1:, and so on. In addition you must set "multiPage": true in the edit parameter. This functionality is only available for repeating groups and only for top-level groups (not nested groups); navigation happens within the layout and updates only the display inside the group''s editing area. A mode such as hideTable can also be set to hide the table while editing.'
+        sources:
+          - chunkId: adf5f29b80d7
+            document: 9e7ade138794
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-studio-14-multipage-gruppe
+      split: train
+      input: Hvordan deler jeg opp utfyllingen av en repeterende gruppe over flere sider i en Altinn-app?
+      tags:
+        - altinn-studio
+        - compound
+        - extraction
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: feeb93dae826
+      expected:
+        answerPattern: (?i)children|prefiks|0:|1:|multiPage|edit|repeterende
+        referenceAnswer: 'For å dele opp utfyllingen av en repeterende gruppe over flere sider må du prefikse hver komponent i children-listen med et tall som tilsier hvilken side komponenten skal vises på, etterfulgt av kolon. Tellingen starter på 0, så komponenter på første side prefikses med 0:, andre side med 1:, osv. I tillegg må du sette "multiPage": true i edit-parameteren. Funksjonaliteten er kun tilgjengelig for repeterende grupper og kun for grupper på øverste nivå (ikke grupper i grupper); navigeringen skjer innad i en layout og oppdaterer kun visningen inne i redigeringsflaten for gruppen. Man kan også sette en mode som hideTable for å skjule tabellen under redigering.'
+        sources:
+          - chunkId: f11f824ab86a
+            document: 8c8db62ec63b
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-studio-15-list-component-properties
+      split: validation
+      input: Which properties does the List component support in Altinn app frontend, and which are required?
+      tags:
+        - altinn-studio
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 687b55608c7f
+      expected:
+        answerPattern: (?i)id|type|alternatives|default|dataListId|tableHeaders|tableHeadersMobile|sortableColumns|bindingToShowInSummary|pagination|secure|mapping
+        referenceAnswer:
+          "The List component's required properties are id, type, dataListId and tableHeaders. Its available properties are: id, type, dataModelBindings, textResourceBindings (with textResourceBindings.title), bindingToShowInSummary (the binding whose value is shown in the summary, which must be one of the dataModelBindings), dataListId (the id used to retrieve the datalist from the backend), grid (with gridSettings.innerGrid and gridSettings.labelGrid), hidden, mapping (maps data model paths to query parameters when fetching list data), pageBreak (with pageBreak.breakAfter and pageBreak.breakBefore), pagination (optional; when it is supplied, both pagination.alternatives, the page sizes the user can choose from, and pagination.default, the initial page size, are required), renderAsSummary, secure (whether options are instance aware), sortableColumns (columns that are sortable), tableHeaders (maps datalist fields to header names) and tableHeadersMobile (columns shown in mobile
+          view)."
+        sources:
+          - chunkId: a44fd573c2e1
+            document: 03afa2b96f40
+            position: 2
+          - chunkId: fea4234d01b7
+            document: 03afa2b96f40
+            position: 3
+      grounding: sources-and-answer
+      notes: "Re-anchor (medium): The property table (id through tableHeadersMobile) spans both chunks, but the current page lists required properties as id, type, dataListId, tableHeaders rather than the reference's id, type, alternatives, default (alternatives/default appear only as required sub-props of pagination). Reference answer updated to the current docs on 2026-10-28."
+    - id: wg-studio-16-textarea-properties
+      split: train
+      input: What are the required properties of the TextArea component in Altinn app frontend?
+      tags:
+        - altinn-studio
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: a7707e26c4c9
+      expected:
+        answerPattern: (?i)id|type|dataModelBindings
+        referenceAnswer: The required properties of the TextArea component are id, type, and dataModelBindings.
+        sources:
+          - chunkId: 78a5a461fcc1
+            document: a7d9b878f05b
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-17-process-actions-bpmn
+      split: holdout
+      input: Hvordan legger jeg til egendefinerte handlinger (actions) på en oppgave i prosessen til en Altinn-app?
+      tags:
+        - altinn-studio
+        - extraction
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: d700ea570a08
+      expected:
+        answerPattern: (?i)process\.bpmn|altinn:action|taskExtension|processAction|policy\.xml
+        referenceAnswer: For å legge til handlinger på en oppgave endrer du filen App/config/process/process.bpmn og legger til ønskede handlinger inne i en altinn:actions-blokk under altinn:taskExtension i oppgaven (f.eks. <altinn:action>demo</altinn:action> og <altinn:action type="processAction">custom</altinn:action>). type-attributtet processAction er standardverdien, så en handling uten oppgitt type er også processAction. I tillegg må brukerne gis rettigheter til å utføre handlingene, noe som defineres i policy.xml med en XACML-regel (Rule med Effect="Permit") som matcher rolle, org, app, task og action-id.
+        sources:
+          - chunkId: 04a114aa26ff
+            document: 539c80f0c8ce
+            position: 1
+          - chunkId: 3810d4703a94
+            document: 539c80f0c8ce
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-studio-18-consume-api-registration
+      split: holdout
+      input: How do I register and inject a custom HTTP client (e.g. CountryClient) so it can be used in DataProcessingHandler in an Altinn app?
+      tags:
+        - altinn-studio
+        - extraction
+        - hard
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5b296af8dff1
+      expected:
+        answerPattern: (?i)AddHttpClient|RegisterCustomAppServices|ProcessDataWrite|DataProcessingHandler|App\.cs|ProcessDataRead
+        referenceAnswer: Register the client in App/Program.cs (.NET 6) or App/Startup.cs (.NET 5) inside RegisterCustomAppServices using services.AddHttpClient<ICountryClient, CountryClient>(), and add the relevant using statements. Then make the client available in DataProcessingHandler.cs by creating a constructor, adding a private field, and injecting the client (e.g. ICountryClient) into the constructor. Use the client in the ProcessDataWrite method to enrich the form data. Because DataProcessingHandler is instantiated in App.cs, you must inject the dependency (e.g. ICountryClient) as the last parameter of the App.cs constructor and pass it into the new DataProcessingHandler(...). Note that stateless apps do not call ProcessDataWrite - use ProcessDataRead instead. Responses can be cached (e.g. with IMemoryCache and a 24-hour expiration) in the client to avoid repeated API calls.
+        sources:
+          - chunkId: cdb69ef52625
+            document: f112c1bfe0f2
+            position: 4
+          - chunkId: ffab464a29f1
+            document: f112c1bfe0f2
+            position: 5
+      grounding: sources-and-answer
+    - id: wg-studio-19-map-component-center
+      split: validation
+      input: Hvilke egenskaper styrer kartets midtpunkt og kartlag for Map-komponenten i Altinn?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 2237266760ed
+      expected:
+        answerPattern: (?i)centerLocation|latitude|longitude|layers|attribution|subdomains|url
+        referenceAnswer: For Map-komponenten settes kartets midtpunkt med centerLocation (et objekt med centerLocation.latitude som setter breddegraden og centerLocation.longitude som setter lengdegraden). Kartlag defineres med layers (en liste med kartlag), der hvert lag har layers.attribution (tekst som viser hvor kartlaget hentes fra), layers.subdomains (liste over underdomener for å balansere belastning på map-tiling-servere, der en tilfeldig server erstatter {s} i URL-en) og layers.url (URL-en til kartlaget).
+        sources:
+          - chunkId: db188fb5631c
+            document: 085b6c73ce7b
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-studio-20-layout-component-common-props
+      split: validation
+      input: Hvilke felles layout-egenskaper finnes for komponenter i Altinn (id, type, required osv.)?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 4daf5719c0f6
+      expected:
+        answerPattern: (?i)id|type|required|readOnly|renderAsSummary|hidden|textResourceBindings|dataModelBindings|triggers|labelSettings|grid|pageBreak
+        referenceAnswer: 'De felles layout-egenskapene for komponenter er: id (string) - komponentens ID, unik innenfor layout-settet, kan ikke ende med <bindestrek><nummer>; type (string enum) - komponenttype; required (boolean) - om komponenten er påkrevd, standard false; readOnly (boolean) - om komponenten vises som kun lese, standard false; renderAsSummary (boolean) - om komponenten vises som sammendrag, standard false; hidden (boolean) - om komponenten skjules, standard false; textResourceBindings (object) - tekstressursbindinger; dataModelBindings (object) - datamodellbindinger; triggers (array) - handlinger som utløses når data endres; labelSettings (object) - innstillinger for hvordan etiketten vises; grid (object) - innstillinger for komponentens rutenett for horisontal justering; og pageBreak (object) - kun PDF, om et sideskift legges til før eller etter komponenten.'
+        sources:
+          - chunkId: c1ba1c2df8cb
+            document: 2ab49b15d6b4
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-studio-21-eformidling-metadata
+      split: train
+      input: How do I create the shipment message metadata for eFormidling in an Altinn app?
+      tags:
+        - altinn-studio
+        - compound
+        - extraction
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6910f0e994f1
+      expected:
+        answerPattern: (?i)IEFormidlingMetadata|GenerateEFormidlingMetadata|Program\.cs|arkivmelding
+        referenceAnswer: It is the application developer's responsibility to create the shipment message. To do so, create a class that implements the IEFormidlingMetadata interface and builds your message in the GenerateEFormidlingMetadata method (which returns a tuple of the metadata filename and a Stream), replacing YourMessageType and yourMessage with your shipment message type. Remember to register the class in Program.cs. The documentation provides an example using the arkivmelding message type (based on arkivmelding.xsd), which only includes the required parts of the arkivmelding; the message is serialized to XML with application/xml content type.
+        sources:
+          - chunkId: 5c294e559d16
+            document: 6ce685f443e8
+            position: 4
+      grounding: sources-and-answer
+    - id: wg-studio-22-instance-create-notification
+      split: train
+      input: What does the notification object in the /instances/create request body contain for customizing SMS and email in an Altinn app?
+      tags:
+        - altinn-studio
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: d16adbac6d99
+      expected:
+        answerPattern: (?i)notificationChannel|customSms|customEmail|senderName|subject|body|instanceOwner
+        referenceAnswer: 'In the /instances/create request body, alongside instanceOwner, the notification object contains: notificationChannel (a numeric channel, e.g. 4); customSms, which has senderName and a text object with localized strings (nb, nn, en); and customEmail, which has a subject object and a body object, each with localized strings (nb, nn, en). The same notification structure is used in the multipart /instances request.'
+        sources:
+          - chunkId: 5989a38a097d
+            document: e031cebb6b54
+            position: 1
+      grounding: sources-and-answer
+      needsReview: true
+      notes: 'Re-anchor (low): Chunk only says a notification field was added to POST /instances/create and multipart /instances to set channel and optional custom texts; no candidate shows customSms (senderName, text) or customEmail (subject, body) structure.'
+    - id: wg-authz-01-client-admin-api-operations
+      split: holdout
+      input: What operations does the Altinn client administration (client delegations) API let you perform?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 33f1089a6188
+      expected:
+        answerPattern: (?i)add|users|client rights|delegating access packages|list users
+        referenceAnswer: 'The API lets you: (1) add new users in the organisation; (2) give users client rights for a client by delegating access packages; and (3) list users with rights for a client. To use the API you must be signed in as client administrator for the service provider (via an ID-porten client whose token is exchanged for an Altinn token).'
+        sources:
+          - chunkId: ba5eac619864
+            document: 56057a61e50a
+            position: 12
+      grounding: sources-and-answer
+    - id: wg-authz-02-apischeme-required-attributes-en
+      split: train
+      input: Which attributes are required when defining a delegable API Scheme (Maskinporten schema) resource in the Altinn Resource Registry?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5dd5a05eaab2
+      expected:
+        answerPattern: (?i)identifier|title|description|rightDescription|resourceReferences|delegable|visible|hasCompetentAuthority|resourceType
+        referenceAnswer: 'The necessary attributes are: identifier (globally unique ID, also used in policy); title (must be provided for en, nb and nn); description (must be provided for en, nb and nn); rightDescription (delegation description, for en, nb and nn); resourceReferences (a reference with referenceType MaskinportenScope); delegable (must be true to be delegable to a provider); visible (must be true to be delegable to a provider); hasCompetentAuthority (the service owner, set with organization number and service owner code); and resourceType (must be set to MaskinportenSchema).'
+        sources:
+          - chunkId: 896acb73764e
+            document: 70821dbf6efc
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-03-apischeme-required-attributes-nb
+      split: holdout
+      input: Hvilke attributter er nødvendige når man definerer et delegerbart API Scheme som ressurs i Altinn Ressursregister?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 423412a375b5
+      expected:
+        answerPattern: (?i)identifier|title|description|rightDescription|resourceReferences|delegable|visible|hasCompetentAuthority|resourceType
+        referenceAnswer: 'De nødvendige attributtene er: identifier (globalt unik ID for ressurs, brukes også i policy); title (tittel, må oppgis for en, nb og nn); description (beskrivelse, må oppgis for en, nb og nn); rightDescription (delegeringsbeskrivelse, må oppgis for en, nb og nn); resourceReferences (en resource reference med referencetype MaskinportenScope); delegable (må settes til true for at scope skal kunne delegeres til leverandør); visible (må settes til true for at scope skal kunne delegeres til leverandør); hasCompetentAuthority (definerer tjenesteeier, settes med organisasjonsnummer og riktig tjenesteeierkode); og resourceType (må settes til MaskinportenSchema).'
+        sources:
+          - chunkId: 7998be8b8f31
+            document: b4410b5971f3
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-04-apischeme-policy-rule-roles-en
+      split: holdout
+      input: Which roles and action must the policy grant so an API Scheme can be delegated to a provider in Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5dd5a05eaab2
+      expected:
+        answerPattern: (?i)APIADM|scopeaccess|APIADMNUF
+        referenceAnswer: The policy must have a rule granting the APIADM role the right to the action scopeaccess (ScopeAccess). If the contact person for NUF should also be able to delegate, the APIADMNUF role must be added as well.
+        sources:
+          - chunkId: da03831bac23
+            document: 70821dbf6efc
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-authz-05-systemregister-scopes-nb
+      split: train
+      input: Hvilke scopes trenger man for å ta i bruk systembruker-API-et i Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: a004b5ffa603
+      expected:
+        answerPattern: (?i)systemuser\.request\.read|systemuser\.request\.write|systemregister\.write|clientdelegations\.read|clientdelegations\.write
+        referenceAnswer: 'For systembruker får du tilgang til scopene: altinn:authentication/systemuser.request.read, altinn:authentication/systemuser.request.write og altinn:authentication/systemregister.write. Dersom sluttbrukersystemet skal gjøre klientdelegering via API, trengs i tillegg: altinn:clientdelegations.read og altinn:clientdelegations.write.'
+        sources:
+          - chunkId: 6d49e920b858
+            document: c00bc53f9f19
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-authz-06-systemregister-fields-nb
+      split: train
+      input: Hvilke felter må defineres i JSON-nyttelasten når man registrerer et sluttbrukersystem i Altinns systemregister?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 506493584a14
+      expected:
+        answerPattern: (?i)id|vendor|name|description|rights|accessPackages|clientId|isVisible|allowedredirecturls
+        referenceAnswer: 'JSON-nyttelasten må definere: id (unik identifikator på formatet {systemleverandørorgnr}_{valgt navn}); vendor (organisasjonsnummeret til systemleverandøren, ID satt til 0192:{orgnr}); name og description (synlige tekster, oppgitt for nb, nn og en); rights (individuelle ressurser, f.eks. urn:altinn:resource) og/eller accessPackages (forhåndsdefinerte tilgangspakker); clientId (liste med klient-ID-er som UUID-er fra Maskinporten); isVisible (true/false for synlighet i portalen); og allowedredirecturls (valgfri liste med godkjente omdirigerings-URL-er, kan utelates eller settes som tom liste).'
+        sources:
+          - chunkId: 9c76086b3d8b
+            document: b635bfc75bca
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-07-systemregister-fields-en
+      split: train
+      input: Which fields must be defined in the JSON payload when registering an end-user system in Altinn's system registry?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 1be3faaa6601
+      expected:
+        answerPattern: (?i)id|vendor|name|description|rights|accessPackages|clientId|isVisible|allowedredirecturls
+        referenceAnswer: "The JSON payload must define: id (a unique identifier on the format {systemsupplier_orgnr}_{chosen_name}); vendor (the system supplier's organization number, with ID set to 0192:{orgnr}); name and description (visible texts provided for nb, nn and en); rights (individual resources, e.g. urn:altinn:resource) and/or accessPackages (predefined access packages); clientId (a list of client ID UUIDs generated in Maskinporten); isVisible (true/false for portal visibility); and allowedredirecturls (an optional list of exact approved redirect URLs, which can be omitted or set as an empty list)."
+        sources:
+          - chunkId: c0d2e251f469
+            document: be88bc147b2f
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-08-systemuser-token-values-nb
+      split: validation
+      input: Hvilke verdier i et systembrukertoken er viktige for tjenesteeier i Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: '63528e131071'
+      expected:
+        answerPattern: (?i)systemuser_id|systemuser_org|system_id|consumer
+        referenceAnswer: 'Verdiene som er viktige for tjenesteeier er: authorization_details:systemuser_id (unik id for systembrukeren — den Altinn trenger for å autorisere tilgang, og som har fått delegert tilganger); authorization_details:systemuser_org:id (organisasjonen som har opprettet systembrukeren); authorization_details:system_id (referanse til systemet systembrukeren peker på); og Consumer:id (organisasjonsnummer til systemleverandøren som har autentisert seg mot Maskinporten).'
+        sources:
+          - chunkId: cfe4bcd63323
+            document: 80811b6552c5
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-authz-09-vendor-request-prerequisites-nb
+      split: validation
+      input: Hva må være på plass før du sender en leverandørstyrt forespørsel om å opprette en systembruker for ditt eget system i Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 23a4cf26e313
+      expected:
+        answerPattern: (?i)partyOrgNo|organisasjonsnummer|accessPackages|tilgangspakker|rights|enkeltrettigheter|redirectUrl|integrationTitle
+        referenceAnswer: 'Før du initierer den leverandørstyrte forespørselen må du: kjenne organisasjonsnummeret (partyOrgNo) til sluttbrukerkunden; ha definert hvilke tilgangspakker (accessPackages) eller enkeltrettigheter (rights) systembrukeren trenger; (valgfritt) ha forhåndsregistrert redirectUrl-en på systemet ditt dersom den skal benyttes; og (valgfritt) kunne sette integrationTitle hvis du ønsker et spesifikt navn på systembrukeren (ellers får den samme navn som systemet).'
+        sources:
+          - chunkId: d678ae8e5dd0
+            document: bca02e350d58
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-10-vendor-request-prerequisites-en
+      split: train
+      input: What must you have in place before sending a vendor-initiated request to create a system user for your own system in Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6be6764fadc0
+      expected:
+        answerPattern: (?i)partyOrgNo|organization number|accessPackages|access packages|rights|individual rights|redirectUrl|integrationTitle
+        referenceAnswer: 'Before initiating the vendor-controlled request you must: know the organization number (partyOrgNo) of the end-user customer; have defined which access packages (accessPackages) or individual rights (rights) the system user needs; (optionally) have pre-registered the redirectUrl in your system if it is to be used; and (optionally) set integrationTitle if you want a specific name for the system user (otherwise it gets the same name as the system).'
+        sources:
+          - chunkId: c9a1bdc51a87
+            document: 15b6e432236f
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-11-client-system-key-differences-en
+      split: train
+      input: What are the key differences when creating a system user for a client system (e.g. an accounting system) in Altinn?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6be6764fadc0
+      expected:
+        answerPattern: (?i)vendor-controlled|accessPackages|rights|empty|manual
+        referenceAnswer: 'For a system user for a client system: only vendor-controlled creation is possible; you can only specify required access via accessPackages, not rights (the rights list must be empty or omitted); and after approval an additional manual step is required, where the end-user must log in to Altinn and delegate the clients to the newly created system user.'
+        sources:
+          - chunkId: c9a1bdc51a87
+            document: 15b6e432236f
+            position: 1
+          - chunkId: 9ee3ec71d787
+            document: 15b6e432236f
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-authz-12-connections-api-operations-en
+      split: holdout
+      input: Which access management connection API operations are available for delegating and inspecting access packages, roles and resources between two parties in Altinn?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: ad357cccd904
+      expected:
+        answerPattern: (?i)delegate access package|remove access package|retrieve roles|retrieve resources|remove resource|individual rights|delegationcheck|delegation eligibility
+        referenceAnswer: 'The connection API operations described are: Delegate access package (POST .../connections/accesspackages); Remove access package (DELETE .../connections/accesspackages); Retrieve roles for a connection (GET .../connections/roles); Retrieve resources for a connection (GET .../connections/resources); Remove resource delegation (DELETE .../connections/resources); Retrieve individual rights for a resource (GET .../connections/resources/rights); and Check delegation eligibility for a resource (GET .../connections/resources/delegationcheck).'
+        sources:
+          - chunkId: ae04589f761b
+            document: 5f908767469a
+            position: 10
+          - chunkId: b0e05d745071
+            document: 5f908767469a
+            position: 11
+      grounding: sources-and-answer
+    - id: wg-authz-13-connections-api-operations-nb
+      split: holdout
+      input: Hvilke API-operasjoner finnes for å delegere og hente roller, ressurser og tilgangspakker for en tilkobling mellom to parter i Altinn?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6d1c5124b842
+      expected:
+        answerPattern: (?i)delegere tilgangspakke|fjerne tilgangspakke|hente roller|hente ressurser|fjerne ressursdelegering|enkeltrettigheter|delegeringsmulighet|delegationcheck
+        referenceAnswer: 'Operasjonene som beskrives er: Delegere tilgangspakke (POST .../connections/accesspackages); Fjerne tilgangspakke (DELETE .../connections/accesspackages); Hente roller for en tilkobling (GET .../connections/roles); Hente ressurser for en tilkobling (GET .../connections/resources); Fjerne ressursdelegering (DELETE .../connections/resources); Hente enkeltrettigheter for en ressurs (GET .../connections/resources/rights); og Kontrollere delegeringsmulighet for ressurs (GET .../connections/resources/delegationcheck).'
+        sources:
+          - chunkId: fe8808ab1803
+            document: fb8a06b8c758
+            position: 10
+          - chunkId: d697b2330edf
+            document: fb8a06b8c758
+            position: 11
+      grounding: sources-and-answer
+    - id: wg-authz-14-skatt-avgift-accesspackages-nb
+      split: holdout
+      input: Hvilke tilgangspakker finnes i Altinn-området skatt, avgift, regnskap og toll?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: fcb139b37dce
+      expected:
+        answerPattern: (?i)skatt-naering|skattegrunnlag|merverdiavgift|motorvognavgift|saeravgifter|krav-og-utlegg|kreditt-og-oppgjoer|regnskap-okonomi-rapport|revisorattesterer|toll|revisjon|mva-kompensasjon
+        referenceAnswer: 'Tilgangspakkene er: Skatt næring (skatt-naering); Skattegrunnlag (skattegrunnlag); Merverdiavgift (merverdiavgift); Motorvognavgifter (motorvognavgift); Særavgifter (saeravgifter); Krav, betalinger og utlegg (krav-og-utlegg); Kreditt- og oppgjørsordninger (kreditt-og-oppgjoer); Regnskap og økonomirapportering (regnskap-okonomi-rapport); Revisorattesterer (reviorattesterer); Toll (toll); Revisjon (revisjon); og MVA-kompensasjon revisorattesterer (mva-kompensasjon-revisorattesterer).'
+        sources:
+          - chunkId: 4e909471dd72
+            document: 01b50d94d36a
+            position: 0
+          - chunkId: e49df8642620
+            document: 01b50d94d36a
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-15-oppvekst-utdanning-accesspackages-nb
+      split: train
+      input: Hvilke tilgangspakker finnes i Altinn-området oppvekst og utdanning?
+      tags:
+        - altinn-authorization
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: '7451e7375050'
+      expected:
+        answerPattern: (?i)barnehageeier|barnehageleder|barnehagemyndighet|statsforvalter-barnehage|statsforvalter-skole|skoleeier|skoleleder|opplaeringskontorleder|ppt-leder|sfo-leder|hoyere-utdanning|godkjenning-av-personell|godkjenning-av-utdanningsvirksomhet
+        referenceAnswer: 'Tilgangspakkene er: Barnehageeier (barnehageeier); Barnehageleder (barnehageleder); Barnehagemyndighet (barnehagemyndighet); Statsforvalter - barnehage (statsforvalter-barnehage); Statsforvalter - skole og opplæring (statsforvalter-skole-og-opplearing); Skoleeier (skoleeier); Skoleleder (skoleleder); Opplæringskontorleder (opplaeringskontorleder); PPT-leder (ppt-leder); SFO-leder (sfo-leder); Høyere utdanning og høyere yrkesfaglig utdanning (hoyere-utdanning-og-hoyere-yrkesfaglig-utdanning); Godkjenning av personell (godkjenning-av-personell); og Godkjenning av utdanningsvirksomhet (godkjenning-av-utdanningsvirksomhet).'
+        sources:
+          - chunkId: 4a8434f7dfb4
+            document: 619dfcfb5555
+            position: 0
+          - chunkId: f7378e5db776
+            document: 619dfcfb5555
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-authz-16-accessmanagement-rights-sources-nb
+      split: train
+      input: Hvilke typer rettigheter returnerer outbound/inbound rights-API-et i Altinn tilgangsstyring?
+      tags:
+        - altinn-authorization
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: a84ccf4a08ab
+      expected:
+        answerPattern: (?i)policy|tjenesteeier|ER-roller|Altinn-roller|delegerte
+        referenceAnswer: 'Responsen inneholder alle rettigheter for relevante relasjoner: rettigheter fra policy definert av tjenesteeier (f.eks. ER-roller eller Altinn-roller), og rettigheter fra delegerte policyer.'
+        sources:
+          - chunkId: 3f3877ea7ec3
+            document: 8a761d3f5cbb
+            position: 4
+      grounding: sources-and-answer
+    - id: wg-dialog-01-cloud-event-types
+      split: holdout
+      input: Hvilke hendelsestyper (cloud event types) produserer Dialogporten direkte, og hvilke sendes ut når tjenesteeier oppdaterer aktivitetsloggen?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 86c5c8bc181c
+      expected:
+        answerPattern: (?i)dialog\.created|dialog\.updated|dialog\.deleted|dialog\.restored|dialog\.seen|transmission\.created|activity\.created|payment-made|signature-provided|sent-to-signing|form-submitted|form-saved
+        referenceAnswer:
+          'Hendelser produsert direkte av Dialogporten: dialogporten.dialog.created.v1 (ny dialog opprettet), dialogporten.dialog.updated.v1 (eksisterende dialog oppdatert), dialogporten.dialog.deleted.v1 (dialog slettet), dialogporten.dialog.restored.v1 (dialog gjenopprettet), dialogporten.dialog.seen.v1 (dialog sett/åpnet av en sluttbruker) og dialogporten.dialog.transmission.created.v1 (forsendelse opprettet). I tillegg sendes følgende hendelser ut når tjenesteeier oppdaterer aktivitetsloggen: dialogporten.dialog.activity.created.v1, dialogporten.dialog.activity.closed.v1, dialogporten.dialog.activity.information.v1, dialogporten.dialog.activity.transmission-opened.v1, dialogporten.dialog.activity.payment-made.v1, dialogporten.dialog.activity.signature-provided.v1, dialogporten.dialog.activity.dialog-opened.v1, dialogporten.dialog.activity.dialog-deleted.v1, dialogporten.dialog.activity.dialog-restored.v1, dialogporten.dialog.activity.sent-to-signing.v1, dialogporten.dialog.activity.sent-to-form-fill.v1,
+          dialogporten.dialog.activity.sent-to-send-in.v1, dialogporten.dialog.activity.sent-to-payment.v1, dialogporten.dialog.activity.form-submitted.v1 og dialogporten.dialog.activity.form-saved.v1.'
+        sources:
+          - chunkId: def84c0068e6
+            document: de9324ace44e
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-dialog-02-system-labels
+      split: train
+      input: Hvilke systemetiketter (SystemLabel) finnes i Dialogporten, og hva betyr hver av dem?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: '0bd3e3c5524f'
+      expected:
+        answerPattern: (?i)default|bin|archive|sent|markedasunopened|gjensidig utelukkende|submission|correction
+        referenceAnswer: 'Systemetikettene i Dialogporten er: Default (gjensidig utelukkende med Bin/Archive), Bin (gjensidig utelukkende med Default/Archive), Archive (gjensidig utelukkende med Default/Bin), Sent (legges automatisk til av Dialogporten når en forsendelse av typen Submission eller Correction legges til dialogen; kan ikke legges til eller fjernes av tjenesteeiere eller sluttbrukere) og MarkedAsUnopened (markerer en dialog som uåpnet/ulest; kan settes og fjernes av tjenesteeiere og sluttbrukere). Default, Bin og Archive er påkrevde og gjensidig utelukkende, slik at en dialog bare kan ha én av disse om gangen.'
+        sources:
+          - chunkId: 77f8d31a96c3
+            document: 5d04cb89eab9
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-dialog-03-token-claims
+      split: train
+      input: Which claims are present in a Dialogporten dialog token and what does each one mean?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 4c0303aa6400
+      expected:
+        answerPattern: (?i)consumer|security level|maskinporten|acting on behalf|unique identifier|service resource|authorized actions
+        referenceAnswer: "A Dialogporten dialog token contains the following claims: c (authenticated consumer of Dialogporten; the prefix for individuals, organizations, or self-registered users), l (security level of authentication, e.g. 4), u (optional; if a provider token in Maskinporten has been used, the authenticated provider's organization number), p (whom the consumer is acting on behalf of, i.e. who owns the relevant dialogue), i (unique identifier of the dialogue), s (the service resource that the dialogue refers to), and a (authorized actions/authorization attributes)."
+        sources:
+          - chunkId: 975b82123711
+            document: f4be00a48302
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-dialog-04-app-sync-settings
+      split: validation
+      input: Which syncAdapterSettings properties can be set to true to override the automatic Dialogporten synchronization for an Altinn app, and what does each disable?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: b2d1bc0e83de
+      expected:
+        answerPattern: (?i)disablesync|disablecreate|disabledelete|disableaddactivities|disableaddtransmissions|disablesyncdueat|disablesyncstatus|disablesynccontenttitle|disablesynccontentsummary|disablesyncattachments|disablesyncapiactions|disablesyncguiactions|disablemarkcompletedwhenconfirmed
+        referenceAnswer:
+          'The syncAdapterSettings properties (set to true to override automatic synchronization) are: disableSync (disable all dialog synchronization, overrides all other settings), disableCreate (disable creation of dialogs when app instances are created), disableDelete (disable deletion of dialogs when app instances are deleted), disableAddActivities (disable adding activities), disableAddTransmissions (disable adding transmissions), disableSyncDueAt (disable synchronizing the due at date), disableSyncStatus (disable synchronizing the status), disableSyncContentTitle (disable synchronizing the title), disableSyncContentSummary (disable synchronizing the summary), disableSyncContentAdditionalInformation (disable synchronizing the additional information), disableSyncContentExtendedStatus (disable synchronizing the extended status), disableSyncAttachments (disable synchronizing dialog attachments, only recognized IDs), disableSyncApiActions (disable synchronizing API actions,
+          only recognized IDs), disableSyncGuiActions (disable synchronizing GUI actions, only recognized IDs), and disableMarkCompletedWhenConfirmed (disable setting dialog status to completed when app instance is ArchivedConfirmed).'
+        sources:
+          - chunkId: 07cb47abde1b
+            document: 1c5618e16353
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-dialog-05-instance-status-summaries
+      split: train
+      input: Hvilke instansstatuser har Dialogporten innebygde standard sammendragstekster for når ingen tilpassede applikasjonstekstnøkler finnes?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 1689227901f5
+      expected:
+        answerPattern: (?i)archivedunconfirmed|archivedconfirmed|rejected|awaitingserviceownerfeedback|awaitingconfirmation|awaitingsignature|awaitingadditionaluserinput|awaitinginitialuserinput
+        referenceAnswer: 'Når ingen tilpassede applikasjonstekstnøkler finnes, gir systemet innebygde standard sammendragstekster for følgende instansstatuser: archivedunconfirmed, archivedconfirmed, rejected, awaitingserviceownerfeedback, awaitingconfirmation, awaitingsignature, awaitingadditionaluserinput og awaitinginitialuserinput (default).'
+        sources:
+          - chunkId: ebf4d457dbba
+            document: 093a74b7f38e
+            position: 4
+      grounding: sources-and-answer
+      needsReview: true
+      notes: 'Re-anchor (low): Chunk lists the same instance statuses as valid state components of dp.* text keys, but no candidate contains the built-in default summary texts per status (only default primary/delete/copy action labels survive).'
+    - id: wg-dialog-06-fce-allowed-tags
+      split: validation
+      input: Hvilke HTML-tagger er tillatt i den gjengitte FCE-en (front channel embed) for markdown/HTML eksternt innhold i Dialogporten?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: fa0c4007dd3a
+      expected:
+        answerPattern: (?i)<p>|<em>|<strong>|<ul>|<ol>|<li>|<a>|<code>|<pre>|<blockquote>|<hr>|<h1>|<br>
+        referenceAnswer: 'De tillatte HTML-taggene for FCE-innhold er: <p> (avsnitt), <em> (kursiv/vektlegging), <strong> (fet/sterk vektlegging), <ul>/<ol>/<li> (lister), <a> (lenker), <code> (innebygd kode), <pre><code> (kodeblokker), <blockquote> (sitater), <hr> (horisontal linje/separator), <h1>–<h6> (overskrifter) og <br> (linjeskift). Attributter som forårsaker skriptutførelse er ikke tillatt og må fjernes.'
+        sources:
+          - chunkId: 8005cb2ca40b
+            document: 2862b19a847d
+            position: 4
+      grounding: sources-and-answer
+    - id: wg-dialog-07-fce-handling-steps
+      split: holdout
+      input: What are the basic steps to handle a front channel embed (FCE) in a Dialogporten dialog?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 966cb430c2fa
+      expected:
+        answerPattern: '(?i)get request|authorization: bearer|dialog token|media type|parse|markdown|html|inject'
+        referenceAnswer: 'The basic steps to handle front channel embeds (FCEs) are: 1) Perform a GET request to the indicated URL, supplying the dialog token in an Authorization: Bearer header; 2) Based on the indicated media type, parse the response (usually markdown) and convert it to the presentation format (usually HTML); 3) Inject the converted data into the GUI. Note that there may be several FCEs in a dialog: one (or zero) on a dialog level and one (or zero) per transmission. The endpoints are expected to fully support the CORS protocol, including pre-flight, enabling the use of fetch() and similar APIs.'
+        sources:
+          - chunkId: 6224585b5ce7
+            document: a3d0518bb5d0
+            position: 6
+      grounding: sources-and-answer
+    - id: wg-dialog-08-write-actions-constraints
+      split: holdout
+      input: In Dialogporten, what operations are browser-based GUI actions constrained to by default, and why can't they perform a cross-origin POST?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 06ee7c6dee63
+      expected:
+        answerPattern: (?i)read operations|http get|cross-origin|post|csrf|cross-site request forgery|sso
+        referenceAnswer: Browser-based end-user systems implementing GUI actions are by default constrained to read operations, i.e. navigating to a page or downloading a file, using HTTP GET methods. While cross-origin full-page navigation is not constrained by browsers (enabling SSO and session initialization via redirects), performing a cross-origin POST (submitting a form to an endpoint on a different server) while relying on the same SSO and session initialization mechanisms is not possible in modern browsers or in ID-porten. This is by design, to avoid security issues stemming from cross-site request forgery (CSRF). Custom end-user systems using API actions and Maskinporten or system-user authentication are not constrained by this, since these are browser security measures and not inherent HTTP limitations.
+        sources:
+          - chunkId: ce6df51825e6
+            document: 1102630d93d8
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-dialog-09-json-patch-operations
+      split: holdout
+      input: Hvilke JSON Patch-operasjoner utfører eksempelet for å oppdatere en dialog i Dialogporten, og hvilke begrensninger gjelder for forsendelser og aktiviteter?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 86602ec8605b
+      expected:
+        answerPattern: (?i)rfc 6902|status|completed|summary|guiactions|attachment|replace|remove|uforanderlige|immutable
+        referenceAnswer: 'Dialogporten støtter RFC 6902 JSON Patch. Patch-eksempelet setter status (replace /status til Completed), oppdaterer dialogsammendraget (replace /content/summary/value/1/value), fjerner alle GUI-handlinger (replace /guiActions til en tom liste) og legger til et vedlegg (add /attachments/-). Begrensning: listene over forsendelser og aktiviteter er uforanderlige, så replace- og remove-operasjoner aksepteres ikke på disse egenskapene. Lokaliseringer (f.eks. /content/summary) sorteres leksikografisk etter languageCode, slik at rekkefølgen alltid blir en, nb, nn, og indeks 1 alltid peker på nb.'
+        sources:
+          - chunkId: 27cbc9e33d58
+            document: 123d82ca8c62
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-dialog-10-fce-response-handling
+      split: train
+      input: Når SBS håndterer svaret fra et ILS-endepunkt for en FCE i Dialogporten, hvilke krav gjelder for omdirigeringer, Content-Type og tom responskropp?
+      tags:
+        - altinn-dialogporten
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: fa0c4007dd3a
+      expected:
+        answerPattern: (?i)omdirigering|3xx|minst 5|content-type|tom|empty|204|200 ok
+        referenceAnswer: 'Ved håndtering av svaret må SBS: følge omdirigeringssvar (3xx), men også håndtere uendelige omdirigeringer ved å begrense antall omdirigeringer til minst 5; sørge for at den returnerte Content-Type-headeren samsvarer med FCE-medietypen; håndtere en tom responskropp, der ingen UI-endringer skal skje (slik at ILS kan bruke FCE-er til å utløse eksterne prosesser); og ved et vellykket svar (200 OK) med en ikke-tom kropp, gjengi innholdet og injisere det i brukergrensesnittet. ILS kan svare med 204 No Content når kroppen er tom.'
+        sources:
+          - chunkId: a22434a9f047
+            document: 2862b19a847d
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-dialog-11-migration-status
+      split: validation
+      input: Hvor langt tilbake er data migrert til Dialogporten for Altinn 3-meldinger, Altinn 3 app-instanser, og Altinn 2 arkiverte skjema?
+      tags:
+        - altinn-dialogporten
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 99928673bd67
+      expected:
+        answerPattern: (?i)altinn 3|umiddelbart|sanntid|historiske data|2005|2003|altinn 2|hvert 5\. minutt|arkivert
+        referenceAnswer: 'Alle nye meldinger opprettet i Altinn 3 Melding er tilgjengelige i Dialogporten umiddelbart (ingen migrering nødvendig). Nye app-instanser opprettet i Altinn 3 er tilgjengelige umiddelbart, og endringer synkroniseres i sanntid. Alle historiske data er migrert: eldste migrerte melding er fra 13.09.2005, og eldste arkiverte skjema er fra 28.11.2003. Nylig arkiverte app-instanser opprettet i Altinn 2 migreres i puljer hvert 5. minutt, og skjema som er under utfylling blir ikke migrert før de er arkivert.'
+        sources:
+          - chunkId: 50cd95974c87
+            document: 08929cb2197a
+            position: 2
+      grounding: sources-and-answer
+      notes: 'Re-anchor (medium): Chunk states new A3 messages and app instances are available immediately/synced in real time, A2 archived instances migrate in 5-minute batches, and in-progress forms are not migrated until archived; but the reference''s "migrated back to 1 Jan 2019" is outdated: the page now says all historical data is migrated (oldest message 13.09.2005, oldest archived form 28.11.2003). Reference answer updated to the current docs on 2026-10-28.'
+    - id: wg-corr-01-serviceowner-events
+      split: train
+      input: Which event types does Altinn Correspondence publish for service owners, and when is each one triggered?
+      tags:
+        - altinn-correspondence
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: f8eabe6d3ce3
+      expected:
+        answerPattern: (?i)attachmentinitialized|attachmentpublished|attachmentuploadfailed|attachmentexpired|correspondenceinitialized|correspondencepublished|correspondencepurged|correspondencepublishfailed|notificationcreated|correspondencenotificationcreationfailed|correspondencenotificationfailed|correspondencenotificationallfailed|correspondencenotificationdelivered|correspondencenotificationreminderdelivered
+        referenceAnswer:
+          'For service owners, Altinn Correspondence publishes these event types: no.altinn.correspondence.attachmentinitialized (attachment created and awaiting upload), attachmentpublished (attachment passed malware scanning and is ready for use), attachmentuploadfailed (attachment failed malware scanning), attachmentexpired (attachment expiration time has passed), correspondenceinitialized (correspondence initialized), correspondencepublished (correspondence published and available to the recipient), correspondencepurged (correspondence purged by recipient after publishing or by service owner before publishing), correspondencepublishfailed (correspondence publish failed), notificationcreated (notification order created in Altinn Notification), correspondencenotificationcreationfailed (creation of notification order failed), correspondencenotificationfailed (delivery to one or more notification addresses failed — partial failure), correspondencenotificationallfailed (delivery
+          to all notification addresses failed), correspondencenotificationdelivered (initial notification confirmed delivered), and correspondencenotificationreminderdelivered (reminder notification confirmed delivered).'
+        sources:
+          - chunkId: 24137cd298af
+            document: 7f2866e1b873
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-corr-02-recipient-events
+      split: train
+      input: Hvilke hendelsestyper publiserer Altinn Melding (Correspondence) for hver mottaker, og når utløses de?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 50da0cfe12bd
+      expected:
+        answerPattern: (?i)correspondencepublished|correspondencereceiverread|correspondencereceiverconfirmed|correspondencereceiverneverread|correspondencereceiverneverconfirmed
+        referenceAnswer: 'For hver mottaker publiserer Altinn Melding følgende hendelsestyper: no.altinn.correspondence.correspondencepublished (meldingen er publisert og tilgjengelig — mottaker kan hente innholdet), correspondencereceiverread (mottaker har lest meldingen — spor lesestatus), correspondencereceiverconfirmed (mottaker har bekreftet meldingen — spor bekreftelse av mottak), correspondencereceiverneverread (fristdato passert uten at mottaker leste meldingen — utløs purringer eller eskaleringsflyt) og correspondencereceiverneverconfirmed (fristdato passert uten at mottaker bekreftet meldingen — utløs purringer eller eskaleringsflyt).'
+        sources:
+          - chunkId: 82dbf5b2a638
+            document: 69dd82f541ea
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-corr-03-transmission-types
+      split: train
+      input: What are the valid transmission types and their numeric values when creating a transmission via the Altinn 3 Correspondence API?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 9fc8a7bd7ec2
+      expected:
+        answerPattern: (?i)information|acceptance|rejection|request|alert|decision|submission|correction|dialogportentransmissiontype
+        referenceAnswer: 'The valid transmission types and their numeric values are: Information (1), Acceptance (2), Rejection (3), Request (4), Alert (5), Decision (6), Submission (7), and Correction (8). Transmission type defaults to Information (1) if not set; it can be set by adding a DialogportenTransmissionType external reference when initializing the correspondence, using either the enum name or the numeric value.'
+        sources:
+          - chunkId: 76616c91f4cd
+            document: 2831bffdb4b7
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-corr-05-prepublish-errors
+      split: train
+      input: In the Altinn 3 Correspondence pre-published lifecycle, what validation errors can cause a 400 Bad Request or 401 Unauthorized when initializing a correspondence?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 47faeb95abc7
+      expected:
+        answerPattern: (?i)400 bad request|missing content|empty message fields|invalid format|invalid attachments|invalid dates|invalid language|401 unauthorized|no access to resource|incorrect resource type
+        referenceAnswer: 'During validation of an initialized correspondence, a 400 Bad Request can be caused by: Missing Content, Empty Message Fields, Invalid Format, Invalid Attachments, Invalid Dates, or Invalid Language. A 401 Unauthorized can be caused by: No Access to Resource or Incorrect Resource Type.'
+        sources:
+          - chunkId: 8f73b6259687
+            document: a545215c8e98
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-corr-06-prepublish-recipient-failures
+      split: holdout
+      input: In the Altinn 3 Correspondence pre-published lifecycle, what recipient-status conditions cause a correspondence to be set to Failed during publish validation?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 2b62d135d8d0
+      expected:
+        answerPattern: (?i)recipient reserved in krr|organization not found|organization bankrupt|organization deleted|missing required roles|failed
+        referenceAnswer: 'Under publiseringsvalideringen settes meldingen til status Failed dersom mottakerstatusen er ugyldig av en av følgende grunner: Recipient Reserved in KRR, Organization Not Found, Organization Bankrupt, Organization Deleted, eller Missing Required Roles.'
+        sources:
+          - chunkId: 0e4077df1b40
+            document: 1ad357d9603c
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-corr-07-maskinporten-key-steps
+      split: train
+      input: Which key formats does a Maskinporten client support, and what are the steps to add an authentication key to it in the self-service portal?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 7b21ef47b17d
+      expected:
+        answerPattern: (?i)jwk|pem|public key|private key|secure location|base64|azure key vault|scopes
+        referenceAnswer: 'A Maskinporten client supports JWK and PEM keys. To add an authentication key: locate an existing key or create a new one (you can use the Altinn JWKS tool or another key generator); navigate to the key section on your client page and select Add; in the JWK or PEM format field paste your public key and click Save. Store your private key in a secure location, as it is used to authorize use of the client. If you use Azure Key Vault to store private keys, they must be base64-encoded before uploading. You also need to add the desired scopes to the client before it can be used.'
+        sources:
+          - chunkId: a9bd26526198
+            document: 9d37972da95b
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-corr-08-what-you-get
+      split: train
+      input: Hvilke unike fordeler tilbyr Altinn Correspondence for digital kommunikasjon med offentlige etater?
+      tags:
+        - altinn-correspondence
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 831b2a861032
+      expected:
+        answerPattern: (?i)centralized communication|security|confidentiality|automation|availability|integration|environmentally friendly
+        referenceAnswer: 'Altinn Correspondence offers these unique benefits: Centralized communication (a central hub where all communications with public authorities can be managed from one account, eliminating the need for multiple accounts or platforms); Security and confidentiality (can be used for transferring sensitive information, using strong authentication and encryption to protect user data); Automation of submissions (allows automating submissions such as tax returns and annual accounts, saving time and reducing errors); Availability (Altinn is available around the clock, allowing submitting and receiving documents at any time); Integration with other systems (designed to easily integrate with other systems in both private and public sectors for seamless data flow); and Environmentally friendly (reduces the need for paper-based communication).'
+        sources:
+          - chunkId: c3d55d182dc4
+            document: 17aa54523310
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-api-01-instances-query-params-en
+      split: holdout
+      input: Which query parameters can I use when searching for instances via the Storage instances endpoint?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 9eac3d570118
+      expected:
+        answerPattern: (?i)org|appid|process\.currentTask|process\.isComplete|process\.endEvent|process\.ended|instanceOwner\.partyId|lastChanged|created|visibleAfter|dueBefore|excludeConfirmedBy|status\.isArchived|size|mainVersionInclude|mainVersionExclude|status\.isSoftDeleted|status\.isHardDeleted
+        referenceAnswer: 'The instances endpoint supports these query parameters: org (string), appid (string), process.currentTask (string), process.isComplete (bool), process.endEvent (string, deprecated), process.ended (datetime), instanceOwner.partyId (int), lastChanged (datetime), created (datetime), visibleAfter (datetime), dueBefore (datetime), excludeConfirmedBy (string), status.isArchived (bool), size (int), mainVersionInclude (int), mainVersionExclude (int), status.isSoftDeleted (bool), and status.isHardDeleted (bool). There is also a header input parameter, X-Ai-InstanceOwnerIdentifier (string), to filter on person/organisation number.'
+        sources:
+          - chunkId: f5d7d4e7cf5e
+            document: c830a7ee161b
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-api-02-instances-date-operators-nb
+      split: holdout
+      input: Hvilke operatorer kan jeg bruke på dato/tid-parametere når jeg spør mot instans-endepunktet?
+      tags:
+        - altinn-3-general
+        - list
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6c35ac48bb9c
+      expected:
+        answerPattern: '(?i)gt:|gte:|lt:|lte:|eq:'
+        referenceAnswer: 'For filtrering på tid kan du bruke følgende operatorer: gt: (større enn), gte: (større eller lik), lt: (mindre enn), lte: (mindre enn eller lik) og eq: (lik, kan også være tom). Operatorene kan kombineres for å lage et intervall, for eksempel dueBefore=gt:2019-02&dueBefore=lt:2019-03-01.'
+        sources:
+          - chunkId: 6a9edffc3bb2
+            document: 667cdb09942b
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-api-03-instance-model-fields-en
+      split: holdout
+      input: What fields does the Instance model contain?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: e0a57b6306af
+      expected:
+        answerPattern: (?i)id|instanceOwner|appId|org|selfLinks|dueBefore|visibleAfter|process|status|completeConfirmations|data|presentationTexts|dataValues|created|createdBy|lastChanged|lastChangedBy
+        referenceAnswer: 'The Instance model contains these fields: id, instanceOwner, appId, org, selfLinks, dueBefore, visibleAfter, process, status, completeConfirmations, data, presentationTexts, dataValues, created, createdBy, lastChanged, and lastChangedBy.'
+        sources:
+          - chunkId: e6934d383739
+            document: 510d598b1f83
+            position: 1
+          - chunkId: 6e5488464af9
+            document: 510d598b1f83
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-api-04-app-metadata-fields-en
+      split: validation
+      input: What fields are in the Altinn application metadata model?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: dc28e7230da2
+      expected:
+        answerPattern: (?i)id|versionId|org|title|validFrom|validTo|processId|dataTypes|partyTypesAllowed|autoDeleteOnProcessEnd|presentationFields|dataFields|eFormidling|messageBoxConfig
+        referenceAnswer: 'The application metadata model contains these fields: id, versionId, org, title, validFrom, validTo, processId, dataTypes, partyTypesAllowed, autoDeleteOnProcessEnd, presentationFields, dataFields, eFormidling, and messageBoxConfig.'
+        sources:
+          - chunkId: 68540b173c0a
+            document: 611485a14d21
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-api-05-app-metadata-fields-nb
+      split: train
+      input: Hvilke felter inneholder applikasjonens metadata-modell (app metadata) i Altinn?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 3df2de7a83e9
+      expected:
+        answerPattern: (?i)id|versionId|org|title|validFrom|validTo|processId|dataTypes|partyTypesAllowed|autoDeleteOnProcessEnd|presentationFields|dataFields|eFormidling|messageBoxConfig
+        referenceAnswer: 'Applikasjonens metadata-modell inneholder feltene: id, versionId, org, title, validFrom, validTo, processId, dataTypes, partyTypesAllowed, autoDeleteOnProcessEnd, presentationFields, dataFields, eFormidling og messageBoxConfig.'
+        sources:
+          - chunkId: 9248100c3ab5
+            document: 1300cee898d1
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-api-06-systemregister-validation-errors-en
+      split: validation
+      input: What validation error codes can the system register create/update endpoint return?
+      tags:
+        - altinn-3-general
+        - hard
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 76c53bf9d651
+      expected:
+        answerPattern: (?i)AUTH\.VLD-00000|AUTH\.VLD-00001|AUTH\.VLD-00002|AUTH\.VLD-00003|AUTH\.VLD-00004|AUTH\.VLD-00005|AUTH\.VLD-00006|AUTH\.VLD-00007|AUTH\.VLD-00008|AUTH\.VLD-00009
+        referenceAnswer: "The endpoint can return these validation error codes (all with status 400): AUTH.VLD-00000 (the org number identifier is not valid ISO6523 identifier), AUTH.VLD-00001 (the system id does not match the format orgnumber_xxxx...), AUTH.VLD-00002 (the system id already exists), AUTH.VLD-00003 (one or all the resources in rights is not found in altinn's resource register), AUTH.VLD-00004 (one of the client id is already tagged with an existing system), AUTH.VLD-00005 (one or more of the redirect urls format is not valid), AUTH.VLD-00006 (one or more duplicate rights found), AUTH.VLD-00007 (one or more duplicate access package(s) found), AUTH.VLD-00008 (one or all the accesspackage(s) is not found in altinn's access packages or is not a part of REGN/REVI/Forretningsfører roller), and AUTH.VLD-00009 (one or more resource id is in wrong format)."
+        sources:
+          - chunkId: ea188655c26e
+            document: ed9ea9e9b0c2
+            position: 2
+          - chunkId: 9975c6b6c59f
+            document: ed9ea9e9b0c2
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-api-08-systemregister-get-endpoints-nb
+      split: holdout
+      input: Hvilke endepunkter finnes for å hente systeminformasjon fra systemregisteret, og hvilket scope kreves?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 74552979bee9
+      expected:
+        answerPattern: (?i)systemregister/vendor/\{systemId\}|changelog|systemregister\.write|Maskinporten
+        referenceAnswer: 'Det finnes to GET-endepunkter: GET authentication/api/v1/systemregister/vendor/{systemId} for å hente et system ved system-ID, og GET authentication/api/v1/systemregister/vendor/{systemId}/changelog for å hente endringsloggen (liste over endringer) for et system. Begge krever et Maskinporten-token med scope altinn:authentication/systemregister.write og bruker content type application/json. systemId skal være i formatet {systemleverandørorgnr}_{navn valgt av leverandøren}.'
+        sources:
+          - chunkId: 524471778c93
+            document: 1a546fc7b684
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-api-09-systemuser-vendor-endpoint-en
+      split: holdout
+      input: What endpoint and scope are used to get system user information for a registered system from the Systemuser API?
+      tags:
+        - altinn-3-general
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 589dbc519957
+      expected:
+        answerPattern: (?i)systemuser/vendor/bysystem/\{systemId\}|systemregister\.write|Maskinporten|application/json
+        referenceAnswer: You use GET authentication/api/v1/systemuser/vendor/bysystem/{systemId}, where {systemId} is the unique identifier of the registered system. It requires a Maskinporten token with scope altinn:authentication/systemregister.write, and the response content type is application/json.
+        sources:
+          - chunkId: c8af2b094fdc
+            document: 44a37ff3bed4
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-api-10-resource-write-scope-en
+      split: train
+      input: Which scope does my organization need to create and modify resources and policies in the Altinn resource registry?
+      tags:
+        - altinn-3-general
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 6eb3782ff609
+      expected:
+        answerPattern: (?i)altinn:resourceregistry/resource\.write
+        referenceAnswer: Your organization needs the scope altinn:resourceregistry/resource.write to be allowed to create and modify your organization's resources and policies.
+        sources:
+          - chunkId: 58ad5def10a3
+            document: 1d636bcc23a3
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-broker-01-webhook-event-types-en
+      split: train
+      input: Which webhook event types does Altinn 3 Broker publish?
+      tags:
+        - altinn-broker
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: beb2963e72a3
+      expected:
+        answerPattern: (?i)filetransferinitialized|filedeleted|fileneverconfirmeddownloaded|uploadprocessing|published|uploadfailed|downloadconfirmed|allconfirmeddownloaded
+        referenceAnswer: 'Altinn 3 Broker publishes these webhook event types: filetransferinitialized (information about a new file transfer), filedeleted (the file has been deleted from Broker), fileneverconfirmeddownloaded (file was never confirmed downloaded by a recipient), uploadprocessing (file has been uploaded and is being processed), published (file has finished processing and is ready for download), uploadfailed (an upload failed during upload or processing), downloadconfirmed (a recipient confirmed their download), and allconfirmeddownloaded (all recipients have confirmed the download).'
+        sources:
+          - chunkId: 9a07ca5c9644
+            document: 1a8ac4d21695
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-broker-02-webhook-event-types-nb
+      split: validation
+      input: Hvilke hendelsestyper (webhooks) publiserer Altinn 3 Formidling?
+      tags:
+        - altinn-broker
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: b02654551ce4
+      expected:
+        answerPattern: (?i)filetransferinitialized|filedeleted|fileneverconfirmeddownloaded|uploadprocessing|published|uploadfailed|downloadconfirmed|allconfirmeddownloaded
+        referenceAnswer: 'Altinn 3 Formidling publiserer disse hendelsestypene: filetransferinitialized (informasjon om en ny filoverføring), filedeleted (filen har blitt slettet fra Altinn Formidling), fileneverconfirmeddownloaded (filen har ikke blitt bekreftet nedlastet av noen mottaker), uploadprocessing (filen har blitt opplastet og blir kontrollert), published (filen er ferdig opplastet og kontrollert, og er klar for nedlasting), uploadfailed (filopplasting eller kontroll feilet), downloadconfirmed (en eller flere mottakere har bekreftet vellykket nedlasting) og allconfirmeddownloaded (alle aktuelle mottakere har bekreftet vellykket nedlasting).'
+        sources:
+          - chunkId: 40025d0c8494
+            document: c6071ae8f725
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-broker-03-event-types-by-role-en
+      split: train
+      input: Which Broker event types apply to senders, and which apply to both senders and recipients, when setting up an event subscription?
+      tags:
+        - altinn-broker
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 56b6c7447cb4
+      expected:
+        answerPattern: (?i)filetransferinitialized|uploadprocessing|uploadfailed|allconfirmeddownloaded|filepurged|published|downloadconfirmed|fileneverconfirmeddownloaded
+        referenceAnswer: 'For Senders the event types are: no.altinn.broker.filetransferinitialized, no.altinn.broker.uploadprocessing, no.altinn.broker.uploadfailed, no.altinn.broker.allconfirmeddownloaded, and no.altinn.broker.filepurged. For both Senders and Recipients the event types are: no.altinn.broker.published, no.altinn.broker.downloadconfirmed, and no.altinn.broker.fileneverconfirmeddownloaded.'
+        sources:
+          - chunkId: f67c9d3aa48c
+            document: 875e038f8586
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-broker-04-event-types-by-role-nb
+      split: train
+      input: Hvilke hendelsestyper gjelder for avsendere, og hvilke gjelder for både avsendere og mottakere, ved oppsett av hendelsesabonnement i Formidling?
+      tags:
+        - altinn-broker
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 58ad266e3627
+      expected:
+        answerPattern: (?i)filetransferinitialized|uploadprocessing|uploadfailed|allconfirmeddownloaded|filepurged|published|downloadconfirmed|fileneverconfirmeddownloaded
+        referenceAnswer: 'For avsendere gjelder hendelsestypene: no.altinn.broker.filetransferinitialized, no.altinn.broker.uploadprocessing, no.altinn.broker.uploadfailed, no.altinn.broker.allconfirmeddownloaded og no.altinn.broker.filepurged. For både avsendere og mottakere gjelder: no.altinn.broker.published, no.altinn.broker.downloadconfirmed og no.altinn.broker.fileneverconfirmeddownloaded.'
+        sources:
+          - chunkId: 370f66081c4d
+            document: c23791cef6f0
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-broker-08-news-enhancements-en
+      split: train
+      input: What new features are highlighted for Altinn 3 Broker compared to Altinn 2?
+      tags:
+        - altinn-broker
+        - list
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 7fcc0669c880
+      expected:
+        answerPattern: (?i)really large files|2 GB|100 GB|configuration GUI|client GUI
+        referenceAnswer: 'The highlighted new features are: support for really large files (transfer of files larger than 2 GB, up to 100 GB or more); an Altinn Broker configuration GUI (an Altinn Studio based GUI for configuring Altinn Broker resources); and an Altinn Broker client GUI (an Altinn Studio based default GUI for file upload and download, as an alternative to custom end-user systems).'
+        sources:
+          - chunkId: cd80a4baead3
+            document: 7e23f4f8fcce
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-broker-09-news-enhancements-nb
+      split: train
+      input: Hvilke produktforbedringer fremheves for Altinn 3 Formidling sammenliknet med Altinn 2?
+      tags:
+        - altinn-broker
+        - list
+        - lookup
+        - simple
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 65f294cac473
+      expected:
+        answerPattern: (?i)store filer|2 GB|100 GB|konfigurering|klient-?GUI
+        referenceAnswer: 'De fremhevede forbedringene er: støtte for virkelig store filer (overføring av filer større enn 2 GB, opp til 100 GB og mer); GUI for konfigurering (GUI i Altinn Studio for konfigurering av ressurser i Altinn Formidling); og klient-GUI (GUI i Altinn Studio for opplasting og nedlasting av filer, som et alternativ til andre sluttbrukersystemer).'
+        sources:
+          - chunkId: fe081fb5c840
+            document: 23f9c997ddb9
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-broker-10-capabilities-nfr-categories-nb
+      split: train
+      input: Hvilke ikke-funksjonelle krav-kategorier er definert for Altinn 3 Formidling?
+      tags:
+        - altinn-broker
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 04055108f16b
+      expected:
+        answerPattern: (?i)Ytelseskrav|Skalerbarhet|Tilgjengelighet|Sikkerhet|Vedlikehold|Katastrofegjenoppretting|Brukervennlighet|Interoperabilitet|Etterlevelse|Overvåking|Dataintegritet|Lastbalansering|Miljømessige
+        referenceAnswer: 'Kategoriene for ikke-funksjonelle krav er: Ytelseskrav, Skalerbarhet, Tilgjengelighet og pålitelighet, Sikkerhet, Vedlikehold og oppgradering, Katastrofegjenoppretting og backup, Brukervennlighet, Interoperabilitet, Etterlevelse og juridiske krav, Overvåking og logging, Dataintegritet og kvalitet, Lastbalansering, og Miljømessige og operasjonelle forhold.'
+        sources:
+          - chunkId: b6d8c20b8b52
+            document: 320e141ad9ff
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-notif-01-sms-special-chars
+      split: validation
+      input: Which types of characters can affect the actual length of an SMS message when Altinn Notifications calculates URL-encoded length?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 574db8ce5566
+      expected:
+        answerPattern: (?i)national special|emoji|line break|control character
+        referenceAnswer: 'When the system calculates message length using URL-encoded length, the following types of characters can affect the actual length of the message: national special characters such as Æ, Ø, Å and other national special characters; emojis and other special symbols; and line breaks and other control characters.'
+        sources:
+          - chunkId: a5d7beded906
+            document: a05415157106
+            position: 5
+      grounding: sources-and-answer
+    - id: wg-notif-02-sms-recommendations
+      split: holdout
+      input: Hvilke anbefalinger gir Altinn Varslinger for å sikre at SMS-meldingene leveres som forventet?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 2b8fcaec8423
+      expected:
+        answerPattern: (?i)korte og konsise|unngå unødvendige emojier|representative data|planlegg for segmentering|alternative kanaler
+        referenceAnswer: 'For å sikre at SMS-meldingene leveres som forventet anbefales følgende: (1) Hold meldinger korte og konsise – under 160 tegn om mulig; (2) Unngå unødvendige emojier – disse kan øke lengden betydelig; (3) Test med representative data – bruk spesialtegn som ligner på det du vil bruke i produksjon; (4) Planlegg for segmentering – dersom du vet at meldingen blir lang, sørg for at den fortsatt gir mening selv om den deles opp; (5) Vurder alternative kanaler – for lengre meldinger kan e-post være et bedre valg.'
+        sources:
+          - chunkId: d98fdd8253c7
+            document: a4c43c2cf197
+            position: 5
+      grounding: sources-and-answer
+    - id: wg-notif-03-instant-sms-fields
+      split: train
+      input: Which fields are used in the request body when sending an instant SMS via the Altinn Notifications API, and which are required?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: d6191f265d0d
+      expected:
+        answerPattern: (?i)idempotencyId|sendersReference|phoneNumber|timeToLiveInSeconds|sender|body
+        referenceAnswer: "To send an instant SMS you POST to /future/orders/instant/sms with these fields: idempotencyId (required) – a unique identifier for the sending used to ensure the same message is not sent multiple times; sendersReference (optional) – your own reference used for logging and tracking; phoneNumber (required) – the recipient's phone number in international format with country code; timeToLiveInSeconds (required) – the time-to-live for the message in seconds; sender (optional) – the sender identifier displayed on the recipient's phone; and body (required) – the content of the SMS message."
+        sources:
+          - chunkId: 1d3c937b4851
+            document: 775feebd9b63
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-notif-04-instant-sms-felter
+      split: validation
+      input: Hvilke felter inngår i forespørselen for å sende en umiddelbar SMS via Altinn Varslinger, og hvilke er påkrevd?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: f402534c7a05
+      expected:
+        answerPattern: (?i)idempotencyId|sendersReference|phoneNumber|timeToLiveInSeconds|sender|body
+        referenceAnswer: 'For å sende en umiddelbar SMS gjør du en POST til /future/orders/instant/sms med disse feltene: idempotencyId (påkrevd) – en unik identifikator for sendingen som sikrer at samme melding ikke sendes flere ganger; sendersReference (valgfri) – din egen referanse som brukes til logging og sporing; phoneNumber (påkrevd) – mottakers telefonnummer i internasjonalt format med landskode; timeToLiveInSeconds (påkrevd) – levetid for meldingen i sekunder; sender (valgfri) – avsenderidentifikator som vises på mottakers telefon; og body (påkrevd) – innholdet i SMS-meldingen.'
+        sources:
+          - chunkId: 0ef9e50743cc
+            document: d5b13826e454
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-notif-05-error-not-00001-causes
+      split: train
+      input: What are the common causes of the NOT-00001 error in the Altinn Notifications API?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 7b7461fd4c38
+      expected:
+        answerPattern: (?i)not registered an email|not valid or verified|organizational recipients|registered contact details
+        referenceAnswer: 'NOT-00001 (HTTP 422 Unprocessable Entity) means the API could not process the notification order because one or more recipients do not have the required contact information available for Altinn. The common causes are: the recipient has not registered an email address or phone number; the recipient has registered contact information, but it is not valid or verified; and for organizational recipients, the organization may not have registered contact details.'
+        sources:
+          - chunkId: 569271652ee3
+            document: 10e20c3fdd1a
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-notif-06-error-not-00002-aarsaker
+      split: validation
+      input: Hva er de vanlige årsakene til feilen NOT-00002 i Altinn Varslinger API?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 8b690e90f475
+      expected:
+        answerPattern: (?i)timeout på klientsiden|nettverkstilkoblingen ble avbrutt|bruker kansellerte|avsluttet HTTP-forespørselen
+        referenceAnswer: 'NOT-00002 (HTTP-statuskode 499 Client Closed Request) betyr at klienten koblet fra eller kansellerte forespørselen før serveren kunne fullføre behandlingen. De vanlige årsakene er: timeout på klientsiden oppstod; nettverkstilkoblingen ble avbrutt; bruker kansellerte operasjonen; og applikasjonen avsluttet HTTP-forespørselen.'
+        sources:
+          - chunkId: 62c89167695d
+            document: 006c96f49051
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-notif-07-api-auth-types
+      split: train
+      input: Which forms of authentication and authorization does the Altinn Notifications API documentation describe?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 48ff4cb13723
+      expected:
+        answerPattern: (?i)altinn token|maskinporten scope|platform access token
+        referenceAnswer: 'The Notifications API documentation describes three forms of authentication and authorization: the Altinn token – the API is secured using OAuth2 and all requests must include a valid Altinn token in the Authorization header or the AltinnStudioRuntime cookie; Maskinporten scopes – some endpoints require additional authorization in the form of a Maskinporten scope representing a permission a consumer has access to; and the Platform Access token – access to a subset of endpoints is limited to callers within the Altinn ecosystem and requires a Platform Access Token.'
+        sources:
+          - chunkId: a9df165e54c6
+            document: c71fa94bc17f
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-notif-08-api-base-urls
+      split: validation
+      input: Hvilke base-URL-er gjelder for de ulike miljøene til Altinn Varslinger API?
+      tags:
+        - altinn-notifications
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 2ad40fa52511
+      expected:
+        answerPattern: (?i)altinn.cloud|tt02.altinn.no|platform.altinn.no|notifications/api/v1
+        referenceAnswer: 'Base-URL-ene som svarer til hvert miljø for Altinn Varslinger API er: AT (privat Altinn akseptansetestmiljø): https://platform.{environment}.altinn.cloud/notifications/api/v1; TT02 (testmiljø for applikasjonseiere): https://platform.tt02.altinn.no/notifications/api/v1; og Production: https://platform.altinn.no/notifications/api/v1.'
+        sources:
+          - chunkId: 972fa6210a14
+            document: f3ea7ae098f5
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-events-01-subscription-response-codes
+      split: train
+      input: Which HTTP response codes can the Altinn Events subscription registration endpoint return, and what does each mean?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 4aa2b0740446
+      expected:
+        answerPattern: (?i)201 created|401 unauthorized|403 forbidden
+        referenceAnswer: 'The subscription registration endpoint can return: 201 Created – the subscription has been successfully registered; 401 Unauthorized – a missing, invalid or expired authorization header, or the consumer is not allowed to subscribe to events from this resource based on filter parameters; and 403 Forbidden – missing required scope or authorisation (check user roles or access packages against the event source policy).'
+        sources:
+          - chunkId: 60865fb2c0b0
+            document: 957e81f17874
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-events-02-query-params-org
+      split: train
+      input: Which query parameters are accepted by the Altinn Events GET /app/{org}/{app} endpoint for retrieving app events?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 56f8df5b354d
+      expected:
+        answerPattern: (?i)event last retrieved|lower limit|upper limit|party id|organisation number|person number|event types|size
+        referenceAnswer: "The GET /app/{org}/{app} endpoint accepts these query parameters: the ID of the event last retrieved (string) – the result set includes events registered after the provided event ID in chronological order; the lower limit for when the cloud event was registered in UTC (string date-time); the upper limit for when the cloud event was registered in UTC (string date-time); the party ID representing the subject of the cloud event; the organisation number representing the unit in the cloud event's alternative subject; the person number representing the person in the cloud event's alternative subject; the event types to include (array of string); and the size of the result set (string), with a default size of 50 events."
+        sources:
+          - chunkId: 0987ecad33e1
+            document: 19afd41bd867
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-events-03-query-params-enduser
+      split: train
+      input: Which query parameters does the Altinn Events GET /app/party endpoint accept for an end user to retrieve their app events?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 157fd6461ec1
+      expected:
+        answerPattern: (?i)event last retrieved|lower limit|upper limit|party id|organisation number|person number|event sources|event types|size
+        referenceAnswer: "The GET /app/party endpoint accepts these query parameters: the ID of the event last retrieved (string) – the result set includes events registered after the provided event ID in chronological order; the lower limit for when the cloud event was registered in UTC (string date-time); the upper limit for when the cloud event was registered in UTC (string date-time); the party ID representing the subject of the cloud event; the organisation number representing the unit in the cloud event's alternative subject; the person number representing the person in the cloud event's alternative subject; the event sources to include (array of string), which supports the wildcard % to escape an unknown number of characters; the event types to include (array of string); and the size of the result set (string), with a default size of 50 events."
+        sources:
+          - chunkId: 1f6957641e73
+            document: 22640d5c5396
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-events-04-spoerreparametere-nb
+      split: train
+      input: Hvilke spørreparametere godtar Altinn Events GET /app/{org}/{app}-endepunktet for å hente hendelser for en app?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5fe30dedc7a4
+      expected:
+        answerPattern: (?i)hendelse.*sist ble hentet|nedre grense|øvre grense|part-ID|organisasjonsnummeret|personnummeret|hendelsestypene|størrelse
+        referenceAnswer: 'GET /app/{org}/{app}-endepunktet godtar disse spørreparametrene: ID for hendelsen som sist ble hentet (string) – resultatsettet inkluderer hendelser registrert etter den oppgitte hendelses-ID-en i kronologisk rekkefølge; nedre grense for når Cloud Event ble registrert i UTC (string date-time); øvre grense for når Cloud Event ble registrert i UTC (string date-time); part-ID som representerer subjektet i Cloud Event; organisasjonsnummeret som representerer enheten i Cloud Events alternative subject; personnummeret som representerer personen i Cloud Events alternative subject; hendelsestypene som skal inkluderes (array av string); og størrelse på resultatsettet (string), med en standard størrelse på 50 hendelser.'
+        sources:
+          - chunkId: 4e82d5cdd11a
+            document: ba863e6390f8
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-events-05-azure-functions
+      split: train
+      input: Hvilke Azure Functions er satt opp i arkitekturen til Altinn Events, og hva gjør hver av dem?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: f8091af1994f
+      expected:
+        answerPattern: (?i)EventsRegistration|EventsInbound|EventsOutbound|SubscriptionValidation
+        referenceAnswer: 'Følgende Azure Functions er satt opp for å frikoble prosessering og utsending av hendelser samt abonnementsvalidering: EventsRegistration – sender hendelser til internt API-endepunkt som lagrer cloud event vedvarende til database og ved suksess sender til internt API-endepunkt for innkommende prosessering; EventsInbound – sender hendelse til internt API-endepunkt som finner abonnementer med filtre som matcher cloud event; EventsOutbound – POST-er cloud event til webhook-endepunkt tilknyttet et abonnement; og SubscriptionValidation – POST-er validerings-cloud event til brukerdefinert webhook-endepunkt for å sjekke at det er klart til å motta data, og sender ved suksess en forespørsel til internt API-endepunkt som oppdaterer statusen i databasen.'
+        sources:
+          - chunkId: e109589cbe01
+            document: c10d7068bfe6
+            position: 5
+      grounding: sources-and-answer
+    - id: wg-events-06-api-auth-types
+      split: train
+      input: Which forms of authentication and authorization does the Altinn Events API documentation describe?
+      tags:
+        - altinn-events
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 008e8e3de50f
+      expected:
+        answerPattern: (?i)altinn token|maskinporten scope|platform access token|private api
+        referenceAnswer: 'The Events API documentation describes these forms of authentication and authorization: the Altinn token – the API is secured using OAuth2 and all requests must include a valid Altinn token in the Authorization header or the AltinnStudioRuntime cookie; Maskinporten scopes – some endpoints require additional authorization in the form of a Maskinporten scope representing a permission a consumer has access to; the Platform Access token – access to a subset of endpoints is limited to callers within the Altinn ecosystem and requires a Platform Access Token; and Private APIs – a set of APIs only accessible within the Events component, marked as Private API in the OpenAPI specification, which require an access token in the request header.'
+        sources:
+          - chunkId: 2847445ff62d
+            document: fecfa9b196bb
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-tech-01-datatype-properties
+      split: train
+      input: Which properties can be set on a DataType in an Altinn application's storage metadata, and what does each mean?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 152e36bc4d71
+      expected:
+        answerPattern: (?i)id|description|allowedContentTypes|allowedContributers|taskId|appLogic|maxSize|maxCount|minCount
+        referenceAnswer:
+          "The DataType model represents data requirements for an application for different process tasks. Its properties are: id (string, required, the id of the data type); description (LanguageString[], a short description with language support); allowedContentTypes (string[], a list of allowed content types); allowedContributers (string[], a list of allowed contributers on the format '{keyword}:{value}', approved keywords being org and orgno); taskId (string, required, the associated task from the process definition that defines the data required to progress to the next task); appLogic (ApplicationLogic, data object connecting data to application models, which should be null for data types describing attachments); maxSize (int, maximum allowed size of a data item of this type, undefined meaning unbounded); maxCount (int, maximum allowed data item count of this type, zero or below indicating unbounded); and minCount (int, minimum number of data items of this type, zero
+          or below indicating the data type is optional)."
+        sources:
+          - chunkId: c222efe08ba8
+            document: c3decc68ba2d
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-tech-02-development-tools
+      split: validation
+      input: Which tools and frameworks does the Altinn Studio development team use for testing, building, design and source control?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: eced8a6cac7e
+      expected:
+        answerPattern: (?i)Cypress|Jest|xunit|Postman|K6|Azure Test Plans|Github|Figma|Visual Studio|Docker|Maven|Nuget|Node|Lerna
+        referenceAnswer:
+          'Testing: automated browser and WCAG testing uses Cypress; Jest is used for front-end unit testing and xunit for back-end unit testing; API testing is done with Postman; integration testing of services uses standard Microsoft frameworks; performance testing will use K6; Azure Test Plans in Azure DevOps is used for execution tracking; and defects are reported as issues in Github using the Bug template. Design and prototyping uses Figma, with application design written in MarkDown and published on the site and Visio for application drawings. Source control: Github is used for all open source code, and Azure Repos in Azure DevOps Services is used for other artefacts. IDEs are Visual Studio Code and Visual Studio. Build tools vary by framework: .Net build for .Net packages and applications (with Nuget packages for reuse), Node as the main tool for JavaScript packages and applications, Lerna, and Maven for Java applications. All applications are built as Docker Containers
+          using Docker Build.'
+        sources:
+          - chunkId: 32ac2d0a4173
+            document: 0e2102a1e3da
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-tech-05-appdeploy-pipeline-flags
+      split: train
+      input: Which flags control the Altinn App build and deploy pipeline?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 5a58b0d3e740
+      expected:
+        answerPattern: (?i)APP_COMMIT_ID|APP_DEPLOY_TOKEN|APP_ENVIRONMENT|APP_OWNER|APP_REPO|GITEA_ENVIRONMENT|should_build|should_deploy
+        referenceAnswer: 'The build and deploy app pipeline is controlled by these flags: APP_COMMIT_ID (used as the id for the app image and to reference the repository at that commit state); APP_DEPLOY_TOKEN (used to identify the user when cloning the repository, only really necessary for private repositories but mandatory); APP_ENVIRONMENT (represents which environment to deploy to, not yet used); APP_OWNER (the owner of the repository); APP_REPO (the name of the repository to clone and use to create the app); GITEA_ENVIRONMENT (the gitea environment to clone the repository from); should_build (flag to optionally only deploy and not build, default true); and should_deploy (flag to deploy an app, default false). The pipeline is triggered by the Deploy button in Altinn Studio.'
+        sources:
+          - chunkId: 140b9b89f2f2
+            document: 65570fcc0dfc
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-tech-06-cosmos-backup-collections
+      split: holdout
+      input: Which Cosmos DB collections have an Azure Function that takes backups in the Altinn Platform storage backup solution?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 667607ced2a8
+      expected:
+        answerPattern: (?i)Applications|DataElements|InstanceEvents|Instance|Texts
+        referenceAnswer: 'The following collections have an Azure Function that takes backup (using the Cosmos DB change feed, copying changed documents to a shared blob storage with soft delete enabled, retaining versions for 90 days): Applications, DataElements, InstanceEvents, Instance, and Texts.'
+        sources:
+          - chunkId: b9f8a1bb9d32
+            document: 41aeab3ca339
+            position: 2
+      grounding: sources-and-answer
+    - id: wg-tech-07-maskinporten-client-setup
+      split: holdout
+      input: Hvilke steg må jeg gjøre for å sette opp en Maskinporten-klient i selvbetjeningsportalen?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 1a210422bfff
+      expected:
+        answerPattern: (?i)logge inn|Opprett klient|Maskinporten|visningsnavn|scopes|Opprett|autentiseringsnøkkel|JWK|PEM
+        referenceAnswer:
+          'Maskinporten-klienter opprettes i selvbetjeningsportalen (produksjon fra https://sjolvbetjening.samarbeid.digdir.no og test fra https://sjolvbetjening.test.samarbeid.digdir.no). Stegene er: 1) Logg inn på kontoen din med valgt metode. 2) Når du er logget inn vises organisasjonen du representerer i toppmenyen til høyre (representerer du en syntetisk organisasjon kan du endre den i nedtrekksmenyen). 3) Velg `Opprett klient`-knappen for å begynne å opprette en ny klient for organisasjonen du representerer. 4) Velg `Maskinporten` på `Legg til klient`-siden. 5) På `Legg til Maskinporten klient`-siden fyll inn visningsnavn, beskrivelse og legg til nødvendige scopes (verdiene kan endres senere), og klikk `Opprett`-knappen. 6) Klienten er nå opprettet; for å bruke den må du legge til minst én autentiseringsnøkkel (klienten støtter JWK- og PEM-nøkler) ved å finne eller opprette en nøkkel (f.eks. med Altinn JWKS-verktøyet), navigere til nøkkelseksjonen, velge `Legg til`, lime
+          inn din offentlige nøkkel i feltet `JWK eller PEM format` og klikke `Lagre` (lagre den private nøkkelen sikkert; ved Azure Key Vault må private nøkler base64-kodes før opplasting). 7) Hvis du ikke gjorde det i trinn 5, må du legge til ønskede scopes til klienten før den kan brukes.'
+        sources:
+          - chunkId: adb08877e0db
+            document: 1e1c8a4cc2ff
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-tech-08-logical-data-storage
+      split: train
+      input: Where are the different data objects (data element metadata, the data itself, events, and texts) stored in the Altinn application data architecture?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 311a45b194f2
+      expected:
+        answerPattern: (?i)Cosmos DB|Azure blob storage|PostgreSQL|90 days|shared collection|isolated storage
+        referenceAnswer: 'The data objects are stored as follows: the metadata about data for an instance is stored in Cosmos DB in a shared collection (created by the storage component when data is added to an instance); the data itself (any structured or unstructured data the org receives or sends through the app, ranging from a few bytes to gigabytes, created by both end users and the application owner) is stored in Azure blob storage in an isolated storage for each org; app events (structured as cloud events, created by applications to support external consumption) are stored in PostgreSQL for 90 days; and texts used in an application (connected to a given app, created by the application developer) are stored in Cosmos DB in a shared collection.'
+        sources:
+          - chunkId: 5847c6c8943c
+            document: 34cce21ba7d4
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-community-01-v7-instantiation-interfaces
+      split: validation
+      input: In the app nuget v7 upgrade, which two interfaces replace the logic previously defined in InstantiationHandler.cs, and what is each responsible for?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 32c04c793ba5
+      expected:
+        answerPattern: (?i)IInstantiationProcessor|IInstantiationValidator|DataCreation|RunInstantiationValidation
+        referenceAnswer: 'The logic previously defined in App/logic/InstantiationHandler.cs is now defined by implementing two interfaces: IInstantiationProcessor, used to do custom data/instance manipulation during instantiation, which replaces the DataCreation method in InstantiationHandler; and IInstantiationValidator, used to do custom validation during instantiation, which replaces the RunInstantiationValidation method in InstantiationHandler.'
+        sources:
+          - chunkId: fe5becd20fb8
+            document: 4d050ed50ee8
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-community-02-v5-removed-services
+      split: train
+      input: When migrating to app nuget v5, which services should be removed from the call to base(...) in the App constructor because PDF generation was moved out of AppBase?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: dce8996f3b9c
+      expected:
+        answerPattern: (?i)processService|settings|textService
+        referenceAnswer: 'Because all PDF generation code was extracted from AppBase.cs into PdfService.cs (implementing IPdfService), the services no longer used in the call to base(...) in the App constructor and which should be removed are: processService, settings, and textService.'
+        sources:
+          - chunkId: e844c04bf18d
+            document: 6da2fe65f5a6
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-community-03-exception-api-status-codes
+      split: holdout
+      input: Which HTTP status codes can result from exceptions handled by application logic according to the Altinn backend exception-handling guidelines?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 2f683513193e
+      expected:
+        answerPattern: (?i)200|Ok|400|BadRequest|401|Unauthorized|403|Forbidden|404|NotFound
+        referenceAnswer: 'Exceptions handled by application logic can result in: 200 - Ok (the original request is considered successfully processed); 400 - BadRequest (the exception was caused by a faulty request, though active validation is preferred over relying on an exception); 401 - Unauthorized (similar to BadRequest but associated with authentication); 403 - Forbidden (similar to BadRequest but associated with authorization); and 404 - NotFound (the requested resource does not exist). Application logic should ideally never produce a 500 response; unhandled exceptions left to the default middleware always result in status code 500.'
+        sources:
+          - chunkId: b16bc40f6f2b
+            document: 8eb477d7aca5
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-community-04-v3-changelog
+      split: train
+      input: What changes were introduced in version 3 of the Altinn app nuget packages?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 8ce2c70d7d7d
+      expected:
+        answerPattern: (?i)404|rule configuration|pdf|page order|certificate|Key Vault|duplicate key|unread status|label in PDF|Swagger|Swashbuckle
+        referenceAnswer: 'Version 3 introduced the following changes: a bug causing a 404 response when retrieving the rule configuration for an application while specifying the layout set id was fixed; a PDF copy is now generated for tasks completed by the application owner as well as the end user; all apps now expose an endpoint for getting the current page order based on the current state of an instance (overridable via FormatPdf in Logic/App.cs); 3.3.0 - retrieving a certificate from Key Vault now uses the certificate name instead of the certificate id; 3.2.3 - fixed a duplicate key exception thrown on options when the same option key was used; 3.2.1 - an instance now correctly appears as read in the messagebox when instantiated by an end user through the api; 3.2.0 - selected options are now displayed with their label rather than their value in the PDF; and 3.0.4 - Swagger support was added via Swashbuckle, generating interactive OpenAPI documentation available at https://[org].apps.altinn.no/[org]/[app]/swagger/index.html.'
+        sources:
+          - chunkId: cf24966e67c1
+            document: bd4609469d96
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-community-05-v4-migration-steps
+      split: holdout
+      input: What steps are required to make an app compatible with version 4 of the Altinn.App nuget packages?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 73401c477466
+      expected:
+        answerPattern: (?i)\.Net 5|net5\.0|App\.csproj|4\.0\.0|Dockerfile|AddAppServices|AddPlatformServices|Startup\.cs
+        referenceAnswer:
+          'To make an app compatible with version 4 of the Altinn.App.* packages (which now target .Net 5): 1) Update the target framework and package dependencies in App.csproj (in the App folder), replacing the TargetFramework netcoreapp3.1 with net5.0 and updating the Altinn.App.* package references to version 4.0.0. 2) Update the Dockerfile (in the root folder) to use .Net 5 images, replacing the build image mcr.microsoft.com/dotnet/core/sdk:3.1-alpine with mcr.microsoft.com/dotnet/sdk:5.0-alpine and the runtime image mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine with mcr.microsoft.com/dotnet/aspnet:5.0-alpine. 3) In Startup.cs (in the App folder), replace the many individual references to Altinn App services, Altinn Platform services, configuration-file loading, and Application Insights configuration (including the private method retrieving the Application Insights key) with two extension-method calls inside the ConfigureServices function: services.AddAppServices(Configuration,
+          _env); and services.AddPlatformServices(Configuration, _env); where AddPlatformServices loads all configurations and services needed for Altinn Platform functionality and AddAppServices loads the remaining configurations and services such as Authorization and Prefill.'
+        sources:
+          - chunkId: b9ae490536a0
+            document: 3c0853acb026
+            position: 0
+          - chunkId: 5c1017ce1e95
+            document: 3c0853acb026
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-community-06-frontend-v4-ai-optin
+      split: train
+      input: How do I opt in to the Altinn AI bot that auto-generates a pull request migrating tracks to dynamic expressions when upgrading app-frontend to v4?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 4d6d0f4305dc
+      expected:
+        answerPattern: (?i)Gitea|Settings|Collaboration|altinn_sa_ai|Teams|Devs|nightly|gpt-4
+        referenceAnswer:
+          "You can opt in for an automatic AI-generated pull request that migrates the removed v3 tracks feature (IPageOrder / calculatePageOrder) to the new dynamic-expressions page-order approach. To opt in on a single repository: 1) In Gitea, go to the repository where you want to opt in; 2) go to the Settings tab; 3) go to the Collaboration section; 4) add 'altinn_sa_ai (Altinn AI [Bot])'; 5) the PR will be created in a nightly run if the bot finds any tracks. To opt in on a service-owner level (all repositories in your organization): 1) in Gitea, go to your organization at https://altinn.studio/repos/<orgname>; 2) go to the Teams tab; 3) click the 'Devs' team; 4) add 'altinn_sa_ai (Altinn AI [Bot])' to the team; 5) a PR will be created in a nightly run in any repository where the bot finds the tracks implementation. The migrated result may not be a 100% match, so you should always review and test the PR before merging. The generative model used is 'gpt-4-1106-preview'
+          from OpenAI, hosted as a dedicated instance on Digdir's internal Azure subscription, with information limited to the relevant C# classes implementing IPageOrder and not shared with any third party for training."
+        sources:
+          - chunkId: bd3f180c86b3
+            document: d49d0e3f2eff
+            position: 5
+      grounding: sources-and-answer
+    - id: wg-security-01-information-security
+      split: train
+      input: What does information security comprise according to Digdir's obligations under GDPR Article 32?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 07f1eb6a3f5b
+      expected:
+        answerPattern: (?i)confidentiality|integrity|availability
+        referenceAnswer: "According to Digdir's obligation to maintain responsibility for information security under the Personal Data Act § 1, cf. GDPR Article 32, information security includes: ensuring confidentiality (protection against unauthorized access to the information); ensuring integrity (protection against accidental alteration of the information); and ensuring availability (making sure that adequate and relevant information is accessible)."
+        sources:
+          - chunkId: 797b578cf8e4
+            document: 362ca91dd851
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-security-02-privatlivsvern-mekanismer
+      split: validation
+      input: Hvilke rettssikkerhetsmekanismer kan ifølge rettspraksis gjøre et inngrep mer forholdsmessig i vurderingen av om vernenivået er oppfylt?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 3f47b09e4efd
+      expected:
+        answerPattern: (?i)forholdsmessighet|forutse|klage|stanse|datatilsynet|domstol
+        referenceAnswer: 'Med utgangspunkt i rettspraksis kan relevante elementer være: forholdsmessighet; og rettsikkerhetsmekanismer som gjør et inngrep mer forholdsmessig, herunder muligheten til å forutse sin rettsposisjon, muligheten til å klage, mulighet til å stanse den problematiske databehandlingen (herunder hvorvidt Datatilsynet kan pålegge en stans), samt tilgang til domstol.'
+        sources:
+          - chunkId: ce41cbf3e7f5
+            document: d280b202dc55
+            position: 9
+      grounding: sources-and-answer
+    - id: wg-security-03-privacy-considerations
+      split: validation
+      input: In what ways does Digdir state that consideration is given to the registered individual's right to privacy in Altinn 3?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 856cbc0578e7
+      expected:
+        answerPattern: (?i)limitation of purpose|data minimization|lawful basis|protection of personal data|logs
+        referenceAnswer: "Consideration is given to the registered individual's right to privacy by: limitation of purpose; data minimization; disclosure of personal data in registers only to entities with a lawful basis for processing; protection of personal data; and limited scope of personal data in logs."
+        sources:
+          - chunkId: 9ed7a95fed74
+            document: 9a1816b51e23
+            position: 10
+      grounding: sources-and-answer
+    - id: wg-security-04-etterretningsrisiko-tiltak
+      split: holdout
+      input: Hvilke tiltak nevner Digdir som bidrar til å redusere etterretningsrisiko og sikkerhetsrisiko ved bruk av skytjenester?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 47e3b7f2f0f8
+      expected:
+        answerPattern: (?i)kontroll på systemer|dataflyt|pseudonymisering|sletterutiner|tilgangsstyring|monitorering
+        referenceAnswer: 'Mange av tiltakene som reduserer etterretningsrisiko er de samme som reduserer sikkerhetsrisiko, og Digdir nevner blant annet: kontroll på systemer og dataflyt, pseudonymisering, sletterutiner, tilgangsstyring og monitorering. I tillegg har Digdir sørget for kryptering av data under transport og kryptering av data ved stillstand/lagring, samt geografisk avgrensning til Norge og EU, herunder ved Microsofts implementering av EU Data Boundary og Customer Lockbox.'
+        sources:
+          - chunkId: da4c45ddb2d4
+            document: 39e94643b82f
+            position: 3
+      grounding: sources-and-answer
+    - id: wg-security-05-data-locations
+      split: holdout
+      input: Which Altinn components store data in Norway East versus West/North Europe according to the DPIA appendix?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 94a724858e29
+      expected:
+        answerPattern: (?i)norway east|west europe|north europe|key vault|blob storage|postgresql|entra
+        referenceAnswer:
+          'Altinn Studio (usernames, email addresses, organization affiliation, passwords, GitHub integration, source code) is in North Europe (to be moved to West Europe; not moved to Norway East due to lack of functionality there). In the Service Owner Clusters: Application Insights logging is in West Europe; Azure Key Vault (SAS definitions for Storage Account) in Norway East; Azure Key Vault (API keys/certificates uploaded by service owner) in Norway East; Azure Blob Storage (form data and binary attachments) in Norway East; Azure Container Registry (container images) in West Europe (not available in Norwegian data centers). In the Altinn Platform: Azure PostgreSQL (submission metadata and events) in Norway East; Azure Key Vault (platform secrets) in Norway East; Altinn Storage Account (policy files) in Norway East; Log Analytics Workspace/Application Insights (logs from applications, services, clusters) in West Europe; and Microsoft Entra ID (usernames, hashed passwords,
+          phone numbers, names) in Europe, with some exceptions such as SMS.'
+        sources:
+          - chunkId: 9ea8d34e4416
+            document: 5fb092d1230f
+            position: 0
+      grounding: sources-and-answer
+    - id: wg-apptmpl-01-react-best-practices
+      split: train
+      input: What React architecture best-practices does the Altinn app frontend try to follow?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 814a78a0494a
+      expected:
+        answerPattern: (?i)small|reusability|dry|comments|capital|data-loading|feature-based|linting
+        referenceAnswer: 'The app frontend tries to follow these React architecture best-practices: small, function-specific components (UI components are "dumb", keeping logic to a minimum); reusability (UI components shared across apps and between app frontend and receipt frontend, using Material UI components as much as possible instead of building custom ones); DRY code (shared resources/utils across features and between app frontend and receipt frontend to avoid duplication); comments only where necessary (self-explanatory function and component names, avoiding clutter); component names in capital; keeping complex data-loading logic separate from rendering of components (state handled by redux, data passed as props to UI components where possible); using a feature-based code structure (grouping code by feature rather than by function); and following linting rules (using a code analyzer for clean, readable code).'
+        sources:
+          - chunkId: 24a81b42b802
+            document: 3d4efbd6dedd
+            position: 1
+      grounding: sources-and-answer
+    - id: wg-apptmpl-02-app-process-components
+      split: train
+      input: What components handle the BPMN process in the Altinn App Backend?
+      tags:
+        - altinn-3-general
+        - compound
+        - list
+        - lookup
+      origin:
+        source: new
+        dataset: public-docs
+        legacyChunk: 036b93352353
+      expected:
+        answerPattern: (?i)process api|process service|bpmn reader|app logic|appbase|ialtinnapp
+        referenceAnswer: Apps created in Altinn Studio have a separate Process API that exposes functionality to clients to control the process. The process service holds the business logic for BPMN processing and is responsible for verifying state and changes of state. The BPMN reader is the component that parses the BPMN process in apps. When the app process changes state, app logic is run, making it possible for app developers to implement specific app logic (see AppBase.cs and the IAltinnApp interface).
+        sources:
+          - chunkId: 246bb02d8e04
+            document: b117f79ddd0a
+            position: 0
+      grounding: sources-and-answer
