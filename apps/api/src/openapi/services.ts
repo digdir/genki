@@ -795,6 +795,15 @@ const PlaygroundOptions = z
               blocks: z.array(z.string()),
               output: playgroundOutput,
             }),
+            variants: z
+              .array(
+                z.object({
+                  id: z.string(),
+                  title: z.string().optional(),
+                  model: z.string().optional(),
+                }),
+              )
+              .optional(),
             inputFields: z.array(InputField).optional(),
           }),
         ),
