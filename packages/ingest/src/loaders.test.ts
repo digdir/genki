@@ -329,6 +329,32 @@ describe('website loader', () => {
       });
     expect(mergeFrontmatter(doc, '# Hei\n')).toEqual(doc);
   });
+
+  it('keeps a trimmed frontmatter product, and ignores an empty or non-text one', () => {
+    const doc = { id: 'x', title: 'X' };
+    expect(mergeFrontmatter(doc, '---\nproduct: "ID-porten "\n---\n')).toMatchObject({
+      product: 'ID-porten',
+    });
+    for (const fm of ['product: ""', 'product: [a, b]', 'title: X'])
+      expect(mergeFrontmatter(doc, `---\n${fm}\n---\n`)).not.toHaveProperty('product');
+  });
+
+  it('takes the language from frontmatter lang or language only when the URL gave none', () => {
+    const none: { id: string; language: string | null } = { id: 'x', language: null };
+    const cases: [string, string | null][] = [
+      ['lang: en-GB', 'en'],
+      ['lang: nb-NO', 'nb'],
+      ['language: no', 'nb'],
+      ['lang: nn', 'nn'],
+      ['lang: de', null],
+      ['lang: ""', null],
+    ];
+    for (const [fm, language] of cases)
+      expect(mergeFrontmatter(none, `---\n${fm}\n---\n`).language).toBe(language);
+    expect(mergeFrontmatter({ id: 'x', language: 'nb' }, '---\nlang: en\n---\n').language).toBe(
+      'nb',
+    );
+  });
 });
 
 describe('folder loader', () => {
