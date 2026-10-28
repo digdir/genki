@@ -502,6 +502,7 @@ const admin = createAdmin({
   models: platform.models,
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
+  names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {

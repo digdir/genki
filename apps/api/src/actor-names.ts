@@ -66,9 +66,10 @@ export const actorNames = (store: ConfigEntryStore): ActorNames => {
 export const rememberActorNames =
   (auth: Authenticator, names: ActorNames): MiddlewareHandler =>
   async (c, next) => {
-    const name = actorNameOf(c);
-    if (name) {
+    const header = actorNameOf(c);
+    if (header) {
       const principal = await auth.authenticate(c.req.raw).catch(() => undefined);
+      const name = (principal?.actor ?? principal)?.name ?? header;
       if (principal) await names.remember(principal, name).catch(() => undefined);
     }
     await next();

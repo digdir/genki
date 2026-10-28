@@ -145,6 +145,7 @@ export interface AdminOptions {
   extensions?: Record<string, AdminHandler>;
   records?: AdminRecordStore;
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
+  names?: { remember(principal: Principal, name: string): Promise<void> };
 }
 
 export type AdminOutcome = Outcome;
@@ -625,6 +626,7 @@ export const createAdmin = (options: AdminOptions) => {
       target: result.target || action,
       reason: data.reason,
     });
+    if (actor.name) await options.names?.remember(actor, actor.name).catch(() => undefined);
     return { ...result, task: started.task };
   };
 

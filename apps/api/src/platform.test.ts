@@ -787,4 +787,20 @@ describe("a tenant's change list", () => {
     );
     expect(audit[0]).toMatchObject({ actor: 'employee:test:kari', actorName: 'Kari Nordmann' });
   });
+
+  it('names the person from their login when the browser sends no name', async () => {
+    const { send } = setup();
+    await send('/definitions', 'kristin', {
+      body: { definition: klarsprak(), files },
+      reason: 'første versjon',
+    });
+
+    const audit = await listed<{ actor: string; actorName?: string }>(
+      await send(`/tenants/${digdir}/audit`, 'kari'),
+    );
+    expect(audit[0]).toMatchObject({
+      actor: 'employee:test:kristin@digdir.example',
+      actorName: 'Kristin Entra',
+    });
+  });
 });

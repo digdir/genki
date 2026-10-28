@@ -73,6 +73,7 @@ export const audit = defineNamespace({
   actionRecipeUnshare: 'Sluttet å dele en oppskrift',
   actionTriggerPause: 'Satte trigger på pause',
   otherAction: 'Annen handling',
+  platformActor: 'Plattformen',
   personIn: 'Person i {org}',
   csvHeader: 'Tid;Person;Fra;Virksomhet;Handling;Gjelder;Begrunnelse',
   csvFile: 'revisjonslogg.csv',

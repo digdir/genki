@@ -820,6 +820,7 @@ export interface PlatformProposal {
   status: string;
   createdAt: string;
   createdBy?: string;
+  requestedByName?: string;
   caseId?: string;
   ask?: string;
   detail?: string;
