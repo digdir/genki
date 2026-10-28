@@ -443,14 +443,18 @@ export const parseFrontmatter = (markdown: string): Record<string, unknown> | un
   }
 };
 
+/** A non-empty frontmatter `title` also replaces the title derived from the URL. */
 export const mergeFrontmatter = <D extends object>(doc: D, markdown: string) => {
   const fm = parseFrontmatter(markdown) ?? {};
+  const title =
+    typeof fm.title === 'string' || typeof fm.title === 'number' ? String(fm.title).trim() : '';
   return {
     ...doc,
     ...(fm.linktitle !== undefined && fm.linktitle !== null
       ? { linktitle: String(fm.linktitle) }
       : {}),
     ...(fm.title !== undefined && fm.title !== null ? { frontmatter_title: String(fm.title) } : {}),
+    ...(title ? { title } : {}),
     ...(fm.diataxis !== undefined && fm.diataxis !== null
       ? { diataxis: String(fm.diataxis).replace(/^diataxis_/, '') }
       : {}),
