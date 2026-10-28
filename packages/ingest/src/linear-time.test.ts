@@ -28,6 +28,16 @@ describe('ingestion parsers on adversarial input', () => {
     expect(htmlToMarkdown('<p><<b>script>alert(1)</p>')).not.toContain('<script>');
   });
 
+  it('reads tags in linear time when a tag name runs on or quotes never close', () => {
+    expect(quickly(() => extractMainContent(`<A${'-'.repeat(100_000)}`))).toBeLessThan(1000);
+    expect(quickly(() => extractMainContent(`<A"${'"<A"'.repeat(30_000)}`))).toBeLessThan(1000);
+    expect(quickly(() => extractMainContent(`<A'${"'<A'".repeat(30_000)}`))).toBeLessThan(1000);
+    expect(quickly(() => extractMainContent(`${'<a '.repeat(50_000)}`))).toBeLessThan(1000);
+    expect(htmlToMarkdown('<p>Før<br/>etter <a href="/x" title=\'«a»\'>lenke</a></p>')).toContain(
+      'lenke',
+    );
+  });
+
   it('finds the citation PDF link in linear time', () => {
     expect(quickly(() => citationPdfUrl('citation_pdf_url"'.repeat(20_000)))).toBeLessThan(1000);
     expect(

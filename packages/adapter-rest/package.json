@@ -19,7 +19,7 @@
     "@genai/kernel": "0.0.0",
     "@genai/port-knowledge": "0.0.0",
     "hono": "^4.13.13",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@genai/port-model": "0.0.0",
