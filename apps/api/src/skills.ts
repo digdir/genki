@@ -309,6 +309,7 @@ export const readZip = (zip: Uint8Array): ZipEntry[] => {
     if (ranges.some(([a, b]) => local < b && start + compressed > a))
       throw new Error('overlapping zip entries');
     ranges.push([local, start + compressed]);
+    if (size > maxZipBytes - total) throw new Error('the package is too large');
     const raw = zip.subarray(start, start + compressed);
     let data: Uint8Array;
     if (method === 0) data = raw;

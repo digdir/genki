@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   checkInputFields,
   fieldsQuery,
@@ -495,11 +496,16 @@ export const createMcpApp = (options: McpAppOptions) => {
   app.get(path, notAllowed);
   app.delete(path, notAllowed);
 
+  app.use(
+    path,
+    bodyLimit({
+      maxSize: maxBody,
+      onError: (c) => json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`)),
+    }),
+  );
   app.post(path, async (c) => {
     const principal = c.get('principal' as never) as Principal;
     const text = await c.req.text();
-    if (Buffer.byteLength(text) > maxBody)
-      return json(c, 413, parseError(`Request body exceeds ${maxBody} bytes`));
     if (text.trim() === '') return json(c, 400, parseError('Empty request body'));
     let body: unknown;
     try {

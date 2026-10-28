@@ -14,6 +14,8 @@ export interface FetchPolicy {
   maxMarkdownBytes: number;
   maxRedirects: number;
   maxSitemapDepth: number;
+  maxSitemaps: number;
+  maxSitemapEntries: number;
 }
 
 export const defaultFetchPolicy = {
@@ -23,6 +25,8 @@ export const defaultFetchPolicy = {
   maxMarkdownBytes: 10 * 1024 * 1024,
   maxRedirects: 5,
   maxSitemapDepth: 5,
+  maxSitemaps: 1000,
+  maxSitemapEntries: 100_000,
 };
 
 export const makeRelativeUrl = (baseUrl: string | undefined, url: string) =>
@@ -303,17 +307,28 @@ const decodeXml = (s: string) =>
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&');
 
-const firstTag = (xml: string, tag: string) => {
-  const m = new RegExp(`<(?:[\\w-]+:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:[\\w-]+:)?${tag}>`).exec(xml);
-  return m ? decodeXml((m[1] as string).trim()) : undefined;
+const blocks = function* (xml: string, tag: string) {
+  const open = new RegExp(`<(?:[\\w-]+:)?${tag}\\b`, 'g');
+  const close = new RegExp(`</(?:[\\w-]+:)?${tag}>`, 'g');
+  for (;;) {
+    const opened = open.exec(xml);
+    if (!opened) return;
+    const start = xml.indexOf('>', open.lastIndex);
+    if (start === -1) return;
+    close.lastIndex = start + 1;
+    const closed = close.exec(xml);
+    if (!closed) return;
+    yield xml.slice(start + 1, closed.index);
+    open.lastIndex = close.lastIndex;
+  }
 };
 
-const allBlocks = (xml: string, tag: string) =>
-  [
-    ...xml.matchAll(
-      new RegExp(`<(?:[\\w-]+:)?${tag}\\b[^>]*>([\\s\\S]*?)</(?:[\\w-]+:)?${tag}>`, 'g'),
-    ),
-  ].map((m) => m[1] as string);
+const firstTag = (xml: string, tag: string) => {
+  for (const block of blocks(xml, tag)) return decodeXml(block.trim());
+  return undefined;
+};
+
+const allBlocks = (xml: string, tag: string) => [...blocks(xml, tag)];
 
 export interface SitemapEntry {
   loc: string;
@@ -348,28 +363,33 @@ export const crawlSitemap = async (
   policy: FetchPolicy,
   options: GuardedFetchOptions & { includeHtml?: boolean } = {},
 ): Promise<SitemapEntry[]> => {
-  const walk = async (
-    current: string,
-    depth: number,
-    visited: Set<string>,
-  ): Promise<SitemapEntry[]> => {
+  const visited = new Set<string>();
+  const out: SitemapEntry[] = [];
+  const walk = async (current: string, depth: number): Promise<void> => {
     if (depth > policy.maxSitemapDepth)
       throw new Error(`Sitemap nesting exceeds depth limit at ${current}`);
-    if (visited.has(current)) return [];
+    if (visited.has(current)) return;
+    if (visited.size >= policy.maxSitemaps)
+      throw new Error(`Sitemap has more than ${policy.maxSitemaps} sitemaps`);
+    visited.add(current);
     const parsed = parseSitemapXml(
       await guardedFetchText(current, policy, policy.maxSitemapBytes, options),
       baseUrl,
     );
-    const next = new Set([...visited, current]);
     if (parsed.kind === 'index') {
-      const out: SitemapEntry[] = [];
       for (const child of parsed.sitemaps)
-        out.push(...(await walk(new URL(child, current).toString(), depth + 1, next)));
-      return out;
+        await walk(new URL(child, current).toString(), depth + 1);
+      return;
     }
-    return parsed.entries.filter((e) => e.loc.endsWith('.md') || options.includeHtml === true);
+    for (const entry of parsed.entries) {
+      if (!entry.loc.endsWith('.md') && options.includeHtml !== true) continue;
+      if (out.length >= policy.maxSitemapEntries)
+        throw new Error(`Sitemap has more than ${policy.maxSitemapEntries} entries`);
+      out.push(entry);
+    }
   };
-  return walk(makeAbsoluteUrl(baseUrl, url), 0, new Set());
+  await walk(makeAbsoluteUrl(baseUrl, url), 0);
+  return out;
 };
 
 export const extractTitleFromUrl = (url: string) => {

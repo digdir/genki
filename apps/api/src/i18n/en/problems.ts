@@ -104,6 +104,9 @@ export const problems = {
   keyPolicyBoundKey: 'A key bound to one service cannot have an access policy',
   taskExportNotFound: 'The run was not found',
   taskExportNotRecorded: 'The export could not be recorded in the audit log, so it was stopped',
+  uploadTooManyFiles: 'Send at most {count} files per request.',
+  uploadRequestTooLarge:
+    'The request is larger than {size} MB. Send the files in several requests.',
   status400: 'The request cannot be read',
   status401: 'You are not signed in',
   status403: 'No access',

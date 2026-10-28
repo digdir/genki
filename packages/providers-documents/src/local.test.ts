@@ -6,7 +6,7 @@ import {
   readDocument,
 } from '@genai/ingest';
 import { docxBytes } from '@genai/port-blob';
-import { UnsupportedDocumentError, createLocalConverter } from './index.js';
+import { TooManyPagesError, UnsupportedDocumentError, createLocalConverter } from './index.js';
 
 const encoder = new TextEncoder();
 
@@ -112,5 +112,25 @@ describe('local document converter', () => {
     await expect(
       converter.toMarkdown({ name: 'budsjett.xlsx', bytes: new Uint8Array(1) }),
     ).rejects.toBeInstanceOf(UnsupportedDocumentError);
+  });
+
+  it('refuses a Word file whose zip entries declare more than the unzipped size limit', async () => {
+    const bytes = docxBytes(['x'.repeat(5000)]);
+    await expect(
+      createLocalConverter({ maxUnzippedBytes: 4000 }).toMarkdown({ name: 'stor.docx', bytes }),
+    ).rejects.toBeInstanceOf(DocumentTooLargeError);
+    await expect(
+      createLocalConverter({ maxUnzippedBytes: 100_000 }).toMarkdown({ name: 'liten.docx', bytes }),
+    ).resolves.toContain('xxx');
+  });
+
+  it('refuses a PDF with more pages than the page limit', async () => {
+    const bytes = pdfBytes([['En'], ['To'], ['Tre']]);
+    await expect(
+      createLocalConverter({ maxPages: 2 }).toMarkdown({ name: 'lang.pdf', bytes }),
+    ).rejects.toBeInstanceOf(TooManyPagesError);
+    await expect(
+      createLocalConverter({ maxPages: 3 }).toMarkdown({ name: 'kort.pdf', bytes }),
+    ).resolves.toContain('Tre');
   });
 });
