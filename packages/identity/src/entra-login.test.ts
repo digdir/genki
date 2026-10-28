@@ -9,6 +9,7 @@ import {
   trustedEntraScope,
   withAltinnActions,
   type AltinnAuthorization,
+  type ClientRegistry,
   type SigningKey,
   type TrustedEntra,
 } from './index.js';
@@ -50,12 +51,16 @@ const sign = (claims: Record<string, unknown>) =>
 
 const trusted: TrustedEntra = {
   groups: [TRUSTED_GROUP],
+  clientIds: ['genki-test-portal', 'genki-test-console'],
   emailDomain: 'digdir.example',
   tenant: PLATFORM,
   resource: RESOURCE,
 };
 
-const verifier = (trustedEntra: TrustedEntra | null = trusted) =>
+const verifier = (
+  trustedEntra: TrustedEntra | null = trusted,
+  registeredClients?: ClientRegistry,
+) =>
   createTokenVerifier({
     issuers: [
       {
@@ -64,6 +69,7 @@ const verifier = (trustedEntra: TrustedEntra | null = trusted) =>
         audience: AUDIENCE,
         keys: createLocalJWKSet({ keys: [key.publicJwk] }),
         ...(trustedEntra ? { trustedEntra } : {}),
+        ...(registeredClients ? { registeredClients } : {}),
       },
     ],
   });
@@ -91,6 +97,40 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     await expect(verifier().verify(token)).resolves.toBeDefined();
   });
 
+  it('an Entra login from a client not in the allowlist gets no operator mark and no lockdown access', async () => {
+    const cases = [
+      entraClaims({ client_id: 'some-other-ansattporten-client' }),
+      entraClaims({ client_id: undefined }),
+    ];
+
+    for (const claims of cases)
+      await expect(verifier().verify(await sign(claims))).rejects.toMatchObject({
+        code: 'entra_not_trusted',
+      });
+  });
+
+  it('lets a trusted Entra login in through a registered tenant client, confined to that client', async () => {
+    const registered: ClientRegistry = {
+      byClientId: async (clientId) =>
+        clientId === 'genki-test-portal'
+          ? {
+              clientId,
+              audience: 'genki-test-portal',
+              tenant: PLATFORM,
+              service: 'klarsprak',
+              client: 'tenant-app',
+            }
+          : undefined,
+    };
+
+    const identity = await verifier(trusted, registered).verify(await sign(entraClaims()));
+    expect(identity.principal.confinedTo).toEqual({
+      tenant: PLATFORM,
+      service: 'klarsprak',
+      client: 'tenant-app',
+    });
+  });
+
   it('refuses an Entra login outside the configured groups', async () => {
     const token = await sign(entraClaims({ groups: [OTHER_GROUP] }));
 
@@ -113,6 +153,7 @@ describe('Entra logins through Ansattporten in lockdown', () => {
   it('trusts the groups alone when no email domain is configured', async () => {
     const groupsOnly: TrustedEntra = {
       groups: trusted.groups,
+      clientIds: trusted.clientIds,
       tenant: PLATFORM,
       resource: RESOURCE,
     };

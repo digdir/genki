@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocaleProvider, storedPreference } from '@genai/i18n/react';
 import { App } from './App';
 import { mockEntra, operatorRole } from './auth';
@@ -610,7 +610,11 @@ describe('støttetilgang', () => {
 });
 
 describe('revisjon', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('lists every action across tenants and filters by Digdir, person and action', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await signedIn('#/audit');
 
     const log = await screen.findByRole('region', { name: 'Revisjonslogg' });

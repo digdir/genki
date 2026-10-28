@@ -31,6 +31,7 @@ import {
   EgressGuard,
   McpClient,
   RegistrationError,
+  secretTargets,
   TenantSecrets,
   toolSlug,
   validateConnection,
@@ -550,6 +551,7 @@ const tenantSecretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
 export interface TenantSecretName {
   name: string;
   ref: string;
+  allowedHosts: string[];
 }
 
 const checkSetting = (key: string, schema: SettingSchema | undefined, value: unknown) => {
@@ -1598,6 +1600,21 @@ export const createBuildingBlocksModule =
       });
     };
 
+    const secretProblem = async (connection: Connection) => {
+      if (!connection.auth) return undefined;
+      const outside = await secrets.outside(
+        connection.tenant,
+        connection.auth.secret,
+        secretTargets(connection),
+      );
+      return outside.length > 0
+        ? t('blocks.secretNotForHosts', {
+            secret: connection.auth.secret.split('/').pop() ?? '',
+            hosts: outside.join(', '),
+          })
+        : undefined;
+    };
+
     const egressFailure = (error: unknown, notRun: string) => {
       const message = error instanceof Error ? error.message : String(error);
       const code = error instanceof EgressError ? error.code : undefined;
@@ -1830,6 +1847,8 @@ export const createBuildingBlocksModule =
       } catch (error) {
         return report([{ name: names.setup, passed: false, reason: (error as Error).message }]);
       }
+      const unbound = await secretProblem(connection);
+      if (unbound) return report([{ name: names.setup, passed: false, reason: unbound }]);
       if (input.type === 'a2a') return a2aContractTest(input, connection, signal);
       if (input.type === 'openapi') return openApiContractTest(input, connection, signal);
       const client = new McpClient(connection, guard as EgressGuard, secrets);
@@ -1942,6 +1961,10 @@ export const createBuildingBlocksModule =
     const secretNames = async (tenant: string) =>
       options.secretNames ? options.secretNames(tenant) : [];
 
+    const secretHosts = async (ref: string) => [
+      ...((await options.secrets?.hostsFor?.(ref)) ?? []),
+    ];
+
     return {
       id: 'building-blocks',
       handlers,
@@ -1959,7 +1982,15 @@ export const createBuildingBlocksModule =
           contractTest,
           manifestFor,
           secretNames,
+          secretHosts,
           connectionFor,
+          secretProblem: async (tenant, input) => {
+            try {
+              return await secretProblem(connectionFor(tenant, input));
+            } catch {
+              return undefined;
+            }
+          },
         }),
     };
   };
@@ -1983,7 +2014,9 @@ interface Reads {
   ): Promise<ContractTestReport>;
   manifestFor(tenant: string, input: RegistrationInput): ManifestPreview;
   secretNames(tenant: string): Promise<string[]>;
+  secretHosts(ref: string): Promise<string[]>;
   connectionFor(tenant: string, input: RegistrationInput): Connection;
+  secretProblem(tenant: string, input: RegistrationInput): Promise<string | undefined>;
 }
 
 const problem = (
@@ -2078,10 +2111,16 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
       const ref = state.connection.auth?.secret;
       if (ref?.startsWith(prefix)) names.add(ref.slice(prefix.length));
     }
-    const data: TenantSecretName[] = [...names]
-      .filter((n) => /^[a-z0-9][a-z0-9._-]*$/.test(n))
-      .sort()
-      .map((name) => ({ name, ref: `${prefix}${name}` }));
+    const data: TenantSecretName[] = await Promise.all(
+      [...names]
+        .filter((n) => /^[a-z0-9][a-z0-9._-]*$/.test(n))
+        .sort()
+        .map(async (name) => ({
+          name,
+          ref: `${prefix}${name}`,
+          allowedHosts: await reads.secretHosts(`${prefix}${name}`),
+        })),
+    );
     return c.json({ data });
   });
 
@@ -2173,6 +2212,9 @@ const mountRoutes = <E extends Env, S extends Schema, B extends string>(
     const reason = reasonOf(c);
     const missing = needsReason(c, reason);
     if (missing) return missing;
+    const unbound = await reads.secretProblem(guard.tenant, input);
+    if (unbound)
+      return problem(c, 400, 'Invalid request', [{ path: 'auth.secret', message: unbound }]);
     const report = await reads.contractTest(guard.tenant, input, c.req.raw.signal);
     if (!report.passed)
       return problem(

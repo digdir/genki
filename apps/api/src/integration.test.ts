@@ -403,7 +403,7 @@ describe('the integrated platform', () => {
     const secret = await app.request(`/tenants/${tenant}/secrets/case-api`, {
       method: 'PUT',
       headers: as('kari', { 'change-reason': 'test av endringen' }),
-      body: JSON.stringify({ value: 'tool-token' }),
+      body: JSON.stringify({ value: 'tool-token', allowedHosts: [`http://127.0.0.1:${port}`] }),
     });
     await platform.connections.save({
       connection: {

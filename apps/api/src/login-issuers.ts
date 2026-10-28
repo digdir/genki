@@ -65,5 +65,5 @@ export const loginIssuers = async ({
     registeredClients,
     ...(trustedEntra ? { trustedEntra } : {}),
   });
-  return { trusted, mock };
+  return { trusted, mock, mockIssuer: issuer };
 };

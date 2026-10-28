@@ -80,6 +80,8 @@ const ipv4Blocked = (ip: string) => {
 };
 
 const ipv6Blocked = (ip: string) => {
+  // A zone index only exists on link-local addresses, and URL parsing refuses it.
+  if (ip.includes('%')) return true;
   // URL canonicalization handles dotted tails, compression, case and leading zeroes.
   const normalized = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
   const [left = '', right = ''] = normalized.split('::');
@@ -106,9 +108,7 @@ const ipv6Blocked = (ip: string) => {
   if (first === 0x64 && words[1] === 0xff9b) return true;
   // 6to4 and Teredo encapsulate IPv4; refuse the whole transition ranges.
   if (first === 0x2002 || (first === 0x2001 && words[1] === 0)) return true;
-  // Protocol assignments include benchmarking and non-routable ORCHID identifiers.
   if (first === 0x2001 && ((words[1] ?? 0) & 0xfe00) === 0) return true;
-  // ULA, link/site-local, multicast and other non-global allocations are not public.
   if ((first & 0xe000) !== 0x2000) return true;
   return (
     (first === 0x2001 && words[1] === 0xdb8) || // Documentation.
@@ -163,6 +163,7 @@ export class HttpStatusError extends Error {
 }
 
 export interface GuardedFetchOptions {
+  /** For tests: it must honour `init.dispatcher`, or the address pin is bypassed. */
   fetch?: typeof fetch;
   resolve?: HostResolver;
   signal?: AbortSignal;
@@ -190,8 +191,7 @@ export const guardedFetchStream = async (
     const { parsed, addresses } = await validatedFetchTarget(current, policy, resolve);
     options.signal?.throwIfAborted();
     current = parsed.toString();
-    // A fresh agent per hop prevents connection reuse across validation decisions.
-    // Keep the URL hostname for HTTP Host, TLS SNI and certificate verification.
+    // A fresh agent per hop pins this hop's addresses; Host, SNI and certificates keep the URL name.
     const dispatcher = new Agent({
       connect: {
         timeout: policy.connectTimeoutMs,

@@ -161,6 +161,7 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/projects/:project',
   'PUT /tenants/:tenant/projects/:project/subscriptions/:selection',
   'PUT /tenants/:tenant/secrets/:name',
+  'PUT /tenants/:tenant/secrets/:name/hosts',
   'PUT /tenants/:tenant/services/:id/draft',
   'PUT /tenants/:tenant/services/:id/lifecycle',
   'PUT /tenants/:tenant/settings/:key',
@@ -260,7 +261,7 @@ describe('writes run as admin tasks', () => {
 
     const saved = await send(path, 'kari', {
       method: 'PUT',
-      body: { value: 'hemmelig-verdi' },
+      body: { value: 'hemmelig-verdi', allowedHosts: ['https://arkiv.example.no'] },
       reason,
     });
 
