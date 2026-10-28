@@ -165,11 +165,18 @@ export interface PlaygroundVersionSetup {
   output: PlaygroundOutput;
 }
 
+export interface PlaygroundVariant {
+  id: string;
+  title?: string;
+  model?: string;
+}
+
 export interface PlaygroundServiceVersion {
   version: number;
   draft: boolean;
   inUse: boolean;
   setup: PlaygroundVersionSetup;
+  variants?: PlaygroundVariant[];
   inputFields?: InputField[];
 }
 
@@ -368,6 +375,19 @@ export const questionsIn = (value: unknown, locale: 'nb' | 'en') =>
     const text = typeof q === 'string' ? q : record(q)[locale];
     return typeof text === 'string' && text ? [text] : [];
   });
+
+const variantsIn = (definition: unknown, locale: 'nb' | 'en'): PlaygroundVariant[] => {
+  const spec = record(record(definition).spec);
+  const list = (Array.isArray(spec.variants) ? spec.variants : []).flatMap((v) => {
+    const entry = typeof v === 'string' ? { id: v } : record(v);
+    const id = text(entry.id);
+    if (!id) return [];
+    const title = text(record(entry.title)[locale]);
+    const model = text(entry.model);
+    return [{ id, ...(title ? { title } : {}), ...(model ? { model } : {}) }];
+  });
+  return list.length > 1 ? list : [];
+};
 
 const toolIds = (value: unknown) =>
   (Array.isArray(value) ? value : []).flatMap((t) => {
@@ -775,11 +795,13 @@ export const playgroundModule: PlatformModuleFactory = () => ({
                       g.tenant,
                       v.definition,
                     );
+                    const variants = variantsIn(v.definition, requestLocale());
                     return {
                       version: v.version,
                       draft: false,
                       inUse: v.version === latest?.version,
                       setup: versionSetup(v.definition),
+                      ...(variants.length ? { variants } : {}),
                       ...(fields.length ? { inputFields: fields } : {}),
                     };
                   }),
