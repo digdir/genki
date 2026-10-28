@@ -138,9 +138,10 @@ const trustedEntraLogin = (
   payload: JWTPayload,
   registered: boolean,
 ): VerifiedIdentity => {
-  if (registered)
-    throw new AuthenticationError('entra_not_trusted', 'the login comes from a tenant client');
-  if (typeof payload.client_id !== 'string' || !trusted.clientIds.includes(payload.client_id))
+  if (
+    !registered &&
+    (typeof payload.client_id !== 'string' || !trusted.clientIds.includes(payload.client_id))
+  )
     throw new AuthenticationError('entra_not_trusted', 'the login comes from an untrusted client');
   const configured = new Set(trusted.groups.map((g) => g.toLowerCase()));
   const groups = Array.isArray(payload.groups) ? payload.groups : [];
