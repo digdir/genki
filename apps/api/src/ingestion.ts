@@ -391,6 +391,7 @@ export class IngestionService {
       newId?: () => string;
       admits?: (principal: Principal | undefined) => boolean;
       onRefused?: (message: string) => void;
+      onError?: (message: string) => void;
     },
   ) {}
 
@@ -610,6 +611,12 @@ export class IngestionService {
       .then(async (finished) => {
         try {
           await this.options.executions.save(finished);
+        } catch (error) {
+          this.options.onError?.(
+            `ingestion ${execution.id} ended as ${finished.status} but was not saved: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         } finally {
           this.#running.delete(execution.id);
         }

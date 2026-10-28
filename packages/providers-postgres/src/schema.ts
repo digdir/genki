@@ -632,7 +632,7 @@ const migrations: string[] = [
      pipeline text not null,
      pipeline_version integer not null,
      backend text not null,
-     status text not null check (status in ('running', 'succeeded', 'failed')),
+     status text not null check (status in ('running', 'succeeded', 'failed', 'cancelled')),
      started_by text not null,
      started_at text collate "C" not null,
      ended_at text,
@@ -641,6 +641,19 @@ const migrations: string[] = [
    )`,
   `create index if not exists ingestion_executions_recent
      on ingestion_executions (scope, dataset, pipeline, started_at desc)`,
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%cancelled%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('running', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
   ...tenantIsolation('ingestion_executions', 'scope'),
   `create or replace function find_ingestion_execution(p_id text) returns setof ingestion_executions
      language plpgsql stable security definer set search_path = public

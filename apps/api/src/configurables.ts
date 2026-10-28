@@ -102,7 +102,7 @@ export const createConfigurables = (
       backend: input.ingestion ?? deps.ingestion ?? pendingIngestionBackend(),
       ...(input.now ? { now: input.now } : {}),
       ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
-      ...(input.onWarning ? { onRefused: input.onWarning } : {}),
+      ...(input.onWarning ? { onRefused: input.onWarning, onError: input.onWarning } : {}),
     });
     const configDeps = {
       catalog,

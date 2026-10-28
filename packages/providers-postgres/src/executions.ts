@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
-export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed';
+export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface IngestionExecutionReport {
   stored: number;

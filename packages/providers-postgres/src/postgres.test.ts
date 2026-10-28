@@ -4,7 +4,13 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Strategy } from '@genai/kernel';
-import { createPostgresStores, erased, LocalKeyWrapper, migrate } from './index.js';
+import {
+  createPostgresStores,
+  erased,
+  LocalKeyWrapper,
+  migrate,
+  PostgresIngestionExecutions,
+} from './index.js';
 import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
@@ -341,5 +347,33 @@ describe('the kernel on postgres', () => {
     const audit = await collect(await after.events(kari, run.task, { audience: 'audit' }));
     expect(audit.map((e) => e.seq)).toEqual([...audit.keys()]);
     await second.close();
+  });
+});
+
+describe('postgres ingestion executions', () => {
+  it('stores a cancelled run, also after upgrading a table that did not allow it', async () => {
+    await pool.query(
+      'alter table ingestion_executions drop constraint ingestion_executions_status_check',
+    );
+    await pool.query(
+      `alter table ingestion_executions add constraint ingestion_executions_status_check
+         check (status in ('running', 'succeeded', 'failed'))`,
+    );
+    await migrate(pool);
+    const executions = new PostgresIngestionExecutions(pool);
+    const run = {
+      id: 'run-cancelled',
+      dataset: '999888777/sider',
+      pipeline: 'nettsider',
+      pipelineVersion: 1,
+      backend: 'test',
+      status: 'running' as const,
+      startedBy: 'kari',
+      startedAt: '2026-10-26T10:00:00.000Z',
+    };
+    await executions.save(run);
+    await executions.save({ ...run, status: 'cancelled', endedAt: '2026-10-26T10:01:00.000Z' });
+
+    expect(await executions.get(run.id)).toMatchObject({ status: 'cancelled' });
   });
 });

@@ -37,6 +37,7 @@ import {
   validateConnection,
   type ConnectionRegistry,
   type ConnectionToolSource,
+  toolSyncDeadlineMs,
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
@@ -256,7 +257,11 @@ export const adminExtensions = (deps: {
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
     try {
-      const result = await deps.tools.source.sync(tenant, id);
+      const result = await deps.tools.source.sync(
+        tenant,
+        id,
+        AbortSignal.timeout(toolSyncDeadlineMs),
+      );
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };

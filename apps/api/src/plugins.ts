@@ -25,7 +25,7 @@ import {
   fileSystemBlobContractTarget,
   memoryBlobContractTarget,
 } from '@genai/port-blob/contract';
-import { tenantSecretPattern } from '@genai/providers-mcp-client';
+import { tenantSecretPattern, toolSyncDeadlineMs } from '@genai/providers-mcp-client';
 import {
   builtinToolsContractTarget,
   toolSourceContract,
@@ -323,7 +323,7 @@ export const pluginsModule: PlatformModuleFactory = (deps) => {
       tools: enabled ? (before?.tools ?? []) : [],
       pending: enabled ? (before?.pending ?? []) : [],
     });
-    if (enabled) await tools.source.sync(tenant, id);
+    if (enabled) await tools.source.sync(tenant, id, AbortSignal.timeout(toolSyncDeadlineMs));
     await tools.source.load(tenant);
     await tools.changed(tenant);
   };
