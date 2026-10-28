@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { baseConfig, call, result, run, toolMessages } from './harness.test-utils.js';
 import { defaultSystemPrompt } from './index.js';
+import { untrustedDataNote } from './prompts.js';
 
 const klarsprak = (version: number, instructions: string) => ({
   ref: `klarsprak@${version}`,
@@ -27,7 +28,7 @@ describe('agent-loop skills', () => {
     const [first, second] = out.loops;
     expect(first?.tools?.map((t) => t.name)).toContain('use_skill');
     expect(first?.messages[0]?.content).toBe(
-      `${defaultSystemPrompt}\n\n# Ferdigheter\n\nThese skills are available. Call use_skill with the name to load a skill's instructions when the question needs it:\n- klarsprak: Skriv om tekst til klarspråk.`,
+      `${defaultSystemPrompt}\n\n# Ferdigheter\n\nThese skills are available. Call use_skill with the name to load a skill's instructions when the question needs it:\n- klarsprak: Skriv om tekst til klarspråk.${untrustedDataNote}`,
     );
     expect(toolMessages(second)).toEqual([
       '## klarsprak\nSkriv om tekst til klarspråk.\n\nBruk korte setninger. Versjon 2.\n\nEksempler:\nInn: Vedtaket er fattet.\nForventet resultat: Vi har bestemt.',
@@ -41,7 +42,7 @@ describe('agent-loop skills', () => {
     const empty = await run({ config: { ...baseConfig, skills: [] }, scripts: script });
 
     expect(empty.loops).toEqual(before.loops);
-    expect(before.loops[0]?.messages[0]?.content).toBe(defaultSystemPrompt);
+    expect(before.loops[0]?.messages[0]?.content).toBe(defaultSystemPrompt + untrustedDataNote);
     expect(before.loops[0]?.tools?.map((t) => t.name)).not.toContain('use_skill');
   });
 });

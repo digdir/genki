@@ -38,17 +38,19 @@ const forbiddenKeys = new Set(['__proto__', 'prototype', 'constructor']);
 
 const parentOf = (root: unknown, segments: string[]): { parent: Container; key: string } => {
   if (segments.length === 0) throw new PatchError('the root cannot be changed');
+  const forbidden = segments.find((segment) => forbiddenKeys.has(segment));
+  if (forbidden !== undefined) throw new PatchError(`${forbidden} is not allowed`);
   let current: unknown = root;
   for (const segment of segments.slice(0, -1)) {
     if (!isContainer(current)) throw new PatchError(`no object at ${segment}`);
-    current = Array.isArray(current)
-      ? current[Number(segment)]
-      : (current as Record<string, unknown>)[segment];
+    if (Array.isArray(current)) current = current[Number(segment)];
+    else {
+      if (!Object.hasOwn(current, segment)) throw new PatchError(`no object at ${segment}`);
+      current = current[segment];
+    }
   }
   if (!isContainer(current)) throw new PatchError('the parent does not exist');
-  const key = segments.at(-1) ?? '';
-  if (forbiddenKeys.has(key)) throw new PatchError(`${key} is not allowed`);
-  return { parent: current, key };
+  return { parent: current, key: segments.at(-1) ?? '' };
 };
 
 const indexOf = (array: unknown[], key: string, allowEnd: boolean) => {

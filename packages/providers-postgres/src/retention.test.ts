@@ -181,3 +181,61 @@ describe('postgres conversation retention', () => {
     );
   });
 });
+
+describe('postgres thread erasure', () => {
+  const seedTurn = async (id: string, owner: string, thread: string) => {
+    const scope = {
+      tenant: owner,
+      key: JSON.stringify(['thread', JSON.stringify(['employee', 'test', 'kari', owner]), thread]),
+    };
+    const task: Task = {
+      id,
+      tenant: owner,
+      owner: 'kernel',
+      status: 'completed',
+      principal: { kind: 'employee', id: 'kari' },
+      service: {
+        capability: { id: `${owner}/svar/default`, version: '1' },
+        strategy: { id: 'single-call', version: '1' },
+        configHash: 'x',
+      },
+      thread,
+      result: [textPart('hemmelig svar')],
+      artifacts: [],
+      usage: {},
+      createdAt: now.toISOString(),
+      endedAt: now.toISOString(),
+    };
+    const base = { v: 1, task: id, ts: now.toISOString(), actor: 'kernel' as const };
+    await stores.log.append(
+      { ...base, type: 'kernel.task.input', data: { parts: [textPart('vedlagt brev')] } },
+      scope,
+    );
+    await stores.tasks.put(
+      { task, principal: { kind: 'employee', issuer: 'test', subject: 'kari' }, lastSeq: 0 },
+      scope,
+    );
+    return scope.key;
+  };
+
+  it('erases the content key of every task in the thread, only in the owner tenant', async () => {
+    const scope = await seedTurn('turn-1', tenant, 'samtale-1');
+    await seedTurn('turn-2', tenant, 'samtale-2');
+    await seedTurn('turn-3', other, 'samtale-1');
+
+    expect(await stores.threadErasure.erase(tenant, 'samtale-1')).toBe(1);
+
+    expect((await collect('turn-1'))[0]?.data).toEqual(erased);
+    expect((await stores.tasks.get('turn-1'))?.task.result).toBeUndefined();
+    expect(
+      (
+        await pool.query('select 1 from erased_scopes where tenant = $1 and scope = $2', [
+          tenant,
+          scope,
+        ])
+      ).rowCount,
+    ).toBe(1);
+    expect((await collect('turn-2'))[0]?.data).toEqual({ parts: [textPart('vedlagt brev')] });
+    expect((await collect('turn-3'))[0]?.data).toEqual({ parts: [textPart('vedlagt brev')] });
+  });
+});

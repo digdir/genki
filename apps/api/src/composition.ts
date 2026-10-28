@@ -125,6 +125,7 @@ import { describeEngines } from './knowledge-engines.js';
 import {
   InMemoryEventLog,
   InMemoryTaskStore,
+  InMemoryThreadErasure,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
@@ -133,6 +134,7 @@ import {
   type StateStore,
   type Strategy,
   type TaskStore,
+  type ThreadErasure,
   type TokenProviders,
 } from '@genai/kernel';
 import { type EmbeddingAdapter } from '@genai/port-embedding';
@@ -371,6 +373,7 @@ export interface PlatformInput {
   tasks?: TaskStore;
   state?: StateStore;
   conversations?: ConversationStore;
+  threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
@@ -907,7 +910,13 @@ export const createPlatform = async (input: PlatformInput) => {
     send: input.webhookSend ?? egressSender(input.webhookEgress ?? input.egress ?? {}),
     ...(input.webhookDeliveries ? { deliveries: input.webhookDeliveries } : {}),
   });
-  const tracker = trackTasks(webhooks.observe(input.log ?? new InMemoryEventLog(), taskStore));
+  const eventLog = input.log ?? new InMemoryEventLog();
+  const threadErasure =
+    input.threadErasure ??
+    (eventLog instanceof InMemoryEventLog && taskStore instanceof InMemoryTaskStore
+      ? new InMemoryThreadErasure(eventLog, taskStore)
+      : undefined);
+  const tracker = trackTasks(webhooks.observe(eventLog, taskStore));
   const taskIndex = input.taskIndex ?? tracker;
   const baseEvalStores = input.evalStores ?? {
     testSets: new InMemoryTestSetStore(),
@@ -1948,13 +1957,10 @@ export const createPlatform = async (input: PlatformInput) => {
       conversationRoutes({
         store: conversations,
         auth: { authenticate: (request) => callerOf(request) },
-        ...(blobStore
-          ? {
-              onDeleted: async (owner, id) => {
-                await deleteConversationDocuments(blobStore, owner.tenant, id);
-              },
-            }
-          : {}),
+        onDeleted: async (owner, id) => {
+          await threadErasure?.erase(owner.tenant, id);
+          if (blobStore) await deleteConversationDocuments(blobStore, owner.tenant, id);
+        },
         selectAgent: async (caller, requested) => {
           const entries = await resolver.list(caller.principal);
           if (requested) {

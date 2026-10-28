@@ -31,6 +31,7 @@ export {
 } from './credentials.js';
 export {
   InMemoryRetentionStore,
+  InMemoryThreadErasure,
   minimumRetentionDays,
   retentionClassDays,
   retentionClasses,
@@ -42,5 +43,6 @@ export {
   type RetentionPolicy,
   type RetentionStore,
   type ThreadCutoff,
+  type ThreadErasure,
   type ThreadRetentionStore,
 } from './retention.js';

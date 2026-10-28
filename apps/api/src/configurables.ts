@@ -104,6 +104,11 @@ export const createConfigurables = (
       ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
       ...(input.onWarning ? { onRefused: input.onWarning, onError: input.onWarning } : {}),
     });
+    await ingestion
+      .failStaleRuns()
+      .catch((error: unknown) =>
+        input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
+      );
     const configDeps = {
       catalog,
       gates,

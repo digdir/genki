@@ -6,7 +6,8 @@ import {
   InMemoryApiKeys,
   type StoredApiKey,
 } from '@genai/identity';
-import { envSecrets } from '@genai/kernel';
+import type { Event } from '@genai/contracts';
+import { envSecrets, InMemoryEventLog, InMemoryTaskStore } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
@@ -61,8 +62,12 @@ const boot = async () => {
   const authenticator = createAuthenticator({ apiKeys: keys });
   const settings = new SettingsRegistry(platformSettings);
   const blobs = new InMemoryBlobStore();
+  const log = new InMemoryEventLog();
+  const tasks = new InMemoryTaskStore();
   const platform = await createPlatform({
     blobStore: blobs,
+    log,
+    tasks,
     catalogs: {
       models: {
         endpoints: {
@@ -134,7 +139,7 @@ const boot = async () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { send, model, blobs };
+  return { send, model, blobs, log, tasks };
 };
 
 const encoded = (text: string) => Buffer.from(text, 'utf8').toString('base64');
@@ -250,6 +255,24 @@ describe('documents an employee attaches to a question', () => {
 
     expect(deleted.status).toBe(200);
     expect(await blobs.list(digdir, runDocumentsFolder)).toEqual([]);
+  });
+
+  it('deleting a conversation erases the task events of its turns, but not other conversations', async () => {
+    const { send, log, tasks } = await boot();
+    const gone = await converse(send, 'Fristen er 1. mars.');
+    const kept = await converse(send, 'Fristen er 2. april.');
+    const inputOf = async (thread: string) => {
+      const task = tasks.all().find((t) => t.task.thread === thread)?.task;
+      const events: Event[] = [];
+      for await (const e of log.read(task?.id ?? '', 0, () => false)) events.push(e);
+      return events.find((e) => e.type === 'kernel.task.input')?.data;
+    };
+    expect(JSON.stringify(await inputOf(gone))).toContain('Fristen er 1. mars.');
+
+    await send(`/api/conversations/${gone}`, 'frontend', undefined, 'DELETE');
+
+    expect(await inputOf(gone)).toEqual({ erased: true });
+    expect(JSON.stringify(await inputOf(kept))).toContain('Fristen er 2. april.');
   });
 
   it('deleting a conversation leaves other conversations’ documents alone', async () => {

@@ -311,6 +311,12 @@ export interface ExecutionStore {
   save(execution: Execution): Promise<void>;
   get(id: string): Promise<Execution | undefined>;
   list(dataset: string, pipeline: string): Promise<Execution[]>;
+  failStale(input: {
+    startedBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }): Promise<number>;
 }
 
 export class InMemoryExecutionStore implements ExecutionStore {
@@ -330,6 +336,26 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((e) => e.dataset === dataset && e.pipeline === pipeline)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
       .map((e) => structuredClone(e));
+  }
+
+  async failStale(input: {
+    startedBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }) {
+    const stale = [...this.#executions.values()].filter(
+      (e) =>
+        e.status === 'running' && e.startedAt < input.startedBefore && !input.except.includes(e.id),
+    );
+    for (const e of stale)
+      this.#executions.set(e.id, {
+        ...e,
+        status: 'failed',
+        endedAt: input.endedAt,
+        error: input.error,
+      });
+    return stale.length;
   }
 }
 
@@ -359,6 +385,10 @@ export const ingestionLockedMessage =
 
 export const runLockedMessage = (dataset: string, execution: string) =>
   `the dataset ${dataset} is already being ingested by run ${execution}; wait for it to finish or cancel it`;
+
+export const staleRunMessage = 'the platform restarted while the run was going';
+
+export const staleRunHours = 6;
 
 export const writerLockKeys = (target: IngestionTarget) => [
   `dataset:${target.dataset}`,
@@ -411,6 +441,16 @@ export class IngestionService {
       ? backend.unavailableFor?.(target, pipeline)
       : (backend.unavailableReason ?? 'ingestion is not available');
     return { name: backend.name, available: reason === undefined, ...(reason ? { reason } : {}) };
+  }
+
+  async failStaleRuns(): Promise<number> {
+    const now = this.options.now?.() ?? new Date();
+    return this.options.executions.failStale({
+      startedBefore: new Date(now.getTime() - staleRunHours * 3_600_000).toISOString(),
+      except: [...this.#running.keys()],
+      endedAt: now.toISOString(),
+      error: staleRunMessage,
+    });
   }
 
   #now() {
