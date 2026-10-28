@@ -330,6 +330,7 @@ const sourceOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
   scope: { tenant: string; dataset: string },
+  signal: AbortSignal,
 ): Promise<IngestSource> => {
   const source = spec.source;
   const converter = options.converter;
@@ -343,6 +344,7 @@ const sourceOf = async (
     const listed = (
       await crawlSitemap(source.sitemap, source.baseUrl, policy, {
         ...options.web,
+        signal,
         includeHtml: true,
       })
     ).filter((e) => selected(new URL(e.loc).pathname, source.include, source.exclude));
@@ -358,7 +360,10 @@ const sourceOf = async (
         ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
         ...(converter ? { converter } : {}),
         fetchBody: (entry) =>
-          guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), options.web),
+          guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), {
+            ...options.web,
+            signal,
+          }),
       }),
     );
   }
@@ -426,6 +431,7 @@ const sourceOf = async (
           (
             await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
               ...options.web,
+              signal,
               ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
             })
           ).bytes,
@@ -531,7 +537,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
               },
             }
           : undefined;
-      const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset });
+      const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset }, signal);
       const result = await runIndexIngest({
         source: withIngestedAt(
           spec.chunking.metadataStyle === 'none' ? withoutMetadata(source) : source,

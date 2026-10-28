@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { Agent, Dispatcher1Wrapper } from 'undici';
 import { parse as parseYaml } from 'yaml';
 import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
@@ -79,16 +80,39 @@ const ipv4Blocked = (ip: string) => {
 };
 
 const ipv6Blocked = (ip: string) => {
-  const lower = ip.toLowerCase();
-  if (lower === '::' || lower === '::1') return true;
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-  if (mapped) return ipv4Blocked(mapped[1] as string);
-  const first = parseInt(lower.split(':')[0] || '0', 16);
+  // A zone index only exists on link-local addresses, and URL parsing refuses it.
+  if (ip.includes('%')) return true;
+  // URL canonicalization handles dotted tails, compression, case and leading zeroes.
+  const normalized = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  const [left = '', right = ''] = normalized.split('::');
+  const head = left ? left.split(':') : [];
+  const tail = right ? right.split(':') : [];
+  const words = (
+    normalized.includes('::')
+      ? [...head, ...Array<string>(8 - head.length - tail.length).fill('0'), ...tail]
+      : head
+  ).map((word) => parseInt(word, 16));
+  const first = words[0] ?? 0;
+  const zeroPrefix = words.slice(0, 5).every((word) => word === 0);
+  // Mapped IPv6 uses the host's IPv4 stack: apply exactly the IPv4 policy.
+  if (zeroPrefix && words[5] === 0xffff) {
+    const high = words[6] ?? 0;
+    const low = words[7] ?? 0;
+    return ipv4Blocked([high >> 8, high & 255, low >> 8, low & 255].join('.'));
+  }
+  // Compatible IPv4 (::/96), unspecified and loopback are not public IPv6 destinations.
+  if (zeroPrefix && words[5] === 0) return true;
+  // Translated IPv4 and NAT64 prefixes can reach IPv4 destinations behind a translator.
+  if (words.slice(0, 4).every((word) => word === 0) && words[4] === 0xffff && words[5] === 0)
+    return true;
+  if (first === 0x64 && words[1] === 0xff9b) return true;
+  // 6to4 and Teredo encapsulate IPv4; refuse the whole transition ranges.
+  if (first === 0x2002 || (first === 0x2001 && words[1] === 0)) return true;
+  if (first === 0x2001 && ((words[1] ?? 0) & 0xfe00) === 0) return true;
+  if ((first & 0xe000) !== 0x2000) return true;
   return (
-    (first & 0xfe00) === 0xfc00 ||
-    (first & 0xffc0) === 0xfe80 ||
-    (first & 0xff00) === 0xff00 ||
-    lower.startsWith('2001:db8:')
+    (first === 0x2001 && words[1] === 0xdb8) || // Documentation.
+    (first === 0x3fff && ((words[1] ?? 0) & 0xf000) === 0) // Documentation (3fff::/20).
   );
 };
 
@@ -100,7 +124,7 @@ export type HostResolver = (host: string) => Promise<string[]>;
 const dnsResolver: HostResolver = async (host) =>
   (await lookup(host, { all: true })).map((a) => a.address);
 
-export const validateFetchUrl = async (url: string, policy: FetchPolicy, resolve: HostResolver) => {
+const validatedFetchTarget = async (url: string, policy: FetchPolicy, resolve: HostResolver) => {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -122,8 +146,11 @@ export const validateFetchUrl = async (url: string, policy: FetchPolicy, resolve
     throw new Error(`Website fetch host resolved to no addresses: ${host}`);
   const blocked = addresses.find(blockedAddress);
   if (blocked) throw new Error(`Website fetch resolved to a private or reserved address: ${host}`);
-  return parsed;
+  return { parsed, addresses: [...addresses] };
 };
+
+export const validateFetchUrl = async (url: string, policy: FetchPolicy, resolve: HostResolver) =>
+  (await validatedFetchTarget(url, policy, resolve)).parsed;
 
 export class HttpStatusError extends Error {
   override readonly name = 'HttpStatusError';
@@ -136,8 +163,10 @@ export class HttpStatusError extends Error {
 }
 
 export interface GuardedFetchOptions {
+  /** For tests: it must honour `init.dispatcher`, or the address pin is bypassed. */
   fetch?: typeof fetch;
   resolve?: HostResolver;
+  signal?: AbortSignal;
 }
 
 export interface FetchedBody {
@@ -145,56 +174,118 @@ export interface FetchedBody {
   contentType?: string;
 }
 
+/** Consume a guarded response with backpressure, without buffering the full body. */
+export const guardedFetchStream = async (
+  url: string,
+  policy: FetchPolicy,
+  maxBytes: number,
+  consume: (chunk: Uint8Array) => Promise<void>,
+  options: GuardedFetchOptions = {},
+): Promise<Headers> => {
+  options.signal?.throwIfAborted();
+  const send = options.fetch ?? fetch;
+  const resolve = options.resolve ?? dnsResolver;
+  let current = url;
+  for (let redirects = 0; ; redirects += 1) {
+    options.signal?.throwIfAborted();
+    const { parsed, addresses } = await validatedFetchTarget(current, policy, resolve);
+    options.signal?.throwIfAborted();
+    current = parsed.toString();
+    // A fresh agent per hop pins this hop's addresses; Host, SNI and certificates keep the URL name.
+    const dispatcher = new Agent({
+      connect: {
+        timeout: policy.connectTimeoutMs,
+        lookup: (_host, lookupOptions, callback) => {
+          const pinned = addresses.map((address) => ({ address, family: isIP(address) }));
+          if (lookupOptions.all) callback(null, pinned);
+          else callback(null, pinned[0]?.address ?? '', pinned[0]?.family ?? 0);
+        },
+      },
+    });
+    const timeout = AbortSignal.timeout(policy.connectTimeoutMs + policy.readTimeoutMs);
+    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+    try {
+      const init = {
+        // Adapt undici 8's handler protocol to Node's bundled fetch protocol.
+        dispatcher: new Dispatcher1Wrapper(dispatcher),
+        redirect: 'manual' as const,
+        headers: { accept: 'application/xml,text/xml,text/markdown,text/plain;q=0.9,*/*;q=0.1' },
+        signal,
+      };
+      // DOM and Node declarations disagree on dispatcher; the wrapper adapts its runtime protocol.
+      const response = await send(current, init as unknown as RequestInit);
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        await response.body?.cancel();
+        if (redirects >= policy.maxRedirects)
+          throw new Error(`Too many redirects while fetching ${url}`);
+        const location = response.headers.get('location');
+        if (!location) throw new Error(`Redirect without a location from ${current}`);
+        current = new URL(location, current).toString();
+        continue;
+      }
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new HttpStatusError(
+          response.status,
+          `Website answered HTTP ${response.status} for ${current}`,
+        );
+      }
+      const reader = response.body?.getReader();
+      if (!reader) return response.headers;
+      const abort = () => {
+        void reader.cancel(signal.reason).catch(() => undefined);
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      let total = 0;
+      let complete = false;
+      try {
+        for (;;) {
+          signal.throwIfAborted();
+          const { done, value } = await reader.read();
+          signal.throwIfAborted();
+          if (done) {
+            complete = true;
+            break;
+          }
+          total += value.byteLength;
+          if (total > maxBytes)
+            throw new Error(`Website response exceeds size limit of ${maxBytes} bytes`);
+          await consume(value);
+        }
+        return response.headers;
+      } finally {
+        signal.removeEventListener('abort', abort);
+        if (!complete) await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } finally {
+      await dispatcher.destroy();
+    }
+  }
+};
+
 export const guardedFetchBytes = async (
   url: string,
   policy: FetchPolicy,
   maxBytes: number,
   options: GuardedFetchOptions = {},
-): Promise<FetchedBody> => {
-  const send = options.fetch ?? fetch;
-  const resolve = options.resolve ?? dnsResolver;
-  let current = (await validateFetchUrl(url, policy, resolve)).toString();
-  for (let redirects = 0; ; redirects += 1) {
-    const response = await send(current, {
-      redirect: 'manual',
-      headers: { accept: 'application/xml,text/xml,text/markdown,text/plain;q=0.9,*/*;q=0.1' },
-      signal: AbortSignal.timeout(policy.connectTimeoutMs + policy.readTimeoutMs),
-    });
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      if (redirects >= policy.maxRedirects)
-        throw new Error(`Too many redirects while fetching ${url}`);
-      const location = response.headers.get('location');
-      if (!location) throw new Error(`Redirect without a location from ${current}`);
-      current = (
-        await validateFetchUrl(new URL(location, current).toString(), policy, resolve)
-      ).toString();
-      continue;
-    }
-    if (!response.ok)
-      throw new HttpStatusError(
-        response.status,
-        `Website answered HTTP ${response.status} for ${current}`,
-      );
-    const contentType = response.headers.get('content-type') ?? undefined;
-    const reader = response.body?.getReader();
-    if (!reader) return { bytes: new Uint8Array(), ...(contentType ? { contentType } : {}) };
-    const parts: Uint8Array[] = [];
-    let total = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        throw new Error(`Website response exceeds size limit of ${maxBytes} bytes`);
-      }
-      parts.push(value);
-    }
-    return {
-      bytes: new Uint8Array(Buffer.concat(parts)),
-      ...(contentType ? { contentType } : {}),
-    };
-  }
+): Promise<FetchedBody & { headers: Headers }> => {
+  const parts: Uint8Array[] = [];
+  const headers = await guardedFetchStream(
+    url,
+    policy,
+    maxBytes,
+    async (chunk) => {
+      parts.push(chunk);
+    },
+    options,
+  );
+  const contentType = headers.get('content-type') ?? undefined;
+  return {
+    bytes: new Uint8Array(Buffer.concat(parts)),
+    headers,
+    ...(contentType ? { contentType } : {}),
+  };
 };
 
 export const guardedFetchText = async (
