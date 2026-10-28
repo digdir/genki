@@ -4,6 +4,13 @@ export type JsonPatchOp =
   | { op: 'move' | 'copy'; from: string; path: string };
 
 export type TurnStatus = 'completed' | 'refused' | 'unavailable' | 'budget_exhausted';
+export const unavailableReasons = [
+  'not_published',
+  'no_model',
+  'model_failed',
+  'empty_result',
+] as const;
+export type UnavailableReason = (typeof unavailableReasons)[number];
 
 export const serviceIntents = ['chat', 'improve-instructions', 'suggest-test-cases'] as const;
 export const skillIntents = [
@@ -142,6 +149,7 @@ export interface TurnUsage {
 export interface AssistantTurn {
   turnId: string;
   status: TurnStatus;
+  reason?: UnavailableReason;
   message: string;
   questions?: AssistantQuestion[];
   proposals: AssistantProposal[];

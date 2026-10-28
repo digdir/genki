@@ -303,7 +303,7 @@ describe('hooks in a run', () => {
     const { send, delivered } = await boot();
     const secret = await send(
       `/tenants/${digdir}/secrets/krok`,
-      { value: 's3' },
+      { value: 's3', allowedHosts: ['https://krok.example.no'] },
       'PUT',
       'Krok for varsler',
     );
@@ -335,7 +335,12 @@ describe('hooks in a run', () => {
 
   it('sends feedback on an answer to on_feedback hooks of the tenant that owns the service', async () => {
     const { send, delivered } = await boot();
-    await send(`/tenants/${digdir}/secrets/krok`, { value: 's3' }, 'PUT', 'Krok for varsler');
+    await send(
+      `/tenants/${digdir}/secrets/krok`,
+      { value: 's3', allowedHosts: ['https://krok.example.no'] },
+      'PUT',
+      'Krok for varsler',
+    );
     await send(
       `/tenants/${digdir}/hooks/tilbakemelding`,
       {

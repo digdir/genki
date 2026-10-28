@@ -42,7 +42,10 @@ export {
 } from './registry.js';
 export {
   assertTenantSecret,
+  originOf,
+  SecretBindingError,
   SecretNamespaceError,
+  secretTargets,
   secretTenant,
   tenantSecretPattern,
   TenantSecrets,

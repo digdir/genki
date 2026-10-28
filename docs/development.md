@@ -49,19 +49,20 @@ The apps talk to the live API through a Vite proxy on `/api`. To run one against
 
 In `.env.local`:
 
-| Setting                                                                  | Value                                                                        |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `ANSATTPORTEN_ISSUER`                                                    | `https://test.ansattporten.no`. With it set, the mock login is not mounted   |
-| `ALTINN_PDP_URL`, `ALTINN_SUBSCRIPTION_KEY`                              | `https://platform.tt02.altinn.no` and the APIM subscription key              |
-| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                          | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`     |
-| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY`       | The Maskinporten client that asks the PDP, and its private JWK               |
-| `ALTINN_RESOURCE`                                                        | `urn:altinn:resource:digdir-genai-platform-test`                             |
-| `PLATFORM_TENANT`                                                        | The synthetic organisation that plays Digdir in TT02, as in genki-test       |
-| `GENAI_LOCKDOWN`, `LOCKDOWN_ENTRA_GROUPS`, `LOCKDOWN_ENTRA_EMAIL_DOMAIN` | `true`, the Entra group, `digdir.no`: needed to log in with Entra ID (below) |
+| Setting                                                                  | Value                                                                                     |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `ANSATTPORTEN_ISSUER`                                                    | `https://test.ansattporten.no`. With it set, the mock login is not mounted                |
+| `ALTINN_PDP_URL`, `ALTINN_SUBSCRIPTION_KEY`                              | `https://platform.tt02.altinn.no` and the APIM subscription key                           |
+| `MASKINPORTEN_ISSUER`, `MASKINPORTEN_TOKEN_URL`                          | `https://test.maskinporten.no/` and `https://test.maskinporten.no/token`                  |
+| `ALTINN_PDP_MASKINPORTEN_CLIENT_ID`, `ALTINN_PDP_MASKINPORTEN_KEY`       | The Maskinporten client that asks the PDP, and its private JWK                            |
+| `ALTINN_RESOURCE`                                                        | `urn:altinn:resource:digdir-genai-platform-test`                                          |
+| `PLATFORM_TENANT`                                                        | The synthetic organisation that plays Digdir in TT02, as in genki-test                    |
+| `GENAI_LOCKDOWN`, `LOCKDOWN_ENTRA_GROUPS`, `LOCKDOWN_ENTRA_EMAIL_DOMAIN` | `true`, the Entra group, `digdir.no`: needed to log in with Entra ID (below)              |
+| `OPERATOR_CLIENT_IDS`                                                    | Your local portal, workspace and console client ids: the clients whose Entra logins count |
 
 In `apps/portal/.env.local` and `apps/workspace/.env.local`: `VITE_ANSATTPORTEN_ISSUER`, `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. In `apps/console/.env.local`: `VITE_OIDC_ISSUER`, `VITE_OIDC_TOKEN_ENDPOINT` (`https://test.ansattporten.no/token`), `VITE_OIDC_CLIENT_ID` and `VITE_ALTINN_RESOURCE`. Each app has its own client, and Ansattporten only accepts the login when that client lists `http://localhost:<the app's port>/callback` as a redirect URI. A git worktree does not get these files; copy or link them from your main checkout.
 
-Who gets in: a TestID person gets the rights Altinn TT02 gives them for the resource, so outside lockdown a general manager of `PLATFORM_TENANT` gets the platform rights; in lockdown TestID logins can only read. An Entra ID login (choose Entra ID in Ansattporten) is refused outside lockdown; with `GENAI_LOCKDOWN=true` and `LOCKDOWN_ENTRA_GROUPS`, a member of the group gets the whole platform, as in genki-test (ADR 0033). In lockdown only such a login may use models and run ingestion, so this is the setup for working as a Digdir employee.
+Who gets in: a TestID person gets the rights Altinn TT02 gives them for the resource, so outside lockdown a general manager of `PLATFORM_TENANT` gets the platform rights; in lockdown TestID logins can only read. An Entra ID login (choose Entra ID in Ansattporten) is refused outside lockdown; with `GENAI_LOCKDOWN=true` and `LOCKDOWN_ENTRA_GROUPS`, a member of the group who logs in through one of `OPERATOR_CLIENT_IDS` gets the whole platform, as in genki-test (ADR 0033); without `OPERATOR_CLIENT_IDS` the API refuses to start. In lockdown only such a login may use models and run ingestion, so this is the setup for working as a Digdir employee. Operators: `operator: true` in `identity.yaml` and the console's dev login count only with the mock login, so with real Ansattporten list yourself in `OPERATOR_SUBJECTS` as `issuer|subject` (the issuer as in the token's `iss`, and the token's `sub`). A bare subject counts only for the mock login, and outside dev mode the API refuses to start with one. A listed subject counts only when the login comes through one of `OPERATOR_CLIENT_IDS`, so set that too; the API refuses to start with `OPERATOR_SUBJECTS` but no `OPERATOR_CLIENT_IDS`.
 
 To check it: `curl localhost:8080/health` reports `lockdown`, the API log at startup has `altinn pdp` with the TT02 address, and the lockdown lines when it is on, and the login button goes to `login.test.ansattporten.no`, not `/mock/ansattporten`. A 404 on `/mock/ansattporten/...` means an app has no `.env.local` and still uses the mock while the API does not.
 

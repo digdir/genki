@@ -1,5 +1,6 @@
 import type { UiText } from '@genai/contracts';
 import { jsonSchemaOf } from '@genai/definitions';
+import { datedSystemPromptTemplate, defaultSystemPrompt } from '@genai/strategy-agent-loop';
 import type { Context } from 'hono';
 import type { z } from 'zod';
 import { enterTenant } from './access.js';
@@ -16,6 +17,11 @@ export interface PipelineStep {
   repeats?: true;
 }
 
+export interface DefaultInstructions {
+  text: UiText;
+  note?: UiText;
+}
+
 export interface StrategyEntry {
   id: string;
   version: number;
@@ -26,6 +32,7 @@ export interface StrategyEntry {
   pipeline: PipelineStep[];
   newConfig: Record<string, unknown>;
   takes: { instructions: ConfigUse; examples: ConfigUse };
+  defaultInstructions?: DefaultInstructions;
   schema: string;
 }
 
@@ -35,6 +42,7 @@ interface Described {
   description: UiText;
   pipeline: PipelineStep[];
   newConfig?: Record<string, unknown>;
+  defaultInstructions?: DefaultInstructions;
 }
 
 const text = (nb: string, en: string): UiText => ({ nb, en });
@@ -97,6 +105,13 @@ const described: Record<string, Described> = {
         text('Ett modellkall med treffene som grunnlag.', 'One model call based on the hits.'),
       ),
     ],
+    defaultInstructions: {
+      text: text(datedSystemPromptTemplate, datedSystemPromptTemplate),
+      note: text(
+        'Ved kjøring blir {date} dagens dato, og plattformen legger til ferdighetene tjenesten har. Spørsmålet og treffene sendes i en egen melding.',
+        "At run time {date} becomes today's date, and the platform adds the skills the service has. The question and the hits are sent in a separate message.",
+      ),
+    },
   },
   'agent-loop': {
     how: 'agent',
@@ -138,6 +153,13 @@ const described: Record<string, Described> = {
       ),
     ],
     newConfig: { maxIterations: 8 },
+    defaultInstructions: {
+      text: text(defaultSystemPrompt, defaultSystemPrompt),
+      note: text(
+        'Ved kjøring legger plattformen til ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.',
+        'At run time the platform adds the skills the service has, active filters and attached documents.',
+      ),
+    },
   },
   'step-flow': {
     how: 'flow',
@@ -211,6 +233,7 @@ export const strategyCatalogue = (strategies: Map<string, z.ZodType>): StrategyE
         pipeline: known?.pipeline ?? [],
         newConfig: known?.newConfig ?? {},
         takes: { instructions: useOf(json, 'instructions'), examples: useOf(json, 'examples') },
+        ...(known?.defaultInstructions ? { defaultInstructions: known.defaultInstructions } : {}),
         schema: `/schemas/${encodeURIComponent(`Strategy.${id}@${version}`)}`,
       };
     });

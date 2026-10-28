@@ -116,6 +116,16 @@
         "instructions": "optional",
         "examples": "no"
       },
+      "defaultInstructions": {
+        "text": {
+          "nb": "You are a research assistant with access to a document knowledge base. Answer the user's question accurately.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize.",
+          "en": "You are a research assistant with access to a document knowledge base. Answer the user's question accurately.\n\nAlways include your reasoning in your message text before making tool calls. Explain what you're about to do and why.\n\nWorkflow (repeat as needed):\n1. SEARCH: Use search with diverse queries. Returns metadata only, no content.\n2. READ: Use read_chunks to fetch full content of promising results.\n3. RERANK: Use rerank_results to surface the most relevant chunks in your workspace.\n4. GENERATE: Use generate_response to produce an answer.\n\nAfter each tool call, the system runs a sufficiency gate. If it rejects, follow the hint; if it passes, finalize."
+        },
+        "note": {
+          "nb": "Ved kjøring legger plattformen til ferdighetene tjenesten har, aktive filtre og vedlagte dokumenter.",
+          "en": "At run time the platform adds the skills the service has, active filters and attached documents."
+        }
+      },
       "schema": "/schemas/Strategy.agent-loop%401"
     },
     {
@@ -167,6 +177,16 @@
       "takes": {
         "instructions": "optional",
         "examples": "no"
+      },
+      "defaultInstructions": {
+        "text": {
+          "nb": "You are a helpful assistant. The date this conversation was created at is {date} (Norwegian time).",
+          "en": "You are a helpful assistant. The date this conversation was created at is {date} (Norwegian time)."
+        },
+        "note": {
+          "nb": "Ved kjøring blir {date} dagens dato, og plattformen legger til ferdighetene tjenesten har. Spørsmålet og treffene sendes i en egen melding.",
+          "en": "At run time {date} becomes today's date, and the platform adds the skills the service has. The question and the hits are sent in a separate message."
+        }
       },
       "schema": "/schemas/Strategy.rag-single-shot%401"
     },

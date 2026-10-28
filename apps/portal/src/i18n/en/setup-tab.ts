@@ -84,6 +84,10 @@ export const setup = {
   instructionsInFlow: 'In the steps of the step flow {flow}',
   instructionsBuiltInHelp:
     'The service uses the default instructions of the setup. Instructions you write here replace the default.',
+  defaultInstructionsShow: 'See the default instructions',
+  defaultInstructionsCompare: 'Compare with the default instructions',
+  defaultInstructionsLabel: 'The default instructions (cannot be changed here)',
+  defaultInstructionsUse: 'Use as a starting point',
   instructionsInFlowHelp:
     'The instructions are in the steps of the step flow {flow}. Change them in the step flow under Step flows.',
   instructionsRemote: 'With the external engine',

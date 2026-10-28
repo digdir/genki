@@ -1,6 +1,6 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { definitionKinds } from '@genai/definitions';
-import { serviceIntents, skillIntents } from '@genai/strategy-builder';
+import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strategy-builder';
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
 import { changeReason, problemContent } from '../http.js';
@@ -150,6 +150,21 @@ const StrategyCatalogueEntry = z
       .openapi({
         description:
           'Whether spec.strategy.config takes the service instructions and examples, read from its schema',
+      }),
+    defaultInstructions: z
+      .object({
+        text: UiText.openapi({
+          description:
+            'The instructions the strategy uses when the service has none, per answer language. A placeholder such as {date} is filled in at run time',
+        }),
+        note: UiText.optional().openapi({
+          description: 'What the platform adds to the instructions at run time',
+        }),
+      })
+      .optional()
+      .openapi({
+        description:
+          'The built-in instructions, only for a strategy that has them. Writing instructions in the service replaces them',
       }),
     schema: z.string().openapi({ description: 'The config schema, with labels, under /schemas' }),
   })
@@ -403,6 +418,10 @@ const AssistantTurn = z
   .object({
     turnId: z.string(),
     status: z.enum(['completed', 'refused', 'unavailable', 'budget_exhausted']),
+    reason: z.enum(unavailableReasons).optional().openapi({
+      description:
+        'Why the assistant is unavailable, only with `status: unavailable`: `not_published` (the builder service is not published), `no_model` (no usable model with tool support), `model_failed` (the model run failed; `turnId` is the task id), `empty_result` (the run gave no result; `turnId` is the task id)',
+    }),
     message: z.string(),
     questions: z
       .array(

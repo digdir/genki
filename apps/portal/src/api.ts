@@ -655,11 +655,17 @@ export const createApiClient = ({
         { tool },
         { 'change-reason': reason },
       ),
-    setSecret: (tenant: string, name: string, value: string, reason: string) =>
+    setSecret: (
+      tenant: string,
+      name: string,
+      value: string,
+      reason: string,
+      allowedHosts?: string[],
+    ) =>
       request<{ ref: string }>(
         'PUT',
         `${tenantPath(tenant)}/secrets/${encodeURIComponent(name)}`,
-        { value },
+        { value, ...(allowedHosts ? { allowedHosts } : {}) },
         { 'change-reason': reason },
       ),
     configList: (path: string, signal?: AbortSignal) =>

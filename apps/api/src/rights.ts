@@ -64,6 +64,16 @@ const datasetWrite = (input: ActionInput): ActionRequirement =>
 const subscriptionRight = (input: ActionInput): Right =>
   input.mode === 'run' ? 'manage-services' : 'use-services';
 const toolRegistration = { anyOf: ['register-building-blocks', 'manage-services'] } as const;
+const objectOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+const borrowsTenantSecret = (input: ActionInput) => {
+  const source = objectOf(objectOf(input.spec).source);
+  if (source.kind !== 'database') return false;
+  const password = String(objectOf(source.connection).password ?? '');
+  return !/\/connector-[a-z0-9-]+$/.test(password);
+};
+const pipelineSave = (input: ActionInput): ActionRequirement =>
+  borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';
 
 export const adminActionRights: Readonly<
   Record<string, ActionRequirement | ((input: ActionInput) => ActionRequirement)>
@@ -76,7 +86,11 @@ export const adminActionRights: Readonly<
   'platform.tools.register': toolRegistration,
   'platform.tools.sync': toolRegistration,
   'platform.tools.approve': 'manage-services',
-  'platform.secrets.set': { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.set': (input) =>
+    input.hostsChange === true
+      ? 'manage-services'
+      : { anyOf: ['manage-services', 'register-building-blocks'] },
+  'platform.secrets.hosts': 'manage-services',
   'platform.secrets.delete': { anyOf: ['manage-services', 'register-building-blocks'] },
   'platform.apikeys.create': 'manage-services',
   'platform.apikeys.rotate': 'manage-services',
@@ -98,7 +112,7 @@ export const adminActionRights: Readonly<
   'platform.improvement.decide': 'manage-services',
   'platform.catalog.publish': catalogWrite,
   'platform.catalog.delete': catalogWrite,
-  'platform.pipeline.save': 'manage-datasets',
+  'platform.pipeline.save': pipelineSave,
   'platform.pipeline.delete': 'manage-datasets',
   'platform.pipeline.execute': 'manage-datasets',
   'platform.pipeline.cancel': 'manage-datasets',

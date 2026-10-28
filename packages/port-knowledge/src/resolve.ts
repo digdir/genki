@@ -16,7 +16,14 @@ export const endpointConfig = (
 ): LocalEndpointConfig => ({
   ...(endpoint.baseURL ? { baseURL: endpoint.baseURL } : {}),
   ...(endpoint.auth
-    ? { credential: credentialFor(endpoint.auth, credentials.secrets, credentials.tokenProviders) }
+    ? {
+        credential: credentialFor(
+          endpoint.auth,
+          credentials.secrets,
+          credentials.tokenProviders,
+          endpoint.baseURL,
+        ),
+      }
     : {}),
   options,
   timeoutMs,

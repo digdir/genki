@@ -18,9 +18,13 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { appendVersion, type ConfigEntry } from './config-store.js';
+import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
+
+export const judgedModels = (byModel: DraftModelUsage[]) =>
+  byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
 
 export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
@@ -216,7 +220,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         });
         continue;
       }
-      const usedModels = outcome.usage.byModel.map((m) => m.model);
+      const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
         { text: outcome.answer, noAnswer: outcome.noAnswer },

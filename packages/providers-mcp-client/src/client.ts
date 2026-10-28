@@ -85,7 +85,13 @@ export class McpClient {
         ? { 'mcp-name': headerValue(params.name) }
         : {}),
       ...(this.#session ? { 'mcp-session-id': this.#session } : {}),
-      ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+      ...(await authHeaders(
+        this.connection,
+        this.connection.endpoint,
+        this.guard,
+        this.secrets,
+        signal,
+      )),
     };
   }
 

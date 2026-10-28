@@ -66,6 +66,7 @@ import {
 } from './runtime-documents.js';
 import {
   EgressGuard,
+  TenantSecrets,
   type AllowedHost,
   type ConnectionRegistry,
   type EgressOptions,
@@ -1557,6 +1558,7 @@ export const createPlatform = async (input: PlatformInput) => {
     if (!pluginRegistry.get(plugin.manifest.id)) pluginRegistry.register(plugin);
   const moduleDeps: ModuleDeps = {
     platformTenant,
+    ...(input.logger ? { logger: input.logger } : {}),
     catalog: config.catalog,
     definitions,
     plugins,
@@ -1653,7 +1655,12 @@ export const createPlatform = async (input: PlatformInput) => {
 
   const extensions = {
     ...adminExtensions({
-      tools: { connections, source: mcp, onToolsChanged: refreshTools },
+      tools: {
+        connections,
+        source: mcp,
+        secrets: new TenantSecrets(vault.resolver(input.secrets)),
+        onToolsChanged: refreshTools,
+      },
       directory,
     }),
     ...portalAdminHandlers({ apiKeys }),
