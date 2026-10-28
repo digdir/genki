@@ -142,9 +142,9 @@ export const BlocksStep = ({
         value={state.tab}
         onChange={(v) => state.setTab(v as LeftTab)}
       >
-        <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
-        <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
         <ToggleGroup.Item value="templates">{t('builderBlocks.tabTemplates')}</ToggleGroup.Item>
+        <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
+        <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
