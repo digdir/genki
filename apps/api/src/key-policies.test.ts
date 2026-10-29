@@ -24,6 +24,13 @@ const people: Record<string, Principal> = {
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
+  eier: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'eier',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-services'] }],
+  },
   ola: {
     kind: 'employee',
     issuer: 'test',
@@ -340,6 +347,32 @@ describe('access policies for API keys', () => {
     expect(boundKey.status).toBe(400);
     expect(noKey.status).toBe(404);
     expect(noPolicy.status).toBe(400);
+  });
+
+  it('refuses a policy whose scopes imply a right the person shaping it lacks', async () => {
+    const { create } = await boot();
+
+    const admin = await create({ name: 'Alt', scopes: ['admin'] }, 'eier');
+    const ingest = await create({ name: 'Innlesing', scopes: ['ingest'] }, 'eier');
+    const query = await create({ name: 'Spørring', scopes: ['query'] }, 'eier');
+
+    expect(admin.status).toBe(403);
+    expect(await admin.json()).toMatchObject({ errors: [{ path: 'principal' }] });
+    expect(ingest.status).toBe(403);
+    expect(query.status).toBe(201);
+  });
+
+  it('refuses to attach a policy whose scopes imply a right the person attaching it lacks', async () => {
+    const { send, create } = await boot();
+    const made = await json<View>(await create({ name: 'Alt', scopes: ['admin'] }));
+
+    const res = await send(`/tenants/${digdir}/api-keys/gammel/policy`, 'eier', {
+      method: 'PUT',
+      body: { policyId: made.id },
+      reason,
+    });
+
+    expect(res.status).toBe(403);
   });
 
   it('refuses to delete a policy that keys still use and says how many', async () => {

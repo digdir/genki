@@ -303,6 +303,7 @@ export const frontendRoutes: RouteConfig[] = [
       403: v1Error('The credential may not reach the service or dataset'),
       404: v1Error('model_not_found, agent_not_found, conversation_not_found'),
       409: v1Error('version_not_found'),
+      413: v1Error('document_too_large, request_too_large'),
       503: v1Error('service_paused'),
     },
   }),

@@ -28,6 +28,7 @@ import {
   websiteSource,
   type ChunkDocumentConfig,
   type ChunkStrategy,
+  type ParquetReader,
   type DeclaredPhraseArchive,
   type DocumentConverter,
   type GuardedFetchOptions,
@@ -40,6 +41,8 @@ import {
   type RowReader,
   type SkippedDocument,
 } from '@genai/ingest';
+import { parquetSourceOf } from './parquet-files.js';
+export { parquetLocation, parquetReadTimeoutMs } from './parquet-files.js';
 import { withModelAdmission } from '@genai/composition';
 import type { BlobStore } from '@genai/port-blob';
 import type { PortContext } from '@genai/kernel';
@@ -57,6 +60,8 @@ import {
   type PipelineSpec,
   type SourceEstimate,
 } from './ingestion.js';
+import type { CatalogRegistry } from './catalog-registry.js';
+import { tenantModelRefusal } from './model-access.js';
 
 export interface EmbedderSource {
   has(model: string): boolean;
@@ -67,6 +72,14 @@ export interface KudosAccess {
   profiles?: Partial<Record<KudosProfile['name'], KudosProfile>>;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+}
+
+export interface ParquetAccess {
+  reader: ParquetReader;
+  workingDirectory?: string;
+  maxBytes?: number;
+  fetch?: typeof fetch;
+  readTimeoutMs?: number;
 }
 
 export interface DatabaseAccess {
@@ -92,6 +105,7 @@ export interface IngestSourceOptions {
   uploads?: Pick<BlobStore, 'list' | 'get'>;
   kudos?: KudosAccess;
   database?: DatabaseAccess;
+  parquet?: ParquetAccess;
 }
 
 type DatabaseSpec = Extract<PipelineSpec['source'], { kind: 'database' }>;
@@ -117,6 +131,7 @@ export interface IndexIngestionOptions extends IngestSourceOptions {
   residencyOf(dataset: string): Residency | undefined;
   embedders?: EmbedderSource;
   models?: { open(ref: Ref, ctx: PortContext): ModelPort };
+  catalog?: Pick<CatalogRegistry, 'get'>;
   platformTenant: string;
 }
 
@@ -221,6 +236,8 @@ const sourceProblem = (spec: PipelineSpec, options: IngestSourceOptions) => {
     return 'uploads are turned off on this platform';
   if (spec.source.kind === 'database' && !options.database)
     return 'database sources are turned off on this platform';
+  if (spec.source.kind === 'parquet' && !options.parquet)
+    return 'Parquet sources are turned off on this platform';
   if (spec.source.kind === 'folder' || spec.source.kind === 'episerver') {
     if (!options.folderRoot) return 'folder sources are turned off on this platform';
     if (!inside(options.folderRoot, spec.source.path))
@@ -330,6 +347,7 @@ const sourceOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
   scope: { tenant: string; dataset: string },
+  signal: AbortSignal,
 ): Promise<IngestSource> => {
   const source = spec.source;
   const converter = options.converter;
@@ -343,6 +361,7 @@ const sourceOf = async (
     const listed = (
       await crawlSitemap(source.sitemap, source.baseUrl, policy, {
         ...options.web,
+        signal,
         includeHtml: true,
       })
     ).filter((e) => selected(new URL(e.loc).pathname, source.include, source.exclude));
@@ -358,7 +377,10 @@ const sourceOf = async (
         ...(source.baseUrl ? { baseUrl: source.baseUrl } : {}),
         ...(converter ? { converter } : {}),
         fetchBody: (entry) =>
-          guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), options.web),
+          guardedFetchBytes(entry.loc, policy, documentLimit(entry.loc), {
+            ...options.web,
+            signal,
+          }),
       }),
     );
   }
@@ -398,6 +420,10 @@ const sourceOf = async (
       origin: `postgres://${host}:${port}/${database}/${source.mapping.schema}.${source.mapping.table}`,
     });
   }
+  if (source.kind === 'parquet') {
+    if (!options.parquet) throw new Error('Parquet sources are turned off on this platform');
+    return parquetSourceOf(options.parquet, source, { ...options.web, signal });
+  }
   if (source.kind === 'episerver') {
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the export file is not allowed');
@@ -426,6 +452,7 @@ const sourceOf = async (
           (
             await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
               ...options.web,
+              signal,
               ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
             })
           ).bytes,
@@ -480,6 +507,17 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
     },
     run: async (job: IngestionJob, signal: AbortSignal): Promise<IngestionReport> => {
       const tenant = job.tenant ?? options.platformTenant;
+      const phraseModels = [
+        job.pipeline.spec.phrases?.model,
+        job.pipeline.spec.phrases?.fallbackModel,
+      ];
+      for (const model of phraseModels) {
+        const refused =
+          job.tenant && model && options.catalog
+            ? tenantModelRefusal(options.catalog, model, job.tenant)
+            : undefined;
+        if (refused) throw new Error(refused);
+      }
       const usage: Record<string, Usage> = {};
       const system: Principal = {
         kind: 'agency-system',
@@ -531,7 +569,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
               },
             }
           : undefined;
-      const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset });
+      const source = await sourceOf(spec, options, { tenant, dataset: job.target.dataset }, signal);
       const result = await runIndexIngest({
         source: withIngestedAt(
           spec.chunking.metadataStyle === 'none' ? withoutMetadata(source) : source,
@@ -560,6 +598,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
         promoted: result.promoted,
         ...(result.previous === undefined ? {} : { previous: result.previous }),
         ...(Object.keys(usage).length > 0 ? { usage } : {}),
+        ...(source.summary ? { source: source.summary() } : {}),
       };
     },
   };

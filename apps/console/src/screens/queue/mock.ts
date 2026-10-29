@@ -97,6 +97,7 @@ export const exampleProposals: PlatformProposal[] = [
     status: 'pending',
     createdAt: '2026-10-05T10:20:00Z',
     createdBy: 'assistant',
+    requestedByName: 'Hanne Lie',
     ask: 'Kan tjenesten lese pasientforløpet i journalsystemet og lage en oppsummering?',
     detail:
       'Ingen eksisterende utløser eller kobling leser journalsystemet, og en egen byggekloss kan ikke få tilgang til det.',

@@ -24,7 +24,7 @@
     "@genai/kernel": "0.0.0",
     "@genai/plugins": "0.0.0",
     "@genai/port-tools": "0.0.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@genai/port-model": "0.0.0"

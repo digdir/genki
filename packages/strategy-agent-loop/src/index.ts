@@ -27,6 +27,8 @@ import {
   noToolCallNudge,
   searchScaffold,
   systemPromptWithDate,
+  untrustedData,
+  untrustedDataNote,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
@@ -433,7 +435,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           (settings.instructions ? baseInstructions(settings.instructions) : defaultSystemPrompt) +
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
-          attachedNote(workspace.attached),
+          attachedNote(workspace.attached) +
+          untrustedDataNote,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),
       { role: 'user', content: query },
@@ -588,7 +591,9 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             content = `Unknown tool: ${call.name}. Available tools: ${toolSpecs.map((t) => t.name).join(', ')}`;
           else {
             const result = await tool.port.call(args.value);
-            content = textOf(result);
+            content = result.parts.some((part) => part.meta?.untrusted === true)
+              ? untrustedData(`tool:${call.name}`, textOf(result))
+              : textOf(result);
             for (const s of result.sources ?? [])
               extraSources.push({
                 chunkId: s.id,

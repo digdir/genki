@@ -151,9 +151,49 @@ describe('website loader', () => {
       '::1',
       'fd00::1',
       '::ffff:10.0.0.1',
+      '::ffff:7f00:1',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+      '0:0:0:0:0:0:0:1',
     ])
       expect(blockedAddress(ip), ip).toBe(true);
     expect(blockedAddress('93.184.216.34')).toBe(false);
+    expect(blockedAddress('::ffff:5db8:d822')).toBe(false);
+  });
+
+  it('blocks IPv4-mapped addresses in hex form and the NAT64, 6to4 and IPv4-compatible ranges', () => {
+    const mapped = new URL('http://[::ffff:127.0.0.1]/').hostname.replace(/^\[|\]$/g, '');
+    expect(mapped).toBe('::ffff:7f00:1');
+    for (const ip of [
+      mapped,
+      '::ffff:a00:1',
+      '0:0:0:0:0:ffff:a9fe:a9fe',
+      '::7f00:1',
+      '::',
+      '64:ff9b::a00:1',
+      '64:ff9b::5db8:d822',
+      '2002:7f00:1::',
+      '2002::1',
+      'fe80::1%eth0',
+    ])
+      expect(blockedAddress(ip), ip).toBe(true);
+    for (const ip of ['::ffff:5db8:d822', '::ffff:93.184.216.34', '2a00:1450:4010::64'])
+      expect(blockedAddress(ip), ip).toBe(false);
+  });
+
+  it('stops a fetch when the caller cancels it', async () => {
+    const cancel = new AbortController();
+    const waiting = async (_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_, fail) => {
+        if (init?.signal?.aborted) fail(init.signal.reason);
+        init?.signal?.addEventListener('abort', () => fail(init.signal?.reason));
+      });
+    const fetching = guardedFetchText('https://docs.example.no/a.md', policy, 100, {
+      resolve,
+      fetch: waiting,
+      signal: cancel.signal,
+    });
+    cancel.abort(new Error('cancelled'));
+    await expect(fetching).rejects.toThrow(/cancelled/);
   });
 
   it('refuses hosts outside the allowlist and redirects that lead to them', async () => {
@@ -214,6 +254,59 @@ describe('website loader', () => {
       language: 'nb',
       type: 'website',
     });
+  });
+
+  it('fetches each sitemap once even when several indexes list it', async () => {
+    const fetched: string[] = [];
+    const index = (...locs: string[]) =>
+      `<sitemapindex>${locs.map((l) => `<sitemap><loc>${l}</loc></sitemap>`).join('')}</sitemapindex>`;
+    const pages: Record<string, string> = {
+      'https://docs.example.no/sitemap.xml': index(
+        'https://docs.example.no/a.xml',
+        'https://docs.example.no/b.xml',
+      ),
+      'https://docs.example.no/a.xml': index('https://docs.example.no/c.xml'),
+      'https://docs.example.no/b.xml': index('https://docs.example.no/c.xml'),
+      'https://docs.example.no/c.xml': '<urlset><url><loc>nb/a.md</loc></url></urlset>',
+    };
+    const fetchPage = async (input: string | URL | Request) => {
+      fetched.push(String(input));
+      return new Response(pages[String(input)] ?? '', { status: 200 });
+    };
+
+    const entries = await crawlSitemap('sitemap.xml', 'https://docs.example.no/', policy, {
+      resolve,
+      fetch: fetchPage,
+    });
+
+    expect(entries).toEqual([{ loc: 'https://docs.example.no/nb/a.md' }]);
+    expect(fetched.filter((u) => u.endsWith('c.xml'))).toHaveLength(1);
+  });
+
+  it('stops a crawl that lists more sitemaps or entries than the policy allows', async () => {
+    const pages: Record<string, string> = {
+      'https://docs.example.no/sitemap.xml':
+        '<sitemapindex><sitemap><loc>a.xml</loc></sitemap><sitemap><loc>b.xml</loc></sitemap></sitemapindex>',
+      'https://docs.example.no/a.xml':
+        '<urlset><url><loc>nb/a.md</loc></url><url><loc>nb/b.md</loc></url></urlset>',
+      'https://docs.example.no/b.xml': '<urlset><url><loc>nb/c.md</loc></url></urlset>',
+    };
+    const fetchPage = async (input: string | URL | Request) =>
+      new Response(pages[String(input)] ?? '', { status: 200 });
+    const crawl = (limits: Partial<typeof policy>) =>
+      crawlSitemap(
+        'sitemap.xml',
+        'https://docs.example.no/',
+        { ...policy, ...limits },
+        {
+          resolve,
+          fetch: fetchPage,
+        },
+      );
+
+    await expect(crawl({ maxSitemaps: 2 })).rejects.toThrow(/more than 2 sitemaps/);
+    await expect(crawl({ maxSitemapEntries: 2 })).rejects.toThrow(/more than 2 entries/);
+    await expect(crawl({ maxSitemaps: 3, maxSitemapEntries: 3 })).resolves.toHaveLength(3);
   });
 
   it('merges frontmatter titles and strips the diataxis prefix', () => {

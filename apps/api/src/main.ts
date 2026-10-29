@@ -64,7 +64,7 @@ import {
 import { withoutUnknownVariantModels } from './seed-variants.js';
 import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets.js';
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
-import { operatorDirectory, splitOperators } from './operators.js';
+import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
 import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
@@ -73,7 +73,7 @@ import { unknownTestPerson } from './dev-login.js';
 import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
-import { isLockdown, trustedEntraFrom } from './lockdown.js';
+import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -96,6 +96,8 @@ if (isDevMode(process.env)) {
   log('dev mode', { warning: devModeWarning });
 }
 const platformTenant = platformTenantFrom(process.env);
+const enhetsregisteret =
+  process.env.ENHETSREGISTERET_URL ?? 'https://data.brreg.no/enhetsregisteret/api/enheter';
 log('platform tenant', { tenant: platformTenant });
 
 const identityFile = (() => {
@@ -115,10 +117,6 @@ const identityFile = (() => {
   };
 })();
 const testData = identityFile.testData;
-const operators = operatorDirectory(
-  identityFile.operatorPids,
-  (process.env.OPERATOR_SUBJECTS ?? '').split(',').filter(Boolean),
-);
 const altinnPdp = altinnPdpFrom(process.env, testData);
 log('altinn pdp', {
   kind: altinnPdp.kind,
@@ -160,9 +158,10 @@ const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
   log('lockdown: Entra logins in the configured groups get the whole platform', {
     groups: trustedEntra.groups.length,
+    clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });
-const { trusted, mock } = await loginIssuers({
+const { trusted, mock, mockIssuer } = await loginIssuers({
   env: process.env,
   port,
   audience,
@@ -190,7 +189,26 @@ if (mock)
       if (client.spec.oidc) mock.clients.remove(client.spec.oidc.clientId);
     },
   };
-const reservedClientIds = (testData.clients ?? []).map((c) => c.clientId);
+const operatorSubjects = operatorSubjectsFrom(process.env);
+const operators = operatorDirectory({
+  pids: identityFile.operatorPids,
+  subjects: operatorSubjects,
+  clientIds: operatorClientIds(process.env),
+  ...(mockIssuer ? { mockIssuer } : {}),
+});
+if (!mock && identityFile.operatorPids.length > 0)
+  log('ignoring operator: true in identity.yaml; it applies only to the dev-mode mock login', {
+    persons: identityFile.operatorPids.length,
+  });
+const bareSubjects = operatorSubjects.filter((s) => !s.includes('|')).length;
+if (!mock && bareSubjects > 0)
+  log('ignoring OPERATOR_SUBJECTS entries without an issuer; they apply only to the mock login', {
+    entries: bareSubjects,
+  });
+const reservedClientIds = [
+  ...(testData.clients ?? []).map((c) => c.clientId),
+  ...operatorClientIds(process.env),
+];
 const verifier = operators.watch(
   asPlatformResource(
     withPdpActions(createTokenVerifier({ issuers: trusted }), altinnPdp, resource, (error) =>
@@ -400,11 +418,15 @@ const platform = await createPlatform({
       }
     : {}),
   ...(db ? { databasePing: () => db.pool.query('select 1') } : {}),
-  ...(process.env.ENHETSREGISTERET_URL
-    ? { organizationRegistry: { url: process.env.ENHETSREGISTERET_URL } }
-    : {}),
+  ...(enhetsregisteret ? { organizationRegistry: { url: enhetsregisteret } } : {}),
   searchOnlyClusters: [process.env.TYPESENSE_URL],
   ...(process.env.INGEST_FOLDER_ROOT ? { ingestFolderRoot: process.env.INGEST_FOLDER_ROOT } : {}),
+  ...(process.env.INGEST_WORKING_DIRECTORY
+    ? { ingestWorkingDirectory: process.env.INGEST_WORKING_DIRECTORY }
+    : {}),
+  ...(process.env.INGEST_PARQUET_MAX_BYTES
+    ? { ingestParquetMaxBytes: Number(process.env.INGEST_PARQUET_MAX_BYTES) }
+    : {}),
   secrets,
   definitions: (plugins, sharedSkill, sharedFlow) =>
     db
@@ -446,6 +468,7 @@ const platform = await createPlatform({
   ...(db
     ? {
         conversations: db.conversations,
+        threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
@@ -479,6 +502,7 @@ const admin = createAdmin({
   models: platform.models,
   extensions: platform.extensions,
   tenants: () => platform.directory.list(),
+  names: actorNames(configEntries),
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {
@@ -607,7 +631,7 @@ if (mock) {
     if (!person) return unknownTestPerson(c);
     const tokens = await mock.testTokens(person.pid, 'local-portal', [resource]);
     const verified = await verifier.verify(tokens.access_token);
-    if (operator) operators.add(verified.principal.subject);
+    if (operator) operators.add(verified.principal);
     const orgs = [...new Set((verified.principal.authorizedFor ?? []).map((a) => a.org))];
     return c.json({
       token: tokens.access_token,

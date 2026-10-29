@@ -3,6 +3,7 @@ import type { Connection } from './registry.js';
 import type { TenantSecrets } from './secrets.js';
 
 const tokens = new Map<string, { token: string; expires: number }>();
+const maxTokenSeconds = 3600;
 
 const clientCredentials = async (
   connection: Connection,
@@ -11,7 +12,15 @@ const clientCredentials = async (
   secret: string,
   signal?: AbortSignal,
 ) => {
-  const key = `${connection.tenant}/${connection.id}/${auth.clientId}/${auth.scope ?? ''}`;
+  const key = JSON.stringify([
+    connection.tenant,
+    connection.id,
+    connection.endpoint,
+    auth.tokenUrl,
+    auth.clientId,
+    auth.scope ?? '',
+    auth.secret,
+  ]);
   const cached = tokens.get(key);
   if (cached && cached.expires > Date.now()) return cached.token;
   const body = new URLSearchParams({
@@ -41,7 +50,8 @@ const clientCredentials = async (
   }
   if (response.status !== 200 || typeof parsed.access_token !== 'string')
     throw new EgressError('network', `the token endpoint answered HTTP ${response.status}`);
-  const seconds = typeof parsed.expires_in === 'number' ? parsed.expires_in : 300;
+  const seconds =
+    typeof parsed.expires_in === 'number' ? Math.min(parsed.expires_in, maxTokenSeconds) : 300;
   tokens.set(key, {
     token: parsed.access_token,
     expires: Date.now() + Math.max(0, seconds - 30) * 1000,
@@ -51,13 +61,18 @@ const clientCredentials = async (
 
 export const authHeaders = async (
   connection: Connection,
+  target: string,
   guard: EgressGuard,
   secrets: TenantSecrets,
   signal?: AbortSignal,
 ): Promise<Record<string, string>> => {
   const auth = connection.auth;
   if (!auth) return {};
-  const value = await secrets.resolveFor(connection.tenant, auth.secret);
+  const value = await secrets.resolveFor(
+    connection.tenant,
+    auth.secret,
+    auth.kind === 'oauth-client-credentials' ? [target, auth.tokenUrl] : [target],
+  );
   if (auth.kind === 'bearer') return { authorization: `Bearer ${value}` };
   if (auth.kind === 'header') return { [auth.header.toLowerCase()]: value };
   return {

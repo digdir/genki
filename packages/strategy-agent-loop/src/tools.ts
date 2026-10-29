@@ -13,6 +13,7 @@ import {
   citationInstruction,
   defaultGenerationPrompt,
   sameLanguageRule,
+  untrustedData,
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
@@ -268,7 +269,8 @@ export const formatReadResult = (
       ` ---\n${c.content}`,
   );
   return (
-    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):\n\n${blocks.join('\n\n')}` +
+    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):` +
+    (blocks.length ? `\n\n${untrustedData('documents', blocks.join('\n\n'))}` : '') +
     (skippedNote ? `\n\n${skippedNote}` : '') +
     (budgetNote ? `\n\n${budgetNote}` : '')
   );

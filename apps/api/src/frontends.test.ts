@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { createAuthenticator } from '@genai/identity';
+import { createAuthenticator, type ClientStore } from '@genai/identity';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { admitConfined } from './frontends.js';
 import { InMemoryTenantApiKeys } from './routes/portal-routes.js';
 import { digdir, files, klarsprak, other, plugins, principals } from './testkit.js';
 import { SIGNATURE_HEADER, verifyWebhookSignature } from './webhooks.js';
@@ -488,3 +489,28 @@ describe('missing clients and keys', () => {
 });
 
 export type { Principal };
+
+describe('a login confined to a client', () => {
+  const clients: ClientStore = {
+    list: async () => [],
+    get: async () => undefined,
+    save: async () => undefined,
+    remove: async () => false,
+  };
+  const person: Principal = {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'kari',
+    tenant: digdir,
+    confinedTo: { tenant: digdir, service: 'klarsprak', client: 'klarsprak-web' },
+  };
+
+  it('may read who it is, so the frontend can list the organisations, but nothing else outside its channels', async () => {
+    const at = (method: string, path: string) =>
+      admitConfined(clients, new Request(`http://api.test${path}`, { method }), person);
+
+    expect(await at('GET', '/me')).toBe(true);
+    expect(await at('POST', '/me')).toBe(false);
+    expect(await at('GET', `/tenants/${digdir}/overview`)).toBe(false);
+  });
+});

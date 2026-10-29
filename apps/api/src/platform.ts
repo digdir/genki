@@ -11,7 +11,7 @@ import {
   type SettingsRegistry,
 } from '@genai/definitions';
 import { refusedRight, type Access } from './access.js';
-import { requireRight, rights, rightsOf } from './rights.js';
+import { requireRight, rights, rightsOf, seesUsage } from './rights.js';
 import {
   settingsConflictMessage,
   type Admin,
@@ -228,17 +228,19 @@ const RunStats = z
     chunksRead: z.number().int(),
     documents: z.number().int(),
     warnings: z.array(z.string()),
-    inputTokens: z.number().int(),
-    outputTokens: z.number().int(),
+    inputTokens: z.number().int().optional(),
+    outputTokens: z.number().int().optional(),
     cachedInputTokens: z.number().int().optional(),
-    byModel: z.array(
-      z.object({
-        model: z.string(),
-        inputTokens: z.number().int(),
-        outputTokens: z.number().int(),
-        calls: z.number().int(),
-      }),
-    ),
+    byModel: z
+      .array(
+        z.object({
+          model: z.string(),
+          inputTokens: z.number().int(),
+          outputTokens: z.number().int(),
+          calls: z.number().int(),
+        }),
+      )
+      .optional(),
   })
   .openapi('RunStats');
 
@@ -252,9 +254,9 @@ const Timeline = z
     caller: z.string(),
     startedAt: z.string(),
     durationSeconds: z.number(),
-    inputTokens: z.number(),
-    outputTokens: z.number(),
-    costOre: z.number(),
+    inputTokens: z.number().optional(),
+    outputTokens: z.number().optional(),
+    costOre: z.number().optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -784,7 +786,10 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         await options.tasks.events(task),
         now(),
         await serviceNameOf(found.service.capability.id),
-        { details: requireRight(acting, tenant, 'manage-services').ok },
+        {
+          details: requireRight(acting, tenant, 'manage-services').ok,
+          usage: startedBy(found, principal) || seesUsage(acting, tenant),
+        },
       ),
       200,
     );
@@ -821,9 +826,11 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         organisations: orgs.map((orgNumber) => ({
           orgNumber,
           name:
-            directory.find((d) => d.orgNumber === orgNumber)?.name ??
-            options.organisationName?.(orgNumber) ??
-            orgNumber,
+            [
+              directory.find((d) => d.orgNumber === orgNumber)?.name,
+              principal.orgNames?.[orgNumber],
+              options.organisationName?.(orgNumber),
+            ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
       },
@@ -1052,7 +1059,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         onConflict,
         actor: '',
         reason,
-        check: admin.check,
+        check: admin.checkImport,
       });
       if (!plan.ok) return problem(c, 422, 'Invalid bundle', { errors: plan.errors });
       return c.json({ dryRun: true, plan: plan.plan }, 200);

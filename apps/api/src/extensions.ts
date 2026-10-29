@@ -18,7 +18,12 @@ import {
   type FeedbackStore,
   type TestSetStore,
 } from '@genai/eval';
-import { defaultPlatformTenant, TenantSecretVault } from '@genai/composition';
+import {
+  defaultPlatformTenant,
+  sameHosts,
+  secretHosts,
+  TenantSecretVault,
+} from '@genai/composition';
 
 export {
   InMemoryTenantSecrets,
@@ -28,8 +33,12 @@ export {
 import { KernelError, type EventLog, type Kernel } from '@genai/kernel';
 import {
   RegistrationError,
+  secretTargets,
+  validateConnection,
   type ConnectionRegistry,
   type ConnectionToolSource,
+  toolSyncDeadlineMs,
+  type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, supportSessionHeader, tenantAccess } from './access.js';
@@ -55,6 +64,7 @@ export interface TrackedTask {
 export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
+  tokensUsed?(tenant: string, since: string): Promise<number>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
@@ -148,6 +158,7 @@ export class TenantDirectory {
 export interface ToolAdminDeps {
   connections: ConnectionRegistry;
   source: ConnectionToolSource;
+  secrets: TenantSecrets;
   onToolsChanged: (tenant: string) => Promise<void>;
 }
 
@@ -181,24 +192,40 @@ export const adminExtensions = (deps: {
         target,
       };
     const name = String(input.name ?? '').trim() || org;
-    await deps.directory.add(
-      { orgNumber: org, name, status: 'onboarding' },
-      `${principal.issuer}:${principal.subject}`,
-    );
-    return {
-      ok: true,
-      value: { orgNumber: org, name, status: 'onboarding' },
-      target,
-      audit: { scope: 'platform' },
-    };
+    const existing = (await deps.directory.list()).find((e) => e.orgNumber === org);
+    const entry = { orgNumber: org, name, status: existing?.status ?? 'onboarding' } as const;
+    await deps.directory.add(entry, `${principal.issuer}:${principal.subject}`);
+    return { ok: true, value: entry, target, audit: { scope: 'platform' } };
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;
-    const connection = (input.connection ?? {}) as Record<string, unknown>;
+    const given = (input.connection ?? {}) as Record<string, unknown>;
+    const connection =
+      principal.kind === 'operator' || given.writes === undefined
+        ? given
+        : { ...given, writes: false };
     const target = `tool-connection:${tenant}/${String(connection.id ?? '')}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator registers tools');
     try {
+      const candidate = validateConnection({ ...connection, tenant });
+      const outside = candidate.auth
+        ? await deps.tools.secrets.outside(tenant, candidate.auth.secret, secretTargets(candidate))
+        : [];
+      if (outside.length > 0)
+        return {
+          ok: false,
+          errors: [
+            {
+              path: 'connection.auth.secret',
+              message: t('blocks.secretNotForHosts', {
+                secret: candidate.auth?.secret.split('/').pop() ?? '',
+                hosts: outside.join(', '),
+              }),
+            },
+          ],
+          target,
+        };
       const registered = await deps.tools.connections.register({ ...connection, tenant });
       await deps.tools.source.load(tenant);
       return {
@@ -229,7 +256,11 @@ export const adminExtensions = (deps: {
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
     try {
-      const result = await deps.tools.source.sync(tenant, id);
+      const result = await deps.tools.source.sync(
+        tenant,
+        id,
+        AbortSignal.timeout(toolSyncDeadlineMs),
+      );
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };
@@ -282,11 +313,25 @@ export const adminExtensions = (deps: {
       return refused(target, 'only the tenant or an operator sets its secrets');
     if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
       return { ok: false, errors: [{ path: 'name', message: 'not a valid secret name' }], target };
+    const allowedHosts = Array.isArray(input.allowedHosts) ? input.allowedHosts : undefined;
     return {
       ok: true,
       value: { ref: TenantSecretVault.ref(input.tenant, name) },
       target,
-      audit: { name },
+      audit: { name, ...(allowedHosts ? { allowedHosts } : {}) },
+    };
+  },
+  'platform.secrets.hosts': async (input, principal) => {
+    const name = String(input.name ?? '');
+    const target = `secret:${input.tenant}/${name}`;
+    if (!forTenant(principal, input.tenant))
+      return refused(target, 'only the tenant or an operator sets its secrets');
+    const allowedHosts = Array.isArray(input.allowedHosts) ? input.allowedHosts : [];
+    return {
+      ok: true,
+      value: { ref: TenantSecretVault.ref(input.tenant, name), allowedHosts },
+      target,
+      audit: { name, before: input.before ?? null, after: allowedHosts },
     };
   },
   'platform.secrets.delete': async (input, principal) => {
@@ -418,6 +463,16 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     );
   };
 
+  const hostsProblem = (c: Context, invalid: string) =>
+    problem(c, 400, 'Invalid request', [
+      {
+        path: 'allowedHosts',
+        message: invalid
+          ? t('blocks.secretHostInvalid', { host: invalid })
+          : t('blocks.secretHostsRequired'),
+      },
+    ]);
+
   const applied = async (
     c: Context,
     principal: Principal,
@@ -481,21 +536,58 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!principal) return problem(c, 401, 'Unauthorized');
     const tenant = param(c, 'tenant');
     const name = param(c, 'name');
-    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      value?: unknown;
+      allowedHosts?: unknown;
+    };
     if (typeof body.value !== 'string' || body.value.length === 0)
       return problem(c, 400, 'Invalid request', [
         { path: 'value', message: 'a value is required' },
       ]);
     const value = body.value;
-    return applied(
+    const entered = enterTenant(c, access, principal, tenant);
+    if ('response' in entered) return entered.response;
+    const exists = (await deps.vault.names(tenant)).includes(name);
+    const parsed = body.allowedHosts === undefined ? undefined : secretHosts(body.allowedHosts);
+    if (parsed && !parsed.ok) return hostsProblem(c, parsed.invalid);
+    if (!parsed && !exists) return hostsProblem(c, '');
+    const hosts = parsed?.ok ? parsed.hosts : undefined;
+    const hostsChange =
+      exists && hosts !== undefined && !sameHosts(hosts, await deps.vault.hosts(tenant, name));
+    return performed(
       c,
-      principal,
+      entered.principal,
       'platform.secrets.set',
-      { tenant, name },
+      { tenant, name, ...(hosts ? { allowedHosts: hosts } : {}), hostsChange },
       async () => {
-        await deps.vault.set(tenant, name, value);
+        await deps.vault.set(tenant, name, value, hosts);
       },
-      null,
+    );
+  });
+
+  app.put('/tenants/:tenant/secrets/:name/hosts', async (c) => {
+    const principal = await who(c);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    const tenant = param(c, 'tenant');
+    const name = param(c, 'name');
+    const entered = enterTenant(c, access, principal, tenant, 'manage-services');
+    if ('response' in entered) return entered.response;
+    const body = (await c.req.json().catch(() => ({}))) as { allowedHosts?: unknown };
+    const parsed = secretHosts(body.allowedHosts);
+    if (!parsed.ok) return hostsProblem(c, parsed.invalid);
+    if (!(await deps.vault.names(tenant)).includes(name))
+      return problem(c, 404, 'Not found', [
+        { path: 'name', message: t('blocks.secretNotFound', { name }) },
+      ]);
+    const before = await deps.vault.hosts(tenant, name);
+    return performed(
+      c,
+      entered.principal,
+      'platform.secrets.hosts',
+      { tenant, name, allowedHosts: parsed.hosts, before: before ?? null },
+      async () => {
+        await deps.vault.setHosts(tenant, name, parsed.hosts);
+      },
     );
   });
 

@@ -61,6 +61,7 @@ export const batchUi = {
     pausedBody: 'Jobben har brukt {spent}. {done} av {total} dokumenter er ferdige. Resten venter.',
     pausedBodyCap:
       'Jobben har brukt {spent}, og grensen er {cap}. {done} av {total} dokumenter er ferdige. Resten venter.',
+    pausedBodyNoCost: '{done} av {total} dokumenter er ferdige. Resten venter.',
     continueNewLimit: 'Fortsett med ny grense',
     endKeep: 'Avslutt og behold resultatene',
     endedFlash: 'Jobben er avsluttet. {count} resultater er beholdt.',
@@ -68,6 +69,8 @@ export const batchUi = {
       'Jobben ble avbrutt {when}. {done} av {total} dokumenter ble ferdige, og resultatene er beholdt. Kostnad: {cost}.',
     cancelledNoTime:
       'Jobben ble avbrutt. {done} av {total} dokumenter ble ferdige, og resultatene er beholdt. Kostnad: {cost}.',
+    cancelledNoCost:
+      'Jobben ble avbrutt. {done} av {total} dokumenter ble ferdige, og resultatene er beholdt.',
     stoppedWithError: 'Jobben stoppet med en feil.',
     approvedOver: 'Godkjent over grensen på {limit} kr av {by}: «{reason}»',
     progress: 'Fremdrift',
@@ -101,6 +104,9 @@ export const batchUi = {
     doneAll: 'Jobben er ferdig. Alle {total} dokumentene er kjørt. Kostnad: {cost}.',
     doneAllEstimate:
       'Jobben er ferdig. Alle {total} dokumentene er kjørt. Kostnad: {cost}, anslaget var {estimate}.',
+    doneWithErrorsNoCost:
+      'Jobben er ferdig. {done} av {total} dokumenter er kjørt, {failed} feilet.',
+    doneAllNoCost: 'Jobben er ferdig. Alle {total} dokumentene er kjørt.',
     failedHeading: { one: '{count} dokument feilet', other: '{count} dokumenter feilet' },
     failGroup: '{count}: {error}',
     canRetry: 'Kan kjøres på nytt',

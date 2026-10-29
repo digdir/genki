@@ -105,7 +105,7 @@ const TaskBase = z.object({
 });
 
 const TaskRow = TaskBase.extend({
-  usage: Usage,
+  usage: Usage.optional().describe('Only for callers with view-usage'),
   serviceName: z.string(),
   excerpt: z
     .string()
@@ -211,7 +211,7 @@ const ProjectSubscription = z
     checkedAt: z.string().optional(),
     error: z.string().optional(),
     month: z.string(),
-    spentThisMonth: z.object({ costMicroNok: z.number(), tokens: z.number() }),
+    spentThisMonth: z.object({ costMicroNok: z.number(), tokens: z.number() }).optional(),
     ...Stamp,
   })
   .openapi('ProjectSubscription');
@@ -295,8 +295,10 @@ const ProjectRun = z
     status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'stopped']),
     total: z.number().int(),
     concurrency: z.number().int(),
-    cap: z.object({ costMicroNok: z.number().optional(), tokens: z.number().optional() }),
-    perItem: PerItem,
+    cap: z
+      .object({ costMicroNok: z.number().optional(), tokens: z.number().optional() })
+      .optional(),
+    perItem: PerItem.optional(),
     maxOutputTokens: z.number().int().optional(),
     pass: z.number().int(),
     startedAt: z.string(),
@@ -304,8 +306,8 @@ const ProjectRun = z
     error: z.string().optional(),
     errorCode: z.string().optional(),
     counts: z.record(z.enum(itemStatuses), z.number().int()),
-    tokens: z.object({ input: z.number(), output: z.number() }),
-    costMicroNok: z.number().nullable(),
+    tokens: z.object({ input: z.number(), output: z.number() }).optional(),
+    costMicroNok: z.number().nullable().optional(),
   })
   .openapi('ProjectRun');
 
@@ -1024,8 +1026,8 @@ const ServiceEvalRun = z
     score: z.number().nullable(),
     passed: z.number().int(),
     total: z.number().int(),
-    cost: z.number().nullable().describe('Micro-NOK'),
-    tokens: z.object({ input: z.number(), output: z.number() }),
+    cost: z.number().nullable().optional().describe('Micro-NOK; only with view-usage'),
+    tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
     owner: z.string().optional(),
     heartbeatAt: z.string().optional(),
@@ -2251,8 +2253,8 @@ const operationsRoutes: RouteConfig[] = [
               runsThisWeek: z.number().int(),
             }),
           ),
-          recentTasks: z.array(TaskBase.extend({ usage: Usage })),
-          usageThisMonth: UsageWithRuns,
+          recentTasks: z.array(TaskBase.extend({ usage: Usage.optional() })),
+          usageThisMonth: UsageWithRuns.optional(),
           qualityWarnings: z.array(z.object({ service: z.string(), message: z.string() })),
           review: z.object({
             pendingToolChanges: z.number().int(),
@@ -2688,6 +2690,7 @@ const protocolRoutes: RouteConfig[] = [
       403: toolError('The key may not reach this service or mode'),
       404: toolError('No such tool'),
       409: toolError('No such published version'),
+      413: toolError('The request body is too large'),
       429: RateLimited,
       500: toolError('Internal error'),
       503: toolError('The service is paused'),

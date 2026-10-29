@@ -1,10 +1,12 @@
 import { extname } from 'node:path';
 import type { Principal } from '@genai/contracts';
 import type { Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { enterTenant } from './access.js';
 import { routeOnlyActions } from './admin.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { changeReasonOf } from './http.js';
+import { t } from './i18n/index.js';
 import { uploadPrefix } from './index-ingestion.js';
 import type { PlatformModule, PlatformModuleFactory } from './platform-modules.js';
 
@@ -18,11 +20,13 @@ export const uploadTypes: Record<string, string> = {
 };
 
 export const maxUploadBytes = 50 * 1024 * 1024;
+export const maxUploadFiles = 20;
+export const maxUploadRequestBytes = 100 * 1024 * 1024;
 
 export type UploadSkipReason = 'unsupported_type' | 'too_large' | 'empty' | 'bad_name';
 
-const problem = (c: Context, status: 400 | 401 | 404 | 500, title: string) =>
-  c.json({ type: 'about:blank', title, status }, status, {
+const problem = (c: Context, status: 400 | 401 | 404 | 413 | 500, title: string, detail?: string) =>
+  c.json({ type: 'about:blank', title, status, ...(detail ? { detail } : {}) }, status, {
     'content-type': 'application/problem+json',
   });
 
@@ -39,9 +43,13 @@ export const uploadName = (raw: string) => {
 };
 
 export const createDatasetUploadsModule =
-  (options: { maxBytes?: number } = {}): PlatformModuleFactory =>
+  (
+    options: { maxBytes?: number; maxFiles?: number; maxRequestBytes?: number } = {},
+  ): PlatformModuleFactory =>
   (deps): PlatformModule => {
     const maxBytes = options.maxBytes ?? maxUploadBytes;
+    const maxFiles = options.maxFiles ?? maxUploadFiles;
+    const maxRequestBytes = options.maxRequestBytes ?? maxUploadRequestBytes;
     return {
       id: 'dataset-uploads',
       handlers: routeOnlyActions(['platform.dataset.upload', 'platform.dataset.upload.delete']),
@@ -84,9 +92,21 @@ export const createDatasetUploadsModule =
         };
         const base = '/tenants/:tenant/datasets/:id/uploads';
 
-        app.post(base, async (c) => {
-          const g = await guard(c, 'manage-datasets');
-          if ('response' in g) return g.response;
+        const tooLarge = (c: Context) =>
+          problem(
+            c,
+            413,
+            t('problems.status413'),
+            t('problems.uploadRequestTooLarge', {
+              size: Math.floor(maxRequestBytes / (1024 * 1024)),
+            }),
+          );
+        const limitBody = bodyLimit({ maxSize: maxRequestBytes, onError: tooLarge });
+
+        const receive = async (
+          c: Context,
+          g: { principal: Principal; tenant: string; item: CatalogItem },
+        ) => {
           const form = await c.req.parseBody({ all: true }).catch(() => undefined);
           if (!form) return problem(c, 400, 'Send the files as multipart/form-data');
           const raw = form.files;
@@ -94,6 +114,13 @@ export const createDatasetUploadsModule =
             (f): f is File => typeof f !== 'string',
           );
           if (files.length === 0) return problem(c, 400, 'No files in the field files');
+          if (files.length > maxFiles)
+            return problem(
+              c,
+              413,
+              t('problems.status413'),
+              t('problems.uploadTooManyFiles', { count: maxFiles }),
+            );
           const prefix = uploadPrefix(g.item.id, g.tenant);
           const accepted: { name: string; type: string; file: File }[] = [];
           const skipped: { name: string; reason: UploadSkipReason }[] = [];
@@ -123,6 +150,17 @@ export const createDatasetUploadsModule =
           };
           if (accepted.length === 0) return c.json({ uploaded: [], skipped }, 201);
           return c.json(await inTask(c, g, 'platform.dataset.upload', store), 201);
+        };
+
+        app.post(base, async (c) => {
+          if (Number(c.req.header('content-length')) > maxRequestBytes) return tooLarge(c);
+          const g = await guard(c, 'manage-datasets');
+          if ('response' in g) return g.response;
+          let answer: Response | undefined;
+          const refused = await limitBody(c, async () => {
+            answer = await receive(c, g);
+          });
+          return refused ?? answer ?? problem(c, 500, t('problems.status500'));
         });
 
         app.get(base, async (c) => {

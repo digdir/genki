@@ -21,6 +21,7 @@ import {
   type ServiceDefinition,
 } from '@genai/definitions';
 import {
+  assistantCapabilityPrefix,
   costOf,
   InMemoryTriggerRuns,
   monthlyQuotaGate,
@@ -288,16 +289,10 @@ const monthlyTokens = (tenant: string) => {
   const value = settings.effective(tenant)['usage.monthlyTokens']?.value;
   return typeof value === 'number' && value > 0 ? value : 50_000_000;
 };
-const usedTokens = async (tenant: string, since: string) => {
-  if (!db) return 0;
-  let used = 0;
-  for (const row of await db.tasks.list({ tenant, limit: 1000 })) {
-    if (row.createdAt < since) continue;
-    const usage = (await db.tasks.get(row.id))?.task.usage;
-    used += (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
-  }
-  return used;
-};
+const usedTokens = async (tenant: string, since: string) =>
+  db
+    ? db.tasks.tokensUsed({ tenant, since, excludeCapabilityPrefix: assistantCapabilityPrefix })
+    : 0;
 const pricedModels = runtime.prices as Record<string, TokenPrice | undefined>;
 
 const lease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-triggers') : undefined;

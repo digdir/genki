@@ -168,7 +168,8 @@ export const RunDetail = ({
     open[key(i)] ?? (step.type === 'approval' && step.state === 'waiting' && !decision);
   const allOpen = steps.length > 0 && steps.every((s, i) => isOpen(s, i));
 
-  const tokens = run.inputTokens + run.outputTokens;
+  const usageShown = run.inputTokens !== undefined && run.outputTokens !== undefined;
+  const tokens = (run.inputTokens ?? 0) + (run.outputTokens ?? 0);
   const finished = items.filter((i) => i.status === 'Fullført');
   const batchTokens = finished.reduce((a, i) => a + i.tokens, 0);
   const facts: { l: string; v: string; sub?: string }[] = child
@@ -227,25 +228,29 @@ export const RunDetail = ({
                   ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f) })
                   : formatDuration(run.durationSeconds, f),
           },
-          {
-            l: t('logRun.tokens'),
-            v: whole(tokens, f),
-            sub: t('logRun.tokensSplit', {
-              input: whole(run.inputTokens, f),
-              output: whole(run.outputTokens, f),
-            }),
-          },
-          {
-            l: t('logRun.cost'),
-            v: ore(
-              live && header.status === 'ready' && header.data
-                ? header.data.usage.costMicroNok === null ||
-                  header.data.usage.costMicroNok === undefined
-                  ? null
-                  : header.data.usage.costMicroNok / 10_000
-                : run.costOre,
-            ),
-          },
+          ...(usageShown
+            ? [
+                {
+                  l: t('logRun.tokens'),
+                  v: whole(tokens, f),
+                  sub: t('logRun.tokensSplit', {
+                    input: whole(run.inputTokens ?? 0, f),
+                    output: whole(run.outputTokens ?? 0, f),
+                  }),
+                },
+                {
+                  l: t('logRun.cost'),
+                  v: ore(
+                    live && header.status === 'ready' && header.data?.usage
+                      ? header.data.usage.costMicroNok === null ||
+                        header.data.usage.costMicroNok === undefined
+                        ? null
+                        : header.data.usage.costMicroNok / 10_000
+                      : (run.costOre ?? null),
+                  ),
+                },
+              ]
+            : []),
           { l: t('logRun.steps'), v: String(steps.length) },
         ];
 

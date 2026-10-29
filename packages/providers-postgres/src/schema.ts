@@ -48,6 +48,7 @@ const definerFunctions = [
   'platform_clients()',
   'platform_tenants()',
   'find_ingestion_execution(text)',
+  'fail_stale_ingestion_executions(text, text[], text, text)',
   'find_api_key_policy(text)',
 ];
 
@@ -131,6 +132,7 @@ const migrations: string[] = [
      body bytea
    )`,
   `create index if not exists tasks_pending on tasks (status) where status = 'interrupted'`,
+  `create index if not exists tasks_thread on tasks (tenant, (envelope->>'thread'))`,
   `create table if not exists state (
      key text primary key,
      v integer not null,
@@ -314,6 +316,90 @@ const migrations: string[] = [
      primary key (tenant, id)
    )`,
   ...tenantIsolation('tool_connections'),
+  `do $$
+     declare previous text := current_setting('app.platform_access', true);
+     begin
+       if exists (select 1 from information_schema.columns
+                  where table_schema = current_schema() and table_name = 'tenant_secrets'
+                    and column_name = 'allowed_hosts') then
+         return;
+       end if;
+       alter table tenant_secrets add column allowed_hosts text[];
+       perform set_config('app.platform_access', 'secret-hosts-migration', true);
+       with addresses(tenant, ref, address) as (
+         select c.tenant, c.state #>> '{connection,auth,secret}', a.address
+           from tool_connections c
+           cross join lateral unnest(array[
+             c.state #>> '{connection,endpoint}',
+             c.state #>> '{connection,documentUrl}',
+             c.state #>> '{connection,auth,tokenUrl}']) as a(address)
+         union all
+         select c.tenant, c.state #>> '{connection,auth,secret}',
+                'https://'
+                || case when h.entry ->> 'host' like '%:%'
+                        then '[' || (h.entry ->> 'host') || ']' else h.entry ->> 'host' end
+                || case when coalesce((h.entry ->> 'port')::int, 443) = 443
+                        then '' else ':' || (h.entry ->> 'port') end
+           from tool_connections c
+           cross join lateral jsonb_array_elements(
+             coalesce(c.state #> '{connection,allow}', '[]'::jsonb)) as h(entry)
+         union all
+         select d.tenant, e #>> '{auth,secret}', e ->> 'url'
+           from definition_versions d
+           cross join lateral jsonb_path_query(d.definition,
+             'strict $.** ? (@.auth.secret.type() == "string" && @.url.type() == "string")') as e
+       ),
+       origins(tenant, name, origin) as (
+         select tenant, substr(ref, length('secret://tenant/' || tenant || '/') + 1),
+                lower(substring(address from '^(https?://[^/?#]+)'))
+           from addresses
+          where ref like 'secret://tenant/' || tenant || '/%' and address ~ '^https?://'
+       ),
+       bound(tenant, name, hosts) as (
+         select tenant, name,
+                array_agg(distinct regexp_replace(
+                  regexp_replace(origin, '^(https://[^/]+):443$', '\\1'),
+                  '^(http://[^/]+):80$', '\\1'))
+           from origins
+          where origin is not null
+          group by tenant, name
+       )
+       update tenant_secrets s set allowed_hosts = b.hosts
+         from bound b
+        where s.tenant = b.tenant and s.name = b.name;
+       if to_regclass('config_entries') is not null then
+         execute $catalog$
+           with latest as (
+             select distinct on (kind, scope, id) spec, deleted
+               from config_entries
+              where kind in ('knowledge-endpoint', 'model-endpoint')
+              order by kind, scope, id, version desc
+           ),
+           refs(tenant, name, origin) as (
+             select m[1], m[2], lower(substring(l.spec ->> 'baseURL' from '^(https?://[^/?#]+)'))
+               from latest l
+               cross join lateral regexp_match(l.spec #>> '{auth,secret}',
+                 '^secret://tenant-(\\d{9})/([a-z0-9][a-z0-9._-]*)$') as m
+              where not l.deleted
+           ),
+           bound(tenant, name, hosts) as (
+             select tenant, name,
+                    array_agg(distinct regexp_replace(
+                      regexp_replace(origin, '^(https://[^/]+):443$', '\\1'),
+                      '^(http://[^/]+):80$', '\\1'))
+               from refs
+              where origin is not null
+              group by tenant, name
+           )
+           update tenant_secrets s
+              set allowed_hosts = (select array_agg(distinct h order by h)
+                                     from unnest(coalesce(s.allowed_hosts, '{}') || b.hosts) as h)
+             from bound b
+            where s.tenant = b.tenant and s.name = b.name
+         $catalog$;
+       end if;
+       perform set_config('app.platform_access', coalesce(previous, ''), true);
+     end $$`,
   `create table if not exists eval_test_sets (
      tenant text not null,
      id text not null,
@@ -548,7 +634,7 @@ const migrations: string[] = [
      pipeline text not null,
      pipeline_version integer not null,
      backend text not null,
-     status text not null check (status in ('running', 'succeeded', 'failed')),
+     status text not null check (status in ('running', 'succeeded', 'failed', 'cancelled')),
      started_by text not null,
      started_at text collate "C" not null,
      ended_at text,
@@ -557,12 +643,35 @@ const migrations: string[] = [
    )`,
   `create index if not exists ingestion_executions_recent
      on ingestion_executions (scope, dataset, pipeline, started_at desc)`,
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%cancelled%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('running', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
   ...tenantIsolation('ingestion_executions', 'scope'),
   `create or replace function find_ingestion_execution(p_id text) returns setof ingestion_executions
      language plpgsql stable security definer set search_path = public
      as $$ begin
        perform require_platform_access();
        return query select * from ingestion_executions where id = p_id;
+     end $$`,
+  `create or replace function fail_stale_ingestion_executions(
+       p_started_before text, p_except text[], p_ended_at text, p_error text) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare changed integer; begin
+       perform require_platform_access();
+       update ingestion_executions set status = 'failed', ended_at = p_ended_at, error = p_error
+         where status = 'running' and started_at < p_started_before and not (id = any(p_except));
+       get diagnostics changed = row_count;
+       return changed;
      end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,

@@ -21,6 +21,7 @@ import {
   type CompiledCapability,
   type PluginSchemas,
 } from '@genai/definitions';
+import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { Capability as KernelCapability, CapabilityRegistry, Kernel } from '@genai/kernel';
 import { blobPart, type BlobStore } from '@genai/port-blob';
 import { residencies, type Residency } from '@genai/port-model';
@@ -53,7 +54,7 @@ export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 const draftPrefix = 'platform/draft/';
 
 export const originOf = (capabilityId: string): RunOrigin => {
-  if (capabilityId.startsWith('platform/builder-assistant')) return 'assistant';
+  if (capabilityId.startsWith(assistantCapabilityPrefix)) return 'assistant';
   if (!capabilityId.startsWith(draftPrefix)) return serviceOrigin;
   const segment = capabilityId.slice(draftPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';
@@ -80,10 +81,38 @@ export interface DraftRunInput {
 
 export interface DraftModelUsage {
   model: string;
+  kind?: string;
   inputTokens: number;
   outputTokens: number;
   costMicroNok: number;
 }
+
+export const usageByModel = (
+  events: Event[],
+  prices: Record<string, ModelPrice | undefined>,
+): DraftModelUsage[] => {
+  const byModel = new Map<string, DraftModelUsage>();
+  for (const event of events) {
+    if (event.type !== 'kernel.usage') continue;
+    const data = event.data as { usage?: Usage; model?: { id?: string; kind?: string } };
+    if (!data.usage) continue;
+    const model = data.model?.id ?? 'ukjent';
+    const seen = byModel.get(model) ?? {
+      model,
+      ...(data.model?.kind ? { kind: data.model.kind } : {}),
+      inputTokens: 0,
+      outputTokens: 0,
+      costMicroNok: 0,
+    };
+    byModel.set(model, {
+      ...seen,
+      inputTokens: seen.inputTokens + (data.usage.inputTokens ?? 0),
+      outputTokens: seen.outputTokens + (data.usage.outputTokens ?? 0),
+      costMicroNok: seen.costMicroNok + priced(data.usage, prices[model]),
+    });
+  }
+  return [...byModel.values()];
+};
 
 export interface DraftRunSuccess {
   ok: true;
@@ -249,28 +278,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     return events;
   };
 
-  const usageOf = (events: Event[]) => {
-    const byModel = new Map<string, DraftModelUsage>();
-    for (const event of events) {
-      if (event.type !== 'kernel.usage') continue;
-      const data = event.data as { usage?: Usage; model?: { id?: string } };
-      if (!data.usage) continue;
-      const model = data.model?.id ?? 'ukjent';
-      const seen = byModel.get(model) ?? {
-        model,
-        inputTokens: 0,
-        outputTokens: 0,
-        costMicroNok: 0,
-      };
-      byModel.set(model, {
-        model,
-        inputTokens: seen.inputTokens + (data.usage.inputTokens ?? 0),
-        outputTokens: seen.outputTokens + (data.usage.outputTokens ?? 0),
-        costMicroNok: seen.costMicroNok + priced(data.usage, deps.prices[model]),
-      });
-    }
-    return [...byModel.values()];
-  };
+  const usageOf = (events: Event[]) => usageByModel(events, deps.prices);
 
   const locationOf = (models: string[], primary: string | undefined): Residency | null => {
     const known = [...models, ...(primary ? [primary] : [])]

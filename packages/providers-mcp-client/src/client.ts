@@ -85,7 +85,13 @@ export class McpClient {
         ? { 'mcp-name': headerValue(params.name) }
         : {}),
       ...(this.#session ? { 'mcp-session-id': this.#session } : {}),
-      ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+      ...(await authHeaders(
+        this.connection,
+        this.connection.endpoint,
+        this.guard,
+        this.secrets,
+        signal,
+      )),
     };
   }
 
@@ -105,7 +111,8 @@ export class McpClient {
       signal,
     );
     const session = response.headers['mcp-session-id'];
-    if (typeof session === 'string' && session) this.#session = session;
+    if (response.status >= 200 && response.status < 300 && typeof session === 'string' && session)
+      this.#session = session;
     return response;
   }
 
@@ -113,14 +120,21 @@ export class McpClient {
     method: string,
     params: Record<string, unknown>,
     signal?: AbortSignal,
+    retried = false,
   ): Promise<unknown> {
     const id = this.#nextId++;
     const response = await this.#post({ jsonrpc: '2.0', id, method, params }, signal);
-    if (response.status === 404 && this.#session && method !== 'initialize') {
+    if (
+      response.status === 404 &&
+      this.#session &&
+      !retried &&
+      method !== 'initialize' &&
+      method !== 'server/discover'
+    ) {
       this.#session = undefined;
       this.#initialized = false;
       await this.#ensureInitialized(signal);
-      return this.#rpc(method, params, signal);
+      return this.#rpc(method, params, signal, true);
     }
     if (method === 'server/discover' && (response.status < 200 || response.status >= 300))
       return undefined;

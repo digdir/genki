@@ -40,6 +40,7 @@ export interface ImportOptions {
   actor: string;
   reason: string;
   check?: (definition: unknown, files: PromptFiles) => ValidationError[];
+  prepare?: (definition: unknown) => unknown;
 }
 
 export type ImportResult =
@@ -197,7 +198,8 @@ export const importTenant = async (
     const target = `${String(definition.kind)}:${String((definition.metadata as { id?: unknown }).id)}`;
     const action = applies(target);
     if (action !== 'create' && action !== 'update') continue;
-    const result = await store.publish(definition, options.actor, options.reason, files);
+    const prepared = options.prepare ? options.prepare(definition) : definition;
+    const result = await store.publish(prepared, options.actor, options.reason, files);
     if (!result.ok) {
       settings.restoreTenant(options.tenant, before);
       return {

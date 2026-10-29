@@ -63,6 +63,27 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-10-26: rights stay within their scope
+
+- Saving or attaching an API key policy answers `403` when the policy's scopes need a right the person lacks: `admin` needs all five rights, `ingest` needs `manage-datasets`. API keys, machine clients and operators are unchanged.
+- `POST /tenants/{tenant}/import` needs `spec.riskConfirmation` for limited and high risk services, like `POST /definitions`, also on a dry run. The stored `by` and `at` are the importing person and the time of import.
+- `POST /tenants/{tenant}/tool-connections` stores `writes: false` unless an operator registers it. Write operations are switched on by an operator decision.
+- Token counts and cost are left out without `view-usage`:
+  - `GET /tenants/{tenant}/overview`: `usageThisMonth` and the `usage` of each recent task.
+  - `GET /tenants/{tenant}/tasks` and `GET /tenants/{tenant}/tasks/{task}`: `usage`.
+  - `GET /tenants/{tenant}/tasks/{task}/timeline`: `inputTokens`, `outputTokens`, `costOre`, the token fields of `stats`, and the tokens of each step. The person who started the task still sees them.
+  - Batch runs (`GET /tenants/{tenant}/services/{id}/batch-runs`, a run and its export) and project runs: `tokens`, `costMicroNok`, `cap`, `perItem` and `costApproval`, and the token and cost columns of the export. The person who started the run still sees them.
+  - Project subscriptions: `spentThisMonth`.
+  - Eval runs: `cost` and `tokens`.
+  - Trigger runs: `usage` and `costMicroNok`.
+  - Pipeline executions: `report.usage`.
+
+### 2026-10-16: tenant secrets are bound to hosts
+
+- A tenant secret is used only for the hosts it is set for. `PUT /tenants/{tenant}/secrets/{name}` takes `allowedHosts`, required for a new secret. `PUT /tenants/{tenant}/secrets/{name}/hosts` changes them and needs `manage-services`. See [access.md](access.md#tenant-secrets).
+- `GET /tenants/{tenant}/building-blocks/secrets` lists `allowedHosts` for each secret.
+- Registering a tool connection whose secret is not set for its addresses answers `400`.
+
 ### 2026-10-12: one consistent API
 
 Changes a client may notice. The rules behind them are in the sections above; tests in `apps/api/src/api-consistency.test.ts`, `admin-tasks.test.ts` and `openapi/coverage.test.ts` check every route against them.

@@ -40,10 +40,12 @@ export interface Principal {
   kind: PrincipalKind;
   issuer: string;
   subject: string;
+  name?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;
   authorizedFor?: { org: string; resource?: string; actions?: string[] }[];
+  orgNames?: Record<string, string>;
   scopes?: string[];
   supplier?: string;
   systemUser?: string;

@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
-export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed';
+export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface IngestionExecutionReport {
   stored: number;
@@ -90,6 +90,21 @@ export class PostgresIngestionExecutions {
     );
     const row = found.rows[0];
     return row && toExecution(row);
+  }
+
+  async failStale(input: {
+    startedBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }): Promise<number> {
+    const result = await withPlatformAccess(this.pool, 'ingestion-stale-runs', (client) =>
+      client.query<{ changed: number }>(
+        'select fail_stale_ingestion_executions($1, $2, $3, $4) as changed',
+        [input.startedBefore, input.except, input.endedAt, input.error],
+      ),
+    );
+    return result.rows[0]?.changed ?? 0;
   }
 
   async list(dataset: string, pipeline: string): Promise<IngestionExecution[]> {

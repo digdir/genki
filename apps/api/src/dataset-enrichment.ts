@@ -17,9 +17,13 @@ import { enterTenant } from './access.js';
 import { AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { changeReasonOf } from './http.js';
+import { tenantModelRefusal } from './model-access.js';
 import type { ModuleDeps, PlatformModule, PlatformModuleFactory } from './platform-modules.js';
+import { quotaExhausted } from './rate-limit.js';
 
-type Status = 400 | 401 | 404 | 409 | 422 | 502;
+export const enrichmentOutputTokens = 1000;
+
+type Status = 400 | 401 | 404 | 409 | 422 | 502 | 503;
 
 const problem = (
   c: Context,
@@ -186,22 +190,37 @@ export const createDatasetEnrichmentModule =
           if ('response' in g) return g.response;
           const body = await parsed(c, proposeBody);
           if ('response' in body) return body.response;
-          const ctx = contextFor(g.principal, g.tenant);
+          const refused =
+            g.principal.kind === 'operator'
+              ? undefined
+              : tenantModelRefusal(deps.catalog, body.value.model, g.tenant);
+          if (refused)
+            return problem(c, 422, 'The model cannot be used', [
+              { path: 'model', message: refused },
+            ]);
+          const quota = await deps.quota?.(g.tenant, { fresh: true });
+          if (quota?.exhausted) return quotaExhausted(c, quota.monthlyTokens);
+          if (!deps.enrichmentTask)
+            return problem(c, 503, 'Model use cannot be counted, so no questions are proposed');
           try {
-            const model = modelFor(deps, body.value.model, ctx);
-            const proposals = [];
-            for (const chunk of body.value.chunks)
-              proposals.push(
-                await proposeQuestions(model, chunk, {
-                  ...(body.value.questionCount === undefined
-                    ? {}
-                    : { questionCount: body.value.questionCount }),
-                  ...(body.value.temperature === undefined
-                    ? {}
-                    : { temperature: body.value.temperature }),
-                }),
-              );
-            return c.json({ proposals });
+            const done = await deps.enrichmentTask(g.principal, async (ctx) => {
+              const model = modelFor(deps, body.value.model, ctx);
+              const proposals = [];
+              for (const chunk of body.value.chunks)
+                proposals.push(
+                  await proposeQuestions(model, chunk, {
+                    ...(body.value.questionCount === undefined
+                      ? {}
+                      : { questionCount: body.value.questionCount }),
+                    ...(body.value.temperature === undefined
+                      ? {}
+                      : { temperature: body.value.temperature }),
+                  }),
+                );
+              return proposals;
+            });
+            c.header('genai-task', done.task);
+            return c.json({ proposals: done.value });
           } catch (error) {
             return problem(c, 502, 'The model could not propose questions', [
               { path: 'model', message: error instanceof Error ? error.message : String(error) },

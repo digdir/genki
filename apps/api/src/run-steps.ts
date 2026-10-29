@@ -271,6 +271,7 @@ const fieldRows = (value: unknown): [string, string][] =>
 
 export interface RunMapperOptions {
   details?: boolean;
+  usage?: boolean;
   startedAt?: string;
 }
 
@@ -278,6 +279,7 @@ export class RunMapper {
   readonly steps: TimelineStep[] = [];
   readonly hits = new Map<string, HitView>();
   private readonly details: boolean;
+  private readonly usageShown: boolean;
   private start: number | undefined;
   private prev: number | undefined;
   private out: RunChange[] = [];
@@ -304,6 +306,7 @@ export class RunMapper {
 
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
+    this.usageShown = options.usage ?? true;
     if (options.startedAt) this.start = Date.parse(options.startedAt);
   }
 
@@ -1100,12 +1103,10 @@ export class RunMapper {
       calls: seen.calls + 1,
     });
     if (data.port !== undefined && data.port !== 'model') return;
-    const tokens = input + output;
-    const tokenText = t('steps.modelTokens', {
-      model,
-      input: nbCount(input),
-      output: nbCount(output),
-    });
+    const tokens = this.usageShown ? input + output : undefined;
+    const tokenText = this.usageShown
+      ? t('steps.modelTokens', { model, input: nbCount(input), output: nbCount(output) })
+      : model;
     const host =
       (this.turn?.state === 'running' ? this.turn : undefined) ??
       this.openOf('model', 'plan', 'tool', 'search', 'read');
@@ -1113,16 +1114,20 @@ export class RunMapper {
       kind: 'kv',
       rows: [
         [t('steps.model'), step.model ?? model],
-        [
-          t('steps.tokens'),
-          t('steps.tokenCounts', { input: nbCount(input), output: nbCount(output) }),
-        ],
-        ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
+        ...(this.usageShown
+          ? [
+              [
+                t('steps.tokens'),
+                t('steps.tokenCounts', { input: nbCount(input), output: nbCount(output) }),
+              ] as [string, string],
+              ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
+            ]
+          : []),
       ],
       usage: true,
     });
     if (host) {
-      host.tokens = (host.tokens ?? 0) + tokens;
+      if (tokens !== undefined) host.tokens = (host.tokens ?? 0) + tokens;
       host.model = model;
       host.blocks = [...host.blocks.filter((b) => !b.usage), kv(host)];
       if (host === this.turn) {
@@ -1136,7 +1141,7 @@ export class RunMapper {
       type: 'model',
       title: t('steps.modelCall'),
       summary: tokenText,
-      tokens,
+      ...(tokens === undefined ? {} : { tokens }),
       model,
       blocks: [],
       ...this.rawOf(data),

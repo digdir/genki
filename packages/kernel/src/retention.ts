@@ -72,6 +72,28 @@ export interface ThreadRetentionStore {
   purge(cutoff: ThreadCutoff): Promise<number>;
 }
 
+export interface ThreadErasure {
+  erase(tenant: string, thread: string): Promise<number>;
+}
+
+export class InMemoryThreadErasure implements ThreadErasure {
+  constructor(
+    private readonly log: InMemoryEventLog,
+    private readonly tasks: InMemoryTaskStore,
+  ) {}
+
+  async erase(tenant: string, thread: string): Promise<number> {
+    let count = 0;
+    for (const { task } of this.tasks.all()) {
+      if (task.tenant !== tenant || task.thread !== thread) continue;
+      this.log.dropPayloads(task.id);
+      this.tasks.dropContent(task.id);
+      count += 1;
+    }
+    return count;
+  }
+}
+
 export class InMemoryRetentionStore implements RetentionStore {
   readonly #purged = new Set<string>();
 

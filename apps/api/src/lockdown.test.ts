@@ -40,7 +40,7 @@ const principals: Record<string, Principal> = {
     scopes: [trustedEntraScope],
   },
 };
-const operators = operatorDirectory([], [testPrincipals.operator?.subject ?? '']);
+const operators = operatorDirectory({});
 
 const configuredKey = 'gp_from-configuration';
 const configuredIngestKey = 'gp_ingest-from-configuration';

@@ -63,6 +63,7 @@ export const batchUi = {
       'The job has used {spent}. {done} of {total} documents are done. The rest are waiting.',
     pausedBodyCap:
       'The job has used {spent}, and the limit is {cap}. {done} of {total} documents are done. The rest are waiting.',
+    pausedBodyNoCost: '{done} of {total} documents are done. The rest are waiting.',
     continueNewLimit: 'Continue with a new limit',
     endKeep: 'End and keep the results',
     endedFlash: 'The job has ended. {count} results have been kept.',
@@ -70,6 +71,8 @@ export const batchUi = {
       'The job was cancelled {when}. {done} of {total} documents were finished, and the results have been kept. Cost: {cost}.',
     cancelledNoTime:
       'The job was cancelled. {done} of {total} documents were finished, and the results have been kept. Cost: {cost}.',
+    cancelledNoCost:
+      'The job was cancelled. {done} of {total} documents were finished, and the results have been kept.',
     stoppedWithError: 'The job stopped with an error.',
     approvedOver: 'Approved above the limit of {limit} kr by {by}: "{reason}"',
     progress: 'Progress',
@@ -103,6 +106,8 @@ export const batchUi = {
     doneAll: 'The job is done. All {total} documents were run. Cost: {cost}.',
     doneAllEstimate:
       'The job is done. All {total} documents were run. Cost: {cost}, the estimate was {estimate}.',
+    doneWithErrorsNoCost: 'The job is done. {done} of {total} documents were run, {failed} failed.',
+    doneAllNoCost: 'The job is done. All {total} documents were run.',
     failedHeading: { one: '{count} document failed', other: '{count} documents failed' },
     failGroup: '{count}: {error}',
     canRetry: 'Can be run again',

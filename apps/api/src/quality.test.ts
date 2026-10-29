@@ -435,6 +435,26 @@ describe('eval runs for a service', () => {
     expect(withoutPrice.body.cost).toBeNull();
   });
 
+  it('shows the cost and tokens of an eval run only with view-usage', async () => {
+    const env = await boot({
+      [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
+      [judgeId]: { inputPerThousand: 1, outputPerThousand: 2 },
+    });
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'erik')).body;
+    const list = (await env.send('GET', `${services}/eval-runs`, 'erik')).body.data as Record<
+      string,
+      unknown
+    >[];
+    const withUsage = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'kari')).body;
+
+    expect(run).not.toHaveProperty('cost');
+    expect(run).not.toHaveProperty('tokens');
+    expect(list[0]).not.toHaveProperty('cost');
+    expect(withUsage.cost).toBeGreaterThan(0);
+  });
+
   it('runs a draft without publishing it', async () => {
     const env = await boot();
     const draft = structuredClone(service);

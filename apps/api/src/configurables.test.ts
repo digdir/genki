@@ -16,6 +16,13 @@ const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
   ola: { kind: 'employee', issuer: 'test', subject: 'ola', tenant: other },
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
+  erik: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'erik',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-datasets'] }],
+  },
 };
 
 const servers: FakeServer[] = [];
@@ -672,6 +679,51 @@ describe('ingestion pipelines', () => {
     ).toBe(400);
   });
 
+  it('shows the token usage of a pipeline execution only with view-usage', async () => {
+    const memory = new InMemoryIngestionBackend(() => [
+      { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
+    ]);
+    const backend: IngestionBackend = {
+      name: memory.name,
+      available: memory.available,
+      run: async (job, signal) => ({
+        ...(await memory.run(job, signal)),
+        usage: { embedding: { inputTokens: 40, costMicroNok: 2 } },
+      }),
+    };
+    const { call } = await boot({ ingestion: backend });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+    await call(base, 'kari', { body: pipeline });
+    await call(`${base}/nettsider/execute`, 'kari', { body: {} });
+    await new Promise((r) => setTimeout(r, 10));
+
+    const reportFor = async (who: string) =>
+      (
+        await json<{ data: { report?: Record<string, unknown> }[] }>(
+          await call(`${base}/nettsider/executions`, who),
+        )
+      ).data[0]?.report;
+
+    expect(await reportFor('erik')).toMatchObject({ stored: 1 });
+    expect(await reportFor('erik')).not.toHaveProperty('usage');
+    expect(await reportFor('kari')).toHaveProperty('usage');
+  });
+
   it('runs a pipeline on the pluggable backend and records the execution', async () => {
     const backend = new InMemoryIngestionBackend(() => [
       { key: 'a', text: 'Digdir har ansvar for felles løsninger.' },
@@ -715,6 +767,47 @@ describe('ingestion pipelines', () => {
     });
     expect(platform.ingestion.backend.available).toBe(true);
     expect((await call(`/tenants/${other}/datasets/sider/pipelines`, 'ola')).status).toBe(404);
+  });
+
+  it('refuses a tenant pipeline whose phrase models are unreleased', async () => {
+    const { call, platform } = await boot();
+    await platform.catalog.publish({
+      kind: 'model',
+      scope: 'platform',
+      id: 'fake/ny',
+      spec: { endpoint: 'fake', deployment: 'ny', residency: 'norway', release: 'candidate' },
+      by: 'operator:test:drift',
+      reason: 'ny modell',
+    });
+    await call(`/tenants/${digdir}/catalog/knowledge-endpoint/sok`, 'kari', {
+      method: 'PUT',
+      body: { ...tenantEndpoint, engine: 'typesense' },
+    });
+    await call(`/tenants/${digdir}/datasets`, 'kari', {
+      body: {
+        id: 'sider',
+        name: 'Sider',
+        residency: 'norway',
+        collection: {
+          endpoint: 'sok',
+          collections: { docs: 'sider_docs', chunks: 'sider_chunks' },
+        },
+      },
+    });
+    const base = `/tenants/${digdir}/datasets/sider/pipelines`;
+
+    const refused = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt', fallbackModel: 'fake/ny' } },
+    });
+    const saved = await call(base, 'kari', {
+      body: { ...pipeline, phrases: { model: 'fake/gpt' } },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({
+      errors: [{ path: 'spec.phrases.fallbackModel' }],
+    });
+    expect(saved.status).toBe(201);
   });
 });
 
