@@ -4,9 +4,11 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { installJobQueue, PgBossJobQueue } from './index.js';
+import { installJobQueue, PgBossJobQueue, PgBossJobReads } from './index.js';
 
 const RUNTIME = 'genai_runtime';
+const WORKER = 'genai_worker';
+const roles = { worker: WORKER, readers: [RUNTIME] };
 const ORG_A = '991825827';
 
 let container: StartedPostgreSqlContainer;
@@ -34,7 +36,9 @@ beforeAll(async () => {
   await admin.query(`create role genai_owner login password 'owner-pw'`);
   await admin.query(`grant create on database ${container.getDatabase()} to genai_owner`);
   await admin.query(`create role ${RUNTIME} nologin nosuperuser nobypassrls`);
-  await admin.query(`grant ${RUNTIME} to genai_owner`);
+  await admin.query(`create role ${WORKER} nologin nosuperuser nobypassrls`);
+  await admin.query(`grant ${RUNTIME} to ${WORKER}`);
+  await admin.query(`grant ${RUNTIME}, ${WORKER} to genai_owner`);
 }, 120_000);
 
 afterAll(async () => {
@@ -79,14 +83,14 @@ const start = (pool: pg.Pool, options: Partial<Parameters<typeof PgBossJobQueue.
     ...options,
   });
 
-describeJobQueueContract('pg-boss', async (queues) => {
-  await installJobQueue(login(), queues, { grantTo: RUNTIME });
-  const runtime = login({ role: RUNTIME });
-  const queue = await start(runtime);
+describeJobQueueContract('pg-boss as genai_worker', async (queues) => {
+  await installJobQueue(login(), queues, roles);
+  const worker = login({ role: WORKER });
+  const queue = await start(worker);
   return {
     queue,
-    transaction: () => inTransaction(runtime),
-    withPlatformAccess: (read) => withPlatformAccess(runtime, read),
+    transaction: () => inTransaction(worker),
+    withPlatformAccess: (read) => withPlatformAccess(worker, read),
   };
 });
 
@@ -112,16 +116,18 @@ describe('pg-boss on the platform server', () => {
   const crashed = testQueue('crashed');
   const nightly = testQueue('nightly', { policy: 'singleton' }, z.strictObject({}));
   const guarded = testQueue('guarded');
+  const denied = testQueue('denied');
+  const asWorker = testQueue('as-worker');
 
   beforeAll(async () => {
-    await installJobQueue(login(), [crashed, nightly, guarded], { grantTo: RUNTIME });
+    await installJobQueue(login(), [crashed, nightly, guarded, asWorker], roles);
   }, 60_000);
 
   it('only the owner installs pgboss, and the API and the worker run with migrate and createSchema off', async () => {
     const admin = superuser();
     await admin.query('create database fresh');
     await admin.query('grant connect on database fresh to genai_owner');
-    const fresh = login({ database: 'fresh', role: RUNTIME });
+    const fresh = login({ database: 'fresh', role: WORKER });
     await expect(start(fresh, { works: false })).rejects.toThrow();
     const { rows } = await fresh.query(
       `select count(*)::int as n from pg_namespace where nspname = 'pgboss'`,
@@ -129,9 +135,53 @@ describe('pg-boss on the platform server', () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it('the console reads jobs only with platform access', async () => {
+  it('genai_runtime cannot read, change or delete a job', async () => {
+    const owner = login();
+    await owner.query(
+      `grant select, insert, update, delete on all tables in schema pgboss to ${RUNTIME}`,
+    );
+    await installJobQueue(owner, [denied], roles);
+    const worker = await start(login({ role: WORKER }), { works: false });
+    await worker.send(denied, { tenant: ORG_A });
     const runtime = login({ role: RUNTIME });
-    const queue = await start(runtime, { works: false });
+    for (const sql of [
+      `select * from pgboss.job`,
+      `update pgboss.job set priority = 1`,
+      `delete from pgboss.job`,
+      `insert into pgboss.job (name, data) values ('${denied.name}', '{}')`,
+      `select * from pgboss.queue`,
+    ])
+      await expect(runtime.query(sql), sql).rejects.toThrow(/permission denied/);
+    await expect(start(runtime, { works: false })).rejects.toThrow(/permission denied/);
+    const { rows } = await runtime.query<{ name: string }>(
+      `select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'pgboss' and has_function_privilege(p.oid, 'execute') order by 1`,
+    );
+    expect(rows.map((row) => row.name)).toEqual(['genai_dead_letters', 'genai_queue_counts']);
+    await worker.stop();
+  });
+
+  it('the worker sends and works jobs as genai_worker', async () => {
+    const pool = login({ role: WORKER });
+    const queue = await start(pool);
+    const done: string[] = [];
+    await queue.work(asWorker, async (job) => {
+      const { rows } = await pool.query<{ role: string }>('select current_user as role');
+      done.push(`${rows[0]?.role}:${job.data.tenant}`);
+    });
+    const open = await inTransaction(pool);
+    const { rows } = await open.transaction.query<{ role: string }>('select current_user as role');
+    await queue.send(asWorker, { tenant: ORG_A }, { transaction: open.transaction });
+    await open.commit();
+    await waitFor(() => done.length === 1);
+    expect(rows[0]?.role).toBe(WORKER);
+    expect(done).toEqual([`${WORKER}:${ORG_A}`]);
+    await queue.stop();
+  });
+
+  it('the console reads jobs as genai_runtime, only with platform access', async () => {
+    const runtime = login({ role: RUNTIME });
+    const queue = new PgBossJobReads(runtime);
     await expect(queue.deadLetters(guarded)).rejects.toThrow(/platform access/);
     await expect(queue.counts([guarded])).rejects.toThrow(/platform access/);
     const tenantClient = await runtime.connect();
@@ -151,7 +201,11 @@ describe('pg-boss on the platform server', () => {
         queue.deadLetters(guarded, t ? { transaction: t } : {}),
       ),
     ).toEqual([]);
-    await queue.stop();
+    expect(
+      await withPlatformAccess(runtime, (t) =>
+        queue.counts([guarded], t ? { transaction: t } : {}),
+      ),
+    ).toEqual([{ queue: guarded.name, queued: 0, active: 0, failed: 0, deadLetters: 0 }]);
   });
 
   it('an ended job is deleted after 7 days', async () => {
@@ -172,14 +226,14 @@ describe('pg-boss on the platform server', () => {
 
   it('refuses to change a queue policy in place', async () => {
     await expect(
-      installJobQueue(login(), [{ ...guarded, policy: 'exclusive' }], { grantTo: RUNTIME }),
+      installJobQueue(login(), [{ ...guarded, policy: 'exclusive' }], roles),
     ).rejects.toThrow(JobQueueError);
   });
 
   it("a killed worker's job is retried after its heartbeat", async () => {
-    const doomedPool = login({ role: RUNTIME });
+    const doomedPool = login({ role: WORKER });
     const doomed = await start(doomedPool, { onError: () => undefined });
-    const survivor = await start(login({ role: RUNTIME }));
+    const survivor = await start(login({ role: WORKER }));
     let release: () => void = () => undefined;
     const hanging = new Promise<void>((resolve) => {
       release = resolve;
@@ -204,9 +258,9 @@ describe('pg-boss on the platform server', () => {
   }, 90_000);
 
   it('a nightly schedule sends one job per occurrence with two instances', async () => {
-    const runtime = login({ role: RUNTIME });
+    const runtime = login({ role: WORKER });
     const first = await start(runtime, { cronIntervalSeconds: 1 });
-    const second = await start(login({ role: RUNTIME }), { cronIntervalSeconds: 1 });
+    const second = await start(login({ role: WORKER }), { cronIntervalSeconds: 1 });
     await first.schedule(nightly, '* * * * *', {}, { tz: 'Europe/Oslo' });
     await second.schedule(nightly, '* * * * *', {}, { tz: 'Europe/Oslo' });
     const perMinute = () =>

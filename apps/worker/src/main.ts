@@ -52,6 +52,7 @@ import {
   PostgresLeaderLease,
   postgresSourceFromEnv,
   runtimeRole,
+  workerRole,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
 import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
@@ -96,6 +97,7 @@ const db = databaseSource
       LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
       {
         onError: (error) => log('postgres connection error', { error: String(error) }),
+        role: workerRole,
         ...(process.env.DATABASE_RUNTIME_URL
           ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
           : {}),
@@ -106,7 +108,8 @@ log('storage', { kind: db ? 'postgres' : 'memory' });
 
 const jobs = db
   ? await openJobQueue({ owner: db.pool, runtime: db.runtimePool }, platformQueues, {
-      grantTo: runtimeRole,
+      worker: workerRole,
+      readers: [runtimeRole],
       works: true,
       onError: (error) =>
         log('job queue error', {

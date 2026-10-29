@@ -69,7 +69,13 @@ export interface ScheduleOptions {
   key?: string;
 }
 
-export interface JobQueue {
+/** What the console reads: it needs no right on the job tables, only on the read functions. */
+export interface JobReads {
+  deadLetters(queue: QueueDefinition, filter?: DeadLetterFilter): Promise<DeadJob[]>;
+  counts(queues: QueueDefinition[], options?: ReadOptions): Promise<QueueCounts[]>;
+}
+
+export interface JobQueue extends JobReads {
   send<T extends JobData>(
     queue: QueueDefinition<T>,
     data: T,
@@ -87,9 +93,7 @@ export interface JobQueue {
   ): Promise<void>;
   unschedule(queue: QueueDefinition, key?: string): Promise<void>;
   cancel(queue: QueueDefinition, id: string): Promise<void>;
-  deadLetters(queue: QueueDefinition, filter?: DeadLetterFilter): Promise<DeadJob[]>;
   redrive(queue: QueueDefinition, ids: string[]): Promise<number>;
-  counts(queues: QueueDefinition[], options?: ReadOptions): Promise<QueueCounts[]>;
   stop(): Promise<void>;
 }
 

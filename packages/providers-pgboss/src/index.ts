@@ -7,9 +7,11 @@ import {
   type JobData,
   type JobHandler,
   type JobQueue,
+  type JobReads,
   type JobTransaction,
   type QueueCounts,
   type QueueDefinition,
+  type ReadOptions,
   type ScheduleOptions,
   type SendOptions,
 } from '@genai/jobs';
@@ -111,8 +113,16 @@ const readFunctions = (schema: string) => [
      end $$`,
 ];
 
+const readFunctionSignatures = (schema: string) => [
+  `${schema}.genai_queue_counts(text[])`,
+  `${schema}.genai_dead_letters(text, text, int)`,
+];
+
 export interface InstallOptions {
-  grantTo: string;
+  /** Sends and works jobs, with DML on the job tables: genai_worker on the platform server. */
+  worker: string;
+  /** Read jobs only through the read functions and have no right on the tables: genai_runtime. */
+  readers?: string[];
   schema?: string;
 }
 
@@ -122,7 +132,8 @@ export const installJobQueue = async (
   options: InstallOptions,
 ) => {
   const schema = options.schema ?? jobSchema;
-  if (!identifier.test(options.grantTo) || !identifier.test(schema))
+  const readers = options.readers ?? [];
+  if (![options.worker, ...readers, schema].every((name) => identifier.test(name)))
     throw new JobQueueError('invalid role or schema name');
   const boss = new PgBoss({
     db: adapter(owner),
@@ -142,26 +153,24 @@ export const installJobQueue = async (
   } finally {
     await boss.stop({ graceful: false, close: false });
   }
+  const reads = readFunctionSignatures(schema);
   for (const sql of [
     ...readFunctions(schema),
-    `revoke all on function ${schema}.genai_queue_counts(text[]) from public`,
-    `revoke all on function ${schema}.genai_dead_letters(text, text, int) from public`,
-    `grant usage on schema ${schema} to ${options.grantTo}`,
-    `grant select, insert, update, delete on all tables in schema ${schema} to ${options.grantTo}`,
-    `grant usage, select on all sequences in schema ${schema} to ${options.grantTo}`,
-    `grant execute on all functions in schema ${schema} to ${options.grantTo}`,
+    `revoke all on all functions in schema ${schema} from public`,
+    `grant usage on schema ${schema} to ${options.worker}`,
+    `grant select, insert, update, delete on all tables in schema ${schema} to ${options.worker}`,
+    `grant usage, select on all sequences in schema ${schema} to ${options.worker}`,
+    `grant execute on all functions in schema ${schema} to ${options.worker}`,
+    ...readers.flatMap((reader) => [
+      `revoke all on all tables in schema ${schema} from ${reader}`,
+      `revoke all on all sequences in schema ${schema} from ${reader}`,
+      `revoke all on all functions in schema ${schema} from ${reader}`,
+      `grant usage on schema ${schema} to ${reader}`,
+      `grant execute on function ${reads.join(', ')} to ${reader}`,
+    ]),
   ])
     await owner.query(sql);
 };
-
-export interface PgBossJobQueueOptions {
-  works: boolean;
-  schema?: string;
-  pollingIntervalSeconds?: number;
-  superviseIntervalSeconds?: number;
-  cronIntervalSeconds?: number;
-  onError?: (error: unknown) => void;
-}
 
 interface CountRow {
   name: string;
@@ -178,16 +187,69 @@ interface DeadLetterRow {
   failed_at: Date;
 }
 
-export class PgBossJobQueue implements JobQueue {
-  readonly #boss: PgBoss;
-  readonly #schema: string;
+/** The console's reads, through the read functions alone, so a role without table rights can run them. */
+export class PgBossJobReads implements JobReads {
   readonly #pool: Pool;
-  readonly #pollingIntervalSeconds: number;
+  readonly #schema: string;
 
-  private constructor(boss: PgBoss, pool: Pool, schema: string, pollingIntervalSeconds: number) {
-    this.#boss = boss;
+  constructor(pool: Pool, schema: string = jobSchema) {
+    if (!identifier.test(schema)) throw new JobQueueError('invalid schema name');
     this.#pool = pool;
     this.#schema = schema;
+  }
+
+  async deadLetters(queue: QueueDefinition, filter: DeadLetterFilter = {}): Promise<DeadJob[]> {
+    const { rows } = await (filter.transaction ?? this.#pool).query(
+      `select * from ${this.#schema}.genai_dead_letters($1, $2, $3)`,
+      [deadLetterQueue(queue.name), filter.tenant ?? null, filter.limit ?? 100],
+    );
+    return (rows as DeadLetterRow[]).map((row) => ({
+      id: row.id,
+      queue: row.source ?? queue.name,
+      data: row.data,
+      ...(row.error === null ? {} : { error: row.error }),
+      failedAt: row.failed_at,
+    }));
+  }
+
+  async counts(queues: QueueDefinition[], options: ReadOptions = {}): Promise<QueueCounts[]> {
+    const names = queues.flatMap((queue) => [queue.name, deadLetterQueue(queue.name)]);
+    const { rows } = await (options.transaction ?? this.#pool).query(
+      `select * from ${this.#schema}.genai_queue_counts($1)`,
+      [names],
+    );
+    const byName = new Map((rows as CountRow[]).map((row) => [row.name, row]));
+    const number = (value: string | undefined) => Number(value ?? 0);
+    return queues.map((queue) => {
+      const own = byName.get(queue.name);
+      return {
+        queue: queue.name,
+        queued: number(own?.queued),
+        active: number(own?.active),
+        failed: number(own?.failed),
+        deadLetters: number(byName.get(deadLetterQueue(queue.name))?.queued),
+      };
+    });
+  }
+}
+
+export interface PgBossJobQueueOptions {
+  works: boolean;
+  schema?: string;
+  pollingIntervalSeconds?: number;
+  superviseIntervalSeconds?: number;
+  cronIntervalSeconds?: number;
+  onError?: (error: unknown) => void;
+}
+
+export class PgBossJobQueue implements JobQueue {
+  readonly #boss: PgBoss;
+  readonly #reads: PgBossJobReads;
+  readonly #pollingIntervalSeconds: number;
+
+  private constructor(boss: PgBoss, reads: PgBossJobReads, pollingIntervalSeconds: number) {
+    this.#boss = boss;
+    this.#reads = reads;
     this.#pollingIntervalSeconds = pollingIntervalSeconds;
   }
 
@@ -222,7 +284,11 @@ export class PgBossJobQueue implements JobQueue {
           process.emitWarning(error instanceof Error ? error.message : JSON.stringify(error))),
     );
     await boss.start();
-    return new PgBossJobQueue(boss, pool, schema, options.pollingIntervalSeconds ?? 2);
+    return new PgBossJobQueue(
+      boss,
+      new PgBossJobReads(pool, schema),
+      options.pollingIntervalSeconds ?? 2,
+    );
   }
 
   async send<T extends JobData>(queue: QueueDefinition<T>, data: T, options: SendOptions = {}) {
@@ -272,21 +338,8 @@ export class PgBossJobQueue implements JobQueue {
     await this.#boss.cancel(queue.name, id);
   }
 
-  async deadLetters(
-    queue: QueueDefinition,
-    filter: DeadLetterFilter & { transaction?: JobTransaction } = {},
-  ): Promise<DeadJob[]> {
-    const { rows } = await (filter.transaction ?? this.#pool).query(
-      `select * from ${this.#schema}.genai_dead_letters($1, $2, $3)`,
-      [deadLetterQueue(queue.name), filter.tenant ?? null, filter.limit ?? 100],
-    );
-    return (rows as DeadLetterRow[]).map((row) => ({
-      id: row.id,
-      queue: row.source ?? queue.name,
-      data: row.data,
-      ...(row.error === null ? {} : { error: row.error }),
-      failedAt: row.failed_at,
-    }));
+  deadLetters(queue: QueueDefinition, filter?: DeadLetterFilter) {
+    return this.#reads.deadLetters(queue, filter);
   }
 
   async redrive(queue: QueueDefinition, ids: string[]) {
@@ -294,27 +347,8 @@ export class PgBossJobQueue implements JobQueue {
     return this.#boss.redrive(deadLetterQueue(queue.name), { ids, destination: queue.name });
   }
 
-  async counts(
-    queues: QueueDefinition[],
-    options: { transaction?: JobTransaction } = {},
-  ): Promise<QueueCounts[]> {
-    const names = queues.flatMap((queue) => [queue.name, deadLetterQueue(queue.name)]);
-    const { rows } = await (options.transaction ?? this.#pool).query(
-      `select * from ${this.#schema}.genai_queue_counts($1)`,
-      [names],
-    );
-    const byName = new Map((rows as CountRow[]).map((row) => [row.name, row]));
-    const number = (value: string | undefined) => Number(value ?? 0);
-    return queues.map((queue) => {
-      const own = byName.get(queue.name);
-      return {
-        queue: queue.name,
-        queued: number(own?.queued),
-        active: number(own?.active),
-        failed: number(own?.failed),
-        deadLetters: number(byName.get(deadLetterQueue(queue.name))?.queued),
-      };
-    });
+  counts(queues: QueueDefinition[], options?: ReadOptions) {
+    return this.#reads.counts(queues, options);
   }
 
   async stop() {
@@ -325,11 +359,12 @@ export class PgBossJobQueue implements JobQueue {
 export const openJobQueue = async (
   pools: { owner: Pool; runtime: Pool },
   queues: QueueDefinition[],
-  options: PgBossJobQueueOptions & { grantTo: string },
+  options: PgBossJobQueueOptions & Omit<InstallOptions, 'schema'>,
 ) => {
-  const { grantTo, ...start } = options;
+  const { worker, readers, ...start } = options;
   await installJobQueue(pools.owner, queues, {
-    grantTo,
+    worker,
+    ...(readers === undefined ? {} : { readers }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
   });
   return PgBossJobQueue.start(pools.runtime, start);
