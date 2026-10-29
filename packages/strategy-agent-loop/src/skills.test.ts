@@ -206,7 +206,7 @@ describe('agent-loop skills', () => {
   });
 
   it.each(['empty-answer', 'exhaustion'])(
-    'keeps loaded instructions in %s recovery',
+    'puts loaded skills in the system prompt of %s recovery',
     async (mode) => {
       const out = await run({
         config: {
@@ -223,10 +223,25 @@ describe('agent-loop skills', () => {
 
       const recovery = out.seen.filter((s) => s.kind === 'final');
       expect(recovery).toHaveLength(1);
-      expect(toolMessages(recovery[0]?.request)).toContain(skillText(skill));
+      expect(recovery[0]?.request.messages[0]?.content).toContain(skillText(skill));
       expect(out.text).toBe('Beste svar ut fra det jeg fant.');
     },
   );
+
+  it('restarts empty-answer recovery from the first messages after a skill load', async () => {
+    const out = await run({
+      config: { ...baseConfig, skills: [skill], strategy: { maxIterations: 3 } },
+      scripts: {
+        primary: {
+          loop: [() => result('', [call('use_skill', { name: skill.name })]), () => result('')],
+        },
+      },
+    });
+
+    const recovery = out.seen.find((s) => s.kind === 'final')?.request;
+    expect(toolMessages(recovery)).toEqual([]);
+    expect(recovery?.messages.map((m) => m.role)).toEqual(['system', 'user', 'user']);
+  });
 
   it('preserves exact synthesis prompts without a successful skill load and does not leak between runs', async () => {
     const synthesize = async (skills?: (typeof skill)[], load?: string) =>

@@ -40,7 +40,7 @@ import {
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
 import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
-import { skillCatalog, useSkill, useSkillTool } from './skills.js';
+import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
 import {
@@ -529,7 +529,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ? noToolCallHonestMiss
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
-        fallbackMessages = workspace.loadedSkills.size ? messages : initialMessages;
+        fallbackMessages = initialMessages;
         finalized = true;
         break;
       }
@@ -808,7 +808,10 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             session.text(
               {
                 purpose: 'answer',
-                messages: [...fallbackMessages, { role: 'user', content: exhaustionNudge }],
+                messages: [
+                  ...withLoadedSkills(fallbackMessages, workspace.loadedSkills),
+                  { role: 'user', content: exhaustionNudge },
+                ],
                 temperature,
               },
               push,
