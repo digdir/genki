@@ -16,11 +16,30 @@ export interface DevProcess {
   env?: Record<string, string>;
 }
 
+// Run npm through the node that runs this script: spawning `npm` without a shell fails on
+// Windows, where npm is npm.cmd. npm sets npm_execpath to its own CLI when it runs a script;
+// under pnpm or yarn it points to their CLI, so fall back to plain `npm` then.
+export const npmCommand = (
+  args: string[],
+  execPath = process.env.npm_execpath,
+): Pick<DevProcess, 'command' | 'args'> =>
+  execPath && /(^|[\\/])npm-cli\.js$/.test(execPath)
+    ? { command: process.execPath, args: [execPath, ...args] }
+    : { command: 'npm', args };
+
 const vite = (name: string, port: number, env: Record<string, string> = {}): DevProcess => ({
   name,
   port,
-  command: 'npm',
-  args: ['run', 'dev', '--workspace', `apps/${name}`, '--', '--port', String(port), '--strictPort'],
+  ...npmCommand([
+    'run',
+    'dev',
+    '--workspace',
+    `apps/${name}`,
+    '--',
+    '--port',
+    String(port),
+    '--strictPort',
+  ]),
   env,
 });
 
@@ -83,8 +102,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
     {
       name: 'api',
       port: ports.api,
-      command: 'npm',
-      args: ['run', 'dev', '--workspace', 'apps/api'],
+      ...npmCommand(['run', 'dev', '--workspace', 'apps/api']),
       env: {
         ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
         ...(custom ? { PORT: String(ports.api) } : {}),
@@ -191,7 +209,9 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       cwd: options.cwd,
       env: { ...process.env, ...p.env, FORCE_COLOR: options.colour ? '1' : '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+      // A process group lets stop() signal grandchildren on POSIX. On Windows a detached child
+      // gets its own console window instead, and closing that window stops the service.
+      detached: process.platform !== 'win32',
     });
     children.push(child);
     for (const stream of [child.stdout, child.stderr]) {
