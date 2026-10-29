@@ -50,7 +50,7 @@ const startRun = async (service: IngestionService) => {
   if (!saved.ok) throw new Error(JSON.stringify(saved.errors));
   const started = await service.execute({ pipeline: saved.value, target, by: 'kari' });
   if (!started.ok) throw new Error(JSON.stringify(started.errors));
-  return started.value;
+  return started;
 };
 
 const platformOn = async (executions: InMemoryExecutionStore) => {
@@ -97,13 +97,28 @@ describe('stale ingestion runs', () => {
   it('a long run with a fresh heartbeat is kept, however long ago it started', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-29T01:00:00Z') });
     const executions = new InMemoryExecutionStore();
-    const run = await startRun(instance(executions));
+    const { value: run } = await startRun(instance(executions));
 
     await vi.advanceTimersByTimeAsync(7 * 3_600_000);
     const changed = await instance(executions).failStaleRuns();
 
     expect(changed).toBe(0);
     expect((await executions.get(run.id))?.status).toBe('running');
+  });
+
+  it('stops the heartbeat when the run ends', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-29T01:00:00Z') });
+    const executions = new InMemoryExecutionStore();
+    const beat = vi.spyOn(executions, 'beat');
+    const service = instance(executions);
+    const { value: run, done } = await startRun(service);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    service.cancel({ dataset, execution: run.id, by: 'kari' });
+    await done;
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    expect(beat).toHaveBeenCalledTimes(1);
   });
 
   it('checks for stale ingestion runs every minute, not only when the platform starts', async () => {
