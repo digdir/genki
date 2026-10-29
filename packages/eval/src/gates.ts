@@ -1,5 +1,5 @@
 import { EvalError } from './evaluators.js';
-import { compareRuns, perCaseMeans, type ComparableField } from './runner.js';
+import { compareRuns, perCaseMeans, unscoredIn, type ComparableField } from './runner.js';
 import type { EvalRun, Gate } from './schema.js';
 import type { EvalRunStore } from './store.js';
 import { mean, type BootstrapOptions } from './stats.js';
@@ -89,6 +89,16 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
           blocking = false;
           note = ` (advisory: judge ${uncalibrated.join(', ') || 'unknown'} is not calibrated to ${minimumJudgeAgreement})`;
         }
+      }
+      const unscored = unscoredIn(run, gate.metric, gate.split);
+      if (unscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score for ${unscored.missing} of ${unscored.of} cases${note}`,
+        });
+        continue;
       }
       if (gate.kind === 'threshold') {
         const values = [...perCaseMeans(run, gate.metric, undefined, gate.split).values()];

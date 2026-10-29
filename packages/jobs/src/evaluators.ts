@@ -50,6 +50,7 @@ const score = (
   metric,
   value,
   applicable: true,
+  state: 'scored',
   ...(details ? { details } : {}),
 });
 
@@ -164,6 +165,7 @@ export const nynorskReference = (): Evaluator => {
             metric: 'nynorsk.chrf',
             value: null,
             applicable: false,
+            state: 'not-applicable',
             reason: 'the case has no reference',
           },
         ];

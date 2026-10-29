@@ -20,7 +20,7 @@ You do not need code or an endpoint for these. They are definitions you publish,
 
 ## What is your endpoint
 
-These two routes let your own logic run outside the platform, with the platform's identity, access, channels, guardrails, audit, cost caps, timeouts, cancel and logging around it.
+These routes let your own logic run outside the platform, with the platform's identity, access, channels, guardrails, audit, cost caps, timeouts, cancel and logging around it.
 
 ### Tool step: logic that fits one step
 
@@ -104,6 +104,35 @@ The platform sends `POST {url}` with `content-type: application/json`, the heade
 Only `answer` is needed, or `data` (an object) for a service whose output is fields. `sources` become the sources of the answer in every channel. `steps` (at most 50, `status` is `done`, `failed` or `skipped`) are shown in **Hva skjedde**. `usage` is charged to the task, so cost caps apply. Anything else is ignored. A reply that breaks the contract, an HTTP error or a timeout fails the task.
 
 With `protocol: a2a` the platform sends a `SendMessage` to the agent card at the URL, with the question as text and the conversation, context and metadata as a data part, and polls the task until it finishes. It reads text artifacts as the answer and sources from a part with the media type `application/vnd.genai.sources+json`.
+
+### Judge (`evaluator@2`): scores for eval runs
+
+An operator registers a judge as an evaluator plug-in (`POST /operator/plugins` with the protocol `http-judge` and the contract `evaluator@2`), and eval runs name it by its id. A plug-in registered under `evaluator@1` is refused, and one stored under it judges nothing until it is registered again under `evaluator@2`.
+
+For each case the platform sends `POST {baseURL}` with the header `x-genai-contract: evaluator@2`:
+
+```json
+{
+  "contract": "evaluator@2",
+  "case": { "id": "frist", "input": "Når er fristen?", "referenceAnswer": "1. mars." },
+  "answer": "Fristen er 1. mars.",
+  "sources": [{ "document": "frister-2026" }]
+}
+```
+
+Answer each metric at once, or as pending with a ticket:
+
+```json
+{ "scores": [{ "metric": "korrekthet", "value": 0.9, "reason": "Stemmer med referansen" }] }
+```
+
+```json
+{ "scores": [{ "metric": "korrekthet", "state": "pending" }], "ticket": "sak-1" }
+```
+
+`state` is `scored` (with a `value` from 0 to 1), `not-applicable`, `failed` or `pending`. Without it, a number is scored and `null` is not applicable. A metric with nothing to score on the case is `not-applicable`, never `pending`, so the run does not wait for it.
+
+While anything is pending, the platform asks again with up to 50 tickets per call, `{ "contract": "evaluator@2", "collect": { "tickets": ["sak-1"] } }`, and reads `{ "results": [{ "ticket": "sak-1", "scores": [...] }] }` with scores in the same shape. Leave out what is not ready, or answer it pending again. The run waits at most 5 minutes from its last case. A score that has not arrived by then is recorded as `missing`, the run names the judge and how many cases it missed, and a gate on that metric fails. The contract run at registration collects the same way for one example case, within its 10-second limit per check.
 
 ## What needs a platform change
 

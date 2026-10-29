@@ -1,5 +1,5 @@
-import type { Evaluator, Observation, Score, TestCase } from '@genai/eval';
-import { check, checkFailsWith, type ContractSuite } from '@genai/plugins';
+import type { CollectedScore, Evaluator, Observation, Score, TestCase } from '@genai/eval';
+import { check, checkFailsWith, skipped, type ContractSuite } from '@genai/plugins';
 import type { KnowledgePort } from '@genai/port-knowledge';
 import type { RemoteReply } from '@genai/strategy-remote';
 import { z } from 'zod';
@@ -85,7 +85,7 @@ export const agentContract: ContractSuite<AgentSubject> = {
   ],
 };
 
-export const evaluatorContractVersion = 'evaluator@1';
+export const evaluatorContractVersion = 'evaluator@2';
 
 export interface EvaluatorSubject {
   evaluator: Evaluator;
@@ -110,13 +110,56 @@ const exampleObservation: Observation = {
 
 const evalContext = { servedModels: [], modelFamily: () => undefined };
 
+const collectEveryMs = 250;
+const collectBatch = 50;
+
+const pause = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
+/** Asks again for what was pending until nothing is, or the check runs out of time. */
+const settledScores = async (s: EvaluatorSubject, signal: AbortSignal) => {
+  const scores = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
+  const pending = () => scores.filter((x) => x.state === 'pending');
+  if (pending().length > 0)
+    check(s.evaluator.collect, 'an evaluator that answers pending can be collected');
+  while (pending().length > 0 && !signal.aborted) {
+    await pause(collectEveryMs, signal);
+    const collected: CollectedScore[] =
+      (await s.evaluator.collect?.(
+        pending().map((score) => ({ case: exampleCase.id, repeat: 0, task: 'kontrakt', score })),
+      )) ?? [];
+    for (const c of collected) {
+      if (c.score.state === 'pending') continue;
+      const at = scores.findIndex((x) => x.state === 'pending' && x.metric === c.score.metric);
+      if (at >= 0) scores[at] = c.score;
+    }
+  }
+  check(
+    pending().length === 0,
+    `no score for ${pending()
+      .map((x) => x.metric)
+      .join(', ')} after collecting`,
+  );
+  return scores;
+};
+
 export const evaluatorContract: ContractSuite<EvaluatorSubject> = {
   contract: evaluatorContractVersion,
   checks: [
     {
       name: 'an answer gets scores between 0 and 1, named by metric',
-      run: async (s) => {
-        const scores = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
+      run: async (s, signal) => {
+        const scores = await settledScores(s, signal);
         check(scores.length > 0, 'at least one score');
         for (const score of scores) {
           check(score.metric.length > 0, 'every score names a metric');
@@ -129,26 +172,46 @@ export const evaluatorContract: ContractSuite<EvaluatorSubject> = {
     },
     {
       name: 'every metric the manifest declares is scored',
-      run: async (s) => {
-        const scores = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
+      run: async (s, signal) => {
+        const scores = await settledScores(s, signal);
         const metrics = new Set(scores.map((x) => x.metric));
         const missing = s.metrics.filter((m) => !metrics.has(m));
         check(missing.length === 0, `missing metrics: ${missing.join(', ')}`);
       },
     },
+    {
+      name: 'a pending answer gets its scores when collected',
+      run: async (s, signal) => {
+        const first = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
+        if (!first.some((x) => x.state === 'pending')) return skipped;
+        const scores = await settledScores(s, signal);
+        check(
+          scores.every((x) => x.state !== 'pending'),
+          'every pending score is settled after collecting',
+        );
+        return undefined;
+      },
+    },
   ],
 };
 
+const judgeScore = z.object({
+  metric: z.string().min(1).max(100),
+  value: z.number().min(0).max(1).nullable().optional(),
+  state: z.enum(['scored', 'not-applicable', 'failed', 'pending']).optional(),
+  reason: z.string().max(2000).optional(),
+});
+type JudgeScore = z.infer<typeof judgeScore>;
+
 const judgeReply = z.object({
-  scores: z
-    .array(
-      z.object({
-        metric: z.string().min(1).max(100),
-        value: z.number().min(0).max(1).nullable(),
-        reason: z.string().max(2000).optional(),
-      }),
-    )
-    .max(50),
+  scores: z.array(judgeScore).max(50),
+  ticket: z.string().min(1).max(200).optional(),
+});
+
+const collectReply = z.object({
+  results: z
+    .array(z.object({ ticket: z.string(), scores: z.array(judgeScore).max(50) }))
+    .max(collectBatch),
 });
 
 export type JudgeSend = (
@@ -156,40 +219,78 @@ export type JudgeSend = (
   signal?: AbortSignal,
 ) => Promise<{ status: number; body: string }>;
 
-export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSend): Evaluator => ({
-  id: plugin.id,
-  version: plugin.version,
-  kind: 'model',
-  judge: plugin.id,
-  evaluate: async (testCase, observation): Promise<Score[]> => {
-    const response = await send(
-      JSON.stringify({
-        contract: evaluatorContractVersion,
-        case: {
-          id: testCase.id,
-          input: testCase.input,
-          ...(testCase.expected.referenceAnswer
-            ? { referenceAnswer: testCase.expected.referenceAnswer }
-            : {}),
-        },
-        answer: observation.answer,
-        sources: observation.citations.map((c) => ({
-          ...(c.document ? { document: c.document } : {}),
-          ...(c.chunkId ? { chunkId: c.chunkId } : {}),
-        })),
-      }),
-    );
+export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSend): Evaluator => {
+  const ask = async <T>(body: Record<string, unknown>, shape: z.ZodType<T>): Promise<T> => {
+    const response = await send(JSON.stringify({ contract: evaluatorContractVersion, ...body }));
     if (response.status < 200 || response.status >= 300)
       throw new Error(`the evaluator ${plugin.id} answered HTTP ${response.status}`);
-    const parsed = judgeReply.safeParse(JSON.parse(response.body));
+    const parsed = shape.safeParse(JSON.parse(response.body));
     if (!parsed.success) throw new Error(`the evaluator ${plugin.id} answered in an unknown shape`);
-    return parsed.data.scores.map((s) => ({
+    return parsed.data;
+  };
+
+  const scoreOf = (s: JudgeScore, ticket: string | undefined): Score => {
+    const state = s.state ?? (typeof s.value === 'number' ? 'scored' : 'not-applicable');
+    if (state === 'scored' && typeof s.value !== 'number')
+      throw new Error(`the evaluator ${plugin.id} scored ${s.metric} without a value`);
+    if (state === 'pending' && !ticket)
+      throw new Error(`the evaluator ${plugin.id} answered ${s.metric} pending without a ticket`);
+    return {
       evaluator: plugin.id,
       version: plugin.version,
       metric: s.metric,
-      value: s.value,
-      applicable: s.value !== null,
+      value: state === 'scored' ? (s.value as number) : null,
+      applicable: state !== 'not-applicable',
+      state,
       ...(s.reason ? { reason: s.reason } : {}),
-    }));
-  },
-});
+      ...(state === 'pending' ? { details: { ticket } } : {}),
+    };
+  };
+
+  return {
+    id: plugin.id,
+    version: plugin.version,
+    kind: 'model',
+    judge: plugin.id,
+    evaluate: async (testCase, observation): Promise<Score[]> => {
+      const reply = await ask(
+        {
+          case: {
+            id: testCase.id,
+            input: testCase.input,
+            ...(testCase.expected.referenceAnswer
+              ? { referenceAnswer: testCase.expected.referenceAnswer }
+              : {}),
+          },
+          answer: observation.answer,
+          sources: observation.citations.map((c) => ({
+            ...(c.document ? { document: c.document } : {}),
+            ...(c.chunkId ? { chunkId: c.chunkId } : {}),
+          })),
+        },
+        judgeReply,
+      );
+      return reply.scores.map((s) => scoreOf(s, reply.ticket));
+    },
+    collect: async (pending): Promise<CollectedScore[]> => {
+      const ticketOf = (score: Score) => score.details?.ticket as string | undefined;
+      const tickets = [...new Set(pending.flatMap((p) => ticketOf(p.score) ?? []))];
+      const collected: CollectedScore[] = [];
+      for (let i = 0; i < tickets.length; i += collectBatch) {
+        const { results } = await ask(
+          { collect: { tickets: tickets.slice(i, i + collectBatch) } },
+          collectReply,
+        );
+        for (const result of results)
+          for (const item of pending.filter((p) => ticketOf(p.score) === result.ticket)) {
+            const found = result.scores.find((s) => s.metric === item.score.metric);
+            if (!found) continue;
+            const score = scoreOf(found, result.ticket);
+            if (score.state !== 'pending')
+              collected.push({ case: item.case, repeat: item.repeat, score });
+          }
+      }
+      return collected;
+    },
+  };
+};

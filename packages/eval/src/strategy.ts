@@ -2,7 +2,7 @@ import type { Part } from '@genai/contracts';
 import type { Emitted, Kernel, Strategy } from '@genai/kernel';
 import { z } from 'zod';
 import { EvalError, type Evaluator } from './evaluators.js';
-import { describeTask, runEval, type EvalTarget } from './runner.js';
+import { describeTask, runEval, type EvalTarget, type WaitOptions } from './runner.js';
 import { splits, testSet } from './schema.js';
 
 export const evalRunConfig = z.strictObject({
@@ -20,6 +20,12 @@ export interface EvalStrategyDeps {
   evaluators: Map<string, Evaluator>;
   modelFamily?: (model: string) => string | undefined;
   admit?: (tenant: string) => Promise<boolean>;
+  wait?: WaitOptions;
+}
+
+export interface EvalNotice {
+  kind: 'eval.progress' | 'eval.waiting';
+  [key: string]: unknown;
 }
 
 export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRunConfig>> => ({
@@ -52,9 +58,13 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
         kernel.annotate(ctx.principal, task, { type: 'kernel.score', data: score }),
     };
 
-    const progress: { done: number; total: number }[] = [];
+    const notices: EvalNotice[] = [];
     let wake: (() => void) | undefined;
     let finished = false;
+    const notify = (notice: EvalNotice) => {
+      notices.push(notice);
+      wake?.();
+    };
     const running = runEval({
       target,
       testSet: options.testSet,
@@ -63,20 +73,19 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       repeats: options.repeats,
       splits: options.splits,
       ...(deps.modelFamily ? { modelFamily: deps.modelFamily } : {}),
-      onProgress: (done, total) => {
-        progress.push({ done, total });
-        wake?.();
-      },
+      ...(deps.wait ? { wait: deps.wait } : {}),
+      onProgress: (done, total) => notify({ kind: 'eval.progress', done, total }),
+      onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {
       finished = true;
       wake?.();
     });
     running.catch(() => undefined);
 
-    while (!finished || progress.length > 0) {
-      const next = progress.shift();
+    while (!finished || notices.length > 0) {
+      const next = notices.shift();
       if (next) {
-        yield { type: 'kernel.notice', data: { kind: 'eval.progress', ...next } };
+        yield { type: 'kernel.notice', data: next };
         continue;
       }
       await new Promise<void>((resolve) => {

@@ -90,15 +90,30 @@ export const testSet = z
   });
 export type TestSet = z.infer<typeof testSet>;
 
-export const score = z.strictObject({
-  evaluator: z.string(),
-  version: z.string(),
-  metric: z.string(),
-  value: z.number().min(0).max(1).nullable(),
-  applicable: z.boolean(),
-  reason: z.string().optional(),
-  details: z.record(z.string(), z.unknown()).optional(),
-});
+/**
+ * Only a scored score has a value. Pending waits to be collected, missing never arrived in time,
+ * failed is the evaluator's own failure; all three still apply to the case, unlike not-applicable.
+ */
+export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
+export type ScoreState = (typeof scoreStates)[number];
+
+export const score = z
+  .strictObject({
+    evaluator: z.string(),
+    version: z.string(),
+    metric: z.string(),
+    value: z.number().min(0).max(1).nullable(),
+    applicable: z.boolean(),
+    state: z.enum(scoreStates),
+    reason: z.string().optional(),
+    details: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine(
+    (s) =>
+      (s.state === 'scored') === (s.value !== null) &&
+      (s.state === 'not-applicable') === !s.applicable,
+    'only a scored score has a value, and only a not-applicable one does not apply',
+  );
 export type Score = z.infer<typeof score>;
 
 export const feedback = z.strictObject({
@@ -163,6 +178,17 @@ export const evalRun = z.strictObject({
   ),
   metrics: z.record(z.string(), metricSummary),
   byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
+  incomplete: z
+    .array(
+      z.strictObject({
+        evaluator: z.string(),
+        missing: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        of: z.number().int().nonnegative(),
+        reason: z.string(),
+      }),
+    )
+    .default([]),
 });
 export type EvalRun = z.infer<typeof evalRun>;
 
