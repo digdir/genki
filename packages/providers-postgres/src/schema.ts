@@ -656,6 +656,7 @@ const migrations: string[] = [
            check (status in ('running', 'succeeded', 'failed', 'cancelled'));
        end if;
      end $$`,
+  `alter table ingestion_executions add column if not exists heartbeat_at text collate "C"`,
   ...tenantIsolation('ingestion_executions', 'scope'),
   `create or replace function find_ingestion_execution(p_id text) returns setof ingestion_executions
      language plpgsql stable security definer set search_path = public
@@ -663,13 +664,20 @@ const migrations: string[] = [
        perform require_platform_access();
        return query select * from ingestion_executions where id = p_id;
      end $$`,
+  `do $$ begin
+     if exists (select from pg_proc where proname = 'fail_stale_ingestion_executions'
+                 and 'p_started_before' = any(proargnames)) then
+       drop function fail_stale_ingestion_executions(text, text[], text, text);
+     end if;
+   end $$`,
   `create or replace function fail_stale_ingestion_executions(
-       p_started_before text, p_except text[], p_ended_at text, p_error text) returns integer
+       p_heartbeat_before text, p_except text[], p_ended_at text, p_error text) returns integer
      language plpgsql volatile security definer set search_path = public
      as $$ declare changed integer; begin
        perform require_platform_access();
        update ingestion_executions set status = 'failed', ended_at = p_ended_at, error = p_error
-         where status = 'running' and started_at < p_started_before and not (id = any(p_except));
+         where status = 'running' and coalesce(heartbeat_at, started_at) < p_heartbeat_before
+           and not (id = any(p_except));
        get diagnostics changed = row_count;
        return changed;
      end $$`,

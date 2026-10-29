@@ -311,8 +311,9 @@ export interface ExecutionStore {
   save(execution: Execution): Promise<void>;
   get(id: string): Promise<Execution | undefined>;
   list(dataset: string, pipeline: string): Promise<Execution[]>;
+  beat(execution: Execution, at: string): Promise<void>;
   failStale(input: {
-    startedBefore: string;
+    heartbeatBefore: string;
     except: string[];
     endedAt: string;
     error: string;
@@ -321,6 +322,7 @@ export interface ExecutionStore {
 
 export class InMemoryExecutionStore implements ExecutionStore {
   readonly #executions = new Map<string, Execution>();
+  readonly #heartbeats = new Map<string, string>();
 
   async save(execution: Execution) {
     this.#executions.set(execution.id, structuredClone(execution));
@@ -338,15 +340,22 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .map((e) => structuredClone(e));
   }
 
+  async beat(execution: Execution, at: string) {
+    if (this.#executions.get(execution.id)?.status === 'running')
+      this.#heartbeats.set(execution.id, at);
+  }
+
   async failStale(input: {
-    startedBefore: string;
+    heartbeatBefore: string;
     except: string[];
     endedAt: string;
     error: string;
   }) {
     const stale = [...this.#executions.values()].filter(
       (e) =>
-        e.status === 'running' && e.startedAt < input.startedBefore && !input.except.includes(e.id),
+        e.status === 'running' &&
+        (this.#heartbeats.get(e.id) ?? e.startedAt) < input.heartbeatBefore &&
+        !input.except.includes(e.id),
     );
     for (const e of stale)
       this.#executions.set(e.id, {
@@ -388,7 +397,9 @@ export const runLockedMessage = (dataset: string, execution: string) =>
 
 export const staleRunMessage = 'the platform restarted while the run was going';
 
-export const staleRunHours = 6;
+const runHeartbeatMs = 30_000;
+
+const staleRunAfterMs = 2 * 60_000;
 
 export const writerLockKeys = (target: IngestionTarget) => [
   `dataset:${target.dataset}`,
@@ -446,7 +457,7 @@ export class IngestionService {
   async failStaleRuns(): Promise<number> {
     const now = this.options.now?.() ?? new Date();
     return this.options.executions.failStale({
-      startedBefore: new Date(now.getTime() - staleRunHours * 3_600_000).toISOString(),
+      heartbeatBefore: new Date(now.getTime() - staleRunAfterMs).toISOString(),
       except: [...this.#running.keys()],
       endedAt: now.toISOString(),
       error: staleRunMessage,
@@ -609,6 +620,10 @@ export class IngestionService {
       keys: writerLockKeys(input.target),
     };
     this.#running.set(execution.id, running);
+    const beat = setInterval(() => {
+      void this.options.executions.beat(execution, this.#now()).catch(() => undefined);
+    }, runHeartbeatMs);
+    beat.unref?.();
     const done = this.options.executions
       .save(execution)
       .then(() =>
@@ -658,6 +673,7 @@ export class IngestionService {
             }`,
           );
         } finally {
+          clearInterval(beat);
           this.#running.delete(execution.id);
         }
         for (const listener of this.#finished) listener(finished);

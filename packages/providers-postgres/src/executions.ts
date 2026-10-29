@@ -92,8 +92,17 @@ export class PostgresIngestionExecutions {
     return row && toExecution(row);
   }
 
+  async beat(execution: IngestionExecution, at: string): Promise<void> {
+    await withTenant(this.pool, executionScope(execution.dataset), (client) =>
+      client.query(
+        `update ingestion_executions set heartbeat_at = $2 where id = $1 and status = 'running'`,
+        [execution.id, at],
+      ),
+    );
+  }
+
   async failStale(input: {
-    startedBefore: string;
+    heartbeatBefore: string;
     except: string[];
     endedAt: string;
     error: string;
@@ -101,7 +110,7 @@ export class PostgresIngestionExecutions {
     const result = await withPlatformAccess(this.pool, 'ingestion-stale-runs', (client) =>
       client.query<{ changed: number }>(
         'select fail_stale_ingestion_executions($1, $2, $3, $4) as changed',
-        [input.startedBefore, input.except, input.endedAt, input.error],
+        [input.heartbeatBefore, input.except, input.endedAt, input.error],
       ),
     );
     return result.rows[0]?.changed ?? 0;

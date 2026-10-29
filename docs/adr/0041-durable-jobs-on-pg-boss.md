@@ -1,13 +1,13 @@
 # 0041 Durable jobs on pg-boss
 
-Status: proposed, 2026-10-29
+Status: proposed, 2026-10-29 (stale ingestion runs found by heartbeat, 2026-10-29)
 
 ## Context
 
 The platform has no durable job queue. `@genai/jobs` defines a `MessageQueue` port (`send`, `subscribe`) with only an in-memory implementation (`packages/jobs/src/queue.ts`), so a message is lost on restart and its consumer runs in the same process. Long work runs inside one process, guarded by locks and heartbeats:
 
 - an ingestion run holds a writer lock per dataset and collection (`writerLockKeys`) in a map in the API process (`apps/api/src/ingestion.ts`), so the lock does not hold across API replicas;
-- an ingestion run still `running` more than 6 hours after it started is marked failed when an API instance starts, unless that instance is running it (`failStaleRuns` in `apps/api/src/ingestion.ts`), so an instance that starts beside another fails a long run the other is still working on (issue 176);
+- an ingestion run keeps a 30-second heartbeat from the instance working on it, and every API instance marks a `running` run failed once its heartbeat is two minutes old, when it starts and every minute after (`failStaleRuns` in `apps/api/src/ingestion.ts`, issue 176);
 - pipeline schedules (`none`, `daily`, `weekly` at 03:00) fire from the API every minute and are safe across replicas because a firing writes a versioned config entry;
 - an engine switch runs on the instance that started it and fails when its 30-second heartbeat stops (ADR 0025);
 - batch, eval, project and quality-matrix runs keep an owner and a heartbeat in the API (`apps/api/src/background-lease.ts`), and a run whose instance stops is marked failed once its heartbeat is two minutes old;

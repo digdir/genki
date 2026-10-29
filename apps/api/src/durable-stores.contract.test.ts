@@ -309,22 +309,75 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     ]);
   });
 
-  it('marks runs left running for more than six hours as failed when the platform starts and keeps newer ones', async () => {
+  it('a run another instance is still working on is not marked failed when an instance starts', async () => {
     const { executions } = backend().stores();
-    const stale = execution(`${name}-stale`, '2026-10-07T01:00:00.000Z', { pipeline: 'restart' });
-    const fresh = execution(`${name}-fresh`, new Date().toISOString(), { pipeline: 'restart' });
-    await executions.save(stale);
-    await executions.save(fresh);
+    const now = Date.now();
+    const working = execution(`${name}-working`, new Date(now - 7 * 3_600_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(working);
+    await executions.beat(working, new Date(now - 10_000).toISOString());
 
     const reopened = await backend().reopen();
     await platformOn(reopened.configEntries, reopened.executions);
 
-    expect(await reopened.executions.get(stale.id)).toMatchObject({
+    expect((await reopened.executions.get(working.id))?.status).toBe('running');
+  });
+
+  it('a run whose instance stopped is marked failed once its heartbeat is two minutes old', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const startedAt = new Date(now - 3_600_000).toISOString();
+    const stopped = execution(`${name}-stopped`, startedAt, { pipeline: 'restart' });
+    const beating = execution(`${name}-beating`, startedAt, { pipeline: 'restart' });
+    await executions.save(stopped);
+    await executions.save(beating);
+    await executions.beat(stopped, new Date(now - 121_000).toISOString());
+    await executions.beat(beating, new Date(now - 110_000).toISOString());
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(stopped.id)).toMatchObject({
       status: 'failed',
       endedAt: expect.any(String),
       error: staleRunMessage,
     });
-    expect((await reopened.executions.get(fresh.id))?.status).toBe('running');
+    expect((await executions.get(beating.id))?.status).toBe('running');
+  });
+
+  it('a run without a heartbeat is marked failed two minutes after it started', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const old = execution(`${name}-unbeaten`, new Date(now - 121_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    const young = execution(`${name}-young`, new Date(now - 110_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(old);
+    await executions.save(young);
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(old.id)).toMatchObject({
+      status: 'failed',
+      error: staleRunMessage,
+    });
+    expect((await executions.get(young.id))?.status).toBe('running');
+  });
+
+  it('a heartbeat after a run has ended leaves its end state alone', async () => {
+    const { executions } = backend().stores();
+    const run = execution(`${name}-ended`, '2026-10-07T08:00:00.000Z', { pipeline: 'restart' });
+    await executions.save(run);
+    await executions.save({ ...run, status: 'succeeded', endedAt: '2026-10-07T08:05:00.000Z' });
+
+    await executions.beat(run, '2026-10-07T08:05:01.000Z');
+
+    expect(await executions.get(run.id)).toMatchObject({
+      status: 'succeeded',
+      endedAt: '2026-10-07T08:05:00.000Z',
+    });
   });
 
   it('does not mark a run this process holds as stale', async () => {
@@ -333,7 +386,7 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     await executions.save(held);
 
     const changed = await executions.failStale({
-      startedBefore: '2026-10-06T02:00:00.000Z',
+      heartbeatBefore: '2026-10-06T02:00:00.000Z',
       except: [held.id],
       endedAt: '2026-10-07T08:00:00.000Z',
       error: staleRunMessage,
