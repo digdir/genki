@@ -97,6 +97,16 @@ export const catalogErrors = defineNamespace({
   idStartsWith: 'id-en begynner med {id}/',
   noPluginRegistry: 'ingen register for tillegg',
   builtInPlugin: '{id} er et innebygd tillegg',
+  tracingSecretNotForHost: 'hemmeligheten er ikke satt for {outside}',
+  tracingServiceCovered: '{service} er allerede dekket av koblingen {id}',
+  tracingResidencyByOperator:
+    'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
+  tracingNoConnection: 'ingen kobling {id}',
+  tracingResidencyValues: 'norway, eu eller global',
+  tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
+  tracingKeysRefused: 'Langfuse avviste nøklene',
+  tracingHttpStatus: 'HTTP {status}',
+  tracingUnreachable: 'Langfuse kunne ikke nås',
   pluginContractOutdated:
     'tillegg av typen {kind} følger {expected}; registrer {id} på nytt under {expected}',
   noExternalPlugin: 'ingen eksternt tillegg {id}',

@@ -238,6 +238,7 @@ import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
+import { traceConnectionsModule, type TracingOptions } from './trace-connections.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
@@ -299,6 +300,7 @@ export const platformModules: PlatformModuleFactory[] = [
   serviceTemplateModule,
   stepBlocksModule,
   recipesModule,
+  traceConnectionsModule,
   strategyCatalogueModule,
   definitionCompletionModule,
   datasetUploadsModule,
@@ -398,6 +400,8 @@ export interface PlatformInput {
   platformTenant?: string;
   /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
   appVersion?: string;
+  /** Tenants' Langfuse connections: Digdir's instance and whether it may receive content. */
+  tracing?: TracingOptions;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -1600,6 +1604,9 @@ export const createPlatform = async (input: PlatformInput) => {
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
+    tenantSecrets: new TenantSecrets(vault.resolver(input.secrets)),
+    egressOptions: input.egress ?? {},
+    ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,
     blobs: blobStore,
     prices,

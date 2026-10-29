@@ -52,7 +52,7 @@ const rules: [RegExp, ApiTag][] = [
   ],
   [/^\/tenants\/\{tenant\}\/(datasets|knowledge|catalog)(\/|$)/, 'Datasets and knowledge'],
   [
-    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks)(\/|$)/,
+    /^\/tenants\/\{tenant\}\/(access|api-keys|api-key-policies|clients|maskinporten-clients|me|integrations|tool-connections|secrets|connectors|private-networks|building-blocks|plugins|hooks|tracing)(\/|$)/,
     'Access and extensions',
   ],
   [
