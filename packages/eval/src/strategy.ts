@@ -2,10 +2,17 @@ import type { Part, Principal } from '@genai/contracts';
 import type { Emitted, Kernel, Strategy } from '@genai/kernel';
 import { z } from 'zod';
 import { EvalError, type Evaluator } from './evaluators.js';
-import { describeTask, runEval, type EvalTarget, type WaitOptions } from './runner.js';
+import {
+  describeTask,
+  runEval,
+  type EvalTarget,
+  type RunEvalOptions,
+  type WaitOptions,
+} from './runner.js';
 import { splits, testSet } from './schema.js';
 
 export const evalRunConfig = z.strictObject({
+  id: z.string().min(1).optional(),
   capability: z.string().min(1),
   testSet,
   evaluators: z.array(z.string()).min(1),
@@ -21,6 +28,7 @@ export interface EvalStrategyDeps {
   modelFamily?: (model: string) => string | undefined;
   admit?: (tenant: string) => Promise<boolean>;
   wait?: WaitOptions;
+  meterAnswers?: RunEvalOptions['meterAnswers'];
   /** Evaluators made for one run, such as a judge whose model is picked for the run's tenant. */
   forRun?: (principal: Principal) => Map<string, Evaluator>;
 }
@@ -69,6 +77,7 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       wake?.();
     };
     const running = runEval({
+      ...(options.id ? { id: options.id } : {}),
       target,
       testSet: options.testSet,
       evaluators,
@@ -77,6 +86,7 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       splits: options.splits,
       ...(deps.modelFamily ? { modelFamily: deps.modelFamily } : {}),
       ...(deps.wait ? { wait: deps.wait } : {}),
+      ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
       onProgress: (done, total) => notify({ kind: 'eval.progress', done, total }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {

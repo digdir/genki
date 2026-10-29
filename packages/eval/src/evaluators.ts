@@ -1,6 +1,6 @@
 import { sameSource, type Observation } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { Score, TestCase } from './schema.js';
+import type { Score, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
@@ -31,6 +31,8 @@ export interface Evaluator {
   judge?: string | undefined;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
   collect?(pending: PendingScore[]): Promise<CollectedScore[]>;
+  /** What the evaluator's own model calls used, for a judge that calls one. */
+  usage?(): UsageSummary;
 }
 
 export class EvalError extends Error {

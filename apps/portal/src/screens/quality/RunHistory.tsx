@@ -28,13 +28,17 @@ const versionText = (t: T, v: RunVersion) =>
       : t('quality.versionN', { version: v });
 
 const statusTag = (t: T, r: EvalRun): [string, 'success' | 'danger' | 'info' | 'neutral'] =>
-  r.status === 'succeeded'
+  r.status === 'completed'
     ? [t('quality.runDone'), 'success']
     : r.status === 'failed'
       ? [t('quality.runFailed'), 'danger']
-      : r.status === 'running' || r.status === 'queued'
-        ? [t('quality.runRunning'), 'info']
-        : [r.status, 'neutral'];
+      : r.status === 'interrupted'
+        ? [t('quality.runInterrupted'), 'danger']
+        : r.status === 'waiting-for-scores'
+          ? [t('quality.runWaiting'), 'info']
+          : r.status === 'running'
+            ? [t('quality.runRunning'), 'info']
+            : [r.status, 'neutral'];
 
 const percent = (f: Format, score: number | null | undefined) =>
   typeof score === 'number' ? f.percent(score) : '–';
@@ -47,7 +51,52 @@ const passedText = (t: T, r: EvalRun) =>
 const costText = (t: T, f: Format, cost: number | null | undefined) =>
   typeof cost === 'number' ? formatKroner(cost, f, t) : t('quality.notPricedLower');
 
-const active = (r: EvalRun) => r.status === 'running' || r.status === 'queued';
+const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
+
+const RunMetrics = ({ run }: { run: EvalRun }) => {
+  const { t, f } = usePortalFormat();
+  const metrics = Object.entries(run.metrics ?? {});
+  if (metrics.length === 0) return null;
+  return (
+    <>
+      <Heading level={4} data-size="2xs">
+        {t('quality.runMetrics')}
+      </Heading>
+      {run.judges?.length ? (
+        <Paragraph data-size="sm">
+          {t('quality.runJudges', { judges: run.judges.join(', ') })}
+        </Paragraph>
+      ) : null}
+      {(run.incomplete ?? []).map((i) => (
+        <Paragraph key={i.evaluator} data-size="sm" className="danger-text">
+          {i.reason}
+        </Paragraph>
+      ))}
+      <Table data-size="sm" zebra>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeaderCell scope="col">{t('quality.runMetric')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runMean')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runInterval')}</Table.HeaderCell>
+            <Table.HeaderCell scope="col">{t('quality.runCases')}</Table.HeaderCell>
+          </Table.Row>
+        </Table.Head>
+        <Table.Body>
+          {metrics.map(([metric, m]) => (
+            <Table.Row key={metric}>
+              <Table.Cell>{metric}</Table.Cell>
+              <Table.Cell>{f.percent(m.mean)}</Table.Cell>
+              <Table.Cell>
+                {f.percent(m.ci[0])} – {f.percent(m.ci[1])}
+              </Table.Cell>
+              <Table.Cell>{m.n}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
+    </>
+  );
+};
 
 const usageDays = 30;
 
@@ -136,32 +185,35 @@ const RunDetail = ({
       ) : state.data.cases.length === 0 ? (
         <Paragraph data-size="sm">{t('quality.runNoResults')}</Paragraph>
       ) : (
-        <ul className="live-case-list">
-          {state.data.cases.map((c) => (
-            <li key={c.caseId}>
-              <dl className="case-detail run-case">
-                <dt>{t('quality.input')}</dt>
-                <dd>{c.input}</dd>
-                <dt>{t('quality.goodAnswer')}</dt>
-                <dd>{c.expected}</dd>
-                <dt>{t('quality.theAnswer')}</dt>
-                <dd>{c.output}</dd>
-                <dt>{t('quality.result')}</dt>
-                <dd>
-                  <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
-                    {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
-                  </Tag>
-                </dd>
-                {c.reason ? (
-                  <>
-                    <dt>{t('quality.reasoning')}</dt>
-                    <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
-                  </>
-                ) : null}
-              </dl>
-            </li>
-          ))}
-        </ul>
+        <>
+          <RunMetrics run={state.data} />
+          <ul className="live-case-list">
+            {state.data.cases.map((c) => (
+              <li key={c.caseId}>
+                <dl className="case-detail run-case">
+                  <dt>{t('quality.input')}</dt>
+                  <dd>{c.input}</dd>
+                  <dt>{t('quality.goodAnswer')}</dt>
+                  <dd>{c.expected}</dd>
+                  <dt>{t('quality.theAnswer')}</dt>
+                  <dd>{c.output}</dd>
+                  <dt>{t('quality.result')}</dt>
+                  <dd>
+                    <Tag data-size="sm" data-color={c.pass ? 'success' : 'danger'}>
+                      {t(c.pass ? 'quality.passed' : 'quality.notPassed')}
+                    </Tag>
+                  </dd>
+                  {c.reason ? (
+                    <>
+                      <dt>{t('quality.reasoning')}</dt>
+                      <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
+                    </>
+                  ) : null}
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </section>
   );

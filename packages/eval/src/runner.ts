@@ -9,7 +9,16 @@ import {
   type PendingScore,
 } from './evaluators.js';
 import { defaultObserve, type Observation, type Observe } from './observe.js';
-import type { EvalRun, MetricSummary, Score, Split, TestCase, TestSet } from './schema.js';
+import {
+  sumUsage,
+  type EvalRun,
+  type MetricSummary,
+  type Score,
+  type Split,
+  type TestCase,
+  type TestSet,
+  type UsageSummary,
+} from './schema.js';
 import {
   bootstrapMean,
   mean,
@@ -94,6 +103,7 @@ export interface WaitOptions {
 export const scoreWaitMs = 5 * 60_000;
 
 export interface RunEvalOptions {
+  id?: string;
   target: EvalTarget;
   testSet: TestSet;
   evaluators: Evaluator[];
@@ -104,6 +114,7 @@ export interface RunEvalOptions {
   observe?: Observe;
   bootstrap?: BootstrapOptions;
   wait?: WaitOptions;
+  meterAnswers?: (events: Event[]) => UsageSummary;
   onProgress?: (done: number, total: number) => void;
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
@@ -315,6 +326,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const servedModels = new Set<string>();
   const services = new Set<string>();
   const total = cases.length * repeats;
+  const answered: UsageSummary[] = [];
   const annotate = (task: string, score: Score) =>
     target.annotate ? target.annotate(task, score) : Promise.resolve();
   let lastSent = now();
@@ -332,6 +344,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
         throw new EvalError(`case ${c.id} recorded no served model`);
       outcome.servedModels.forEach((m) => servedModels.add(m));
       if (outcome.service) services.add(outcome.service);
+      if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
       const observation: Observation = observe(outcome.parts, outcome.events);
       const ctx: EvalContext = {
         servedModels: outcome.writers ?? outcome.servedModels,
@@ -375,8 +388,9 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
   });
 
+  const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
   return {
-    id: randomUUID(),
+    id: options.id ?? randomUUID(),
     testSet: {
       tenant: testSet.metadata.tenant,
       id: testSet.metadata.id,
@@ -397,6 +411,15 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     results,
     ...aggregate(results, options.bootstrap),
     incomplete: incompleteOf(results),
+    status: 'completed',
+    ...(options.meterAnswers
+      ? {
+          usage: {
+            answers: sumUsage(answered),
+            ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+          },
+        }
+      : {}),
   };
 };
 

@@ -131,6 +131,12 @@ describe('live Testsett', () => {
     expect(within(detail).getByText('Ikke bestått')).toBeTruthy();
     expect(within(detail).getByText('Svaret oppgir ikke riktig år.')).toBeTruthy();
     expect(within(detail).getByText('Svaret bruker tall fra et eldre år.')).toBeTruthy();
+    const metrics = within(detail).getByRole('table');
+    expect(within(metrics).getByText('judge.criteria')).toBeTruthy();
+    expect(within(metrics).getByText('47 % – 77 %')).toBeTruthy();
+    expect(
+      within(detail).getByText('Dommer: judge:criteria@1+foundry-openai/gpt-41-dommer'),
+    ).toBeTruthy();
     expectAccessible();
   });
 
@@ -346,7 +352,7 @@ describe('live Forbedringsforslag', () => {
 describe('latestRunFact', () => {
   const run = (over: Partial<EvalRun>): EvalRun => ({
     id: 'r',
-    status: 'succeeded',
+    status: 'completed',
     testSet: 's',
     version: 'draft',
     startedAt: '2026-10-01T10:00:00Z',

@@ -4,19 +4,20 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { parseTestSet, type FeedbackRecord } from '@genai/eval';
+import { InMemoryDefinitionStore, SettingsRegistry, validateDefinition } from '@genai/definitions';
+import { gate, parseTestSet, publishGate, type FeedbackRecord } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
+import { definitionSubject } from './definition-subject.js';
 import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
-import type { ServiceRun } from './service-eval.js';
+import type { runDetail } from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -322,12 +323,12 @@ describe('eval runs for a service', () => {
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(list.body.data).toEqual([
       expect.objectContaining({
         id,
-        status: 'succeeded',
+        status: 'completed',
         testSet: 'svar-frister',
         version: 1,
         passed: 1,
@@ -348,6 +349,65 @@ describe('eval runs for a service', () => {
       reason: 'Vurdert.',
     });
     expect(run.tokens.input).toBeGreaterThan(0);
+  });
+
+  it('runs as an eval run whose metrics have confidence intervals and whose judge is named with its model', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body;
+    const stored = await env.platform.evalStores.runs.get(id);
+
+    expect(run.metrics).toMatchObject({
+      'judge.criteria': { mean: 0, ci: [0, 0], n: 2 },
+      refusal: { mean: 1, n: 1 },
+    });
+    expect(run.judges).toEqual([`judge:criteria@1+${judgeId}`]);
+    expect(stored?.run).toMatchObject({
+      status: 'completed',
+      provenance: { judges: [`judge:criteria@1+${judgeId}`], servedModels: [modelId] },
+    });
+  });
+
+  it('feeds a publishing gate: the run is found under the spec it tested, as the gate looks it up', async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const validated = validateDefinition(service, env.platform.plugins);
+    if (!validated.ok) throw new Error('the service is invalid');
+
+    const decision = await publishGate({
+      tenant,
+      service: 'svar',
+      candidate: definitionSubject(validated.definition.spec),
+      evaluation: { testSets: ['svar-frister'], gates: ['avviser', 'kriterier'] },
+      runs: env.platform.evalStores.runs,
+      registry: new Map([
+        [
+          'avviser',
+          gate.parse({ id: 'avviser', metric: 'refusal', kind: 'threshold', threshold: 1 }),
+        ],
+        [
+          'kriterier',
+          gate.parse({
+            id: 'kriterier',
+            metric: 'judge.criteria',
+            kind: 'threshold',
+            threshold: 0.5,
+            split: 'train',
+          }),
+        ],
+      ]),
+    });
+
+    expect(decision.results.map((r) => [r.gate, r.pass, r.reason])).toEqual([
+      ['avviser', true, 'refusal 1.000 >= 1'],
+      [
+        'kriterier',
+        false,
+        `judge.criteria 0.000 < 0.5 (advisory: judge judge:criteria@1+${judgeId} is not calibrated to 0.6)`,
+      ],
+    ]);
   });
 
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
@@ -409,11 +469,11 @@ describe('eval runs for a service', () => {
     });
     await env.settled();
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(unknown.status).toBe(404);
     expect(started.status).toBe(202);
-    expect(run).toMatchObject({ status: 'succeeded', variant: 'default' });
+    expect(run).toMatchObject({ status: 'completed', variant: 'default' });
   });
 
   it('records the cost from the price list, and no cost when a model has no price', async () => {
@@ -456,6 +516,30 @@ describe('eval runs for a service', () => {
     expect(withUsage.cost).toBeGreaterThan(0);
   });
 
+  it("finds a draft's run under the spec the publish check computes for that draft", async () => {
+    const env = await boot();
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(validated.definition.spec),
+    });
+
+    expect(found.map((s) => [s.run.status, s.run.tested?.version])).toEqual([
+      ['completed', 'draft'],
+    ]);
+  });
+
   it('runs a draft without publishing it', async () => {
     const env = await boot();
     const draft = structuredClone(service);
@@ -469,7 +553,7 @@ describe('eval runs for a service', () => {
     await env.settled();
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
 
-    expect(run.body).toMatchObject({ status: 'succeeded', version: 'draft', passed: 3, total: 3 });
+    expect(run.body).toMatchObject({ status: 'completed', version: 'draft', passed: 3, total: 3 });
     expect(await env.platform.definitions.versions('Service', tenant, 'svar')).toHaveLength(1);
   });
 

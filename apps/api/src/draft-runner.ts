@@ -21,6 +21,7 @@ import {
   type CompiledCapability,
   type PluginSchemas,
 } from '@genai/definitions';
+import type { UsageSummary } from '@genai/eval';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { Capability as KernelCapability, CapabilityRegistry, Kernel } from '@genai/kernel';
 import { blobPart, type BlobStore } from '@genai/port-blob';
@@ -114,6 +115,23 @@ export const usageByModel = (
   return [...byModel.values()];
 };
 
+/** What the models of one task used, with no cost when a model has no price. */
+export const usageSummaryOf = (
+  events: Event[],
+  prices: Record<string, ModelPrice | undefined>,
+): UsageSummary => {
+  const byModel = usageByModel(events, prices);
+  return {
+    inputTokens: byModel.reduce((n, m) => n + m.inputTokens, 0),
+    outputTokens: byModel.reduce((n, m) => n + m.outputTokens, 0),
+    costMicroNok: byModel.some(
+      (m) => !prices[m.model] && m.costMicroNok === 0 && m.inputTokens + m.outputTokens > 0,
+    )
+      ? null
+      : byModel.reduce((n, m) => n + m.costMicroNok, 0),
+  };
+};
+
 export interface DraftRunSuccess {
   ok: true;
   task: string;
@@ -165,8 +183,21 @@ export type CapabilityDecorator = (
   context: DraftDecoration,
 ) => Promise<KernelCapability>;
 
+export type DraftTarget = Pick<
+  DraftRunInput,
+  'principal' | 'tenant' | 'definition' | 'files' | 'origin' | 'chargeTo' | 'version' | 'variant'
+>;
+
+/** A draft or version registered as a capability until released, for a run of many tasks. */
+export interface PreparedDraft {
+  ok: true;
+  capability: string;
+  release(): void;
+}
+
 export interface DraftRunner {
   run(input: DraftRunInput): Promise<DraftRunOutcome>;
+  prepare(input: DraftTarget): Promise<PreparedDraft | DraftRunFailure>;
   invoke(input: ServiceInvocation): Promise<ServiceRunOutcome>;
   inputFields(principal: Principal, tenant: string, definition: unknown): Promise<InputField[]>;
 }
@@ -382,15 +413,15 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
           .definition
       : definition;
 
-  const run = async (input: DraftRunInput): Promise<DraftRunOutcome> => {
-    const { tenant } = input;
+  const compile = (input: DraftTarget) => {
     const source = typeof input.definition === 'string' ? yamlOf(input.definition) : input;
     const validated = source
       ? validateDefinition(completed(source.definition), deps.plugins)
       : validateYaml(String(input.definition), deps.plugins);
-    if (!validated.ok) return { ok: false, status: 422, errors: validated.errors };
+    if (!validated.ok)
+      return { ok: false as const, status: 422 as const, errors: validated.errors };
     const definition = validated.definition;
-    if (definition.metadata.tenant !== tenant)
+    if (definition.metadata.tenant !== input.tenant)
       return failure(403, 'metadata.tenant', 'the definition belongs to another tenant');
     if (definition.kind !== 'Service') return failure(422, 'kind', 'only services can be test run');
     const variants = toCapabilities(definition, input.version ?? 1, input.files ?? {});
@@ -402,6 +433,52 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
         input.variant === undefined ? 'spec.variants' : 'variant',
         input.variant === undefined ? 'no variant' : `no variant ${input.variant}`,
       );
+    return { ok: true as const, definition, compiled };
+  };
+
+  const register = async (
+    input: DraftTarget,
+    definition: unknown,
+    compiled: CompiledCapability,
+  ): Promise<PreparedDraft | DraftRunFailure> => {
+    const id = `${draftPrefix}${input.origin}/${createHash('sha256')
+      .update(
+        `${input.tenant}/${(definition as { metadata: { id: string } }).metadata.id}/${Date.now()}/${Math.random()}`,
+      )
+      .digest('hex')
+      .slice(0, 16)}`;
+    const descriptor = { ...compiled.capability.descriptor, id };
+    delete descriptor.availableTo;
+    if (input.chargeTo) descriptor.availableTo = [input.chargeTo];
+    let capability: KernelCapability = { ...compiled.capability, descriptor };
+    try {
+      if (deps.decorate)
+        capability = await deps.decorate(capability, {
+          compiled,
+          definition,
+          origin: input.origin,
+        });
+      deps.registry.replace(() => false, [capability]);
+    } catch (error) {
+      return failure(422, 'spec.strategy', messageOf(error));
+    }
+    return {
+      ok: true,
+      capability: id,
+      release: () => deps.registry.replace((c) => c.descriptor.id === id, []),
+    };
+  };
+
+  const prepare = async (input: DraftTarget): Promise<PreparedDraft | DraftRunFailure> => {
+    const compiled = compile(input);
+    return compiled.ok ? register(input, compiled.definition, compiled.compiled) : compiled;
+  };
+
+  const run = async (input: DraftRunInput): Promise<DraftRunOutcome> => {
+    const { tenant } = input;
+    const compiledDraft = compile(input);
+    if (!compiledDraft.ok) return compiledDraft;
+    const { definition, compiled } = compiledDraft;
     const question = input.parts.flatMap((p) => (p.kind === 'text' ? [p.text] : [])).join('\n');
     const declared = compiled.capability.descriptor.inputFields;
     const fields = declared && (await resolved(input.principal, tenant, declared));
@@ -425,29 +502,15 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
         : [{ kind: 'text', text: query }, ...input.parts.filter((p) => p.kind !== 'text')],
     );
     if (!Array.isArray(parts)) return parts;
-    const id = `${draftPrefix}${input.origin}/${createHash('sha256').update(`${tenant}/${definition.metadata.id}/${Date.now()}/${Math.random()}`).digest('hex').slice(0, 16)}`;
-    const descriptor = { ...compiled.capability.descriptor, id };
-    delete descriptor.availableTo;
-    if (input.chargeTo) descriptor.availableTo = [input.chargeTo];
-    let capability: KernelCapability = { ...compiled.capability, descriptor };
-    try {
-      if (deps.decorate)
-        capability = await deps.decorate(capability, {
-          compiled,
-          definition,
-          origin: input.origin,
-        });
-      deps.registry.replace(() => false, [capability]);
-    } catch (error) {
-      return failure(422, 'spec.strategy', messageOf(error));
-    }
+    const registered = await register(input, definition, compiled);
+    if (!registered.ok) return registered;
     try {
       const primary = (compiled.capability.config as { model?: { primary?: string } }).model
         ?.primary;
       const outcome = await invokeCapability(
         input.principal,
         input.chargeTo ?? tenant,
-        id,
+        registered.capability,
         { ...values, query, history: input.history ?? [], ...input.data },
         query === question
           ? parts
@@ -459,7 +522,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
       );
       return outcome.ok ? { ...outcome, origin: input.origin } : outcome;
     } finally {
-      deps.registry.replace((c) => c.descriptor.id === id, []);
+      registered.release();
     }
   };
 
@@ -480,5 +543,5 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
   const inputFields = (principal: Principal, tenant: string, definition: unknown) =>
     resolved(principal, tenant, declaredFields(definition));
 
-  return { run, invoke, inputFields };
+  return { run, prepare, invoke, inputFields };
 };

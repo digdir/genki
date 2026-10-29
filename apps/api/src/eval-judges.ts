@@ -11,14 +11,22 @@ export const runJudges =
   (principal: Principal): Map<string, Evaluator> => {
     const tenant = principal.tenant;
     if (!tenant) return new Map();
+    const models = choice();
+    const meter = models.meter();
     return new Map([
       [
         criteriaJudgeId,
-        criteriaJudge(async (writers) => {
-          const models = choice();
-          const id = models.pickJudge(await models.usable(tenant), tenant, writers);
-          return id ? models.judgeModel(principal, tenant, id, 'builder') : undefined;
-        }),
+        criteriaJudge(
+          async (writers) => {
+            const id = models.pickJudge(await models.usable(tenant), tenant, writers);
+            return id ? models.judgeModel(principal, tenant, id, 'builder', meter) : undefined;
+          },
+          () => ({
+            inputTokens: meter.inputTokens,
+            outputTokens: meter.outputTokens,
+            costMicroNok: meter.costMicroNok(),
+          }),
+        ),
       ],
     ]);
   };

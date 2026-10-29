@@ -1,7 +1,13 @@
 import type { Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import type { DefinitionStore, PluginSchemas, ValidationError } from '@genai/definitions';
-import { judgeAgreement, type EvalRunStore, type JudgeLabel, type LabelStore } from '@genai/eval';
+import {
+  judgeAgreement,
+  runState,
+  type EvalRunStore,
+  type JudgeLabel,
+  type LabelStore,
+} from '@genai/eval';
 import type { Residency } from '@genai/port-model';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
@@ -373,7 +379,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     for (const tenant of await deps.tenants()) {
       const runs = await deps.runs.list({ tenant });
       const groups = new Map<string, typeof runs>();
-      for (const stored of runs) {
+      for (const stored of runs.filter((s) => runState(s.run) === 'completed')) {
         const key = `${stored.service ?? stored.run.capability}|${stored.run.testSet.id}`;
         groups.set(key, [...(groups.get(key) ?? []), stored]);
       }
