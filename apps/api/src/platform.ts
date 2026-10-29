@@ -603,6 +603,9 @@ const OperatorModel = z
     classified: z.boolean().optional(),
     parameters: parameterRules.optional(),
     rejectedParameters: z.record(z.string(), z.string()).optional(),
+    transport: z
+      .object({ api: z.string(), source: z.enum(['configured', 'learned', 'default']) })
+      .optional(),
   })
   .openapi('OperatorModel');
 

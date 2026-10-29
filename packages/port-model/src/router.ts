@@ -11,6 +11,7 @@ import type {
   DiscoverySource,
   ModelAdapter,
   ModelConnection,
+  ModelTransport,
 } from './adapter.js';
 import {
   parseCatalog,
@@ -65,6 +66,7 @@ export interface ModelPrice {
 }
 
 export interface ModelDescription {
+  transport?: ModelTransport;
   id: string;
   endpoint: string;
   deployment: string;
@@ -303,7 +305,11 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   #describe(route: Route): ModelDescription {
     const model = this.#effective(route);
+    const transport = this.#connections
+      .get(model.endpoint)
+      ?.describe?.({ deployment: model.deployment, options: route.options });
     return {
+      ...(transport ? { transport } : {}),
       id: model.id,
       endpoint: model.endpoint,
       deployment: model.deployment,
