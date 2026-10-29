@@ -95,7 +95,7 @@ describe('postgres retention', () => {
   it('drops payloads after the retention period, erases the task key and keeps the envelope', async () => {
     const count = await stores.retention.purge(cutoff());
 
-    expect(count).toEqual({ payloads: 1, envelopes: 1 });
+    expect(count).toEqual({ payloads: 1, envelopes: 1, tasks: ['old', 'ancient'] });
     expect((await collect('old')).map((e) => e.data)).toEqual([{ status: 'done' }, erased]);
     const raw = await pool.query<{ payload: Buffer | null; envelope: unknown }>(
       'select payload, envelope from events where task = $1 order by seq',
@@ -136,9 +136,21 @@ describe('postgres retention', () => {
   });
 
   it('purging twice changes nothing the second time', async () => {
-    expect(await stores.retention.purge(cutoff())).toEqual({ payloads: 0, envelopes: 0 });
-    expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 1, envelopes: 0 });
-    expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 0, envelopes: 0 });
+    expect(await stores.retention.purge(cutoff())).toEqual({
+      payloads: 0,
+      envelopes: 0,
+      tasks: [],
+    });
+    expect(await stores.retention.purge(cutoff(other))).toEqual({
+      payloads: 1,
+      envelopes: 0,
+      tasks: ['elsewhere'],
+    });
+    expect(await stores.retention.purge(cutoff(other))).toEqual({
+      payloads: 0,
+      envelopes: 0,
+      tasks: [],
+    });
   });
 });
 

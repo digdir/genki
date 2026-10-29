@@ -101,6 +101,7 @@ export const catalogErrors = {
   tracingSecretNotForHost: 'the secret is not set for {outside}',
   tracingServiceCovered: '{service} is already covered by the connection {id}',
   tracingResidencyByOperator: "an operator sets the residency of a connection to Digdir's Langfuse",
+  tracingBeingRemoved: 'the connection {id} is being removed',
   tracingNoConnection: 'no connection {id}',
   tracingResidencyValues: 'norway, eu or global',
   tracingResidencyByTenant: 'the tenant declares the residency of its own Langfuse',

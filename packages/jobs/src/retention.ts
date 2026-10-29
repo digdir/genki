@@ -8,6 +8,7 @@ import {
 import type { BlobStore } from '@genai/port-blob';
 import { retentionFor } from './retention-policy.js';
 import { purgeRunDocuments } from './run-documents.js';
+import type { TraceDeliveryStore } from './trace-deliveries.js';
 import { schedule, type Clock, type ScheduledJob } from './scheduler.js';
 
 const dayMs = 86_400_000;
@@ -19,12 +20,15 @@ export interface RetentionDeps {
   threads?: ThreadRetentionStore;
   documents?: Pick<BlobStore, 'list' | 'delete'>;
   tenants?: () => Promise<string[]>;
+  /** Traces sent to a sink are deleted there too once their task's content is purged. */
+  deliveries?: Pick<TraceDeliveryStore, 'markPending'>;
   now?: () => Date;
 }
 
 export interface RetentionRun {
   at: string;
   groups: (RetentionGroup & RetentionPolicy & { payloads: number; envelopes: number })[];
+  traceDeletes: number;
   payloads: number;
   envelopes: number;
   conversations: number;
@@ -44,13 +48,16 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
   const capabilities = await deps.capabilities();
   const byId = new Map(capabilities.map((c) => [c.capability.descriptor.id, c]));
   const groups: RetentionRun['groups'] = [];
+  let traceDeletes = 0;
   for (const group of await deps.store.groups()) {
     const policy = retentionFor(deps.settings, group.tenant, byId.get(group.capability));
-    const purged = await deps.store.purge({
+    const { tasks, ...purged } = await deps.store.purge({
       ...group,
       payloadBefore: new Date(now.getTime() - policy.payloadDays * dayMs),
       envelopeBefore: new Date(now.getTime() - policy.envelopeDays * dayMs),
     });
+    if (deps.deliveries && tasks.length > 0)
+      traceDeletes += await deps.deliveries.markPending(group.tenant, { tasks }, now.toISOString());
     groups.push({ ...group, ...policy, ...purged });
   }
   let conversations = 0;
@@ -90,6 +97,7 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
     envelopes: groups.reduce((n, g) => n + g.envelopes, 0),
     conversations,
     documents,
+    traceDeletes,
   };
 };
 

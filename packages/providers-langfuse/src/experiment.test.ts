@@ -151,7 +151,7 @@ describe('eval runs as Langfuse experiments', () => {
     });
     await run.result;
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await router.close('run-1');
+    const sent = await router.close('run-1');
 
     const roots = sink.spans.filter((s) => s.name === 'answer');
     expect(roots.map((s) => attr(s, 'langfuse.experiment.item.id'))).toEqual(['o1#0', 'o1#1']);
@@ -169,6 +169,8 @@ describe('eval runs as Langfuse experiments', () => {
       JSON.stringify({ parts: [textPart('Når er fristen?')] }),
     );
     expect(sink.raw()).not.toContain('etaten');
+    expect(sent).toHaveLength(2);
+    expect(new Set(roots.map((s) => attr(s, 'genai.task.id')))).toEqual(new Set(sent));
   });
 
   it("sends each run only to its own sink, so one tenant's run never reaches another's", async () => {

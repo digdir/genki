@@ -54,7 +54,11 @@ export class PostgresRetentionStore implements RetentionStore {
       await client.query('update tasks set body = null where id = any($1)', [staleIds]);
       await this.#dropTaskScopes(client, cutoff.tenant, stale.rows, true);
       await client.query('commit');
-      return { payloads: staleIds.length, envelopes: expiredIds.length };
+      return {
+        payloads: staleIds.length,
+        envelopes: expiredIds.length,
+        tasks: [...staleIds, ...expiredIds],
+      };
     } catch (error) {
       await client.query('rollback');
       throw error;

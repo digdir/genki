@@ -43,7 +43,8 @@ export const itemAttributes = (experiment: Experiment) => ({
 export interface ExperimentRouter {
   /** Send the cases of a run to this exporter until the run is closed. */
   open(run: string, exporter: TraceExporter): void;
-  close(run: string): Promise<void>;
+  /** Flushes the run's sink and answers the case tasks whose traces went there. */
+  close(run: string): Promise<string[]>;
   observe(event: Event, scope: ContentScope): void;
 }
 
@@ -54,6 +55,7 @@ export interface ExperimentRouter {
 export const createExperimentRouter = (): ExperimentRouter => {
   const exporters = new Map<string, TraceExporter>();
   const runOf = new Map<string, string>();
+  const cases = new Map<string, Set<string>>();
   return {
     open: (run, exporter) => {
       exporters.set(run, exporter);
@@ -63,10 +65,16 @@ export const createExperimentRouter = (): ExperimentRouter => {
       exporters.delete(run);
       for (const [task, owner] of runOf) if (owner === run) runOf.delete(task);
       await exporter?.shutdown();
+      const sent = [...(cases.get(run) ?? [])];
+      cases.delete(run);
+      return sent;
     },
     observe: (event, scope) => {
       const evaluation = evaluationIn(event);
-      if (evaluation && exporters.has(evaluation.run.id)) runOf.set(event.task, evaluation.run.id);
+      if (evaluation && exporters.has(evaluation.run.id)) {
+        runOf.set(event.task, evaluation.run.id);
+        cases.set(evaluation.run.id, (cases.get(evaluation.run.id) ?? new Set()).add(event.task));
+      }
       const run = runOf.get(event.task);
       if (run === undefined) return;
       if (event.type === 'kernel.task.spawned') {

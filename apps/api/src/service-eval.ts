@@ -499,7 +499,18 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } finally {
         lease.release();
         prepared.release();
-        if (sink) await deps.traceSinks?.close(first.id).catch(() => undefined);
+        if (sink) {
+          const sent = (await deps.traceSinks?.close(first.id).catch(() => [])) ?? [];
+          await deps.traceDeliveries?.record(
+            sent.map((task) => ({
+              tenant,
+              sink: sink.id,
+              task,
+              trace: deps.traceSinks?.traceIdOf(task) ?? task,
+            })),
+            leases.now().toISOString(),
+          );
+        }
       }
     })();
     return { run: first, done };

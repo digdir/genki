@@ -7,6 +7,7 @@ import { createAdmin } from './admin.js';
 import { tracesContent } from './boot-guard.js';
 import { createPlatform } from './composition.js';
 import type { TracingOptions } from './trace-connections.js';
+import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
 
 const tenant = '991825827';
 const other = '889640782';
@@ -45,7 +46,10 @@ const addresses: Record<string, string> = {
   'metadata.example.no': '169.254.169.254',
 };
 
-const boot = async (tracing: TracingOptions = { instance }) => {
+const boot = async (
+  tracing: TracingOptions = { instance },
+  traceDeliveries: TraceDeliveryStore = new InMemoryTraceDeliveries(),
+) => {
   const platform = await createPlatform({
     catalogs: {
       models: { endpoints: {}, models: [] },
@@ -64,6 +68,7 @@ const boot = async (tracing: TracingOptions = { instance }) => {
       timeoutMs: 5000,
     },
     tracing,
+    traceDeliveries,
   });
   const app = new Hono();
   platform.mount(
@@ -304,6 +309,53 @@ describe("an agency's Langfuse connections", () => {
 
     expect(refused.status).toBe(403);
     expect(removed.status).toBe(403);
+  });
+});
+
+describe('removing a connection', () => {
+  it('deletes every trace sent through it first, and the connection is gone only once every delete is confirmed', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    const at = new Date().toISOString();
+    await deliveries.record(
+      [
+        { tenant, sink: 'etaten', task: 't1', trace: 'case-1' },
+        { tenant, sink: 'etaten', task: 't2', trace: 'case-2' },
+      ],
+      at,
+    );
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const whileDeleting = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+    const edited = await env.connect('etaten', ownConnection());
+    const takeover = await env.connect('andre', ownConnection());
+    for (const pending of await deliveries.pending(10))
+      await deliveries.settle(pending, { deleted: true }, at);
+    const afterwards = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(removed.body).toEqual({ removing: 'etaten' });
+    expect((await deliveries.pending(10)).length).toBe(0);
+    expect(whileDeleting.body.data).toEqual([
+      expect.objectContaining({ id: 'etaten', removing: true }),
+    ]);
+    expect(errorsOf(edited.body)).toEqual([
+      'connection.id: the connection etaten is being removed',
+    ]);
+    expect(takeover.status).toBe(200);
+    expect((afterwards.body.data as { id: string }[]).map((c) => c.id)).toEqual(['andre']);
+  });
+
+  it('removes a connection that never received a trace at once', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+
+    expect(removed.body).toEqual({ removed: 'etaten' });
+    expect((await env.send('GET', `/tenants/${tenant}/tracing/connections`)).body.data).toEqual([]);
   });
 });
 

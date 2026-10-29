@@ -12,6 +12,7 @@ import { PostgresApiKeys } from './api-keys.js';
 import { PostgresModelClassifications } from './models.js';
 import { PostgresAdminRecords } from './admin-records.js';
 import { PostgresClients } from './clients.js';
+import { PostgresTraceDeliveries } from './trace-deliveries.js';
 import { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 import { PostgresTriggerRuns } from './trigger-runs.js';
 import { PostgresConfigEntries } from './config-entries.js';
@@ -54,6 +55,7 @@ export {
   type PostgresSupportSession,
 } from './admin-records.js';
 export { PostgresClients } from './clients.js';
+export { PostgresTraceDeliveries } from './trace-deliveries.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
 export { PostgresLeaderLease } from './leader-lease.js';
@@ -181,6 +183,7 @@ export const createPostgresStores = async (
     labels: new PostgresLabelStore(pool),
     clients: new PostgresClients(pool),
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
+    traceDeliveries: new PostgresTraceDeliveries(pool),
     triggerRuns: new PostgresTriggerRuns(pool),
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),

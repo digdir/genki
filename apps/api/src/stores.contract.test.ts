@@ -17,6 +17,7 @@ import {
   type TestSet,
   type TestSetStore,
 } from '@genai/eval';
+import { InMemoryTraceDeliveries, type TraceDelivery, type TraceDeliveryStore } from '@genai/jobs';
 import { InMemoryClients, type ClientStore, type StoredClient } from '@genai/identity';
 import { InMemoryConnections, type ConnectionRegistry } from '@genai/providers-mcp-client';
 import { createPostgresStores, LocalKeyWrapper } from '@genai/providers-postgres';
@@ -40,6 +41,7 @@ interface Stores {
   labels: LabelStore;
   clients: ClientStore;
   configEntries: ConfigEntryStore;
+  traceDeliveries: TraceDeliveryStore;
 }
 
 interface Backend {
@@ -65,6 +67,7 @@ const memory = (): Backend => {
     labels: new InMemoryLabelStore(),
     clients: new InMemoryClients(),
     configEntries: new InMemoryConfigEntryStore(),
+    traceDeliveries: new InMemoryTraceDeliveries(),
   };
   return { name: 'memory', stores: () => stores, reopen: async () => stores };
 };
@@ -95,6 +98,7 @@ const openPostgres = async (): Promise<Stores> => {
     labels: db.labels,
     clients: db.clients,
     configEntries: db.configEntries,
+    traceDeliveries: db.traceDeliveries,
   };
 };
 
@@ -331,6 +335,43 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
       criteria: { criteria: 'Svaret er skrive på nynorsk.' },
     });
     expect(listed?.expected).toEqual(read?.expected);
+  });
+
+  it('keeps each trace sent to a sink until its delete is confirmed, per tenant', async () => {
+    const { traceDeliveries } = backend().stores();
+    const at = '2026-10-29T02:00:00.000Z';
+    await traceDeliveries.record(
+      [
+        { tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' },
+        { tenant: ORG_A, sink: 'etaten', task: 't2', trace: 'case-2' },
+        { tenant: ORG_B, sink: 'etaten', task: 't3', trace: 'case-3' },
+      ],
+      at,
+    );
+    await traceDeliveries.record(
+      [{ tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      at,
+    );
+
+    expect(await traceDeliveries.markPending(ORG_A, { tasks: ['t1', 't3'] }, at)).toBe(1);
+    const [pending] = await traceDeliveries.pending(10);
+    expect(pending).toMatchObject({
+      tenant: ORG_A,
+      trace: 'case-1',
+      state: 'pending',
+      attempts: 0,
+    });
+    await traceDeliveries.settle(pending as TraceDelivery, { error: 'HTTP 503' }, at);
+    expect(await traceDeliveries.pending(10)).toEqual([
+      expect.objectContaining({ trace: 'case-1', attempts: 1, lastError: 'HTTP 503' }),
+    ]);
+    await traceDeliveries.settle(pending as TraceDelivery, { deleted: true }, at);
+
+    const reopened = (await backend().reopen()).traceDeliveries;
+    expect(await reopened.pending(10)).toEqual([]);
+    expect(await reopened.outstanding(ORG_A, 'etaten')).toBe(1);
+    expect(await reopened.markPending(ORG_B, { sink: 'etaten' }, at)).toBe(1);
+    expect(await reopened.outstanding(ORG_B, 'etaten')).toBe(1);
   });
 
   it('stores eval runs and filters them newest first', async () => {

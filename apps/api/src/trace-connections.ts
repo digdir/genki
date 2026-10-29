@@ -2,22 +2,20 @@ import type { Principal } from '@genai/contracts';
 import { residencies } from '@genai/port-model';
 import {
   EgressError,
-  EgressGuard,
   isLoopbackAddress,
   secretTenant,
   tenantSecretPattern,
-  type EgressOptions,
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
 import { actorOf, AdminRefused, refusedBy, type AdminHandler } from './admin.js';
+import { allowOf, traceConnectionKind, tracingEgress } from '@genai/composition';
 import { appendVersion, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, problem, reasonTooShort } from './http.js';
+import type { TraceDeliveryStore } from '@genai/jobs';
 import type { PlatformModuleFactory } from './platform-modules.js';
-
-export const traceConnectionKind = 'trace-connection';
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
@@ -33,7 +31,10 @@ export const traceConnection = z.strictObject({
   content: z.boolean().default(false),
   erasureDeclared: z.boolean().default(false),
 });
-export type TraceConnection = z.output<typeof traceConnection>;
+export type TraceConnection = z.output<typeof traceConnection> & {
+  /** Removal asked for: its traces are being deleted, and it covers no service any more. */
+  removing?: true;
+};
 
 export interface TracingOptions {
   /** Digdir's Langfuse. A connection to it gets its residency from an operator. */
@@ -63,55 +64,61 @@ const errorsOf = (error: z.ZodError) =>
       message: i.message,
     }));
 
-/**
- * The egress path a connection's calls take (ADR 0015): HTTPS, no private or link-local address,
- * no platform host. In development mode a Langfuse on loopback is allowed, as ADR 0040 exempts it.
- */
-export const tracingEgress = (options: EgressOptions, devMode = false) =>
-  new EgressGuard(
-    devMode
-      ? {
-          ...options,
-          platformHosts: (options.platformHosts ?? []).filter(
-            (h) => !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(h),
-          ),
-          testOverride: { ...options.testOverride, allowLoopback: true, allowHttp: true },
-        }
-      : options,
-  );
-
-export const allowOf = (host: string) => {
-  const url = new URL(host);
-  return [
-    {
-      host: url.hostname.replace(/^\[|\]$/g, '').toLowerCase(),
-      port: url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80,
-    },
-  ];
-};
-
 export const traceConnections = (
   deps: {
     configEntries: ConfigEntryStore;
     tenantSecrets?: TenantSecrets;
-    egress: EgressGuard;
+    egress: ReturnType<typeof tracingEgress>;
+    deliveries?: Pick<TraceDeliveryStore, 'markPending' | 'outstanding'>;
+    now?: () => Date;
   },
   options: TracingOptions,
 ) => {
   const onInstance = (host: string) =>
     options.instance !== undefined && origin(host) === origin(options.instance);
 
-  const list = async (tenant: string) =>
-    (await deps.configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
-      .filter((e) => !e.deleted)
-      .map((e) => e.spec as TraceConnection)
-      .sort((a, b) => a.id.localeCompare(b.id));
+  const outstanding = async (tenant: string, id: string) =>
+    deps.deliveries ? deps.deliveries.outstanding(tenant, id) : 0;
+
+  const drop = (tenant: string, connection: TraceConnection, by: string, reason: string) =>
+    appendVersion<TraceConnection>(deps.configEntries, {
+      kind: traceConnectionKind,
+      scope: tenant,
+      id: connection.id,
+      spec: connection,
+      deleted: true,
+      by,
+      reason,
+    });
+
+  /** A connection being removed is gone once every trace sent through it is deleted. */
+  const list = async (tenant: string) => {
+    const kept: TraceConnection[] = [];
+    for (const entry of await deps.configEntries.latest({
+      kind: traceConnectionKind,
+      scope: tenant,
+    })) {
+      if (entry.deleted) continue;
+      const connection = entry.spec as TraceConnection;
+      if (connection.removing && (await outstanding(tenant, connection.id)) === 0) {
+        await drop(
+          tenant,
+          connection,
+          'platform:trace-deletes',
+          'Every trace it received is deleted',
+        );
+        continue;
+      }
+      kept.push(connection);
+    }
+    return kept.sort((a, b) => a.id.localeCompare(b.id));
+  };
 
   const find = async (tenant: string, id: string) => (await list(tenant)).find((c) => c.id === id);
 
   /** The connection that covers a service, if any: a service is covered by at most one. */
   const coveringService = async (tenant: string, service: string) =>
-    (await list(tenant)).find((c) => c.services.includes(service));
+    (await list(tenant)).find((c) => !c.removing && c.services.includes(service));
 
   const loopback = async (host: string) => {
     const name = new URL(host).hostname.replace(/^\[|\]$/g, '');
@@ -165,6 +172,8 @@ export const traceConnections = (
     const next = parsed.data;
     const before = await find(tenant, next.id);
     const errors: { path: string; message: string }[] = [];
+    if (before?.removing)
+      errors.push({ path: 'connection.id', message: `the connection ${next.id} is being removed` });
     if (secretTenant(next.secretKey) !== tenant)
       errors.push({
         path: 'connection.secretKey',
@@ -230,16 +239,27 @@ export const traceConnections = (
     const before = await find(tenant, id);
     if (!before)
       return { ok: false, errors: [{ path: 'id', message: `no connection ${id}` }], target };
+    const reason = String(input.reason ?? '');
+    await deps.deliveries?.markPending(
+      tenant,
+      { sink: id },
+      (deps.now?.() ?? new Date()).toISOString(),
+    );
+    if ((await outstanding(tenant, id)) === 0) {
+      await drop(tenant, before, actorOf(principal), reason);
+      return { ok: true, value: { removed: id }, target, audit: { before } };
+    }
+    const removing: TraceConnection = { ...before, removing: true };
     await appendVersion<TraceConnection>(deps.configEntries, {
       kind: traceConnectionKind,
       scope: tenant,
       id,
-      spec: before,
-      deleted: true,
+      spec: removing,
+      deleted: false,
       by: actorOf(principal),
-      reason: String(input.reason ?? ''),
+      reason,
     });
-    return { ok: true, value: { removed: id }, target, audit: { before } };
+    return { ok: true, value: { removing: id }, target, audit: { before, after: removing } };
   };
 
   const setResidency: AdminHandler = async (input, principal) => {
@@ -291,12 +311,15 @@ export const connectionCovering = async (
   (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
     .filter((e) => !e.deleted)
     .map((e) => e.spec as TraceConnection)
-    .find((c) => c.services.includes(service));
+    .find((c) => !c.removing && c.services.includes(service));
 
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
   open(run: string, tenant: string, connection: TraceConnection): void;
-  close(run: string): Promise<void>;
+  /** Flushes the run's sink and answers the case tasks whose traces went there. */
+  close(run: string): Promise<string[]>;
+  /** The id the sink knows a case task's trace by. */
+  traceIdOf(task: string): string;
 }
 
 /** A connection as a tenant reads it: the secret's reference, never its value. */
@@ -312,6 +335,7 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
     {
       configEntries: deps.configEntries,
       ...(deps.tenantSecrets ? { tenantSecrets: deps.tenantSecrets } : {}),
+      ...(deps.traceDeliveries ? { deliveries: deps.traceDeliveries } : {}),
       egress: tracingEgress(deps.egressOptions ?? {}, options.devMode),
     },
     options,

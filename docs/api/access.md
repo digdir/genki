@@ -34,6 +34,8 @@ A tenant connects its services to a Langfuse with `PUT /tenants/{tenant}/tracing
 - On Digdir's Langfuse (`LANGFUSE_BASE_URL`) a new connection's residency is `global`, and only an operator changes it, with `PUT /operator/tracing/connections/{tenant}/{id}/residency`. For its own Langfuse the tenant declares the residency.
 - `content: true` is refused unless the Langfuse shows erasure: Digdir's once operators set `LANGFUSE_INSTANCE_RECEIVES_CONTENT=true`, a tenant's own once it sets `erasureDeclared`, or one on loopback in development mode.
 - `GET /tenants/{tenant}/tracing/connections` lists them with the secret's reference, never its value. `POST .../{id}/check` opens the connection's project with its keys.
+- genki records every trace it sends through a connection. When the nightly purge removes a case's content, its traces become pending deletes. The worker then deletes the judges' traces, found through the scores on the case's trace and through traces that name it as `target_trace_id`, then the case's trace, and checks that nothing of it is left. A delete that is not confirmed stays pending and is tried again the next night; one that has failed three nights is logged as `trace sink deletes keep failing`.
+- `DELETE /tenants/{tenant}/tracing/connections/{id}` marks every trace sent through the connection for deletion and answers `{ "removing": id }`: the connection covers no service any more and is gone once every delete is confirmed. A connection that never received a trace is removed at once (`{ "removed": id }`).
 
 ## Tenant secrets
 

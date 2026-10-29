@@ -149,8 +149,10 @@ export const LiveTracing = ({
       return;
     }
     try {
-      await api.tracing.remove(tenant, id, reason);
-      onFlash(t('integLangfuse.removed', { id }));
+      const removed = (await api.tracing.remove(tenant, id, reason)) as { removing?: string };
+      onFlash(
+        t(removed.removing ? 'integLangfuse.removingFlash' : 'integLangfuse.removed', { id }),
+      );
       close();
       setRound((r) => r + 1);
     } catch (error) {
@@ -203,6 +205,11 @@ export const LiveTracing = ({
                   },
                 )}
               </Paragraph>
+              {c.removing ? (
+                <Tag data-size="sm" data-color="danger">
+                  {t('integLangfuse.removing')}
+                </Tag>
+              ) : null}
               <Tag data-size="sm" data-color={c.content ? 'warning' : 'neutral'}>
                 {t(c.content ? 'integLangfuse.contentOn' : 'integLangfuse.contentOff')}
               </Tag>
@@ -211,7 +218,7 @@ export const LiveTracing = ({
                 <Button variant="secondary" data-size="sm" onClick={() => void check(c.id)}>
                   {t('integLangfuse.check')}
                 </Button>
-                {canManage ? (
+                {canManage && !c.removing ? (
                   <Button
                     variant="tertiary"
                     data-size="sm"

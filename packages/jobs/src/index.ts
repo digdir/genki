@@ -10,3 +10,4 @@ export * from './quota.js';
 export * from './retention-policy.js';
 export * from './retention.js';
 export * from './run-documents.js';
+export * from './trace-deliveries.js';

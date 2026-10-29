@@ -54,6 +54,8 @@ export interface RetentionCutoff extends RetentionGroup {
 export interface PurgeCount {
   payloads: number;
   envelopes: number;
+  /** The tasks whose content or envelope this purge removed. */
+  tasks: string[];
 }
 
 export interface RetentionStore {
@@ -113,7 +115,7 @@ export class InMemoryRetentionStore implements RetentionStore {
   }
 
   async purge(cutoff: RetentionCutoff): Promise<PurgeCount> {
-    const count = { payloads: 0, envelopes: 0 };
+    const count: PurgeCount = { payloads: 0, envelopes: 0, tasks: [] };
     for (const { task } of this.tasks.all()) {
       if (
         !task.endedAt ||
@@ -127,11 +129,13 @@ export class InMemoryRetentionStore implements RetentionStore {
         this.tasks.delete(task.id);
         this.#purged.delete(task.id);
         count.envelopes += 1;
+        count.tasks.push(task.id);
       } else if (ended < cutoff.payloadBefore.getTime() && !this.#purged.has(task.id)) {
         this.log.dropPayloads(task.id);
         this.tasks.dropContent(task.id);
         this.#purged.add(task.id);
         count.payloads += 1;
+        count.tasks.push(task.id);
       }
     }
     return count;
