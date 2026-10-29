@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition } from '@genai/definitions';
+import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
   caseTypeOf,
   caseView,
@@ -20,6 +21,7 @@ import {
 } from '@genai/eval';
 import { backgroundLeases, restartMessage, type LeaseOptions } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
+import { connectionCovering } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -42,6 +44,31 @@ export interface CaseResult {
   pass: boolean;
   reason?: string;
 }
+
+/** The draft or version cannot be run, for the reasons the draft runner gives. */
+export class RunRefused extends Error {
+  constructor(readonly errors: { path: string; message: string }[]) {
+    super(errors.map((e) => e.message).join('; '));
+    this.name = 'RunRefused';
+  }
+}
+
+/** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
+export class TraceRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TraceRefused';
+  }
+}
+
+const residencyOf = (definition: Record<string, unknown>): Residency => {
+  const residency = (
+    isRecord(definition.spec) && isRecord(definition.spec.model)
+      ? definition.spec.model.residency
+      : undefined
+  ) as unknown;
+  return residencies.includes(residency as Residency) ? (residency as Residency) : 'global';
+};
 
 export interface Subject {
   definition: Record<string, unknown>;
@@ -348,8 +375,21 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     set: TestSet,
     subject: Subject,
     split?: CaseSplit,
+    options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
+    const sink = options.trace
+      ? await connectionCovering(deps.configEntries, tenant, service)
+      : undefined;
+    if (options.trace) {
+      if (!sink || !deps.traceSinks)
+        throw new TraceRefused(`no trace connection covers the service ${service}`);
+      const residency = residencyOf(subject.definition);
+      if (!residencyAllows(residency, sink.residency))
+        throw new TraceRefused(
+          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+        );
+    }
     const prepared = await deps.drafts.prepare({
       principal,
       tenant,
@@ -359,7 +399,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ...(typeof subject.version === 'number' ? { version: subject.version } : {}),
       ...(subject.variant ? { variant: subject.variant } : {}),
     });
-    if (!prepared.ok) throw new Error(prepared.errors.map((e) => e.message).join('; '));
+    if (!prepared.ok) throw new RunRefused(prepared.errors);
     const cases = casesIn(set, split);
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {
@@ -387,6 +427,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         version: subject.version,
         ...(subject.variant ? { variant: subject.variant } : {}),
         ...(split ? { split } : {}),
+        ...(sink ? { sink: sink.id } : {}),
       },
       ...leases.stamp(),
     };
@@ -404,6 +445,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       prepared.release();
       throw error;
     }
+    if (sink) deps.traceSinks?.open(first.id, tenant, sink);
     const done = (async () => {
       try {
         const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
@@ -414,6 +456,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             evaluators: evaluatorsFor(cases),
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
+            ...(sink ? { sink: sink.id } : {}),
           },
         });
         task = invoked.task;
@@ -456,6 +499,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } finally {
         lease.release();
         prepared.release();
+        if (sink) await deps.traceSinks?.close(first.id).catch(() => undefined);
       }
     })();
     return { run: first, done };

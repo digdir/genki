@@ -1353,6 +1353,72 @@ describe('platform.eval.run', () => {
     expect(first?.provenance.judges).toEqual(['judge:criteria@1+foundry/claude-sonnet']);
     expect(second?.metrics['judge.criteria']?.mean).toBe(1);
   });
+
+  it('tells each case but the holdout which run, case and repeat it answers when the run goes to a sink', async () => {
+    const holder: { kernel?: Kernel } = {};
+    const strategy = evalRunStrategy({
+      kernel: () => holder.kernel as Kernel,
+      evaluators: new Map(evaluators.map((e) => [e.id, e])),
+    });
+    const kernel = (holder.kernel = kernelWith(
+      [answering(), strategy as Strategy],
+      [
+        answerCapability,
+        {
+          descriptor: descriptor('eval'),
+          strategy: { id: 'platform.eval.run', version: '1' },
+          config: {},
+          grants: [],
+        },
+      ],
+    ));
+
+    const run = await kernel.invoke(kari, 'eval', {
+      data: {
+        id: 'run-1',
+        capability: 'answer',
+        testSet: setOf(),
+        evaluators: ['contract'],
+        provenance: { commit: 'abc', data: 'd1' },
+        splits: ['train', 'validation', 'holdout'],
+        repeats: 2,
+        sink: 'etaten',
+      },
+    });
+    const [part] = await run.result;
+    const result = part?.body.kind === 'json' ? (part.body.json as EvalRun) : undefined;
+    const contexts: unknown[] = [];
+    for (const r of result?.results ?? []) {
+      for await (const e of await kernel.events(kari, r.task, { audience: 'audit' }))
+        if (e.type === 'kernel.task.input')
+          contexts.push((e.data as { evaluation?: unknown }).evaluation ?? `${r.case}: none`);
+    }
+
+    expect(contexts).toEqual([
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'a', repeat: 0, split: 'train' },
+        sink: 'etaten',
+      },
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'b', repeat: 0, split: 'validation' },
+        sink: 'etaten',
+      },
+      'h: none',
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'a', repeat: 1, split: 'train' },
+        sink: 'etaten',
+      },
+      {
+        run: { id: 'run-1', name: 'mini v1' },
+        case: { id: 'b', repeat: 1, split: 'validation' },
+        sink: 'etaten',
+      },
+      'h: none',
+    ]);
+  });
 });
 
 describe('cli', () => {

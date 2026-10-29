@@ -17,6 +17,7 @@ import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
+import type { TracingOptions } from './trace-connections.js';
 import type { runDetail } from './service-eval.js';
 
 const servers: FakeServer[] = [];
@@ -138,7 +139,7 @@ const testSet = parseTestSet({
   },
 });
 
-const boot = async (prices?: Record<string, ModelPrice>) => {
+const boot = async (prices?: Record<string, ModelPrice>, tracing?: TracingOptions) => {
   const optimiserPrompts: string[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
@@ -192,6 +193,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
+    ...(tracing ? { tracing } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -565,6 +567,193 @@ describe('eval runs for a service', () => {
     expect((await env.send('GET', `${services}/eval-runs`, 'ola')).status).toBe(404);
     expect((await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola')).status).toBe(404);
   });
+});
+
+const otlpCollector = async () => {
+  const spans: { name: string; attributes: { key: string; value: { stringValue?: string } }[] }[] =
+    [];
+  const sink = await fakeHttp((body: Record<string, unknown>) => {
+    const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
+    spans.push(...resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans)));
+    return { status: 200, json: {} };
+  });
+  servers.push(sink);
+  const attr = (span: (typeof spans)[number], key: string) =>
+    span.attributes.find((a) => a.key === key)?.value.stringValue;
+  return { url: sink.url, spans, attr };
+};
+
+describe('eval runs sent to a trace connection', () => {
+  const connect = async (
+    env: Awaited<ReturnType<typeof boot>>,
+    host: string,
+    residency = 'global',
+  ) => {
+    const why = { 'change-reason': 'Kobler tjenesten til sporing' };
+    await env.send(
+      'PUT',
+      `/tenants/${tenant}/secrets/sporing`,
+      'kari',
+      { value: 'sk-lf-lokal', allowedHosts: [host] },
+      why,
+    );
+    const saved = await env.send(
+      'PUT',
+      `/tenants/${tenant}/tracing/connections/lokal`,
+      'kari',
+      {
+        host,
+        publicKey: 'pk-lf-lokal',
+        secretKey: `secret://tenant/${tenant}/sporing`,
+        services: ['svar'],
+        residency,
+      },
+      why,
+    );
+    expect(saved.status).toBe(200);
+  };
+
+  it('sends a traced run as one experiment to the connection covering the service, never its holdout cases', async () => {
+    const collector = await otlpCollector();
+    const env = await boot(undefined, { devMode: true });
+    await connect(env, collector.url);
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(started.status).toBe(202);
+    expect(stored?.run.tested).toMatchObject({ sink: 'lokal' });
+    const roots = collector.spans.filter(
+      (s) =>
+        collector.attr(s, 'langfuse.experiment.item.root_observation_id') !== undefined &&
+        collector.attr(s, 'langfuse.experiment.item.metadata.case') !== undefined,
+    );
+    expect(
+      new Set(collector.spans.map((s) => collector.attr(s, 'langfuse.experiment.id'))),
+    ).toEqual(new Set([String(started.body.id)]));
+    expect(roots.map((s) => collector.attr(s, 'langfuse.experiment.item.id')).sort()).toEqual([
+      'o1#0',
+      'o2#0',
+    ]);
+  });
+
+  it('refuses a traced run when no connection covers the service, or its residency forbids the connection', async () => {
+    const collector = await otlpCollector();
+    const uncovered = await boot(undefined, { devMode: true });
+    const covered = await boot(undefined, { devMode: true });
+    await connect(covered, collector.url, 'global');
+    const norwegian = structuredClone(service);
+    norwegian.spec.model.residency = 'norway';
+
+    const none = await uncovered.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    const elsewhere = await covered.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+      version: 'draft',
+      definition: norwegian,
+    });
+    const allowed = await covered.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await covered.settled();
+
+    expect(none.status).toBe(409);
+    expect(JSON.stringify(none.body)).toContain('no trace connection covers the service svar');
+    expect(elsewhere.status).toBe(409);
+    expect(JSON.stringify(elsewhere.body)).toContain(
+      "the service's residency norway does not allow the connection's global",
+    );
+    expect(allowed.status).toBe(202);
+  });
+});
+
+describe('a run on a draft that cannot run', () => {
+  it('answers 422 with the reasons instead of starting', async () => {
+    const env = await boot();
+    const norwegian = structuredClone(service);
+    norwegian.spec.model.residency = 'norway';
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: norwegian,
+    });
+
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain('outside norway');
+  });
+});
+
+const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
+
+describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => {
+  it('lands as one experiment with a trace per case and repeat, and no holdout case', async () => {
+    const host = localLangfuse as string;
+    const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test';
+    const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test';
+    const env = await boot(undefined, { devMode: true });
+    const why = { 'change-reason': 'Kobler tjenesten til sporing' };
+    await env.send(
+      'PUT',
+      `/tenants/${tenant}/secrets/lokal`,
+      'kari',
+      { value: secretKey, allowedHosts: [host] },
+      why,
+    );
+    await env.send(
+      'PUT',
+      `/tenants/${tenant}/tracing/connections/lokal`,
+      'kari',
+      { host, publicKey, secretKey: `secret://tenant/${tenant}/lokal`, services: ['svar'] },
+      why,
+    );
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const run = String(started.body.id);
+    const auth = `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString('base64')}`;
+    const since = new Date(Date.now() - 10 * 60_000).toISOString();
+    const until = new Date(Date.now() + 10 * 60_000).toISOString();
+    type Observation = {
+      isRootObservation: boolean;
+      input: unknown;
+      output: unknown;
+      metadata: Record<string, unknown>;
+    };
+    let roots: Observation[] = [];
+    for (let i = 0; i < 60 && roots.length < 2; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const found = (await (
+        await fetch(
+          `${host}/api/public/v2/observations?fromStartTime=${since}&toStartTime=${until}&limit=100&fields=core,basic,io,metadata`,
+          { headers: { authorization: auth } },
+        )
+      ).json()) as { data: Observation[] };
+      roots = found.data.filter(
+        (o) => o.isRootObservation && o.metadata['attributes.langfuse.experiment.id'] === run,
+      );
+    }
+
+    expect(roots.map((o) => o.metadata['attributes.langfuse.experiment.item.id']).sort()).toEqual([
+      'o1#0',
+      'o2#0',
+    ]);
+    expect(roots.map((o) => [o.input ?? null, o.output ?? null])).toEqual([
+      [null, null],
+      [null, null],
+    ]);
+  }, 90_000);
 });
 
 describe('service draft', () => {

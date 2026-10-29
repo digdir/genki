@@ -145,6 +145,7 @@ export const qualityArea = {
     runFailed: 'Feilet',
     runRunning: 'Kjører',
     runWaiting: 'Venter på vurderinger',
+    sendToTrace: 'Send kjøringen til Langfuse ({connection}). Holdout-tilfeller sendes aldri.',
     runInterrupted: 'Avbrutt',
     runMetrics: 'Måltall',
     runMetric: 'Mål',

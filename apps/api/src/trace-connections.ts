@@ -80,7 +80,7 @@ export const tracingEgress = (options: EgressOptions, devMode = false) =>
       : options,
   );
 
-const allowOf = (host: string) => {
+export const allowOf = (host: string) => {
   const url = new URL(host);
   return [
     {
@@ -281,6 +281,23 @@ export const traceConnections = (
 };
 
 export type TraceConnections = ReturnType<typeof traceConnections>;
+
+/** The connection that covers a service, if any. */
+export const connectionCovering = async (
+  configEntries: ConfigEntryStore,
+  tenant: string,
+  service: string,
+) =>
+  (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+    .filter((e) => !e.deleted)
+    .map((e) => e.spec as TraceConnection)
+    .find((c) => c.services.includes(service));
+
+/** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
+export interface TraceSinks {
+  open(run: string, tenant: string, connection: TraceConnection): void;
+  close(run: string): Promise<void>;
+}
 
 /** A connection as a tenant reads it: the secret's reference, never its value. */
 const view = (connections: TraceConnections) => (c: TraceConnection) => ({

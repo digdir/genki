@@ -365,6 +365,8 @@ export const qualityErrors = {
   noTestSetFor: 'no test set {setId} for {service}',
   noVersion: 'no {version} version',
   noCases: 'The test set has no test cases',
+  serviceCannotRun: 'The service cannot run',
+  runNotTraced: 'The test run cannot be sent for tracing',
   noCasesToRun: 'no cases to run',
   approveTrueFalse: 'approve is true or false',
   skillId: 'must be lowercase letters, digits and dashes, and not import or imports',

@@ -19,6 +19,8 @@ export const evalRunConfig = z.strictObject({
   repeats: z.number().int().positive().max(20).default(1),
   splits: z.array(z.enum(splits)).min(1).default(['train', 'validation']),
   provenance: z.strictObject({ commit: z.string().min(1), data: z.string().min(1) }),
+  /** Send each case's trace to this sink, as one experiment; holdout cases never go. */
+  sink: z.string().min(1).optional(),
 });
 export type EvalRunConfig = z.input<typeof evalRunConfig>;
 
@@ -58,11 +60,26 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
     const kernel = deps.kernel();
     const target: EvalTarget = {
       capability: options.capability,
-      invoke: async (caseInput) => {
+      invoke: async (caseInput, item) => {
         const tenant = ctx.principal.tenant;
         if (tenant && deps.admit && !(await deps.admit(tenant)))
           throw new EvalError('the monthly token quota is used up');
-        const run = await ctx.invoke(options.capability, caseInput);
+        const run = await ctx.invoke(
+          options.capability,
+          caseInput,
+          options.sink && options.id && item && item.case.split !== 'holdout'
+            ? {
+                evaluation: {
+                  run: {
+                    id: options.id,
+                    name: `${options.testSet.metadata.id} v${options.testSet.metadata.version}`,
+                  },
+                  case: { id: item.case.id, repeat: item.repeat, split: item.case.split },
+                  sink: options.sink,
+                },
+              }
+            : {},
+        );
         return describeTask(kernel, ctx.principal, run.task, await run.result);
       },
       annotate: (task, score) =>

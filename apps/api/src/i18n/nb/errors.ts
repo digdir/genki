@@ -366,6 +366,8 @@ export const qualityErrors = defineNamespace({
   noTestSetFor: 'ingen testsett {setId} for {service}',
   noVersion: 'ingen versjon {version}',
   noCases: 'Testsettet har ingen testtilfeller',
+  serviceCannotRun: 'Tjenesten kan ikke kjøres',
+  runNotTraced: 'Testkjøringen kan ikke sendes til sporing',
   noCasesToRun: 'ingen testtilfeller å kjøre',
   approveTrueFalse: 'approve er true eller false',
   skillId: 'må være små bokstaver, sifre og bindestrek, og ikke import eller imports',

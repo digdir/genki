@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Chip,
   Fieldset,
   Heading,
@@ -241,6 +242,13 @@ export const RunHistory = ({
   const [round, setRound] = useState(0);
   const [version, setVersion] = useState<'draft' | 'published'>('draft');
   const [starting, setStarting] = useState(false);
+  const [trace, setTrace] = useState(false);
+  const [sinks] = useAsync(
+    (signal) => api.tracing.list(tenant, signal).catch(() => []),
+    [api, tenant],
+  );
+  const sink =
+    sinks.status === 'ready' ? sinks.data.find((c) => c.services.includes(serviceId)) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(
@@ -274,7 +282,7 @@ export const RunHistory = ({
       const started = await api.quality.startRun(
         tenant,
         serviceId,
-        { testSet: testSet.id, version },
+        { testSet: testSet.id, version, ...(trace && sink ? { trace: true } : {}) },
         t('quality.runReason', {
           name: testSet.name,
           version: versionText(t, version).toLowerCase(),
@@ -334,6 +342,14 @@ export const RunHistory = ({
             {t('quality.confirmRunTitle', { count: cases })}
           </Heading>
           <RunEstimate api={api} tenant={tenant} serviceId={serviceId} runs={runs} cases={cases} />
+          {sink ? (
+            <Checkbox
+              data-size="sm"
+              label={t('quality.sendToTrace', { connection: sink.id })}
+              checked={trace}
+              onChange={(e) => setTrace(e.target.checked)}
+            />
+          ) : null}
           <div className="actions">
             <Button
               variant="primary"
