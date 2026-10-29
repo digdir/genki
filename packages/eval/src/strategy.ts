@@ -1,4 +1,4 @@
-import type { Part } from '@genai/contracts';
+import type { Part, Principal } from '@genai/contracts';
 import type { Emitted, Kernel, Strategy } from '@genai/kernel';
 import { z } from 'zod';
 import { EvalError, type Evaluator } from './evaluators.js';
@@ -21,6 +21,8 @@ export interface EvalStrategyDeps {
   modelFamily?: (model: string) => string | undefined;
   admit?: (tenant: string) => Promise<boolean>;
   wait?: WaitOptions;
+  /** Evaluators made for one run, such as a judge whose model is picked for the run's tenant. */
+  forRun?: (principal: Principal) => Map<string, Evaluator>;
 }
 
 export interface EvalNotice {
@@ -39,8 +41,9 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
         `invalid eval run: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
       );
     const options = parsed.data;
+    const ownEvaluators = deps.forRun?.(ctx.principal) ?? new Map<string, Evaluator>();
     const evaluators = options.evaluators.map((id) => {
-      const evaluator = deps.evaluators.get(id);
+      const evaluator = ownEvaluators.get(id) ?? deps.evaluators.get(id);
       if (!evaluator) throw new EvalError(`unknown evaluator ${id}`);
       return evaluator;
     });

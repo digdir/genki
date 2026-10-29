@@ -3,11 +3,19 @@ import {
   contractAssertions,
   rubricJudge,
   type EvalContext,
+  type Evaluator,
   type JudgeModel,
   type JudgePrompt,
 } from './evaluators.js';
 import type { TestCaseCandidate } from './feedback.js';
-import { caseTypes, expectedFor, type CaseType, type Split, type TestCase } from './schema.js';
+import {
+  caseTypes,
+  expectedFor,
+  type CaseType,
+  type Score,
+  type Split,
+  type TestCase,
+} from './schema.js';
 
 export const caseSplits = ['locked', 'open'] as const;
 export type CaseSplit = (typeof caseSplits)[number];
@@ -110,6 +118,89 @@ export const criteriaJudgePrompt = (criteria: string): JudgePrompt => ({
   criteria: [{ id: 'criteria', description: criteria }],
   scale: { min: 0, max: 1 },
 });
+
+export const criteriaJudgeId = 'judge:criteria';
+
+/**
+ * Scores criteria cases on their criteria. Its model is picked once per run, from another family
+ * than the models that wrote the first answer, and is part of its version.
+ */
+export const criteriaJudge = (
+  pick: (writers: string[]) => Promise<JudgeModel | undefined>,
+): Evaluator => {
+  const prompt = criteriaJudgePrompt('');
+  let chosen: Promise<JudgeModel | undefined> | undefined;
+  let model: JudgeModel | undefined;
+  const score = (fields: Pick<Score, 'value' | 'applicable' | 'state'> & { reason?: string }) => ({
+    evaluator: criteriaJudgeId,
+    version: self.version,
+    metric: 'judge.criteria',
+    ...fields,
+  });
+  const self: Evaluator = {
+    id: criteriaJudgeId,
+    get version() {
+      return model ? `${prompt.version}+${model.id}` : prompt.version;
+    },
+    get judge() {
+      return model ? `${criteriaJudgeId}@${prompt.version}+${model.id}` : undefined;
+    },
+    kind: 'model',
+    evaluate: async (c, o, ctx) => {
+      const type = caseTypeOf(c);
+      if (type !== 'criteria')
+        return [
+          score({
+            value: null,
+            applicable: false,
+            state: 'not-applicable',
+            reason: `the case is ${type}, not criteria`,
+          }),
+        ];
+      const criteria = criteriaOf(c);
+      if (!criteria)
+        return [
+          score({
+            value: null,
+            applicable: false,
+            state: 'not-applicable',
+            reason: 'the case has no criteria',
+          }),
+        ];
+      chosen ??= pick(ctx.servedModels);
+      model = await chosen;
+      if (!model)
+        return [
+          score({
+            value: null,
+            applicable: true,
+            state: 'failed',
+            reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
+          }),
+        ];
+      try {
+        const judged = await rubricJudge(model, criteriaJudgePrompt(criteria)).evaluate(c, o, ctx);
+        const value = judged.find((s) => s.metric === 'judge.criteria')?.value ?? null;
+        const rationale = judged.find((s) => s.metric === 'judge.overall')?.details?.rationale;
+        return [
+          value === null
+            ? score({ value: null, applicable: true, state: 'failed', reason: 'no verdict' })
+            : score({
+                value,
+                applicable: true,
+                state: 'scored',
+                ...(typeof rationale === 'string' ? { reason: rationale } : {}),
+              }),
+        ];
+      } catch (error) {
+        return [
+          score({ value: null, applicable: true, state: 'failed', reason: messageOf(error) }),
+        ];
+      }
+    },
+  };
+  return self;
+};
 
 export interface CaseGrade {
   pass: boolean;

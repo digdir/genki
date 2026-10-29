@@ -28,7 +28,7 @@ export interface Evaluator {
   id: string;
   version: string;
   kind: 'deterministic' | 'model' | 'human';
-  judge?: string;
+  judge?: string | undefined;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
   collect?(pending: PendingScore[]): Promise<CollectedScore[]>;
 }
@@ -70,16 +70,19 @@ export const defaultRefusalPatterns = [
   "(?i)\\b(i don't know|i do not know|could not find|couldn't find|no information|cannot answer|not covered)\\b",
 ];
 
+const normalized = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** v2: an exact case's text, and an empty answer counts as a refusal, as the portal graded them. */
 export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Evaluator => {
   const refusals = refusalPatterns.map(compilePattern);
   const self: Evaluator = {
     id: 'contract',
-    version: '1',
+    version: '2',
     kind: 'deterministic',
     evaluate: async (c, o) => {
       const scores: Score[] = [];
-      const refused = refusals.some((r) => r.test(o.answer));
-      if (c.grounding === 'refusal-expected') {
+      const refused = o.answer.trim() === '' || refusals.some((r) => r.test(o.answer));
+      if (c.grounding === 'refusal-expected' || c.type === 'must_reject') {
         scores.push(scored(self, 'refusal', refused ? 1 : 0));
         scores.push(skipped(self, 'answer-pattern', 'a refusal is expected'));
       } else {
@@ -91,6 +94,18 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
                 self,
                 'answer-pattern',
                 compilePattern(c.expected.answerPattern).test(o.answer) ? 1 : 0,
+              ),
+        );
+      }
+      if (c.type === 'exact') {
+        const expected = c.expected.referenceAnswer ?? c.expected.answerPattern;
+        scores.push(
+          expected === undefined
+            ? skipped(self, 'exact-text', 'the case has no text to find')
+            : scored(
+                self,
+                'exact-text',
+                normalized(o.answer).includes(normalized(expected)) ? 1 : 0,
               ),
         );
       }
