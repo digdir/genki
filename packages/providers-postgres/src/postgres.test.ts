@@ -296,14 +296,19 @@ describe('postgres task and state stores', () => {
         `2026-10-${String(2 + (i % 20)).padStart(2, '0')}T08:00:00.000Z`,
         1,
       );
-    await put('q-assistant', 'platform/builder-assistant', '2026-10-05T08:00:00.000Z', 500);
+    await put(
+      'q-assistant',
+      'platform/draft/assistant/0f3a9c2e7b1d4e65',
+      '2026-10-05T08:00:00.000Z',
+      500,
+    );
     await put('q-september', `${tenant}/svar`, '2026-09-30T23:00:00.000Z', 500);
 
     expect(
       await stores.tasks.tokensUsed({
         tenant,
         since: '2026-10-01T00:00:00.000Z',
-        excludeCapabilityPrefix: 'platform/builder-assistant',
+        excludeCapabilityPrefix: 'platform/draft/assistant/',
       }),
     ).toBe(2002);
     await stores.close();
