@@ -261,6 +261,18 @@ const serviceNb = {
   'spec.variants.chat': { label: 'Vises i chat' },
   'spec.variants.aliases': { label: 'Andre navn' },
   'spec.variants.overrides': { label: 'Overstyringer' },
+  'spec.variants.filters': { label: 'Faste søkefiltre' },
+  'spec.variants.filters.fields': { label: 'Filterfelter' },
+  'spec.variants.filters.fields.field': { label: 'Felt' },
+  'spec.variants.filters.fields.type': {
+    label: 'Filtertype',
+    values: { multiselect: 'Er en av', contains: 'Inneholder', 'not-in-set': 'Er ingen av' },
+  },
+  'spec.variants.filters.fields.value-type': {
+    label: 'Verditype',
+    values: { string: 'Tekst', integer: 'Heltall' },
+  },
+  'spec.variants.filters.fields.selected-options': { label: 'Verdier' },
   'spec.languages': {
     label: 'Språk tjenesten svarer på',
     values: { nb: 'Bokmål', nn: 'Nynorsk', en: 'Engelsk' },
@@ -375,6 +387,18 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.variants.chat': { label: 'Shown in chat' },
   'spec.variants.aliases': { label: 'Other names' },
   'spec.variants.overrides': { label: 'Overrides' },
+  'spec.variants.filters': { label: 'Fixed search filters' },
+  'spec.variants.filters.fields': { label: 'Filter fields' },
+  'spec.variants.filters.fields.field': { label: 'Field' },
+  'spec.variants.filters.fields.type': {
+    label: 'Filter type',
+    values: { multiselect: 'Is one of', contains: 'Contains', 'not-in-set': 'Is none of' },
+  },
+  'spec.variants.filters.fields.value-type': {
+    label: 'Value type',
+    values: { string: 'Text', integer: 'Integer' },
+  },
+  'spec.variants.filters.fields.selected-options': { label: 'Values' },
   'spec.languages': {
     label: 'Languages the service answers in',
     values: { nb: 'Norwegian Bokmål', nn: 'Norwegian Nynorsk', en: 'English' },

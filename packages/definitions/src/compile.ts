@@ -44,6 +44,9 @@ const interaction = (spec: ServiceDefinition['spec']): CapabilityDescriptor['int
   ...(spec.batch?.enabled || spec.triggers.length > 0 ? (['async'] as const) : []),
 ];
 
+const variantFilters = (variant: ServiceDefinition['spec']['variants'][number]) =>
+  typeof variant === 'string' ? undefined : variant.filters;
+
 export const toCapabilities = (
   definition: ServiceDefinition,
   version: number,
@@ -90,7 +93,9 @@ export const toCapabilities = (
         ...(spec.callOverrides ? { callOverrides: spec.callOverrides } : {}),
         output: spec.output,
         model: { ...model, tenant: metadata.tenant },
-        knowledge: spec.knowledge,
+        knowledge: variantFilters(variant)
+          ? { ...spec.knowledge, filters: variantFilters(variant) }
+          : spec.knowledge,
         tools: spec.tools.map(toolRef),
         guardrails: spec.guardrails,
       },

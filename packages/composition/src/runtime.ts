@@ -528,6 +528,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ),
     rerankerResidency: (id) => rerank.residency(id),
     datasets: new Set(knowledge.datasets().keys()),
+    datasetFilters: (dataset) => knowledge.datasets().get(dataset)?.filters,
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
