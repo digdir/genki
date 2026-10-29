@@ -1,6 +1,6 @@
 # 0022 Tenant isolation in Postgres
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; job tables proposed in ADR 0041, 2026-10-29). Proposed 2026-10-06
 
 ## Decision
 
@@ -20,3 +20,4 @@ Row-level security on the kernel's tables would need the tenant on every kernel 
 - Infra creates the two roles and grants them separately.
 - A new table the API reads directly gets a tenant column and a policy in the same migration.
 - The kernel still shares `genai_runtime` with the API until the deployment has a separate kernel role. The pgvector tables (`kn_*`) have no tenant column and are reached only through the owner pool, because the knowledge writer runs DDL.
+- [ADR 0041](0041-durable-jobs-on-pg-boss.md), proposed, adds pg-boss's `pgboss` tables to the platform server without row-level security, like the kernel's tables. The console reads job state only through a `SECURITY DEFINER` function that requires `withPlatformAccess`, an exception to the rule above that a table the API reads directly gets a tenant column and a policy.
