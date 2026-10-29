@@ -24,6 +24,14 @@ module.exports = {
       },
     },
     {
+      name: 'no-code-execution-in-the-platform',
+      comment:
+        'ADR 0043: code a model, user or tenant writes runs in agentctl, never in the platform',
+      severity: 'error',
+      from: { path: '^(apps/(api|worker)|packages)/', pathNot: '\\.test(-utils)?\\.ts$' },
+      to: { path: '^(node:)?(child_process|vm|worker_threads)$' },
+    },
+    {
       name: 'vendor-sdks-only-in-providers',
       comment:
         'model, search, database and document library clients may only be imported by provider packages',
