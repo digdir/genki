@@ -49,6 +49,7 @@
 - providers-openapi-tools
 - providers-langfuse
 - providers-postgres
+- providers-pgboss
 - providers-pgvector
 - providers-parquet
 - providers-postgres-source

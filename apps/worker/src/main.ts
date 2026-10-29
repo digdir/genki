@@ -32,6 +32,8 @@ import {
   triggerPauseKind,
   type TokenPrice,
   type TriggerBinding,
+  InMemoryJobQueue,
+  platformQueues,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -42,12 +44,14 @@ import {
 } from '@genai/kernel';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import { openJobQueue } from '@genai/providers-pgboss';
 import {
   createPostgresStores,
   LocalKeyWrapper,
   PostgresDefinitionStore,
   PostgresLeaderLease,
   postgresSourceFromEnv,
+  runtimeRole,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
 import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
@@ -99,6 +103,18 @@ const db = databaseSource
     )
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
+
+const jobs = db
+  ? await openJobQueue({ owner: db.pool, runtime: db.runtimePool }, platformQueues, {
+      grantTo: runtimeRole,
+      works: true,
+      onError: (error) =>
+        log('job queue error', {
+          error: error instanceof Error ? error.message : JSON.stringify(error),
+        }),
+    })
+  : new InMemoryJobQueue();
+log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformQueues.length });
 
 const secrets = envSecrets();
 const catalogs = {
@@ -376,6 +392,7 @@ const stop = () => {
   following.stop();
   worker.stop();
   void (async () => {
+    await jobs.stop();
     await db?.close();
     await lease?.release();
     await retentionLease?.release();

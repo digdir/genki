@@ -79,4 +79,11 @@ edges:
     witness:
       file: apps/worker/src/main.ts
       imports: '@genai/providers-postgres'
+  - to: providers-pgboss
+    label: Opens the durable job queue (works jobs)
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-pgboss'
 keywords: worker triggers batch schedule folder jobs

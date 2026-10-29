@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node dist/main.js",
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "dev": "tsx watch --conditions=source src/main.ts"
   },
   "dependencies": {
     "@genai/composition": "0.0.0",
@@ -16,6 +17,7 @@
     "@genai/kernel": "0.0.0",
     "@genai/port-blob": "0.0.0",
     "@genai/providers-langfuse": "0.0.0",
+    "@genai/providers-pgboss": "0.0.0",
     "@genai/providers-postgres": "0.0.0",
     "yaml": "^2.9.1"
   },
