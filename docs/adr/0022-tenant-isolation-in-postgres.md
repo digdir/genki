@@ -1,6 +1,6 @@
 # 0022 Tenant isolation in Postgres
 
-Status: accepted, 2026-10-12 (built; job tables proposed in ADR 0041, 2026-10-29; deployed role switch corrected, 2026-10-29). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; knowledge server proposed in ADR 0042, 2026-10-27; job tables proposed in ADR 0041, 2026-10-29; deployed role switch corrected, 2026-10-29). Proposed 2026-10-06
 
 ## Decision
 
@@ -20,4 +20,5 @@ Row-level security on the kernel's tables would need the tenant on every kernel 
 - Infra creates the two roles and grants them separately.
 - A new table the API reads directly gets a tenant column and a policy in the same migration.
 - The kernel still shares `genai_runtime` with the API until the deployment has a separate kernel role. The pgvector tables (`kn_*`) have no tenant column and are reached only through the owner pool, because the knowledge writer runs DDL.
+- [ADR 0042](0042-the-knowledge-database.md), proposed, moves the knowledge tables to their own server with their own roles. They have no row-level security, which would cost full-text search its index; the API's role has no `SELECT` on them and reads only through `SECURITY DEFINER` functions that check the dataset, the pattern of the API-key lookup above.
 - [ADR 0041](0041-durable-jobs-on-pg-boss.md), proposed, adds pg-boss's `pgboss` tables to the platform server without row-level security, like the kernel's tables. Only the worker's role, `genai_worker`, a member of `genai_runtime`, has DML on them. `genai_runtime` has no right on them beyond what sending a job needs, and the console reads job state only through `SECURITY DEFINER` functions that require `withPlatformAccess`. The API does not read the tables directly, so the rule above does not apply to them; the grants enforce it.

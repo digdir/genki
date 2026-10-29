@@ -1,6 +1,6 @@
 # 0011 Retention, erasure and archiving
 
-Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built; knowledge withdrawals proposed in ADR 0042, 2026-10-29). Proposed 2026-10-06
 
 ## Decision
 
@@ -38,3 +38,4 @@ Prompts and answers are personal data and are probably case documents under offe
 
 - Content stays out of event rows in Postgres from the start, before the schema is fixed.
 - The legal basis, retention periods and archive duties must be confirmed with the DPO and legal before KA traffic reaches the platform.
+- [ADR 0042](0042-the-knowledge-database.md), proposed, withdraws a document from a dataset in the knowledge database on request: from every generation and the shared caches at once, from their Blob copies by the next night, and from the server's 7-day backups after that, with a log on the platform server that is applied again after a restore. Its tombstone keeps only a hash of the document's id, and the Marker client asks the host to keep nothing.
