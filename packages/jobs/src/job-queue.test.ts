@@ -31,6 +31,11 @@ describe('job queue definitions', () => {
     expect(() => defineQueue({ ...nightly, expireInSeconds: 10 })).toThrow(JobQueueError);
   });
 
+  it('refuses an expiry longer than 24 hours', () => {
+    expect(() => defineQueue({ ...nightly, expireInSeconds: 86_401 })).toThrow(JobQueueError);
+    expect(defineQueue({ ...nightly, expireInSeconds: 86_400 }).expireInSeconds).toBe(86_400);
+  });
+
   it('refuses a queue name that reads as a dead-letter queue', () => {
     expect(() => defineQueue({ ...nightly, name: 'test.dead' })).toThrow(JobQueueError);
   });

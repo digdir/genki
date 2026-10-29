@@ -46,7 +46,9 @@ export const contractQueues = {
   tenants: contractQueue('tenants'),
   cancelled: contractQueue('cancelled'),
   keyed: contractQueue('keyed', { policy: 'short' }),
+  rekeyed: contractQueue('rekeyed', { policy: 'short' }),
   prioritised: contractQueue('prioritised'),
+  expiring: contractQueue('expiring', { expireInSeconds: 11, retryLimit: 1 }),
 };
 
 export const waitFor = async <T>(
@@ -228,6 +230,57 @@ export const describeJobQueueContract = (
       expect(other).toEqual(expect.any(String));
     });
 
+    it('holds one queued job per key inside a transaction', async () => {
+      const open = await target.transaction();
+      const first = await target.queue.send(
+        q.keyed,
+        { tenant: ORG_A, item: '4' },
+        { key: 'h', transaction: open.transaction },
+      );
+      const second = await target.queue.send(
+        q.keyed,
+        { tenant: ORG_A, item: '5' },
+        { key: 'h', transaction: open.transaction },
+      );
+      await open.commit();
+      expect(first).toEqual(expect.any(String));
+      expect(second).toBeNull();
+      expect(
+        await target.queue.send(q.keyed, { tenant: ORG_A, item: '6' }, { key: 'h' }),
+      ).toBeNull();
+    });
+
+    it('sending a dead letter back keeps its key, and leaves it while another job holds the key', async () => {
+      let fixed = false;
+      const done: string[] = [];
+      await target.queue.work(q.rekeyed, async (job) => {
+        if (!fixed) throw new Error('not yet');
+        done.push(job.data.item);
+      });
+      await target.queue.send(q.rekeyed, { tenant: ORG_A, item: 'held' }, { key: 'k1' });
+      await target.queue.send(q.rekeyed, { tenant: ORG_A, item: 'free' }, { key: 'k2' });
+      const letters = await waitFor(async () => {
+        const found = await deadLetters(q.rekeyed);
+        return found.length === 2 ? found : undefined;
+      });
+      const holder = await target.queue.send(
+        q.rekeyed,
+        { tenant: ORG_A, item: 'holder' },
+        { key: 'k1', startAfter: new Date(Date.now() + 60 * 60_000) },
+      );
+      expect(holder).toEqual(expect.any(String));
+      fixed = true;
+      expect(
+        await target.queue.redrive(
+          q.rekeyed,
+          letters.map((l) => l.id),
+        ),
+      ).toBe(1);
+      await waitFor(() => done.length === 1);
+      await pause(1_000);
+      expect(done).toEqual(['free']);
+    });
+
     it('takes jobs in priority order', async () => {
       for (const priority of [1, 10, 5])
         await target.queue.send(
@@ -242,4 +295,22 @@ export const describeJobQueueContract = (
       await waitFor(() => order.length === 3);
       expect(order).toEqual(['10', '5', '1']);
     });
+
+    it('an attempt that runs past its expiry is aborted and retried', async () => {
+      const attempts: string[] = [];
+      await target.queue.work(q.expiring, async (job) => {
+        if (job.retryCount > 0) {
+          attempts.push(`done#${job.retryCount}`);
+          return;
+        }
+        if (!job.signal.aborted)
+          await new Promise((resolve) =>
+            job.signal.addEventListener('abort', resolve, { once: true }),
+          );
+        attempts.push('aborted#0');
+      });
+      await target.queue.send(q.expiring, { tenant: ORG_A, item: 'slow' });
+      await waitFor(() => attempts.length === 2, 30_000);
+      expect(attempts).toEqual(['aborted#0', 'done#1']);
+    }, 40_000);
   });

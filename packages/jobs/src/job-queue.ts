@@ -97,6 +97,8 @@ export class JobQueueError extends Error {}
 
 export const minimumHeartbeatSeconds = 10;
 
+export const maximumExpireInSeconds = 24 * 60 * 60;
+
 export const defineQueue = <T extends JobData>(queue: QueueDefinition<T>): QueueDefinition<T> => {
   if (!/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/.test(queue.name) || queue.name.endsWith('.dead'))
     throw new JobQueueError(`invalid queue name ${queue.name}`);
@@ -106,6 +108,8 @@ export const defineQueue = <T extends JobData>(queue: QueueDefinition<T>): Queue
     );
   if (queue.heartbeatSeconds >= queue.expireInSeconds)
     throw new JobQueueError(`queue ${queue.name} must expire later than its heartbeat`);
+  if (queue.expireInSeconds > maximumExpireInSeconds)
+    throw new JobQueueError(`queue ${queue.name} cannot expire later than 24 hours`);
   return queue;
 };
 
@@ -173,13 +177,21 @@ export interface InMemoryJobQueueOptions {
   pollMs?: number;
 }
 
+interface PendingJob {
+  queue: QueueDefinition;
+  job: StoredJob;
+}
+
 const queued = (job: StoredJob) => job.state === 'created' || job.state === 'retry';
+
+// pg-boss counts a job sent without a key under the empty key.
+const keyOf = (job: { key?: string }) => job.key ?? '';
 
 export class InMemoryJobQueue implements JobQueue {
   readonly #jobs = new Map<string, StoredJob>();
   readonly #workers = new Map<string, Worker>();
   readonly #schedules = new Map<string, StoredSchedule>();
-  readonly #openTransactions = new Map<JobTransaction, StoredJob[]>();
+  readonly #openTransactions = new Map<JobTransaction, PendingJob[]>();
   readonly #now: () => Date;
   readonly #timer: NodeJS.Timeout;
   #ticking = false;
@@ -204,7 +216,8 @@ export class InMemoryJobQueue implements JobQueue {
     return {
       transaction,
       commit: async () => {
-        for (const job of close()) this.#jobs.set(job.id, job);
+        for (const { queue, job } of close())
+          if (!this.#refusesKey(queue, job.key)) this.#jobs.set(job.id, job);
         void this.#tick();
       },
       rollback: async () => {
@@ -215,7 +228,10 @@ export class InMemoryJobQueue implements JobQueue {
 
   async send<T extends JobData>(queue: QueueDefinition<T>, data: T, options: SendOptions = {}) {
     const admitted = admitPayload(queue, data);
-    if (options.key !== undefined && this.#refusesKey(queue, options.key)) return null;
+    const pending = options.transaction && this.#openTransactions.get(options.transaction);
+    if (options.transaction && !pending)
+      throw new JobQueueError('the in-memory job queue only joins transactions it opened');
+    if (this.#refusesKey(queue, options.key, pending || [])) return null;
     const job: StoredJob = {
       id: randomUUID(),
       queue: queue.name,
@@ -227,11 +243,8 @@ export class InMemoryJobQueue implements JobQueue {
       retryCount: 0,
       createdAt: this.#now().getTime(),
     };
-    if (options.transaction) {
-      const pending = this.#openTransactions.get(options.transaction);
-      if (!pending)
-        throw new JobQueueError('the in-memory job queue only joins transactions it opened');
-      pending.push(job);
+    if (pending) {
+      pending.push({ queue, job });
       return job.id;
     }
     this.#jobs.set(job.id, job);
@@ -301,12 +314,17 @@ export class InMemoryJobQueue implements JobQueue {
     for (const id of ids) {
       const dead = this.#jobs.get(id);
       if (!dead || dead.queue !== deadLetterQueue(queue.name) || !queued(dead)) continue;
+      if (this.#refusesKey(queue, dead.key)) {
+        dead.state = 'failed';
+        continue;
+      }
       this.#jobs.delete(id);
       const job: StoredJob = {
         id: randomUUID(),
         queue: queue.name,
         data: dead.data,
-        priority: 0,
+        ...(dead.key === undefined ? {} : { key: dead.key }),
+        priority: dead.priority,
         startAfter: 0,
         state: 'created',
         retryCount: 0,
@@ -339,9 +357,12 @@ export class InMemoryJobQueue implements JobQueue {
     for (const job of this.#jobs.values()) job.abort?.abort();
   }
 
-  #refusesKey(queue: QueueDefinition, key: string) {
-    const same = [...this.#jobs.values()].filter((j) => j.queue === queue.name && j.key === key);
-    if (queue.policy === 'short' || queue.policy === 'stately') return same.some(queued);
+  #refusesKey(queue: QueueDefinition, key: string | undefined, pending: PendingJob[] = []) {
+    const same = [...this.#jobs.values(), ...pending.map((p) => p.job)].filter(
+      (job) => job.queue === queue.name && keyOf(job) === (key ?? ''),
+    );
+    if (queue.policy === 'short' || queue.policy === 'stately')
+      return same.some((job) => job.state === 'created');
     if (queue.policy === 'exclusive')
       return same.some((job) => queued(job) || job.state === 'active');
     return false;
@@ -350,16 +371,12 @@ export class InMemoryJobQueue implements JobQueue {
   #next(queue: QueueDefinition) {
     const now = this.#now().getTime();
     const jobs = [...this.#jobs.values()].filter((job) => job.queue === queue.name);
-    const activeKeys = new Set(
-      jobs.filter((job) => job.state === 'active' && job.key).map((job) => job.key),
-    );
+    const activeKeys = new Set(jobs.filter((job) => job.state === 'active').map(keyOf));
     const oneActivePerKey = queue.policy !== 'standard' && queue.policy !== 'short';
     return jobs
       .filter(
         (job) =>
-          queued(job) &&
-          job.startAfter <= now &&
-          !(oneActivePerKey && job.key !== undefined && activeKeys.has(job.key)),
+          queued(job) && job.startAfter <= now && !(oneActivePerKey && activeKeys.has(keyOf(job))),
       )
       .sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt)[0];
   }
@@ -373,13 +390,24 @@ export class InMemoryJobQueue implements JobQueue {
     }
   }
 
+  // Like pg-boss, an attempt that outlives its expiry is failed and its signal aborted, and the
+  // worker takes nothing more until the handler returns.
   async #run(worker: Worker, job: StoredJob) {
+    const { queue } = worker;
     const abort = new AbortController();
     worker.busy = true;
     job.state = 'active';
     job.abort = abort;
+    const current = () => job.abort === abort && job.state === 'active';
+    const expiry = setTimeout(() => {
+      if (!current()) return;
+      delete job.abort;
+      abort.abort();
+      this.#fail(queue, job, `handler execution exceeded ${queue.expireInSeconds}s`);
+    }, queue.expireInSeconds * 1000);
+    expiry.unref?.();
     try {
-      const data = admitPayload(worker.queue, job.data);
+      const data = admitPayload(queue, job.data);
       await worker.handler({
         id: job.id,
         queue: job.queue,
@@ -387,12 +415,12 @@ export class InMemoryJobQueue implements JobQueue {
         retryCount: job.retryCount,
         signal: abort.signal,
       });
-      if (job.state === 'active') job.state = 'completed';
+      if (current()) job.state = 'completed';
     } catch (error) {
-      if (job.state !== 'active') return;
-      this.#fail(worker.queue, job, error instanceof Error ? error.message : String(error));
+      if (current()) this.#fail(queue, job, error instanceof Error ? error.message : String(error));
     } finally {
-      delete job.abort;
+      clearTimeout(expiry);
+      if (job.abort === abort) delete job.abort;
       worker.busy = false;
       void this.#tick();
     }
@@ -412,7 +440,8 @@ export class InMemoryJobQueue implements JobQueue {
       id: randomUUID(),
       queue: deadLetterQueue(queue.name),
       data: job.data,
-      priority: 0,
+      ...(job.key === undefined ? {} : { key: job.key }),
+      priority: job.priority,
       startAfter: 0,
       state: 'created',
       retryCount: 0,
