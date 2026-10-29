@@ -11,7 +11,16 @@ import {
   Textarea,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import type { AnswerLanguage } from '../../data/service-languages';
 import { AnswerLanguagePicker } from './AnswerLanguagePicker';
 import { ApiError, type ApiClient } from '../../api';
@@ -90,6 +99,7 @@ export interface PlaygroundPanelProps {
   serviceDraft?: ServiceDraft;
   timelinePanel?: boolean;
   bare?: boolean;
+  note?: ReactNode;
 }
 
 export interface ServiceDraft {
@@ -284,6 +294,7 @@ export const PlaygroundPanel = ({
   serviceDraft,
   timelinePanel = false,
   bare = false,
+  note,
 }: PlaygroundPanelProps) => {
   const t = useT();
   const f = useFormat();
@@ -1021,6 +1032,7 @@ export const PlaygroundPanel = ({
               </li>
             ))}
           </ol>
+          {note}
           <div className="playground-thread-foot">
             <span role="status" className="playground-status">
               {busy ? (

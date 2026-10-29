@@ -1,12 +1,13 @@
 import {
   Button,
+  Card,
   Details,
   Dropdown,
   Heading,
   Paragraph,
   ToggleGroup,
 } from '@digdir/designsystemet-react';
-import { useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useRef, useState, type ReactNode } from 'react';
 import { Icon, icons } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockIcon, blockLabel } from './BlocksPanel';
@@ -20,6 +21,7 @@ const paths = {
   desktop: 'M3 5h18v11H3zM8 20h8M12 16v4',
   mobile: 'M7 3h10v18H7zM11 18h2',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  collapse: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
 };
 
 const frameLabel: Record<Panel, PlainKey> = {
@@ -39,6 +41,7 @@ export const ServicePreview = ({
   onRemove,
   onReload,
   onFullscreen,
+  onExitFullscreen,
   height,
 }: {
   layout: BlockLayout;
@@ -51,6 +54,7 @@ export const ServicePreview = ({
   onRemove: (id: BlockId) => void;
   onReload: () => void;
   onFullscreen?: () => void;
+  onExitFullscreen?: () => void;
   height?: number;
 }) => {
   const t = useT();
@@ -111,6 +115,17 @@ export const ServicePreview = ({
             <Icon d={paths.expand} />
           </Button>
         ) : null}
+        {onExitFullscreen ? (
+          <Button
+            variant="tertiary"
+            data-size="sm"
+            icon
+            aria-label={t('builderBlocks.exitFullscreen')}
+            onClick={onExitFullscreen}
+          >
+            <Icon d={paths.collapse} />
+          </Button>
+        ) : null}
       </div>
       <div
         className="service-preview-frame"
@@ -141,50 +156,51 @@ const SetupPanel = ({
 }) => {
   const t = useT();
   const ids = blocksIn(layout, panel);
-  const rightMode = panel === 'right' ? rightPanelMode(ids.length) : undefined;
   return (
     <div className="preview-panel" data-panel={panel}>
-      <div className="preview-panel-head">
-        <span className="preview-panel-name">{t(frameLabel[panel])}</span>
-        {rightMode === 'heading' ? (
-          <span className="meta">{t('builderBlocks.rightModeHeading')}</span>
-        ) : rightMode === 'tabs' ? (
-          <span className="meta">{t('builderBlocks.rightModeTabs')}</span>
-        ) : rightMode === 'dropdown' ? (
-          <span className="meta">{t('builderBlocks.rightModeDropdown', { n: ids.length })}</span>
-        ) : null}
-      </div>
+      <span className="preview-panel-name">{t(frameLabel[panel])}</span>
       <ul className="preview-cards">
         {ids.map((id) => (
-          <li key={id} className="preview-card" data-block={id} data-bottom={id === 'settings'}>
-            <span className="preview-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-            <span className="preview-card-name">{t(blockLabel[id])}</span>
-            <Button
-              variant="tertiary"
-              data-size="sm"
-              icon
-              aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel[id]) })}
-              onClick={() => onRemove(id)}
-            >
-              <Icon d={icons.close} size={16} />
-            </Button>
-          </li>
+          <Card
+            asChild
+            variant="tinted"
+            key={id}
+            data-size="sm"
+            className="preview-card"
+            data-block={id}
+            data-bottom={id === 'settings'}
+          >
+            <li>
+              <span className="preview-card-name">{t(blockLabel[id])}</span>
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                icon
+                aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel[id]) })}
+                onClick={() => onRemove(id)}
+              >
+                <Icon d={icons.close} size={16} />
+              </Button>
+            </li>
+          </Card>
         ))}
       </ul>
     </div>
   );
 };
 
-const TryView = ({ layout, chat }: { layout: BlockLayout; chat: ReactNode }) => {
+const TryView = ({ layout, chat: bare }: { layout: BlockLayout; chat: ReactNode }) => {
   const t = useT();
   const left = blocksIn(layout, 'left');
   const main = blocksIn(layout, 'main');
   const right = blocksIn(layout, 'right');
   const hasChat = main.includes('chat') || right.includes('chat');
+  const chat =
+    right.includes('sources') && isValidElement<{ note?: ReactNode }>(bare)
+      ? cloneElement(bare, {
+          note: <p className="meta try-footnotes">{t('builderBlocks.footnotesExample')}</p>,
+        })
+      : bare;
   return (
     <>
       {left.length ? (
@@ -348,8 +364,6 @@ const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Pa
           </Details.Content>
         </Details>
       );
-    case 'footnotes':
-      return <p className="meta">{t('builderBlocks.footnotesExample')}</p>;
     case 'sources':
       return (
         <ol className="try-sources">

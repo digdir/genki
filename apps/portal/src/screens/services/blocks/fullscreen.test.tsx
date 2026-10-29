@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BlocksFullscreen, useBlocksState } from './BlocksStep';
 
 document.getAnimations ??= () => [];
 
 afterEach(cleanup);
+
+const onExit = vi.fn();
 
 const Harness = () => (
   <BlocksFullscreen
@@ -13,6 +15,7 @@ const Harness = () => (
     chat={null}
     address="ny-tjeneste.genki.no"
     backHref="#/services/new/blocks"
+    onExit={onExit}
   />
 );
 
@@ -30,6 +33,12 @@ describe('the preview on its own page', () => {
     expect(frame(container)?.style.height).toBe('480px');
     for (let i = 0; i < 40; i++) fireEvent.keyDown(handle, { key: 'ArrowDown' });
     expect(handle.getAttribute('aria-valuenow')).toBe('1400');
+  });
+
+  it('has a button that leaves the larger view', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Vis mindre' }));
+    expect(onExit).toHaveBeenCalledOnce();
   });
 
   it('links back to the builder', () => {

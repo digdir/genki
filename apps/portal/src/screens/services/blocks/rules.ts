@@ -6,7 +6,6 @@ export type BlockId =
   | 'settings'
   | 'chat'
   | 'sources'
-  | 'footnotes'
   | 'notes'
   | 'filter'
   | 'procedure'
@@ -24,7 +23,6 @@ export const blockPanels: Record<BlockId, Panel[]> = {
   filter: ['left', 'main'],
   procedure: ['main', 'right'],
   documentView: ['right', 'main'],
-  footnotes: ['main', 'right'],
 };
 
 export const fixedBlocks: Record<Panel, BlockId[]> = {
@@ -33,18 +31,12 @@ export const fixedBlocks: Record<Panel, BlockId[]> = {
   right: ['sources', 'notes'],
 };
 
-export const flexibleBlocks: BlockId[] = [
-  'chat',
-  'filter',
-  'procedure',
-  'documentView',
-  'footnotes',
-];
+export const flexibleBlocks: BlockId[] = ['chat', 'filter', 'procedure', 'documentView'];
 
 export const panelOrder: Record<Panel, BlockId[]> = {
   left: ['projects', 'threads', 'filter', 'settings'],
-  main: ['procedure', 'filter', 'chat', 'footnotes', 'documentView'],
-  right: ['procedure', 'chat', 'sources', 'footnotes', 'documentView', 'notes'],
+  main: ['procedure', 'filter', 'chat', 'documentView'],
+  right: ['procedure', 'chat', 'sources', 'documentView', 'notes'],
 };
 
 export interface BlockLayout {
@@ -94,63 +86,42 @@ export const rightPanelMode = (count: number): RightPanelMode =>
 
 const layoutOf = (placed: Partial<Record<BlockId, Panel>>): BlockLayout => ({ placed, chosen: {} });
 
-export const defaultLayout: BlockLayout = layoutOf({
-  threads: 'left',
-  filter: 'left',
-  settings: 'left',
-  procedure: 'main',
-  chat: 'main',
-  footnotes: 'main',
-  sources: 'right',
-  documentView: 'right',
-  notes: 'right',
-});
+export const allBlocks = Object.keys(blockPanels) as BlockId[];
+
+export const defaultLayout: BlockLayout = layoutOf(
+  Object.fromEntries(allBlocks.map((id) => [id, blockPanels[id][0] ?? 'main'])),
+);
 
 export type TemplateId =
-  | 'full'
-  | 'sourcesOnly'
-  | 'procedureOnly'
-  | 'noFilter'
-  | 'withProjects'
+  | 'all'
+  | 'sourcesFocus'
+  | 'procedureFocus'
+  | 'notesFocus'
+  | 'documentFocus'
+  | 'classic'
   | 'noRight'
   | 'noLeft'
   | 'chatOnly';
 
 export const templates: Record<TemplateId, BlockLayout> = {
-  full: defaultLayout,
-  sourcesOnly: layoutOf({
+  all: defaultLayout,
+  sourcesFocus: layoutOf({
     threads: 'left',
     filter: 'left',
     chat: 'main',
-    footnotes: 'main',
     sources: 'right',
   }),
-  procedureOnly: layoutOf({ threads: 'left', chat: 'main', procedure: 'right' }),
-  noFilter: layoutOf({
+  procedureFocus: layoutOf({ threads: 'left', chat: 'main', procedure: 'right' }),
+  notesFocus: layoutOf({ projects: 'left', threads: 'left', chat: 'main', notes: 'right' }),
+  documentFocus: layoutOf({
     threads: 'left',
-    procedure: 'main',
-    chat: 'main',
-    footnotes: 'main',
+    documentView: 'main',
+    chat: 'right',
     sources: 'right',
-    documentView: 'right',
   }),
-  withProjects: layoutOf({
-    projects: 'left',
-    threads: 'left',
-    procedure: 'main',
-    chat: 'main',
-    footnotes: 'main',
-    sources: 'right',
-    documentView: 'right',
-  }),
+  classic: layoutOf({ threads: 'left', procedure: 'main', chat: 'main', sources: 'right' }),
   noRight: layoutOf({ threads: 'left', filter: 'left', procedure: 'main', chat: 'main' }),
-  noLeft: layoutOf({
-    procedure: 'main',
-    chat: 'main',
-    footnotes: 'main',
-    sources: 'right',
-    documentView: 'right',
-  }),
+  noLeft: layoutOf({ procedure: 'main', chat: 'main', sources: 'right' }),
   chatOnly: layoutOf({ procedure: 'main', chat: 'main' }),
 };
 

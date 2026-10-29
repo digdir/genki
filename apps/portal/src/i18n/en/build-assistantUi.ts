@@ -22,6 +22,13 @@ export const assistantUi = {
     showApiCall: 'Show API call',
     previousMessage: 'Previous message',
     composerLabel: 'Write to the assistant',
+    composerPlaceholder: 'Ask about anything …',
+    starterGoal: 'What users should achieve',
+    starterSources: 'Relevant sources',
+    starterReplaces: 'Existing work it should replace',
+    starterOutcome: 'What the user should be left with',
+    emptyWelcome:
+      'Let me help you fill in the form on the right, and we will build the service together. Pick one of the topics above to get started, or write freely.',
     send: 'Send',
     bannerUnavailableTitle: 'The build assistant is not available',
     bannerUnavailable:

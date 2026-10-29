@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allBlocks,
   blockPanels,
   blocksAllowedIn,
   blocksIn,
@@ -20,10 +21,9 @@ import {
 const empty: BlockLayout = { placed: {}, chosen: {} };
 
 describe('building block rules', () => {
-  it('places Chat in the middle, Document view on the right and Footnotes in the middle by default', () => {
+  it('places Chat in the middle and Document view on the right by default', () => {
     expect(placeOf(empty, 'chat')).toBe('main');
     expect(placeOf(empty, 'documentView')).toBe('right');
-    expect(placeOf(empty, 'footnotes')).toBe('main');
   });
 
   it('keeps the panel order fixed whatever order the blocks are turned on in', () => {
@@ -38,28 +38,21 @@ describe('building block rules', () => {
     expect(blocksIn(layout, 'left')).toEqual(['threads', 'filter', 'settings']);
   });
 
-  it('orders the middle as procedure, filter, chat, footnotes, document view', () => {
+  it('orders the middle as procedure, filter, chat, document view', () => {
     let layout = empty;
-    for (const id of ['documentView', 'footnotes', 'chat', 'filter', 'procedure'] as const)
+    for (const id of ['documentView', 'chat', 'filter', 'procedure'] as const)
       layout = moveTo(turnOn(layout, id), id, 'main');
-    expect(blocksIn(layout, 'main')).toEqual([
-      'procedure',
-      'filter',
-      'chat',
-      'footnotes',
-      'documentView',
-    ]);
+    expect(blocksIn(layout, 'main')).toEqual(['procedure', 'filter', 'chat', 'documentView']);
   });
 
   it('orders the right panel with sources after chat and notes last', () => {
     let layout = turnOn(turnOn(empty, 'notes'), 'sources');
-    for (const id of ['documentView', 'chat', 'procedure', 'footnotes'] as const)
+    for (const id of ['documentView', 'chat', 'procedure'] as const)
       layout = moveTo(turnOn(layout, id), id, 'right');
     expect(blocksIn(layout, 'right')).toEqual([
       'procedure',
       'chat',
       'sources',
-      'footnotes',
       'documentView',
       'notes',
     ]);
@@ -104,25 +97,37 @@ describe('building block rules', () => {
         expect(blockPanels[block as keyof typeof blockPanels]).toContain(panel);
   });
 
-  it('starts from the full template', () => {
+  it('puts notes in focus with projects and threads, but no document view', () => {
+    expect(blocksIn(templates.notesFocus, 'left')).toEqual(['projects', 'threads']);
+    expect(blocksIn(templates.notesFocus, 'main')).toEqual(['chat']);
+    expect(blocksIn(templates.notesFocus, 'right')).toEqual(['notes']);
+  });
+
+  it('puts the document view in the middle with chat and sources on the right', () => {
+    expect(blocksIn(templates.documentFocus, 'left')).toEqual(['threads']);
+    expect(blocksIn(templates.documentFocus, 'main')).toEqual(['documentView']);
+    expect(blocksIn(templates.documentFocus, 'right')).toEqual(['chat', 'sources']);
+  });
+
+  it('starts from the template with all blocks', () => {
     for (const panel of panels)
-      expect(blocksIn(defaultLayout, panel)).toEqual(blocksIn(templates.full, panel));
+      expect(blocksIn(defaultLayout, panel)).toEqual(blocksIn(templates.all, panel));
+  });
+
+  it('turns on every block in its first place in the template with all blocks', () => {
+    for (const id of allBlocks) expect(templates.all.placed[id]).toBe(blockPanels[id][0]);
+    expect(blocksIn(templates.all, 'left')).toEqual(['projects', 'threads', 'filter', 'settings']);
+    expect(blocksIn(templates.all, 'main')).toEqual(['procedure', 'chat']);
+    expect(blocksIn(templates.all, 'right')).toEqual(['sources', 'documentView', 'notes']);
   });
 
   it('lists every block that may stand in a panel, in the panel order', () => {
     expect(blocksAllowedIn('left')).toEqual(['projects', 'threads', 'filter', 'settings']);
-    expect(blocksAllowedIn('main')).toEqual([
-      'procedure',
-      'filter',
-      'chat',
-      'footnotes',
-      'documentView',
-    ]);
+    expect(blocksAllowedIn('main')).toEqual(['procedure', 'filter', 'chat', 'documentView']);
     expect(blocksAllowedIn('right')).toEqual([
       'procedure',
       'chat',
       'sources',
-      'footnotes',
       'documentView',
       'notes',
     ]);

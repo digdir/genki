@@ -321,9 +321,10 @@ a.ds-button {
 .builder-split > .assistant {
   flex: 0 0 420px;
   border-right: 1px solid var(--ds-color-neutral-border-subtle);
-  max-height: calc(100vh - 120px);
+  height: calc(100dvh - var(--header-height) - 200px);
+  min-height: 420px;
   position: sticky;
-  top: 0;
+  top: var(--header-height);
 }
 
 .builder-assistant-off {
@@ -385,6 +386,48 @@ a.ds-button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.assistant-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-size-5);
+}
+
+.assistant-starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--ds-size-2);
+}
+
+.assistant-starter {
+  border-radius: var(--ds-border-radius-full);
+  color: var(--ds-color-neutral-text-default);
+}
+
+.assistant-welcome {
+  display: flex;
+  gap: var(--ds-size-3);
+  align-items: flex-start;
+}
+
+.assistant-welcome .ds-paragraph {
+  padding-top: var(--ds-size-1);
+}
+
+.assistant-mark {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ds-border-radius-full);
+  background: var(--ds-color-accent-surface-tinted);
+  color: var(--ds-color-accent-text-default);
 }
 
 .msg {
@@ -464,19 +507,51 @@ a.ds-button {
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border-top: 1px solid var(--ds-color-neutral-border-subtle);
   background: var(--ds-color-neutral-background-default);
 }
 
-.compose-form,
 .test-compose {
   display: flex;
   gap: 8px;
   align-items: flex-end;
 }
 
+.compose-form {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-2);
+  padding: var(--ds-size-2) var(--ds-size-2) var(--ds-size-2) var(--ds-size-3);
+  border: 1px solid var(--ds-color-neutral-border-default);
+  border-radius: var(--ds-border-radius-xl);
+  background: var(--ds-color-neutral-background-default);
+}
+
+.compose-form:focus-within {
+  outline: 3px solid var(--ds-color-focus-outer);
+  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+}
+
 .compose-field {
   flex: 1;
+  align-self: center;
+}
+
+.compose-field textarea {
+  min-height: 0;
+  max-height: 200px;
+  margin: 0;
+  padding: var(--ds-size-1) 0;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  field-sizing: content;
+}
+
+.compose-send[aria-disabled='true'] {
+  color: var(--ds-color-neutral-text-subtle);
+  opacity: 0.6;
 }
 
 .setup-intro {

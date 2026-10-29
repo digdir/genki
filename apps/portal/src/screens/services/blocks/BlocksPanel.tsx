@@ -24,7 +24,6 @@ export const blockLabel: Record<BlockId, PlainKey> = {
   settings: 'builderBlocks.settings',
   chat: 'builderBlocks.chat',
   sources: 'builderBlocks.sources',
-  footnotes: 'builderBlocks.footnotes',
   notes: 'builderBlocks.notes',
   filter: 'builderBlocks.filter',
   procedure: 'builderBlocks.procedure',
@@ -38,7 +37,6 @@ export const blockIcon: Record<BlockId, string> = {
     'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1',
   chat: 'M5 5h14v10H10l-5 4z',
   sources: 'M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11M9 8h5',
-  footnotes: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM10.5 9.5l2-1.5v8',
   notes: 'M4 20l1-4L16 5l3 3L8 19zM14 7l3 3M13 20h7',
   filter: 'M4 5h16l-6 7v6l-4 2v-8z',
   procedure:
@@ -52,7 +50,6 @@ const blockHelp: Record<BlockId, PlainKey> = {
   settings: 'builderBlocks.settingsHelp',
   chat: 'builderBlocks.chatHelp',
   sources: 'builderBlocks.sourcesHelp',
-  footnotes: 'builderBlocks.footnotesHelp',
   notes: 'builderBlocks.notesHelp',
   filter: 'builderBlocks.filterHelp',
   procedure: 'builderBlocks.procedureHelp',
@@ -120,7 +117,6 @@ export const BlocksPanel = ({
                         : help(id)
                     }
                     checked={at === panel}
-                    disabled={elsewhere}
                     onChange={() =>
                       onChange(at === panel ? turnOff(layout, id) : placeIn(layout, id, panel))
                     }

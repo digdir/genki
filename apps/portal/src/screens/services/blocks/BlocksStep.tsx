@@ -1,18 +1,18 @@
+import { Tabs, TabsList, TabsPanel, TabsTab, ToggleGroup } from '@digdir/designsystemet-react';
 import {
-  Alert,
-  Tabs,
-  TabsList,
-  TabsPanel,
-  TabsTab,
-  ToggleGroup,
-} from '@digdir/designsystemet-react';
-import { useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
 import { BlocksPanel, type BlocksPanelVariant } from './BlocksPanel';
 import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
 import { ServicePreview, type PreviewDevice, type PreviewMode } from './ServicePreview';
-import { TemplatesPanel, templateLabel } from './TemplatesPanel';
+import { TemplatesPanel } from './TemplatesPanel';
 import './blocks.css';
 
 type LeftTab = 'chat' | 'blocks' | 'templates';
@@ -24,7 +24,7 @@ const fullHeightMax = 1400;
 
 export const useBlocksState = () => {
   const [layout, setLayout] = useState<BlockLayout>(defaultLayout);
-  const [template, setTemplate] = useState<TemplateId | undefined>('full');
+  const [template, setTemplate] = useState<TemplateId | undefined>('all');
   const [mode, setMode] = useState<PreviewMode>('setup');
   const [device, setDevice] = useState<PreviewDevice>('desktop');
   const [tab, setTab] = useState<LeftTab>('blocks');
@@ -131,9 +131,17 @@ export const BlocksStep = ({
 }) => {
   const t = useT();
   const [pane, setPane] = useState<'blocks' | 'preview'>('blocks');
+  const switcher = useRef<HTMLFieldSetElement>(null);
+  const [fit, setFit] = useState(leftMin);
+  useLayoutEffect(() => {
+    const w = switcher.current?.offsetWidth;
+    if (w) setFit(Math.max(leftMin, Math.ceil(w)));
+  }, [t]);
+  const width = Math.max(state.width, fit);
   const left = (
     <div className="blocks-left">
       <ToggleGroup
+        ref={switcher}
         data-size="sm"
         data-color="neutral"
         variant="secondary"
@@ -155,14 +163,7 @@ export const BlocksStep = ({
         />
       ) : null}
       {state.tab === 'templates' ? (
-        <>
-          {state.template ? (
-            <Alert data-color="info" data-size="sm" className="blocks-applied">
-              {t('builderBlocks.templateApplied', { name: t(templateLabel[state.template]) })}
-            </Alert>
-          ) : null}
-          <TemplatesPanel current={state.template} onPick={state.pick} />
-        </>
+        <TemplatesPanel current={state.template} onPick={state.pick} />
       ) : null}
     </div>
   );
@@ -192,12 +193,12 @@ export const BlocksStep = ({
       </Tabs>
     );
   return (
-    <div className="blocks-split" style={{ ['--left-width' as string]: `${state.width}px` }}>
+    <div className="blocks-split" style={{ ['--left-width' as string]: `${width}px` }}>
       {left}
       <ResizeHandle
         axis="x"
-        value={state.width}
-        min={leftMin}
+        value={width}
+        min={fit}
         max={leftMax}
         label={t('builderBlocks.resize')}
         onChange={state.setWidth}
@@ -212,11 +213,13 @@ export const BlocksFullscreen = ({
   chat,
   address,
   backHref,
+  onExit,
 }: {
   state: BlocksState;
   chat: ReactNode;
   address: string;
   backHref: string;
+  onExit: () => void;
 }) => {
   const t = useT();
   return (
@@ -235,6 +238,7 @@ export const BlocksFullscreen = ({
         onDevice={state.setDevice}
         onRemove={(id) => state.change(turnOff(state.layout, id))}
         onReload={state.restart}
+        onExitFullscreen={onExit}
         height={state.height}
       />
       <ResizeHandle

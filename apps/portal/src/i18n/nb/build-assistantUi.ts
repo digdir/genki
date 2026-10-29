@@ -21,6 +21,13 @@ export const assistantUi = {
     showApiCall: 'Vis API-kall',
     previousMessage: 'Forrige melding',
     composerLabel: 'Skriv til assistenten',
+    composerPlaceholder: 'Spør om noe …',
+    starterGoal: 'Hva brukerne skal oppnå',
+    starterSources: 'Relevante kilder',
+    starterReplaces: 'Eksisterende arbeid som skal erstattes',
+    starterOutcome: 'Hva brukeren skal sitte igjen med',
+    emptyWelcome:
+      'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Velg et av temaene over for å komme i gang, eller skriv fritt.',
     send: 'Send',
     bannerUnavailableTitle: 'Byggeassistenten er ikke tilgjengelig',
     bannerUnavailable:

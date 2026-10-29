@@ -1250,6 +1250,7 @@ export const Builder = ({
         chat={previewChat}
         address={previewAddress}
         backHref={`#${servicePath(isNew ? 'new' : id, 'blocks')}`}
+        onExit={() => go('blocks')}
       />
     ) : (
       <BlocksStep

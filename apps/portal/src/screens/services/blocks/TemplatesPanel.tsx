@@ -11,11 +11,12 @@ import {
 } from './rules';
 
 export const templateLabel: Record<TemplateId, PlainKey> = {
-  full: 'builderBlocks.templateFull',
-  sourcesOnly: 'builderBlocks.templateSourcesOnly',
-  procedureOnly: 'builderBlocks.templateProcedureOnly',
-  noFilter: 'builderBlocks.templateNoFilter',
-  withProjects: 'builderBlocks.templateWithProjects',
+  all: 'builderBlocks.templateAll',
+  sourcesFocus: 'builderBlocks.templateSourcesFocus',
+  procedureFocus: 'builderBlocks.templateProcedureFocus',
+  notesFocus: 'builderBlocks.templateNotesFocus',
+  documentFocus: 'builderBlocks.templateDocumentFocus',
+  classic: 'builderBlocks.templateClassic',
   noRight: 'builderBlocks.templateNoRight',
   noLeft: 'builderBlocks.templateNoLeft',
   chatOnly: 'builderBlocks.templateChatOnly',
