@@ -1,6 +1,6 @@
 # Model providers
 
-Strategies use `ModelPort.chat` and `chatStream`; the router handles credentials, capabilities, residency, token ceilings and metering. Model endpoints and deployments belong in the model catalog. See [ADR 0021](adr/0021-model-access-through-protocol-adapters.md) and [ADR 0040](adr/0040-stateless-openai-responses.md).
+Strategies use `ModelPort.chat` and `chatStream`; the router handles credentials, capabilities, residency, token ceilings and metering. Model endpoints and deployments belong in the model catalog. See [ADR 0021](adr/0021-model-access-through-protocol-adapters.md) and [ADR 0044](adr/0044-stateless-openai-responses.md).
 
 ## OpenAI-compatible endpoints
 
@@ -17,9 +17,9 @@ For a known Responses deployment, add a model entry such as:
 
 ```yaml
 models:
-  - id: foundry-openai/gpt-6.1-sol
+  - id: foundry-openai/gpt-5.6-sol
     endpoint: foundry-openai
-    deployment: gpt-6.1-sol
+    deployment: gpt-5.6-sol
     residency: global
     capabilities: [stream, tools, json-schema, reasoning]
     options:
