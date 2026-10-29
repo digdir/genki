@@ -11,6 +11,7 @@ export type SkipReason =
   | 'conversion_failed'
   | 'outside_access'
   | 'too_large'
+  | 'not_found'
   | (string & {});
 
 export interface SkippedDocument {
@@ -78,6 +79,7 @@ export interface ExecutionView {
     skipped: number | SkippedDocument[];
     skippedDocuments?: SkippedDocument[];
     failed: string[];
+    failedDocuments?: { document: string; reason: string }[];
   };
 }
 

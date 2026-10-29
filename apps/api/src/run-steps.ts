@@ -107,6 +107,7 @@ const quoted = (texts: string[], max = 3) =>
 const skipReasons: Record<string, ApiKey> = {
   unsupported_type: 'runs.skipUnsupportedType',
   outside_access: 'runs.skipOutsideAccess',
+  not_found: 'runs.skipNotFound',
   conversion_failed: 'runs.skipConversionFailed',
 };
 

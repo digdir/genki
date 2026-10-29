@@ -63,6 +63,7 @@ const datasets = {
   readyFlash: '{name} is ready. You can now choose it in a service.',
   facetDocType: 'Document type',
   facetOther: 'Other',
+  skipNotFound: 'The page does not exist (HTTP 404 or 410).',
   skipNoText: 'Scanned PDF without text. Text recognition is not turned on.',
   skipUnsupported: 'The file type is not supported. Use PDF, Word (docx), text, Markdown or HTML.',
   skipConversion: 'Could not read the document.',

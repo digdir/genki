@@ -9,6 +9,7 @@ import {
   type Location,
 } from './chunk-document.js';
 import type { CollectionIds } from './ids.js';
+import { WebsiteFetchGuardError } from './website.js';
 import {
   generatePhrases,
   legacyKudosPhraseRows,
@@ -19,11 +20,21 @@ import {
 } from './phrases.js';
 
 export type SkipReason =
-  'no_text' | 'unsupported_type' | 'outside_access' | 'conversion_failed' | 'unreachable';
+  | 'no_text'
+  | 'unsupported_type'
+  | 'outside_access'
+  | 'conversion_failed'
+  | 'unreachable'
+  | 'not_found';
 
 export interface SkippedDocument {
   document: string;
   reason: SkipReason;
+}
+
+export interface FailedDocument {
+  document: string;
+  reason: string;
 }
 
 export interface SourceDocument {
@@ -80,6 +91,7 @@ export interface IngestResult {
   stored: number;
   skipped: number;
   failed: string[];
+  failedDocuments?: FailedDocument[];
   skippedDocuments?: SkippedDocument[];
 }
 
@@ -137,6 +149,7 @@ export class FailureBudgetExceeded extends Error {
   constructor(
     readonly failed: string[],
     cause: unknown,
+    readonly result?: IngestResult,
   ) {
     super(`${failed.length} documents failed to import; stopping the run`, { cause });
   }
@@ -181,9 +194,18 @@ export const ingestDocuments = async (
       await options.onDocument?.({ key: document.key, status: 'stored' });
     } catch (error) {
       if (options.signal?.aborted || stop !== undefined) return;
+      if (options.source.kind === 'website' && error instanceof WebsiteFetchGuardError) {
+        stop = error;
+        return;
+      }
       result.failed.push(listed.key);
+      (result.failedDocuments ??= []).push({
+        document: listed.name ?? listed.key,
+        reason: error instanceof Error ? error.message : String(error),
+      });
       await options.onDocument?.({ key: listed.key, status: 'failed', error });
-      if (result.failed.length >= budget) stop = new FailureBudgetExceeded(result.failed, error);
+      if (result.failed.length >= budget)
+        stop = new FailureBudgetExceeded(result.failed, error, result);
     }
   };
   const running = new Set<Promise<void>>();

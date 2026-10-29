@@ -63,6 +63,7 @@ export const datasets = defineNamespace({
   readyFlash: '{name} er klart. Du kan nå velge det i en tjeneste.',
   facetDocType: 'Dokumenttype',
   facetOther: 'Annet',
+  skipNotFound: 'Siden finnes ikke (HTTP 404 eller 410).',
   skipNoText: 'Skannet PDF uten tekst. Tekstgjenkjenning er ikke slått på.',
   skipUnsupported: 'Filtypen støttes ikke. Bruk PDF, Word (docx), tekst, Markdown eller HTML.',
   skipConversion: 'Kunne ikke lese dokumentet.',
