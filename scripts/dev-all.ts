@@ -106,9 +106,13 @@ export const missingCallbacks = (identityYaml: string, processes: DevProcess[]):
   return processes.flatMap((p) => {
     const client = clients.find((c) => c.clientId === `local-${p.name}`);
     const callback = `http://localhost:${p.port}/callback`;
-    return client && !client.redirectUris?.includes(callback)
-      ? [`${client.clientId} ${callback}`]
-      : [];
+    const registered = client?.redirectUris?.some(
+      (uri) =>
+        uri === callback ||
+        (URL.canParse(uri) &&
+          uri.replace(/^(http:\/\/localhost):\d+(?=\/)/, '$1') === 'http://localhost/callback'),
+    );
+    return client && !registered ? [`${client.clientId} ${callback}`] : [];
   });
 };
 
