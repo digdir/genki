@@ -22,11 +22,13 @@ const models = [
 ];
 
 describe('Slik behandles data', () => {
-  it('is readable before login, with the facts and what is not decided', () => {
+  it('is readable before login, with the facts and what is not decided', async () => {
     const auth = mockAnsattporten({ name: 'Kari', organisations: exampleOrganisations });
     render(<App auth={auth} fetch={mockFetch()} />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Slik behandles data' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Slik behandles data' }),
+    ).toBeTruthy();
     const page = document.body.textContent ?? '';
     expect(page).toContain('kryptert når det er lagret');
     expect(page).toContain('slettes når innholdsnøkkelen slettes');
