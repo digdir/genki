@@ -1,4 +1,4 @@
-import type { Principal, Ref } from '@genai/contracts';
+import { withListPrice, type Principal, type Ref } from '@genai/contracts';
 import {
   credentialFor,
   type Credential,
@@ -384,7 +384,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     };
     const served = { id: model.id, endpoint: model.endpoint, deployment: model.deployment };
     const meter = async (result: ChatResult) => {
-      await ctx.meter(result.usage, modelRef);
+      await ctx.meter(withListPrice(result.usage, this.options.priceOf?.(model.id)), modelRef);
       await ctx.provenance?.({ model: served });
     };
     const observe = (result: ChatResult): ChatResult => {

@@ -71,7 +71,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - Token counts and cost are left out without `view-usage`:
   - `GET /tenants/{tenant}/overview`: `usageThisMonth` and the `usage` of each recent task.
   - `GET /tenants/{tenant}/tasks` and `GET /tenants/{tenant}/tasks/{task}`: `usage`.
-  - `GET /tenants/{tenant}/tasks/{task}/timeline`: `inputTokens`, `outputTokens`, `costOre`, the token fields of `stats`, and the tokens of each step. The person who started the task still sees them.
+  - `GET /tenants/{tenant}/tasks/{task}/timeline`: `inputTokens`, `outputTokens`, `costOre`, `costMicroNok`, `priced`, the token and cost fields of `stats`, and the tokens of each step. The person who started the task still sees them.
   - Batch runs (`GET /tenants/{tenant}/services/{id}/batch-runs`, a run and its export) and project runs: `tokens`, `costMicroNok`, `cap`, `perItem` and `costApproval`, and the token and cost columns of the export. The person who started the run still sees them.
   - Project subscriptions: `spentThisMonth`.
   - Eval runs: `cost` and `tokens`.
