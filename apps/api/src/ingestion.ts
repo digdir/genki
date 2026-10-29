@@ -13,6 +13,7 @@ import { nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
 import {
   appendVersion,
+  platformScope,
   serialized,
   VersionConflict,
   type ConfigEntry,
@@ -184,6 +185,8 @@ export interface IngestionJob {
   target: IngestionTarget;
   tenant?: string;
   admitted?: boolean;
+  /** Other enabled, undeleted pipelines in this dataset's scope. Omitted for a shared rebuild. */
+  siblingPipelines?: string[];
 }
 
 export interface IngestionReport {
@@ -564,6 +567,7 @@ export class IngestionService {
     by: string;
     tenant?: string;
     principal?: Principal;
+    scope?: string;
   }): Promise<
     | { ok: true; value: Execution; done: Promise<Execution> }
     | { ok: false; errors: { path: string; message: string }[]; conflict?: boolean }
@@ -583,6 +587,11 @@ export class IngestionService {
       };
     if (!input.pipeline.spec.enabled)
       return { ok: false, errors: [{ path: 'enabled', message: 'the pipeline is turned off' }] };
+    const siblingPipelines = (
+      await this.list(input.scope ?? input.tenant ?? platformScope, input.pipeline.dataset)
+    )
+      .filter((p) => p.id !== input.pipeline.id && p.spec.enabled)
+      .map((p) => p.id);
     const holder = this.#holder(input.target);
     if (holder)
       return {
@@ -618,6 +627,7 @@ export class IngestionService {
               execution: execution.id,
               pipeline: input.pipeline,
               target: input.target,
+              siblingPipelines,
               ...(input.tenant ? { tenant: input.tenant } : {}),
               ...(this.options.admits ? { admitted: true } : {}),
             },
@@ -741,6 +751,7 @@ export class IngestionService {
             pipeline,
             target,
             by: scheduleActor,
+            scope: entry.scope,
             ...(entry.scope === platformScope ? {} : { tenant: entry.scope }),
           })
         : { ok: false as const, errors: [{ path: 'dataset', message: 'the dataset is gone' }] };

@@ -21,6 +21,8 @@ export interface IndexTarget {
 
 export interface IndexIngestOptions extends DocumentLoopOptions {
   target: IndexTarget;
+  /** Omit siblings when rebuilding all pipelines into a shared generation. */
+  pipeline?: { id: string; siblings?: readonly string[] };
 }
 
 export interface IndexIngestResult extends IngestResult {
@@ -93,7 +95,12 @@ export const embedIndexDocument = async (
     ...item,
     vector: vectors.get(item.text) as number[],
   });
-  return { ...doc, chunks: doc.chunks.map(withVector), phrases: doc.phrases.map(withVector) };
+  return {
+    ...doc,
+    embeddingModel: embedder.info().id,
+    chunks: doc.chunks.map(withVector),
+    phrases: doc.phrases.map(withVector),
+  };
 };
 
 export const checkIndexTarget = (target: IndexTarget) => {
@@ -111,12 +118,48 @@ export const checkIndexTarget = (target: IndexTarget) => {
       'bad_request',
       `${name} expects ${expected} dimensions, but embedder ${target.embedder.info().id} returns ${actual}`,
     );
+  const model = target.dataset.embedding?.model;
+  if (model !== undefined && model !== target.embedder.info().id)
+    throw new KnowledgeError(
+      'bad_request',
+      `${name} expects embedding model ${model}, but the embedder is ${target.embedder.info().id}`,
+    );
 };
 
 export const runIndexIngest = async (options: IndexIngestOptions): Promise<IndexIngestResult> => {
   const { target } = options;
   checkIndexTarget(target);
+  const pipeline = options.pipeline;
+  const siblings = new Set(pipeline?.siblings ?? []);
+  if (pipeline) siblings.delete(pipeline.id);
+  const preserving = siblings.size > 0;
+  const read = target.writer.read?.bind(target.writer);
+  const conditional =
+    pipeline?.siblings !== undefined
+      ? target.writer.promoteIfActive?.bind(target.writer)
+      : undefined;
+  if (preserving && (!read || !conditional))
+    throw new KnowledgeError(
+      'unsupported',
+      'keeping sibling pipelines requires an index writer with read and conditional promotion',
+    );
+  const active = conditional ? await target.writer.active(target.dataset) : undefined;
   const embedder = target.needs.vectors ? target.embedder : undefined;
+  const embeddingModel = target.dataset.embedding?.model ?? embedder?.info().id;
+  const checkEmbeddingModel = (doc: IndexDocument) => {
+    if (doc.embeddingModel !== embeddingModel)
+      throw new KnowledgeError(
+        'bad_request',
+        `dataset ${target.dataset.id} embedding model changed; run a combined rebuild (re-ingest switch or run every pipeline with the new model)`,
+      );
+  };
+  if (preserving && active !== undefined && read) {
+    for await (const doc of read(target.dataset, active)) {
+      options.signal?.throwIfAborted();
+      if (doc.pipeline !== undefined && siblings.has(doc.pipeline)) checkEmbeddingModel(doc);
+    }
+  }
+  const fresh = new Set<string>();
   await target.writer.prepare(target.dataset, target.generation);
   const result = await ingestDocuments(options, async (document, prepared) => {
     const indexed = toIndexDocument(
@@ -125,17 +168,35 @@ export const runIndexIngest = async (options: IndexIngestOptions): Promise<Index
       prepared.chunks,
       prepared.phrases,
     );
-    const doc = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
+    const linked = indexed.url || !document.url ? indexed : { ...indexed, url: document.url };
+    const doc = {
+      ...linked,
+      ...(pipeline ? { pipeline: pipeline.id } : {}),
+      ...(embeddingModel ? { embeddingModel } : {}),
+    };
     await target.writer.store(
       target.dataset,
       target.generation,
       embedder ? await embedIndexDocument(doc, embedder, target.embedBatchSize) : doc,
     );
+    if (preserving) fresh.add(doc.id);
   });
-  if (result.stored + result.skipped === 0)
+  if (result.stored + result.skipped === 0 && (!preserving || result.failed.length > 0))
     return { ...result, generation: target.generation, promoted: false };
+  if (preserving && active !== undefined && read) {
+    for await (const doc of read(target.dataset, active)) {
+      options.signal?.throwIfAborted();
+      const owner = doc.pipeline;
+      if (typeof owner === 'string' && siblings.has(owner) && !fresh.has(doc.id)) {
+        checkEmbeddingModel(doc);
+        await target.writer.store(target.dataset, target.generation, doc);
+      }
+    }
+  }
   options.signal?.throwIfAborted();
-  const previous = await target.writer.promote(target.dataset, target.generation);
+  const previous = conditional
+    ? await conditional(target.dataset, target.generation, active)
+    : await target.writer.promote(target.dataset, target.generation);
   return {
     ...result,
     generation: target.generation,

@@ -362,6 +362,7 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!item)
       return { ok: false, errors: [{ path: 'dataset', message: `no dataset ${dataset}` }], target };
     const started = await deps.ingestion.execute({
+      scope,
       pipeline,
       target: ingestionTarget(item),
       by: actor(principal),
