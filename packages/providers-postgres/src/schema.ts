@@ -48,7 +48,7 @@ const definerFunctions = [
   'platform_clients()',
   'platform_tenants()',
   'find_ingestion_execution(text)',
-  'fail_stale_ingestion_executions(text, text[], text, text)',
+  'fail_stopped_ingestion_executions(text, text[], text, text)',
   'find_api_key_policy(text)',
 ];
 
@@ -664,13 +664,8 @@ const migrations: string[] = [
        perform require_platform_access();
        return query select * from ingestion_executions where id = p_id;
      end $$`,
-  `do $$ begin
-     if exists (select from pg_proc where proname = 'fail_stale_ingestion_executions'
-                 and 'p_started_before' = any(proargnames)) then
-       drop function fail_stale_ingestion_executions(text, text[], text, text);
-     end if;
-   end $$`,
-  `create or replace function fail_stale_ingestion_executions(
+  `drop function if exists fail_stale_ingestion_executions(text, text[], text, text)`,
+  `create or replace function fail_stopped_ingestion_executions(
        p_heartbeat_before text, p_except text[], p_ended_at text, p_error text) returns integer
      language plpgsql volatile security definer set search_path = public
      as $$ declare changed integer; begin

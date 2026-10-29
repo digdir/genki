@@ -109,7 +109,7 @@ export class PostgresIngestionExecutions {
   }): Promise<number> {
     const result = await withPlatformAccess(this.pool, 'ingestion-stale-runs', (client) =>
       client.query<{ changed: number }>(
-        'select fail_stale_ingestion_executions($1, $2, $3, $4) as changed',
+        'select fail_stopped_ingestion_executions($1, $2, $3, $4) as changed',
         [input.heartbeatBefore, input.except, input.endedAt, input.error],
       ),
     );
