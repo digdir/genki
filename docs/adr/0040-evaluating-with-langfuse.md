@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: proposed, 2026-10-22 (revised, 2026-10-29: Langfuse judges are advisory, judges that block are proposed separately)
+Status: accepted, 2026-10-29 (not built; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -77,7 +77,8 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - When the nightly purge or any other erasure removes a case's task, the platform records the deletion of its traces in the sink as pending, in the database. The nightly purge works through the pending deletes. For each case trace it first finds the judges' execution traces, then deletes them, then deletes the case's trace (`DELETE /api/public/traces/{traceId}`).
   - It finds judge traces through the scores on the case's trace (`metadata.job_execution_id`, whose trace id is the first 32 hex characters of `sha256(job_execution_id)`) and through traces whose metadata names the case's trace (`target_trace_id`), so a judge call that wrote no score is found too.
   - After the deletes it checks that no trace with the case's trace as target remains.
-- A failed delete stays pending and is tried again the next night, without holding back the purge in the platform. A delete that keeps failing, for example because the connection was removed or its secret rotated, is reported to operators.
+- A failed delete stays pending and is tried again the next night, without holding back the purge in the platform. A delete that keeps failing, for example because the connection's secret was rotated, is reported to operators, and the connection shows as failing.
+- A connection with pending deletes cannot be removed. The tenant fixes its secret, or waits until the purge has confirmed every delete, so removing a connection never leaves text in the sink.
 - A connection receives content only when ADR 0011's conditions for content-receiving sinks hold. In development mode a Langfuse on the developer's own machine is exempt from the 7-day rule, for made-up test sets only.
 
 ## Langfuse judges that block (proposed separately)
@@ -89,7 +90,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - **Calibration.** The judge meets ADR 0003's calibration rule on its own identity's accepted labels, and its model is from another family than every model that wrote the answer.
 - **Complete, comparable scores.** Only boolean scores and numeric scores with both bounds can block, and only from an unchanged judge (`judge changed` never blocks). A score still missing after the wait makes the gate fail with its reason, and the gate never averages over the scores that arrived.
 - **Holdout.** A gate on the holdout split (`split: holdout`) never uses a Langfuse judge's metric, since holdout cases are never sent.
-- **A wait that survives restarts.** The wait for scores is a durable job, so a deploy never loses the scores a gate reads (the record on durable jobs on pg-boss, proposed in [PR 125](https://github.com/digdir/genki/pull/125)).
+- **A wait that survives restarts.** The wait for scores is a durable job, so a deploy never loses the scores a gate reads (ADR 0041, durable jobs on pg-boss, proposed in [PR 179](https://github.com/digdir/genki/pull/179)).
 
 ## Why
 
@@ -120,16 +121,17 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - the kernel change that records the evaluation context beside the input, and readers that leave it out
   - per-case traces under a run
   - the experiment export, the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
-  - the pending sink deletes and their pass in the nightly purge
+  - the pending sink deletes, their pass in the nightly purge, and refusing to remove a connection with pending deletes
   - limiting `TRACES_CONTENT` to development mode
 - Before agency data goes to Digdir's instance:
   - whose model key an agency's judges use there, and so who pays for their calls, is decided. The cost of each judge call is readable (about USD 0.008 per call on `claude-sonnet-5` at Langfuse's list price, measured on Digdir's instance on 2026-10-29), so Digdir's key with the cost shown per tenant is an option beside each tenant's own key.
   - where the instance stores what it receives is confirmed, so operators can set its connections' residency
+  - the judge trace id rule and filtering traces by `target_trace_id` through the public API are verified against the instance's version, so the purge can show that nothing of a case is left. Until then no connection to the instance receives content.
   - the items in [epic 93](https://github.com/digdir/genki/issues/93): the 7-day lifecycle rule on its raw files, confirmed deployment types for its judge models and a data-protection assessment
 - Operators create organisations on Digdir's instance by hand. Each organisation's owner manages its members in Langfuse, including removing people who leave the tenant. The platform does not see Langfuse membership.
 - Plug-ins registered as `evaluator@1` are refused until they are registered again under `evaluator@2`. The platform is not in production, so no stored registration is migrated.
 - It depends on Langfuse's `unstable` evaluator API in version 4.4.0, which Langfuse says may change. Version 4.67.0 no longer has it: it has `/api/public/v2/evaluators` and `/api/public/v2/evaluation-rules` instead. The instance's UI already offers 4.67.0, so the judge snapshot moves to the new API before or with an upgrade, and the rest of this record is checked against the new version.
-- Two Langfuse internals were seen in 4.4.0 but are not documented: the judge trace id rule, and `target_trace_id` and `job_configuration_id` in a judge trace's metadata, which the public API returns (seen on Digdir's instance on 2026-10-29). Filtering traces by `target_trace_id` through the public API is not yet verified. Both are checked against each Langfuse version.
+- Two Langfuse internals were seen in 4.4.0 but are not documented: the judge trace id rule, and `target_trace_id` and `job_configuration_id` in a judge trace's metadata, which the public API returns (seen on Digdir's instance on 2026-10-29). Filtering traces by `target_trace_id` through the public API is not yet verified (see "Before agency data goes to Digdir's instance"). Both are checked against each Langfuse version.
 - An experiment judge in Langfuse can only be limited to a dataset, so it scores every experiment in its project. A tenant whose services need different judges uses one connection and project per service.
 - Labelling is an operator right today (ADR 0027). Whether agencies get it is not decided here.
 - The portal changes:

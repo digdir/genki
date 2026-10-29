@@ -1,6 +1,6 @@
 # 0011 Retention, erasure and archiving
 
-Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0040, 2026-10-22, not built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-06
 
 ## Decision
 
@@ -14,7 +14,7 @@ Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0040, 2026-10-2
 - **The platform is not an archive.** The agency's case system is. Each result carries a provenance record: task id, service version, model, sources and approver. The case system archives it with the document, and the platform can export a task by id within its retention window: `POST /tenants/{tenant}/tasks/{task}/export` returns a zip with the task, its events, result, artifacts, provenance and retention policy. It needs the right to manage services and a change reason, and every export is written to the audit log.
 - Quality is reported for services, never per employee.
 
-## Proposed with ADR 0040 (not built)
+## Accepted with ADR 0040 (not built)
 
 These rules extend the decision above once they are built:
 
@@ -27,6 +27,7 @@ These rules extend the decision above once they are built:
   - When the nightly purge or any other erasure removes a task, the platform records the deletion of those traces as pending, and the nightly purge works through the pending deletes.
   - A failed delete stays pending and is tried again the next night, without holding back the purge in the platform.
   - A delete that keeps failing is reported to operators.
+  - A sink connection with pending deletes cannot be removed.
 - **Judge reasons.** A judge's reason may quote the answer, so it follows the case's retention: the nightly purge clears it from stored eval runs when the case's payload expires.
 
 ## Why

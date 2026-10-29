@@ -1,6 +1,6 @@
 # 0003 Evaluation is part of the platform
 
-Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0040, 2026-10-22, not built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-06
 
 ## Decision
 
@@ -11,7 +11,7 @@ Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0040, 2026-10-2
 - Publishing gates live in the service definition. A version with a failing gate cannot be published to production.
 - Every result records the code version, the data, the served model and the judge, so only like is compared with like.
 
-## Proposed with ADR 0040 (not built)
+## Accepted with ADR 0040 (not built)
 
 These rules replace or extend the decision above once they are built:
 
@@ -34,12 +34,12 @@ These rules replace or extend the decision above once they are built:
 
 headless-rag's golden sets, judge and findings are the most valuable thing it has, and its worst measurement errors came from silent fallbacks and comparing runs taken on different code or models.
 
-The proposed rules follow from the same lesson. Calibration has to cover every judge that can block, not only metrics whose name starts with `judge.`, and two agreeing labels are not evidence. A second runner without judges or provenance cannot feed gates or calibration.
+The rules accepted with ADR 0040 follow from the same lesson. Calibration has to cover every judge that can block, not only metrics whose name starts with `judge.`, and two agreeing labels are not evidence. A second runner without judges or provenance cannot feed gates or calibration.
 
 ## Consequences
 
 - The parity gate, publishing gates and the improvement loop share one mechanism.
 - A judge cannot block a publish until it has been calibrated against human ratings.
 - The harness fails loudly when anything it needs is missing.
-- With the proposed rules, the portal's run history shows scores and confidence intervals, not only pass or fail.
-- The proposed calibration rule also governs skill publishing (ADR 0024).
+- With the rules accepted with ADR 0040, the portal's run history shows scores and confidence intervals, not only pass or fail.
+- The calibration rule accepted with ADR 0040 also governs skill publishing (ADR 0024).
