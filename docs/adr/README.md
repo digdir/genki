@@ -37,3 +37,4 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0038](0038-ai-gateway.md)                               | The AI Gateway as a usage source, key issuer and model route | Proposed                                                            |
 | [0039](0039-parquet-sources.md)                          | Parquet sources                                              | Proposed                                                            |
 | [0040](0040-evaluating-with-langfuse.md)                 | Evaluating with Langfuse                                     | Accepted, not built; judges that block proposed                     |
+| [0043](0043-code-runs-in-agentctl.md)                    | Code runs in agentctl, not in the platform                   | Proposed                                                            |
