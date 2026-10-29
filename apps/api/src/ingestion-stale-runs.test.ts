@@ -98,9 +98,13 @@ describe('stale ingestion runs', () => {
     vi.useFakeTimers({ now: new Date('2026-10-29T01:00:00Z') });
     const executions = new InMemoryExecutionStore();
     const { value: run } = await startRun(instance(executions));
+    const other = instance(executions);
 
-    await vi.advanceTimersByTimeAsync(7 * 3_600_000);
-    const changed = await instance(executions).failStaleRuns();
+    let changed = 0;
+    for (let minute = 0; minute < 7 * 60; minute += 1) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      changed += await other.failStaleRuns();
+    }
 
     expect(changed).toBe(0);
     expect((await executions.get(run.id))?.status).toBe('running');
@@ -124,14 +128,18 @@ describe('stale ingestion runs', () => {
   it('checks for stale ingestion runs every minute, not only when the platform starts', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-29T08:00:00Z') });
     const executions = new InMemoryExecutionStore();
+    const checks = vi.spyOn(executions, 'failStale');
     await platformOn(executions);
     await vi.advanceTimersByTimeAsync(30_000);
     const stopped = running('stoppet', '2026-10-29T07:00:00.000Z');
     await executions.save(stopped);
     await executions.beat(stopped, '2026-10-29T08:00:30.000Z');
 
-    await vi.advanceTimersByTimeAsync(150_000);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(checks).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(120_001);
 
+    expect(checks).toHaveBeenCalledTimes(4);
     expect(await executions.get(stopped.id)).toMatchObject({
       status: 'failed',
       endedAt: '2026-10-29T08:03:00.000Z',
