@@ -524,6 +524,54 @@ describe('service definitions', () => {
     ]);
   });
 
+  it('a variant can fix a retrieval filter, which only that variant carries into its knowledge config', () => {
+    const filters = { fields: [{ field: 'orgs_short', 'selected-options': ['DIGDIR'] }] };
+    const result = validateService(
+      withSpec({ variants: [{ id: 'default' }, { id: 'digdir', filters }] }),
+      plugins,
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+
+    const [service, variant] = toCapabilities(result.definition, 1);
+    const knowledge = (c: typeof service) =>
+      (c?.capability.config as { knowledge: { filters?: unknown } }).knowledge;
+
+    expect(knowledge(service).filters).toBeUndefined();
+    expect(knowledge(variant).filters).toEqual(filters);
+  });
+
+  it('refuses a variant filter without fields or options, or of an unknown type', () => {
+    for (const filters of [
+      { fields: [] },
+      { fields: [{ field: 'orgs_short', 'selected-options': [] }] },
+      { fields: [{ field: 'orgs_short', type: 'range', 'selected-options': ['x'] }] },
+    ]) {
+      const result = validateService(withSpec({ variants: [{ id: 'default', filters }] }), plugins);
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('refuses a variant filter on a field none of the datasets declares, when the catalog is known', () => {
+    const filters = (field: string) => ({ fields: [{ field, 'selected-options': ['x'] }] });
+    const declared = {
+      ...plugins,
+      datasetFilters: (dataset: string) =>
+        dataset === 'digdir/kudos' ? { orgs_short: 'multiselect' } : undefined,
+    };
+    const check = (field: string) =>
+      validateService(
+        withSpec({ variants: [{ id: 'default', filters: filters(field) }] }),
+        declared,
+      );
+
+    expect(check('orgs_short').ok).toBe(true);
+    const refused = check('produkt');
+    expect(!refused.ok && refused.errors).toContainEqual({
+      path: 'spec.variants[0].filters.fields[0].field',
+      message: 'no dataset of this service declares the filter field produkt',
+    });
+  });
+
   it("a variant without its own way of working uses the service's", () => {
     const result = validateService(
       withSpec({

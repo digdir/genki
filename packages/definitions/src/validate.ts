@@ -43,6 +43,8 @@ export interface PluginSchemas {
   rerankers?: Set<string>;
   rerankerResidency?: (id: string) => Residency | undefined;
   datasets?: Set<string>;
+  /** The filter fields a dataset declares, for checking a variant's fixed filter. */
+  datasetFilters?: (dataset: string) => Record<string, unknown> | undefined;
   datasetLocation?: (dataset: string) => DatasetLocation | undefined;
   traceSink?: () => TraceSink | undefined;
   strategyResidency?: (strategy: string, config: unknown) => Residency | undefined;
@@ -447,6 +449,7 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
         });
     });
   }
+  errors.push(...variantFilterProblems(spec, plugins));
   errors.push(...residencyProblems(spec, plugins));
   errors.push(...inputFieldProblems(spec));
   errors.push(...tableColumnProblems(spec.output));
@@ -607,3 +610,28 @@ export const validateYaml = (text: string, plugins: PluginSchemas): Validated =>
     };
   }
 };
+
+/** A variant's fixed filter may only name fields that one of the service's datasets declares. */
+const variantFilterProblems = (
+  spec: ServiceDefinition['spec'],
+  plugins: PluginSchemas,
+): ValidationError[] =>
+  spec.variants.flatMap((variant, i) => {
+    if (typeof variant === 'string' || !variant.filters) return [];
+    if (spec.knowledge.datasets.length === 0)
+      return [
+        { path: `spec.variants[${i}].filters`, message: 'a filter needs a dataset to search' },
+      ];
+    const lookup = plugins.datasetFilters;
+    if (!lookup) return [];
+    return variant.filters.fields.flatMap((f, j) =>
+      spec.knowledge.datasets.some((d) => f.field in (lookup(d.dataset) ?? {}))
+        ? []
+        : [
+            {
+              path: `spec.variants[${i}].filters.fields[${j}].field`,
+              message: `no dataset of this service declares the filter field ${f.field}`,
+            },
+          ],
+    );
+  });
