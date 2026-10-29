@@ -609,7 +609,7 @@ describe('agent-loop strategy', () => {
 });
 
 describe('agent-loop sources, as headless-rag publishes them', () => {
-  it('returns every chunk it read as a source even when the answer cites none', async () => {
+  it('returns every read chunk in synthesis ranking order even when the answer cites none', async () => {
     const out = await run({
       scripts: {
         primary: {
@@ -624,7 +624,7 @@ describe('agent-loop sources, as headless-rag publishes them', () => {
 
     expect(out.text).toBe('Digdir skal digitalisere offentlig sektor.');
     expect(out.meta).toEqual({ citations: [] });
-    expect(out.sources.map((s) => s.chunkId)).toEqual(['c4', 'c1']);
+    expect(out.sources.map((s) => s.chunkId)).toEqual(['c1', 'c4']);
   });
 
   it('keeps the read chunks as sources when the loop runs out and the fallback answers', async () => {
