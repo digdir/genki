@@ -1,6 +1,6 @@
 # 0022 Tenant isolation in Postgres
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; job tables proposed in ADR 0041, 2026-10-29; deployed role switch corrected, 2026-10-29). Proposed 2026-10-06
 
 ## Decision
 
@@ -9,7 +9,7 @@ Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
 - The kernel and the API connect as different database roles. The API's role is not a superuser and owns no tables, so row-level security applies to it. Migrations run as the owner.
 - Looking up an API key by digest happens before the tenant is known, so it goes through one `SECURITY DEFINER` function. Every other key operation is tenant-scoped.
 - Reads that legitimately span tenants (the tenant directory, registered clients, the settings snapshot, support sessions, operator audit, lookups by id) go through `withPlatformAccess(pool, purpose, …)`. It sets `app.platform_access` for one transaction, every cross-tenant `SECURITY DEFINER` function refuses to run without it, and it cannot be combined with a tenant transaction. Each call names its purpose, so all of them can be found in the code.
-- The runtime role is `genai_runtime`: no login of its own, no `BYPASSRLS`, owns nothing, and gets DML only on a listed set of tables. The migration creates it and refuses to run if it is a superuser or bypasses RLS. Production connects with `DATABASE_RUNTIME_URL`; without it the store pool sets the role per connection, which is acceptable only for local development.
+- The runtime role is `genai_runtime`: no login of its own, no `BYPASSRLS`, owns nothing, and gets DML only on a listed set of tables. The migration creates it and refuses to run if it is a superuser or bypasses RLS. Deployed apps log in as the app identity, which owns the schema, and the store pool switches to the runtime role per connection; `DATABASE_RUNTIME_URL` gives the pool a login of its own instead, and no environment sets it yet. A switch per connection keeps out mistakes in our queries, not code that switches back; a login that cannot switch, with migrations run by another identity, is still open (`infra/README.md`).
 
 ## Why
 
@@ -20,3 +20,4 @@ Row-level security on the kernel's tables would need the tenant on every kernel 
 - Infra creates the two roles and grants them separately.
 - A new table the API reads directly gets a tenant column and a policy in the same migration.
 - The kernel still shares `genai_runtime` with the API until the deployment has a separate kernel role. The pgvector tables (`kn_*`) have no tenant column and are reached only through the owner pool, because the knowledge writer runs DDL.
+- [ADR 0041](0041-durable-jobs-on-pg-boss.md), proposed, adds pg-boss's `pgboss` tables to the platform server without row-level security, like the kernel's tables. Only the worker's role, `genai_worker`, a member of `genai_runtime`, has DML on them. `genai_runtime` has no right on them beyond what sending a job needs, and the console reads job state only through `SECURITY DEFINER` functions that require `withPlatformAccess`. The API does not read the tables directly, so the rule above does not apply to them; the grants enforce it.
