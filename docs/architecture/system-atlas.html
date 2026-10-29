@@ -3139,6 +3139,43 @@
                                     propertyNames: { type: 'string' },
                                     additionalProperties: {},
                                   },
+                                  filters: {
+                                    type: 'object',
+                                    properties: {
+                                      fields: {
+                                        minItems: 1,
+                                        type: 'array',
+                                        items: {
+                                          type: 'object',
+                                          properties: {
+                                            field: { type: 'string', minLength: 1 },
+                                            type: {
+                                              type: 'string',
+                                              enum: ['multiselect', 'contains', 'not-in-set'],
+                                            },
+                                            'value-type': {
+                                              type: 'string',
+                                              enum: ['string', 'integer'],
+                                            },
+                                            'selected-options': {
+                                              minItems: 1,
+                                              type: 'array',
+                                              items: {
+                                                anyOf: [
+                                                  { type: 'string', minLength: 1 },
+                                                  { type: 'number' },
+                                                ],
+                                              },
+                                            },
+                                          },
+                                          required: ['field', 'selected-options'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                    },
+                                    required: ['fields'],
+                                    additionalProperties: false,
+                                  },
                                 },
                                 required: ['id'],
                                 additionalProperties: false,
