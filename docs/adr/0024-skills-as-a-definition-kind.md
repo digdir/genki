@@ -1,6 +1,6 @@
 # 0024 Skills as a definition kind
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-07
 
 ## Decision
 
@@ -16,6 +16,12 @@ A skill is a third definition kind, `Skill`, next to `Service` and `StepFlow` (0
 ## Why
 
 Instructions that several services share were copied by hand between prompts and drifted apart. Making them a versioned, tested definition gives them the same review, pinning and rollback as services, and the Agent Skills format keeps them portable to other tools (0023).
+
+## Accepted with ADR 0040 (not built)
+
+- **The pass rate blocks only with a calibrated judge.** It is graded on `criteria` cases by a model-based judge, so it blocks publishing only once that judge is calibrated (ADR 0003).
+- **Until then a draft below the threshold needs an override.** It is published only with the owner's override and a reason, which is written to the audit log.
+- **Unchanged:** a test run on the current draft, every `must_reject` case rejected and only published tools.
 
 ## Consequences
 
