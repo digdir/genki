@@ -1,6 +1,6 @@
 # 0003 Evaluation is part of the platform
 
-Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0039, 2026-10-22, not built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0040, 2026-10-22, not built). Proposed 2026-10-06
 
 ## Decision
 
@@ -11,23 +11,23 @@ Status: accepted, 2026-10-12 (built; amendment proposed with ADR 0039, 2026-10-2
 - Publishing gates live in the service definition. A version with a failing gate cannot be published to production.
 - Every result records the code version, the data, the served model and the judge, so only like is compared with like.
 
-## Proposed with ADR 0039 (not built)
+## Proposed with ADR 0040 (not built)
 
 These rules replace or extend the decision above once they are built:
 
 - **One kind of run.** A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it.
-- **Evaluators may answer later.** An evaluator returns its scores at once or later (`evaluator@2`, ADR 0039).
+- **Evaluators may answer later.** An evaluator returns its scores at once or later (`evaluator@2`, ADR 0040).
 - **Holdout stays in the platform.** Holdout cases never leave the platform for a trace sink.
 - **`expected.criteria`.** A test case carries the named fields judges read in `expected.criteria`, such as `criteria` or `supporting_quotes`. A `criteria` case's criteria move there from `referenceAnswer`, which then holds only a reference answer. Existing test sets are migrated.
 - **Calibration for every model-based judge.** A judge, built in or a plug-in, blocks a publish only when both hold:
   - its agreement with human calibration labels is a Cohen's kappa of at least 0.6, over at least 30 labels with both verdicts among the judge's own;
   - its model is from another family than every model that wrote the answer. An embedder that only searches does not count.
 
-  Until then its gates are advisory.
+  Until then its gates are advisory. A Langfuse judge is advisory whatever its calibration (ADR 0040).
 
 - **Calibration details.** Numeric verdicts are split at 0.5 into good and bad first. A gate checks the calibration of the judge that produced its metric, not of every judge in the run.
 - **Judge identity.** A judge's identity includes its version and its model, and every result records it.
-- **Labels outlive judge versions.** Calibration labels are human verdicts on cases. When a judge's identity changes, the platform has the new identity score the labelled cases again, while their text is kept, and computes its kappa from those pairs.
+- **Labels outlive judge versions.** Calibration labels are human verdicts on cases. When a judge's identity changes, the platform has the new identity score the labelled cases again, while their text is kept, and computes its kappa from those pairs. A new identity takes over only the labels of the same judge: for a Langfuse judge, the same tenant, connection and name, so its labels never come from another tenant.
 - **Re-running the baseline.** When a judge changes, the last published version's eval run is run again with the new judge before a no-regression comparison.
 
 ## Why

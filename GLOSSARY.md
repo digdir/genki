@@ -28,6 +28,10 @@ _Avoid_: evaluator (for the model-based kind), grader
 A person's own verdict on a test case, to the same question a judge answered about it, used to measure how far that judge can be trusted.
 _Avoid_: annotation, human score
 
+**Advisory**:
+Said of a score or gate that is recorded and shown but cannot block a publish, such as a gate on a judge that is not yet calibrated, or any Langfuse judge's score.
+_Avoid_: soft gate, warning
+
 **Feedback**:
 What an end user says about a real answer in daily use, such as thumbs up or down with a comment.
 _Avoid_: annotation, label, rating (for a reviewer's verdict)
