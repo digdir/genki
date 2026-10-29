@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 
+/** The tables with vector indexes, which pgvector 0.8.2 can corrupt when VACUUM runs during writes. */
+const vacuumedTables = ['kn_docs', 'kn_chunks', 'kn_phrases'];
+
+const vacuumKey = `hashtext('genai-knowledge-vacuum')`;
+
 const migrations: string[] = [
   `create extension if not exists vector`,
   `create table if not exists kn_generations (
@@ -57,6 +62,14 @@ const migrations: string[] = [
    )`,
   `create index if not exists kn_phrases_doc on kn_phrases (dataset, generation, doc_id)`,
   `create index if not exists kn_phrases_tsv on kn_phrases using gin (tsv)`,
+  `do $$ declare t text; begin
+     foreach t in array array[${vacuumedTables.map((t) => `'${t}'`).join(', ')}] loop
+       if not exists (select from pg_class where oid = t::regclass
+                        and 'autovacuum_enabled=false' = any(coalesce(reloptions, '{}'))) then
+         execute format('alter table %I set (autovacuum_enabled = false)', t);
+       end if;
+     end loop;
+   end $$`,
 ];
 
 export const transaction = async <T>(
@@ -82,6 +95,32 @@ export const migrateKnowledge = (pool: Pool) =>
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-migrate'))`);
     for (const sql of migrations) await client.query(sql);
   });
+
+/** Taken first by every transaction that writes the vacuumed tables, so VACUUM never runs beside one. */
+export const holdWriteLock = (client: PoolClient) =>
+  client.query(`select pg_advisory_xact_lock_shared(${vacuumKey})`);
+
+/**
+ * VACUUM the vacuumed tables when no write is open. It never waits for the lock, since a waiting
+ * exclusive request would hold back every later writer; the next run's end tries again. On a
+ * failure the connection is destroyed, so the lock cannot stay held.
+ */
+export const vacuumKnowledge = async (pool: Pool) => {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query<{ locked: boolean }>(
+      `select pg_try_advisory_lock(${vacuumKey}) as locked`,
+    );
+    if (rows[0]?.locked) {
+      await client.query(`vacuum (analyze) ${vacuumedTables.join(', ')}`);
+      await client.query(`select pg_advisory_unlock(${vacuumKey})`);
+    }
+    client.release();
+  } catch (error) {
+    client.release(true);
+    throw error;
+  }
+};
 
 export const maxIndexedDimensions = 2000;
 

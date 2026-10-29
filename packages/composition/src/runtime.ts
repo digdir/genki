@@ -344,6 +344,10 @@ export const createRuntime = async (input: RuntimeInput) => {
     ? pgvectorEngine({
         pool: input.knowledgePool,
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+        onVacuumError: (error) =>
+          input.logger?.('knowledge vacuum failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [
