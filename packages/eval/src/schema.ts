@@ -34,30 +34,49 @@ export const sourceRef = z
   );
 export type SourceRef = z.infer<typeof sourceRef>;
 
-export const testCase = z.strictObject({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
-  split: z.enum(splits),
-  input: z.union([
-    z.string().min(1),
-    z.strictObject({ data: z.unknown().optional(), parts: z.array(z.unknown()).optional() }),
-  ]),
-  expected: z
-    .strictObject({
-      sources: z.array(sourceRef).default([]),
-      answerPattern: pattern.optional(),
-      referenceAnswer: z.string().min(1).optional(),
-      fields: z.record(z.string(), z.unknown()).optional(),
-    })
-    .prefault({}),
-  grounding: z.enum(groundings).default('sources-and-answer'),
-  type: z.enum(caseTypes).optional(),
-  language: z.enum(caseLanguages).optional(),
-  tags: z.array(z.string()).default([]),
-  origin: z.record(z.string(), z.string()).optional(),
-  needsReview: z.boolean().default(false),
-  notes: z.string().optional(),
-});
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Before expected.criteria, a criteria case kept its criteria in referenceAnswer (ADR 0003). */
+const withCriteriaMoved = (raw: unknown) => {
+  if (!isRecord(raw) || raw.type !== 'criteria' || !isRecord(raw.expected)) return raw;
+  const { referenceAnswer, criteria, ...expected } = raw.expected;
+  if (criteria !== undefined || typeof referenceAnswer !== 'string') return raw;
+  return { ...raw, expected: { ...expected, criteria: { criteria: referenceAnswer } } };
+};
+
+export const testCase = z.preprocess(
+  withCriteriaMoved,
+  z.strictObject({
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+    split: z.enum(splits),
+    input: z.union([
+      z.string().min(1),
+      z.strictObject({ data: z.unknown().optional(), parts: z.array(z.unknown()).optional() }),
+    ]),
+    expected: z
+      .strictObject({
+        sources: z.array(sourceRef).default([]),
+        answerPattern: pattern.optional(),
+        referenceAnswer: z.string().min(1).optional(),
+        criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string().min(1)).optional(),
+        fields: z.record(z.string(), z.unknown()).optional(),
+      })
+      .prefault({}),
+    grounding: z.enum(groundings).default('sources-and-answer'),
+    type: z.enum(caseTypes).optional(),
+    language: z.enum(caseLanguages).optional(),
+    tags: z.array(z.string()).default([]),
+    origin: z.record(z.string(), z.string()).optional(),
+    needsReview: z.boolean().default(false),
+    notes: z.string().optional(),
+  }),
+);
 export type TestCase = z.infer<typeof testCase>;
+
+/** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
+export const expectedFor = (type: CaseType, text: string | undefined) =>
+  !text ? {} : type === 'criteria' ? { criteria: { criteria: text } } : { referenceAnswer: text };
 
 export const testSet = z
   .strictObject({

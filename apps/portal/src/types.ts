@@ -210,7 +210,7 @@ export interface TestCaseSummary {
   input: string | { data?: unknown; parts?: unknown[] };
   tags: string[];
   needsReview: boolean;
-  expected: { referenceAnswer?: string; sources?: unknown[] };
+  expected: { referenceAnswer?: string; criteria?: Record<string, string>; sources?: unknown[] };
 }
 
 export interface TestSet {

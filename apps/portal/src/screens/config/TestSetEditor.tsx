@@ -43,6 +43,7 @@ interface CaseDraft {
   split: string;
   input: string;
   referenceAnswer: string;
+  criteria?: Record<string, string>;
 }
 
 const CaseForm = ({
@@ -136,13 +137,24 @@ const CaseForm = ({
   );
 };
 
-const caseBody = (draft: CaseDraft) => ({
-  split: draft.split,
-  input: draft.input.trim(),
-  ...(draft.referenceAnswer.trim()
-    ? { expected: { referenceAnswer: draft.referenceAnswer.trim() } }
-    : {}),
-});
+const caseBody = (draft: CaseDraft) => {
+  const text = draft.referenceAnswer.trim();
+  const criteria = {
+    ...Object.fromEntries(Object.entries(draft.criteria ?? {}).filter(([k]) => k !== 'criteria')),
+    ...(text ? { criteria: text } : {}),
+  };
+  return {
+    split: draft.split,
+    input: draft.input.trim(),
+    ...(draft.criteria
+      ? Object.keys(criteria).length > 0
+        ? { expected: { criteria } }
+        : {}
+      : text
+        ? { expected: { referenceAnswer: text } }
+        : {}),
+  };
+};
 
 const emptyCase = (id = ''): CaseDraft => ({
   id,
@@ -226,7 +238,9 @@ const SetCases = ({
                   id: c.id,
                   split: c.split,
                   input: inputText(c.input),
-                  referenceAnswer: c.expected.referenceAnswer ?? '',
+                  referenceAnswer:
+                    c.expected.criteria?.criteria ?? c.expected.referenceAnswer ?? '',
+                  ...(c.expected.criteria ? { criteria: c.expected.criteria } : {}),
                 }}
                 fixedId
                 busy={busy}

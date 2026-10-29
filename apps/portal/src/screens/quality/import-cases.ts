@@ -40,7 +40,8 @@ const textOf = (raw: unknown) =>
 const expectedOf = (raw: unknown) => {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     const e = raw as Record<string, unknown>;
-    return textOf(e.referenceAnswer) || textOf(e.answerPattern);
+    const criteria = e.criteria as Record<string, unknown> | undefined;
+    return textOf(criteria?.criteria) || textOf(e.referenceAnswer) || textOf(e.answerPattern);
   }
   return textOf(raw);
 };

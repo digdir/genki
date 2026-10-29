@@ -261,6 +261,7 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
             ...(testCase.expected.referenceAnswer
               ? { referenceAnswer: testCase.expected.referenceAnswer }
               : {}),
+            ...(testCase.expected.criteria ? { criteria: testCase.expected.criteria } : {}),
           },
           answer: observation.answer,
           sources: observation.citations.map((c) => ({
