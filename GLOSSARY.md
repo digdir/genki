@@ -63,7 +63,7 @@ What the platform keeps about one source document in one dataset: the record as 
 _Avoid_: document metadata, source row
 
 **Tombstone**:
-What is left of a deleted document: a hash of its id and the date, so an old citation can say it was withdrawn.
+What is left of a deleted document: a keyed hash of its id and the date, so an old citation can say it was withdrawn.
 _Avoid_: deleted marker
 
 **Withdrawal**:
