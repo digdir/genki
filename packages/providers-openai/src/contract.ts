@@ -78,6 +78,53 @@ export const openAiChatFixture: ModelContractFixture = {
   },
 };
 
+export const openAiResponsesFixture: ModelContractFixture = {
+  adapter: openAiChat,
+  basePath: '/v1',
+  modelOptions: { api: 'responses' },
+  reply: (scenario, body, path) => {
+    if (path !== '/v1/responses' || body.store !== false || 'previous_response_id' in body)
+      return failure(400);
+    if (scenario.kind === 'status') return failure(scenario.status);
+    const output =
+      scenario.kind === 'tool'
+        ? [
+            {
+              type: 'function_call',
+              call_id: scenario.id,
+              name: scenario.name,
+              arguments: scenario.arguments,
+            },
+          ]
+        : [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: scenario.text, annotations: [] }],
+            },
+          ];
+    const response = {
+      id: 'contract-response',
+      object: 'response',
+      status: 'completed',
+      model: 'contract-model-2026',
+      output,
+      usage: { input_tokens: 11, output_tokens: 7, total_tokens: 18 },
+    };
+    if (body.stream !== true) return { status: 200, json: response };
+    const text = scenario.kind === 'text' ? scenario.text : '';
+    const half = Math.ceil(text.length / 2);
+    return {
+      status: 200,
+      sse: [
+        { data: { type: 'response.output_text.delta', delta: text.slice(0, half) } },
+        { data: { type: 'response.output_text.delta', delta: text.slice(half) } },
+        { data: { type: 'response.completed', response } },
+      ],
+    };
+  },
+};
+
 export const openAiEmbeddingsFixture: EmbeddingContractFixture = {
   adapter: openAiEmbeddings,
   basePath: '/v1',
@@ -102,11 +149,13 @@ export const openAiPlugins: PluginRegistration[] = [
       version: '1',
       contract: modelContractVersion,
       title: 'OpenAI-kompatibel chat',
-      description: 'Chat completions over the OpenAI-compatible protocol, also Azure AI Foundry.',
+      description:
+        'Chat Completions and stateless Responses over OpenAI-compatible endpoints, also Azure AI Foundry.',
       capabilities: ['stream', 'tools', 'json-schema', 'reasoning'],
       configSchema: {
         type: 'object',
         properties: {
+          api: { type: 'string', enum: ['chat-completions', 'responses'] },
           tokenParam: { type: 'string', enum: ['max_tokens', 'max_completion_tokens'] },
         },
       },
