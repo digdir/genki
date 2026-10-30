@@ -10,7 +10,7 @@ npm start          # setup, then API, portal, console and workspace; stop all wi
 
 `npm start` is `npm run setup` followed by `npm run dev:all`; run them separately when you only need one.
 
-`npm run setup` is safe to run again: it starts `docker compose up -d postgres knowledge` (pgvector on `127.0.0.1:55432`, and the knowledge server, `pgvector/pgvector:0.8.2-pg17`, on `127.0.0.1:55433`), waits until both answer, and creates `.env.local` from `.env.example` only when it does not exist. The new file gets the local `DATABASE_URL`, a generated `CONTENT_MASTER_KEY`, `DEV_API_KEY` and `DEV_SERVICE_API_KEY`, the local test model, and the knowledge settings below. In an existing `.env.local` setup only adds the knowledge settings it lacks and names the other settings it lacks. Then it runs `npm run knowledge:setup -- --local`.
+`npm run setup` is safe to run again: it starts `docker compose up -d postgres knowledge` (pgvector on `127.0.0.1:55432`, and the knowledge server, `pgvector/pgvector:0.8.2-pg17`, on `127.0.0.1:55433`), waits until both answer, and creates `.env.local` from `.env.example` only when it does not exist. The new file gets the local `DATABASE_URL`, a generated `CONTENT_MASTER_KEY`, `DEV_API_KEY` and `DEV_SERVICE_API_KEY`, the local test model, and the knowledge settings below. In an existing `.env.local` setup only adds the knowledge settings that are absent (an empty one stays empty, which leaves the knowledge server out) and names the other settings it lacks. Then it runs `npm run knowledge:setup -- --local`.
 
 **The knowledge server.** Knowledge data moves to a Postgres server of its own ([ADR 0042](adr/0042-the-knowledge-database.md)). It has three roles: `genai_knowledge_owner` (migrations and partition DDL), `genai_knowledge_writer` (data, no DDL) and `genai_knowledge_reader` (only the read functions). The worker logs in with its own login and switches to the writer or the owner; the API logs in with another and can only switch to the reader. A pgvector endpoint with `options: { connection: knowledge }` uses those pools and never the platform database. Until its tables are built, it answers every search and write with "not ready". Without a knowledge server, such an endpoint is left out with a warning in dev mode; outside dev mode the API refuses to start, and saving one is refused.
 
@@ -40,6 +40,7 @@ npm start          # setup, then API, portal, console and workspace; stop all wi
 ```sh
 COMPOSE_PROJECT_NAME=genai-second GENAI_POSTGRES_PORT=8110 GENAI_KNOWLEDGE_PORT=8111 GENAI_MODEL_PORT=8104 npm run setup
 GENAI_API_PORT=8100 GENAI_PORTAL_PORT=8101 GENAI_CONSOLE_PORT=8102 GENAI_WORKSPACE_PORT=8103 npm run dev:all
+WORKER_HEALTH_PORT=8105 npm run dev -w apps/worker   # only if you run the worker too
 ```
 
 Setup writes the ports into the new `.env.local`, and `dev:all` points the Vite proxies and the login issuer at the moved API. Login only works when each app's `http://localhost:<port>/callback` is listed for its client in `apps/api/config/local/identity.yaml`; `dev:all` names the missing ones at start. Stop the copy's database with `COMPOSE_PROJECT_NAME=genai-second docker compose down -v`.

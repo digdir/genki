@@ -78,4 +78,12 @@ describe('the knowledge server binding', () => {
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(boundTo).toHaveBeenCalledTimes(3);
   });
+
+  it('fails to start the health server with the port it could not take', async () => {
+    server = await startHealthServer({ port: 0, ready: () => true });
+    const port = Number(new URL(server.url).port);
+    await expect(startHealthServer({ port, ready: () => true })).rejects.toThrow(
+      `WORKER_HEALTH_PORT ${port} is taken`,
+    );
+  });
 });

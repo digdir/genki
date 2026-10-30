@@ -141,6 +141,9 @@ describe('knowledge server setup', () => {
       await asLogin(login, role, async (c) => {
         await expect(c.query('create table probe (id int)')).rejects.toThrow(/permission denied/);
         await expect(c.query('create schema probe')).rejects.toThrow(/permission denied/);
+        await expect(c.query('create temp table probe (id int)')).rejects.toThrow(
+          /permission denied/,
+        );
         await expect(
           c.query('create function probe() returns int language sql as $$ select 1 $$'),
         ).rejects.toThrow(/permission denied/);

@@ -74,6 +74,7 @@ export interface KnowledgePools {
 export interface PgvectorEngineOptions {
   pool: Pool;
   knowledge?: KnowledgePools;
+  knowledgeGuard?: () => void;
   embedder?: (dataset: DatasetConfig) => QueryEmbedder;
   maxQueryLength?: number;
 }
@@ -655,8 +656,18 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     needs: { vectors: true },
     endpointOptions,
     datasetOptions: pgvectorDatasetOptions,
-    connect: (endpoint, context) =>
-      onKnowledgeServer(endpoint) ? knowledgeWriter : writerOf(context.signal),
+    connect: (endpoint, context) => {
+      if (!onKnowledgeServer(endpoint)) return writerOf(context.signal);
+      try {
+        options.knowledgeGuard?.();
+      } catch (error) {
+        throw new KnowledgeError(
+          'unavailable',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      return knowledgeWriter;
+    },
   };
 
   return { adapter, writer };

@@ -78,7 +78,7 @@ export const ensureEnvFile = (
   const text = readFileSync(path, 'utf8');
   const current = parseEnv(text);
   const knowledge = Object.entries(knowledgeSettings(random, env)).filter(
-    ([name]) => !current[name],
+    ([name]) => !(name in current),
   );
   if (knowledge.length)
     writeFileSync(

@@ -33,21 +33,28 @@ export const setUpKnowledge = async (options: {
     ...(options.rebind ? { rebind: options.rebind } : {}),
   });
   if (binding.outcome === 'rebound') {
-    const { rows } = await options.platform.query<{ actor: string }>(
-      'select current_user as actor',
-    );
-    await (
-      await PostgresAdminRecords.open(options.platform)
-    ).appendAudit({
-      task: `knowledge-rebind-${randomUUID()}`,
-      tenant: options.tenant,
-      action: 'platform.knowledge.rebind',
-      actor: rows[0]?.actor ?? 'unknown',
-      at: new Date().toISOString(),
-      outcome: 'applied',
-      target: `knowledge server binding: ${binding.previous} -> ${binding.platformId}`,
-      reason: options.rebind?.reason ?? '',
-    });
+    try {
+      const { rows } = await options.platform.query<{ actor: string }>(
+        'select current_user as actor',
+      );
+      await (
+        await PostgresAdminRecords.open(options.platform)
+      ).appendAudit({
+        task: `knowledge-rebind-${randomUUID()}`,
+        tenant: options.tenant,
+        action: 'platform.knowledge.rebind',
+        actor: rows[0]?.actor ?? 'unknown',
+        at: new Date().toISOString(),
+        outcome: 'applied',
+        target: `knowledge server binding: ${binding.previous} -> ${binding.platformId}`,
+        reason: options.rebind?.reason ?? '',
+      });
+    } catch (error) {
+      throw new Error(
+        `the knowledge server was rebound from platform server ${binding.previous} to ${binding.platformId}, but its audit entry failed: ${String(error)}. Record it in the audit log by hand.`,
+        { cause: error },
+      );
+    }
   }
   return binding;
 };

@@ -194,6 +194,7 @@ export interface RuntimeInput {
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
   knowledgeServer?: KnowledgePools;
+  knowledgeGuard?: () => void;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
@@ -348,6 +349,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ? pgvectorEngine({
         pool: input.knowledgePool,
         ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
+        ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
       })
     : undefined;

@@ -107,7 +107,16 @@ export const startHealthServer = async (options: {
     }
     response.writeHead(404).end();
   });
-  await new Promise<void>((resolve) => server.listen(options.port, resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', (error: NodeJS.ErrnoException) =>
+      reject(
+        error.code === 'EADDRINUSE'
+          ? new Error(`WORKER_HEALTH_PORT ${options.port} is taken; set another port`)
+          : error,
+      ),
+    );
+    server.listen(options.port, resolve);
+  });
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,

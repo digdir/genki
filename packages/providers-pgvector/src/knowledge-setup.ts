@@ -102,6 +102,7 @@ export const setUpKnowledgeServer = async (
     const { rows } = await client.query<{ db: string }>('select current_database() as db');
     const database = roleName(rows[0]?.db ?? '');
     await client.query(`revoke create on schema public from public`);
+    await client.query(`revoke temporary on database ${database} from public`);
     await client.query(`grant create on database ${database} to ${knowledgeRoles.owner}`);
     await client.query(`grant usage, create on schema public to ${knowledgeRoles.owner}`);
     await client.query(

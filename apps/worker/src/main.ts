@@ -230,7 +230,12 @@ const runtime = await createRuntime({
   ...(db
     ? {
         knowledgePool: db.pool,
-        ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
+        ...(knowledgeServer
+          ? {
+              knowledgeServer: knowledgeServer.pools,
+              knowledgeGuard: () => knowledgeBinding.knowledgeBound(),
+            }
+          : {}),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
       }

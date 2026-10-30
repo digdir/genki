@@ -109,13 +109,14 @@ describe('setup env file', () => {
 
   it('setup adds the missing local knowledge settings and keeps the ones already set', () => {
     const root = tempRoot();
-    const mine = 'DATABASE_URL=postgres://mine\nKNOWLEDGE_API_PASSWORD=kept\n';
+    const mine =
+      'DATABASE_URL=postgres://mine\nKNOWLEDGE_API_PASSWORD=kept\nKNOWLEDGE_DATABASE_URL=\n';
     writeFileSync(join(root, '.env.local'), mine);
     const result = ensureEnvFile(root, counter(), { GENAI_KNOWLEDGE_PORT: '8111' });
     const text = readFileSync(join(root, '.env.local'), 'utf8');
     expect(text.startsWith(mine)).toBe(true);
     const env = parseEnv(text);
-    expect(env.KNOWLEDGE_DATABASE_URL).toBe('postgres://127.0.0.1:8111/genai_knowledge');
+    expect(env.KNOWLEDGE_DATABASE_URL).toBe('');
     expect(env.KNOWLEDGE_API_PASSWORD).toBe('kept');
     expect(env.KNOWLEDGE_WORKER_PASSWORD).toMatch(/^[\w-]{32}$/);
     expect(result.missing).not.toContain('KNOWLEDGE_WORKER_PASSWORD');

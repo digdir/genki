@@ -120,4 +120,23 @@ describe('a pgvector endpoint on the knowledge server', () => {
       ).ok,
     ).toBe(true);
   });
+
+  it('a `knowledge` writer refuses to start while the knowledge server is bound to another platform server', () => {
+    const engine = pgvectorEngine({
+      pool: fakePool().pool,
+      knowledge: { writer: fakePool().pool },
+      knowledgeGuard: () => {
+        throw new Error('the knowledge server is bound to platform server b, not a');
+      },
+    });
+    expect(() => engine.writer.connect(knowledgeEndpoint, { signal })).toThrow(
+      new KnowledgeError(
+        'unavailable',
+        'the knowledge server is bound to platform server b, not a',
+      ),
+    );
+    expect(() =>
+      engine.writer.connect({ options: { connection: 'platform' }, timeoutMs: 5000 }, { signal }),
+    ).not.toThrow();
+  });
 });
