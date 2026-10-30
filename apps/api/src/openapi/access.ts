@@ -362,7 +362,12 @@ const BuildingBlock = z
           z.object({ variable: z.string(), source: z.string(), jsonPath: z.string().optional() }),
         ),
         refused: z
-          .object({ reason: z.string(), field: z.string().optional(), message: z.string() })
+          .object({
+            reason: z.string(),
+            field: z.string().optional(),
+            connection: z.string().optional(),
+            message: z.string(),
+          })
           .optional()
           .describe('Why the judge cannot be taken in use'),
       })

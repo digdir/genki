@@ -1404,7 +1404,7 @@ describe('Langfuse judges on a run', () => {
       (listed.body.data as { id: string }[]).find((b) => b.id === `langfuse:lokal/${judgeRule}`),
     ).toMatchObject({
       status: 'not_allowed',
-      judge: { refused: { reason: 'no-content', field: 'lokal' } },
+      judge: { refused: { reason: 'no-content', connection: 'lokal' } },
     });
     expect(refusedAdopt.status).toBeGreaterThanOrEqual(400);
     expect(JSON.stringify(refusedAdopt.body)).toContain(nothing);
@@ -1509,6 +1509,40 @@ describe('Langfuse judges on a run', () => {
       sinkJudges: [{ name: judgeRule, reported: { inputTokens: 4321, costUsd: 0.0123 } }],
       sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
     });
+  });
+
+  it("sends a criteria case's reference answer as its criteria when it names none, as genki's criteria judge reads it", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    // A golden set: a case with no type and only a reference answer is a criteria case.
+    await env.platform.evalStores.testSets.put(
+      parseTestSet({
+        apiVersion: 'genai/v1',
+        kind: 'TestSet',
+        metadata: { tenant, id: 'svar-gull', name: 'Gull', version: 1 },
+        spec: {
+          service: 'svar',
+          cases: [
+            {
+              id: 'g1',
+              split: 'validation',
+              input: 'Når er fristen for klage?',
+              expected: { referenceAnswer: 'Klagefristen er tre uker.' },
+            },
+          ],
+        },
+      }),
+    );
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-gull' });
+    await env.settled();
+    const root = langfuse.spans.find(
+      (s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case') === 'g1',
+    );
+
+    expect(
+      JSON.parse((root && langfuse.attr(root, 'langfuse.experiment.item.expected_output')) ?? '{}'),
+    ).toEqual({ criteria: 'Klagefristen er tre uker.' });
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {

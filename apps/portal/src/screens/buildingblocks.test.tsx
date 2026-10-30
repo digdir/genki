@@ -1227,7 +1227,7 @@ describe('Byggeklosser: Langfuse-dommere', () => {
       policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
       judge: {
         ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
-        refused: { reason: 'no-content', field: 'kudos', message },
+        refused: { reason: 'no-content', connection: 'kudos', message },
       },
     });
 

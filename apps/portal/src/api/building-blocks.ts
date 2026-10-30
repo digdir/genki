@@ -127,7 +127,7 @@ export interface SinkJudgeInfo {
   version: string;
   dataType: string;
   fields: { variable: string; source: string; jsonPath?: string }[];
-  refused?: { reason: string; field?: string; message: string };
+  refused?: { reason: string; field?: string; connection?: string; message: string };
 }
 
 export interface BuildingBlockList {

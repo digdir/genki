@@ -31,7 +31,7 @@ export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refus
     case 'unread-path':
       return t('blocks.judgeRefusedPath', { field: refused.field ?? '' });
     case 'no-content':
-      return t('blocks.judgeRefusedNoContent', { connection: refused.field ?? '' });
+      return t('blocks.judgeRefusedNoContent', { connection: refused.connection ?? '' });
     default:
       return t('blocks.judgeRefusedField', { field: refused.field ?? '' });
   }

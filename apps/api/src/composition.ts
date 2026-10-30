@@ -957,7 +957,7 @@ export const createPlatform = async (input: PlatformInput) => {
             : {
                 refused: {
                   reason: 'no-content',
-                  field: connection.id,
+                  connection: connection.id,
                   message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
                 },
               }),
