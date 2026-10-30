@@ -19,7 +19,7 @@ import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
-import { runDetail, runSummary, serviceEval, type ServiceDraft } from './service-eval.js';
+import { runDetail, runSummary, serviceEval, shownRun, type ServiceDraft } from './service-eval.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
 
@@ -506,7 +506,7 @@ export const createQualityModule =
           }
           return c.json({
             kind: 'kernel' as const,
-            run: stored.run,
+            run: shownRun(stored.run, seesUsage(guard.principal, guard.tenant)),
             provenance: stored.run.provenance,
             metrics: stored.run.metrics,
             byTag: stored.run.byTag,

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry, validateDefinition } from '@genai/definitions';
-import { gate, parseTestSet, publishGate, type FeedbackRecord } from '@genai/eval';
+import { gate, parseTestSet, publishGate, type EvalRun, type FeedbackRecord } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
@@ -17,7 +17,7 @@ import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
-import type { runDetail } from './service-eval.js';
+import { progressed, runSummary, waitingForScores, type runDetail } from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -446,12 +446,20 @@ describe('eval runs for a service', () => {
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`);
+    const all = await env.send('GET', `/tenants/${tenant}/eval-runs`);
+    const raw = await env.send('GET', `/eval-runs/${id}`);
 
-    for (const shown of [...(list.body.data as Record<string, unknown>[]), run.body]) {
+    for (const shown of [
+      ...(list.body.data as Record<string, unknown>[]),
+      run.body,
+      ...(all.body.data as Record<string, unknown>[]),
+      raw.body.run as Record<string, unknown>,
+    ]) {
       expect(shown).not.toHaveProperty('owner');
       expect(shown).not.toHaveProperty('heartbeatAt');
     }
     expect(run.body.kind).toBe('service');
+    expect(raw.status).toBe(200);
   });
 
   it('finds a run of the eval capability under the same path as a service run, told apart by kind', async () => {
@@ -544,6 +552,44 @@ describe('eval runs for a service', () => {
     expect(run).not.toHaveProperty('tokens');
     expect(list[0]).not.toHaveProperty('cost');
     expect(withUsage.cost).toBeGreaterThan(0);
+    const all = (await env.send('GET', `/tenants/${tenant}/eval-runs`, 'erik')).body.data as Record<
+      string,
+      unknown
+    >[];
+    const raw = (await env.send('GET', `/eval-runs/${id}`, 'erik')).body;
+    const rawWithUsage = (await env.send('GET', `/eval-runs/${id}`, 'kari')).body;
+    expect(all[0]).not.toHaveProperty('usage');
+    expect(raw.run).not.toHaveProperty('usage');
+    expect(rawWithUsage.run).toHaveProperty('usage');
+  });
+
+  it('compares two runs of the same version, since a run names the service it tested, not its one-off draft', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const second = await runPublished(env);
+
+    const stored = await env.platform.evalStores.runs.get(second);
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${second}&metric=refusal`,
+    );
+
+    expect(stored?.run.provenance.services.every((s) => s.startsWith(`${tenant}/svar@`))).toBe(
+      true,
+    );
+    expect(compared.status).toBe(200);
+  });
+
+  it("keeps a test run's own eval task out of Kjøringer, as its answers are", async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const tasks = (await env.send('GET', `/tenants/${tenant}/tasks`)).body.data as {
+      capability?: string;
+      service?: { capability?: { id?: string } };
+    }[];
+
+    expect(tasks.some((t) => JSON.stringify(t).includes('platform/eval'))).toBe(false);
   });
 
   it("finds a draft's run under the spec the publish check computes for that draft", async () => {
@@ -880,5 +926,65 @@ describe('improvements', () => {
 
       expect(started.status).toBe(400);
     });
+  });
+});
+
+describe('a test run as the portal shows it', () => {
+  const finishedRun = (results: EvalRun['results']): EvalRun => ({
+    id: 'r',
+    testSet: { tenant, id: 'svar-frister', version: 1 },
+    capability: `${tenant}/svar`,
+    splits: ['validation'],
+    repeats: 1,
+    startedAt: '2026-10-12T10:00:00Z',
+    endedAt: '2026-10-12T10:01:00Z',
+    provenance: { commit: 'abc', data: 'd', servedModels: ['m'], judges: [], services: [] },
+    results,
+    metrics: {},
+    byTag: {},
+    incomplete: [],
+    status: 'completed',
+    tested: { version: 1 },
+  });
+  const score = (metric: string, value: number | null, state: 'scored' | 'not-applicable') => ({
+    evaluator: 'contract',
+    version: '2',
+    metric,
+    value,
+    applicable: state === 'scored',
+    state,
+  });
+
+  it('counts every case in the summary, so one without a verdict shows as not passed, as in the case list', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [score('exact-text', 1, 'scored')],
+      },
+      {
+        case: 'b',
+        split: 'validation',
+        repeat: 0,
+        task: 't2',
+        tags: [],
+        scores: [score('exact-text', null, 'not-applicable')],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 1, total: 2, score: 0.5 });
+  });
+
+  it('never moves a finished run back to waiting or to running progress', () => {
+    const done = finishedRun([]);
+    const running = { ...done, status: 'running' as const };
+
+    expect(waitingForScores(done)).toBe(done);
+    expect(progressed(done, { done: 1, total: 2 })).toBe(done);
+    expect(waitingForScores(running).status).toBe('waiting-for-scores');
+    expect(progressed(running, { done: 1, total: 2 }).progress).toEqual({ done: 1, total: 2 });
   });
 });

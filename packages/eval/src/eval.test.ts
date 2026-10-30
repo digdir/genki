@@ -536,6 +536,34 @@ describe('eval runner', () => {
     ]);
   });
 
+  it('scores a case no model answered, such as a refusal before the model, and reports usage so far with its progress', async () => {
+    const kernel = kernelWith([answering()], [answerCapability]);
+    const answer = kernelTarget(kernel, kari, 'answer');
+    const progress: [number, unknown][] = [];
+
+    const run = await runEval({
+      testSet: setOf(),
+      evaluators,
+      provenance: { commit: 'abc', data: 'd' },
+      target: {
+        ...answer,
+        invoke: async (input) => {
+          const outcome = await answer.invoke(input);
+          return progress.length === 0 ? { ...outcome, servedModels: [] } : outcome;
+        },
+      },
+      meterAnswers: () => ({ inputTokens: 10, outputTokens: 2, costMicroNok: 5 }),
+      onProgress: (done, _total, usage) => progress.push([done, usage]),
+    });
+
+    expect(run.results).toHaveLength(2);
+    expect(run.provenance.servedModels).toEqual(['foundry/gpt-4o']);
+    expect(progress).toEqual([
+      [1, { answers: { inputTokens: 10, outputTokens: 2, costMicroNok: 5 } }],
+      [2, { answers: { inputTokens: 20, outputTokens: 4, costMicroNok: 10 } }],
+    ]);
+  });
+
   it('fails loudly on missing provenance, a run without a served model, and a failing evaluator', async () => {
     const kernel = kernelWith([answering()], [answerCapability]);
     const silent = kernelWith([answering(false)], [answerCapability]);
@@ -556,7 +584,7 @@ describe('eval runner', () => {
     ).rejects.toThrow(/commit/);
     await expect(
       runEval({ ...base, target: kernelTarget(silent, kari, 'answer') }),
-    ).rejects.toThrow(/case a recorded no served model/);
+    ).rejects.toThrow(/the run recorded no served model/);
     await expect(
       runEval({ ...base, target: kernelTarget(kernel, kari, 'answer'), evaluators: [broken] }),
     ).rejects.toThrow(/evaluator broken failed on case a: boom/);

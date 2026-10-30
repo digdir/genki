@@ -88,7 +88,8 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       ...(deps.wait ? { wait: deps.wait } : {}),
       ...(deps.meterAnswers ? { meterAnswers: deps.meterAnswers } : {}),
       signal: ctx.signal,
-      onProgress: (done, total) => notify({ kind: 'eval.progress', done, total }),
+      onProgress: (done, total, usage) =>
+        notify({ kind: 'eval.progress', done, total, ...(usage ? { usage } : {}) }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {
       finished = true;

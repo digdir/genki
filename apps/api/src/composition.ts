@@ -199,7 +199,7 @@ import {
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
 import {
   createDraftRunner,
@@ -945,7 +945,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',

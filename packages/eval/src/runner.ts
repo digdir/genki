@@ -117,7 +117,8 @@ export interface RunEvalOptions {
   meterAnswers?: (events: Event[]) => UsageSummary;
   /** Cancels the run, including its wait for scores. */
   signal?: AbortSignal;
-  onProgress?: (done: number, total: number) => void;
+  /** After each case, with what the run has used so far when answers are metered. */
+  onProgress?: (done: number, total: number, usage?: EvalRun['usage']) => void;
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
 }
@@ -355,6 +356,14 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const answered: UsageSummary[] = [];
   const annotate = (task: string, score: Score) =>
     target.annotate ? target.annotate(task, score) : Promise.resolve();
+  const usageSoFar = (): EvalRun['usage'] => {
+    if (!options.meterAnswers) return undefined;
+    const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    return {
+      answers: sumUsage(answered),
+      ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+    };
+  };
   let lastSent = now();
   for (let repeat = 0; repeat < repeats; repeat++) {
     for (const c of cases) {
@@ -366,8 +375,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
           `case ${c.id} failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (outcome.servedModels.length === 0)
-        throw new EvalError(`case ${c.id} recorded no served model`);
+      // A case may reach no model, as when a guardrail refuses before it; the run must reach one.
       outcome.servedModels.forEach((m) => servedModels.add(m));
       if (outcome.service) services.add(outcome.service);
       if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
@@ -403,9 +411,10 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
         ...(c.language ? { language: c.language } : {}),
         scores,
       });
-      options.onProgress?.(results.length, total);
+      options.onProgress?.(results.length, total, usageSoFar());
     }
   }
+  if (servedModels.size === 0) throw new EvalError('the run recorded no served model');
   await collectPending(results, evaluators, {
     lastSent,
     wait: options.wait ?? {},
@@ -415,7 +424,6 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...(options.signal ? { signal: options.signal } : {}),
   });
 
-  const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
   return {
     id: options.id ?? randomUUID(),
     testSet: {
@@ -439,14 +447,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...aggregate(results, options.bootstrap),
     incomplete: incompleteOf(results),
     status: 'completed',
-    ...(options.meterAnswers
-      ? {
-          usage: {
-            answers: sumUsage(answered),
-            ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
-          },
-        }
-      : {}),
+    ...(options.meterAnswers ? { usage: usageSoFar() } : {}),
   };
 };
 
