@@ -278,15 +278,10 @@ export const Hooks = ({
   };
 
   return (
-    <section aria-labelledby="hooks-h" className="stack-md">
-      <div className="stack-xs int-intro-text">
-        <Heading level={2} data-size="xs" id="hooks-h">
-          {t('integHooks.heading')}
-        </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('integHooks.intro')}
-        </Paragraph>
-      </div>
+    <div className="stack-md">
+      <Paragraph data-size="sm" className="meta int-intro-text">
+        {t('integHooks.intro')}
+      </Paragraph>
       <section aria-labelledby="hooks-platform-h" className="stack-xs">
         <Heading level={3} data-size="2xs" id="hooks-platform-h">
           {t('integHooks.fromPlatform')}
@@ -392,7 +387,7 @@ export const Hooks = ({
           {t.rich('integHooks.logNote', { link: (c) => <a href="#/log">{c}</a> })}
         </Paragraph>
       </section>
-    </section>
+    </div>
   );
 };
 

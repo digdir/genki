@@ -544,8 +544,15 @@ describe('Integrasjoner: kroker', () => {
   };
   const renderHooks = async (fetch: typeof globalThis.fetch) => {
     await renderAtHash(fetch, '#/developer/hooks');
-    return screen.findByRole('region', { name: 'Kroker' });
+    await screen.findByRole('heading', { level: 2, name: 'Kroker' });
+    return screen.getByRole('main');
   };
+
+  it('names the hooks page once, with the Utviklerverktøy heading', async () => {
+    await renderHooks(mockFetch());
+
+    expect(screen.getAllByRole('heading', { name: 'Kroker' })).toHaveLength(1);
+  });
 
   it('lists own hooks in a table with when they run, what they do and a switch', async () => {
     const section = await renderHooks(mockFetch());
