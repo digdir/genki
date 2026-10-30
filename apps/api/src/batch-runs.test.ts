@@ -13,15 +13,10 @@ import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { restartMessage } from './background-lease.js';
 import { batchRunsModule, createBatchRunsModule } from './batch-run-routes.js';
-import {
-  batchEstimateKind,
-  batchItemKind,
-  batchRunKind,
-  notFoundOf,
-  type Range,
-} from './batch-runs.js';
+import { batchEstimateKind, batchItemKind, batchRunKind, type Range } from './batch-runs.js';
 import { resolveCatalog } from './catalogs.js';
 import { localeMiddleware } from './i18n/index.js';
+import { notFoundOf } from './not-found.js';
 import { createPlatform, platformModules } from './composition.js';
 import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
 import { serviceLifecycleKind } from './service-lifecycle.js';

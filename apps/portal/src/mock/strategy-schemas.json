@@ -416,11 +416,30 @@
         "noToolCallRetry": {
           "type": "boolean",
           "x-label": {
-            "nb": "Prøv igjen når modellen ikke bruker verktøy",
-            "en": "Try again when the model uses no tool"
+            "nb": "Krev søk før svar",
+            "en": "Require a search before answering"
+          },
+          "x-help": {
+            "nb": "Svarer modellen på et spørsmål uten å søke, bes den søke. Gjør den det ikke, blir svaret at kildene ikke dekker spørsmålet. Hilsener og spørsmål om hva tjenesten kan hjelpe med besvares som vanlig.",
+            "en": "When the model answers a question without searching, it is asked to search. If it still does not, the answer is that the sources do not cover the question. Greetings and questions about what the service can help with are answered as usual."
           },
           "x-advanced": true,
           "x-widget": "toggle",
+          "x-right": "manage-services"
+        },
+        "noAnswerText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "x-label": {
+            "nb": "Svar når kildene ikke dekker spørsmålet",
+            "en": "Answer when the sources do not cover the question"
+          },
+          "x-help": {
+            "nb": "Erstatter modellens egen formulering når den ikke fant noe i kildene. Tomt lar modellen formulere det selv.",
+            "en": "Replaces the model's own wording when it found nothing in the sources. Empty lets the model put it in its own words."
+          },
+          "x-widget": "text",
           "x-right": "manage-services"
         },
         "search": {

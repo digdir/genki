@@ -348,27 +348,207 @@ describe('agent-loop strategy', () => {
     expect(text.split('\n')[1]).toMatch(/^1\. chunk_id=c2 .* title_match=2$/);
   });
 
-  it('passes a direct answer through by default and re-prompts only when the no-tool-call guard is on', async () => {
-    const plain = await run({ scripts: { primary: { loop: [() => result('Svaret er 42.')] } } });
-    const guarded = await run({
-      config: { ...baseConfig, strategy: { ...baseConfig.strategy, noToolCallRetry: true } },
+  const guarded = (extra: Record<string, unknown> = {}) => ({
+    ...baseConfig,
+    strategy: { ...baseConfig.strategy, noToolCallRetry: true, ...extra },
+  });
+  const memory = {
+    loop: [
+      () => result('Brunost lages av myse.'),
+      () => result('Brunost kokes lenge.'),
+      () => result('Brunost er brun.'),
+    ],
+  };
+
+  it('passes a direct answer through unless the service requires a search', async () => {
+    const plain = await run({ scripts: { primary: memory } });
+
+    expect(plain.text).toBe('Brunost lages av myse.');
+    expect(plain.loops).toHaveLength(1);
+    expect(plain.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
+  });
+
+  it('never lets a first question be answered from memory when a search is required', async () => {
+    const out = await run({
+      question: 'Hva er oppskriften på tradisjonell brunost?',
+      config: guarded(),
+      scripts: { primary: memory },
+    });
+    const own = await run({
+      question: 'Hva er oppskriften på tradisjonell brunost?',
+      config: guarded({ noAnswerText: 'Kildene i Kudos dekker ikke dette.' }),
+      scripts: { primary: memory },
+    });
+
+    expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
+    expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(1);
+    expect(out.text).toBe(noToolCallHonestMiss);
+    expect(out.meta).toMatchObject({ noAnswer: true });
+    expect(own.text).toBe('Kildene i Kudos dekker ikke dette.');
+    expect(own.meta).toMatchObject({ noAnswer: true });
+  });
+
+  it('answers small talk without a search, also when a search is required', async () => {
+    const out = await run({
+      question: 'Hei, hvordan går det, og hva kan du hjelpe meg med?',
+      config: guarded({ noAnswerText: 'Kildene i Kudos dekker ikke dette.' }),
+      scripts: {
+        primary: {
+          loop: [() => result('Hei! Jeg finner svar i offentlige rapporter i Kudos.')],
+          smallTalk: () => 'SMALL_TALK',
+        },
+      },
+    });
+
+    expect(out.text).toBe('Hei! Jeg finner svar i offentlige rapporter i Kudos.');
+    expect(out.loops).toHaveLength(1);
+    expect(out.meta?.noAnswer).toBeUndefined();
+  });
+
+  it('does not take a turn cut off while calling a tool for an answer from memory', async () => {
+    const out = await run({
+      config: guarded(),
       scripts: {
         primary: {
           loop: [
-            () => result('Svaret er 42.'),
-            () => result('Fortsatt 42.'),
+            () => ({
+              ...result('', [call('search', { queries: ['brunost'] })]),
+              finishReason: 'length',
+            }),
+          ],
+        },
+      },
+    });
+
+    expect(out.loops).toHaveLength(1);
+    expect(systemMessages(out.loops[0]).filter((m) => m === noToolCallNudge)).toHaveLength(0);
+    expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
+  });
+
+  it('keeps the guard after a call to a tool that does not exist', async () => {
+    const out = await run({
+      config: guarded(),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search_documents', { queries: ['brunost'] })]),
+            () => result('Brunost lages av myse.'),
+          ],
+        },
+      },
+    });
+
+    expect(toolMessages(out.loops[1])[0]).toMatch(/^Unknown tool: search_documents\./);
+    expect(out.text).toBe(noToolCallHonestMiss);
+  });
+
+  it('says that the sources do not cover a question in the words the service chose', async () => {
+    const config = (noAnswerText?: string) => ({
+      ...baseConfig,
+      strategy: { ...baseConfig.strategy, ...(noAnswerText ? { noAnswerText } : {}) },
+    });
+    const script = {
+      primary: {
+        loop: [
+          () => result('', [call('search', { queries: ['kampanjer vinmonopolet jul 2025'] })]),
+          () =>
+            result(
+              'Jeg finner ingen informasjon om kampanjer Vinmonopolet kjører i julen 2025 i kildene.',
+            ),
+        ],
+      },
+    };
+    const own = await run({
+      config: config('Kildene i Kudos dekker ikke dette.'),
+      scripts: script,
+    });
+    const plain = await run({ config: config(), scripts: script });
+
+    expect(own.text).toBe('Kildene i Kudos dekker ikke dette.');
+    expect(own.meta).toMatchObject({ noAnswer: true });
+    expect(own.notices).toContainEqual(
+      expect.objectContaining({ stage: 'answer-discarded', reason: 'no-answer' }),
+    );
+    expect(plain.text).toBe(
+      'Jeg finner ingen informasjon om kampanjer Vinmonopolet kjører i julen 2025 i kildene.',
+    );
+    expect(plain.meta).toMatchObject({ noAnswer: true });
+  });
+
+  it('lets a follow-up rest on the conversation after the re-prompts, unless it only pretends to search', async () => {
+    const history = [
+      { role: 'user' as const, text: 'Hva sier tildelingsbrevet til Digdir for 2025?' },
+      { role: 'assistant' as const, text: 'Digdir skal styrke samordningen [1].' },
+    ];
+    const followUp = await run({
+      question: 'Kan du si det kortere?',
+      history,
+      config: guarded(),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('Samordning.'),
+            () => result('Samordning.'),
+            () => result('Samordning styrkes.'),
+          ],
+        },
+      },
+    });
+    const pretend = await run({
+      question: 'Kan du si det kortere?',
+      history,
+      config: guarded(),
+      scripts: {
+        primary: {
+          loop: [
+            () => result('Samordning.'),
+            () => result('Samordning.'),
             () => result('[SEARCH] Queries: tildelingsbrev'),
           ],
         },
       },
     });
 
-    expect(plain.text).toBe('Svaret er 42.');
-    expect(plain.loops).toHaveLength(1);
-    expect(systemMessages(guarded.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(
-      2,
+    expect(followUp.text).toBe('Samordning styrkes.');
+    expect(pretend.text).toBe(noToolCallHonestMiss);
+  });
+
+  it('gives the call that writes the answer the service instructions too', async () => {
+    const out = await run({
+      config: {
+        ...baseConfig,
+        strategy: { ...baseConfig.strategy, instructions: 'Ikke fyll ut med egen kunnskap.' },
+      },
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+    const plain = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+          ],
+          synth: [() => 'Svar [1].'],
+        },
+      },
+    });
+
+    const system = (o: typeof out) =>
+      o.seen.find((s) => s.kind === 'synth')?.request.messages[0]?.content;
+    expect(system(out)).toBe(
+      'You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\nIkke fyll ut med egen kunnskap.',
     );
-    expect(guarded.text).toBe(noToolCallHonestMiss);
+    expect(system(plain)).toBe(
+      'You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).',
+    );
   });
 
   it('answers with the best-effort fallback after the last iteration', async () => {

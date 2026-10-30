@@ -26,6 +26,7 @@ import {
   noToolCallHonestMiss,
   noToolCallNudge,
   searchScaffold,
+  smallTalkCheck,
   systemPromptWithDate,
   untrustedData,
   untrustedDataNote,
@@ -133,6 +134,7 @@ export const agentLoopConfig = z.strictObject({
   synthesisMaxTokens: z.number().int().positive().optional(),
   evaluatorTemperature: z.number().min(0).max(2).optional(),
   noToolCallRetry: z.boolean().optional(),
+  noAnswerText: z.string().min(1).max(500).optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -454,13 +456,24 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         })
       ).content;
 
+    let smallTalk: Promise<boolean> | undefined;
+    const isSmallTalk = (text: string) =>
+      (smallTalk ??= evaluator(smallTalkCheck, text).then(
+        (verdict) => /^\s*SMALL_TALK\b/i.test(verdict),
+        () => false,
+      ));
+
     const environment = (push: (text: string) => void, onStream: () => void): ToolEnvironment => ({
       workspace,
       retrieval,
       query,
       history,
       signal: ctx.signal,
-      systemPrompt: systemPromptWithDate((options.now ?? (() => new Date()))()),
+      // The answer is written in a call of its own; the service's instructions on sources,
+      // form and what not to fill in must reach it too, not only the agent.
+      systemPrompt:
+        systemPromptWithDate((options.now ?? (() => new Date()))()) +
+        (settings.instructions ? `\n\n${baseInstructions(settings.instructions)}` : ''),
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(
@@ -488,6 +501,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let finalized = false;
     let iteration = 0;
     let lastIteration = 0;
+    let usedTools = false;
     const reactStarted = Date.now();
 
     for (; iteration < maxIterations && !finalized; iteration += 1) {
@@ -517,16 +531,22 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
       ) {
-        const searched = workspace.searches.length > 0;
-        const guard = Boolean(settings.noToolCallRetry);
-        if (guard && !searched && workspace.noToolCallRetries < 2) {
+        // An answer from a run that used no tool comes from the model's own knowledge. With the
+        // guard on, only small talk passes on a first question; a follow-up may rest on earlier
+        // answers, so it passes after the re-prompts. A turn cut off while calling tools did try.
+        const guard =
+          Boolean(settings.noToolCallRetry) &&
+          !usedTools &&
+          turn.toolCalls.length === 0 &&
+          !(await isSmallTalk(query));
+        if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
           messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
         answer =
-          guard && !searched && searchScaffold.test(turn.content)
-            ? noToolCallHonestMiss
+          guard && (history.length === 0 || searchScaffold.test(turn.content))
+            ? (settings.noAnswerText ?? noToolCallHonestMiss)
             : turn.content;
         if (!blank(answer)) yield { type: 'kernel.part.delta', data: { text: answer } };
         fallbackMessages = initialMessages;
@@ -573,6 +593,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ),
           );
           content = outcome.content;
+          usedTools = true;
           if (outcome.planned)
             yield { type: 'kernel.notice', data: { kind: 'plan', ...outcome.planned } };
           if (outcome.retrieved)
@@ -585,12 +606,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           if (call.name === 'generate_response') generated = true;
         } else if (skills.length && call.name === useSkillTool.name) {
           content = useSkill(skills, args.value, workspace.loadedSkills);
+          usedTools = true;
         } else {
           const tool = extra.find((t) => t.spec.name === call.name);
           if (!tool)
             content = `Unknown tool: ${call.name}. Available tools: ${toolSpecs.map((t) => t.name).join(', ')}`;
           else {
             const result = await tool.port.call(args.value);
+            usedTools = true;
             content = result.parts.some((part) => part.meta?.untrusted === true)
               ? untrustedData(`tool:${call.name}`, textOf(result))
               : textOf(result);
@@ -875,6 +898,16 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       workspace.citations = citationsFor(answer, workspace);
     }
 
+    const foundNothing =
+      !clarification && workspace.citations.length === 0 && soundsLikeRefusal(answer ?? '');
+    // A service can say in its own words that its sources do not cover a question, instead of
+    // however the model put it.
+    if (foundNothing && settings.noAnswerText && answer !== settings.noAnswerText) {
+      yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'no-answer' } };
+      yield { type: 'kernel.part.delta', data: { text: settings.noAnswerText } };
+      answer = settings.noAnswerText;
+    }
+
     const outputChunks = () =>
       sourcesFirst(
         workspace.sourceOrder.map((c) => workspace.chunks.get(c.chunkId) ?? c),
@@ -918,11 +951,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             citations: clarification
               ? []
               : workspace.citations.map((c) => ({ index: c.index, chunkId: c.chunkId })),
-            ...(!clarification &&
-            workspace.citations.length === 0 &&
-            soundsLikeRefusal(answer ?? '')
-              ? { noAnswer: true }
-              : {}),
+            ...(foundNothing ? { noAnswer: true } : {}),
           },
         },
         sourcesPart([...published, ...extraSources], clarification, {

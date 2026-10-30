@@ -27,6 +27,8 @@ spec:
     config:
       budget: { searches: 4, reads: 6, readChars: 12000 }
       temperature: 0.3
+      noToolCallRetry: true
+      noAnswerText: Kildene i Kudos dekker ikke dette.
   knowledge:
     datasets:
       - dataset: digdir/kudos

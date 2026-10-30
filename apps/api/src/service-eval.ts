@@ -20,6 +20,7 @@ import {
 import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
+import { notFoundOf } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
@@ -223,7 +224,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
-        { text: outcome.answer, noAnswer: outcome.noAnswer },
+        { text: outcome.answer, noAnswer: notFoundOf(outcome) },
         {
           ...(judge ? { judge } : {}),
           context: {

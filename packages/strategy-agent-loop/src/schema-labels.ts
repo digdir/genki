@@ -11,7 +11,14 @@ const nb = {
   synthesisTemperature: { label: 'Temperatur for svaret' },
   synthesisMaxTokens: { label: 'Lengste svar (tokens)' },
   evaluatorTemperature: { label: 'Temperatur for egenvurderingen' },
-  noToolCallRetry: { label: 'Prøv igjen når modellen ikke bruker verktøy' },
+  noToolCallRetry: {
+    label: 'Krev søk før svar',
+    help: 'Svarer modellen på et spørsmål uten å søke, bes den søke. Gjør den det ikke, blir svaret at kildene ikke dekker spørsmålet. Hilsener og spørsmål om hva tjenesten kan hjelpe med besvares som vanlig.',
+  },
+  noAnswerText: {
+    label: 'Svar når kildene ikke dekker spørsmålet',
+    help: 'Erstatter modellens egen formulering når den ikke fant noe i kildene. Tomt lar modellen formulere det selv.',
+  },
   search: { label: 'Søk' },
   'search.titleOverlapWeight': { label: 'Vekt på treff i tittelen' },
   'search.strategyQuota': { label: 'Treff sikret per søkemåte' },
@@ -41,7 +48,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   synthesisTemperature: { label: 'Temperature for the answer' },
   synthesisMaxTokens: { label: 'Longest answer (tokens)' },
   evaluatorTemperature: { label: 'Temperature for the self-check' },
-  noToolCallRetry: { label: 'Try again when the model uses no tool' },
+  noToolCallRetry: {
+    label: 'Require a search before answering',
+    help: 'When the model answers a question without searching, it is asked to search. If it still does not, the answer is that the sources do not cover the question. Greetings and questions about what the service can help with are answered as usual.',
+  },
+  noAnswerText: {
+    label: 'Answer when the sources do not cover the question',
+    help: "Replaces the model's own wording when it found nothing in the sources. Empty lets the model put it in its own words.",
+  },
   search: { label: 'Search' },
   'search.titleOverlapWeight': { label: 'Weight of matches in the title' },
   'search.strategyQuota': { label: 'Results kept per search method' },
