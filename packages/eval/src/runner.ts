@@ -43,7 +43,7 @@ export interface EvalTarget {
   annotate?(task: string, score: Score): Promise<void>;
 }
 
-const searchingKinds = new Set(['embedder', 'reranker']);
+const searchingKinds = new Set(['embedder']);
 
 const servedModelsOf = (events: Event[], writing = false) => [
   ...new Set(

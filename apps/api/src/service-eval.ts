@@ -443,6 +443,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             evaluators: evaluatorsFor(cases),
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
+            // The judge is picked outside every model the service may answer with, fallback too.
+            avoidAsJudge: modelsOf(subject.definition),
           },
         });
         task = invoked.task;

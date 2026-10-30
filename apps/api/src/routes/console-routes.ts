@@ -2,6 +2,7 @@ import type { Principal } from '@genai/contracts';
 import { defaultPlatformTenant } from '@genai/composition';
 import type { DefinitionStore, PluginSchemas, ValidationError } from '@genai/definitions';
 import {
+  evaluatorOfJudge,
   judgeAgreement,
   runState,
   type EvalRunStore,
@@ -423,7 +424,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     const items = [];
     for (const tenant of await deps.tenants()) {
       for (const stored of await deps.runs.list({ tenant })) {
-        const judges = new Set(stored.run.provenance.judges);
+        const judges = new Set(stored.run.provenance.judges.map(evaluatorOfJudge));
         for (const result of stored.run.results) {
           for (const s of result.scores) {
             if (!judges.has(s.evaluator) || !s.applicable) continue;
