@@ -162,6 +162,23 @@ describe('embedding router', () => {
     ]);
   });
 
+  it('meters input tokens at the list price', async () => {
+    const router = new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [fakeEmbeddingAdapter()],
+      secrets: envSecrets({}),
+      priceOf: (id) =>
+        id === 'foundry/embed-small'
+          ? { inputPerThousand: 0.0012, outputPerThousand: 0 }
+          : undefined,
+    });
+    const { ctx, metered } = testContext();
+
+    await router.open(ref, ctx).embed(['to ord', 'tre ord her']);
+
+    expect(metered.map((m) => m.usage)).toEqual([{ inputTokens: 5, requests: 1, costMicroNok: 6 }]);
+  });
+
   it('reports failures as unavailable, and a cancelled task as cancelled', async () => {
     const failing = fakeEmbeddingAdapter('fake', () => {
       throw new Error('connection refused');

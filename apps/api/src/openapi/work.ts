@@ -2084,6 +2084,10 @@ const TenantUsage = z
       usage: Usage,
       byDataset: z.array(z.object({ dataset: z.string(), usage: Usage })),
     }),
+    testing: z.object({
+      usage: Usage,
+      byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
+    }),
   })
   .openapi('TenantUsage');
 

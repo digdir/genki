@@ -1,4 +1,4 @@
-import type { Ref } from '@genai/contracts';
+import { withListPrice, type Ref, type UsagePrice } from '@genai/contracts';
 import {
   credentialFor,
   type PortContext,
@@ -21,6 +21,7 @@ export interface EmbeddingRouterOptions {
   adapters: EmbeddingAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
+  priceOf?: (id: string) => UsagePrice | undefined;
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
@@ -151,7 +152,13 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           'invalid_response',
           `embedder ${model.id} returned a vector of ${result.vectors[wrong]?.length} dimensions, expected ${model.dimensions}`,
         );
-      await ctx.meter({ inputTokens: result.usage.inputTokens, requests: 1 }, embedderRef);
+      await ctx.meter(
+        withListPrice(
+          { inputTokens: result.usage.inputTokens, requests: 1 },
+          this.options.priceOf?.(model.id),
+        ),
+        embedderRef,
+      );
       return result;
     };
 
