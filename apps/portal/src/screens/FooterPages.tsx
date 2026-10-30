@@ -33,7 +33,7 @@ export const Guide = () => {
       <Paragraph>
         {t.rich('app.guideTry', {
           playground: link('#/playground'),
-          code: link('#/integrations/code'),
+          code: link('#/developer/api/code'),
           api: link('#/api-reference'),
         })}
       </Paragraph>

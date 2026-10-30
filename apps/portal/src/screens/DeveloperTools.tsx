@@ -1,6 +1,7 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { createContext, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
+import type { Route } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { Status } from './FooterPages';
@@ -30,6 +31,11 @@ interface Tool {
 /** The Integrasjoner tab to show on its own, when a developer tools page holds it. */
 export const IntegrationTab = createContext<string | undefined>(undefined);
 
+/** The service whose own Utviklerverktøy tab shows an Integrasjoner tab, to show only its rows. */
+export const IntegrationService = createContext<{ id: string; name: string } | undefined>(
+  undefined,
+);
+
 const statusTool: Tool = {
   id: 'status',
   label: 'devTools.status',
@@ -40,19 +46,11 @@ const statusTool: Tool = {
 const tools: readonly Tool[] = [
   statusTool,
   {
-    id: 'runs',
-    label: 'devTools.runs',
-    desc: 'devTools.runsDesc',
-    icon: 'M4 6h16M4 12h10M4 18h6',
-    tab: 'tracing',
-    links: [['#/log', 'devTools.openLog']],
-  },
-  {
-    id: 'systems',
-    label: 'devTools.systems',
-    desc: 'devTools.systemsDesc',
-    icon: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
-    tab: 'systems',
+    id: 'keys',
+    label: 'devTools.keys',
+    desc: 'devTools.keysDesc',
+    icon: 'M14 10a4 4 0 1 0-4 4l2 2h2v2h2v2h4v-4z',
+    tab: 'keys',
   },
   {
     id: 'frontends',
@@ -62,6 +60,13 @@ const tools: readonly Tool[] = [
     tab: 'frontends',
   },
   {
+    id: 'systems',
+    label: 'devTools.systems',
+    desc: 'devTools.systemsDesc',
+    icon: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
+    tab: 'systems',
+  },
+  {
     id: 'triggers',
     label: 'devTools.triggers',
     desc: 'devTools.triggersDesc',
@@ -69,11 +74,11 @@ const tools: readonly Tool[] = [
     tab: 'triggers',
   },
   {
-    id: 'keys',
-    label: 'devTools.keys',
-    desc: 'devTools.keysDesc',
-    icon: 'M14 10a4 4 0 1 0-4 4l2 2h2v2h2v2h4v-4z',
-    tab: 'keys',
+    id: 'step-flows',
+    label: 'devTools.stepFlows',
+    desc: 'devTools.stepFlowsDesc',
+    icon: 'M5 5h5v5H5zM14 14h5v5h-5zM10 7.5h4v9',
+    links: [['#/step-flows', 'devTools.openStepFlows']],
   },
   {
     id: 'hooks',
@@ -82,11 +87,12 @@ const tools: readonly Tool[] = [
     tab: 'hooks',
   },
   {
-    id: 'step-flows',
-    label: 'devTools.stepFlows',
-    desc: 'devTools.stepFlowsDesc',
-    icon: 'M5 5h5v5H5zM14 14h5v5h-5zM10 7.5h4v9',
-    links: [['#/step-flows', 'devTools.openStepFlows']],
+    id: 'runs',
+    label: 'integrations.tabTracing',
+    desc: 'devTools.runsDesc',
+    icon: 'M4 6h16M4 12h10M4 18h6',
+    tab: 'tracing',
+    links: [['#/log', 'devTools.openLog']],
   },
   {
     id: 'guardrails',
@@ -100,13 +106,27 @@ const tools: readonly Tool[] = [
     desc: 'devTools.apiDesc',
     icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
     tab: 'docs',
-    links: [['#/api-reference', 'devTools.openApiReference']],
+    links: [
+      ['#/developer/api/code', 'integrations.callFromCode'],
+      ['#/api-reference', 'devTools.openApiReference'],
+    ],
   },
 ];
 
 /** The developer tools page that shows an Integrasjoner tab, for old links to that tab. */
 export const developerPageFor = (tab: string | null) =>
   tools.find((tool) => tool.tab === (tab ?? 'systems'))?.id ?? 'systems';
+
+/** Where an old Integrasjoner address lives now, keeping which row was open or saved. */
+export const developerHashFor = ({ segments, query }: Route) => {
+  if (segments[1] === 'code') return '#/developer/api/code';
+  if (segments[1] === 'hooks' && segments[2])
+    return `#/developer/hooks/${encodeURIComponent(segments[2])}`;
+  const rest = new URLSearchParams(query);
+  rest.delete('tab');
+  const search = rest.toString();
+  return `#/developer/${developerPageFor(query.get('tab'))}${search ? `?${search}` : ''}`;
+};
 
 /** The Utviklerverktøy heading and submenu around one of its pages. */
 export const DeveloperToolsFrame = ({
@@ -122,6 +142,7 @@ export const DeveloperToolsFrame = ({
       <Heading level={1} data-size="lg">
         {t('devTools.title')}
       </Heading>
+      <Paragraph className="dev-tools-intro">{t('devTools.intro')}</Paragraph>
       <div className="dev-tools">
         <nav aria-label={t('devTools.menu')} className="dev-tools-nav">
           <ul className="nav-list">

@@ -373,9 +373,9 @@ describe('Fellestjenester: detalj', () => {
     expect(response.textContent).toContain('"total_tokens": 1240');
     expect(screen.getByText('200 OK')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Kopier' })).toHaveLength(2);
-    expect(screen.getByRole('link', { name: 'Mer om integrasjoner' }).getAttribute('href')).toBe(
-      '#/integrations',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Mer om Maskinporten-klienter' }).getAttribute('href'),
+    ).toBe('#/developer/systems');
     expectAccessible();
   });
 

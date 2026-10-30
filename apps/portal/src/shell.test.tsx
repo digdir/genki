@@ -124,11 +124,11 @@ describe('shell', () => {
       'Datasett',
       'Byggeklosser',
       'Prøveområde',
+      'Utviklerverktøy',
       'Statistikk',
       'Logg',
       'Tilbakemeldinger',
       'Tilgang',
-      'Innstillinger',
     ]);
     expect(
       within(menu).getByRole('link', { name: 'Statistikk' }).getAttribute('aria-current'),
@@ -140,6 +140,22 @@ describe('shell', () => {
   it('sends the old usage address on to Statistikk', async () => {
     await renderAt('#/usage');
     await waitFor(() => expect(window.location.hash).toBe('#/statistics'));
+  });
+
+  it.each([
+    ['#/integrations', '#/developer/systems'],
+    ['#/integrations?tab=hooks&saved=Fnr', '#/developer/hooks?saved=Fnr'],
+    ['#/integrations?tab=tracing', '#/developer/runs'],
+    ['#/integrations/code', '#/developer/api/code'],
+    ['#/integrations/hooks/fnr', '#/developer/hooks/fnr'],
+  ])('sends the old Integrasjoner address %s on to %s', async (from, to) => {
+    await renderAt(from);
+    await waitFor(() => expect(window.location.hash).toBe(to));
+  });
+
+  it('sends the old user guide address on to Onboarding', async () => {
+    await renderAt('#/help');
+    await waitFor(() => expect(window.location.hash).toBe('#/onboarding'));
   });
 
   it('hides the sidebar and remembers it', async () => {
@@ -173,15 +189,8 @@ describe('shell', () => {
       within(menu)
         .getAllByRole('link')
         .map((a) => a.firstChild?.textContent),
-    ).toEqual([
-      'Onboarding',
-      'Endringslogg',
-      'Profil',
-      'Utviklerverktøy',
-      'Kontakt Digdir',
-    ]);
-    fireEvent.click(within(menu).getByRole('button', { name: 'Om tjenesten' }));
-    expect(within(menu).getByRole('link', { name: 'Brukerveiledning' })).toBeTruthy();
+    ).toEqual(['Onboarding', 'Endringslogg', 'Profil', 'Kontakt Digdir', 'Databehandling']);
+    expect(within(menu).queryByRole('button', { name: 'Om tjenesten' })).toBeNull();
     expect(within(menu).getByRole('button', { name: 'Logg ut' })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -276,7 +285,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/help', 'Brukerveiledning'],
+    ['/onboarding', 'Onboarding'],
     ['/status', 'Driftsstatus'],
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
@@ -285,7 +294,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/help', /Slik henger sidene sammen/],
+    ['/onboarding', /Slik henger sidene sammen/],
     ['/status', /Siden spør plattformens API om det svarer/],
     ['/contact', /ikke et eget kontaktpunkt for brukerstøtte ennå/],
   ])(

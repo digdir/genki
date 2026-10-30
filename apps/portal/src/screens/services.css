@@ -308,7 +308,7 @@ a.ds-button {
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
-.main-inner:has(.builder-split, .blocks-split, .blocks-fullscreen) {
+.main-inner:has(.service-page, .builder-split, .blocks-split, .blocks-fullscreen) {
   max-width: none;
 }
 

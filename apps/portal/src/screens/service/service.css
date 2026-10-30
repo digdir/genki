@@ -89,18 +89,11 @@
   outline-offset: -3px;
 }
 
+/* Every tab on a service shares the builder's full width, lined up with the tabs. */
 .service-body {
   width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
   padding: 24px 24px 64px;
   box-sizing: border-box;
-}
-
-.service-body.service-setup,
-.service-body.service-channels,
-.service-body.service-test {
-  max-width: 880px;
 }
 
 .builder-split .service-body {

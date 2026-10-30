@@ -234,7 +234,7 @@ export const datasets = defineNamespace({
   liveChoiceUploadDesc: 'Dokumenter du har selv: PDF, Word, tekst, Markdown eller HTML.',
   choiceUploadExample: 'For eksempel høringssvar eller interne veiledere.',
   integrationsHint:
-    'Publiseringssystemer, arkiv og andre fagsystemer kobles til under <link>Integrasjoner</link>. Da vises de her som kilder.',
+    'Publiseringssystemer, arkiv og andre fagsystemer kobles til under <link>Systemer i Utviklerverktøy</link>. Da vises de her som kilder.',
   nameOfDataset: 'Navn på datasettet',
   reportsFrom: 'Rapporter fra',
   allOrgs: 'Alle virksomheter',

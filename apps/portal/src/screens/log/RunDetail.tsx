@@ -405,7 +405,7 @@ export const RunDetail = ({
             <li key={t.note}>
               <Icon d={traceIcon} size={16} strokeWidth={1.6} />
               <span>{t.note}</span>
-              {t.link ? <a href="#/integrations?tab=tracing">{t.link}</a> : null}
+              {t.link ? <a href="#/developer/runs">{t.link}</a> : null}
             </li>
           ))}
         </ul>

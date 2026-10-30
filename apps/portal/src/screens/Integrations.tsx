@@ -17,7 +17,7 @@ import { navigate, useAsync } from '../hooks';
 import { useT, type PlainKey, type T } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { ErrorState, Loading } from '../states';
-import { developerPageFor, IntegrationTab } from './DeveloperTools';
+import { developerPageFor, IntegrationService, IntegrationTab } from './DeveloperTools';
 import { CallFromCode, LiveCallFromCode } from './integrations/CallFromCode';
 import { Connections } from './integrations/Connections';
 import { Frontends } from './integrations/Frontends';
@@ -71,7 +71,7 @@ const downloadOpenApi = (t: T) => {
 
 export const Integrations = (props: ScreenProps) => {
   const { tenantName, route } = props;
-  if (route.segments[1] === 'code')
+  if (route.segments[1] === 'api' && route.segments[2] === 'code')
     return props.live ? (
       <LiveCallFromCode api={props.api} tenant={props.tenant} tenantName={tenantName} />
     ) : (
@@ -94,6 +94,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const tRef = useRef(t);
   tRef.current = t;
   const only = useContext(IntegrationTab);
+  const forService = useContext(IntegrationService);
   const queryTab = only ?? route.query.get('tab');
   const tab = tabFrom(queryTab);
   const [open, setOpen] = useState<string | undefined>(
@@ -126,18 +127,21 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
 
   const say = (text: string, color: Flash['color'] = 'success') => setFlash({ text, color });
   const choose = (next: Tab, id?: string) =>
-    navigate(
-      only
-        ? `#/developer/${developerPageFor(next)}${id ? `?open=${id}` : ''}`
-        : `#/integrations?tab=${next}${id ? `&open=${id}` : ''}`,
-    );
+    forService && next === 'triggers'
+      ? setOpen(id)
+      : navigate(`#/developer/${developerPageFor(next)}${id ? `?open=${id}` : ''}`);
 
-  const failingSystems = systems.filter((x) => x.status === 'Feiler');
-  const failingTriggers = triggers.filter((x) => x.status === 'Feiler');
-  const failingLive =
+  // On a service's own tab, only that service's triggers count.
+  const shownTriggers = forService
+    ? triggers.filter((x) => x.service === forService.name)
+    : triggers;
+  const shownLive =
     live && liveTriggers.status === 'ready'
-      ? liveTriggers.data.filter((x) => x.status === 'failing')
+      ? liveTriggers.data.filter((x) => !forService || x.service === forService.id)
       : [];
+  const failingSystems = forService ? [] : systems.filter((x) => x.status === 'Feiler');
+  const failingTriggers = shownTriggers.filter((x) => x.status === 'Feiler');
+  const failingLive = shownLive.filter((x) => x.status === 'failing');
   const problems = [
     ...failingSystems.map((x) => ({
       text: t('integrations.systemRejected', { name: x.name }),
@@ -242,7 +246,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
     ],
   }));
 
-  const triggerItems: ItemRowData[] = triggers.map((x) => {
+  const triggerItems: ItemRowData[] = shownTriggers.map((x) => {
     const error: ItemRowData['error'] = x.error
       ? {
           what: x.error.what,
@@ -432,19 +436,6 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
 
   return (
     <div className="stack int">
-      {only ? null : (
-        <div className="int-head">
-          <div className="stack-xs int-intro-text">
-            <Heading level={1} data-size="lg">
-              {t('integrations.heading')}
-            </Heading>
-            <p className="lead">{t('integrations.lead')}</p>
-          </div>
-          <Button variant="secondary" onClick={() => navigate('#/integrations/code')}>
-            {t('integrations.callFromCode')}
-          </Button>
-        </div>
-      )}
       {problems.length ? (
         <Alert data-color="warning">
           <Heading level={2} data-size="2xs">
@@ -454,7 +445,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
             {problems.map((p) => (
               <li key={p.text}>
                 <a
-                  href="#/integrations"
+                  href="#/developer"
                   onClick={(e) => {
                     e.preventDefault();
                     p.go();
@@ -475,7 +466,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
         ) : null}
       </div>
       <Tabs value={tab} onChange={(v) => choose(tabFrom(v))}>
-        <Tabs.List aria-label={t('integrations.heading')} hidden={only !== undefined}>
+        <Tabs.List aria-label={t('integrations.heading')} hidden>
           {tabs.map(([id, label]) => {
             const n = badges[id] ?? 0;
             return (
@@ -524,7 +515,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
                     <Triggers
                       api={api}
                       tenant={tenant}
-                      triggers={liveTriggers.data}
+                      triggers={shownLive}
                       open={open}
                       onToggle={(id) => setOpen(open === id ? undefined : id)}
                       onChanged={() => setTriggerTick((n) => n + 1)}

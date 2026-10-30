@@ -10,7 +10,8 @@ export type ServiceSection =
   | 'quality'
   | 'batch'
   | 'versions'
-  | 'log';
+  | 'log'
+  | 'developer';
 
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
@@ -23,6 +24,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   batch: 'service.sectionBatch',
   versions: 'service.sectionVersions',
   log: 'service.sectionLog',
+  developer: 'service.sectionDeveloper',
 };
 
 const order: ServiceSection[] = [
@@ -36,19 +38,35 @@ const order: ServiceSection[] = [
   'batch',
   'versions',
   'log',
+  'developer',
 ];
 
 export const availableSections = ({ isNew }: { isNew: boolean }) =>
   isNew
-    ? order.filter((s) => s === 'setup' || s === 'blocks' || s === 'test' || s === 'versions')
+    ? order.filter(
+        (s) =>
+          s === 'setup' ||
+          s === 'blocks' ||
+          s === 'settings' ||
+          s === 'test' ||
+          s === 'versions' ||
+          s === 'developer',
+      )
     : order.filter((s) => s !== 'blocks');
 
 export const developerSections: ServiceSection[] = ['test', 'versions'];
 
+/** Sections whose content now sits in the Utviklerverktøy tab; their addresses still work. */
+const insideDeveloperTab: ServiceSection[] = ['versions', 'log'];
+
 export const tabSections = ({ isNew }: { isNew: boolean }) =>
-  isNew
-    ? availableSections({ isNew }).filter((s) => !developerSections.includes(s))
-    : availableSections({ isNew });
+  availableSections({ isNew }).filter(
+    (s) => !insideDeveloperTab.includes(s) && !(isNew && developerSections.includes(s)),
+  );
+
+/** The tab that holds a section, so a moved section still marks its tab. */
+export const tabFor = (section: ServiceSection): ServiceSection =>
+  insideDeveloperTab.includes(section) ? 'developer' : section;
 
 export const servicePath = (id: string, section?: ServiceSection, rest = '') => {
   const base = `/services/${encodeURIComponent(id)}`;
@@ -62,6 +80,9 @@ const legacyTabs: Record<string, [ServiceSection, string]> = {
   yaml: ['versions', '?view=yaml'],
   versjoner: ['versions', ''],
 };
+
+/** Setup parts that now live in the Utviklerverktøy tab, by their old address. */
+const movedSetup: Record<string, string> = { how: 'model', model: 'model', guards: 'guardrails' };
 
 export interface ServiceLocation {
   section: ServiceSection;
@@ -90,8 +111,14 @@ export const locate = (
     const section = allowed.includes(legacy[0]) ? legacy[0] : fallback;
     return { section, detail: undefined, redirect: servicePath(id, section, suffix(legacy[1])) };
   }
-  if (raw === 'how-it-works')
-    return { section: 'setup', detail: 'how', redirect: servicePath(id, 'setup', '/how') };
+  const moved =
+    raw === 'how-it-works' ? 'model' : raw === 'setup' ? movedSetup[detail ?? ''] : undefined;
+  if (moved)
+    return {
+      section: 'developer',
+      detail: moved,
+      redirect: servicePath(id, 'developer', `/${moved}`),
+    };
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw) return { section: fallback, detail: undefined };
   if (!known || !allowed.includes(known))

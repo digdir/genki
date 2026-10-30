@@ -164,7 +164,7 @@ export const sharedServices = {
   runFailed: 'The run failed. Nothing is saved. Try again in a moment.',
   callTitle: 'Call from a system',
   tokenNote: 'Token from Maskinporten with the permission digdir:ki.tjenester.kall.',
-  moreOnIntegrations: 'More about integrations',
+  moreOnIntegrations: 'More about Maskinporten clients',
   language: 'Language',
   request: 'Request',
   requestExample: 'Example request',

@@ -13,6 +13,7 @@ export const serviceUi = {
     sectionBatch: 'Samlet jobb',
     sectionVersions: 'Versjoner',
     sectionLog: 'Logg',
+    sectionDeveloper: 'Utviklerverktøy',
     platformSilent: 'Plattformen svarte ikke.',
     areaPurpose: 'Formål og målgruppe',
     areaInOut: 'Inn og ut',

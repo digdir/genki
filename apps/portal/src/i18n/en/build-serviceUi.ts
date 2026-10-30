@@ -14,6 +14,7 @@ export const serviceUi = {
     sectionBatch: 'Batch job',
     sectionVersions: 'Versions',
     sectionLog: 'Log',
+    sectionDeveloper: 'Developer tools',
     platformSilent: 'The platform did not respond.',
     areaPurpose: 'Purpose and audience',
     areaInOut: 'Input and output',

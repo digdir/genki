@@ -38,6 +38,7 @@ export const navigationGroups = [
       { path: '/datasets', label: 'shell.navDatasets' },
       { path: '/building-blocks', label: 'shell.navBuildingBlocks', also: ['/skills'] },
       { path: '/playground', label: 'shell.navPlayground' },
+      { path: '/developer', label: 'shell.menuDeveloper' },
     ],
   },
   {
@@ -50,10 +51,7 @@ export const navigationGroups = [
   },
   {
     heading: 'shell.groupAdmin',
-    items: [
-      { path: '/access', label: 'shell.navAccess' },
-      { path: '/organisation', label: 'shell.navSettings' },
-    ],
+    items: [{ path: '/access', label: 'shell.navAccess' }],
   },
 ] as const satisfies readonly { heading?: PlainKey; items: readonly NavItem[] }[];
 
@@ -160,8 +158,8 @@ const userMenuLinks: readonly (readonly [string, PlainKey, boolean?])[] = [
   ['#/onboarding', 'shell.menuOnboarding'],
   ['#/changelog', 'shell.menuChangelog', true],
   ['#/profile', 'shell.menuProfile'],
-  ['#/developer', 'shell.menuDeveloper'],
   ['#/contact', 'shell.contact'],
+  ['#/data-handling', 'shell.menuDataHandling'],
 ];
 
 const readableUnregistered = ['api-reference', 'shared-services', 'data-handling'];
@@ -270,7 +268,6 @@ export const Shell = ({
   const t = useT();
   const narrow = useNarrow();
   const [open, setOpen] = useState<'org' | 'user' | 'menu' | undefined>();
-  const [aboutOpen, setAboutOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const closeAll = useCallback(() => setOpen(undefined), []);
   const toggleCollapsed = () =>
@@ -365,38 +362,13 @@ export const Shell = ({
                 <a href={href} onClick={closeAll}>
                   {t(label)}
                   {isNew ? (
-                    <span className="new-dot">
-                      <span className="visually-hidden">{t('shell.menuNew')}</span>
-                    </span>
+                    <Tag data-color="accent" data-size="sm">
+                      {t('shell.menuNew')}
+                    </Tag>
                   ) : null}
                 </a>
               </li>
             ))}
-            <li>
-              <button
-                type="button"
-                className="user-menu-sub"
-                aria-expanded={aboutOpen}
-                onClick={() => setAboutOpen((o) => !o)}
-              >
-                {t('shell.menuAbout')}
-                <Icon d={aboutOpen ? icons.chevronDown : icons.chevronRight} size={16} />
-              </button>
-              {aboutOpen ? (
-                <ul className="user-menu-list nested">
-                  <li>
-                    <a href="#/help" onClick={closeAll}>
-                      {t('shell.guide')}
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#/data-handling" onClick={closeAll}>
-                      {t('shell.menuDataHandling')}
-                    </a>
-                  </li>
-                </ul>
-              ) : null}
-            </li>
           </ul>
           <Divider />
           <Button variant="secondary" data-size="sm" onClick={onLogout}>
@@ -542,8 +514,14 @@ export const Shell = ({
                 <Icon d={icons.sidebar} />
               </Button>
             </div>
-            {collapsed ? null : <NavLinks path={path} badges={badges} onNavigate={closeAll} />}
-            <div className="sidebar-spacer" />
+            {collapsed ? (
+              // Holds the menu's height so the avatar stays where it is when the sidebar is open.
+              <div className="nav-placeholder" aria-hidden inert>
+                <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+              </div>
+            ) : (
+              <NavLinks path={path} badges={badges} onNavigate={closeAll} />
+            )}
             <div className="sidebar-account">
               {userMenu}
               {collapsed ? null : orgChooser}

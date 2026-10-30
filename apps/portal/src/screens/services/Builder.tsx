@@ -87,7 +87,7 @@ import { LogSection } from '../service/LogSection';
 import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
-import { servicePath, tabSections, type ServiceSection } from '../service/sections';
+import { servicePath, tabFor, tabSections, type ServiceSection } from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
 import { ServiceLifecycle } from '../service/ServiceLifecycle';
 import { ServiceNav } from '../service/ServiceNav';
@@ -97,6 +97,9 @@ import { Versions } from '../service/Versions';
 import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
+import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
+import { IntegrationService, IntegrationTab, NotDesigned } from '../DeveloperTools';
+import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
 import '../service/service.css';
@@ -116,6 +119,14 @@ const setupSections: SectionId[] = [
 ];
 
 const developerSetupSections: SectionId[] = ['tools', 'how', 'model', 'variants'];
+
+/** Setup sections shown in the Utviklerverktøy tab instead of Oppsett. */
+const modelSetup: SectionId[] = ['how', 'model'];
+const guardrailsSetup: SectionId[] = ['guards'];
+const developerTabSetup: Record<string, SectionId[]> = {
+  model: modelSetup,
+  guardrails: guardrailsSetup,
+};
 
 export interface BuilderInit {
   id: string;
@@ -406,6 +417,11 @@ export const Builder = ({
   }, [section, detail]);
 
   useEffect(() => {
+    const shown = section === 'developer' ? developerTabSetup[detail ?? ''] : undefined;
+    if (shown) setOpen((o) => ({ ...o, ...Object.fromEntries(shown.map((s) => [s, true])) }));
+  }, [section, detail]);
+
+  useEffect(() => {
     const target: SectionId | undefined =
       section === 'channels'
         ? 'start'
@@ -431,8 +447,10 @@ export const Builder = ({
       go('test');
       return;
     }
-    go('setup');
     const section = c.section as SectionId;
+    const tool = Object.entries(developerTabSetup).find(([, ids]) => ids.includes(section))?.[0];
+    if (tool) go('developer', `/${tool}`);
+    else go('setup');
     setOpen((o) => ({ ...o, [section]: true }));
     setHighlight(section);
     later(() => {
@@ -999,7 +1017,11 @@ export const Builder = ({
       : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
   const name = service.metadata.name || t('services.newServiceName');
   const sections = tabSections({ isNew });
-  const withAssistant = !readOnly && (section === 'setup' || section === 'test');
+  const withAssistant =
+    !readOnly &&
+    (section === 'setup' ||
+      section === 'test' ||
+      (section === 'developer' && !!developerTabSetup[detail ?? '']));
   const ownLayout = section === 'blocks';
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
@@ -1136,7 +1158,13 @@ export const Builder = ({
           editor={setup(['start'])}
         />
       );
-    if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
+    if (section === 'settings')
+      return isNew ? (
+        // The content for this tab is designed on branch claude/genki-services-new-design-6b9f9d.
+        <NotDesigned icon="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4" />
+      ) : (
+        <SettingsSection {...screenProps} id={id} />
+      );
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
       return <BatchSection api={api} tenant={tenant} id={id} runId={detail} />;
@@ -1151,6 +1179,74 @@ export const Builder = ({
           live={live}
         />
       );
+    if (section === 'developer') {
+      const afterPublish = <Paragraph>{t('devTools.afterPublish')}</Paragraph>;
+      return (
+        <DeveloperSection
+          id={isNew ? 'new' : id}
+          model={serviceId}
+          isNew={isNew}
+          current={isDeveloperTool(detail) ? detail : 'call'}
+          pages={{
+            keys: isNew ? (
+              afterPublish
+            ) : (
+              <a href={`#${servicePath(id, 'channels')}`}>{t('devTools.openChannels')}</a>
+            ),
+            triggers: isNew ? (
+              afterPublish
+            ) : (
+              <IntegrationService.Provider value={{ id, name }}>
+                <IntegrationTab.Provider value="triggers">
+                  <Integrations {...screenProps} />
+                </IntegrationTab.Provider>
+              </IntegrationService.Provider>
+            ),
+            model: setup(modelSetup),
+            guardrails: setup(guardrailsSetup),
+            runs: isNew ? (
+              afterPublish
+            ) : (
+              <LogSection
+                api={api}
+                tenant={tenant}
+                tenantName={tenantName}
+                id={id}
+                runId={undefined}
+                live={live}
+              />
+            ),
+            definition:
+              live && !isNew ? (
+                <DefinitionEditor
+                  api={api}
+                  tenant={tenant}
+                  serviceId={id}
+                  {...(onPublished ? { onPublished } : {})}
+                />
+              ) : (
+                <YamlTab
+                  api={api}
+                  generated={yaml}
+                  onApply={(d) => replaceWith(asServiceDefinition(d))}
+                />
+              ),
+            versions: isNew ? (
+              afterPublish
+            ) : live ? (
+              <Versions
+                api={api}
+                tenant={tenant}
+                serviceId={id}
+                {...(onPublished ? { onPublished } : {})}
+              />
+            ) : (
+              <VersionsTab versions={versions} changes={changes} onRollback={rollback} />
+            ),
+          }}
+        />
+      );
+    }
     if (section === 'versions')
       return live && !isNew ? (
         <VersionsSection
@@ -1198,7 +1294,9 @@ export const Builder = ({
                   !['io', 'instructions', 'guards'].includes(id) &&
                   !developerSetupSections.includes(id),
               )
-            : setupSections.filter((id) => id !== 'result'),
+            : setupSections.filter(
+                (id) => id !== 'result' && !Object.values(developerTabSetup).flat().includes(id),
+              ),
         )}
       </div>
     );
@@ -1311,7 +1409,7 @@ export const Builder = ({
               </>
             }
           />
-          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
+          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={tabFor(section)} />
           {readOnly ? (
             <Alert data-color="info" data-size="sm">
               <Heading level={2} data-size="2xs">

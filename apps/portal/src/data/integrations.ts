@@ -308,7 +308,7 @@ export const docs: { title: PlainKey; desc: PlainKey; href: string }[] = [
   {
     title: 'integrations.docCodeTitle',
     desc: 'integrations.docCodeDesc',
-    href: '#/integrations/code',
+    href: '#/developer/api/code',
   },
   { title: 'integrations.docApiTitle', desc: 'integrations.docApiDesc', href: '#/api-reference' },
   {

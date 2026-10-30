@@ -10,7 +10,7 @@ import { Access } from './screens/Access';
 import { ApiReference } from './screens/ApiReference';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { DataHandling, PublicDataHandling } from './screens/DataHandling';
-import { DeveloperTools, NotDesigned } from './screens/DeveloperTools';
+import { DeveloperTools, developerHashFor, NotDesigned } from './screens/DeveloperTools';
 import { Profile } from './screens/Profile';
 import { Contact, Guide, Status } from './screens/FooterPages';
 import { Datasets } from './screens/Datasets';
@@ -58,7 +58,6 @@ const chosen = (session: Session, org: string | null) =>
 const plannedPages = {
   feedback: { title: 'shell.navFeedback', icon: 'M4 4h16v12H8l-4 4z' },
   organisation: { title: 'shell.orgSettingsTitle', icon: 'M4 20V9l8-5 8 5v11M9 20v-5h6v5' },
-  onboarding: { title: 'shell.menuOnboarding', icon: 'M5 12l5 5 9-10' },
   changelog: { title: 'shell.menuChangelog', icon: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4' },
 } as const;
 
@@ -71,7 +70,6 @@ const MovedTo = ({ hash }: { hash: string }) => {
 };
 
 const footerPages = {
-  help: 'shell.guide',
   status: 'shell.status',
   contact: 'shell.contact',
 } as const;
@@ -102,8 +100,23 @@ const Page = ({
     return <MovedTo hash={window.location.hash.replace(/^#\/usage/, '#/statistics')} />;
   if (area === 'statistics') return <Usage {...props} />;
   if (area === 'developer')
-    return <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />;
+    return (id === 'api' && sub === 'code') || (id === 'hooks' && sub) ? (
+      <Integrations {...props} />
+    ) : (
+      <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
+    );
+  if (area === 'integrations') return <MovedTo hash={developerHashFor(props.route)} />;
   if (area === 'profile') return <Profile />;
+  if (area === 'help') return <MovedTo hash="#/onboarding" />;
+  if (area === 'onboarding')
+    return (
+      <>
+        <Heading level={1} data-size="lg">
+          {t('shell.menuOnboarding')}
+        </Heading>
+        <Guide />
+      </>
+    );
   if (area in plannedPages) {
     const page = plannedPages[area as keyof typeof plannedPages];
     return (
@@ -115,7 +128,6 @@ const Page = ({
       </>
     );
   }
-  if (area === 'integrations') return <Integrations {...props} />;
   if (area === 'api-reference') return <ApiReference {...props} />;
   if (area === 'log') return <Log {...props} />;
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
@@ -127,7 +139,7 @@ const Page = ({
         <Heading level={1} data-size="lg">
           {t(footerPages[area as keyof typeof footerPages])}
         </Heading>
-        {area === 'help' ? <Guide /> : area === 'status' ? <Status api={props.api} /> : <Contact />}
+        {area === 'status' ? <Status api={props.api} /> : <Contact />}
       </>
     );
   return (

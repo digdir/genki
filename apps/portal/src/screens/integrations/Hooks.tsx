@@ -65,10 +65,9 @@ const failureKeys: Record<HookSpec['failure'], PlainKey> = {
 
 const refusable = (point: HookPoint) => point !== 'task_completed' && point !== 'on_feedback';
 
-export const hooksHref = '#/integrations?tab=hooks';
+export const hooksHref = '#/developer/hooks';
 
-export const hookHref = (id?: string) =>
-  `#/integrations/hooks/${id ? encodeURIComponent(id) : 'new'}`;
+export const hookHref = (id?: string) => `#/developer/hooks/${id ? encodeURIComponent(id) : 'new'}`;
 
 const nbFormat = createFormat('nb');
 
@@ -541,7 +540,7 @@ export const HookEditor = ({
   const crumbs = (
     <Crumbs
       items={[
-        { label: t('integrations.heading'), href: '#/integrations' },
+        { label: t('devTools.title'), href: '#/developer' },
         { label: t('integHooks.heading'), href: hooksHref },
         { label: id ? t('integHooks.editHook') : t('integHooks.addHook') },
       ]}
@@ -613,7 +612,7 @@ export const HookEditor = ({
     setSaving(true);
     try {
       await api.hooks.save(tenant, hookId, specOf(f), f.reason.trim());
-      navigate(`${hooksHref}&saved=${encodeURIComponent(f.name.trim())}`);
+      navigate(`${hooksHref}?saved=${encodeURIComponent(f.name.trim())}`);
     } catch (error) {
       setSaveError(problemText(error, t));
     } finally {

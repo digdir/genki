@@ -131,8 +131,7 @@ describe('builder', () => {
       ['Innstillinger', '#/services/rapportassistenten/settings'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
       ['Samlet jobb', '#/services/rapportassistenten/batch'],
-      ['Versjoner', '#/services/rapportassistenten/versions'],
-      ['Logg', '#/services/rapportassistenten/log'],
+      ['Utviklerverktøy', '#/services/rapportassistenten/developer'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
@@ -143,7 +142,7 @@ describe('builder', () => {
 
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Versjoner').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
     expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
     expectAccessible();
@@ -153,7 +152,7 @@ describe('builder', () => {
     ['/setup', 'Oppsett', /^Formål og målgruppe/],
     ['/settings', 'Innstillinger', /Eksporter og importer/],
     ['/quality', 'Kvalitet', /Testsett/],
-    ['/log', 'Logg', /Kjøringer/],
+    ['/log', 'Utviklerverktøy', /Kjøringer/],
     ['/channels', 'Kanaler og frontend', /Start og kanaler/],
   ])('deep-links %s inside the same page', async (path, label, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
@@ -163,7 +162,8 @@ describe('builder', () => {
   });
 
   it.each([
-    ['/how-it-works', '#/services/rapportassistenten/setup/how'],
+    ['/how-it-works', '#/services/rapportassistenten/developer/model'],
+    ['/setup/guards', '#/services/rapportassistenten/developer/guardrails'],
     ['?tab=oppsett', '#/services/rapportassistenten/setup'],
     ['?tab=test', '#/services/rapportassistenten/test'],
     ['?tab=yaml', '#/services/rapportassistenten/versions?view=yaml'],
@@ -187,7 +187,7 @@ describe('builder', () => {
     ['uttrekk-samtale', 'Oppsett'],
     ['uttrekk-inn-og-ut', 'Oppsett'],
     ['uttrekk-prove', 'Test'],
-    ['uttrekk-yaml', 'Versjoner'],
+    ['uttrekk-yaml', 'Utviklerverktøy'],
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
@@ -220,9 +220,9 @@ describe('builder', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Vis endring: Valgte modell: Qwen3.8-27B' }),
     );
-    expect(screen.getByRole('button', { name: /^Modell/ }).getAttribute('aria-expanded')).toBe(
-      'true',
-    );
+    const model = await screen.findByRole('button', { name: /^Modell/ });
+    expect(model.getAttribute('aria-expanded')).toBe('true');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
     fireEvent.click(screen.getByRole('button', { name: 'Angre: Valgte modell: Qwen3.8-27B' }));
     expect(
       screen.getByRole('button', { name: 'Gjør om: Valgte modell: Qwen3.8-27B' }),
@@ -269,16 +269,22 @@ describe('risk level and v3 checks', () => {
     };
     const table = () =>
       screen.getByRole('radio', { name: /Tabell med kilder/ }) as HTMLInputElement;
+    const chooseWay = async (value: string) => {
+      go('#/services/soknadsuttrekk/developer/model');
+      const way = (await screen.findByLabelText('Arbeidsmåte')) as HTMLSelectElement;
+      fireEvent.change(way, { target: { value } });
+      go('#/services/soknadsuttrekk/setup');
+      await screen.findAllByRole('button', { name: /^Inn og ut/ });
+      open(/^Inn og ut/);
+    };
     open(/^Inn og ut/);
     expect(table().disabled).toBe(true);
-    open(/^Arbeidsmåte/);
-    const way = () => screen.getByLabelText('Arbeidsmåte') as HTMLSelectElement;
-    fireEvent.change(way(), { target: { value: 'step-flow' } });
+    await chooseWay('step-flow');
     expect(table().disabled).toBe(false);
     fireEvent.click(table());
     expect(table().checked).toBe(true);
     expect(screen.queryByText(/Bare en fast stegflyt kan lage en tabell/)).toBeNull();
-    fireEvent.change(way(), { target: { value: 'single-call' } });
+    await chooseWay('single-call');
     expect(screen.getByText(/Bare en fast stegflyt kan lage en tabell/)).toBeTruthy();
   });
 
