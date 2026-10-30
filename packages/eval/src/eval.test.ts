@@ -1088,6 +1088,24 @@ describe('deferred judges (evaluator@2)', () => {
     ).rejects.toThrow(/evaluator judge:later answered pending on case a but cannot be collected/);
   });
 
+  it("keeps an advisory judge's scores on its cases but out of the run's metrics", async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    evaluator.advisory = true;
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(judged(run)).toMatchObject([{ state: 'scored', value: 1 }, { state: 'scored' }]);
+    expect(run.metrics).not.toHaveProperty('judge.later');
+    expect(Object.values(run.byTag).some((m) => 'judge.later' in m)).toBe(false);
+  });
+
   it("purges a judge's reason with the case, as its retention says", async () => {
     const clock = fakeClock();
     const { evaluator } = later((item) => ({
@@ -1445,6 +1463,33 @@ describe('publishing gates', () => {
     // The second judge scored no judge.overall, so its missing calibration cannot weaken the gate.
     expect(outcome.results[0]).toMatchObject({ pass: false, blocking: true });
     expect(outcome.results[0]?.reason).not.toContain('advisory');
+  });
+
+  it('leaves an advisory judge out of every gate, so a judge taken in use since the baseline never fails a publish', () => {
+    const advisory = 'langfuse:dfo/kudos/regel@v1+openai/gpt-4.1';
+    const baseline = fakeRun(cases(10, () => 0.8));
+    const candidate = fakeRun(
+      cases(10, () => 0.8),
+      {
+        judges: ['anthropic-judge', advisory],
+      },
+    );
+    const gates = (advisoryJudge?: (judge: string) => boolean) =>
+      evaluateGates({
+        evaluation: evaluation(['no-tag-regression', 'judge-quality']),
+        registry,
+        candidate: new Map([['ka-kudos', candidate]]),
+        baseline: new Map([['ka-kudos', baseline]]),
+        judgeAgreement: new Map([['anthropic-judge', 0.72]]),
+        ...(advisoryJudge ? { advisoryJudge } : {}),
+      });
+
+    expect(() => gates()).toThrow(/runs differ in judges/);
+    const outcome = gates((judge) => judge === advisory);
+    expect(outcome.results.map((r) => [r.gate, r.pass, r.blocking])).toEqual([
+      ['no-tag-regression', true, true],
+      ['judge-quality', false, true],
+    ]);
   });
 
   it('catches a regression in one tag that the overall number hides', () => {

@@ -1106,7 +1106,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     return { status: 404, json: {} };
   });
   servers.push(server);
-  return { url: server.url, spans, attr };
+  return { url: server.url, spans, attr, close: () => server.close() };
 };
 
 describe('Langfuse judges on a run', () => {
@@ -1182,7 +1182,8 @@ describe('Langfuse judges on a run', () => {
       state: 'not-applicable',
       reason: 'holdout cases are never sent',
     });
-    expect(stored?.run.metrics[`langfuse:lokal/${judgeRule}`]).toMatchObject({ mean: 1, n: 1 });
+    // Advisory: the judge's scores are not among the run's own metrics.
+    expect(stored?.run.metrics).not.toHaveProperty(`langfuse:lokal/${judgeRule}`);
     // Only the fields the judge maps go out: the question, the answer and the case's criteria.
     const o1 = rootOf('o1');
     if (!o1) throw new Error('case o1 was not sent');
@@ -1329,11 +1330,26 @@ describe('Langfuse judges on a run', () => {
     );
     expect(nowRefused.status).toBe(409);
     expect(JSON.stringify(nowRefused.body)).toContain(
-      `the judge langfuse:lokal/${judgeRule}: ${judgeRule} reads tool_calls, which genki does not send`,
+      `${judgeRule} reads tool_calls, which genki does not send`,
     );
     expect(gone.status).toBe(409);
     expect(JSON.stringify(gone.body)).toContain(
       `the judge langfuse:lokal/${judgeRule} is no longer an active experiment judge in the project of the connection lokal`,
+    );
+  });
+
+  it("refuses a run with a reason when the connection's Langfuse cannot be read as it starts", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    await langfuse.close();
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+
+    expect(started.status).toBe(409);
+    expect(JSON.stringify(started.body)).toContain(
+      'the judges of the connection lokal could not be read',
     );
   });
 

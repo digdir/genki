@@ -352,6 +352,22 @@ const BuildingBlock = z
     pendingRequest: z
       .object({ id: z.string(), at: z.string(), by: z.string(), reason: z.string() })
       .optional(),
+    judge: z
+      .object({
+        connection: z.string(),
+        model: z.string().optional().describe('provider/model; absent on a default model'),
+        version: z.string(),
+        dataType: z.string(),
+        fields: z.array(
+          z.object({ variable: z.string(), source: z.string(), jsonPath: z.string().optional() }),
+        ),
+        refused: z
+          .object({ reason: z.string(), field: z.string().optional(), message: z.string() })
+          .optional()
+          .describe('Why the judge cannot be taken in use'),
+      })
+      .optional()
+      .describe("A judge from the project of one of the tenant's Langfuse connections"),
   })
   .openapi('BuildingBlock');
 

@@ -16,6 +16,8 @@ interface FakeRule {
   target: string;
   status: string;
   enabled: boolean;
+  sampling?: number;
+  filter?: unknown[];
   mapping: { variable: string; source: string; jsonPath?: string }[];
   evaluator: { id: string; name: string };
 }
@@ -24,6 +26,7 @@ interface FakeEvaluator {
   id: string;
   name: string;
   version: number;
+  type?: string;
   outputDefinition: { dataType: string };
   modelConfig: { provider: string; model: string } | null;
 }
@@ -242,6 +245,9 @@ describe('Langfuse judges', () => {
     expect(await collectedAfter({ rules: [], evaluators: [evaluator()] })).toEqual([
       'the rule is gone',
     ]);
+    expect(
+      await collectedAfter({ rules: [rule({ status: 'inactive' })], evaluators: [evaluator()] }),
+    ).toEqual(['the rule is no longer active']);
   });
 
   it("keeps two agencies', or two connections', judges of the same name apart, scores and labels alike", async () => {
@@ -307,6 +313,30 @@ describe('Langfuse judges', () => {
 
     expect(judge.refused).toMatchObject({ reason: 'unsent-field', field: 'tool_calls' });
     expect(judge.refused?.message).toMatch(/tool_calls/);
+    // The answer goes as its parts, so no path into it reads what the judge expects.
+    const pathed = await listed(
+      fakeLangfuse({
+        rules: [rule({ mapping: [{ variable: 'svar', source: 'output', jsonPath: '$.text' }] })],
+        evaluators: [evaluator()],
+      }),
+    );
+    expect(pathed.refused).toMatchObject({ reason: 'unread-path', field: 'output $.text' });
+  });
+
+  it('refuses a judge that judges only some items, by sampling or a filter, or that is not an LLM judge', async () => {
+    const refusedOf = async (r: FakeRule, e: FakeEvaluator = evaluator()) =>
+      (await listed(fakeLangfuse({ rules: [r], evaluators: [e] }))).refused?.reason;
+
+    expect(await refusedOf(rule({ sampling: 0.5 }))).toBe('sampled');
+    expect(
+      await refusedOf(
+        rule({ filter: [{ type: 'string', column: 'name', operator: '=', value: 'x' }] }),
+      ),
+    ).toBe('filtered');
+    expect(await refusedOf(rule(), evaluator({ type: 'code', modelConfig: null }))).toBe(
+      'not-a-model',
+    );
+    expect(await refusedOf(rule({ sampling: 1, filter: [] }))).toBeUndefined();
   });
 
   it('is not applicable on a case without the fields its mapping reads, on a connection without content, and on a holdout case', async () => {

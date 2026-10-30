@@ -18,12 +18,22 @@ import { rightLabel, useRights } from '../../Shell';
 import type { PortalRight } from '../../types';
 
 /** Why a Langfuse judge cannot be taken in use, in the reader's language. */
-export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) =>
-  refused.reason === 'default-model'
-    ? t('blocks.judgeRefusedDefaultModel')
-    : refused.reason === 'unread-path'
-      ? t('blocks.judgeRefusedPath', { field: refused.field ?? '' })
-      : t('blocks.judgeRefusedField', { field: refused.field ?? '' });
+export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) => {
+  switch (refused.reason) {
+    case 'not-a-model':
+      return t('blocks.judgeRefusedNotAModel');
+    case 'default-model':
+      return t('blocks.judgeRefusedDefaultModel');
+    case 'sampled':
+      return t('blocks.judgeRefusedSampled');
+    case 'filtered':
+      return t('blocks.judgeRefusedFiltered');
+    case 'unread-path':
+      return t('blocks.judgeRefusedPath', { field: refused.field ?? '' });
+    default:
+      return t('blocks.judgeRefusedField', { field: refused.field ?? '' });
+  }
+};
 
 /** A judge's facts: what it runs on, which version, what it answers and what it reads. */
 export const judgeFacts = (t: T, judge: SinkJudgeInfo) => [

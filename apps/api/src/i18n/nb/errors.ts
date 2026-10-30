@@ -112,7 +112,13 @@ export const catalogErrors = defineNamespace({
     'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
   sinkJudgeGone:
     'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
-  sinkJudgeRefused: 'dommeren {id}: {reason}',
+  sinkJudgesUnreadable: 'dommerne til koblingen {connection} kunne ikke leses: {error}',
+  sinkJudgeNotAModel:
+    '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
+  sinkJudgeSampled:
+    '{rule} vurderer bare en del av elementene den får, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeFiltered:
+    '{rule} vurderer bare elementene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering',
   sinkJudgeDefaultModel:
     '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
   sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',

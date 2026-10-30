@@ -163,6 +163,12 @@ export const blocks = defineNamespace({
   judgeRefusedDefaultModel:
     'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
   judgeRefusedField: 'Dommeren leser {field}, som genki ikke sender.',
+  judgeRefusedNotAModel:
+    'Dommeren er ikke en LLM-som-dommer i Langfuse, så den har ingen modell genki kan navngi.',
+  judgeRefusedSampled:
+    'Dommeren vurderer bare en del av svarene den får, så noen testtilfeller ville aldri fått vurdering. Sett sampling til 100 % i Langfuse for å ta den i bruk.',
+  judgeRefusedFiltered:
+    'Dommeren vurderer bare svarene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering. Fjern filteret i Langfuse for å ta den i bruk.',
   judgeRefusedPath: 'Dommeren leser {field}, en JSON-sti genki ikke kan lese.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',

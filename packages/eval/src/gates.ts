@@ -24,6 +24,8 @@ export interface GateInput {
   judgeAgreement?: Map<string, number>;
   allowDifferent?: ComparableField[];
   bootstrap?: BootstrapOptions;
+  /** Judges whose scores never gate: left out of comparisons and calibration. */
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface GateOutcome {
@@ -89,7 +91,9 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
           ),
         );
         const own = run.provenance.judges.filter((j) => scoredBy.has(evaluatorOfJudge(j)));
-        const judges = own.length > 0 ? own : run.provenance.judges;
+        const judges = (own.length > 0 ? own : run.provenance.judges).filter(
+          (j) => !input.advisoryJudge?.(j),
+        );
         const uncalibrated = judges.filter(
           (j) =>
             (input.judgeAgreement?.get(j) ?? input.judgeAgreement?.get(evaluatorOfJudge(j)) ?? 0) <
@@ -164,6 +168,7 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
             ...input.bootstrap,
             split: gate.split,
             allowDifferent: input.allowDifferent ?? ['commit', 'services', 'servedModels'],
+            ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
             ...(tag === undefined ? {} : { tag }),
           });
           if (tag === undefined) overall = { difference: c.difference, ci: c.ci };
@@ -201,6 +206,7 @@ export interface PublishGateInput {
   registry: Map<string, Gate>;
   judgeAgreement?: Map<string, number>;
   bootstrap?: BootstrapOptions;
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface PublishDecision {
@@ -253,6 +259,7 @@ export const publishGate = async (input: PublishGateInput): Promise<PublishDecis
     ...(baseline ? { baseline } : {}),
     ...(input.judgeAgreement ? { judgeAgreement: input.judgeAgreement } : {}),
     ...(input.bootstrap ? { bootstrap: input.bootstrap } : {}),
+    ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
   });
   const label = (r: GateResult) => `${r.gate} on ${r.testSet}: ${r.reason}`;
   return {

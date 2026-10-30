@@ -5,12 +5,15 @@ import { validateDefinition } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
   answerText,
+  bootstrapMean,
   caseTypeOf,
   caseView,
   criteriaJudgeId,
   defaultObserve,
   evalRun,
   gradeAnswer,
+  mean,
+  perCaseMeans,
   runState,
   splitsFor,
   sumUsage,
@@ -94,7 +97,12 @@ export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
           const key = String(s.details.asItCame);
           categories[key] = (categories[key] ?? 0) + 1;
         }
-      const metric = run.metrics[id];
+      // Advisory scores stay out of the run's metrics, so the judge's own summary is made here.
+      const values = [...perCaseMeans(run, id).values()];
+      const metric =
+        values.length > 0
+          ? { mean: mean(values), ci: bootstrapMean(values), n: values.length }
+          : undefined;
       const dataType = scores.find((s) => typeof s.details?.dataType === 'string')?.details
         ?.dataType as string | undefined;
       return {
@@ -516,14 +524,19 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   /** The adopted judges as the connection's project has them now; any refused one refuses the run. */
   const snapshotJudges = async (tenant: string, connection: TraceConnection, adopted: string[]) => {
     if (adopted.length === 0 || !deps.traceSinks?.judges) return [];
-    const listed = await deps.traceSinks.judges(tenant, connection);
+    const listed = await deps.traceSinks.judges(tenant, connection).catch((error: unknown) => {
+      throw new TraceRefused(
+        `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
+      );
+    });
     return adopted.map((id): SinkJudge => {
       const judge = listed.find((j) => j.id === id);
       if (!judge)
         throw new TraceRefused(
           `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
         );
-      if (judge.refused) throw new TraceRefused(`the judge ${id}: ${judge.refused.message}`);
+      // The refusal names the judge's rule, and reads in the person's language.
+      if (judge.refused) throw new TraceRefused(judge.refused.message);
       return judge;
     });
   };

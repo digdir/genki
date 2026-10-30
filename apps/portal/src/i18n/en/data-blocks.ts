@@ -165,6 +165,12 @@ export const blocksLane = {
     judgeRefusedDefaultModel:
       "The judge uses the project's default model, which cannot be read through Langfuse. Pick a model for the judge in Langfuse to use it.",
     judgeRefusedField: 'The judge reads {field}, which genki does not send.',
+    judgeRefusedNotAModel:
+      'The judge is not an LLM-as-a-judge in Langfuse, so it has no model genki can name.',
+    judgeRefusedSampled:
+      'The judge scores only part of the answers it gets, so some cases would never be scored. Set sampling to 100 % in Langfuse to use it.',
+    judgeRefusedFiltered:
+      'The judge scores only the answers its filter lets through, so some cases would never be scored. Remove the filter in Langfuse to use it.',
     judgeRefusedPath: 'The judge reads {field}, a JSON path genki cannot read.',
     pendingNotice:
       'The request has been sent to {approver}. You will be notified on Overview when it has been handled.',

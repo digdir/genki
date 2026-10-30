@@ -44,6 +44,8 @@ export interface Evaluator {
    * purges them with the case; the run keeps its scores without them.
    */
   reasonsOnTheCase?: boolean;
+  /** Its scores are shown apart and never count in the run's metrics or its gates. */
+  advisory?: boolean;
 }
 
 /**

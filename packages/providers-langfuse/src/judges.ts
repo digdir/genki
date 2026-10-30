@@ -27,7 +27,7 @@ export type JudgeDataType = 'BOOLEAN' | 'NUMERIC' | 'CATEGORICAL';
 
 /** Why genki cannot use a judge; message is for the API, reason and field for a screen. */
 export interface JudgeRefusal {
-  reason: 'default-model' | 'unsent-field' | 'unread-path';
+  reason: 'not-a-model' | 'default-model' | 'sampled' | 'filtered' | 'unsent-field' | 'unread-path';
   field?: string;
   message: string;
 }
@@ -66,6 +66,8 @@ interface RawRule {
   target?: string;
   status?: string;
   enabled?: boolean;
+  sampling?: number;
+  filter?: unknown[];
   mapping?: JudgeMapping[];
   evaluator?: { id: string; name: string };
 }
@@ -74,6 +76,7 @@ interface RawEvaluator {
   id: string;
   name: string;
   version: number;
+  type?: string;
   outputDefinition?: { dataType?: string };
   modelConfig?: { provider?: string; model?: string } | null;
 }
@@ -91,17 +94,36 @@ interface RawScore {
 
 const dataTypes = new Set<string>(['BOOLEAN', 'NUMERIC', 'CATEGORICAL']);
 
-/** $ or $.a.b: the JSON paths genki can read to tell whether a field is empty for a case. */
+/** $ or a dotted path of plain keys: the paths genki can read to tell whether a field is empty. */
 const pathKeys = (path: string | undefined) => {
   if (path === undefined || path === '$') return [];
   return /^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(path) ? path.slice(2).split('.') : undefined;
 };
 
+/** Input and output go as genki's parts, so only the whole of them is what a judge expects. */
+const wholeOnly = new Set(['input', 'output']);
+
 const refusalOf = (rule: RawRule, evaluator: RawEvaluator): JudgeRefusal | undefined => {
+  if (evaluator.type !== undefined && evaluator.type !== 'llm_as_judge')
+    return {
+      reason: 'not-a-model',
+      message: `${rule.name} is not an LLM-as-a-judge evaluator, so it has no model genki can name`,
+    };
   if (!evaluator.modelConfig?.provider || !evaluator.modelConfig.model)
     return {
       reason: 'default-model',
       message: `${rule.name} uses the project's or organisation's default model, which cannot be read through Langfuse's API`,
+    };
+  // Langfuse judges only the items its sampling and filter let through; the rest would go missing.
+  if (rule.sampling !== undefined && rule.sampling < 1)
+    return {
+      reason: 'sampled',
+      message: `${rule.name} judges only part of the items it gets, so some cases would never be scored`,
+    };
+  if ((rule.filter ?? []).length > 0)
+    return {
+      reason: 'filtered',
+      message: `${rule.name} judges only the items its filter lets through, so some cases would never be scored`,
     };
   for (const m of rule.mapping ?? []) {
     if (!sentSources.has(m.source))
@@ -110,7 +132,10 @@ const refusalOf = (rule: RawRule, evaluator: RawEvaluator): JudgeRefusal | undef
         field: m.source,
         message: `${rule.name} reads ${m.source}, which genki does not send`,
       };
-    if (pathKeys(m.jsonPath) === undefined)
+    if (
+      pathKeys(m.jsonPath) === undefined ||
+      (wholeOnly.has(m.source) && (pathKeys(m.jsonPath)?.length ?? 0) > 0)
+    )
       return {
         reason: 'unread-path',
         field: `${m.source} ${m.jsonPath}`,
@@ -124,8 +149,16 @@ const modelText = (model: LangfuseJudge['evaluator']['model']) =>
   model ? `${model.provider}/${model.model}` : 'default';
 
 /** What differs between the judge at the run's start and now; empty when nothing does. */
-const changes = (before: LangfuseJudge, now: LangfuseJudge | undefined): string[] => {
-  if (!now) return ['the rule is gone'];
+const changes = (
+  before: LangfuseJudge,
+  now: { judge: LangfuseJudge | undefined; active: boolean } | undefined,
+): string[] => {
+  if (!now?.judge) return ['the rule is gone'];
+  if (!now.active) return ['the rule is no longer active'];
+  return changesOf(before, now.judge);
+};
+
+const changesOf = (before: LangfuseJudge, now: LangfuseJudge): string[] => {
   const out: string[] = [];
   if (JSON.stringify(before.rule.mapping) !== JSON.stringify(now.rule.mapping))
     out.push("the rule's mapping");
@@ -263,7 +296,12 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       `/api/public/unstable/evaluation-rules/${encodeURIComponent(judge.rule.id)}`,
       signal,
     );
-    return rule ? judgeOf(judge.connection, rule, new Map()) : undefined;
+    return rule
+      ? {
+          judge: await judgeOf(judge.connection, rule, new Map()),
+          active: rule.status === 'active' && rule.enabled !== false,
+        }
+      : undefined;
   };
 
   const scoresOn = async (trace: string, signal?: AbortSignal) => {
@@ -305,6 +343,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       kind: 'model',
       judge: `langfuse:${run.tenant}/${judge.connection}/${judge.rule.name}@${version}`,
       reasonsOnTheCase: true,
+      advisory: true,
       evaluate: async (c, o) => {
         if (c.split === 'holdout') return [notApplicable('holdout cases are never sent')];
         if (!run.content) return [notApplicable('the connection does not receive content')];

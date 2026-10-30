@@ -1317,6 +1317,7 @@ export const createPlatform = async (input: PlatformInput) => {
       evaluation: { testSets: evaluation?.testSets ?? [], gates: listed },
       runs: evalStores.runs,
       registry: gates,
+      advisoryJudge: (judge) => judge.startsWith('langfuse:'),
     });
     if (decision.allow) return undefined;
     return [
