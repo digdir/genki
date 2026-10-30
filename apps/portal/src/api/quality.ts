@@ -21,7 +21,15 @@ export interface ServiceCase {
   split: CaseSplit;
 }
 
-export type NewServiceCase = Omit<ServiceCase, 'id'>;
+/** A reference answer and named criteria, as a judge reads them. */
+export interface CaseExpectation {
+  referenceAnswer?: string;
+  criteria?: Record<string, string>;
+}
+
+export type NewServiceCase = Omit<ServiceCase, 'id' | 'expected'> & {
+  expected: string | CaseExpectation;
+};
 
 export interface EvalRun {
   id: string;

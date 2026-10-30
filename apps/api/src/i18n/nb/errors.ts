@@ -351,6 +351,7 @@ export const qualityErrors = defineNamespace({
   inputRequired: 'input er påkrevd',
   lockedOrOpen: 'split er locked eller open',
   expectedRequired: 'forventet svar eller kriterier er påkrevd',
+  expectedShape: 'forventet svar er en tekst, eller et godt svar og navngitte kriterier',
   caseExists: 'testtilfellet {id} finnes',
   testSetRequired: 'testsettet er påkrevd',
   noTestSetFor: 'ingen testsett {setId} for {service}',

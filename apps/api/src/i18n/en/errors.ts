@@ -351,6 +351,7 @@ export const qualityErrors = {
   inputRequired: 'the input is required',
   lockedOrOpen: 'split is locked or open',
   expectedRequired: 'the expected answer or criteria are required',
+  expectedShape: 'expected is a text, or a reference answer and named criteria',
   caseExists: 'case {id} exists',
   testSetRequired: 'the test set is required',
   noTestSetFor: 'no test set {setId} for {service}',

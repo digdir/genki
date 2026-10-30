@@ -58,6 +58,25 @@ describe('criteria apart from the reference answer', () => {
     expect(exact.expected).toEqual({ sources: [], referenceAnswer: '1. mai' });
   });
 
+  it('keeps a reference answer and named criteria given together, as an import brings them', () => {
+    const both = testCase.parse(
+      caseFrom({
+        id: 'c4',
+        input: 'Hvem eier Kudos?',
+        expected: {
+          referenceAnswer: 'DFØ eier Kudos.',
+          criteria: { criteria: 'Nevner DFØ', supporting_quotes: 'Kudos driftes av DFØ' },
+        },
+      }),
+    );
+
+    expect(both.expected).toEqual({
+      sources: [],
+      referenceAnswer: 'DFØ eier Kudos.',
+      criteria: { criteria: 'Nevner DFØ', supporting_quotes: 'Kudos driftes av DFØ' },
+    });
+  });
+
   it('reads a criteria case written before expected.criteria with its criteria moved there', () => {
     const old = testCase.parse({
       id: 'nn-idporten-kva',
