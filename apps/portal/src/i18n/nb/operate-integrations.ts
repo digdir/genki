@@ -668,20 +668,28 @@ export const integrationsArea = {
     contentOn: 'Får tekst',
     contentOff: 'Får bare metadata',
     check: 'Sjekk koblingen',
-    checkedOk: 'Nøklene åpner prosjektet {project}.',
+    checkedOk:
+      'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',
     edit: 'Endre',
     add: 'Koble til Langfuse',
-    nameTaken:
-      'Det finnes allerede en kobling som heter {id}. Velg et annet navn, eller endre den.',
+    nameTaken: 'Det finnes allerede en kobling med id-en {id}. Velg en annen, eller endre den.',
     addHeading: 'Ny Langfuse-kobling',
     editHeading: 'Endre Langfuse-koblingen',
-    id: 'Navn på koblingen',
+    id: 'Id for koblingen',
+    idHelp: 'Små bokstaver, tall og bindestrek. Den kan ikke endres senere.',
+    idInvalid:
+      'Bruk bare små bokstaver, tall og bindestrek, og start med en bokstav eller et tall, for eksempel etaten-langfuse.',
     host: 'Adresse',
     hostHelp: 'For eksempel https://langfuse.digdir.cloud. Bare HTTPS.',
+    hostInvalid: 'Skriv hele adressen, for eksempel https://langfuse.digdir.cloud.',
     publicKey: 'Offentlig nøkkel',
-    secretName: 'Navn på hemmeligheten',
+    secret: 'Hemmelig nøkkel',
     secretHelp:
-      'Navnet på hemmeligheten der dere har lagret den hemmelige nøkkelen, satt for adressen over.',
+      'Lagres som en hemmelighet som bare kan sendes til adressen over, og vises ikke igjen.',
+    secretKeepHelp:
+      'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for adressen over.',
+    secretAgain:
+      'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
     servicesLabel: 'Tjenester',
     servicesHelp: 'Tjenestenes id, skilt med komma. En tjeneste kan bare ha én kobling.',
     residency: 'Lagringssted',

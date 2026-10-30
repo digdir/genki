@@ -22,7 +22,7 @@ const digdir = {
   id: 'digdir',
   host: 'https://langfuse.digdir.cloud',
   publicKey: 'pk-lf-digdir',
-  secretKey: 'secret://tenant/991825827/langfuse-digdir',
+  secretKey: 'secret://tenant/999888777/langfuse-digdir',
   services: ['rapportassistenten'],
   residency: 'global',
   content: false,
@@ -53,9 +53,14 @@ const renderTracing = async () => {
     const put = /\/tracing\/connections\/([^/]+)$/.exec(path);
     if (put && method === 'PUT') {
       const connection = { ...body, id: put[1], instance: false, residencySetBy: 'tenant' };
-      saved.push(connection);
+      const at = saved.findIndex((c) => c.id === put[1]);
+      if (at >= 0) saved[at] = connection;
+      else saved.push(connection);
       return Response.json(connection);
     }
+    const secret = /\/secrets\/([^/]+)$/.exec(path);
+    if (secret && method === 'PUT')
+      return Response.json({ ref: `secret://tenant/999888777/${secret[1]}` });
     if (/\/tracing\/connections\/[^/]+\/check$/.test(path))
       return Response.json({ ok: true, project: { id: 'p1', name: 'Rapportassistenten' } });
     return base(input, init);
@@ -77,15 +82,23 @@ describe('Integrasjoner: Langfuse', () => {
       within(section).getByText('Lagringssted: ikke avklart (global), satt av Digdir'),
     ).toBeTruthy();
     expect(within(section).getByText('Får bare metadata')).toBeTruthy();
-
-    fireEvent.click(within(section).getByRole('button', { name: 'Sjekk koblingen' }));
-    expect(
-      await within(section).findByText('Nøklene åpner prosjektet Rapportassistenten.'),
-    ).toBeTruthy();
     await expectAccessible(section);
   });
 
-  it('connects a service with a secret reference, never the key itself, and a reason', async () => {
+  it('says the check shows the secret key opens the project, and that Langfuse does not check the public key', async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Sjekk koblingen' }));
+
+    expect(
+      await within(section).findByText(
+        'Den hemmelige nøkkelen åpner prosjektet Rapportassistenten. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it("stores the secret key for the connection's address alone, then saves the connection with only a reference to it", async () => {
     const { calls, section } = await renderTracing();
     await within(section).findByText('https://langfuse.digdir.cloud');
 
@@ -97,10 +110,10 @@ describe('Integrasjoner: Langfuse', () => {
 
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
-    fill('Navn på koblingen', 'etaten');
+    fill('Id for koblingen', 'etaten');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
-    fill('Navn på hemmeligheten', 'langfuse-etaten');
+    fill('Hemmelig nøkkel', 'sk-lf-etaten');
     fill('Tjenester', 'soknadsuttrekk, rapportassistenten');
     fill('Lagringssted', 'norway');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
@@ -109,7 +122,15 @@ describe('Integrasjoner: Langfuse', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
     expect(await within(section).findByText('https://langfuse.etaten.example.no')).toBeTruthy();
-    const put = calls.find((c) => c.method === 'PUT');
+    const puts = calls.filter((c) => c.method === 'PUT');
+    expect(puts[0]).toMatchObject({
+      url: expect.stringMatching(/\/secrets\/langfuse-etaten$/),
+      reason: 'Teamet bruker Langfuse til dommere',
+      body: { value: 'sk-lf-etaten', allowedHosts: ['https://langfuse.etaten.example.no'] },
+    });
+    // The key goes to the secret store only, never with the connection.
+    expect(JSON.stringify(puts.slice(1))).not.toContain('sk-lf-etaten');
+    const put = puts[1];
     expect(put).toMatchObject({
       url: expect.stringMatching(/\/tracing\/connections\/etaten$/),
       reason: 'Teamet bruker Langfuse til dommere',
@@ -133,10 +154,10 @@ describe('Integrasjoner: Langfuse', () => {
     const form = within(section).getByRole('form', { name: 'Ny Langfuse-kobling' });
     const fill = (label: string, value: string) =>
       fireEvent.change(within(form).getByLabelText(label), { target: { value } });
-    fill('Navn på koblingen', 'digdir');
+    fill('Id for koblingen', 'digdir');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
-    fill('Navn på hemmeligheten', 'langfuse-etaten');
+    fill('Hemmelig nøkkel', 'sk-lf-etaten');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
       target: { value: 'Teamet bruker Langfuse til dommere' },
     });
@@ -144,7 +165,7 @@ describe('Integrasjoner: Langfuse', () => {
 
     expect(
       await within(form).findByText(
-        'Det finnes allerede en kobling som heter digdir. Velg et annet navn, eller endre den.',
+        'Det finnes allerede en kobling med id-en digdir. Velg en annen, eller endre den.',
       ),
     ).toBeTruthy();
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
@@ -172,5 +193,74 @@ describe('Integrasjoner: Langfuse', () => {
 
     expect(await within(section).findByText('Fjernes: sletter det som er sendt')).toBeTruthy();
     expect(within(section).queryByRole('button', { name: 'Endre' })).toBeNull();
+  });
+
+  it('refuses an id with anything but small letters, digits and hyphens, in the language of the portal', async () => {
+    const { calls, section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Koble til Langfuse' }));
+    const form = within(section).getByRole('form', { name: 'Ny Langfuse-kobling' });
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Id for koblingen', 'Lokal Langfuse');
+    fill('Adresse', 'https://langfuse.etaten.example.no');
+    fill('Offentlig nøkkel', 'pk-lf-etaten');
+    fill('Hemmelig nøkkel', 'sk-lf-etaten');
+    fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
+      target: { value: 'Teamet bruker Langfuse til dommere' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(
+      await within(form).findByText(
+        'Bruk bare små bokstaver, tall og bindestrek, og start med en bokstav eller et tall, for eksempel etaten-langfuse.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('keeps the stored secret key when it is left empty, and asks for it again when the address changes', async () => {
+    const { calls, section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+    const edit = () => {
+      fireEvent.click(within(section).getByRole('button', { name: 'Endre' }));
+      const form = within(section).getByRole('form', { name: 'Endre Langfuse-koblingen' });
+      const fill = (label: string, value: string) =>
+        fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+      fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
+        target: { value: 'Flytter Langfuse til ny adresse' },
+      });
+      return { form, fill };
+    };
+
+    const first = edit();
+    first.fill('Tjenester', 'rapportassistenten, soknadsuttrekk');
+    fireEvent.click(within(first.form).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText('Koblingen digdir er lagret.')).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'PUT')).toMatchObject([
+      { body: { secretKey: 'secret://tenant/999888777/langfuse-digdir' } },
+    ]);
+
+    const second = edit();
+    second.fill('Adresse', 'https://langfuse.ny.example.no');
+    fireEvent.click(within(second.form).getByRole('button', { name: 'Lagre' }));
+    expect(
+      await within(second.form).findByText(
+        'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
+      ),
+    ).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+
+    second.fill('Hemmelig nøkkel', 'sk-lf-ny');
+    fireEvent.click(within(second.form).getByRole('button', { name: 'Lagre' }));
+    expect(await within(section).findByText('https://langfuse.ny.example.no')).toBeTruthy();
+    expect(calls.filter((c) => c.method === 'PUT').slice(1)).toMatchObject([
+      {
+        url: expect.stringMatching(/\/secrets\/langfuse-digdir$/),
+        body: { value: 'sk-lf-ny', allowedHosts: ['https://langfuse.ny.example.no'] },
+      },
+      { body: { secretKey: 'secret://tenant/999888777/langfuse-digdir' } },
+    ]);
   });
 });

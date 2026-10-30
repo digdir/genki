@@ -23,8 +23,13 @@ import { ErrorState, Loading } from '../../states';
 interface Draft {
   id: string;
   host: string;
+  /** The host the stored secret is set for; empty for a new connection. */
+  storedHost: string;
   publicKey: string;
-  secretName: string;
+  /** The stored secret's reference, kept while no new key is entered. */
+  secretKey: string;
+  /** A new secret key: stored for the host before the connection is saved, never shown again. */
+  secret: string;
   services: string;
   residency: Residency;
   content: boolean;
@@ -34,8 +39,10 @@ interface Draft {
 const blank: Draft = {
   id: '',
   host: '',
+  storedHost: '',
   publicKey: '',
-  secretName: '',
+  secretKey: '',
+  secret: '',
   services: '',
   residency: 'global',
   content: false,
@@ -44,13 +51,28 @@ const blank: Draft = {
 
 const secretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
 
-const draftOf = (c: TraceConnection, tenant: string): Draft => ({
+/** The API's pattern for a connection's id. */
+const idPattern = /^[a-z0-9][a-z0-9-]*$/;
+
+const originOf = (host: string) => {
+  try {
+    return new URL(host.trim()).origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/** A key must be entered for a new connection, and again when the address changes. */
+const needsKey = (d: Draft) =>
+  !d.secretKey || originOf(d.host) === undefined || originOf(d.host) !== originOf(d.storedHost);
+
+const draftOf = (c: TraceConnection): Draft => ({
   id: c.id,
   host: c.host,
+  storedHost: c.host,
   publicKey: c.publicKey,
-  secretName: c.secretKey.startsWith(secretPrefix(tenant))
-    ? c.secretKey.slice(secretPrefix(tenant).length)
-    : c.secretKey,
+  secretKey: c.secretKey,
+  secret: '',
   services: c.services.join(', '),
   residency: c.residency,
   content: c.content,
@@ -105,11 +127,12 @@ export const LiveTracing = ({
   const save = async () => {
     if (!draft) return;
     setTried(true);
+    const host = originOf(draft.host);
     if (
-      !draft.id ||
-      !draft.host ||
+      !idPattern.test(draft.id.trim()) ||
+      !host ||
       !draft.publicKey ||
-      !draft.secretName ||
+      (needsKey(draft) && !draft.secret) ||
       reasonProblem(reason, t)
     )
       return;
@@ -120,14 +143,28 @@ export const LiveTracing = ({
     }
     setBusy(true);
     setFailed(undefined);
+    // A new key is stored for this host alone, under the tenant's own name; the connection only
+    // names it. Without a new key the reference stays as it is.
+    const secretKey =
+      draft.secret && !draft.secretKey.startsWith(secretPrefix(tenant))
+        ? `${secretPrefix(tenant)}langfuse-${draft.id.trim()}`
+        : draft.secretKey;
     try {
+      if (draft.secret)
+        await api.setSecret(
+          tenant,
+          secretKey.slice(secretPrefix(tenant).length),
+          draft.secret,
+          reason,
+          [host],
+        );
       await api.tracing.save(
         tenant,
-        draft.id,
+        draft.id.trim(),
         {
           host: draft.host.trim(),
           publicKey: draft.publicKey.trim(),
-          secretKey: `${secretPrefix(tenant)}${draft.secretName.trim()}`,
+          secretKey,
           services: draft.services
             .split(',')
             .map((s) => s.trim())
@@ -229,7 +266,7 @@ export const LiveTracing = ({
                     data-size="sm"
                     onClick={() => {
                       setEditing(true);
-                      setDraft(draftOf(c, tenant));
+                      setDraft(draftOf(c));
                     }}
                   >
                     {t('integLangfuse.edit')}
@@ -266,16 +303,33 @@ export const LiveTracing = ({
           {failed ? <Alert data-color="danger">{failed}</Alert> : null}
           <Textfield
             label={t('integLangfuse.id')}
+            description={editing ? undefined : t('integLangfuse.idHelp')}
             value={draft.id}
             readOnly={editing}
-            error={tried && !draft.id ? t('integLangfuse.required') : undefined}
+            error={
+              !tried
+                ? undefined
+                : !draft.id.trim()
+                  ? t('integLangfuse.required')
+                  : !idPattern.test(draft.id.trim())
+                    ? t('integLangfuse.idInvalid')
+                    : undefined
+            }
             onChange={(e) => setDraft({ ...draft, id: e.target.value })}
           />
           <Textfield
             label={t('integLangfuse.host')}
             description={t('integLangfuse.hostHelp')}
             value={draft.host}
-            error={tried && !draft.host ? t('integLangfuse.required') : undefined}
+            error={
+              !tried
+                ? undefined
+                : !draft.host.trim()
+                  ? t('integLangfuse.required')
+                  : !originOf(draft.host)
+                    ? t('integLangfuse.hostInvalid')
+                    : undefined
+            }
             onChange={(e) => setDraft({ ...draft, host: e.target.value })}
           />
           <Textfield
@@ -285,11 +339,19 @@ export const LiveTracing = ({
             onChange={(e) => setDraft({ ...draft, publicKey: e.target.value })}
           />
           <Textfield
-            label={t('integLangfuse.secretName')}
-            description={t('integLangfuse.secretHelp')}
-            value={draft.secretName}
-            error={tried && !draft.secretName ? t('integLangfuse.required') : undefined}
-            onChange={(e) => setDraft({ ...draft, secretName: e.target.value })}
+            label={t('integLangfuse.secret')}
+            description={t(
+              draft.secretKey ? 'integLangfuse.secretKeepHelp' : 'integLangfuse.secretHelp',
+            )}
+            type="password"
+            autoComplete="new-password"
+            value={draft.secret}
+            error={
+              tried && needsKey(draft) && !draft.secret
+                ? t(draft.secretKey ? 'integLangfuse.secretAgain' : 'integLangfuse.required')
+                : undefined
+            }
+            onChange={(e) => setDraft({ ...draft, secret: e.target.value })}
           />
           <Textfield
             label={t('integLangfuse.servicesLabel')}

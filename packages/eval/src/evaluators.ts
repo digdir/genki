@@ -84,6 +84,10 @@ export const defaultRefusalPatterns = [
 
 const normalized = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** What a judge reads as the answer: its text, or a structured answer's fields as JSON. */
+export const answerText = (o: Observation) =>
+  o.answer.trim() === '' && o.fields !== undefined ? JSON.stringify(o.fields, null, 2) : o.answer;
+
 /** v2: an exact case's text, and an empty answer counts as a refusal, as the portal graded them. */
 export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Evaluator => {
   const refusals = refusalPatterns.map(compilePattern);
@@ -263,7 +267,7 @@ export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator =
           role: 'user',
           content: fill(prompt.template, {
             question,
-            answer: o.answer,
+            answer: answerText(o),
             criteria: criteriaText(prompt),
             min: String(prompt.scale.min),
             max: String(prompt.scale.max),
