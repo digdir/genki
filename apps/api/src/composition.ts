@@ -926,8 +926,10 @@ export const createPlatform = async (input: PlatformInput) => {
             tasks: async (id) => (await taskStore.get(id))?.task,
             fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
             serviceName: 'genai-eval',
+            experiments: true,
           },
         ),
+        tenant,
       ),
     close: (run) => experiments.close(run),
   };

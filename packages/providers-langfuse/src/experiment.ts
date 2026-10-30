@@ -41,8 +41,8 @@ export const itemAttributes = (experiment: Experiment) => ({
 });
 
 export interface ExperimentRouter {
-  /** Send the cases of a run to this exporter until the run is closed. */
-  open(run: string, exporter: TraceExporter): void;
+  /** Send the cases of a tenant's run to this exporter until the run is closed. */
+  open(run: string, exporter: TraceExporter, tenant?: string): void;
   close(run: string): Promise<void>;
   observe(event: Event, scope: ContentScope): void;
 }
@@ -53,20 +53,30 @@ export interface ExperimentRouter {
  */
 export const createExperimentRouter = (): ExperimentRouter => {
   const exporters = new Map<string, TraceExporter>();
+  const tenantOf = new Map<string, string>();
   const runOf = new Map<string, string>();
   return {
-    open: (run, exporter) => {
+    open: (run, exporter, tenant) => {
       exporters.set(run, exporter);
+      if (tenant !== undefined) tenantOf.set(run, tenant);
     },
     close: async (run) => {
       const exporter = exporters.get(run);
       exporters.delete(run);
+      tenantOf.delete(run);
       for (const [task, owner] of runOf) if (owner === run) runOf.delete(task);
       await exporter?.shutdown();
     },
     observe: (event, scope) => {
       const evaluation = evaluationIn(event);
-      if (evaluation && exporters.has(evaluation.run.id)) runOf.set(event.task, evaluation.run.id);
+      // A case reaches a run's sink only from the tenant the run was opened for.
+      const owner = evaluation && tenantOf.get(evaluation.run.id);
+      if (
+        evaluation &&
+        exporters.has(evaluation.run.id) &&
+        (owner === undefined || owner === scope.tenant)
+      )
+        runOf.set(event.task, evaluation.run.id);
       const run = runOf.get(event.task);
       if (run === undefined) return;
       if (event.type === 'kernel.task.spawned') {

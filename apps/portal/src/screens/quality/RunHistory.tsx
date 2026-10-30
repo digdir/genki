@@ -356,7 +356,12 @@ export const RunHistory = ({
           aria-disabled={blocked || undefined}
           aria-describedby={!canRun ? 'run-hint' : undefined}
           aria-expanded={canRun ? confirming : undefined}
-          onClick={() => !blocked && setConfirming(true)}
+          onClick={() => {
+            if (blocked) return;
+            // Each run is sent to Langfuse only when the person ticks it for that run.
+            setTrace(false);
+            setConfirming(true);
+          }}
         >
           {t('quality.runSet')}
         </Button>

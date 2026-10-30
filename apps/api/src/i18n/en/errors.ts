@@ -102,6 +102,10 @@ export const catalogErrors = {
   tracingServiceCovered: '{service} is already covered by the connection {id}',
   tracingResidencyByOperator: "an operator sets the residency of a connection to Digdir's Langfuse",
   tracingNoConnection: 'no connection {id}',
+  tracingNotCovered: 'no trace connection covers the service {service}',
+  tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
+  tracingResidencyForbids:
+    "the service's residency {residency} does not allow the connection's {connection}",
   tracingHostOrigin:
     'the host is an address like https://langfuse.example.no, without a path or credentials',
   tracingHostDot: 'the host name ends with a dot',

@@ -925,6 +925,24 @@ describe('eval runs sent to a trace connection', () => {
     expect(allowed.status).toBe(202);
   });
 
+  it('records no sink for a traced run of only the locked cases, since none of them is sent', async () => {
+    const collector = await otlpCollector();
+    const env = await boot(undefined, { devMode: true });
+    await connect(env, collector.url, 'global');
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+      split: 'locked',
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(started.status).toBe(202);
+    expect(stored?.run.tested).not.toHaveProperty('sink');
+    expect(collector.spans).toEqual([]);
+  });
+
   it('checks the residency the draft runs with, filled from its model when the draft leaves it out', async () => {
     const collector = await otlpCollector();
     const env = await boot(undefined, { devMode: true }, { localModel: true });
@@ -1035,6 +1053,13 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       [null, null],
       [null, null],
     ]);
+    const experiments = (await (
+      await fetch(
+        `${host}/api/public/experiments?fromStartTime=${since}&toStartTime=${until}&limit=100`,
+        { headers: { authorization: auth } },
+      )
+    ).json()) as { data: { id: string; itemCount?: number }[] };
+    expect(experiments.data.find((e) => e.id === started.body.id)).toMatchObject({ itemCount: 2 });
   }, 90_000);
 });
 

@@ -129,14 +129,18 @@ const boot = (
   return { kernel, router };
 };
 
-const exporterFor = (url: string, tasks: InMemoryTaskStore, content = false) =>
+const exporterFor = (url: string, tasks: InMemoryTaskStore, content = false, experiments = true) =>
   createTraceExporter(
     {
       endpoint: url,
       content,
       auth: { kind: 'langfuse', publicKey: 'pk', secretKey: 'secret://env/sk' },
     },
-    { secrets: envSecrets({ SK: 'sk' }), tasks: async (id) => (await tasks.get(id))?.task },
+    {
+      secrets: envSecrets({ SK: 'sk' }),
+      tasks: async (id) => (await tasks.get(id))?.task,
+      experiments,
+    },
   );
 
 describe('eval runs as Langfuse experiments', () => {
@@ -171,12 +175,13 @@ describe('eval runs as Langfuse experiments', () => {
     expect(sink.raw()).not.toContain('etaten');
   });
 
-  it("sends each run only to its own sink, so one tenant's run never reaches another's", async () => {
+  it("sends each run only to its own sink and tenant, so one tenant's run never reaches another's", async () => {
     const first = await collector();
     const second = await collector();
     const { kernel, router } = boot((r, tasks) => {
-      r.open('run-a', exporterFor(first.url, tasks));
-      r.open('run-b', exporterFor(second.url, tasks));
+      r.open('run-a', exporterFor(first.url, tasks), '999888777');
+      // Opened for another tenant: Kari's cases never reach it, whatever run they name.
+      r.open('run-b', exporterFor(second.url, tasks), '111222333');
     });
 
     await (
@@ -195,8 +200,44 @@ describe('eval runs as Langfuse experiments', () => {
     expect(new Set(first.spans.map((s) => attr(s, 'langfuse.experiment.id')))).toEqual(
       new Set(['run-a']),
     );
-    expect(new Set(second.spans.map((s) => attr(s, 'langfuse.experiment.id')))).toEqual(
-      new Set(['run-b']),
-    );
+    expect(second.spans).toEqual([]);
+  });
+
+  it('leaves an eval run as ordinary traces in an exporter that does not export experiments', async () => {
+    const sent = async (experiments: boolean) => {
+      const sink = await collector();
+      const exporter = exporterFor(sink.url, new InMemoryTaskStore(), false, experiments);
+      const scope = { tenant: '999888777', key: 'k' };
+      const ts = new Date().toISOString();
+      exporter.observe(
+        {
+          type: 'kernel.task.input',
+          task: 't1',
+          seq: 0,
+          ts,
+          data: { evaluation: evaluation('run-1', 'o1') },
+        } as never,
+        scope,
+      );
+      exporter.observe(
+        {
+          type: 'kernel.task.status',
+          task: 't1',
+          seq: 1,
+          ts,
+          data: { status: 'completed' },
+        } as never,
+        scope,
+      );
+      await exporter.flush();
+      return sink;
+    };
+
+    const platformWide = await sent(false);
+    const runSink = await sent(true);
+
+    expect(platformWide.spans.length).toBeGreaterThan(0);
+    expect(platformWide.raw()).not.toContain('langfuse.experiment');
+    expect(runSink.raw()).toContain('langfuse.experiment.id');
   });
 });

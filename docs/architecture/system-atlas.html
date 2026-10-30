@@ -7524,10 +7524,15 @@
               'Exports task events as OTLP spans to Langfuse, metadata only unless opted in.',
             description:
               'Wraps the event log; content goes out only if the connection opts in and the sink can honour erasure (ADR 0011).',
-            responsibilities: ['Build spans from events', 'Export with content opt-in'],
+            responsibilities: [
+              'Build spans from events',
+              'Export with content opt-in',
+              "Send an eval run's cases to the tenant's connection as one experiment (ADR 0040)",
+            ],
             files: [
               'packages/providers-langfuse/src/exporter.ts',
               'packages/providers-langfuse/src/spans.ts',
+              'packages/providers-langfuse/src/experiment.ts',
             ],
             input: 'Kernel events',
             output: 'OTLP spans',
