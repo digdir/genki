@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { residencies, type Residency } from '@genai/port-model';
 import { z } from 'zod';
@@ -533,6 +534,10 @@ export class CatalogRegistry {
         this.#slots,
       );
       if (errors.length > 0) return { ok: false, errors };
+      if (input.kind === 'dataset') {
+        const problem = this.#nameGeneration(spec, existing?.spec);
+        if (problem) return { ok: false, errors: [problem] };
+      }
       const candidate = new Map(this.#slots);
       candidate.set(keyOf(input.kind, id), {
         kind: input.kind,
@@ -546,6 +551,49 @@ export class CatalogRegistry {
       if (problems.length > 0) return { ok: false, errors: problems };
       return this.#commit(input, id, spec, false);
     });
+  }
+
+  #onKnowledgeServer(endpoint: unknown) {
+    const slot = this.#slots.get(keyOf('knowledge-endpoint', String(endpoint ?? '')));
+    return record(record(slot?.spec).options).connection === 'knowledge';
+  }
+
+  /** A dataset on the knowledge server is read by the generation its entry names. */
+  #nameGeneration(
+    spec: Record<string, unknown>,
+    previous: Record<string, unknown> | undefined,
+  ): CatalogProblem | undefined {
+    if (!this.#onKnowledgeServer(spec.endpoint)) return undefined;
+    if (spec.generation !== undefined) {
+      const taken = [...this.#slots.values()].some(
+        (slot) =>
+          slot.kind === 'dataset' &&
+          slot.spec !== previous &&
+          slot.spec.generation === spec.generation,
+      );
+      return taken
+        ? {
+            path: 'spec.generation',
+            message: `${String(spec.generation)} is the generation of another dataset`,
+          }
+        : undefined;
+    }
+    if (previous && previous.endpoint === spec.endpoint && previous.generation !== undefined) {
+      spec.generation = previous.generation;
+      return undefined;
+    }
+    if (previous && previous.endpoint !== spec.endpoint)
+      return {
+        path: 'spec.endpoint',
+        message:
+          'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+      };
+    const day = (this.#options.now?.() ?? new Date())
+      .toISOString()
+      .slice(0, 10)
+      .replaceAll('-', '');
+    spec.generation = `g-${day}-${randomBytes(3).toString('hex')}`;
+    return undefined;
   }
 
   async remove(input: {

@@ -194,6 +194,14 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     );
   }
 
+  /** Each routed dataset's config with the endpoint it is on. */
+  datasetConfigs(): { endpoint: string; config: DatasetConfig }[] {
+    return [...this.#routes.values()].map(({ dataset, config }) => ({
+      endpoint: dataset.endpoint,
+      config,
+    }));
+  }
+
   resolve(idOrAlias: string): string | undefined {
     if (this.#routes.has(idOrAlias)) return idOrAlias;
     return this.#aliases.get(idOrAlias);

@@ -112,6 +112,7 @@ import {
   ContextualKnowledgeRouter,
   portContexts,
   routerCatalog,
+  knowledgeServerEndpoints,
   withoutEngines,
   withoutKnowledgeServer,
 } from './knowledge-context.js';
@@ -641,6 +642,17 @@ export const createRuntime = async (input: RuntimeInput) => {
     models.reload(catalogs.models);
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
+    const onKnowledgeServer = new Set(knowledgeServerEndpoints(catalogs.knowledge));
+    pgvector
+      ?.followCatalog(
+        knowledge
+          .datasetConfigs()
+          .filter((d) => onKnowledgeServer.has(d.endpoint))
+          .map((d) => d.config),
+      )
+      .catch((error: unknown) =>
+        input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
+      );
     rerank.reload(catalogs.rerank);
     replaceSet(plugins.datasets, knowledge.datasets().keys());
     replaceSet(plugins.rerankers, rerank.rerankers());

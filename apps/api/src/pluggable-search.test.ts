@@ -29,7 +29,7 @@ let pool: ReturnType<typeof createPool>;
 let folder: string;
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = createPool({ connectionString: container.getConnectionUri() });
   folder = await mkdtemp(join(tmpdir(), 'genai-ingest-'));
 }, 120_000);
@@ -118,6 +118,115 @@ describe('pluggable search engines over the API', () => {
     const refused = await save(without.call);
     expect(refused.status).toBe(400);
     expect(JSON.stringify(await json(refused))).toContain('no knowledge server configured');
+  });
+
+  describe('generations of datasets on the knowledge database', () => {
+    const knowledgeCatalogs = {
+      models: { endpoints: {}, models: [] },
+      knowledge: {
+        endpoints: {
+          'platform-pg': platformPg,
+          'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } },
+        },
+        datasets: [],
+      },
+      rerank: { endpoints: {}, rerankers: [] },
+    };
+    const dataset = (endpoint: string, extra: Record<string, unknown> = {}) => ({
+      name: 'Kudos',
+      endpoint,
+      residency: 'norway',
+      filters: { type: 'multiselect' },
+      ...extra,
+    });
+    const publish = async (
+      call: Awaited<ReturnType<typeof boot>>['call'],
+      id: string,
+      body: unknown,
+    ) => {
+      const res = await call(`/operator/catalog/dataset/${encodeURIComponent(id)}`, 'drift', {
+        method: 'PUT',
+        body,
+      });
+      return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
+    };
+
+    it('a dataset published onto the knowledge database names a new generation', async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      const saved = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
+      expect(saved.status).toBe(200);
+      expect(saved.body.spec?.generation).toEqual(expect.any(String));
+      const other = await publish(call, 'digdir/altinn-docs', dataset('knowledge-pg'));
+      expect(other.body.spec?.generation).not.toBe(saved.body.spec?.generation);
+      const onPlatform = await publish(call, 'digdir/notes', dataset('platform-pg'));
+      expect(onPlatform.body.spec?.generation).toBeUndefined();
+    });
+
+    it('a generation id is a date and a short random part', async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      const today = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+      const saved = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
+      expect(saved.body.spec?.generation).toMatch(new RegExp(`^g-${today}-[0-9a-f]{6}$`));
+    });
+
+    it('an edit of a knowledge dataset that names no generation keeps the one it had', async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      const first = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
+      const edited = await publish(
+        call,
+        'digdir/kudos-next',
+        dataset('knowledge-pg', { description: 'Rapporter og evalueringer fra Kudos' }),
+      );
+      expect(edited.status).toBe(200);
+      expect(edited.body.spec?.generation).toBe(first.body.spec?.generation);
+      const named = await publish(
+        call,
+        'digdir/kudos-next',
+        dataset('knowledge-pg', { generation: 'g-20261101-a1b2' }),
+      );
+      expect(named.body.spec?.generation).toBe('g-20261101-a1b2');
+    });
+
+    it("a generation another dataset's entry names is refused", async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      const first = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
+      const taken = await publish(
+        call,
+        'digdir/altinn-docs',
+        dataset('knowledge-pg', { generation: first.body.spec?.generation }),
+      );
+      expect(taken.status).toBe(400);
+      expect(JSON.stringify(taken.body)).toContain('generation of another dataset');
+    });
+
+    it('a plain publish that moves a dataset from another endpoint onto the knowledge database is refused', async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      expect((await publish(call, 'digdir/notes', dataset('platform-pg'))).status).toBe(200);
+      const moved = await publish(call, 'digdir/notes', dataset('knowledge-pg'));
+      expect(moved.status).toBe(400);
+      expect(JSON.stringify(moved.body)).toContain('engine switch');
+      const switched = await publish(
+        call,
+        'digdir/notes',
+        dataset('knowledge-pg', { generation: 'g-20261101-c3d4' }),
+      );
+      expect(switched.status).toBe(200);
+    });
   });
 
   it('a pgvector endpoint needs no baseURL', async () => {

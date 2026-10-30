@@ -9,3 +9,11 @@ export {
   type KnowledgeBinding,
   type KnowledgeSetupOptions,
 } from './knowledge-setup.js';
+export {
+  attachGeneration,
+  migrateKnowledgeServer,
+  partitionOf,
+  prepareGeneration,
+  syncFilterIndexes,
+  type PartitionOptions,
+} from './partitions.js';

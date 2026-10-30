@@ -54,6 +54,10 @@ const dataset = z.strictObject({
   embedding: z
     .strictObject({ model: id, dimensions: z.number().int().positive().max(16_384) })
     .optional(),
+  generation: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+    .optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 

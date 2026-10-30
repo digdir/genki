@@ -10,6 +10,9 @@ export const catalogErrors = {
   facetsList: 'facets are a list of field names',
   facetsFilter: 'facets must be filter fields too: {missing}',
   runsInside: '{engine} runs inside the platform and takes no {key}',
+  moveWithEngineSwitch:
+    'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+  generationOfAnother: '{generation} is the generation of another dataset',
   onlyPlatformShared: 'only platform endpoints are shared',
   tenantEndpointsModels: 'tenant endpoints list their models explicitly',
   tenantEndpointsAuth: 'tenant endpoints use api-key or bearer',
