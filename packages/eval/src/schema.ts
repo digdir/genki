@@ -46,7 +46,7 @@ const withCriteriaMoved = (raw: unknown) => {
 };
 
 /** A criteria field, named as judges read it: criteria, supporting_quotes. */
-const criterionName = z.string().regex(/^[a-z][a-z0-9_]*$/);
+export const criterionName = z.string().regex(/^[a-z][a-z0-9_]*$/);
 
 export const testCase = z.preprocess(
   withCriteriaMoved,
@@ -77,7 +77,6 @@ export const testCase = z.preprocess(
 );
 export type TestCase = z.infer<typeof testCase>;
 
-/** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
 /** What a case in the portal's simple form may expect besides a text: an answer and named criteria. */
 export const caseExpectation = z.strictObject({
   referenceAnswer: z.string().trim().min(1).optional(),
@@ -85,6 +84,7 @@ export const caseExpectation = z.strictObject({
 });
 export type CaseExpectation = z.infer<typeof caseExpectation>;
 
+/** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
 export const expectedFor = (type: CaseType, text: string | undefined) =>
   !text ? {} : type === 'criteria' ? { criteria: { criteria: text } } : { referenceAnswer: text };
 

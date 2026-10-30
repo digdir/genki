@@ -8,7 +8,7 @@ import type { ModelChoice } from './model-choice.js';
  */
 export const runJudges =
   (choice: () => ModelChoice) =>
-  (principal: Principal): Map<string, Evaluator> => {
+  (principal: Principal, run: { avoid: string[] } = { avoid: [] }): Map<string, Evaluator> => {
     const tenant = principal.tenant;
     if (!tenant) return new Map();
     const models = choice();
@@ -18,7 +18,10 @@ export const runJudges =
         criteriaJudgeId,
         criteriaJudge(
           async (writers) => {
-            const id = models.pickJudge(await models.usable(tenant), tenant, writers);
+            const id = models.pickJudge(await models.usable(tenant), tenant, [
+              ...writers,
+              ...run.avoid,
+            ]);
             return id ? models.judgeModel(principal, tenant, id, 'builder', meter) : undefined;
           },
           () => ({
