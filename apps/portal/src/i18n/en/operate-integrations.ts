@@ -707,6 +707,9 @@ export const integrationsArea = {
     remove: 'Remove the connection',
     cancel: 'Cancel',
     saved: 'The connection {id} is saved.',
+    removing: 'Being removed: deleting what was sent',
+    removingFlash:
+      'The connection {id} is removed once everything it received is deleted in Langfuse.',
     removed: 'The connection {id} is removed.',
     failed: 'The connection was not saved.',
   },

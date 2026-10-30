@@ -28,7 +28,7 @@ import {
   type LeaseOptions,
 } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
-import { connectionsCovering } from './trace-connections.js';
+import { connectionsCovering, deliveryGate } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -503,7 +503,22 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       prepared.release();
       throw error;
     }
-    if (sink) deps.traceSinks?.open(first.id, tenant, sink);
+    if (sink)
+      deps.traceSinks?.open(
+        first.id,
+        tenant,
+        sink,
+        deps.traceDeliveries
+          ? deliveryGate({
+              configEntries: deps.configEntries,
+              deliveries: deps.traceDeliveries,
+              tenant,
+              sink: sink.id,
+              opened: { host: sink.host, publicKey: sink.publicKey },
+              now: () => leases.now().toISOString(),
+            })
+          : undefined,
+      );
     const done = (async () => {
       try {
         const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
@@ -574,7 +589,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       } finally {
         lease.release();
         prepared.release();
-        if (sink) await deps.traceSinks?.close(first.id).catch(() => undefined);
+        // Deliveries are recorded before each batch goes out (deliveryGate); closing only flushes.
+        if (sink) await deps.traceSinks?.close(first.id).catch(() => []);
       }
     })();
     return { run: first, done };

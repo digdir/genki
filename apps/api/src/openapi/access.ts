@@ -723,6 +723,12 @@ const TraceConnection = z
         "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
       ),
     instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
+    removing: z
+      .boolean()
+      .optional()
+      .describe(
+        'Removal asked for: covers no service, and is gone once every trace sent through it is deleted',
+      ),
     residencySetBy: z.enum(['operator', 'tenant']),
   })
   .openapi('TraceConnection');
@@ -748,7 +754,12 @@ const tracingRoutes: RouteConfig[] = [
       params: z.object({ tenant, id: connectionId }),
       headers: reason,
       body: body(
-        TraceConnection.omit({ id: true, instance: true, residencySetBy: true }).partial({
+        TraceConnection.omit({
+          id: true,
+          instance: true,
+          residencySetBy: true,
+          removing: true,
+        }).partial({
           services: true,
           residency: true,
           content: true,
@@ -767,10 +778,14 @@ const tracingRoutes: RouteConfig[] = [
   createRoute({
     method: 'delete',
     path: '/tenants/{tenant}/tracing/connections/{id}',
-    summary: 'Remove a Langfuse connection. Needs manage-services',
+    summary:
+      'Remove a Langfuse connection: every trace sent through it is deleted first, and it is gone once each delete is confirmed. Needs manage-services',
     request: { params: z.object({ tenant, id: connectionId }), headers: reason },
     responses: {
-      200: json(z.object({ removed: z.string() }), 'Removed'),
+      200: json(
+        z.union([z.object({ removed: z.string() }), z.object({ removing: z.string() })]),
+        'Removed, or being removed while its traces are deleted',
+      ),
       400: problem('No such connection'),
       403: problem('Missing manage-services'),
     },

@@ -12,7 +12,9 @@ import {
   platformTenantFrom,
   runtimeBlocksOf,
   TenantSecretVault,
+  traceSinkAccess,
   tracesContent,
+  tracingEgress,
   withBlockSettings,
 } from '@genai/composition';
 import {
@@ -24,6 +26,7 @@ import {
 import {
   assistantCapabilityPrefix,
   costOf,
+  deleteSinkTraces,
   InMemoryTriggerRuns,
   monthlyQuotaGate,
   recordTriggerRuns,
@@ -42,7 +45,11 @@ import {
   type EventLog,
 } from '@genai/kernel';
 import { FileSystemBlobStore } from '@genai/port-blob';
-import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import {
+  createTraceExporter,
+  langfuseTraceSink,
+  observedEventLog,
+} from '@genai/providers-langfuse';
 import {
   createPostgresStores,
   LocalKeyWrapper,
@@ -159,6 +166,7 @@ const lockdown = isLockdown(process.env);
 if (lockdown) log('lockdown: the worker runs no triggers and refuses every model call');
 
 const blob = new FileSystemBlobStore(blobDir);
+const vault = new TenantSecretVault(db?.tenantSecrets);
 const eventLog = db?.log ?? new InMemoryEventLog();
 const runtime = await createRuntime({
   platformTenant,
@@ -169,7 +177,7 @@ const runtime = await createRuntime({
     embeddings: catalogs.embeddings.catalog,
   },
   secrets,
-  vault: new TenantSecretVault(db?.tenantSecrets),
+  vault,
   settings,
   ...(db ? { configEntries: db.configEntries } : {}),
   definitions: (plugins, sharedSkill) =>
@@ -349,6 +357,23 @@ const stopFollowingChanges = db
   : undefined;
 
 const retentionLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-retention') : undefined;
+const sinkAccess = db
+  ? traceSinkAccess({
+      configEntries: db.configEntries,
+      secrets: vault.resolver(secrets),
+      egress: tracingEgress(
+        {
+          platformHosts: [
+            'localhost',
+            '127.0.0.1',
+            ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
+            ...(process.env.PGHOST ? [process.env.PGHOST] : []),
+          ],
+        },
+        isDevMode(process.env),
+      ),
+    })
+  : async () => undefined;
 const retention = db
   ? scheduleRetention({
       store: db.retention,
@@ -357,15 +382,42 @@ const retention = db
       threads: db.threadRetention,
       documents: blob,
       tenants: async () => (await db.tenants.list()).map((t) => t.orgNumber),
+      deliveries: db.traceDeliveries,
       ...(retentionLease ? { active: () => retentionLease.tryAcquire() } : {}),
-      onRun: (run) =>
+      onRun: (run) => {
         log('retention purged', {
           payloads: run.payloads,
           envelopes: run.envelopes,
           conversations: run.conversations,
           documents: run.documents,
           groups: run.groups.length,
-        }),
+          traceDeletes: run.traceDeletes,
+        });
+      },
+      // After every purge, also one that failed, for up to three hours a night.
+      afterPurge: () =>
+        deleteSinkTraces({
+          deliveries: db.traceDeliveries,
+          sinkFor: async (tenant, sink) => {
+            const access = await sinkAccess(tenant, sink);
+            return access && langfuseTraceSink(access);
+          },
+          budgetMs: 3 * 60 * 60_000,
+        })
+          .then((deleted) => {
+            log('trace sink deletes', { deleted: deleted.deleted, failed: deleted.failed });
+            if (deleted.failing.length > 0)
+              log('trace sink deletes keep failing', {
+                failing: deleted.failing.map((d) => ({
+                  tenant: d.tenant,
+                  sink: d.sink,
+                  trace: d.trace,
+                  attempts: d.attempts,
+                  error: d.lastError,
+                })),
+              });
+          })
+          .catch((error: unknown) => log('trace sink deletes failed', { error: String(error) })),
       onError: (error) => log('retention purge failed', { error: String(error) }),
     })
   : undefined;

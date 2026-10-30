@@ -19,6 +19,8 @@ import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
+import { deleteSinkTraces, InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
+import { langfuseTraceSink, traceIdFor } from '@genai/providers-langfuse';
 import {
   answerOfParts,
   progressed,
@@ -149,6 +151,7 @@ const testSet = parseTestSet({
 const boot = async (
   prices?: Record<string, ModelPrice>,
   tracing?: TracingOptions,
+  traceDeliveries?: TraceDeliveryStore,
   options: { localModel?: boolean } = {},
 ) => {
   const optimiserPrompts: string[] = [];
@@ -212,6 +215,7 @@ const boot = async (
     policy: { decide: async () => ({ allow: true }) },
     ...(prices ? { prices } : {}),
     ...(tracing ? { tracing } : {}),
+    ...(traceDeliveries ? { traceDeliveries } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -872,7 +876,8 @@ describe('eval runs sent to a trace connection', () => {
 
   it('sends a traced run as one experiment to the connection covering the service, never its holdout cases', async () => {
     const collector = await otlpCollector();
-    const env = await boot(undefined, { devMode: true });
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot(undefined, { devMode: true }, deliveries);
     await connect(env, collector.url);
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
@@ -881,6 +886,9 @@ describe('eval runs sent to a trace connection', () => {
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const sent = stored?.run.results.filter((r) => r.split !== 'holdout').map((r) => r.task) ?? [];
+    await deliveries.markPending(tenant, { sink: 'lokal' }, new Date().toISOString());
+    const recorded = await deliveries.pending(10);
 
     expect(started.status).toBe(202);
     expect(stored?.run.tested).toMatchObject({ sink: 'lokal' });
@@ -896,12 +904,14 @@ describe('eval runs sent to a trace connection', () => {
       'o1#0',
       'o2#0',
     ]);
+    expect(recorded.map((d) => d.task).sort()).toEqual([...sent].sort());
+    expect(recorded.map((d) => d.trace).sort()).toEqual(sent.map((t) => traceIdFor(t)).sort());
   });
 
   it('refuses a traced run when no connection covers the service, or its residency forbids the connection', async () => {
     const collector = await otlpCollector();
     const uncovered = await boot(undefined, { devMode: true });
-    const covered = await boot(undefined, { devMode: true }, { localModel: true });
+    const covered = await boot(undefined, { devMode: true }, undefined, { localModel: true });
     await connect(covered, collector.url, 'global');
     const norwegian = structuredClone(service);
     norwegian.spec.model = { primary: 'local/echo', residency: 'norway' };
@@ -951,7 +961,7 @@ describe('eval runs sent to a trace connection', () => {
 
   it('checks the residency the draft runs with, filled from its model when the draft leaves it out', async () => {
     const collector = await otlpCollector();
-    const env = await boot(undefined, { devMode: true }, { localModel: true });
+    const env = await boot(undefined, { devMode: true }, undefined, { localModel: true });
     await connect(env, collector.url, 'global');
     const unstated = structuredClone(service) as { spec: { model: Record<string, unknown> } };
     unstated.spec.model = { primary: 'local/echo' };
@@ -1001,11 +1011,12 @@ describe('eval runs sent to a trace connection', () => {
 const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
 
 describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => {
-  it('lands as one experiment with a trace per case and repeat, and no holdout case', async () => {
+  it('lands as one experiment with a trace per case and repeat, no holdout case, and is gone after the purge', async () => {
     const host = localLangfuse as string;
     const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test';
     const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test';
-    const env = await boot(undefined, { devMode: true });
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot(undefined, { devMode: true }, deliveries);
     const why = { 'change-reason': 'Kobler tjenesten til sporing' };
     await env.send(
       'PUT',
@@ -1066,7 +1077,30 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       )
     ).json()) as { data: { id: string; itemCount?: number }[] };
     expect(experiments.data.find((e) => e.id === started.body.id)).toMatchObject({ itemCount: 2 });
-  }, 90_000);
+    await deliveries.markPending(tenant, { sink: 'lokal' }, new Date().toISOString());
+    const sink = langfuseTraceSink({ host, publicKey, secretKey });
+    const night = () =>
+      deleteSinkTraces({
+        deliveries,
+        sinkFor: async () => sink,
+        verify: { tries: 120, everyMs: 1000, wait: (ms) => new Promise((r) => setTimeout(r, ms)) },
+      });
+    const traces = (await deliveries.pending(10)).map((d) => d.trace);
+
+    const first = await night();
+    for (let i = 0; i < 300; i += 1) {
+      const left = (await Promise.all(traces.map((t) => sink.remaining(t)))).flat();
+      if (left.length === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    const second = await night();
+
+    expect(traces).toHaveLength(2);
+    expect(first.deleted + second.deleted).toBe(2);
+    expect(second.failed).toBe(0);
+    expect(await deliveries.pending(10)).toEqual([]);
+    expect(await deliveries.outstanding(tenant, 'lokal')).toBe(0);
+  }, 420_000);
 });
 
 describe('service draft', () => {

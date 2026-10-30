@@ -11,6 +11,7 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import { runDocumentFolder } from './run-documents.js';
 import { retentionFor } from './retention-policy.js';
 import { purgeExpired, scheduleRetention } from './retention.js';
+import { InMemoryTraceDeliveries } from './trace-deliveries.js';
 import type { Clock } from './scheduler.js';
 
 const tenant = '991825827';
@@ -126,6 +127,28 @@ describe('retention policy', () => {
       payloadDays: 183,
       envelopeDays: 730,
     });
+  });
+});
+
+describe('purging content that went to a trace sink', () => {
+  it("marks a purged task's traces in the sink for deletion, and no other task's", async () => {
+    const { deps } = await setup(
+      [taskOf('fresh', 'svar', 10), taskOf('old', 'svar', 100)],
+      [capability('svar', 'minimal')],
+    );
+    const deliveries = new InMemoryTraceDeliveries();
+    await deliveries.record(
+      [
+        { tenant, sink: 'etaten', task: 'old', trace: 'trace-old' },
+        { tenant, sink: 'etaten', task: 'fresh', trace: 'trace-fresh' },
+      ],
+      now.toISOString(),
+    );
+
+    const run = await purgeExpired({ ...deps, deliveries });
+
+    expect(run.traceDeletes).toBe(1);
+    expect((await deliveries.pending(10)).map((d) => d.trace)).toEqual(['trace-old']);
   });
 });
 
@@ -319,5 +342,30 @@ describe('the scheduled purge', () => {
     active.stop();
 
     expect(runs).toEqual([1]);
+  });
+
+  it('works through the deletes owed to trace sinks after every purge, also one that failed', async () => {
+    const { deps } = await setup([taskOf('old', 'svar', 100)], [capability('svar', 'minimal')]);
+    const afterPurge: string[] = [];
+    const leader = manualClock();
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    const failing = scheduleRetention({
+      ...deps,
+      store: {
+        groups: () => deps.store.groups(),
+        purge: () => Promise.reject(new Error('the database is down')),
+      },
+      clock: leader.clock,
+      afterPurge: async () => {
+        afterPurge.push('deletes');
+      },
+      onError: () => undefined,
+    });
+    leader.fire();
+    await settle();
+    failing.stop();
+
+    expect(afterPurge).toEqual(['deletes']);
   });
 });

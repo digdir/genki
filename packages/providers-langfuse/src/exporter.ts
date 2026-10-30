@@ -25,6 +25,11 @@ export interface ExporterDeps {
   fetch?: typeof fetch;
   serviceName?: string;
   /**
+   * Called with each batch's traces, and the case task each is rooted at, before the batch is
+   * sent: a sink records them first, so nothing it sent goes unrecorded. False drops the batch.
+   */
+  beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>;
+  /**
    * Export eval run cases as experiment items. Only a run's own sink does; the platform-wide
    * exporter leaves them as ordinary traces, so no tenant's run lands in Digdir's project.
    */
@@ -49,6 +54,7 @@ export const createTraceExporter = (
   const url = tracesUrl(config.endpoint);
   const open = new Map<string, Open>();
   const experiments = new Map<string, Experiment>();
+  const rootOfTrace = new Map<string, string>();
   const queue: OtlpSpan[] = [];
   const building = new Set<Promise<void>>();
   const stats: ExporterStats = { exported: 0, dropped: 0, failed: 0, sampledOut: 0 };
@@ -119,6 +125,7 @@ export const createTraceExporter = (
       return;
     }
     const userId = await pseudonym(task);
+    rootOfTrace.set(traceIdFor(rootTask), rootTask);
     enqueue(
       buildSpans({
         task,
@@ -148,6 +155,17 @@ export const createTraceExporter = (
   };
 
   const post = async (batch: OtlpSpan[]) => {
+    if (deps.beforeSend) {
+      const traces = [...new Set(batch.map((s) => s.traceId))].map((trace) => ({
+        trace,
+        task: rootOfTrace.get(trace) ?? trace,
+      }));
+      const go = await deps.beforeSend(traces).catch(() => false);
+      if (!go) {
+        stats.dropped += batch.length;
+        return;
+      }
+    }
     headers ??= authHeaders();
     const body = JSON.stringify({
       resourceSpans: [

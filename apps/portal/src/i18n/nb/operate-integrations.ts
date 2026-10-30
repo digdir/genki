@@ -705,6 +705,8 @@ export const integrationsArea = {
     remove: 'Fjern koblingen',
     cancel: 'Avbryt',
     saved: 'Koblingen {id} er lagret.',
+    removing: 'Fjernes: sletter det som er sendt',
+    removingFlash: 'Koblingen {id} fjernes når alt den har fått, er slettet i Langfuse.',
     removed: 'Koblingen {id} er fjernet.',
     failed: 'Koblingen ble ikke lagret.',
   }),
