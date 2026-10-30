@@ -405,7 +405,17 @@ export const createQualityModule =
                 ]
               : type !== 'must_reject' && !described
                 ? [{ path: 'expected', message: 'the expected answer or criteria are required' }]
-                : []),
+                : // Given as fields, a case needs the one its type is judged on.
+                  structured?.success && type === 'criteria' && !structured.data.criteria
+                  ? [{ path: 'expected.criteria', message: 'a criteria case needs criteria' }]
+                  : structured?.success && type === 'exact' && !structured.data.referenceAnswer
+                    ? [
+                        {
+                          path: 'expected.referenceAnswer',
+                          message: 'an exact case needs the text to find',
+                        },
+                      ]
+                    : []),
             ...(data.id === undefined || (typeof data.id === 'string' && slug.test(data.id))
               ? []
               : [{ path: 'id', message: 'lowercase letters, digits and dashes' }]),

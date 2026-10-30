@@ -17,10 +17,12 @@ import {
   compareRuns,
   compilePattern,
   contractAssertions,
+  defaultObserve,
   criteriaJudge,
   evalRun,
   evalRunStrategy,
   evaluateGates,
+  evaluatorOfJudge,
   gate,
   kernelTarget,
   mean,
@@ -195,7 +197,7 @@ describe('evaluators', () => {
     expect(values(fields)['fields-match']).toBe(0.5);
   });
 
-  it('checks the case types a person writes: exact text, and a refusal that may be no answer at all, but never a structured answer', async () => {
+  it('checks the case types a person writes: exact text, which fails without its text, and a refusal that may be no answer at all, but never a structured answer', async () => {
     const contract = contractAssertions();
 
     const exact = (answer: string) =>
@@ -212,6 +214,33 @@ describe('evaluators', () => {
     expect(values(await exact('Snart.'))['exact-text']).toBe(0);
     expect(values(await rejected(''))).toMatchObject({ refusal: 1 });
     expect(values(await rejected('Her er svaret.'))).toMatchObject({ refusal: 0 });
+    // A RAG answer with no text still carries its sources and retrieval parts beside it.
+    const rag = defaultObserve(
+      [
+        { mime: 'text/plain', body: { kind: 'text', text: '' } },
+        {
+          mime: 'application/vnd.genai.sources+json',
+          body: { kind: 'json', json: { sources: [] } },
+        },
+        {
+          mime: 'application/vnd.genai.retrieval+json',
+          body: { kind: 'json', json: { hits: [] } },
+        },
+      ],
+      [],
+    );
+    expect(
+      values(await contract.evaluate(caseOf({ id: 'm', type: 'must_reject' }), rag, ctx)),
+    ).toMatchObject({ refusal: 1 });
+    expect(
+      values(
+        await contract.evaluate(
+          caseOf({ id: 'e', type: 'exact', expected: { sources: [] } }),
+          observation({ answer: 'Fristen er 1. mai.' }),
+          ctx,
+        ),
+      )['exact-text'],
+    ).toBe(0);
     expect(
       values(
         await contract.evaluate(
@@ -1305,6 +1334,23 @@ describe('publishing gates', () => {
     expect(uncalibrated.pass).toBe(true);
     expect(calibrated.results[0]).toMatchObject({ pass: false, blocking: true });
     expect(calibrated.pass).toBe(false);
+  });
+
+  it('reads the calibration of a judge that names its version and model from its evaluator', () => {
+    const run = fakeRun(
+      cases(10, () => 0.5),
+      { judges: ['judge:criteria@1+foundry/claude'] },
+    );
+    const outcome = evaluateGates({
+      evaluation: evaluation(['judge-quality']),
+      registry,
+      candidate: new Map([['ka-kudos', run]]),
+      judgeAgreement: new Map([['judge:criteria', 0.72]]),
+    });
+
+    expect(evaluatorOfJudge('judge:criteria@1+foundry/claude')).toBe('judge:criteria');
+    expect(evaluatorOfJudge('anthropic-judge')).toBe('anthropic-judge');
+    expect(outcome.results[0]).toMatchObject({ blocking: true });
   });
 
   it('catches a regression in one tag that the overall number hides', () => {

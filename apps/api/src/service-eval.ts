@@ -496,6 +496,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
             ...(sink ? { sink: sink.id } : {}),
+            // The judge is picked outside every model the service may answer with, fallback too.
+            avoidAsJudge: modelsOf(subject.definition),
           },
         });
         task = invoked.task;
