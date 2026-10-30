@@ -17,6 +17,7 @@ const sinkWith = (
   let lingering = options.lingers ?? 0;
   const client: TraceSinkClient = {
     judgeTraces: async (trace) => judges[trace] ?? [],
+    exists: async (trace) => present.has(trace),
     deleteTrace: async (trace) => {
       if (trace === options.failOn) throw new Error('Langfuse answered HTTP 503');
       order.push(trace);
@@ -36,6 +37,42 @@ const sinkWith = (
 const noWait = { tries: 5, everyMs: 1, wait: async () => undefined };
 
 describe('deleting what genki sent to a trace sink', () => {
+  it('keeps checking a judge trace found on an earlier night, after the case and its scores are gone', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    await deliveries.record([{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }], at);
+    await deliveries.markPending(tenant, { tasks: ['t1'] }, at);
+    const present = new Set(['case-1', 'judge-a']);
+    let night = 1;
+    const client: TraceSinkClient = {
+      // The judge is found through the case's scores, which go with the case.
+      judgeTraces: async (trace) => (present.has(trace) ? ['judge-a'] : []),
+      exists: async (trace) => present.has(trace),
+      deleteTrace: async (trace) => {
+        // Langfuse deletes in the background: the judge is still there on the first night.
+        if (trace !== 'judge-a' || night > 1) present.delete(trace);
+      },
+      remaining: async (trace) => (present.has(trace) ? [trace] : []),
+    };
+
+    const first = await deleteSinkTraces({
+      deliveries,
+      sinkFor: async () => client,
+      verify: noWait,
+    });
+    const remembered = (await deliveries.pending(10))[0]?.judges;
+    night = 2;
+    const second = await deleteSinkTraces({
+      deliveries,
+      sinkFor: async () => client,
+      verify: noWait,
+    });
+
+    expect(first).toMatchObject({ deleted: 0, failed: 1 });
+    expect(remembered).toEqual(['judge-a']);
+    expect(second).toMatchObject({ deleted: 1, failed: 0 });
+    expect(present.has('judge-a')).toBe(false);
+  });
+
   it("deletes the judges' traces before the case's trace, and only traces marked for deletion", async () => {
     const deliveries = new InMemoryTraceDeliveries();
     await deliveries.record(

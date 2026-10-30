@@ -915,7 +915,7 @@ export const createPlatform = async (input: PlatformInput) => {
   const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
   const traceSinks: TraceSinks = {
     traceIdOf: (task) => traceIdFor(task),
-    open: (run, tenant, connection) =>
+    open: (run, tenant, connection, beforeSend) =>
       experiments.open(
         run,
         createTraceExporter(
@@ -935,6 +935,7 @@ export const createPlatform = async (input: PlatformInput) => {
             tasks: async (id) => (await taskStore.get(id))?.task,
             fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
             serviceName: 'genai-eval',
+            ...(beforeSend ? { beforeSend } : {}),
           },
         ),
       ),

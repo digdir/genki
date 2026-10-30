@@ -70,7 +70,7 @@ export const traceSinkAccess =
       host: settings.host,
       publicKey: settings.publicKey,
       secretKey,
-      fetch: deps.egress.fetch(allowOf(settings.host)),
+      fetch: pinnedFetch(deps.egress, allowOf(settings.host)),
     };
   };
 

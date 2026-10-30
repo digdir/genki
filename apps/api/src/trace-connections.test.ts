@@ -6,7 +6,7 @@ import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { tracesContent } from './boot-guard.js';
 import { createPlatform } from './composition.js';
-import type { TracingOptions } from './trace-connections.js';
+import { deliveryGate, type TracingOptions } from './trace-connections.js';
 import { pinnedFetch } from '@genai/composition';
 import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
 
@@ -360,6 +360,29 @@ describe('removing a connection', () => {
     expect((afterwards.body.data as { id: string }[]).map((c) => c.id)).toEqual(['andre']);
   });
 
+  it('keeps its host and project while it has traces to delete there, but takes a new secret for them', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.secret('langfuse-etaten-ny', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    const moved = await env.connect('etaten', ownConnection({ publicKey: 'pk-lf-annet-prosjekt' }));
+    const rotated = await env.connect(
+      'etaten',
+      ownConnection({ secretKey: `secret://tenant/${tenant}/langfuse-etaten-ny` }),
+    );
+
+    expect(errorsOf(moved.body)).toEqual([
+      'connection.host: the connection etaten still has traces to delete where it points now',
+    ]);
+    expect(rotated.status).toBe(200);
+  });
+
   it('removes a connection that never received a trace at once', async () => {
     const env = await boot();
     await env.secret('langfuse-etaten', own);
@@ -438,5 +461,66 @@ describe("an exporter's requests to a connection", () => {
     expect(sent.status).toBe(200);
     expect(await sent.text()).toBe('{}');
     expect(empty.status).toBe(204);
+  });
+});
+
+describe('recording what goes to a connection before it is sent', () => {
+  const at = '2026-10-29T12:00:00.000Z';
+  const saved = (states: ('live' | 'removing' | 'gone')[]) => {
+    let call = 0;
+    return {
+      latest: async () => {
+        const state = states[Math.min(call, states.length - 1)];
+        call += 1;
+        return state === 'gone'
+          ? []
+          : [
+              {
+                kind: 'trace-connection',
+                scope: tenant,
+                id: 'etaten',
+                version: 1,
+                spec: {
+                  id: 'etaten',
+                  services: ['svar'],
+                  ...(state === 'removing' ? { removing: true } : {}),
+                },
+              },
+            ];
+      },
+    } as never;
+  };
+  const gate = (states: ('live' | 'removing' | 'gone')[], deliveries: InMemoryTraceDeliveries) =>
+    deliveryGate({
+      configEntries: saved(states),
+      deliveries,
+      tenant,
+      sink: 'etaten',
+      now: () => at,
+    });
+  const batch = [{ trace: 'case-1', task: 't1' }];
+
+  it('records the traces first and lets the batch go to a live connection', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+
+    expect(await gate(['live'], deliveries)(batch)).toBe(true);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(1);
+  });
+
+  it('sends nothing to a connection being removed, and queues what removal started under for deletion', async () => {
+    const before = new InMemoryTraceDeliveries();
+    const during = new InMemoryTraceDeliveries();
+
+    expect(await gate(['removing'], before)(batch)).toBe(false);
+    expect(await before.outstanding(tenant, 'etaten')).toBe(0);
+    expect(await gate(['live', 'removing'], during)(batch)).toBe(false);
+    expect((await during.pending(10)).map((d) => d.trace)).toEqual(['case-1']);
+  });
+
+  it('settles what it recorded when the connection was removed meanwhile, since nothing was sent', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+
+    expect(await gate(['live', 'gone'], deliveries)(batch)).toBe(false);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(0);
   });
 });

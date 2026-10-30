@@ -9,6 +9,8 @@ export interface TraceDelivery {
   state: TraceDeliveryState;
   attempts: number;
   lastError?: string;
+  /** Judge traces found on an earlier attempt, checked again although the case's scores are gone. */
+  judges?: string[];
   updatedAt: string;
 }
 
@@ -31,6 +33,8 @@ export interface TraceDeliveryStore {
   ): Promise<void>;
   /** Traces sent to a sink that are not deleted yet. */
   outstanding(tenant: string, sink: string): Promise<number>;
+  /** Remembers the judge traces found for a delivery, before its case's trace is deleted. */
+  noteJudges(delivery: TraceDelivery, judges: string[], at: string): Promise<void>;
 }
 
 const keyOf = (d: Pick<TraceDelivery, 'tenant' | 'sink' | 'trace'>) =>
@@ -76,6 +80,7 @@ export class InMemoryTraceDeliveries implements TraceDeliveryStore {
       sink: current.sink,
       task: current.task,
       trace: current.trace,
+      ...(current.judges ? { judges: current.judges } : {}),
     };
     this.#deliveries.set(
       keyOf(delivery),
@@ -96,12 +101,19 @@ export class InMemoryTraceDeliveries implements TraceDeliveryStore {
       (d) => d.tenant === tenant && d.sink === sink && d.state !== 'deleted',
     ).length;
   }
+
+  async noteJudges(delivery: TraceDelivery, judges: string[], at: string) {
+    const current = this.#deliveries.get(keyOf(delivery));
+    if (current) this.#deliveries.set(keyOf(delivery), { ...current, judges, updatedAt: at });
+  }
 }
 
 /** What the delete pass needs of a sink. */
 export interface TraceSinkClient {
   /** The traces the sink's own judges made from a trace. */
   judgeTraces(trace: string): Promise<string[]>;
+  /** Whether the sink still has a trace. */
+  exists(trace: string): Promise<boolean>;
   /** Deletes a trace; a trace that is already gone counts as deleted. */
   deleteTrace(trace: string): Promise<void>;
   /** The trace, and judge traces made from it, that the sink still has. */
@@ -155,12 +167,26 @@ export const deleteSinkTraces = async (
         await fail(`the connection ${delivery.sink} is gone`);
         continue;
       }
-      for (const judge of await sink.judgeTraces(delivery.trace)) await sink.deleteTrace(judge);
+      // Judges found through the case's scores cannot be found again once the case is deleted.
+      const judges = [
+        ...new Set([...(delivery.judges ?? []), ...(await sink.judgeTraces(delivery.trace))]),
+      ];
+      if (judges.length > (delivery.judges?.length ?? 0))
+        await deps.deliveries.noteJudges(delivery, judges, now().toISOString());
+      for (const judge of judges) await sink.deleteTrace(judge);
       await sink.deleteTrace(delivery.trace);
-      let left = await sink.remaining(delivery.trace);
+      const remaining = async () => [
+        ...new Set([
+          ...(await sink.remaining(delivery.trace)),
+          ...(
+            await Promise.all(judges.map(async (j) => ((await sink.exists(j)) ? [j] : [])))
+          ).flat(),
+        ]),
+      ];
+      let left = await remaining();
       for (let i = 1; i < verify.tries && left.length > 0; i += 1) {
         await verify.wait(verify.everyMs);
-        left = await sink.remaining(delivery.trace);
+        left = await remaining();
       }
       if (left.length > 0) {
         await fail(`still in the sink: ${left.join(', ')}`);

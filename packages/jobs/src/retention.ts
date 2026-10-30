@@ -51,12 +51,17 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
   let traceDeletes = 0;
   for (const group of await deps.store.groups()) {
     const policy = retentionFor(deps.settings, group.tenant, byId.get(group.capability));
-    const { tasks, ...purged } = await deps.store.purge({
+    const {
+      tasks,
+      traceDeletes: marked,
+      ...purged
+    } = await deps.store.purge({
       ...group,
       payloadBefore: new Date(now.getTime() - policy.payloadDays * dayMs),
       envelopeBefore: new Date(now.getTime() - policy.envelopeDays * dayMs),
     });
-    if (deps.deliveries && tasks.length > 0)
+    if (marked !== undefined) traceDeletes += marked;
+    else if (deps.deliveries && tasks.length > 0)
       traceDeletes += await deps.deliveries.markPending(group.tenant, { tasks }, now.toISOString());
     groups.push({ ...group, ...policy, ...purged });
   }

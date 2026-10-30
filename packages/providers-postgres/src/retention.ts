@@ -53,11 +53,19 @@ export class PostgresRetentionStore implements RetentionStore {
       );
       await client.query('update tasks set body = null where id = any($1)', [staleIds]);
       await this.#dropTaskScopes(client, cutoff.tenant, stale.rows, true);
+      // What went to a trace sink is queued for deletion in the same transaction as the purge.
+      await client.query(`select set_config('app.tenant', $1, true)`, [cutoff.tenant]);
+      const marked = await client.query(
+        `update trace_deliveries set state = 'pending', updated_at = now()
+         where tenant = $1 and task = any($2) and state = 'sent'`,
+        [cutoff.tenant, [...staleIds, ...expiredIds]],
+      );
       await client.query('commit');
       return {
         payloads: staleIds.length,
         envelopes: expiredIds.length,
         tasks: [...staleIds, ...expiredIds],
+        traceDeletes: marked.rowCount ?? 0,
       };
     } catch (error) {
       await client.query('rollback');

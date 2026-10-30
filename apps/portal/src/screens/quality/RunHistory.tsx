@@ -248,7 +248,7 @@ export const RunHistory = ({
     [api, tenant],
   );
   const sink =
-    sinks.status === 'ready' ? sinks.data.find((c) => c.services.includes(serviceId)) : undefined;
+    sinks.status === 'ready' ? sinks.data.find((c) => !c.removing && c.services.includes(serviceId)) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(

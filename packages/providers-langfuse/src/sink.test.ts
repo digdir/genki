@@ -29,6 +29,44 @@ const eventually = async <T>(read: () => Promise<T>, done: (value: T) => boolean
   return value;
 };
 
+describe('finding the judges of a trace', () => {
+  it('reads every page of scores and of targeting traces, so a judge on a later page is found', async () => {
+    const asked: string[] = [];
+    const fake: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      asked.push(
+        `${url.pathname}?${url.searchParams.get('page') ?? url.searchParams.get('cursor') ?? ''}`,
+      );
+      if (url.pathname === '/api/public/v3/scores')
+        return Response.json(
+          url.searchParams.get('cursor') === 'neste'
+            ? { data: [{ metadata: { job_execution_id: 'jobb-2' } }], meta: {} }
+            : { data: [{ metadata: { job_execution_id: 'jobb-1' } }], meta: { cursor: 'neste' } },
+        );
+      const page = Number(url.searchParams.get('page'));
+      return Response.json({ data: [{ id: `mål-${page}` }], meta: { page, totalPages: 2 } });
+    };
+    const sink = langfuseTraceSink({
+      host: 'https://langfuse.etaten.example.no',
+      publicKey: 'pk',
+      secretKey: 'sk',
+      fetch: fake,
+    });
+
+    const judges = await sink.judgeTraces('sak');
+
+    expect(judges.sort()).toEqual(
+      [judgeTraceIdOf('jobb-1'), judgeTraceIdOf('jobb-2'), 'mål-1', 'mål-2'].sort(),
+    );
+    expect(asked).toEqual([
+      '/api/public/v3/scores?',
+      '/api/public/v3/scores?neste',
+      '/api/public/traces?1',
+      '/api/public/traces?2',
+    ]);
+  });
+});
+
 describe.skipIf(!host)('deleting from a local Langfuse 4.4.0 (dual write mode)', () => {
   it("finds the judges' traces by score and by target, deletes them and the case's trace, and leaves nothing", async () => {
     const sink = langfuseTraceSink({ host: host as string, publicKey, secretKey });

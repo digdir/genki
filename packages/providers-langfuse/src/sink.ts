@@ -39,23 +39,38 @@ export const langfuseTraceSink = (options: LangfuseSinkOptions) => {
     return (await response.json()) as T;
   };
 
-  const targeting = async (trace: string) =>
-    (
-      await json<{ data: { id: string }[] }>(
-        `/api/public/traces?limit=100&filter=${encodeURIComponent(targetFilter(trace))}`,
-      )
-    ).data.map((t) => t.id);
+  /** Every page: traces are paged by number, so a judge on a later page is found too. */
+  const targeting = async (trace: string) => {
+    const ids: string[] = [];
+    for (let page = 1; ; page += 1) {
+      const found = await json<{ data: { id: string }[]; meta?: { totalPages?: number } }>(
+        `/api/public/traces?limit=100&page=${page}&filter=${encodeURIComponent(targetFilter(trace))}`,
+      );
+      ids.push(...found.data.map((t) => t.id));
+      if (found.data.length === 0 || page >= (found.meta?.totalPages ?? page)) return ids;
+    }
+  };
 
-  const scored = async (trace: string) =>
-    (
-      await json<{ data: { metadata?: Record<string, unknown> }[] }>(
-        `/api/public/v3/scores?traceId=${encodeURIComponent(trace)}&fields=details&limit=100`,
-      )
-    ).data.flatMap((s) =>
-      typeof s.metadata?.job_execution_id === 'string'
-        ? [judgeTraceIdOf(s.metadata.job_execution_id)]
-        : [],
-    );
+  /** Every page: v3 scores are paged by cursor. */
+  const scored = async (trace: string) => {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const found = await json<{
+        data: { metadata?: Record<string, unknown> }[];
+        meta?: { cursor?: string };
+      }>(
+        `/api/public/v3/scores?traceId=${encodeURIComponent(trace)}&fields=details&limit=100${
+          cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+        }`,
+      );
+      for (const s of found.data)
+        if (typeof s.metadata?.job_execution_id === 'string')
+          ids.push(judgeTraceIdOf(s.metadata.job_execution_id));
+      cursor = found.data.length > 0 ? found.meta?.cursor : undefined;
+    } while (cursor);
+    return ids;
+  };
 
   const exists = async (trace: string) => {
     const response = await call(`/api/public/traces/${encodeURIComponent(trace)}`);
@@ -65,6 +80,7 @@ export const langfuseTraceSink = (options: LangfuseSinkOptions) => {
   };
 
   return {
+    exists,
     judgeTraces: async (trace: string) =>
       [...new Set([...(await scored(trace)), ...(await targeting(trace))])].filter(
         (id) => id !== trace,

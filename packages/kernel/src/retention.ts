@@ -56,6 +56,11 @@ export interface PurgeCount {
   envelopes: number;
   /** The tasks whose content or envelope this purge removed. */
   tasks: string[];
+  /**
+   * Traces in a trace sink that the purge itself marked for deletion, in the same transaction, so
+   * a purge never commits without them. Left out by a store that does not mark them.
+   */
+  traceDeletes?: number;
 }
 
 export interface RetentionStore {

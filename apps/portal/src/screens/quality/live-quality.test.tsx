@@ -153,6 +153,28 @@ describe('live Testsett', () => {
     expect(writes().at(-1)?.body).not.toHaveProperty('trace');
   });
 
+  it('does not offer a connection that is being removed', async () => {
+    await openLive('', {}, {}, (path) =>
+      /\/tracing\/connections$/.test(path)
+        ? Response.json({
+            data: [
+              {
+                id: 'lokal',
+                services: ['rapportassistenten'],
+                residency: 'global',
+                removing: true,
+              },
+            ],
+          })
+        : undefined,
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    await screen.findByRole('button', { name: 'Start kjøringen' });
+
+    expect(screen.queryByRole('checkbox', { name: /Send kjøringen til Langfuse/ })).toBeNull();
+  });
+
   it('sends a run to Langfuse when the person ticks it, for a service a connection covers', async () => {
     const { writes } = await openLive('', {}, {}, (path) =>
       /\/tracing\/connections$/.test(path)

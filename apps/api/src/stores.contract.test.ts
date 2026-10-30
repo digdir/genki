@@ -361,9 +361,15 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
       state: 'pending',
       attempts: 0,
     });
+    await traceDeliveries.noteJudges(pending as TraceDelivery, ['judge-a', 'judge-b'], at);
     await traceDeliveries.settle(pending as TraceDelivery, { error: 'HTTP 503' }, at);
     expect(await traceDeliveries.pending(10)).toEqual([
-      expect.objectContaining({ trace: 'case-1', attempts: 1, lastError: 'HTTP 503' }),
+      expect.objectContaining({
+        trace: 'case-1',
+        attempts: 1,
+        lastError: 'HTTP 503',
+        judges: ['judge-a', 'judge-b'],
+      }),
     ]);
     await traceDeliveries.settle(pending as TraceDelivery, { deleted: true }, at);
 

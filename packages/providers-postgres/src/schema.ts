@@ -572,6 +572,7 @@ const migrations: string[] = [
      primary key (tenant, sink, trace)
    )`,
   `create index if not exists trace_deliveries_pending on trace_deliveries (updated_at) where state = 'pending'`,
+  `alter table trace_deliveries add column if not exists judges text[] not null default '{}'`,
   ...tenantIsolation('trace_deliveries'),
   `create or replace function pending_trace_deletes(p_limit integer) returns setof trace_deliveries
      language plpgsql stable security definer set search_path = public

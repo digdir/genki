@@ -10,6 +10,7 @@ interface DeliveryRow {
   state: TraceDelivery['state'];
   attempts: number;
   last_error: string | null;
+  judges: string[] | null;
   updated_at: Date;
 }
 
@@ -21,6 +22,7 @@ const toDelivery = (row: DeliveryRow): TraceDelivery => ({
   state: row.state,
   attempts: row.attempts,
   ...(row.last_error === null ? {} : { lastError: row.last_error }),
+  ...(row.judges && row.judges.length > 0 ? { judges: row.judges } : {}),
   updatedAt: row.updated_at.toISOString(),
 });
 
@@ -76,6 +78,16 @@ export class PostgresTraceDeliveries implements TraceDeliveryStore {
         'deleted' in outcome
           ? [delivery.tenant, delivery.sink, delivery.trace, at]
           : [delivery.tenant, delivery.sink, delivery.trace, at, outcome.error],
+      ),
+    );
+  }
+
+  async noteJudges(delivery: TraceDelivery, judges: string[], at: string): Promise<void> {
+    await withTenant(this.pool, delivery.tenant, (client) =>
+      client.query(
+        `update trace_deliveries set judges = $4, updated_at = $5
+         where tenant = $1 and sink = $2 and trace = $3`,
+        [delivery.tenant, delivery.sink, delivery.trace, judges, at],
       ),
     );
   }

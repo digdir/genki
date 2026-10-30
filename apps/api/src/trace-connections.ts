@@ -174,6 +174,17 @@ export const traceConnections = (
     const errors: { path: string; message: string }[] = [];
     if (before?.removing)
       errors.push({ path: 'connection.id', message: `the connection ${next.id} is being removed` });
+    // Deletes go to the connection's host and project, so those stay while deletes are owed there.
+    // A new secret for the same project is fine.
+    if (
+      before &&
+      (before.host !== next.host || before.publicKey !== next.publicKey) &&
+      (await outstanding(tenant, next.id)) > 0
+    )
+      errors.push({
+        path: 'connection.host',
+        message: `the connection ${next.id} still has traces to delete where it points now`,
+      });
     if (secretTenant(next.secretKey) !== tenant)
       errors.push({
         path: 'connection.secretKey',
@@ -302,6 +313,49 @@ export const traceConnections = (
 
 export type TraceConnections = ReturnType<typeof traceConnections>;
 
+/** A connection as it is saved now, also while it is being removed. */
+export const connectionOf = async (configEntries: ConfigEntryStore, tenant: string, id: string) =>
+  (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+    .filter((e) => !e.deleted)
+    .map((e) => e.spec as TraceConnection)
+    .find((c) => c.id === id);
+
+/**
+ * Records a batch's traces as sent to a connection before the batch goes out, so a trace is
+ * never in a sink without genki knowing to delete it. Nothing goes to a connection that is being
+ * removed or is gone: what was just recorded is queued for deletion, or settled, since it was
+ * never sent.
+ */
+export const deliveryGate =
+  (deps: {
+    configEntries: ConfigEntryStore;
+    deliveries: Pick<TraceDeliveryStore, 'record' | 'markPending' | 'settle'>;
+    tenant: string;
+    sink: string;
+    now: () => string;
+  }) =>
+  async (traces: { trace: string; task: string }[]) => {
+    const live = async () => {
+      const current = await connectionOf(deps.configEntries, deps.tenant, deps.sink);
+      return current && !current.removing ? 'live' : current ? 'removing' : 'gone';
+    };
+    if ((await live()) !== 'live') return false;
+    const sent = traces.map((t) => ({ tenant: deps.tenant, sink: deps.sink, ...t }));
+    await deps.deliveries.record(sent, deps.now());
+    const after = await live();
+    if (after === 'live') return true;
+    if (after === 'removing')
+      await deps.deliveries.markPending(deps.tenant, { sink: deps.sink }, deps.now());
+    else
+      for (const s of sent)
+        await deps.deliveries.settle(
+          { ...s, state: 'sent', attempts: 0, updatedAt: deps.now() },
+          { deleted: true },
+          deps.now(),
+        );
+    return false;
+  };
+
 /** Every connection that covers a service: more than one means the service is sent nowhere. */
 export const connectionsCovering = async (
   configEntries: ConfigEntryStore,
@@ -316,7 +370,13 @@ export const connectionsCovering = async (
 
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
-  open(run: string, tenant: string, connection: TraceConnection): void;
+  /** beforeSend sees each batch's traces before it goes out, and false drops the batch. */
+  open(
+    run: string,
+    tenant: string,
+    connection: TraceConnection,
+    beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
+  ): void;
   /** Flushes the run's sink and answers the case tasks whose traces went there. */
   close(run: string): Promise<string[]>;
   /** The id the sink knows a case task's trace by. */

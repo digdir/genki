@@ -102,6 +102,7 @@ export const catalogErrors = defineNamespace({
   tracingResidencyByOperator:
     'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
   tracingBeingRemoved: 'koblingen {id} er i ferd med å bli fjernet',
+  tracingDeletesOwed: 'koblingen {id} har fortsatt sporinger å slette der den peker nå',
   tracingNoConnection: 'ingen kobling {id}',
   tracingResidencyValues: 'norway, eu eller global',
   tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
