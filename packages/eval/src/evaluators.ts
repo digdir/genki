@@ -5,6 +5,8 @@ import type { Score, TestCase, UsageSummary } from './schema.js';
 export interface EvalContext {
   servedModels: string[];
   modelFamily(model: string): string | undefined;
+  /** Aborts when the eval run is cancelled. */
+  signal?: AbortSignal;
 }
 
 export interface PendingScore {
