@@ -5431,6 +5431,7 @@
                       additionalProperties: false,
                     },
                     sink: { type: 'string', minLength: 1 },
+                    avoidAsJudge: { type: 'array', items: { type: 'string' } },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,

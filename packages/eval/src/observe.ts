@@ -34,14 +34,19 @@ const asSources = (value: unknown): ObservedSource[] => {
   });
 };
 
+const besideTheAnswer = new Set([
+  'application/vnd.genai.sources+json',
+  'application/vnd.genai.retrieval+json',
+]);
+
 export const defaultObserve: Observe = (parts, events) => {
   const answer = parts
     .flatMap((p) => (p.body.kind === 'text' ? [p.body.text] : []))
     .join('\n')
     .trim();
-  // Only application/json is the answer's fields; sources and retrieval parts ride beside any answer.
+  // Sources and retrieval parts ride beside any answer, so they are never its fields.
   const json = parts.flatMap((p) =>
-    p.body.kind === 'json' && p.mime === 'application/json' ? [p.body.json] : [],
+    p.body.kind === 'json' && !besideTheAnswer.has(p.mime) ? [p.body.json] : [],
   );
   const fields = json.find(
     (j): j is Record<string, unknown> => typeof j === 'object' && j !== null && !Array.isArray(j),
