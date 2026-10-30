@@ -37,9 +37,14 @@ export interface TargetResult {
   service?: string;
 }
 
+export interface EvalItem {
+  case: TestCase;
+  repeat: number;
+}
+
 export interface EvalTarget {
   capability: string;
-  invoke(input: Input): Promise<TargetResult>;
+  invoke(input: Input, item?: EvalItem): Promise<TargetResult>;
   annotate?(task: string, score: Score): Promise<void>;
 }
 
@@ -370,7 +375,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       options.signal?.throwIfAborted();
       let outcome: TargetResult;
       try {
-        outcome = await target.invoke(inputOf(c));
+        outcome = await target.invoke(inputOf(c), { case: c, repeat });
       } catch (error) {
         throw new EvalError(
           `case ${c.id} failed: ${error instanceof Error ? error.message : String(error)}`,

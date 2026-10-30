@@ -12,3 +12,4 @@ export {
   type TraceExporter,
 } from './exporter.js';
 export { buildSpans, type OtlpSpan } from './spans.js';
+export { createExperimentRouter, type ExperimentRouter } from './experiment.js';

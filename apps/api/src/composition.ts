@@ -60,6 +60,11 @@ import {
 import { type TriggerRunStore } from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
 import {
+  createExperimentRouter,
+  createTraceExporter,
+  observedEventLog,
+} from '@genai/providers-langfuse';
+import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
@@ -238,7 +243,14 @@ import { userPreferencesModule } from './user-preferences.js';
 import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
-import { traceConnectionsModule, type TracingOptions } from './trace-connections.js';
+import {
+  allowOf,
+  pinnedFetch,
+  traceConnectionsModule,
+  tracingEgress,
+  type TraceSinks,
+  type TracingOptions,
+} from './trace-connections.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
@@ -890,6 +902,37 @@ export const createPlatform = async (input: PlatformInput) => {
   const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
   const vault = new TenantSecretVault(input.tenantSecrets);
+  const tenantSecrets = new TenantSecrets(vault.resolver(input.secrets));
+  const experiments = createExperimentRouter();
+  const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
+  const traceSinks: TraceSinks = {
+    open: (run, tenant, connection) =>
+      experiments.open(
+        run,
+        createTraceExporter(
+          {
+            endpoint: new URL('/api/public/otel', connection.host).toString(),
+            auth: {
+              kind: 'langfuse',
+              publicKey: connection.publicKey,
+              secretKey: 'secret://sink/key',
+            },
+          },
+          {
+            secrets: {
+              resolve: () =>
+                tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+            },
+            tasks: async (id) => (await taskStore.get(id))?.task,
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+            serviceName: 'genai-eval',
+            experiments: true,
+          },
+        ),
+        tenant,
+      ),
+    close: (run) => experiments.close(run),
+  };
   const settings = input.settings ?? new SettingsRegistry(platformSettings);
   const overridePolicy = {
     check: async (
@@ -1014,7 +1057,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ]),
     platformCapabilities: [evalCapability, enrichmentWork.capability],
     ...(input.state ? { state: input.state } : {}),
-    ...(input.observe ? { observe: input.observe } : {}),
+    observe: (log: EventLog) =>
+      observedEventLog(input.observe ? input.observe(log) : log, experiments),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
@@ -1604,7 +1648,8 @@ export const createPlatform = async (input: PlatformInput) => {
     evalStores,
     evalCapability: evalCapability.descriptor.id,
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
-    tenantSecrets: new TenantSecrets(vault.resolver(input.secrets)),
+    tenantSecrets,
+    traceSinks,
     egressOptions: input.egress ?? {},
     ...(input.tracing ? { tracing: input.tracing } : {}),
     connections,

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Event, Ref, Task, Usage } from '@genai/contracts';
+import { experimentAttributes, itemAttributes, type Experiment } from './experiment.js';
 
 export type AnyValue =
   | { stringValue: string }
@@ -92,12 +93,16 @@ export interface BuildInput {
   content: boolean;
   environment?: string;
   userId?: string;
+  experiment?: Experiment;
 }
+
+const experimentOf = ({ experiment }: BuildInput) =>
+  experiment ? experimentAttributes(experiment, rootSpanIdFor(experiment.rootTask)) : {};
 
 const childSpans = (input: BuildInput, parent: string): OtlpSpan[] => {
   const { events, traceId, taskId, environment } = input;
   const spans: OtlpSpan[] = [];
-  const common = { 'deployment.environment.name': environment };
+  const common = { 'deployment.environment.name': environment, ...experimentOf(input) };
 
   events.forEach((event, index) => {
     if (event.type === 'kernel.usage') {
@@ -246,6 +251,8 @@ const rootSpan = (input: BuildInput, terminal: Event): OtlpSpan => {
       'langfuse.observation.input':
         content && inputEvent ? json((inputEvent.data as { input?: unknown }).input) : undefined,
       'langfuse.observation.output': content && resultEvent ? json(resultEvent.data) : undefined,
+      ...experimentOf(input),
+      ...(input.experiment?.rootTask === taskId ? itemAttributes(input.experiment) : {}),
     }),
     status: {
       code: status === 'failed' ? STATUS_ERROR : status === 'completed' ? STATUS_OK : STATUS_UNSET,
