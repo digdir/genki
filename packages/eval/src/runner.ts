@@ -340,6 +340,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   let lastSent = now();
   for (let repeat = 0; repeat < repeats; repeat++) {
     for (const c of cases) {
+      options.signal?.throwIfAborted();
       let outcome: TargetResult;
       try {
         outcome = await target.invoke(inputOf(c));
@@ -356,10 +357,12 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       const ctx: EvalContext = {
         servedModels: outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
+        ...(options.signal ? { signal: options.signal } : {}),
       };
       const scores: Score[] = [];
       lastSent = now();
       for (const evaluator of evaluators) {
+        options.signal?.throwIfAborted();
         let answered: Score[];
         try {
           answered = await evaluator.evaluate(c, observation, ctx);
