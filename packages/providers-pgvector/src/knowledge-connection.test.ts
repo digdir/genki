@@ -75,15 +75,29 @@ describe('a pgvector endpoint on the knowledge server', () => {
     expect(reader.query.mock.calls.length + writer.query.mock.calls.length).toBeGreaterThan(0);
   });
 
-  it('a `knowledge` endpoint refuses searches and writes as not ready until its tables exist', async () => {
+  it('a `knowledge` endpoint refuses searches as not ready until its read functions exist', async () => {
     const engine = pgvectorEngine({
       pool: fakePool().pool,
       knowledge: { reader: fakePool().pool },
     });
-    const outcomes = await everyCall(engine);
-    expect(new Set(Object.values(outcomes))).toEqual(
+    const connection = engine.adapter.connect(knowledgeEndpoint as never);
+    const outcomes = await Promise.all(
+      [
+        () => connection.search(dataset, [{ query: 'lønn' }], signal),
+        () => connection.fetch(dataset, ['a'], signal),
+        () => connection.range(dataset, 'a', 0, 2, signal),
+        () => connection.facets(dataset, ['type'], {}, signal),
+      ].map((call) =>
+        call().then(
+          () => 'answered',
+          (error: unknown) =>
+            error instanceof KnowledgeError ? `${error.code}: ${error.message}` : String(error),
+        ),
+      ),
+    );
+    expect(new Set(outcomes)).toEqual(
       new Set([
-        'unavailable: the knowledge server is not ready: its search tables are not built yet',
+        'unavailable: the knowledge server is not ready: its read functions are not built yet',
       ]),
     );
   });

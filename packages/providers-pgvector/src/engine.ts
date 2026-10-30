@@ -19,7 +19,9 @@ import {
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { ensureVectorIndexes, migrateKnowledge, transaction } from './schema.js';
-import { facetSql, hitColumns, searchSql, type Profile } from './sql.js';
+import { facetSql, fieldsText, hitColumns, searchSql, type Profile } from './sql.js';
+import { knowledgeWriterOf } from './knowledge-writer.js';
+import { migrateKnowledgeServer, syncFilterIndexes } from './partitions.js';
 
 const profile = z
   .strictObject({
@@ -55,7 +57,7 @@ export const pgvectorEndpointOptions = z.strictObject({
 });
 
 const noKnowledgeServer = 'no knowledge server configured';
-const knowledgeNotReady = 'the knowledge server is not ready: its search tables are not built yet';
+const knowledgeNotReady = 'the knowledge server is not ready: its read functions are not built yet';
 
 export type PgvectorDatasetOptions = z.infer<typeof pgvectorDatasetOptions>;
 export type PgvectorEndpointOptions = z.infer<typeof pgvectorEndpointOptions>;
@@ -82,6 +84,8 @@ export interface PgvectorEngineOptions {
 export interface PgvectorEngine {
   adapter: KnowledgeAdapter<PgvectorEndpointOptions, PgvectorDatasetOptions>;
   writer: IndexWriterAdapter<PgvectorEndpointOptions, PgvectorDatasetOptions>;
+  /** Brings the filter indexes of datasets on the knowledge server in line with the catalog. */
+  followCatalog(datasets: DatasetConfig[]): Promise<void>;
 }
 
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
@@ -159,12 +163,6 @@ const failIfAborted = (signal: AbortSignal) => {
 };
 
 const configOf = (dataset: Dataset) => dataset.options.textSearchConfig ?? defaultConfig;
-
-const fieldsText = (fields: Record<string, unknown>) =>
-  Object.values(fields)
-    .flatMap((v) => (Array.isArray(v) ? v : [v]))
-    .filter((v) => typeof v === 'string' || typeof v === 'number')
-    .join(' ');
 
 export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine => {
   const { pool } = options;
@@ -383,17 +381,26 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     range: notReady,
     facets: notReady,
   };
-  const knowledgeWriter: IndexWriter<PgvectorDatasetOptions> = {
-    prepare: notReady,
-    store: notReady,
-    promote: notReady,
-    drop: notReady,
-    active: notReady,
-    stats: notReady,
-    // eslint-disable-next-line require-yield
-    read: async function* () {
-      await notReady();
-    },
+  const owner = options.knowledge?.owner;
+  let serverReady: Promise<void> | undefined;
+  const knowledgeServerReady = () => {
+    if (!owner) return Promise.resolve();
+    serverReady ??= migrateKnowledgeServer(owner).catch((error: unknown) => {
+      serverReady = undefined;
+      throw error;
+    });
+    return serverReady;
+  };
+  const followedFilters = new Map<string, string>();
+  const followCatalog = async (datasets: DatasetConfig[]) => {
+    if (!owner) return;
+    await knowledgeServerReady();
+    for (const dataset of datasets) {
+      const filters = JSON.stringify([dataset.filters, dataset.valueTypes ?? {}]);
+      if (followedFilters.get(dataset.id) === filters) continue;
+      await syncFilterIndexes(owner, dataset);
+      followedFilters.set(dataset.id, filters);
+    }
   };
 
   const adapter = localKnowledgeAdapter({
@@ -666,9 +673,11 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           error instanceof Error ? error.message : String(error),
         );
       }
-      return knowledgeWriter;
+      if (!owner)
+        throw new KnowledgeError('unavailable', 'knowledge data is written by the worker');
+      return knowledgeWriterOf<PgvectorDatasetOptions>(owner, knowledgeServerReady, context.signal);
     },
   };
 
-  return { adapter, writer };
+  return { adapter, writer, followCatalog };
 };
