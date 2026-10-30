@@ -415,6 +415,44 @@ describe('removing a connection', () => {
     expect((afterwards.body.data as { id: string }[]).map((c) => c.id)).toEqual(['andre']);
   });
 
+  it('lists a connection being removed with no services', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({ id: 'etaten', removing: true, services: [] }),
+    ]);
+  });
+
+  it('finishes a removal once when two reads find every delete confirmed at the same time', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const env = await boot({ instance }, deliveries);
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    const at = new Date().toISOString();
+    await deliveries.record([{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }], at);
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    for (const pending of await deliveries.pending(10))
+      await deliveries.settle(pending, { deleted: true }, at);
+
+    const reads = await Promise.all([
+      env.send('GET', `/tenants/${tenant}/tracing/connections`),
+      env.send('GET', `/tenants/${tenant}/tracing/connections`),
+    ]);
+
+    expect(reads.map((r) => r.status)).toEqual([200, 200]);
+    expect(reads.map((r) => r.body.data)).toEqual([[], []]);
+  });
+
   it('keeps its host and project while it has traces to delete there, but takes a new secret for them', async () => {
     const deliveries = new InMemoryTraceDeliveries();
     const env = await boot({ instance }, deliveries);

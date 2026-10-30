@@ -110,7 +110,15 @@ export const traceConnections = (
           connection,
           'platform:trace-deletes',
           'Every trace it received is deleted',
-        );
+        ).catch(async (error: unknown) => {
+          // Another read finished the removal first.
+          const history = await deps.configEntries.history(
+            traceConnectionKind,
+            tenant,
+            connection.id,
+          );
+          if (!history.at(-1)?.deleted) throw error;
+        });
         continue;
       }
       kept.push(connection);
@@ -276,7 +284,7 @@ export const traceConnections = (
     const reason = String(input.reason ?? '');
     // Removing first, so a batch about to be sent sees it and is held back; then everything
     // already recorded is queued for deletion.
-    const removing: TraceConnection = { ...before, removing: true };
+    const removing: TraceConnection = { ...before, services: [], removing: true };
     await appendVersion<TraceConnection>(deps.configEntries, {
       kind: traceConnectionKind,
       scope: tenant,
