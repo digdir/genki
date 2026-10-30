@@ -74,6 +74,7 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       splits: options.splits,
       ...(deps.modelFamily ? { modelFamily: deps.modelFamily } : {}),
       ...(deps.wait ? { wait: deps.wait } : {}),
+      signal: ctx.signal,
       onProgress: (done, total) => notify({ kind: 'eval.progress', done, total }),
       onWaiting: (pending, until) => notify({ kind: 'eval.waiting', pending, until }),
     }).finally(() => {

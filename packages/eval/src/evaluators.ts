@@ -30,7 +30,8 @@ export interface Evaluator {
   kind: 'deterministic' | 'model' | 'human';
   judge?: string;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
-  collect?(pending: PendingScore[]): Promise<CollectedScore[]>;
+  /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
+  collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
 }
 
 export class EvalError extends Error {

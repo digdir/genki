@@ -82,7 +82,7 @@ export const kernelTarget = (
 export interface WaitOptions {
   deadlineMs?: number;
   everyMs?: number;
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 export const scoreWaitMs = 5 * 60_000;
@@ -98,6 +98,8 @@ export interface RunEvalOptions {
   observe?: Observe;
   bootstrap?: BootstrapOptions;
   wait?: WaitOptions;
+  /** Cancels the run, including its wait for scores. */
+  signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
@@ -202,6 +204,19 @@ export const unscoredIn = (run: Pick<EvalRun, 'results'>, metric: string, split:
   return { of, missing };
 };
 
+const pauseFor = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
 const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`;
 
 const collectPending = async (
@@ -213,6 +228,7 @@ const collectPending = async (
     now: () => Date;
     annotate: (task: string, score: Score) => Promise<void>;
     onWaiting?: (pending: number, until: string) => void;
+    signal?: AbortSignal;
   },
 ) => {
   const pendingNow = (): PendingScore[] =>
@@ -225,8 +241,7 @@ const collectPending = async (
   if (pending.length === 0) return;
   const deadlineMs = options.wait.deadlineMs ?? scoreWaitMs;
   const everyMs = options.wait.everyMs ?? 5_000;
-  const sleep =
-    options.wait.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = options.wait.sleep ?? pauseFor;
   const deadline = options.lastSent.getTime() + deadlineMs;
   const until = new Date(deadline).toISOString();
   const byId = new Map(evaluators.map((e) => [e.id, e]));
@@ -252,17 +267,28 @@ const collectPending = async (
     await options.annotate(result.task, collected.score);
   };
 
+  const left = () => deadline - options.now().getTime();
   report();
-  while (pending.length > 0 && options.now().getTime() < deadline) {
-    await sleep(Math.min(everyMs, deadline - options.now().getTime()));
+  while (pending.length > 0 && left() > 0) {
+    await sleep(Math.min(everyMs, left()), options.signal);
+    options.signal?.throwIfAborted();
     const byEvaluator = Map.groupBy(pending, (p) => p.score.evaluator);
     for (const [id, items] of byEvaluator) {
+      if (left() <= 0) break;
+      const expiry = AbortSignal.timeout(left());
+      const signal = options.signal ? AbortSignal.any([options.signal, expiry]) : expiry;
+      let collected: CollectedScore[];
       try {
-        const collected = (await byId.get(id)?.collect?.(items)) ?? [];
-        for (const c of collected) await settle(c);
+        collected = (await byId.get(id)?.collect?.(items, { signal })) ?? [];
       } catch (error) {
+        options.signal?.throwIfAborted();
         lastError.set(id, error instanceof Error ? error.message : String(error));
+        continue;
       }
+      options.signal?.throwIfAborted();
+      // What arrives after the deadline is not taken, so a run never outlasts its wait.
+      if (left() <= 0) break;
+      for (const c of collected) await settle(c);
     }
     pending = pendingNow();
     report();
@@ -367,6 +393,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     now,
     annotate,
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
 
   return {
