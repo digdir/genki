@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Evaluator, Score } from '@genai/eval';
+import type { Evaluator, PendingScore, Score } from '@genai/eval';
 import { runContract } from '@genai/plugins';
-import { evaluatorContract } from './plugin-contracts.js';
+import { evaluatorContract, httpJudge, type JudgeSend } from './plugin-contracts.js';
 
 const scored = (value: number): Score => ({
   evaluator: 'dommer',
@@ -78,6 +78,86 @@ describe('evaluator@2 contract', () => {
     expect(uncollectable.passed).toBe(false);
     expect(uncollectable.results[0]?.reason).toBe(
       'an evaluator that answers pending can be collected',
+    );
+  });
+});
+
+describe('evaluator@2 contract, on the pending answer it was given', () => {
+  it('fails when the ticket it was given is never collected, even if asking again answers at once', async () => {
+    let asked = 0;
+    const evaluator = judge({
+      evaluate: async () => ((asked += 1) % 2 === 1 ? [pending] : [scored(0.8)]),
+      collect: async () => [],
+    });
+
+    const run = await runContract(
+      evaluatorContract,
+      async () => ({ subject: { evaluator, metrics: ['korrekthet'] } }),
+      { timeoutMs: 300 },
+    );
+
+    expect(run.results.find((r) => r.name === pendingCheck)?.status).toBe('failed');
+  });
+});
+
+describe('an HTTP judge', () => {
+  const plugin = { id: 'dommer', version: '1' };
+  const answering =
+    (reply: (body: Record<string, unknown>) => { status: number; body: unknown }): JudgeSend =>
+    async (body) => {
+      const r = reply(JSON.parse(body) as Record<string, unknown>);
+      return { status: r.status, body: JSON.stringify(r.body) };
+    };
+  const testCase = { id: 'frist', split: 'validation', input: 'Hva er fristen?', expected: {} };
+  const observation = { answer: 'Fristen er 1. mai.', citations: [], toolCalls: [] };
+  const ctx = { servedModels: [], modelFamily: () => undefined };
+  const waiting = (ticket: string, i: number): PendingScore => ({
+    case: `c${i}`,
+    repeat: 0,
+    task: `t${i}`,
+    score: { ...pending, details: { ticket } },
+  });
+
+  it('refuses a score with neither a value nor a state, instead of reading it as not applicable', async () => {
+    const evaluator = httpJudge(
+      plugin,
+      answering(() => ({ status: 200, body: { scores: [{ metric: 'korrekthet' }] } })),
+    );
+
+    await expect(evaluator.evaluate(testCase as never, observation as never, ctx)).rejects.toThrow(
+      'the evaluator dommer answered korrekthet without a value or a state',
+    );
+  });
+
+  it('keeps the scores of the batches that arrived when a later batch fails', async () => {
+    const items = Array.from({ length: 60 }, (_, i) => waiting(`sak-${i}`, i));
+    const evaluator = httpJudge(
+      plugin,
+      answering((body) => {
+        const tickets = (body.collect as { tickets: string[] }).tickets;
+        return tickets.includes('sak-0')
+          ? {
+              status: 200,
+              body: {
+                results: tickets.map((ticket) => ({
+                  ticket,
+                  scores: [{ metric: 'korrekthet', value: 1 }],
+                })),
+              },
+            }
+          : { status: 503, body: {} };
+      }),
+    );
+    const failing = httpJudge(
+      plugin,
+      answering(() => ({ status: 503, body: {} })),
+    );
+
+    const collected = (await evaluator.collect?.(items)) ?? [];
+    expect(collected).toHaveLength(50);
+    expect(collected.every((c) => c.score.state === 'scored')).toBe(true);
+    await expect(failing.collect?.(items)).rejects.toThrow(
+      'the evaluator dommer answered HTTP 503',
     );
   });
 });

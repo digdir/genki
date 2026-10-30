@@ -11,6 +11,7 @@ import type { TestCaseCandidate } from './feedback.js';
 import {
   caseTypes,
   expectedFor,
+  type CaseExpectation,
   type CaseType,
   type Score,
   type Split,
@@ -57,7 +58,8 @@ export const caseView = (c: TestCase): CaseView => ({
 export interface NewCase {
   id: string;
   input: string;
-  expected?: string;
+  /** A text, read by the case type, or a reference answer and named criteria as they are. */
+  expected?: string | CaseExpectation;
   type?: CaseType;
   split?: CaseSplit;
 }
@@ -75,7 +77,8 @@ export const caseFrom = (input: NewCase) => {
     id: input.id,
     split,
     input: input.input,
-    expected: expectedFor(type, input.expected),
+    expected:
+      typeof input.expected === 'object' ? input.expected : expectedFor(type, input.expected),
     grounding: type === 'must_reject' ? 'refusal-expected' : 'answer-only',
     type,
   };

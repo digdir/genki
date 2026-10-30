@@ -45,6 +45,9 @@ const withCriteriaMoved = (raw: unknown) => {
   return { ...raw, expected: { ...expected, criteria: { criteria: referenceAnswer } } };
 };
 
+/** A criteria field, named as judges read it: criteria, supporting_quotes. */
+const criterionName = z.string().regex(/^[a-z][a-z0-9_]*$/);
+
 export const testCase = z.preprocess(
   withCriteriaMoved,
   z.strictObject({
@@ -59,7 +62,7 @@ export const testCase = z.preprocess(
         sources: z.array(sourceRef).default([]),
         answerPattern: pattern.optional(),
         referenceAnswer: z.string().min(1).optional(),
-        criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string().min(1)).optional(),
+        criteria: z.record(criterionName, z.string().min(1)).optional(),
         fields: z.record(z.string(), z.unknown()).optional(),
       })
       .prefault({}),
@@ -75,6 +78,13 @@ export const testCase = z.preprocess(
 export type TestCase = z.infer<typeof testCase>;
 
 /** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
+/** What a case in the portal's simple form may expect besides a text: an answer and named criteria. */
+export const caseExpectation = z.strictObject({
+  referenceAnswer: z.string().trim().min(1).optional(),
+  criteria: z.record(criterionName, z.string().trim().min(1)).optional(),
+});
+export type CaseExpectation = z.infer<typeof caseExpectation>;
+
 export const expectedFor = (type: CaseType, text: string | undefined) =>
   !text ? {} : type === 'criteria' ? { criteria: { criteria: text } } : { referenceAnswer: text };
 
