@@ -21,7 +21,7 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { SparklesIcon } from '@navikt/aksel-icons';
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Icon, icons } from '../../components/Icon';
 import {
   exampleDatasets,
@@ -597,6 +597,7 @@ export const SetupTab = ({
   const [datasetPicker, setDatasetPicker] = useState(false);
   const [refuseInput, setRefuseInput] = useState('');
   const [ownDocuments, setOwnDocuments] = useState<string[]>([]);
+  const ownDocumentsId = useId();
   const [webPages, setWebPages] = useState<string[]>([]);
   const [webInput, setWebInput] = useState('');
   const [webInvalid, setWebInvalid] = useState(false);
@@ -1361,7 +1362,7 @@ export const SetupTab = ({
             ) : null}
             {apart ? (
               <Field>
-                <Label>{t('setup.ownDocuments')}</Label>
+                <Label htmlFor={ownDocumentsId}>{t('setup.ownDocuments')}</Label>
                 <Field.Description>{t('setup.ownDocumentsHelp')}</Field.Description>
                 <EXPERIMENTAL_FileUpload>
                   <Field.Description>{t('setup.ownDocumentsDrop')}</Field.Description>
@@ -1369,6 +1370,7 @@ export const SetupTab = ({
                     <span>{t('setup.ownDocumentsPick')}</span>
                   </Button>
                   <input
+                    id={ownDocumentsId}
                     type="file"
                     multiple
                     accept=".pdf,.doc,.docx,.txt,.md"
