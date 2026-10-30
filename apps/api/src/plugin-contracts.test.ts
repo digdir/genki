@@ -160,4 +160,79 @@ describe('an HTTP judge', () => {
       'the evaluator dommer answered HTTP 503',
     );
   });
+
+  it('records a malformed collected score as failed with the reason, and keeps the rest', async () => {
+    const items = [waiting('sak-1', 1), waiting('sak-2', 2)];
+    const evaluator = httpJudge(
+      plugin,
+      answering(() => ({
+        status: 200,
+        body: {
+          results: [
+            { ticket: 'sak-1', scores: [{ metric: 'korrekthet', state: 'scored' }] },
+            { ticket: 'sak-2', scores: [{ metric: 'korrekthet', value: 0.5 }] },
+          ],
+        },
+      })),
+    );
+
+    expect(await evaluator.collect?.(items)).toMatchObject([
+      {
+        case: 'c1',
+        score: {
+          state: 'failed',
+          value: null,
+          reason: 'the evaluator dommer scored korrekthet without a value',
+        },
+      },
+      { case: 'c2', score: { state: 'scored', value: 0.5 } },
+    ]);
+  });
+
+  it('refuses a pending score without a ticket', async () => {
+    const evaluator = httpJudge(
+      plugin,
+      answering(() => ({
+        status: 200,
+        body: { scores: [{ metric: 'korrekthet', state: 'pending' }] },
+      })),
+    );
+
+    await expect(evaluator.evaluate(testCase as never, observation as never, ctx)).rejects.toThrow(
+      'the evaluator dommer answered korrekthet pending without a ticket',
+    );
+  });
+
+  it('passes the signal on to every request, when it judges and when it collects', async () => {
+    const seen: (AbortSignal | undefined)[] = [];
+    const evaluator = httpJudge(plugin, async (body, signal) => {
+      seen.push(signal);
+      return {
+        status: 200,
+        body: JSON.stringify(
+          'collect' in JSON.parse(body)
+            ? { results: [] }
+            : { scores: [{ metric: 'korrekthet', value: 1 }] },
+        ),
+      };
+    });
+    const signal = new AbortController().signal;
+
+    await evaluator.evaluate(testCase as never, observation as never, { ...ctx, signal });
+    await evaluator.collect?.([waiting('sak-1', 1)], { signal });
+
+    expect(seen).toEqual([signal, signal]);
+  });
+
+  it('asks for at most 50 tickets per collect call', async () => {
+    const sizes: number[] = [];
+    const evaluator = httpJudge(plugin, async (body) => {
+      sizes.push((JSON.parse(body) as { collect: { tickets: string[] } }).collect.tickets.length);
+      return { status: 200, body: JSON.stringify({ results: [] }) };
+    });
+
+    await evaluator.collect?.(Array.from({ length: 120 }, (_, i) => waiting(`sak-${i}`, i)));
+
+    expect(sizes).toEqual([50, 50, 20]);
+  });
 });
