@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Avatar,
-  Button,
-  Divider,
-  Heading,
-  SkipLink,
-  Tag,
-} from '@digdir/designsystemet-react';
+import { Alert, Avatar, Button, Divider, SkipLink, Tag } from '@digdir/designsystemet-react';
 import {
   createContext,
   useCallback,
@@ -26,32 +18,68 @@ import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
-type NavItem = { path: string; label: PlainKey; also?: readonly string[] };
+type NavItem = { path: string; label: PlainKey; icon: string; also?: readonly string[] };
 
 export const navigationGroups = [
-  { items: [{ path: '/overview', label: 'shell.navOverview' }] },
+  {
+    items: [
+      { path: '/overview', label: 'shell.navOverview', icon: 'M4 11l8-7 8 7v9h-5v-6H9v6H4z' },
+    ],
+  },
   {
     heading: 'shell.groupBuild',
     items: [
-      { path: '/services', label: 'shell.navServices', also: ['/step-flows'] },
-      { path: '/shared-services', label: 'shell.navSharedServices' },
-      { path: '/datasets', label: 'shell.navDatasets' },
-      { path: '/building-blocks', label: 'shell.navBuildingBlocks', also: ['/skills'] },
-      { path: '/playground', label: 'shell.navPlayground' },
-      { path: '/developer', label: 'shell.menuDeveloper' },
+      {
+        path: '/services',
+        label: 'shell.navServices',
+        icon: 'M4 5h16v14H4zM4 9h16M8 13h8',
+        also: ['/step-flows'],
+      },
+      {
+        path: '/shared-services',
+        label: 'shell.navSharedServices',
+        icon: 'M8 7a3 3 0 1 0 0 .01M16 7a3 3 0 1 0 0 .01M3 19c0-3 2-5 5-5s5 2 5 5M13 15c1-1 2-1 3-1 3 0 5 2 5 5',
+      },
+      {
+        path: '/datasets',
+        label: 'shell.navDatasets',
+        icon: 'M5 6c0-1.7 3-3 7-3s7 1.3 7 3-3 3-7 3-7-1.3-7-3zM5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3',
+      },
+      {
+        path: '/building-blocks',
+        label: 'shell.navBuildingBlocks',
+        icon: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+        also: ['/skills'],
+      },
+      { path: '/playground', label: 'shell.navPlayground', icon: 'M7 4v16l13-8z' },
+      {
+        path: '/developer',
+        label: 'shell.menuDeveloper',
+        icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
+        also: ['/api-reference'],
+      },
     ],
   },
   {
     heading: 'shell.groupAnalyse',
     items: [
-      { path: '/statistics', label: 'shell.navStatistics' },
-      { path: '/log', label: 'shell.navLog' },
-      { path: '/feedback', label: 'shell.navFeedback' },
+      {
+        path: '/statistics',
+        label: 'shell.navStatistics',
+        icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+      },
+      { path: '/log', label: 'shell.navLog', icon: 'M4 6h16M4 12h10M4 18h6' },
     ],
   },
   {
     heading: 'shell.groupAdmin',
-    items: [{ path: '/access', label: 'shell.navAccess' }],
+    items: [
+      {
+        path: '/access',
+        label: 'shell.navAccess',
+        icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+      },
+    ],
   },
 ] as const satisfies readonly { heading?: PlainKey; items: readonly NavItem[] }[];
 
@@ -154,15 +182,14 @@ const isActive = (path: string, item: NavItem) => {
   return roots.some((root) => path === root || path.startsWith(`${root}/`));
 };
 
-const userMenuLinks: readonly (readonly [string, PlainKey, boolean?])[] = [
+const userMenuLinks: readonly (readonly [string, PlainKey])[] = [
   ['#/onboarding', 'shell.menuOnboarding'],
-  ['#/changelog', 'shell.menuChangelog', true],
   ['#/profile', 'shell.menuProfile'],
   ['#/contact', 'shell.contact'],
   ['#/data-handling', 'shell.menuDataHandling'],
 ];
 
-const readableUnregistered = ['api-reference', 'shared-services', 'data-handling'];
+const readableUnregistered = ['api-reference', 'shared-services', 'data-handling', 'profile'];
 
 interface ShellProps {
   session: Session;
@@ -205,10 +232,12 @@ const NavLinks = ({
   path,
   badges,
   onNavigate,
+  compact = false,
 }: {
   path: string;
   badges: ShellProps['badges'];
   onNavigate: () => void;
+  compact?: boolean;
 }) => {
   const t = useT();
   return (
@@ -219,9 +248,9 @@ const NavLinks = ({
           <div key={i} className="nav-group">
             {i > 0 ? <Divider /> : null}
             {'heading' in group ? (
-              <Heading level={2} data-size="2xs" id={headingId} className="nav-group-heading">
+              <span id={headingId} className={compact ? 'visually-hidden' : 'nav-group-heading'}>
                 {t(group.heading)}
-              </Heading>
+              </span>
             ) : null}
             <ul className="nav-list" aria-labelledby={headingId}>
               {group.items.map((item: NavItem) => {
@@ -234,8 +263,14 @@ const NavLinks = ({
                       aria-current={active ? 'page' : undefined}
                       className={active ? 'active' : undefined}
                       onClick={onNavigate}
+                      title={compact ? t(item.label) : undefined}
                     >
-                      {t(item.label)}
+                      <span className="nav-item">
+                        <Icon d={item.icon} />
+                        <span className={compact ? 'visually-hidden' : undefined}>
+                          {t(item.label)}
+                        </span>
+                      </span>
                       {badge && badge.count > 0 ? (
                         <Tag data-color="danger" data-size="sm" aria-label={badge.label}>
                           {badge.count}
@@ -295,7 +330,11 @@ export const Shell = ({
         closeAll();
     };
     document.addEventListener('mousedown', onPointer);
-    return () => document.removeEventListener('mousedown', onPointer);
+    window.addEventListener('resize', closeAll);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('resize', closeAll);
+    };
   }, [open, closeAll]);
 
   const profile = profileFor(organisation.orgNumber, organisation.name);
@@ -357,15 +396,10 @@ export const Shell = ({
             <span className="meta">{t('shell.actingFor', { name: organisation.name, orgNr })}</span>
           </div>
           <ul className="user-menu-list">
-            {userMenuLinks.map(([href, label, isNew]) => (
+            {userMenuLinks.map(([href, label]) => (
               <li key={href}>
                 <a href={href} onClick={closeAll}>
                   {t(label)}
-                  {isNew ? (
-                    <Tag data-color="accent" data-size="sm">
-                      {t('shell.menuNew')}
-                    </Tag>
-                  ) : null}
                 </a>
               </li>
             ))}
@@ -379,6 +413,7 @@ export const Shell = ({
     </div>
   );
 
+  const orgCompact = userInSidebar && collapsed;
   const orgChooser = (
     <div className={userInSidebar ? 'popover-anchor sidebar-org' : 'popover-anchor'}>
       {multi ? (
@@ -392,17 +427,25 @@ export const Shell = ({
             orgNr,
           })}
           onClick={(e) => toggle('org', e.currentTarget)}
+          title={orgCompact ? organisation.name : undefined}
         >
-          <span className="org-button">
-            <span className="org-name">{organisation.name}</span>
-            {narrow ? null : <span className="meta">{orgMeta}</span>}
-          </span>
-          <Icon d={icons.chevronDown} size={16} />
+          {orgCompact ? (
+            <Icon d={icons.organisation} />
+          ) : (
+            <>
+              <span className="org-button">
+                <span className="org-name">{organisation.name}</span>
+                {narrow ? null : <span className="meta">{orgMeta}</span>}
+              </span>
+              <Icon d={icons.chevronDown} size={16} />
+            </>
+          )}
         </Button>
       ) : (
-        <div className="org-static">
+        <div className="org-static" title={orgCompact ? organisation.name : undefined}>
           <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-          <span className="org-button">
+          {orgCompact ? <Icon d={icons.organisation} /> : null}
+          <span className={orgCompact ? 'visually-hidden' : 'org-button'}>
             <span className="org-name">{organisation.name}</span>
             {narrow ? null : <span className="meta">{orgMeta}</span>}
           </span>
@@ -507,24 +550,16 @@ export const Shell = ({
                 variant="tertiary"
                 data-size="sm"
                 icon
-                aria-expanded={!collapsed}
                 aria-label={t(collapsed ? 'shell.showSidebar' : 'shell.hideSidebar')}
                 onClick={toggleCollapsed}
               >
                 <Icon d={icons.sidebar} />
               </Button>
             </div>
-            {collapsed ? (
-              // Holds the menu's height so the avatar stays where it is when the sidebar is open.
-              <div className="nav-placeholder" aria-hidden inert>
-                <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-              </div>
-            ) : (
-              <NavLinks path={path} badges={badges} onNavigate={closeAll} />
-            )}
+            <NavLinks path={path} badges={badges} onNavigate={closeAll} compact={collapsed} />
             <div className="sidebar-account">
               {userMenu}
-              {collapsed ? null : orgChooser}
+              {orgChooser}
             </div>
           </nav>
         )}

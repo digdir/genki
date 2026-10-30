@@ -13,10 +13,7 @@ export const shell = {
   navBuildingBlocks: 'Building blocks',
   navPlayground: 'Playground',
   navAccess: 'Access',
-  navUsage: 'Usage',
-  navIntegrations: 'Integrations',
   navLog: 'Log',
-  navSettings: 'Settings',
   skipToContent: 'Skip to main content',
   menu: 'Menu',
   mainMenu: 'Main menu',
@@ -45,20 +42,15 @@ export const shell = {
   rightsGivenBy: 'The rights are granted by the access managers at your organisation, in Altinn.',
   seeInAltinn: 'View or change in Altinn (opens in a new tab)',
   logout: 'Log out',
-  guide: 'User guide',
   status: 'Service status',
   contact: 'Contact Digdir',
   navStatistics: 'Statistics',
-  navFeedback: 'Feedback',
   groupBuild: 'Build',
   groupAnalyse: 'Analyse',
   groupAdmin: 'Administration',
   hideSidebar: 'Hide the sidebar',
   showSidebar: 'Show the sidebar',
-  orgSettingsTitle: 'Settings for the organisation',
-  menuOnboarding: 'Onboarding',
-  menuChangelog: 'Changelog',
-  menuNew: 'New',
+  menuOnboarding: 'Getting started',
   menuProfile: 'Profile',
   menuDeveloper: 'Developer tools',
   menuDataHandling: 'Data handling',
@@ -108,7 +100,7 @@ export const app = {
   sessionRelogin: 'Sign in again',
   login: 'Sign in',
   unknownUser: 'Unknown user',
-  languageReason: 'Changed the language in the user menu',
+  languageReason: 'Changed the language on the profile page',
 } satisfies Translation<typeof appSource>;
 
 export const devTools = {
@@ -116,7 +108,6 @@ export const devTools = {
   menu: 'Developer tools',
   intro:
     'What applies to the whole organisation. What applies to one service is on the Developer tools tab of that service.',
-  notDesigned: 'This page is not designed yet',
   livesElsewhere: 'The content lives elsewhere in the portal until it moves here.',
   status: 'Service status',
   statusDesc: 'Status of the services right now.',
@@ -134,7 +125,9 @@ export const devTools = {
   stepFlows: 'Step flows',
   stepFlowsDesc: 'Editing step flows.',
   guardrails: 'Common safety filters',
-  guardrailsDesc: 'Filters every service inherits. Each service can add its own.',
+  guardrailsDesc:
+    'Rules the organisation shares. Rules marked as mandatory apply to every service; each service chooses the others itself.',
+  guardrailsNotAvailable: 'Shared rules are shown when the portal is connected to the platform.',
   api: 'API reference and documentation',
   apiDesc: 'The API reference and documentation for developers.',
   openLog: 'Open Log',
@@ -155,7 +148,6 @@ export const devTools = {
   modelDesc: 'Which model the service uses, and how it finds the answer.',
   stepFlow: 'Step flow',
   stepFlowDesc: 'The step flow the service uses, chosen from the organisation step flows.',
-  serviceHooksDesc: 'Hooks from the organisation connected to this service.',
   serviceGuardrails: 'Safety filters',
   serviceGuardrailsDesc:
     'The filters the service inherits from the organisation, and those that apply only to this service.',
@@ -166,4 +158,7 @@ export const devTools = {
   versions: 'Versions',
   versionsDesc: 'Published versions of the service.',
   afterPublish: 'Shown once the service is published.',
+  guardrailsInSetup:
+    'For a new service you choose the safety filters together with the risk level in Setup.',
+  openSetupRisk: 'Go to Safety in Setup',
 } satisfies Translation<typeof devToolsSource>;

@@ -53,3 +53,17 @@ describe('the access request API preview', () => {
     expect(shownBody().acceptedTerms).toBe(true);
   });
 });
+
+describe('an organisation that is not registered', () => {
+  it('can still open the profile page and choose a language', async () => {
+    const auth = mockAnsattporten({
+      name: 'Erik Larsen',
+      organisations: [{ orgNumber: '999888777', name: 'Testetaten', actions: ['use-services'] }],
+    });
+    await auth.login();
+    window.location.hash = '#/profile';
+    render(<App auth={auth} fetch={unregistered()} live />);
+
+    expect(await screen.findByRole('group', { name: 'Språk / Language' })).toBeTruthy();
+  });
+});

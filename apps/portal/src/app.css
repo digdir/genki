@@ -327,10 +327,22 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   overflow-x: hidden;
 }
 
-/* The open sidebar's content width, so the hidden menu wraps the same way. */
-.nav-placeholder {
-  visibility: hidden;
-  width: calc(256px - 24px);
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar.collapsed .nav-list a,
+.sidebar.collapsed .sidebar-org > .ds-button {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebar.collapsed .sidebar-org .org-static {
+  display: flex;
+  justify-content: center;
+  padding: 0;
 }
 
 .sidebar.collapsed .sidebar-top {
@@ -348,6 +360,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 .nav-group-heading {
+  display: block;
   font-size: var(--ds-font-size-2);
   color: var(--ds-color-neutral-text-subtle);
   padding: var(--ds-size-3) 12px 4px;
@@ -450,6 +463,8 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
   position: fixed;
   top: auto;
   right: auto;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .main {

@@ -45,12 +45,7 @@ export const availableSections = ({ isNew }: { isNew: boolean }) =>
   isNew
     ? order.filter(
         (s) =>
-          s === 'setup' ||
-          s === 'blocks' ||
-          s === 'settings' ||
-          s === 'test' ||
-          s === 'versions' ||
-          s === 'developer',
+          s === 'setup' || s === 'blocks' || s === 'test' || s === 'versions' || s === 'developer',
       )
     : order.filter((s) => s !== 'blocks');
 
@@ -112,12 +107,16 @@ export const locate = (
     return { section, detail: undefined, redirect: servicePath(id, section, suffix(legacy[1])) };
   }
   const moved =
-    raw === 'how-it-works' ? 'model' : raw === 'setup' ? movedSetup[detail ?? ''] : undefined;
+    raw === 'how-it-works'
+      ? 'model'
+      : raw === 'setup' && !(id === 'new' && detail === 'guards')
+        ? movedSetup[detail ?? '']
+        : undefined;
   if (moved)
     return {
       section: 'developer',
       detail: moved,
-      redirect: servicePath(id, 'developer', `/${moved}`),
+      redirect: servicePath(id, 'developer', `/${moved}${suffix('')}`),
     };
   const known = (Object.keys(sectionLabels) as ServiceSection[]).find((s) => s === raw);
   if (!raw) return { section: fallback, detail: undefined };

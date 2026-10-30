@@ -2,7 +2,6 @@ import { Alert, Heading, Paragraph } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
-import { NotDesigned } from '../DeveloperTools';
 import { servicePath } from './sections';
 import { defaultApiBase, serverSnippet } from './snippets';
 
@@ -12,7 +11,6 @@ export type DeveloperTool =
   | 'triggers'
   | 'model'
   | 'step-flow'
-  | 'hooks'
   | 'guardrails'
   | 'runs'
   | 'definition'
@@ -61,12 +59,6 @@ const tools: readonly Tool[] = [
     desc: 'devTools.stepFlowDesc',
     icon: 'M5 5h5v5H5zM14 14h5v5h-5zM10 7.5h4v9',
     links: [['#/step-flows', 'devTools.openStepFlows']],
-  },
-  {
-    id: 'hooks',
-    label: 'devTools.hooks',
-    desc: 'devTools.serviceHooksDesc',
-    icon: 'M10 4v8a4 4 0 1 0 8 0M18 12l-2-2M18 12l2-2',
   },
   {
     id: 'guardrails',
@@ -141,9 +133,7 @@ export const DeveloperSection = ({
           </pre>
         </div>
       </>
-    ) : tool.links ? null : (
-      <NotDesigned icon={tool.icon} />
-    ));
+    ) : null);
   return (
     <div className="dev-tools">
       <nav aria-label={t('devTools.serviceMenu')} className="dev-tools-nav">

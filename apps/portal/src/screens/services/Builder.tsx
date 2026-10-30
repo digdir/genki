@@ -98,7 +98,7 @@ import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
 import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
-import { IntegrationService, IntegrationTab, NotDesigned } from '../DeveloperTools';
+import { IntegrationService, IntegrationTab } from '../DeveloperTools';
 import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
@@ -448,7 +448,11 @@ export const Builder = ({
       return;
     }
     const section = c.section as SectionId;
-    const tool = Object.entries(developerTabSetup).find(([, ids]) => ids.includes(section))?.[0];
+    // A new service draws the filters inside Risiko in Oppsett.
+    const tool =
+      isNew && section === 'guards'
+        ? undefined
+        : Object.entries(developerTabSetup).find(([, ids]) => ids.includes(section))?.[0];
     if (tool) go('developer', `/${tool}`);
     else go('setup');
     setOpen((o) => ({ ...o, [section]: true }));
@@ -1158,13 +1162,7 @@ export const Builder = ({
           editor={setup(['start'])}
         />
       );
-    if (section === 'settings')
-      return isNew ? (
-        // The content for this tab is designed on branch claude/genki-services-new-design-6b9f9d.
-        <NotDesigned icon="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4" />
-      ) : (
-        <SettingsSection {...screenProps} id={id} />
-      );
+    if (section === 'settings') return <SettingsSection {...screenProps} id={id} />;
     if (section === 'quality') return <QualitySection {...screenProps} id={id} />;
     if (section === 'batch')
       return <BatchSection api={api} tenant={tenant} id={id} runId={detail} />;
@@ -1203,7 +1201,16 @@ export const Builder = ({
               </IntegrationService.Provider>
             ),
             model: setup(modelSetup),
-            guardrails: setup(guardrailsSetup),
+            guardrails: isNew ? (
+              <Paragraph>
+                {t('devTools.guardrailsInSetup')}{' '}
+                <a href={`#${servicePath('new', 'setup', '/risk')}`}>
+                  {t('devTools.openSetupRisk')}
+                </a>
+              </Paragraph>
+            ) : (
+              setup(guardrailsSetup)
+            ),
             runs: isNew ? (
               afterPublish
             ) : (

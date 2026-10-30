@@ -3,7 +3,7 @@ import { availableSections, locate, tabSections } from './sections';
 
 describe('service tabs', () => {
   it('leaves the test and definition pages out of a new service tabs but keeps their addresses', () => {
-    expect(tabSections({ isNew: true })).toEqual(['setup', 'blocks', 'settings', 'developer']);
+    expect(tabSections({ isNew: true })).toEqual(['setup', 'blocks', 'developer']);
     const at = locate(
       'new',
       ['services', 'new', 'versions'],
@@ -20,6 +20,27 @@ describe('service tabs', () => {
     );
     expect(test.section).toBe('test');
     expect(test.redirect).toBeUndefined();
+  });
+
+  it('keeps the query when an old setup address moves to the developer tab', () => {
+    const at = locate(
+      'rapport',
+      ['services', 'rapport', 'setup', 'how'],
+      new URLSearchParams('pane=assistent'),
+      availableSections({ isNew: false }),
+    );
+    expect(at.redirect).toBe('/services/rapport/developer/model?pane=assistent');
+  });
+
+  it('leaves the safety filters of a new service in setup', () => {
+    const at = locate(
+      'new',
+      ['services', 'new', 'setup', 'guards'],
+      new URLSearchParams(),
+      availableSections({ isNew: true }),
+    );
+    expect(at.section).toBe('setup');
+    expect(at.redirect).toBeUndefined();
   });
 
   it('shows building blocks only while a service is new', () => {

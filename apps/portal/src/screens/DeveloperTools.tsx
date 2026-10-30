@@ -1,21 +1,12 @@
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import { createContext, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
+import { NotAvailable } from '../components/NotAvailable';
 import type { Route } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
 import { Status } from './FooterPages';
-
-/** A page that has a place in the menu but no design yet. */
-export const NotDesigned = ({ icon }: { icon: string }) => {
-  const t = useT();
-  return (
-    <div className="empty-state">
-      <Icon d={icon} size={32} />
-      <Paragraph>{t('devTools.notDesigned')}</Paragraph>
-    </div>
-  );
-};
+import { GuardrailRules } from './service/GuardrailRules';
 
 interface Tool {
   id: string;
@@ -173,7 +164,7 @@ export const DeveloperTools = ({
   integrations,
   ...props
 }: ScreenProps & { integrations: (props: ScreenProps) => ReactNode }) => {
-  const { api, route } = props;
+  const { api, route, tenant, live } = props;
   const t = useT();
   const current = tools.find((tool) => tool.id === route.segments[1]) ?? statusTool;
   return (
@@ -195,6 +186,12 @@ export const DeveloperTools = ({
       ) : null}
       {current.id === 'status' ? (
         <Status api={api} />
+      ) : current.id === 'guardrails' ? (
+        live ? (
+          <GuardrailRules api={api} tenant={tenant} />
+        ) : (
+          <NotAvailable>{t('devTools.guardrailsNotAvailable')}</NotAvailable>
+        )
       ) : current.tab ? (
         <IntegrationTab.Provider value={current.tab}>{integrations(props)}</IntegrationTab.Provider>
       ) : current.links ? (
@@ -207,9 +204,7 @@ export const DeveloperTools = ({
             </a>
           ))}
         </div>
-      ) : (
-        <NotDesigned icon={current.icon} />
-      )}
+      ) : null}
     </DeveloperToolsFrame>
   );
 };

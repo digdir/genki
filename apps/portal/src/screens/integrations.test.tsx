@@ -46,6 +46,26 @@ const recording = () => {
 };
 
 describe('Integrasjoner: oversikt', () => {
+  it('opens a failing trigger from the follow-up list when it is on the same page', async () => {
+    await renderAt('#/developer/triggers?open=plan-uke');
+
+    fireEvent.click(screen.getByRole('link', { name: /^Køen «innkommende-post»/ }));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: /^Køen «innkommende-post»/ })
+          .getAttribute('aria-expanded'),
+      ).toBe('true'),
+    );
+  });
+
+  it('keeps the follow-up list off pages that have nothing to follow up', async () => {
+    await renderAt('#/developer/keys');
+
+    expect(screen.queryByRole('heading', { name: /trenger oppfølging/ })).toBeNull();
+  });
+
   it('shows what needs follow-up and opens the failing system with its fix', async () => {
     await renderAt('#/developer/systems');
 
@@ -56,7 +76,6 @@ describe('Integrasjoner: oversikt', () => {
     expect(screen.getByRole('link', { name: 'Systemer' }).getAttribute('aria-current')).toBe(
       'page',
     );
-    expect(screen.getAllByLabelText('1 med feil')).toHaveLength(2);
     expect(
       screen.getByText('Kallene blir avvist fordi klienten mangler en tillatelse.'),
     ).toBeTruthy();

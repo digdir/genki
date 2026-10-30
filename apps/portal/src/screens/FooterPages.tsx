@@ -42,7 +42,7 @@ export const Guide = () => {
       </Heading>
       <Paragraph>
         {t.rich('app.guideFollow', {
-          usage: link('#/usage'),
+          usage: link('#/statistics'),
           log: link('#/log'),
           access: link('#/access'),
           settings: link('#/settings'),

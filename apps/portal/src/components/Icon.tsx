@@ -11,6 +11,7 @@ export const icons = {
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
   warning: 'M12 3l10 18H2zM12 10v5M12 18v.5',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5',
+  organisation: 'M4 20V9l8-5 8 5v11M9 20v-5h6v5',
 } as const;
 
 export const Icon = ({

@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Heading, Paragraph, Tabs } from '@digdir/designsystemet-react';
+import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { NotAvailable } from '../components/NotAvailable';
@@ -115,23 +115,22 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   );
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const first = useRef(true);
+  const openParam = route.query.get('open');
+  const shown = useRef({ tab: queryTab, open: openParam });
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    setOpen(route.query.get('open') ?? defaultOpen[tab]);
-    setFlash(undefined);
-  }, [queryTab]);
+    const before = shown.current;
+    shown.current = { tab: queryTab, open: openParam };
+    if (before.tab === queryTab && before.open === openParam) return;
+    setOpen(openParam ?? defaultOpen[tab]);
+    if (before.tab !== queryTab) setFlash(undefined);
+  }, [queryTab, openParam]);
 
   const say = (text: string, color: Flash['color'] = 'success') => setFlash({ text, color });
-  const choose = (next: Tab, id?: string) =>
-    forService && next === 'triggers'
-      ? setOpen(id)
-      : navigate(`#/developer/${developerPageFor(next)}${id ? `?open=${id}` : ''}`);
+  const hrefFor = (next: Tab, id: string) =>
+    `#/developer/${developerPageFor(next)}?open=${encodeURIComponent(id)}`;
+  const choose = (next: Tab, id: string) =>
+    forService && next === 'triggers' ? setOpen(id) : navigate(hrefFor(next, id));
 
-  // On a service's own tab, only that service's triggers count.
   const shownTriggers = forService
     ? triggers.filter((x) => x.service === forService.name)
     : triggers;
@@ -142,21 +141,21 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
   const failingSystems = forService ? [] : systems.filter((x) => x.status === 'Feiler');
   const failingTriggers = shownTriggers.filter((x) => x.status === 'Feiler');
   const failingLive = shownLive.filter((x) => x.status === 'failing');
-  const problems = [
-    ...failingSystems.map((x) => ({
-      text: t('integrations.systemRejected', { name: x.name }),
-      go: () => choose('systems', x.id),
-    })),
-    ...failingTriggers.map((x) => ({
-      text: `${x.name}: ${x.count}`,
-      go: () => choose('triggers', x.id),
-    })),
-    ...failingLive.map((x) => ({ text: problemOf(x, t, f), go: () => choose('triggers', x.id) })),
-  ];
-  const badges: Partial<Record<Tab, number>> = {
-    systems: failingSystems.length,
-    triggers: failingTriggers.length + failingLive.length,
-  };
+  const problem = (kind: Tab, id: string, text: string) => ({
+    text,
+    href: hrefFor(kind, id),
+    go: () => choose(kind, id),
+  });
+  const problems =
+    tab === 'systems' || tab === 'triggers'
+      ? [
+          ...failingSystems.map((x) =>
+            problem('systems', x.id, t('integrations.systemRejected', { name: x.name })),
+          ),
+          ...failingTriggers.map((x) => problem('triggers', x.id, `${x.name}: ${x.count}`)),
+          ...failingLive.map((x) => problem('triggers', x.id, problemOf(x, t, f))),
+        ]
+      : [];
 
   const openScopes = (x: SystemClient) =>
     setDialog({ kind: 'scope', initial: { id: x.id, name: x.name, scopes: [...x.scopes] } });
@@ -433,6 +432,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
     />
   );
   const current = intro[tab];
+  const id = tab;
 
   return (
     <div className="stack int">
@@ -445,7 +445,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
             {problems.map((p) => (
               <li key={p.text}>
                 <a
-                  href="#/developer"
+                  href={p.href}
                   onClick={(e) => {
                     e.preventDefault();
                     p.go();
@@ -465,137 +465,103 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
           </Alert>
         ) : null}
       </div>
-      <Tabs value={tab} onChange={(v) => choose(tabFrom(v))}>
-        <Tabs.List aria-label={t('integrations.heading')} hidden>
-          {tabs.map(([id, label]) => {
-            const n = badges[id] ?? 0;
-            return (
-              <Tabs.Tab key={id} value={id}>
-                {t(label)}
-                {n ? (
-                  <Badge
-                    data-color="danger"
-                    count={n}
-                    aria-label={t('integrations.badgeFailing', { count: n })}
-                  />
-                ) : null}
-              </Tabs.Tab>
-            );
-          })}
-        </Tabs.List>
-        {tabs.map(([id]) => (
-          <Tabs.Panel key={id} value={id}>
-            {id === tab ? (
-              <div className="stack-md">
-                {current && !(live && id === 'frontends') ? (
-                  <div className="int-intro">
-                    <Paragraph className="meta int-intro-text">{current.text}</Paragraph>
-                    {live ? null : (
-                      <Button variant="primary" onClick={current.onAdd}>
-                        {current.add}
-                      </Button>
-                    )}
-                  </div>
-                ) : null}
-                {live && id === 'tracing' ? (
-                  <NotAvailable>{t('integrations.tracingNotAvailable')}</NotAvailable>
-                ) : null}
-                {id === 'frontends' && live ? (
-                  <Frontends api={api} tenant={tenant} onFlash={say} />
-                ) : null}
-                {id === 'triggers' && live ? (
-                  liveTriggers.status === 'loading' ? (
-                    <Loading label={t('integrations.loadingTriggers')} />
-                  ) : liveTriggers.status === 'error' ? (
-                    <ErrorState
-                      error={liveTriggers.error}
-                      onRetry={() => setTriggerTick((n) => n + 1)}
-                    />
-                  ) : (
-                    <Triggers
-                      api={api}
-                      tenant={tenant}
-                      triggers={shownLive}
-                      open={open}
-                      onToggle={(id) => setOpen(open === id ? undefined : id)}
-                      onChanged={() => setTriggerTick((n) => n + 1)}
-                      onFlash={say}
-                    />
-                  )
-                ) : null}
-                {id === 'systems' && live ? (
-                  <>
-                    <MaskinportenClients api={api} tenant={tenant} onFlash={say} />
-                    <Connections api={api} tenant={tenant} />
-                  </>
-                ) : null}
-                {id === 'systems' && !live ? (
-                  <>
-                    {list(systemItems, {
-                      title: t('integrations.noSystems'),
-                      text: t('integrations.noSystemsText'),
-                    })}
-                    <Connections api={api} tenant={tenant} />
-                  </>
-                ) : null}
-                {id === 'frontends' && !live
-                  ? list(frontendItems, {
-                      title: t('integrations.noFrontends'),
-                      text: t('integrations.noFrontendsText'),
-                    })
-                  : null}
-                {id === 'triggers' && !live
-                  ? list(triggerItems, {
-                      title: t('integrations.noTriggers'),
-                      text: t('integrations.noTriggersText'),
-                    })
-                  : null}
-                {id === 'keys' ? (
-                  <Keys api={api} tenant={tenant} onFlash={say} live={live} />
-                ) : null}
-                {id === 'keys' && live ? (
-                  <KeyPolicies api={api} tenant={tenant} onFlash={say} />
-                ) : null}
-                {id === 'hooks' ? (
-                  <Hooks api={api} tenant={tenant} tenantName={tenantName} onFlash={say} />
-                ) : null}
-                {id === 'tracing' && !live ? (
-                  <Tracing
-                    tenantName={tenantName}
-                    status={route.query.get('status') === 'ok' ? 'ok' : 'feil'}
-                    fullContent
-                  />
-                ) : null}
-                {id === 'docs' ? (
-                  <div className="stack-md">
-                    <ul className="int-docs plain-list">
-                      {docs.map((d) => (
-                        <li key={d.title}>
-                          <a href={d.href} className="int-doc">
-                            <span className="int-doc-title">{t(d.title)}</span>
-                            <span className="meta small">{t(d.desc)}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                    <div>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          downloadOpenApi(t);
-                          say(t('integrations.openApiDownloaded'));
-                        }}
-                      >
-                        {t('integrations.downloadOpenApi')}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </Tabs.Panel>
-        ))}
-      </Tabs>
+      <div className="stack-md">
+        {current && !(live && id === 'frontends') ? (
+          <div className="int-intro">
+            <Paragraph className="meta int-intro-text">{current.text}</Paragraph>
+            {live ? null : (
+              <Button variant="primary" onClick={current.onAdd}>
+                {current.add}
+              </Button>
+            )}
+          </div>
+        ) : null}
+        {live && id === 'tracing' ? (
+          <NotAvailable>{t('integrations.tracingNotAvailable')}</NotAvailable>
+        ) : null}
+        {id === 'frontends' && live ? <Frontends api={api} tenant={tenant} onFlash={say} /> : null}
+        {id === 'triggers' && live ? (
+          liveTriggers.status === 'loading' ? (
+            <Loading label={t('integrations.loadingTriggers')} />
+          ) : liveTriggers.status === 'error' ? (
+            <ErrorState error={liveTriggers.error} onRetry={() => setTriggerTick((n) => n + 1)} />
+          ) : (
+            <Triggers
+              api={api}
+              tenant={tenant}
+              triggers={shownLive}
+              open={open}
+              onToggle={(id) => setOpen(open === id ? undefined : id)}
+              onChanged={() => setTriggerTick((n) => n + 1)}
+              onFlash={say}
+            />
+          )
+        ) : null}
+        {id === 'systems' && live ? (
+          <>
+            <MaskinportenClients api={api} tenant={tenant} onFlash={say} />
+            <Connections api={api} tenant={tenant} />
+          </>
+        ) : null}
+        {id === 'systems' && !live ? (
+          <>
+            {list(systemItems, {
+              title: t('integrations.noSystems'),
+              text: t('integrations.noSystemsText'),
+            })}
+            <Connections api={api} tenant={tenant} />
+          </>
+        ) : null}
+        {id === 'frontends' && !live
+          ? list(frontendItems, {
+              title: t('integrations.noFrontends'),
+              text: t('integrations.noFrontendsText'),
+            })
+          : null}
+        {id === 'triggers' && !live
+          ? list(triggerItems, {
+              title: t('integrations.noTriggers'),
+              text: t('integrations.noTriggersText'),
+            })
+          : null}
+        {id === 'keys' ? <Keys api={api} tenant={tenant} onFlash={say} live={live} /> : null}
+        {id === 'keys' && live ? <KeyPolicies api={api} tenant={tenant} onFlash={say} /> : null}
+        {id === 'hooks' ? (
+          <Hooks api={api} tenant={tenant} tenantName={tenantName} onFlash={say} />
+        ) : null}
+        {id === 'tracing' && !live ? (
+          <Tracing
+            tenantName={tenantName}
+            status={route.query.get('status') === 'ok' ? 'ok' : 'feil'}
+            fullContent
+          />
+        ) : null}
+        {id === 'docs' ? (
+          <div className="stack-md">
+            <ul className="int-docs plain-list">
+              {docs.map((d) => (
+                <li key={d.title}>
+                  <a href={d.href} className="int-doc">
+                    <span className="int-doc-title">{t(d.title)}</span>
+                    <span className="meta small">{t(d.desc)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  downloadOpenApi(t);
+                  say(t('integrations.openApiDownloaded'));
+                }}
+              >
+                {t('integrations.downloadOpenApi')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
       {dialog ? (
         <FormDialog
           kind={dialog.kind}

@@ -84,7 +84,7 @@ export const Limit = ({
         {limit.title}
       </Heading>
       {limit.quota ? (
-        <Link href="#/usage">{t('states.seeUsage')}</Link>
+        <Link href="#/statistics">{t('states.seeUsage')}</Link>
       ) : onRetry ? (
         <Button variant="secondary" data-size="sm" onClick={onRetry}>
           {t('common.tryAgain')}

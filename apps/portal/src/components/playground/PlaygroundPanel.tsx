@@ -849,7 +849,7 @@ export const PlaygroundPanel = ({
               percent: quotaWarning,
               tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
               strong: (c) => <strong>{c}</strong>,
-              link: (c) => <Link href="#/usage">{c}</Link>,
+              link: (c) => <Link href="#/statistics">{c}</Link>,
             })}
           </Paragraph>
         </Alert>

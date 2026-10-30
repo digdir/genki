@@ -108,11 +108,9 @@ describe('shell', () => {
       '#hovedinnhold',
     );
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(
-      within(menu)
-        .getAllByRole('heading', { level: 2 })
-        .map((h) => h.textContent),
-    ).toEqual(['Bygg', 'Analyse', 'Administrasjon']);
+    for (const group of ['Bygg', 'Analyse', 'Administrasjon'])
+      expect(within(menu).getByRole('list', { name: group })).toBeTruthy();
+    expect(within(menu).queryByRole('heading')).toBeNull();
     expect(
       within(menu)
         .getAllByRole('listitem')
@@ -127,7 +125,6 @@ describe('shell', () => {
       'Utviklerverktøy',
       'Statistikk',
       'Logg',
-      'Tilbakemeldinger',
       'Tilgang',
     ]);
     expect(
@@ -153,16 +150,19 @@ describe('shell', () => {
     await waitFor(() => expect(window.location.hash).toBe(to));
   });
 
-  it('sends the old user guide address on to Onboarding', async () => {
+  it('sends the old user guide address on to Kom i gang', async () => {
     await renderAt('#/help');
     await waitFor(() => expect(window.location.hash).toBe('#/onboarding'));
   });
 
-  it('hides the sidebar and remembers it', async () => {
+  it('shrinks the sidebar to icons, keeps the menu and the organisation, and remembers it', async () => {
     await renderAt('#/overview');
     fireEvent.click(screen.getByRole('button', { name: 'Skjul sidepanelet' }));
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    expect(within(menu).queryByRole('link', { name: 'Tjenester' })).toBeNull();
+    expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('title')).toBe(
+      'Tjenester',
+    );
+    expect(within(menu).getByRole('button', { name: /Handler for Testetaten/ })).toBeTruthy();
     expect(localStorage.getItem('genki.sidebarCollapsed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Vis sidepanelet' }));
     expect(within(menu).getByRole('link', { name: 'Tjenester' })).toBeTruthy();
@@ -189,7 +189,7 @@ describe('shell', () => {
       within(menu)
         .getAllByRole('link')
         .map((a) => a.firstChild?.textContent),
-    ).toEqual(['Onboarding', 'Endringslogg', 'Profil', 'Kontakt Digdir', 'Databehandling']);
+    ).toEqual(['Kom i gang', 'Profil', 'Kontakt Digdir', 'Databehandling']);
     expect(within(menu).queryByRole('button', { name: 'Om tjenesten' })).toBeNull();
     expect(within(menu).getByRole('button', { name: 'Logg ut' })).toBeTruthy();
 
@@ -285,7 +285,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/onboarding', 'Onboarding'],
+    ['/onboarding', 'Kom i gang'],
     ['/status', 'Driftsstatus'],
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
