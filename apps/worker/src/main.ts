@@ -5,12 +5,17 @@ import {
   type BlockTexts,
   createRuntime,
   followChanges,
+  exchangeRateGuard,
   isLockdown,
+  latestUsdNok,
   loadCatalog,
   mayUseModels,
   ownedByPlatformTenant,
   platformTenantFrom,
+  readUsdNok,
   runtimeBlocksOf,
+  saveUsdNok,
+  scheduleUsdNok,
   TenantSecretVault,
   traceSinkAccess,
   tracesContent,
@@ -423,8 +428,31 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+// Norges Bank's USD/NOK rate, read once a day through the egress guard, shows a judge's reported cost in kroner.
+const rateLease = db ? new PostgresLeaderLease(db.pool, 'genai-worker-exchange-rate') : undefined;
+const rateGuard = exchangeRateGuard();
+const exchangeRate = db
+  ? scheduleUsdNok({
+      configEntries: db.configEntries,
+      guard: rateGuard,
+      ...(rateLease ? { active: () => rateLease.tryAcquire() } : {}),
+      onRead: (rate) => log('usd/nok rate', { ...rate }),
+      onError: (error) => log('usd/nok rate failed', { error: String(error) }),
+    })
+  : undefined;
+if (db)
+  void latestUsdNok(db.configEntries)
+    .then(async (known) => {
+      if (known) return;
+      const rate = await readUsdNok(rateGuard);
+      await saveUsdNok(db.configEntries, rate, new Date());
+      log('usd/nok rate', { ...rate });
+    })
+    .catch((error: unknown) => log('usd/nok rate failed', { error: String(error) }));
+
 const stop = () => {
   retention?.stop();
+  exchangeRate?.stop();
   stopFollowingChanges?.();
   following.stop();
   worker.stop();

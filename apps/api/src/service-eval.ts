@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { adoptionKind, blockKey } from '@genai/composition';
+import { adoptionKind, blockKey, latestUsdNok } from '@genai/composition';
 import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
@@ -103,6 +103,7 @@ export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
         values.length > 0
           ? { mean: mean(values), ci: bootstrapMean(values), n: values.length }
           : undefined;
+      const reported = run.usage?.reported?.[id];
       const dataType = scores.find((s) => typeof s.details?.dataType === 'string')?.details
         ?.dataType as string | undefined;
       return {
@@ -111,6 +112,7 @@ export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
         version: scores[0]?.version ?? '',
         ...(dataType ? { dataType } : {}),
         ...(metric ? { metric } : {}),
+        ...(reported ? { reported } : {}),
         ...(Object.keys(categories).length > 0 ? { categories } : {}),
         notApplicable: scores.length - applicable.length,
         missing: gap?.missing ?? applicable.filter((s) => s.state === 'pending').length,
@@ -224,6 +226,7 @@ export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge)
     tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
     ...(run.error ? { error: run.error } : {}),
     sinkJudges: sinkJudgesOf(run, isSinkJudge),
+    ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
     ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
   };
 };
@@ -762,9 +765,15 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
             : s,
         );
+        // A cost a sink reports in USD is shown with the rate of its day, kept with the run.
+        const usdNok =
+          result.usage?.reported && Object.keys(result.usage.reported).length > 0
+            ? await latestUsdNok(deps.configEntries).catch(() => undefined)
+            : undefined;
         await lease.update(
           () => ({
             ...result,
+            ...(usdNok && result.usage ? { usage: { ...result.usage, usdNok } } : {}),
             provenance: { ...result.provenance, services },
             ...(first.tested ? { tested: first.tested } : {}),
             progress: { done: cases.length, total: cases.length },

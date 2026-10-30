@@ -77,10 +77,22 @@ const setSummary = (set: TestSet) => {
   };
 };
 
-const costless = <T extends { cost?: unknown; tokens?: unknown }>(view: T) => {
+const costless = <
+  T extends { cost?: unknown; tokens?: unknown; usdNok?: unknown; sinkJudges?: object[] },
+>(
+  view: T,
+) => {
   const shown: Partial<T> = { ...view };
   delete shown.cost;
   delete shown.tokens;
+  delete shown.usdNok;
+  // What a sink reports its judges' calls cost is usage too.
+  if (view.sinkJudges)
+    shown.sinkJudges = view.sinkJudges.map((j) => {
+      const rest = { ...(j as { reported?: unknown }) };
+      delete rest.reported;
+      return rest;
+    }) as T['sinkJudges'];
   return shown;
 };
 

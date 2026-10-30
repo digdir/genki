@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; judge cost with the daily USD/NOK rate, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -59,7 +59,8 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - A boolean score becomes 1 or 0. A numeric score is scaled to the range 0 to 1 with its score config's minimum and maximum. A categorical score, or a numeric one without both bounds, is shown as it came.
 - A score is not applicable when a field the judge's mapping reads is empty for the case, or when the connection does not receive content. Langfuse fills a missing variable with empty text and still scores it.
 - Scores are written as `kernel.score` events on the case's task (`Kernel.annotate`) and into the `EvalRun`, whose provenance lists the judge's identity. The judge's reason may quote the answer, so it is kept only in the case task's `kernel.score` event and follows the case's retention (ADR 0011); the `EvalRun` keeps the score without it.
-- **Judge cost.** In the same pass the platform reads the judges' generations (`GET /api/public/observations?type=GENERATION&environment=langfuse-llm-as-a-judge`, in pages) and keeps those in the judge traces it found for the run's cases, as for erasure. It stores each judge's tokens and Langfuse's cost in USD on the run, with the rate used to show kroner (ADR 0038), marked as reported by Langfuse. The cost is shown beside the platform's own and does not count against the tenant's quota. Langfuse prices a call only when the model name the call reports matches its price table; otherwise only the tokens are stored.
+- **Judge cost.** In the same pass, for each score it takes, the platform reads the judge's execution trace (`GET /api/public/v2/observations?traceId=…`, the trace id found as for erasure) and adds up its `GENERATION` calls: their tokens, and Langfuse's cost in USD (`costDetails.total`). It stores them per judge on the run (`usage.reported`), marked as reported by Langfuse, with Norges Bank's USD/NOK rate and its date (`usage.usdNok`) to show kroner. The cost is shown beside the platform's own, only to those who see usage, and does not count against the tenant's quota. Langfuse prices a call only when the model name the call reports matches its price table; otherwise only the tokens are stored and the call is counted as unpriced. Langfuse also judges, and bills, the cases the platform counts as not applicable; those calls are not found and not counted.
+- **The rate.** The worker reads Norges Bank's official USD/NOK rate (`https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP`) once a day through the egress guard, and at start when none is known, and keeps the latest as a configuration entry (`exchange-rate`, `USD-NOK`). Until a rate is known, the cost is shown in dollars.
 
 **Labels from Langfuse.**
 
@@ -117,8 +118,8 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 
 ## Consequences
 
-- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode; Langfuse judges as building blocks with their snapshot, refusals and identity, the mapped fields they read, the score collector inside the run's lease, `judge changed`, and refusing gates on their metrics at save and at publish. Not built yet:
-  - judge cost, the label import with approval and the dataset import
+- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode; Langfuse judges as building blocks with their snapshot, refusals and identity, their reported cost with the daily USD/NOK rate, the mapped fields they read, the score collector inside the run's lease, `judge changed`, and refusing gates on their metrics at save and at publish. Not built yet:
+  - the label import with approval and the dataset import
   - naming a Langfuse judge directly in an API eval run without taking it in use
   - pending sink deletes after an erasure other than the nightly purge
   - showing a connection whose deletes keep failing as failing
@@ -135,7 +136,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - Labelling is an operator right today (ADR 0027). Whether agencies get it is not decided here.
 - The portal changes:
   - the Tracing screen manages a tenant's connections, shows each one's residency and brings labels back as pending calibration labels, not feedback
-  - the Quality screen shows Langfuse scores as advisory, apart from the platform's metrics, with not-applicable counts, missing scores, `judge changed`, each case's verdict and reason, and a link to the experiment (`/project/<project>/experiments/results?baseline=<run>` in 4.4.0); each judge's agreement with its labels and its reported cost are not built yet
+  - the Quality screen shows Langfuse scores as advisory, apart from the platform's metrics, with not-applicable counts, missing scores, `judge changed`, each case's verdict and reason, and a link to the experiment (`/project/<project>/experiments/results?baseline=<run>` in 4.4.0); with each judge's reported cost; each judge's agreement with its labels is not built yet
   - Byggeklosser lists each experiment judge with its model, evaluator version, data type and mapped fields, and says why a refused one cannot be taken in use
   - a run started in the portal can be sent to Langfuse with a checkbox
 - The operator of a Langfuse that receives content must meet ADR 0011's conditions.

@@ -382,9 +382,16 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const usageSoFar = (): EvalRun['usage'] => {
     if (!options.meterAnswers) return undefined;
     const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    const reported = Object.fromEntries(
+      evaluators.flatMap((e) => {
+        const r = e.reportedUsage?.();
+        return r && (r.inputTokens + r.outputTokens > 0 || r.unpriced > 0) ? [[e.id, r]] : [];
+      }),
+    );
     return {
       answers: sumUsage(answered),
       ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+      ...(Object.keys(reported).length > 0 ? { reported } : {}),
     };
   };
   let lastSent = now();

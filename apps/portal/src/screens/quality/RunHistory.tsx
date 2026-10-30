@@ -103,6 +103,32 @@ const verdictText = (t: T, f: Format, j: CaseJudgement) => {
   return j.value === null ? '' : f.percent(j.value);
 };
 
+/** What Langfuse reports a judge's calls cost: kroner at the run's rate, dollars until one is known. */
+const reportedCostText = (
+  t: T,
+  f: Format,
+  reported: NonNullable<NonNullable<EvalRun['sinkJudges']>[number]['reported']>,
+  usdNok: EvalRun['usdNok'],
+) => {
+  const tokens = f.number(reported.inputTokens + reported.outputTokens);
+  const unpriced =
+    reported.unpriced > 0 ? ` ${t('quality.sinkJudgeUnpriced', { count: reported.unpriced })}` : '';
+  if (reported.costUsd === null)
+    return `${t('quality.sinkJudgeTokensOnly', { tokens })}${unpriced}`;
+  const usd = f.decimal(reported.costUsd, 4);
+  return `${
+    usdNok
+      ? t('quality.sinkJudgeCost', {
+          kroner: f.currency(reported.costUsd * usdNok.rate, { digits: 2 }),
+          usd,
+          rate: f.decimal(usdNok.rate, 4),
+          date: f.date(usdNok.date),
+          tokens,
+        })
+      : t('quality.sinkJudgeCostUsd', { usd, tokens })
+  }${unpriced}`;
+};
+
 /** Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. */
 const SinkJudges = ({ run }: { run: EvalRun }) => {
   const { t, f } = usePortalFormat();
@@ -155,6 +181,9 @@ const SinkJudges = ({ run }: { run: EvalRun }) => {
           ) : null}
           {j.changed.length > 0 ? (
             <Paragraph data-size="sm">{t('quality.sinkJudgeChanged')}</Paragraph>
+          ) : null}
+          {j.reported ? (
+            <Paragraph data-size="sm">{reportedCostText(t, f, j.reported, run.usdNok)}</Paragraph>
           ) : null}
         </div>
       ))}

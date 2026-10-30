@@ -1,6 +1,6 @@
 import { sameSource, type Observation } from './observe.js';
 import { compilePattern } from './pattern.js';
-import type { Score, TestCase, UsageSummary } from './schema.js';
+import type { ReportedUsage, Score, TestCase, UsageSummary } from './schema.js';
 
 export interface EvalContext {
   servedModels: string[];
@@ -46,6 +46,8 @@ export interface Evaluator {
   reasonsOnTheCase?: boolean;
   /** Its scores are shown apart and never count in the run's metrics or its gates. */
   advisory?: boolean;
+  /** What a sink reports this evaluator's own calls used, outside the platform's metering. */
+  reportedUsage?(): ReportedUsage;
 }
 
 /**

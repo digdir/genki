@@ -5,9 +5,11 @@ import {
   type Evaluator,
   type Observation,
   type PendingScore,
+  type ReportedUsage,
   type Score,
   type TestCase,
 } from '@genai/eval';
+import { judgeTraceIdOf } from './sink.js';
 import { traceIdFor } from './spans.js';
 
 export interface LangfuseApiOptions {
@@ -90,7 +92,14 @@ interface RawScore {
   comment?: string | null;
   configId?: string | null;
   timestamp?: string;
-  metadata?: { job_configuration_id?: unknown };
+  metadata?: { job_configuration_id?: unknown; job_execution_id?: unknown };
+}
+
+interface RawObservation {
+  type?: string;
+  inputUsage?: number;
+  outputUsage?: number;
+  costDetails?: Record<string, number>;
 }
 
 const dataTypes = new Set<string>(['BOOLEAN', 'NUMERIC', 'CATEGORICAL']);
@@ -330,6 +339,25 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     run: { tenant: string; content: boolean },
   ): Evaluator => {
     const version = `v${judge.evaluator.version}+${modelText(judge.evaluator.model)}`;
+    // What Langfuse reports the judge's own calls cost, read from each execution's trace once.
+    const reported: ReportedUsage = { inputTokens: 0, outputTokens: 0, costUsd: null, unpriced: 0 };
+    const counted = new Set<string>();
+    const countCalls = async (execution: string, signal?: AbortSignal) => {
+      if (counted.has(execution)) return;
+      const found = await read<{ data: RawObservation[] }>(
+        `/api/public/v2/observations?traceId=${judgeTraceIdOf(execution)}&fields=core,basic,usage,model&limit=100`,
+        signal,
+      );
+      counted.add(execution);
+      for (const o of found?.data ?? []) {
+        if (o.type !== 'GENERATION') continue;
+        reported.inputTokens += o.inputUsage ?? 0;
+        reported.outputTokens += o.outputUsage ?? 0;
+        const cost = o.costDetails?.total;
+        if (typeof cost === 'number') reported.costUsd = (reported.costUsd ?? 0) + cost;
+        else reported.unpriced += 1;
+      }
+    };
     const base = { evaluator: judge.id, version, metric: judge.id };
     const notApplicable = (reason: string): Score => ({
       ...base,
@@ -345,6 +373,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       judge: `langfuse:${run.tenant}/${judge.connection}/${judge.rule.name}@${version}`,
       reasonsOnTheCase: true,
       advisory: true,
+      reportedUsage: () => ({ ...reported }),
       evaluate: async (c, o) => {
         if (c.split === 'holdout') return [notApplicable('holdout cases are never sent')];
         if (!run.content) return [notApplicable('the connection does not receive content')];
@@ -376,6 +405,8 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
             .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''));
           const raw = ours[0];
           if (!raw) continue;
+          if (typeof raw.metadata?.job_execution_id === 'string')
+            await countCalls(raw.metadata.job_execution_id, signal);
           const read = valueOf(raw, raw.configId ? await boundsOf(raw.configId) : undefined);
           const details = {
             ...(raw.dataType ? { dataType: raw.dataType } : {}),

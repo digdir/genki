@@ -9,6 +9,7 @@ import {
 } from '@genai/eval';
 import { describe, expect, it } from 'vitest';
 import { langfuseJudges, type LangfuseJudge } from './judges.js';
+import { judgeTraceIdOf } from './sink.js';
 import { traceIdFor } from './spans.js';
 
 interface FakeRule {
@@ -39,7 +40,14 @@ interface FakeScore {
   comment?: string;
   configId?: string | null;
   timestamp?: string;
-  metadata: { job_configuration_id: string };
+  metadata: { job_configuration_id: string; job_execution_id?: string };
+}
+
+interface FakeGeneration {
+  type: string;
+  inputUsage: number;
+  outputUsage: number;
+  costDetails: Record<string, number>;
 }
 
 const rule = (over: Partial<FakeRule> = {}): FakeRule => ({
@@ -72,6 +80,8 @@ const fakeLangfuse = (project: {
   evaluators: FakeEvaluator[];
   scores?: Record<string, FakeScore[]>;
   configs?: Record<string, { minValue?: number; maxValue?: number }>;
+  /** The observations of each judge execution trace. */
+  judgeTraces?: Record<string, FakeGeneration[]>;
 }): typeof fetch => {
   return async (input) => {
     const url = new URL(String(input));
@@ -105,6 +115,10 @@ const fakeLangfuse = (project: {
       return found
         ? Response.json({ id: configId, ...found })
         : new Response('{}', { status: 404 });
+    }
+    if (path === '/api/public/v2/observations') {
+      const trace = url.searchParams.get('traceId') ?? '';
+      return Response.json({ data: project.judgeTraces?.[trace] ?? [], meta: {} });
     }
     if (path === '/api/public/v3/scores') {
       const trace = url.searchParams.get('traceId') ?? '';
@@ -391,6 +405,53 @@ describe('Langfuse judges', () => {
 
     expect(judgedExpectation(golden)).toEqual({ criteria: 'Klagefristen er tre uker.' });
     expect((await judge.evaluate(golden, svar, ctx))[0]).toMatchObject({ state: 'pending' });
+  });
+
+  it('stores tokens only for a model Langfuse does not price', async () => {
+    const scoreOn = (task: string, execution: string) => ({
+      [traceIdFor(task)]: [
+        {
+          name: 'svar_oppfyller_kriteriene-eksperimenter',
+          value: true,
+          dataType: 'BOOLEAN',
+          metadata: { job_configuration_id: 'regel-1', job_execution_id: execution },
+        },
+      ],
+    });
+    const generation = (costDetails: Record<string, number>): FakeGeneration => ({
+      type: 'GENERATION',
+      inputUsage: 1200,
+      outputUsage: 300,
+      costDetails,
+    });
+    const project = {
+      rules: [rule()],
+      evaluators: [evaluator()],
+      scores: { ...scoreOn('sak-1', 'jobb-1'), ...scoreOn('sak-2', 'jobb-2') },
+      judgeTraces: {
+        [judgeTraceIdOf('jobb-1')]: [
+          generation({ input: 0.0024, output: 0.003, total: 0.0054 }),
+          { type: 'SPAN', inputUsage: 0, outputUsage: 0, costDetails: {} },
+        ],
+        // A model Langfuse has no price for: its tokens count, its cost is unknown.
+        [judgeTraceIdOf('jobb-2')]: [generation({})],
+      },
+    };
+    const judge = langfuseJudges(api(fakeLangfuse(project))).evaluator(
+      await listed(fakeLangfuse(project)),
+      { tenant: 'dfo', content: true },
+    );
+    const [first] = await judge.evaluate(kriteriesak, svar, ctx);
+    const [second] = await judge.evaluate(kriteriesak, svar, { ...ctx, task: 'sak-2' });
+
+    await judge.collect?.([pendingOf(first as Score), pendingOf(second as Score, 'sak-2')]);
+
+    expect(judge.reportedUsage?.()).toEqual({
+      inputTokens: 2400,
+      outputTokens: 600,
+      costUsd: 0.0054,
+      unpriced: 1,
+    });
   });
 
   it("reads a boolean as 1 or 0, scales a number by its config's bounds, and keeps a category as it came", async () => {

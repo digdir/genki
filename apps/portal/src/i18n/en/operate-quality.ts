@@ -164,6 +164,13 @@ export const qualityArea = {
     sinkJudgeNotApplicable: 'Not applicable: {count} cases',
     sinkJudgeChanged: 'The judge has changed since the run started.',
     sinkJudgeExperiment: 'See the experiment in Langfuse',
+    sinkJudgeCost:
+      'Cost reported by Langfuse: {kroner} ({usd} USD at a rate of {rate} from {date}), {tokens} tokens',
+    sinkJudgeCostUsd:
+      'Cost reported by Langfuse: {usd} USD, {tokens} tokens. The amount in kroner shows once the rate from Norges Bank is read.',
+    sinkJudgeTokensOnly: 'Langfuse has no price for the model: {tokens} tokens.',
+    sinkJudgeUnpriced:
+      'Langfuse had no price for {count} of the calls; only their tokens are included.',
     sinkJudgeOnCase: '{name} (Langfuse)',
     verdictYes: 'Yes',
     verdictNo: 'No',

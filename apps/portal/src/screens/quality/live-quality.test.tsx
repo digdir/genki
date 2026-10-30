@@ -689,4 +689,34 @@ describe('live Testsett: Langfuse-dommere', () => {
     fireEvent.click(start);
     expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
   });
+
+  const costedRun = (usdNok?: { rate: number; date: string }) => ({
+    ...judgedRun,
+    id: 'med-kostnad',
+    ...(usdNok ? { usdNok } : {}),
+    sinkJudges: judgedRun.sinkJudges.map((j) => ({
+      ...j,
+      reported: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unpriced: 0 },
+    })),
+  });
+  const costLine = async (run: ReturnType<typeof costedRun>) => {
+    await openLive('', { runs: [run] });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+    return within(langfuse).getByText(/^Kostnad rapportert av Langfuse/).textContent;
+  };
+
+  it('shows the cost in kroner with the rate the run stored', async () => {
+    expect(await costLine(costedRun({ rate: 9.2826, date: '2026-10-29' }))).toMatch(
+      /^Kostnad rapportert av Langfuse: 0,11\skr \(0,0123 USD med kurs 9,2826 fra 29\.\soktober 2026\), 5\s308 tokens$/,
+    );
+  });
+
+  it("reads Norges Bank's USD/NOK rate once a day through the egress guard, and shows dollars until one is known", async () => {
+    expect(await costLine(costedRun())).toMatch(
+      /^Kostnad rapportert av Langfuse: 0,0123 USD, 5\s308 tokens\. Kronebeløpet vises når kursen fra Norges Bank er hentet\.$/,
+    );
+  });
 });

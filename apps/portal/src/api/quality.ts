@@ -63,6 +63,8 @@ export interface EvalRun {
   sinkJudges?: SinkJudgeSummary[];
   /** Where Langfuse shows the run as an experiment. */
   experiment?: string;
+  /** The USD/NOK rate the run shows reported costs with, and its day. */
+  usdNok?: { rate: number; date: string };
 }
 
 export interface SinkJudgeSummary {
@@ -78,6 +80,13 @@ export interface SinkJudgeSummary {
   of: number;
   /** What changed in the judge since the run started; empty when nothing did. */
   changed: string[];
+  /** What Langfuse reports the judge's own calls used; only for those who see usage. */
+  reported?: {
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number | null;
+    unpriced: number;
+  };
 }
 
 export interface CaseJudgement {

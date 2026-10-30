@@ -17,6 +17,7 @@ import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
+import { saveUsdNok } from '@genai/composition';
 import { translateMessage } from './i18n/index.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
@@ -1075,7 +1076,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
                 dataType: 'BOOLEAN',
                 source: 'EVAL',
                 comment: 'Svaret oppgir fristen.',
-                metadata: { job_configuration_id: r.id },
+                metadata: { job_configuration_id: r.id, job_execution_id: `jobb-${span.traceId}` },
               },
             ]);
       return ok({});
@@ -1101,6 +1102,19 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       });
     if (url.pathname === '/api/public/v3/scores')
       return ok({ data: scores.get(url.searchParams.get('traceId') ?? '') ?? [], meta: {} });
+    // Each judge execution's trace has one call, priced by Langfuse.
+    if (url.pathname === '/api/public/v2/observations')
+      return ok({
+        data: [
+          {
+            type: 'GENERATION',
+            inputUsage: 4321,
+            outputUsage: 987,
+            costDetails: { input: 0.0087, output: 0.0036, total: 0.0123 },
+          },
+        ],
+        meta: {},
+      });
     if (url.pathname === '/api/public/projects')
       return ok({ data: [{ id: 'genki-test', name: 'genki test' }] });
     return { status: 404, json: {} };
@@ -1393,6 +1407,56 @@ describe('Langfuse judges on a run', () => {
     expect(sending.body).toMatchObject({ refused: { reason: 'no-content', connection: 'lokal' } });
     expect(started.status).toBe(409);
     expect(JSON.stringify(started.body)).toContain(nothing);
+  });
+
+  it("stores each Langfuse judge's tokens and reported cost on the run, outside the quota", async () => {
+    const { env, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    await saveUsdNok(env.platform.configEntries, { rate: 9.2826, date: '2026-10-29' }, new Date());
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const listed = await env.send('GET', `${services}/eval-runs`);
+    const usage = await env.send('GET', `/tenants/${tenant}/usage?days=1`);
+    const unseen = await env.send(
+      'GET',
+      `/tenants/${tenant}/eval-runs/${String(started.body.id)}`,
+      'erik',
+    );
+
+    // One case is scored, so one judge call; holdout and cases without criteria cost nothing here.
+    expect(stored?.run.usage?.reported).toEqual({
+      [`langfuse:lokal/${judgeRule}`]: {
+        inputTokens: 4321,
+        outputTokens: 987,
+        costUsd: 0.0123,
+        unpriced: 0,
+      },
+    });
+    const summary = (listed.body.data as { id: string; tokens: { input: number } }[]).find(
+      (r) => r.id === started.body.id,
+    );
+    expect(summary?.tokens.input).toBe(
+      (stored?.run.usage?.answers.inputTokens ?? 0) + (stored?.run.usage?.judges?.inputTokens ?? 0),
+    );
+    expect(usage.status).toBe(200);
+    expect(JSON.stringify(usage.body)).not.toContain('4321');
+    // The run keeps the rate it shows the cost with, and only those who see usage see either.
+    expect(stored?.run.usage?.usdNok).toEqual({ rate: 9.2826, date: '2026-10-29' });
+    expect(
+      (
+        listed.body.data as { id: string; usdNok?: unknown; sinkJudges: { reported?: unknown }[] }[]
+      ).find((r) => r.id === started.body.id),
+    ).toMatchObject({
+      usdNok: { rate: 9.2826, date: '2026-10-29' },
+      sinkJudges: [{ reported: { inputTokens: 4321, costUsd: 0.0123 } }],
+    });
+    expect(unseen.status).toBe(200);
+    expect(JSON.stringify(unseen.body)).not.toContain('4321');
+    expect(JSON.stringify(unseen.body)).not.toContain('9.2826');
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
