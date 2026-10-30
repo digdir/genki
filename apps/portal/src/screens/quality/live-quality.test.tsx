@@ -171,7 +171,6 @@ describe('live Testsett', () => {
               caseId: 'o1',
               input: 'Hei',
               expected: 'Hilser',
-              split: 'open',
               output: 'Hei!',
               pass: true,
             },
