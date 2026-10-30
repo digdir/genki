@@ -4,8 +4,8 @@ import { serialized } from './config-store.js';
 export const restartMessage = 'Avbrutt fordi plattformen ble startet på nytt';
 
 export interface Leased {
-  owner?: string;
-  heartbeatAt?: string;
+  owner?: string | undefined;
+  heartbeatAt?: string | undefined;
 }
 
 export interface LeaseOptions {

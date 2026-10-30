@@ -2,6 +2,13 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import {
+  InMemoryCandidateStore,
+  InMemoryEvalRunStore,
+  InMemoryFeedbackStore,
+  InMemoryTestSetStore,
+  type EvalRun,
+} from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { restartMessage } from './background-lease.js';
@@ -9,7 +16,6 @@ import { createPlatform, platformModules } from './composition.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { improvementKind } from './improvements.js';
 import { createQualityModule, qualityModule } from './quality.js';
-import { serviceRunKind } from './service-eval.js';
 
 const tenant = '991825827';
 const kari: Principal = {
@@ -22,68 +28,70 @@ const kari: Principal = {
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-const run = (id: string, lease: { owner?: string; heartbeatAt?: string }, startedAt: string) => ({
+const run = (
+  id: string,
+  lease: { owner?: string; heartbeatAt?: string },
+  startedAt: string,
+): EvalRun => ({
   id,
-  service: 'svar',
-  status: 'running',
-  testSet: 'svar-frister',
-  testSetVersion: 1,
-  version: 1,
+  testSet: { tenant, id: 'svar-frister', version: 1 },
+  capability: 'draft/builder/abc',
+  splits: ['train', 'validation', 'holdout'],
+  repeats: 1,
   startedAt,
-  endedAt: null,
-  score: null,
-  passed: 0,
-  total: 3,
-  cost: null,
-  tokens: { input: 0, output: 0 },
-  cases: [],
+  endedAt: startedAt,
+  provenance: { commit: 'dev', data: 'live', servedModels: [], judges: [], services: [] },
+  results: [],
+  metrics: {},
+  byTag: {},
+  incomplete: [],
+  status: 'running',
+  tested: { version: 1 },
   ...lease,
 });
 
-const seed = async (entries: InMemoryConfigEntryStore) => {
-  const put = (kind: string, id: string, spec: unknown) =>
-    entries.append({
-      kind,
-      scope: tenant,
-      id,
-      version: 1,
-      spec: spec as Record<string, unknown>,
-      deleted: false,
-      by: 'employee:test:kari',
-      reason: 'Kjører',
-      at: minutesAgo(10),
-    });
-  await put(
-    serviceRunKind,
-    'before-restart',
+const seed = async (entries: InMemoryConfigEntryStore, runs: InMemoryEvalRunStore) => {
+  const stored = (r: EvalRun) => runs.save({ run: r, tenant, task: '', service: 'svar' });
+  await stored(
     run('before-restart', { owner: 'old', heartbeatAt: minutesAgo(10) }, minutesAgo(12)),
   );
-  await put(serviceRunKind, 'legacy', run('legacy', {}, minutesAgo(60)));
-  await put(
-    serviceRunKind,
-    'other-instance',
-    run('other-instance', { owner: 'live', heartbeatAt: minutesAgo(0) }, minutesAgo(5)),
-  );
-  await put(improvementKind, 'proposal', {
+  await stored(run('legacy', {}, minutesAgo(60)));
+  await stored(run('other-instance', { owner: 'live', heartbeatAt: minutesAgo(0) }, minutesAgo(5)));
+  await stored({
+    ...run('waiting', { owner: 'old', heartbeatAt: minutesAgo(8) }, minutesAgo(9)),
+    status: 'waiting-for-scores',
+  });
+  await entries.append({
+    kind: improvementKind,
+    scope: tenant,
     id: 'proposal',
-    service: 'svar',
-    status: 'running',
-    testSet: 'svar-frister',
-    baseVersion: 1,
-    target: { path: 'spec.strategy.config.instructions' },
-    change: null,
-    scores: null,
-    examples: [],
-    reasons: [],
-    createdAt: minutesAgo(12),
-    owner: 'old',
-    heartbeatAt: minutesAgo(10),
+    version: 1,
+    spec: {
+      id: 'proposal',
+      service: 'svar',
+      status: 'running',
+      testSet: 'svar-frister',
+      baseVersion: 1,
+      target: { path: 'spec.strategy.config.instructions' },
+      change: null,
+      scores: null,
+      examples: [],
+      reasons: [],
+      createdAt: minutesAgo(12),
+      owner: 'old',
+      heartbeatAt: minutesAgo(10),
+    },
+    deleted: false,
+    by: 'employee:test:kari',
+    reason: 'Kjører',
+    at: minutesAgo(10),
   });
 };
 
 const boot = async () => {
   const entries = new InMemoryConfigEntryStore();
-  await seed(entries);
+  const runs = new InMemoryEvalRunStore();
+  await seed(entries, runs);
   const background: Promise<void>[] = [];
   const platform = await createPlatform({
     catalogs: {
@@ -95,6 +103,12 @@ const boot = async () => {
     definitions: (p) => new InMemoryDefinitionStore(p),
     policy: { decide: async () => ({ allow: true }) },
     configurables: { store: entries },
+    evalStores: {
+      testSets: new InMemoryTestSetStore(),
+      runs,
+      feedback: new InMemoryFeedbackStore(),
+      candidates: new InMemoryCandidateStore(),
+    },
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -114,34 +128,37 @@ const boot = async () => {
   );
   const get = async (path: string) =>
     (await (await app.request(path)).json()) as { data: Record<string, unknown>[] };
-  return { entries, get };
+  return { entries, runs, get };
 };
 
 describe('background work after a restart', () => {
-  it('marks runs and proposals left running before the restart as failed, but not a live run on another instance', async () => {
-    const { entries, get } = await boot();
+  it('marks test runs and proposals left running or waiting before the restart as interrupted or failed, ended at their last heartbeat, but not a live run on another instance', async () => {
+    const { entries, runs, get } = await boot();
 
+    const listed = (await get(`/tenants/${tenant}/services/svar/eval-runs`)).data;
     const latest = async (kind: string, id: string) =>
       (await entries.history(kind, tenant, id)).at(-1)?.spec as Record<string, unknown>;
-    expect(await latest(serviceRunKind, 'before-restart')).toMatchObject({
-      status: 'failed',
-      error: restartMessage,
+
+    expect(Object.fromEntries(listed.map((r) => [r.id, r.status]))).toEqual({
+      'before-restart': 'interrupted',
+      legacy: 'interrupted',
+      'other-instance': 'running',
+      waiting: 'interrupted',
     });
-    expect(await latest(serviceRunKind, 'legacy')).toMatchObject({
-      status: 'failed',
-      error: restartMessage,
+    const all = (await get(`/tenants/${tenant}/eval-runs`)).data;
+    expect(Object.fromEntries(all.map((r) => [r.id, r.status]))).toMatchObject({
+      'other-instance': 'running',
+      waiting: 'interrupted',
     });
-    expect(await latest(serviceRunKind, 'other-instance')).toMatchObject({ status: 'running' });
+    expect((await runs.get('before-restart'))?.run).toMatchObject({
+      status: 'interrupted',
+      error: restartMessage,
+      endedAt: (await runs.get('before-restart'))?.run.heartbeatAt,
+    });
+    expect((await runs.get('other-instance'))?.run.status).toBe('running');
     expect(await latest(improvementKind, 'proposal')).toMatchObject({
       status: 'failed',
       error: restartMessage,
-    });
-
-    const runs = (await get(`/tenants/${tenant}/services/svar/eval-runs`)).data;
-    expect(Object.fromEntries(runs.map((r) => [r.id, r.status]))).toEqual({
-      'before-restart': 'failed',
-      legacy: 'failed',
-      'other-instance': 'running',
     });
     const proposals = (await get(`/tenants/${tenant}/services/svar/improvements`)).data;
     expect(proposals).toEqual([

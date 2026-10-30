@@ -4,19 +4,27 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
-import { parseTestSet, type FeedbackRecord } from '@genai/eval';
+import { InMemoryDefinitionStore, SettingsRegistry, validateDefinition } from '@genai/definitions';
+import { gate, parseTestSet, publishGate, type EvalRun, type FeedbackRecord } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
+import { definitionSubject } from './definition-subject.js';
+import { confirmedAs } from './risk-confirmation.js';
 import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
-import type { ServiceRun } from './service-eval.js';
+import {
+  answerOfParts,
+  progressed,
+  runSummary,
+  waitingForScores,
+  type runDetail,
+} from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -412,6 +420,23 @@ describe('the platform eval capability with the criteria judge', () => {
   });
 });
 
+describe('a run on a draft that cannot run', () => {
+  it('answers 422 with the reasons instead of starting', async () => {
+    const env = await boot();
+    const norwegian = structuredClone(service);
+    norwegian.spec.model.residency = 'norway';
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: norwegian,
+    });
+
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain('outside norway');
+  });
+});
+
 describe('eval runs for a service', () => {
   it('runs the published version and records each case with its output and reason', async () => {
     const env = await boot();
@@ -419,12 +444,12 @@ describe('eval runs for a service', () => {
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(list.body.data).toEqual([
       expect.objectContaining({
         id,
-        status: 'succeeded',
+        status: 'completed',
         testSet: 'svar-frister',
         version: 1,
         passed: 1,
@@ -447,18 +472,107 @@ describe('eval runs for a service', () => {
     expect(run.tokens.input).toBeGreaterThan(0);
   });
 
+  it('runs as an eval run whose metrics have confidence intervals and whose judge is named with its model', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`)).body;
+    const stored = await env.platform.evalStores.runs.get(id);
+
+    expect(run.metrics).toMatchObject({
+      'judge.criteria': { mean: 0, ci: [0, 0], n: 2 },
+      refusal: { mean: 1, n: 1 },
+    });
+    expect(run.judges).toEqual([`judge:criteria@1+${judgeId}`]);
+    expect(stored?.run).toMatchObject({
+      status: 'completed',
+      provenance: { judges: [`judge:criteria@1+${judgeId}`], servedModels: [modelId] },
+    });
+  });
+
+  it('never judges with a model the service may answer with, its fallback too', async () => {
+    const env = await boot();
+    const withFallback = structuredClone(service) as { spec: { model: Record<string, unknown> } };
+    withFallback.spec.model = { ...withFallback.spec.model, fallback: judgeId };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: withFallback,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(stored?.run.provenance.judges).not.toContain(`judge:criteria@1+${judgeId}`);
+    expect(
+      stored?.run.results
+        .flatMap((r) => r.scores)
+        .filter((s) => s.metric === 'judge.criteria' && s.applicable)
+        .every((s) => s.state === 'failed'),
+    ).toBe(true);
+  });
+
+  it('feeds a publishing gate: the run is found under the spec it tested, as the gate looks it up', async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const validated = validateDefinition(service, env.platform.plugins);
+    if (!validated.ok) throw new Error('the service is invalid');
+
+    const decision = await publishGate({
+      tenant,
+      service: 'svar',
+      candidate: definitionSubject(validated.definition.spec),
+      evaluation: { testSets: ['svar-frister'], gates: ['avviser', 'kriterier'] },
+      runs: env.platform.evalStores.runs,
+      registry: new Map([
+        [
+          'avviser',
+          gate.parse({ id: 'avviser', metric: 'refusal', kind: 'threshold', threshold: 1 }),
+        ],
+        [
+          'kriterier',
+          gate.parse({
+            id: 'kriterier',
+            metric: 'judge.criteria',
+            kind: 'threshold',
+            threshold: 0.5,
+            split: 'train',
+          }),
+        ],
+      ]),
+    });
+
+    expect(decision.results.map((r) => [r.gate, r.pass, r.reason])).toEqual([
+      ['avviser', true, 'refusal 1.000 >= 1'],
+      [
+        'kriterier',
+        false,
+        `judge.criteria 0.000 < 0.5 (advisory: judge judge:criteria@1+${judgeId} is not calibrated to 0.6)`,
+      ],
+    ]);
+  });
+
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
     const env = await boot();
     const id = await runPublished(env);
 
     const list = await env.send('GET', `${services}/eval-runs`);
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`);
+    const all = await env.send('GET', `/tenants/${tenant}/eval-runs`);
+    const raw = await env.send('GET', `/eval-runs/${id}`);
 
-    for (const shown of [...(list.body.data as Record<string, unknown>[]), run.body]) {
+    for (const shown of [
+      ...(list.body.data as Record<string, unknown>[]),
+      run.body,
+      ...(all.body.data as Record<string, unknown>[]),
+      raw.body.run as Record<string, unknown>,
+    ]) {
       expect(shown).not.toHaveProperty('owner');
       expect(shown).not.toHaveProperty('heartbeatAt');
     }
     expect(run.body.kind).toBe('service');
+    expect(raw.status).toBe(200);
   });
 
   it('finds a run of the eval capability under the same path as a service run, told apart by kind', async () => {
@@ -506,11 +620,11 @@ describe('eval runs for a service', () => {
     });
     await env.settled();
     const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
-      .body as unknown as ServiceRun;
+      .body as unknown as ReturnType<typeof runDetail>;
 
     expect(unknown.status).toBe(404);
     expect(started.status).toBe(202);
-    expect(run).toMatchObject({ status: 'succeeded', variant: 'default' });
+    expect(run).toMatchObject({ status: 'completed', variant: 'default' });
   });
 
   it('records the cost from the price list, and no cost when a model has no price', async () => {
@@ -551,6 +665,125 @@ describe('eval runs for a service', () => {
     expect(run).not.toHaveProperty('tokens');
     expect(list[0]).not.toHaveProperty('cost');
     expect(withUsage.cost).toBeGreaterThan(0);
+    const all = (await env.send('GET', `/tenants/${tenant}/eval-runs`, 'erik')).body.data as Record<
+      string,
+      unknown
+    >[];
+    const raw = (await env.send('GET', `/eval-runs/${id}`, 'erik')).body;
+    const rawWithUsage = (await env.send('GET', `/eval-runs/${id}`, 'kari')).body;
+    expect(all[0]).not.toHaveProperty('usage');
+    expect(raw.run).not.toHaveProperty('usage');
+    expect(rawWithUsage.run).toHaveProperty('usage');
+  });
+
+  it('compares only completed runs, and finds a run only under its own tenant', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+    const stored = await env.platform.evalStores.runs.get(id);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, id: 'pagar', status: 'running' },
+    });
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${id}&candidate=pagar&metric=refusal`,
+    );
+    const elsewhere = await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola');
+
+    expect(compared.status).not.toBe(200);
+    expect(JSON.stringify(compared.body)).toContain('eval run pagar is running, not completed');
+    expect(elsewhere.status).toBe(404);
+  });
+
+  it('shows no cost for a run whose model has no price, rather than a cost of nothing', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'kari')).body;
+
+    expect(run.cost).toBeNull();
+    expect(run.tokens).toMatchObject({ input: expect.any(Number) });
+  });
+
+  it('compares two runs of the same version, since a run names the service it tested, not its one-off draft', async () => {
+    const env = await boot();
+    const first = await runPublished(env);
+    const second = await runPublished(env);
+
+    const stored = await env.platform.evalStores.runs.get(second);
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${first}&candidate=${second}&metric=refusal`,
+    );
+
+    expect(stored?.run.provenance.services.every((s) => s.startsWith(`${tenant}/svar@`))).toBe(
+      true,
+    );
+    expect(compared.status).toBe(200);
+  });
+
+  it("keeps a test run's own eval task out of Kjøringer, as its answers are", async () => {
+    const env = await boot();
+    await runPublished(env);
+
+    const tasks = (await env.send('GET', `/tenants/${tenant}/tasks`)).body.data as {
+      capability?: string;
+      service?: { capability?: { id?: string } };
+    }[];
+
+    expect(tasks.some((t) => JSON.stringify(t).includes('platform/eval'))).toBe(false);
+  });
+
+  it("finds a draft's run under the spec the publish check computes for that draft", async () => {
+    const env = await boot();
+    const draft = structuredClone(service);
+    draft.spec.strategy.config.instructions = better;
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(validated.definition.spec),
+    });
+
+    expect(found.map((s) => [s.run.status, s.run.tested?.version])).toEqual([
+      ['completed', 'draft'],
+    ]);
+  });
+
+  it("finds a risk-confirmed draft's run under the spec publish checks, though publish stamps the confirmation", async () => {
+    const env = await boot();
+    const draft = structuredClone(service) as typeof service & {
+      spec: { riskClass?: string; riskConfirmation?: Record<string, unknown> };
+    };
+    draft.spec.riskClass = 'limited';
+    draft.spec.riskConfirmation = { reasons: ['Tjenesten svarer innbyggere'] };
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const published = confirmedAs(validated.definition, 'employee:test:kari', new Date());
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(published.spec),
+    });
+
+    expect(found.map((s) => s.run.status)).toEqual(['completed']);
   });
 
   it('runs a draft without publishing it', async () => {
@@ -566,7 +799,7 @@ describe('eval runs for a service', () => {
     await env.settled();
     const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
 
-    expect(run.body).toMatchObject({ status: 'succeeded', version: 'draft', passed: 3, total: 3 });
+    expect(run.body).toMatchObject({ status: 'completed', version: 'draft', passed: 3, total: 3 });
     expect(await env.platform.definitions.versions('Service', tenant, 'svar')).toHaveLength(1);
   });
 
@@ -863,5 +1096,104 @@ describe('improvements', () => {
 
       expect(started.status).toBe(400);
     });
+  });
+});
+
+describe('a test run as the portal shows it', () => {
+  const finishedRun = (results: EvalRun['results']): EvalRun => ({
+    id: 'r',
+    testSet: { tenant, id: 'svar-frister', version: 1 },
+    capability: `${tenant}/svar`,
+    splits: ['validation'],
+    repeats: 1,
+    startedAt: '2026-10-12T10:00:00Z',
+    endedAt: '2026-10-12T10:01:00Z',
+    provenance: { commit: 'abc', data: 'd', servedModels: ['m'], judges: [], services: [] },
+    results,
+    metrics: {},
+    byTag: {},
+    incomplete: [],
+    status: 'completed',
+    tested: { version: 1 },
+  });
+  const score = (metric: string, value: number | null, state: 'scored' | 'not-applicable') => ({
+    evaluator: 'contract',
+    version: '2',
+    metric,
+    value,
+    applicable: state === 'scored',
+    state,
+  });
+
+  it('counts every case in the summary, so one without a verdict shows as not passed, as in the case list', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [score('exact-text', 1, 'scored')],
+      },
+      {
+        case: 'b',
+        split: 'validation',
+        repeat: 0,
+        task: 't2',
+        tags: [],
+        scores: [score('exact-text', null, 'not-applicable')],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 1, total: 2, score: 0.5 });
+  });
+
+  it('decides a criteria case by its criteria, also when it must refuse as well', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [
+          score('refusal', 1, 'scored'),
+          { ...score('judge.criteria', 0, 'scored'), evaluator: 'judge:criteria' },
+        ],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 0, total: 1 });
+  });
+
+  it("shows a fields-only answer as the case's output", () => {
+    const fieldsOnly = [
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { text: 'Fristen er 1. mai.', changes: [] } },
+      },
+      {
+        mime: 'application/vnd.genai.sources+json',
+        body: { kind: 'json' as const, json: [{ id: 'kilde' }] },
+      },
+    ];
+
+    expect(JSON.parse(answerOfParts(fieldsOnly))).toEqual({
+      text: 'Fristen er 1. mai.',
+      changes: [],
+    });
+    expect(answerOfParts([{ mime: 'text/plain', body: { kind: 'text', text: 'Svar.' } }])).toBe(
+      'Svar.',
+    );
+  });
+
+  it('never moves a finished run back to waiting or to running progress', () => {
+    const done = finishedRun([]);
+    const running = { ...done, status: 'running' as const };
+
+    expect(waitingForScores(done)).toBe(done);
+    expect(progressed(done, { done: 1, total: 2 })).toBe(done);
+    expect(waitingForScores(running).status).toBe('waiting-for-scores');
+    expect(progressed(running, { done: 1, total: 2 }).progress).toEqual({ done: 1, total: 2 });
   });
 });

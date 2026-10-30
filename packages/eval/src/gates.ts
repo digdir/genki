@@ -1,6 +1,6 @@
 import { EvalError, evaluatorOfJudge } from './evaluators.js';
 import { compareRuns, perCaseMeans, unscoredIn, type ComparableField } from './runner.js';
-import type { EvalRun, Gate } from './schema.js';
+import { runState, type EvalRun, type Gate } from './schema.js';
 import type { EvalRunStore } from './store.js';
 import { mean, type BootstrapOptions } from './stats.js';
 
@@ -211,7 +211,9 @@ const latestBySet = async (
 ) => {
   const found = new Map<string, EvalRun>();
   for (const testSet of testSets) {
-    const [latest] = await runs.list({ tenant, service, subject, testSet });
+    const latest = (await runs.list({ tenant, service, subject, testSet })).find(
+      (s) => runState(s.run) === 'completed',
+    );
     if (latest) found.set(testSet, latest.run);
   }
   return found;

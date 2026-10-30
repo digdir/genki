@@ -73,7 +73,6 @@ import {
 } from '@genai/providers-mcp-client';
 import type { RegisteredAgent } from '@genai/strategy-remote';
 import { checkFlow } from '@genai/strategy-step-flow';
-import { createHash } from 'node:crypto';
 import type { Admin } from './admin.js';
 import {
   capabilityModes,
@@ -200,9 +199,14 @@ import {
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
-import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
+import {
+  createDraftRunner,
+  usageSummaryOf,
+  type FieldOptionsLookup,
+  type ModelPrice,
+} from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
   decorateWith,
@@ -219,6 +223,7 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
@@ -391,6 +396,8 @@ export interface PlatformInput {
   evaluators?: Map<string, Evaluator>;
   gates?: Map<string, Gate>;
   platformTenant?: string;
+  /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
+  appVersion?: string;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -494,18 +501,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-const stable = (value: unknown): string =>
-  Array.isArray(value)
-    ? `[${value.map(stable).join(',')}]`
-    : value && typeof value === 'object'
-      ? `{${Object.keys(value)
-          .sort()
-          .map((k) => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`)
-          .join(',')}}`
-      : JSON.stringify(value);
-
-export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256').update(stable(spec)).digest('hex').slice(0, 16)}`;
+export { definitionSubject } from './definition-subject.js';
 
 const retrievalInput = {
   type: 'object',
@@ -949,7 +945,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',
@@ -1001,6 +997,7 @@ export const createPlatform = async (input: PlatformInput) => {
         evaluators,
         forRun: runJudges(() => modelChoice(moduleDeps)),
         modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
+        meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
@@ -1601,6 +1598,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ingestion: config.ingestion,
     ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
     evalStores,
+    evalCapability: evalCapability.descriptor.id,
+    ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     connections,
     blobs: blobStore,
     prices,

@@ -403,6 +403,34 @@ describe('publish gate', () => {
     expect(decision).toMatchObject({ allow: true, refused: [], advisory: [] });
   });
 
+  it('reads only completed runs: a newer run still running, failed or interrupted never hides the last completed one', async () => {
+    const unsettled = (id: string, status: 'running' | 'failed' | 'interrupted'): EvalRun => ({
+      ...fakeRun(id, 'v2', 0),
+      endedAt: '2026-10-06T10:09:00Z',
+      results: [],
+      metrics: {},
+      status,
+    });
+    const runs = await stored(
+      [fakeRun('r2', 'v2', 0.9), 'v2'],
+      [unsettled('r3', 'running'), 'v2'],
+      [unsettled('r4', 'failed'), 'v2'],
+      [unsettled('r5', 'interrupted'), 'v2'],
+    );
+
+    const decision = await publishGate({
+      tenant,
+      service: 'kunnskapsassistenten',
+      candidate: 'v2',
+      evaluation: { testSets: ['mini'], gates: ['pattern-floor'] },
+      runs,
+      registry,
+    });
+
+    expect(decision.allow).toBe(true);
+    expect(decision.results[0]?.reason).toBe('answer-pattern 0.900 >= 0.8');
+  });
+
   it('refuses a publish below a threshold or without a run, naming why', async () => {
     const low = await publishGate({
       tenant,

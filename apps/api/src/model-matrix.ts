@@ -17,13 +17,9 @@ import { appendVersion, platformScope, type ConfigEntry } from './config-store.j
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { candidateRelease, isCandidate } from './model-access.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
-import {
-  serviceEval,
-  serviceRunKind,
-  type Outcome,
-  type RunStatus,
-  type ServiceRun,
-} from './service-eval.js';
+import { serviceEval, type Outcome } from './service-eval.js';
+
+export type MatrixStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
 export const matrixRunKind = 'model-matrix-run';
 export const maxDropPoints = 3;
@@ -53,7 +49,7 @@ export interface MatrixRun extends Leased {
   id: string;
   model: string;
   current: string;
-  status: RunStatus;
+  status: MatrixStatus;
   by: string;
   startedAt: string;
   endedAt: string | null;
@@ -279,14 +275,13 @@ export const createModelMatrixModule =
     };
 
     const tokensPerCase = async (tenant: string, service: string) => {
-      const last = (await deps.configEntries.latest({ kind: serviceRunKind, scope: tenant }))
-        .map((e) => e.spec as ServiceRun)
-        .filter((r) => r.service === service && r.status === 'succeeded' && r.total > 0)
-        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-      return last
+      const last = await evals.latestCompleted(tenant, service);
+      const answers = last?.run.usage?.answers;
+      const cases = last?.run.results.length ?? 0;
+      return answers && cases > 0
         ? {
-            input: Math.ceil(last.tokens.input / last.total),
-            output: Math.ceil(last.tokens.output / last.total),
+            input: Math.ceil(answers.inputTokens / cases),
+            output: Math.ceil(answers.outputTokens / cases),
           }
         : answerTokens;
     };

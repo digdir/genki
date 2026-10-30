@@ -189,7 +189,7 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
     return {
       id: newId('run'),
       service,
-      status: stay ? 'running' : 'succeeded',
+      status: stay ? 'running' : 'completed',
       testSet: set.id,
       version,
       startedAt: now,
@@ -198,6 +198,21 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
       passed: stay ? null : passed,
       total: stay ? null : total,
       cost: null,
+      ...(stay
+        ? {}
+        : {
+            metrics: {
+              'judge.criteria': {
+                mean: total ? passed / total : 0,
+                ci: [
+                  Math.max(0, passed / Math.max(total, 1) - 0.2),
+                  Math.min(1, passed / Math.max(total, 1) + 0.1),
+                ],
+                n: total,
+              },
+            },
+            judges: ['judge:criteria@1+foundry-openai/gpt-41-dommer'],
+          }),
       cases: stay ? [] : results,
     } satisfies EvalRunDetail & { service: string };
   };

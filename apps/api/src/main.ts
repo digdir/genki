@@ -366,6 +366,7 @@ if (lockdown)
 
 const platform = await createPlatform({
   platformTenant,
+  appVersion: version,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,

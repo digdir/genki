@@ -1,23 +1,32 @@
 import { randomUUID } from 'node:crypto';
-import type { Principal } from '@genai/contracts';
+import type { Part, Principal } from '@genai/contracts';
+import { validateDefinition } from '@genai/definitions';
 import {
+  answerText,
   caseTypeOf,
   caseView,
+  criteriaJudgeId,
+  defaultObserve,
+  evalRun,
   gradeAnswer,
+  runState,
   splitsFor,
+  sumUsage,
   type CaseSplit,
   type CaseType,
+  type EvalRun,
+  type Score,
+  type StoredRun,
   type TestCase,
   type TestSet,
 } from '@genai/eval';
-import { actorOf } from './admin.js';
 import {
   backgroundLeases,
   restartMessage,
-  type Leased,
+  type BackgroundLeases,
   type LeaseOptions,
 } from './background-lease.js';
-import { appendVersion, type ConfigEntry } from './config-store.js';
+import { definitionSubject } from './definition-subject.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -26,10 +35,8 @@ import { serviceDrafts } from './service-drafts.js';
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
 
-export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export type RunVersion = 'draft' | number;
 
 export interface CaseResult {
@@ -41,26 +48,6 @@ export interface CaseResult {
   output: string;
   pass: boolean;
   reason?: string;
-}
-
-export interface ServiceRun extends Leased {
-  id: string;
-  service: string;
-  status: RunStatus;
-  testSet: string;
-  testSetVersion: number;
-  version: RunVersion;
-  variant?: string;
-  split?: CaseSplit;
-  startedAt: string;
-  endedAt: string | null;
-  score: number | null;
-  passed: number;
-  total: number;
-  cost: number | null;
-  tokens: { input: number; output: number };
-  error?: string;
-  cases: CaseResult[];
 }
 
 export interface Subject {
@@ -75,6 +62,14 @@ export interface Outcome {
   passed: number;
   total: number;
   score: number | null;
+}
+
+/** The draft or version cannot be run, for the reasons the draft runner gives. */
+export class RunRefused extends Error {
+  constructor(readonly errors: { path: string; message: string }[]) {
+    super(errors.map((e) => e.message).join('; '));
+    this.name = 'RunRefused';
+  }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -95,18 +90,123 @@ export const summarize = (results: CaseResult[]): Outcome => {
   };
 };
 
-export const runView = (run: ServiceRun) => {
-  const shown: Partial<ServiceRun> = { ...run };
+/** In this order: a criteria case that must also refuse is still decided by its criteria. */
+const verdictMetrics = ['judge.criteria', 'exact-text', 'refusal'];
+
+/** A case passes on its case type's own metric: the criteria judge, the exact text or the refusal. */
+const verdictOf = (scores: Score[]) =>
+  verdictMetrics
+    .map((m) => scores.find((s) => s.metric === m && s.state !== 'not-applicable'))
+    .find((s) => s !== undefined);
+
+const passes = (scores: Score[]) => {
+  const verdict = verdictOf(scores);
+  return verdict?.state === 'scored' && verdict.value === 1;
+};
+
+/** A case's answer as the portal shows it: its text, or a structured answer's fields as JSON. */
+export const answerOfParts = (parts: unknown) =>
+  Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
+
+/** A test run as the portal lists it, read from the eval run. */
+export const runSummary = (run: EvalRun) => {
+  const state = runState(run);
+  // Every case counts, as the case list shows it: one without a verdict did not pass.
+  const counted = run.results;
+  const passed = counted.filter((r) => passes(r.scores)).length;
+  const used = [run.usage?.answers, run.usage?.judges].filter((u) => u !== undefined);
+  const usage = used.length > 0 ? sumUsage(used) : undefined;
+  return {
+    id: run.id,
+    status: state,
+    testSet: run.testSet.id,
+    testSetVersion: run.testSet.version,
+    version: run.tested?.version ?? 'draft',
+    ...(run.tested?.variant ? { variant: run.tested.variant } : {}),
+    ...(run.tested?.split ? { split: run.tested.split } : {}),
+    startedAt: run.startedAt,
+    endedAt: state === 'running' || state === 'waiting-for-scores' ? null : run.endedAt,
+    score: state === 'completed' && counted.length > 0 ? passed / counted.length : null,
+    passed,
+    total: state === 'completed' ? counted.length : (run.progress?.total ?? 0),
+    ...(run.progress ? { progress: run.progress } : {}),
+    metrics: run.metrics,
+    incomplete: run.incomplete,
+    judges: run.provenance.judges,
+    cost: usage ? usage.costMicroNok : null,
+    tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
+    ...(run.error ? { error: run.error } : {}),
+  };
+};
+
+/** One test run with each case as a person reads it: what it asked, answered and why it passed. */
+export const runDetail = (
+  run: EvalRun,
+  set: TestSet | undefined,
+  answers: Map<string, string>,
+) => ({
+  ...runSummary(run),
+  byTag: run.byTag,
+  cases: run.results.map((r): CaseResult => {
+    const found = set?.spec.cases.find((c) => c.id === r.case);
+    const view = found ? caseView(found) : undefined;
+    const reason = verdictOf(r.scores)?.reason;
+    return {
+      caseId: r.case,
+      input: view?.input ?? '',
+      expected: view?.expected ?? '',
+      type: view?.type ?? 'criteria',
+      split: view?.split ?? 'open',
+      output: answers.get(`${r.case}#${r.repeat}`) ?? '',
+      pass: passes(r.scores),
+      ...(reason ? { reason } : {}),
+    };
+  }),
+});
+
+/**
+ * A run left running by an instance that stopped is interrupted, ended at its last heartbeat. Any
+ * reader can tell, since a live run's heartbeat is never older than the lease allows.
+ */
+export const interruptedIfAbandoned = (
+  tenant: string,
+  run: EvalRun,
+  leases: Pick<BackgroundLeases, 'abandoned'>,
+): EvalRun => {
+  const state = runState(run);
+  if (state !== 'running' && state !== 'waiting-for-scores') return run;
+  if (!leases.abandoned(`${tenant}/${run.id}`, run, run.startedAt)) return run;
+  return {
+    ...run,
+    status: 'interrupted',
+    endedAt: run.heartbeatAt ?? run.startedAt,
+    error: restartMessage,
+  };
+};
+
+/** A run as a reader sees it: never its lease, and what it used only with view-usage. */
+export const shownRun = (run: EvalRun, usage: boolean): EvalRun => {
+  const shown = { ...run };
   delete shown.owner;
   delete shown.heartbeatAt;
+  if (!usage) delete shown.usage;
   return shown;
 };
 
-export const runSummary = (run: ServiceRun) => {
-  const shown = runView(run);
-  delete shown.cases;
-  return shown;
+const finished = (run: EvalRun) => {
+  const state = runState(run);
+  return state !== 'running' && state !== 'waiting-for-scores';
 };
+
+/** Progress from the eval task; a run that has finished keeps what it finished with. */
+export const progressed = (
+  run: EvalRun,
+  progress: { done: number; total: number },
+  usage?: EvalRun['usage'],
+): EvalRun => (finished(run) ? run : { ...run, progress, ...(usage ? { usage } : {}) });
+
+export const waitingForScores = (run: EvalRun): EvalRun =>
+  finished(run) ? run : { ...run, status: 'waiting-for-scores' };
 
 const modelsOf = (definition: Record<string, unknown>) => {
   const model = (isRecord(definition.spec) ? definition.spec.model : undefined) as
@@ -242,58 +342,59 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     return summarize(results);
   };
 
-  const saveRun = (actor: string, tenant: string, run: ServiceRun, reason: string) =>
-    appendVersion<ServiceRun>(deps.configEntries, {
-      kind: serviceRunKind,
-      scope: tenant,
-      id: run.id,
-      spec: run,
-      deleted: false,
-      by: actor,
-      reason,
-    });
+  const evaluatorsFor = (cases: TestCase[]) => [
+    'contract',
+    ...(cases.some((c) => c.expected.sources.length > 0) ? ['retrieval'] : []),
+    ...(cases.some((c) => caseTypeOf(c) === 'criteria') ? [criteriaJudgeId] : []),
+  ];
 
-  const settled = async (entry: ConfigEntry<ServiceRun>) => {
-    const run = entry.spec;
-    if (run.status !== 'queued' && run.status !== 'running') return run;
-    if (!leases.abandoned(`${entry.scope}/${run.id}`, run, run.startedAt)) return run;
-    const failed: ServiceRun = {
-      ...run,
-      status: 'failed',
-      endedAt: leases.now().toISOString(),
-      error: restartMessage,
-    };
-    await appendVersion<ServiceRun>(deps.configEntries, {
-      kind: serviceRunKind,
-      scope: entry.scope,
-      id: run.id,
-      spec: failed,
-      deleted: false,
-      by: 'platform:restart',
-      reason: restartMessage,
-      ifVersion: entry.version,
-    }).catch(() => undefined);
-    return failed;
+  const save = (stored: StoredRun) => deps.evalStores.runs.save(stored);
+
+  /** A run whose instance stopped without settling it is interrupted, as other background work. */
+  const settled = async (stored: StoredRun): Promise<StoredRun> => {
+    const run = interruptedIfAbandoned(stored.tenant, stored.run, leases);
+    if (run === stored.run) return stored;
+    const interrupted: StoredRun = { ...stored, run };
+    const replaced = await deps.evalStores.runs
+      .replace(interrupted, { status: stored.run.status, heartbeatAt: stored.run.heartbeatAt })
+      .catch(() => false);
+    if (replaced) return interrupted;
+    // The owner saved the run after it was read: show what it saved.
+    return (await deps.evalStores.runs.get(stored.run.id)) ?? stored;
   };
 
   const runOf = async (tenant: string, id: string) => {
-    const entry = (await deps.configEntries.history(serviceRunKind, tenant, id)).at(-1) as
-      ConfigEntry<ServiceRun> | undefined;
-    return entry ? settled(entry) : undefined;
+    const stored = await deps.evalStores.runs.get(id);
+    return stored?.tenant === tenant ? settled(stored) : undefined;
   };
 
   const runsOf = async (tenant: string, service: string) =>
-    (
-      await Promise.all(
-        (await deps.configEntries.latest({ kind: serviceRunKind, scope: tenant }))
-          .filter((e) => (e.spec as ServiceRun).service === service)
-          .map((e) => settled(e as ConfigEntry<ServiceRun>)),
-      )
-    ).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    Promise.all(
+      (await deps.evalStores.runs.list({ tenant, service }))
+        .filter((s) => s.run.tested !== undefined)
+        .map(settled),
+    );
 
-  const recoverRuns = async () => {
-    for (const entry of await deps.configEntries.latest({ kind: serviceRunKind }))
-      await settled(entry as ConfigEntry<ServiceRun>);
+  const latestCompleted = async (tenant: string, service: string, testSet?: string) =>
+    (await runsOf(tenant, service)).find(
+      (s) =>
+        runState(s.run) === 'completed' && (testSet === undefined || s.run.testSet.id === testSet),
+    );
+
+  /** What each case answered, read from its task; empty once the task's content is erased. */
+  const answersOf = async (run: EvalRun) => {
+    const answers = new Map<string, string>();
+    for (const r of run.results) {
+      let answer = '';
+      try {
+        for await (const event of deps.events(r.task))
+          if (event.type === 'kernel.result') answer = answerOfParts(event.data);
+      } catch {
+        answer = '';
+      }
+      answers.set(`${r.case}#${r.repeat}`, answer);
+    }
+    return answers;
   };
 
   const startRun = async (
@@ -304,71 +405,133 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     subject: Subject,
     split?: CaseSplit,
   ) => {
-    const actor = actorOf(principal.actor ?? principal);
-    const queued: ServiceRun = {
-      id: randomUUID(),
-      service,
-      status: 'queued',
-      testSet: set.metadata.id,
-      testSetVersion: set.metadata.version,
-      version: subject.version,
+    if (!deps.evalCapability) throw new Error('the platform has no eval capability');
+    const prepared = await deps.drafts.prepare({
+      principal,
+      tenant,
+      definition: subject.definition,
+      files: subject.files,
+      origin: 'builder',
+      ...(typeof subject.version === 'number' ? { version: subject.version } : {}),
       ...(subject.variant ? { variant: subject.variant } : {}),
-      ...(split ? { split } : {}),
-      startedAt: new Date().toISOString(),
-      endedAt: null,
-      score: null,
-      passed: 0,
-      total: casesIn(set, split).length,
-      cost: null,
-      tokens: { input: 0, output: 0 },
-      cases: [],
+    });
+    if (!prepared.ok) throw new RunRefused(prepared.errors);
+    const cases = casesIn(set, split);
+    const startedAt = leases.now().toISOString();
+    const first: EvalRun = {
+      id: randomUUID(),
+      testSet: { tenant, id: set.metadata.id, version: set.metadata.version },
+      capability: prepared.capability,
+      splits: split ? splitsFor(split) : ['train', 'validation', 'holdout'],
+      repeats: 1,
+      startedAt,
+      endedAt: startedAt,
+      provenance: {
+        commit: deps.appVersion ?? 'dev',
+        data: 'live',
+        servedModels: [],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: {},
+      byTag: {},
+      incomplete: [],
+      status: 'running',
+      progress: { done: 0, total: cases.length },
+      tested: {
+        version: subject.version,
+        ...(subject.variant ? { variant: subject.variant } : {}),
+        ...(split ? { split } : {}),
+      },
       ...leases.stamp(),
     };
-    const lease = leases.hold(`${tenant}/${queued.id}`, queued, (run, reason) =>
-      saveRun(actor, tenant, run, reason),
+    const validated = validateDefinition(subject.definition, deps.plugins);
+    const spec = validated.ok ? validated.definition.spec : subject.definition.spec;
+    const record = { tenant, service, subject: definitionSubject(spec) };
+    let task = '';
+    const lease = leases.hold(`${tenant}/${first.id}`, first, (run) =>
+      save({ ...record, task, run }),
     );
     try {
-      await lease.update((run) => run, `Testkjøring av ${set.metadata.id}`);
+      await lease.update((run) => run, 'started');
     } catch (error) {
       lease.release();
+      prepared.release();
       throw error;
     }
     const done = (async () => {
-      const meter = choice.meter();
       try {
-        await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
-        const outcome = await runCases(principal, tenant, subject, casesIn(set, split), meter);
+        const invoked = await deps.kernel.invoke(principal, deps.evalCapability as string, {
+          data: {
+            id: first.id,
+            capability: prepared.capability,
+            testSet: set,
+            evaluators: evaluatorsFor(cases),
+            provenance: { commit: first.provenance.commit, data: first.provenance.data },
+            splits: first.splits,
+            // The judge is picked outside every model the service may answer with, fallback too.
+            avoidAsJudge: modelsOf(subject.definition),
+          },
+        });
+        task = invoked.task;
+        // Notices are applied in order to the latest state, and never reopen a finished run.
+        void (async () => {
+          for await (const event of invoked.events) {
+            const data = event.data as
+              { kind?: string; done?: number; total?: number; usage?: unknown } | undefined;
+            if (event.type !== 'kernel.notice') continue;
+            if (data?.kind === 'eval.progress' && data.done !== undefined) {
+              const usage = evalRun.shape.usage.safeParse(data.usage);
+              await lease.update(
+                (run) =>
+                  progressed(
+                    run,
+                    { done: data.done ?? 0, total: data.total ?? 0 },
+                    usage.success ? usage.data : undefined,
+                  ),
+                'progress',
+              );
+            }
+            if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
+          }
+        })().catch(() => undefined);
+        const parts = await invoked.result;
+        const json = parts.find((p) => p.body.kind === 'json')?.body;
+        const result = evalRun.parse(json?.kind === 'json' ? json.json : undefined);
+        // The draft's capability lives for one run; the service it tests is what runs compare by.
+        const services = result.provenance.services.map((s) =>
+          s.startsWith(`${prepared.capability}@`)
+            ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
+            : s,
+        );
         await lease.update(
-          (run) => ({
-            ...run,
-            status: 'succeeded',
-            endedAt: new Date().toISOString(),
-            score: outcome.score,
-            passed: outcome.passed,
-            total: outcome.total,
-            cost: meter.costMicroNok(),
-            tokens: { input: meter.inputTokens, output: meter.outputTokens },
-            cases: outcome.results,
+          () => ({
+            ...result,
+            provenance: { ...result.provenance, services },
+            ...(first.tested ? { tested: first.tested } : {}),
+            progress: { done: cases.length, total: cases.length },
           }),
-          'Ferdig',
+          'completed',
         );
       } catch (error) {
-        await lease.update(
-          (run) => ({
-            ...run,
-            status: 'failed',
-            endedAt: new Date().toISOString(),
-            cost: meter.costMicroNok(),
-            tokens: { input: meter.inputTokens, output: meter.outputTokens },
-            error: messageOf(error),
-          }),
-          'Feilet',
-        );
+        await lease
+          .update(
+            (run) => ({
+              ...run,
+              status: 'failed',
+              endedAt: leases.now().toISOString(),
+              error: messageOf(error),
+            }),
+            'failed',
+          )
+          .catch(() => undefined);
       } finally {
         lease.release();
+        prepared.release();
       }
     })();
-    return { run: queued, done };
+    return { run: first, done };
   };
 
   return {
@@ -382,7 +545,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     runCases,
     runOf,
     runsOf,
-    recoverRuns,
+    latestCompleted,
+    answersOf,
     leases,
     startRun,
   };
