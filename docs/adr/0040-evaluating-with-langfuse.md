@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; a run goes to Langfuse only in step with its project's judges, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -40,6 +40,7 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - A judge that would leave cases unscored is refused: a rule with sampling below 1 or with a filter, since Langfuse judges only the items they let through, and an evaluator that is not an LLM-as-a-judge.
 - A judge on a connection that does not receive content is refused, since each case would cost a judge call for a judge that has nothing to judge. When a connection stops receiving content after its judge was taken in use, the portal says so before a run starts, and the run does not start.
 - A refused judge's building block says why and cannot be taken in use. A judge taken in use that is refused, inactive or gone when a run starts stops the run before it starts, with the reason.
+- **In step with Langfuse.** Langfuse runs every active experiment judge in a project on every item it receives, and cannot be asked to run only some of them. So a run goes to a connection only when the platform reads every active experiment judge in its project: each is taken in use and not refused. Otherwise the run is refused before it starts, also with `trace: true` and nothing taken in use, naming the judges to take in use or switch off in Langfuse. `GET /tenants/{tenant}/services/{id}/eval-runs/sending` answers `judges-differ` with both lists, and the portal shows them before the run starts. A run cannot pick some of a connection's judges: the API has no way to name a Langfuse judge for one run.
 - At the start of a run the platform takes a snapshot of the Langfuse evaluation rule, its variable mapping, the evaluator version it points to and the named model (`GET /api/public/unstable/evaluation-rules/{id}`, `GET /api/public/unstable/evaluators/{id}`). If any of them differs when the scores are collected, or the rule is gone or no longer active, those scores are marked `judge changed`.
 
 **What an eval run sends.**
@@ -114,12 +115,12 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - **Langfuse labels counting at once.** Anyone in a Langfuse organisation can annotate, so labels that decide whether a judge may block need the platform's labelling right.
   - **Mapping Altinn rights onto Langfuse membership.** Langfuse has its own accounts and roles. The platform's rights decide what counts in the platform, such as accepting labels and publishing.
   - **Live answers on a tenant's connection.** It would widen the pending deletes from eval cases to every live answer.
+  - **Picking Langfuse judges per run.** Langfuse would still run and bill the others on every case sent, so the platform would show fewer scores than Langfuse made.
 
 ## Consequences
 
-- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode; Langfuse judges as building blocks with their snapshot, refusals and identity, the mapped fields they read, the score collector inside the run's lease, `judge changed`, and refusing gates on their metrics at save and at publish. Not built yet:
+- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode; Langfuse judges as building blocks with their snapshot, refusals and identity, the mapped fields they read, the score collector inside the run's lease, `judge changed`, refusing gates on their metrics at save and at publish, and refusing a run while its project has active judges the platform does not read. Not built yet:
   - judge cost, the label import with approval and the dataset import
-  - naming a Langfuse judge directly in an API eval run without taking it in use
   - pending sink deletes after an erasure other than the nightly purge
   - showing a connection whose deletes keep failing as failing
 - Before agency data goes to Digdir's instance:

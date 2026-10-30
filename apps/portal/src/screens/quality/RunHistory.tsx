@@ -218,10 +218,22 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
   );
 };
 
-/** Why a run that a Langfuse judge scores cannot start, before it is started. */
+/** Why a run sent to Langfuse cannot start, before it is started. */
 const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
   const refused = plan?.refused;
   if (!refused) return undefined;
+  if (refused.reason === 'judges-differ')
+    return [
+      t('quality.judgesDiffer', { connection: refused.connection }),
+      ...(refused.notInUse.length > 0
+        ? [t('quality.judgesNotInUse', { judges: refused.notInUse.join(', ') })]
+        : []),
+      ...(refused.unreadable.length > 0
+        ? [t('quality.judgesUnreadable', { judges: refused.unreadable.join(', ') })]
+        : []),
+    ].join(' ');
+  // The other refusals name the judges in use; a run sent only on request meets them as it starts.
+  if (!judges) return undefined;
   if (refused.reason === 'covered-twice')
     return t('quality.judgeCoveredTwice', { judges, connections: refused.connections.join(', ') });
   if (refused.reason === 'no-content')
@@ -418,7 +430,7 @@ export const RunHistory = ({
   const plan = sending.status === 'ready' ? sending.data : undefined;
   const judgeNames = (plan?.judges ?? []).map((j) => j.name).join(', ');
   const judged = (plan?.judges.length ?? 0) > 0;
-  const refusedText = judged ? sendingRefusal(t, plan, judgeNames) : undefined;
+  const refusedText = judged || trace ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(

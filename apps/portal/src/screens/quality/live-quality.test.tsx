@@ -689,4 +689,42 @@ describe('live Testsett: Langfuse-dommere', () => {
     fireEvent.click(start);
     expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
   });
+
+  it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {
+    const differ = (path: string) =>
+      /\/eval-runs\/sending/.test(path)
+        ? Response.json({
+            connection: { id: 'lokal', residency: 'global' },
+            judges: [],
+            refused: {
+              reason: 'judges-differ',
+              connection: 'lokal',
+              notInUse: [rule],
+              unreadable: ['verktøy-eksperimenter'],
+            },
+          })
+        : connections(path);
+    const { writes } = await openLive('', {}, {}, differ);
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const send = await screen.findByRole('checkbox', {
+      name: /Send kjøringen til Langfuse \(lokal\)/,
+    });
+    const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
+
+    fireEvent.click(send);
+    const refusal = await screen.findByText(
+      `Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen lokal på kjøringen, også dem genki ikke leser. Ta i bruk under Byggeklosser, eller slå av i Langfuse: ${rule}. Slå av i Langfuse, fordi genki ikke kan lese dem: verktøy-eksperimenter.`,
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+    expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(runs()).toEqual([]);
+    fireEvent.click(send);
+    expect(screen.queryByText(/^Kjøringen kan ikke starte/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() => expect(runs()).toHaveLength(1));
+    expect(runs()[0]?.body).not.toHaveProperty('trace');
+  });
 });

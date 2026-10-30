@@ -227,6 +227,16 @@ const RunSending = z
         }),
         z.object({ reason: z.literal('covered-twice'), connections: z.array(z.string()) }),
         z.object({ reason: z.literal('no-content'), connection: z.string() }),
+        z.object({
+          reason: z.literal('judges-differ'),
+          connection: z.string(),
+          notInUse: z
+            .array(z.string())
+            .describe('Active judges in the project that the tenant has not taken in use'),
+          unreadable: z
+            .array(z.string())
+            .describe('Active judges in the project that genki cannot read'),
+        }),
       ])
       .optional()
       .describe('Why a run that is sent to the connection would be refused'),

@@ -153,6 +153,10 @@ export const qualityArea = {
       'Kjøringen kan ikke starte. Langfuse-dommerne ({judges}) har ingenting å vurdere, fordi koblingen {connection} ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.',
     judgeCoveredTwice:
       'Kjøringen kan ikke starte. Tjenesten bruker Langfuse-dommere ({judges}), men flere Langfuse-koblinger dekker den: {connections}.',
+    judgesDiffer:
+      'Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen {connection} på kjøringen, også dem genki ikke leser.',
+    judgesNotInUse: 'Ta i bruk under Byggeklosser, eller slå av i Langfuse: {judges}.',
+    judgesUnreadable: 'Slå av i Langfuse, fordi genki ikke kan lese dem: {judges}.',
     sinkJudgesTitle: 'Langfuse-dommere',
     sinkJudgesAdvisory: 'Rådgivende. Disse vurderingene stopper aldri en publisering.',
     sinkJudgeYes: 'Ja: {mean} ({low} – {high}, n = {n})',

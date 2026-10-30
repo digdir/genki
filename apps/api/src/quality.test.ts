@@ -1228,9 +1228,10 @@ describe('Langfuse judges on a run', () => {
 
   it("lists each experiment rule of a connection's project as a judge building block, and scores a run only with the ones the agency added", async () => {
     const short = 'svar_er_kort-eksperimenter';
+    const notAdded = experimentRule({ id: 'regel-2', name: short });
     const { env, adopt, langfuse } = await judged([
       experimentRule(),
-      experimentRule({ id: 'regel-2', name: short }),
+      notAdded,
       experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' }),
       experimentRule({ id: 'regel-4', name: 'pause-eksperimenter', status: 'inactive' }),
     ]);
@@ -1240,6 +1241,8 @@ describe('Langfuse judges on a run', () => {
       b.id.startsWith('langfuse:'),
     );
     expect((await adopt(judgeRule)).status).toBe(200);
+    // Langfuse would run the judge not added as well, so it is switched off before the run.
+    notAdded.status = 'inactive';
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
     });
@@ -1427,6 +1430,49 @@ describe('Langfuse judges on a run', () => {
     expect(
       JSON.parse((root && langfuse.attr(root, 'langfuse.experiment.item.expected_output')) ?? '{}'),
     ).toEqual({ criteria: 'Klagefristen er tre uker.' });
+  });
+
+  it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {
+    const rules = [
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: 'tone-eksperimenter' }),
+      experimentRule({
+        id: 'regel-3',
+        name: 'verktøy-eksperimenter',
+        mapping: [{ variable: 'verktøy', source: 'tool_calls' }],
+      }),
+    ];
+    const { env, adopt } = await judged(rules);
+    const start = () =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', trace: true });
+    const differ = (names: string) =>
+      `the project of the connection lokal has active judges genki does not read: ${names}; take them in use or switch them off in Langfuse`;
+
+    const noneInUse = await start();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const oneInUse = await start();
+    for (const r of rules.slice(1)) r.status = 'inactive';
+    const inStep = await start();
+    await env.settled();
+
+    expect(noneInUse.status).toBe(409);
+    expect(JSON.stringify(noneInUse.body)).toContain(
+      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter`),
+    );
+    expect(sending.body).toMatchObject({
+      refused: {
+        reason: 'judges-differ',
+        connection: 'lokal',
+        notInUse: ['tone-eksperimenter'],
+        unreadable: ['verktøy-eksperimenter'],
+      },
+    });
+    expect(oneInUse.status).toBe(409);
+    expect(JSON.stringify(oneInUse.body)).toContain(
+      differ('tone-eksperimenter, verktøy-eksperimenter'),
+    );
+    expect(inStep.status).toBe(202);
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {

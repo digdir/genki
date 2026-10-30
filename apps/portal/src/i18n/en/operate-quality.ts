@@ -156,6 +156,10 @@ export const qualityArea = {
       'The run cannot start. The Langfuse judges ({judges}) have nothing to judge, because the connection {connection} gets no answer text. Turn on "Send text" for the connection, or stop using the judges.',
     judgeCoveredTwice:
       'The run cannot start. The service uses Langfuse judges ({judges}), but more than one Langfuse connection covers it: {connections}.',
+    judgesDiffer:
+      'The run cannot start. Langfuse runs every active judge in the project of the connection {connection} on the run, also the ones genki does not read.',
+    judgesNotInUse: 'Take in use under Building blocks, or switch off in Langfuse: {judges}.',
+    judgesUnreadable: 'Switch off in Langfuse, as genki cannot read them: {judges}.',
     sinkJudgesTitle: 'Langfuse judges',
     sinkJudgesAdvisory: 'Advisory. These scores never stop a publish.',
     sinkJudgeYes: 'Yes: {mean} ({low} – {high}, n = {n})',
