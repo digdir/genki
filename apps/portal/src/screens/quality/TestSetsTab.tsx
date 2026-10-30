@@ -97,7 +97,7 @@ export const casesFrom = (sets: TestSet[], live = false): CaseDetail[] =>
         input: inputText(c.input),
         kind: sources.length ? 'kilder' : 'kriterier',
         ...(sources.length ? { exp: sources } : {}),
-        crit: c.expected.referenceAnswer ?? '',
+        crit: c.expected.criteria?.criteria ?? c.expected.referenceAnswer ?? '',
         tags: c.tags,
         split: splitFromCode[c.split],
         last: 'Ikke kjørt',

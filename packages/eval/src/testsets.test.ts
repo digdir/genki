@@ -309,7 +309,8 @@ describe('the checked-in test sets', () => {
 
     expect(criteria.length).toBeGreaterThanOrEqual(5);
     expect(set.spec.cases.every((c) => c.tags.includes('nynorsk'))).toBe(true);
-    expect(criteria.every((c) => c.expected.referenceAnswer?.includes('nynorsk'))).toBe(true);
+    expect(criteria.every((c) => c.expected.criteria?.criteria?.includes('nynorsk'))).toBe(true);
+    expect(criteria.every((c) => c.expected.referenceAnswer === undefined)).toBe(true);
     expect(set.spec.cases.some((c) => c.type === 'must_reject')).toBe(true);
   });
 });

@@ -473,7 +473,18 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
         const body = req.body<NewServiceCase>();
         if (!body.input?.trim())
           return req.json({ title: 'Testtilfellet mangler input', status: 422, errors: [] }, 422);
-        const created: ServiceCase = { id: newId('tc'), ...body };
+        const { expected } = body;
+        // The view shows one text, as the API's caseView does.
+        const created: ServiceCase = {
+          id: newId('tc'),
+          ...body,
+          expected:
+            typeof expected === 'string'
+              ? expected
+              : body.type === 'criteria'
+                ? (expected.criteria?.criteria ?? expected.referenceAnswer ?? '')
+                : (expected.referenceAnswer ?? ''),
+        };
         caseSet.cases.push(created);
         return req.json(created, 201);
       }

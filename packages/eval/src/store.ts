@@ -1,4 +1,4 @@
-import type { EvalRun, TestSet } from './schema.js';
+import { parseTestSet, type EvalRun, type TestSet } from './schema.js';
 
 export interface StoredRun {
   run: EvalRun;
@@ -75,7 +75,7 @@ export class InMemoryTestSetStore implements TestSetStore {
       version === undefined
         ? versions.at(-1)
         : versions.find((v) => v.metadata.version === version);
-    return found && structuredClone(found);
+    return found && parseTestSet(structuredClone(found));
   }
 
   async list(tenant: string, service?: string) {
@@ -86,6 +86,6 @@ export class InMemoryTestSetStore implements TestSetStore {
           s.metadata.tenant === tenant && (service === undefined || s.spec.service === service),
       )
       .sort((a, b) => a.metadata.id.localeCompare(b.metadata.id))
-      .map((s) => structuredClone(s));
+      .map((s) => parseTestSet(structuredClone(s)));
   }
 }

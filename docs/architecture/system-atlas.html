@@ -5365,6 +5365,14 @@
                                       },
                                       answerPattern: { type: 'string' },
                                       referenceAnswer: { type: 'string', minLength: 1 },
+                                      criteria: {
+                                        type: 'object',
+                                        propertyNames: {
+                                          type: 'string',
+                                          pattern: '^[a-z][a-z0-9_]*$',
+                                        },
+                                        additionalProperties: { type: 'string', minLength: 1 },
+                                      },
                                       fields: {
                                         type: 'object',
                                         propertyNames: { type: 'string' },

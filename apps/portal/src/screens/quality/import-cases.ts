@@ -1,10 +1,11 @@
 import { parse as parseYaml } from 'yaml';
-import type { CaseSplit, CaseType, NewServiceCase } from '../../api/quality';
+import type { CaseExpectation, CaseSplit, CaseType, NewServiceCase } from '../../api/quality';
 
 export type RowProblem =
   | 'inputMissing'
   | 'inputStructured'
   | 'expectedMissing'
+  | 'criterionNameInvalid'
   | 'typeUnknown'
   | 'splitUnknown'
   | 'idInvalid'
@@ -23,6 +24,8 @@ export type ImportResult =
   { ok: true; unit: 'row' | 'case'; rows: ImportRow[] } | { ok: false; problem: FileProblem };
 
 const caseTypes: CaseType[] = ['criteria', 'exact', 'must_reject'];
+/** How judges read criteria fields, as the API checks them: criteria, supporting_quotes. */
+const criterionName = /^[a-z][a-z0-9_]*$/;
 const idPattern = /^[a-z0-9][a-z0-9-]*$/;
 
 const splitOf = (raw: unknown): CaseSplit | undefined => {
@@ -37,12 +40,21 @@ const splitOf = (raw: unknown): CaseSplit | undefined => {
 const textOf = (raw: unknown) =>
   typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : '';
 
-const expectedOf = (raw: unknown) => {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    const e = raw as Record<string, unknown>;
-    return textOf(e.referenceAnswer) || textOf(e.answerPattern);
-  }
-  return textOf(raw);
+const isObject = (raw: unknown): raw is Record<string, unknown> =>
+  !!raw && typeof raw === 'object' && !Array.isArray(raw);
+
+/** Named criteria are kept with the reference answer beside them; otherwise one text. */
+const expectedOf = (raw: unknown): string | CaseExpectation => {
+  if (!isObject(raw)) return textOf(raw);
+  const criteria = Object.fromEntries(
+    Object.entries(isObject(raw.criteria) ? raw.criteria : {})
+      .map(([k, v]) => [k, textOf(v)])
+      .filter(([, v]) => v),
+  );
+  const reference = textOf(raw.referenceAnswer);
+  if (Object.keys(criteria).length > 0)
+    return { ...(reference ? { referenceAnswer: reference } : {}), criteria };
+  return reference || textOf(raw.answerPattern);
 };
 
 const toRow = (raw: Record<string, unknown>, row: number): ImportRow => {
@@ -58,6 +70,11 @@ const toRow = (raw: Record<string, unknown>, row: number): ImportRow => {
   else if (!input) problems.push('inputMissing');
   if (!type) problems.push('typeUnknown');
   if (type !== 'must_reject' && !expected) problems.push('expectedMissing');
+  if (
+    typeof expected === 'object' &&
+    Object.keys(expected.criteria ?? {}).some((name) => !criterionName.test(name))
+  )
+    problems.push('criterionNameInvalid');
   if (!split) problems.push('splitUnknown');
   if (id && !idPattern.test(id)) problems.push('idInvalid');
   return {
