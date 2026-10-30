@@ -1,20 +1,22 @@
 id: providers-openai
 plane: providers
 name: openai-chat adapter
-note: Chat + Foundry discovery
+note: Chat, Responses + Foundry discovery
 icon: llm
 color: '#8fa8b3'
 status: Provider
 packages:
   - '@genai/providers-openai'
-summary: The openai-chat wire protocol, and discovery of Azure AI Foundry deployments.
-description: Translates the model port to the OpenAI chat API with the vendor SDK, and lists Foundry
+summary: OpenAI Chat Completions and stateless Responses, and discovery of Azure AI Foundry deployments.
+description:
+  Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry
   deployments so models are discovered, not configured.
 responsibilities:
-  - openai-chat protocol
+  - openai-chat protocol with per-model API selection and learned Responses recovery
   - Azure deployment discovery
 files:
   - packages/providers-openai/src/index.ts
+  - packages/providers-openai/src/responses.ts
 input: Port request
 output: OpenAI API call
 replaces:
@@ -43,7 +45,7 @@ edges:
       file: packages/providers-openai/src/index.ts
       imports: '@genai/port-model'
   - to: azure-foundry
-    label: Chat completions and deployment listing
+    label: Chat completions, Responses and deployment listing
     kind: http
     target: http
     witness:

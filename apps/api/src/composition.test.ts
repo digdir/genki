@@ -29,6 +29,7 @@ import { Hono } from 'hono';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { callerFrom, createPlatform, serviceRequirement } from './composition.js';
+import { kernelTaskReader, toTimeline } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -1081,8 +1082,10 @@ describe('a draft test run', () => {
       model: { primary: 'foundry-openai/gpt-4o-2m-tps', residency: 'global' },
     },
   };
-  const withAdmin = async () => {
-    const { platform } = await boot();
+  const withAdmin = async (
+    prices?: Record<string, { inputPerThousand: number; outputPerThousand: number }>,
+  ) => {
+    const { platform } = await boot(undefined, prices ? { prices } : {});
     const app = new Hono();
     platform.mount(
       app,
@@ -1115,6 +1118,29 @@ describe('a draft test run', () => {
     expect(platform.registry.all().some((c) => c.descriptor.id.startsWith('platform/draft/'))).toBe(
       false,
     );
+  });
+
+  it('shows what the run cost on its timeline, priced from the price list', async () => {
+    const { platform, app } = await withAdmin({
+      'foundry-openai/gpt-4o-2m-tps': { inputPerThousand: 0.0238, outputPerThousand: 0.0952 },
+    });
+
+    const res = await run(app, { definition: draft, query: 'Hva koster det?' });
+    const { task } = (await res.json()) as { task: string };
+    const reader = kernelTaskReader(platform.kernel, {
+      kind: 'operator',
+      issuer: 'platform',
+      subject: 'task-reader',
+    });
+    const found = await reader.task(task);
+    if (!found) throw new Error(`no task ${task}`);
+
+    expect(toTimeline(found, await reader.events(task), new Date())).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      costMicroNok: 714,
+      priced: true,
+    });
   });
 
   it('answers 422 with schema errors for an invalid draft', async () => {

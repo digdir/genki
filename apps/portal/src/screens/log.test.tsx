@@ -19,7 +19,7 @@ describe('Logg: Kjøringer', () => {
   it('lists recent runs from the API with service, status and trigger and opens the first', async () => {
     await renderAt('#/log');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Logg' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Kjøringer' }).getAttribute('aria-selected')).toBe(
       'true',
     );
@@ -163,6 +163,22 @@ describe('run timeline', () => {
 
     expect(screen.getByText('Ikke priset')).toBeTruthy();
     expect(screen.queryByText(/0 øre/)).toBeNull();
+  });
+
+  it('shows a cost below one øre from the run in micro-NOK', async () => {
+    const base = mockFetch();
+    await renderAt('#/log/t1', async (input, init) => {
+      const response = await base(input, init);
+      if (!/\/tasks\/t1\/timeline$/.test(String(input))) return response;
+      return Response.json({
+        ...((await response.json()) as object),
+        costOre: 0,
+        costMicroNok: 714,
+      });
+    });
+    await steps();
+
+    expect(screen.getByText('0,1 øre')).toBeTruthy();
   });
 
   it('Vis hvem requires a reason, shows a notice and adds an entry under Endringer', async () => {

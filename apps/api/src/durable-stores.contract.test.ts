@@ -503,7 +503,7 @@ describe('the postgres task index and the monthly quota', () => {
     const assistant: Task = {
       ...task('quota-assistant', quotaOrg, '2026-10-10T08:00:00.000Z'),
       service: {
-        capability: { id: 'platform/builder-assistant', version: '1' },
+        capability: { id: 'platform/draft/assistant/0f3a9c2e7b1d4e65', version: '1' },
         strategy: { id: 'builder-assistant', version: '1' },
         configHash: 'h',
       },
