@@ -102,6 +102,11 @@ export const catalogErrors = defineNamespace({
   tracingResidencyByOperator:
     'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
   tracingNoConnection: 'ingen kobling {id}',
+  tracingHostOrigin:
+    'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
+  tracingHostDot: 'vertsnavnet slutter med punktum',
+  tracingContentNeedsInstance:
+    'innhold krever at LANGFUSE_BASE_URL er satt, så Digdirs Langfuse aldri forveksles med en virksomhets egen',
   tracingResidencyValues: 'norway, eu eller global',
   tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
   tracingKeysRefused: 'Langfuse avviste nøklene',
