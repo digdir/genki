@@ -608,7 +608,8 @@ describe('deferred judges (evaluator@2)', () => {
     });
 
     expect(clock.waited()).toBe(4 * 60_000 + 5 * 60_000);
-    expect(calls).toHaveLength(60);
+    // Every 5 seconds before the deadline, none at it.
+    expect(calls).toHaveLength(59);
     expect(judged(run)).toMatchObject([
       { state: 'scored', value: 1 },
       { state: 'missing', value: null, reason: 'no score within 5 minutes of the last case' },
@@ -650,6 +651,78 @@ describe('deferred judges (evaluator@2)', () => {
       },
       { state: 'missing' },
     ]);
+  });
+
+  it('takes no score that arrives after the deadline, and bounds each collect by the time left', async () => {
+    const clock = fakeClock();
+    const signals: (AbortSignal | undefined)[] = [];
+    const { evaluator } = later((item) => {
+      clock.pass(6 * 60_000);
+      return scoredAs(item, 1);
+    });
+    const collect = evaluator.collect?.bind(evaluator);
+    evaluator.collect = async (pending, options) => {
+      signals.push(options?.signal);
+      return (await collect?.(pending, options)) ?? [];
+    };
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+
+    expect(judged(run)).toMatchObject([
+      { state: 'missing', reason: 'no score within 5 minutes of the last case' },
+      { state: 'missing' },
+    ]);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  it('fails the run when a collected score cannot be recorded on its case, as for an immediate score', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    const answer = kernelTarget(kernel, kari, 'answer');
+
+    await expect(
+      runEval({
+        ...base,
+        target: {
+          ...answer,
+          annotate: async (_task, s) => {
+            if (s.metric === 'judge.later' && s.state === 'scored')
+              throw new Error('the audit log is down');
+          },
+        },
+        evaluators: [evaluator],
+        now: clock.now,
+        wait: { sleep: clock.sleep },
+      }),
+    ).rejects.toThrow('the audit log is down');
+  });
+
+  it('stops waiting for scores when the eval run is cancelled', async () => {
+    const clock = fakeClock();
+    const cancel = new AbortController();
+    const { evaluator, calls } = later(() => {
+      cancel.abort(new Error('cancelled by Kari'));
+      return undefined;
+    });
+
+    await expect(
+      runEval({
+        ...base,
+        target: kernelTarget(kernel, kari, 'answer'),
+        evaluators: [evaluator],
+        now: clock.now,
+        wait: { sleep: clock.sleep },
+        signal: cancel.signal,
+      }),
+    ).rejects.toThrow('cancelled by Kari');
+    expect(calls).toEqual([2]);
   });
 
   it('keeps pending, failed and not applicable apart', async () => {
@@ -906,7 +979,7 @@ describe('publishing gates', () => {
     ).toBe('no baseline run for test set ka-kudos');
   });
 
-  it('fails a gate whose metric has a missing or failed score in its split, naming the count', () => {
+  it('fails a gate whose metric has a missing or failed score in its split, in the run or its baseline, naming the count', () => {
     const unsettle = (
       run: EvalRun,
       metric: string,
@@ -953,6 +1026,11 @@ describe('publishing gates', () => {
       reason: 'recall@10: no score for 2 of 10 cases',
     });
     expect(otherSplit.pass).toBe(true);
+    const baseline = gated(['no-tag-regression'], all, unsettle(all, 'recall@10'));
+    expect(baseline.results[0]).toMatchObject({
+      pass: false,
+      reason: 'recall@10: no score in the baseline for 2 of 10 cases',
+    });
   });
 });
 
