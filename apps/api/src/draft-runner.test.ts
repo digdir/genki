@@ -12,6 +12,8 @@ import { resolveCatalog } from './catalogs.js';
 import { adoptionKind, blockKey } from './building-blocks.js';
 import { createPlatform } from './composition.js';
 import { appendVersion } from './config-store.js';
+import { assistantCapabilityPrefix } from '@genai/jobs';
+import { kernelTaskReader } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -336,7 +338,27 @@ describe('the draft runner', () => {
     expect(JSON.stringify(run)).toContain('er slått av for virksomheten');
   });
 
-  it('runs tagged with a non-service origin are excluded from service usage', async () => {
+  it("names an assistant run so the monthly quota's assistant prefix leaves it out", async () => {
+    const { platform } = await boot();
+
+    const run = await platform.drafts.run({
+      principal: kari,
+      tenant,
+      definition: bokmal,
+      parts: [{ kind: 'text', text: 'Hei' }],
+      origin: 'assistant',
+    });
+    if (!run.ok) throw new Error('the assistant run failed');
+    const task = await kernelTaskReader(platform.kernel, {
+      kind: 'operator',
+      issuer: 'platform',
+      subject: 'task-reader',
+    }).task(run.task);
+
+    expect(task?.service.capability.id.startsWith(assistantCapabilityPrefix)).toBe(true);
+  });
+
+  it('counts test runs on their own usage line and in the total, never as a service', async () => {
     const { platform, get } = await boot();
     await platform.definitions.publish(nynorsk, 'test', 'test');
     const [published] = await platform.definitions.capabilities();
@@ -356,6 +378,7 @@ describe('the draft runner', () => {
     const usage = (await get(`/tenants/${tenant}/usage`)) as {
       totals: { inputTokens: number };
       byService: { service: string }[];
+      testing: { usage: { inputTokens: number }; byOrigin: { origin: string }[] };
     };
     const tasks = (await get(`/tenants/${tenant}/tasks`)) as { data: { id: string }[] };
     const overview = (await get(`/tenants/${tenant}/overview`)) as {
@@ -363,7 +386,9 @@ describe('the draft runner', () => {
     };
 
     expect(draft.ok).toBe(true);
-    expect(usage.totals.inputTokens).toBe(10);
+    expect(usage.totals.inputTokens).toBe(20);
+    expect(usage.testing.usage.inputTokens).toBe(10);
+    expect(usage.testing.byOrigin.map((o) => o.origin)).toEqual(['playground']);
     expect(usage.byService.map((s) => s.service)).toEqual(['utkast-nynorsk']);
     expect(tasks.data.map((t) => t.id)).toEqual([served.task]);
     expect(overview.recentTasks.map((t) => t.id)).toEqual([served.task]);
