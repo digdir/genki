@@ -10,8 +10,8 @@ export const catalogErrors = defineNamespace({
   facetsFilter: 'fasetter må også være filterfelt: {missing}',
   runsInside: '{engine} kjører inne i plattformen og tar ikke {key}',
   moveWithEngineSwitch:
-    'Flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først.',
-  generationOfAnother: '{generation} er generasjonen til et annet datasett.',
+    'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
+  generationOfAnother: '{generation} er generasjonen til et annet datasett',
   onlyPlatformShared: 'bare plattformens endepunkter deles',
   tenantEndpointsModels: 'virksomhetens endepunkter lister modellene sine eksplisitt',
   tenantEndpointsAuth: 'virksomhetens endepunkter bruker api-key eller bearer',

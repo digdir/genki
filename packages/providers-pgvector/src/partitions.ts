@@ -207,7 +207,15 @@ export const prepareGeneration = (
           `alter table ${name} add constraint ${name}_bounds
              check (dataset = ${literal(dataset.id)} and generation = ${literal(generation)})`,
         );
+        // Keys and per-document lookups up front, so each store replaces a document without a scan.
+        await client.query(`alter table ${name} add primary key (generation, id)`);
       }
+      await client.query(
+        `create index ${partitionOf('kn_chunks', generation)}_doc on ${partitionOf('kn_chunks', generation)} (generation, doc_id, position)`,
+      );
+      await client.query(
+        `create index ${partitionOf('kn_phrases', generation)}_doc on ${partitionOf('kn_phrases', generation)} (generation, doc_id)`,
+      );
       await client.query(
         `insert into kn_generations (generation, dataset, recipe, state) values ($1, $2, $3, 'standalone')`,
         [generation, dataset.id, JSON.stringify(recipeOf(dataset))],
@@ -254,13 +262,16 @@ const syncTableFilters = async (
 ) => {
   const concurrently = live ? ' concurrently' : '';
   const wanted = filterIndexesOf(dataset, table);
-  const { rows } = await client.query<{ indexname: string }>(
-    `select indexname from pg_indexes where tablename = $1
-       and (indexname = $1 || '_fields' or indexname like $1 || '\\_r\\_%')`,
+  const { rows } = await client.query<{ indexname: string; valid: boolean }>(
+    `select c.relname as indexname, i.indisvalid as valid from pg_index i
+       join pg_class c on c.oid = i.indexrelid
+       where i.indrelid = to_regclass($1)
+         and (c.relname = $1 || '_fields' or c.relname like $1 || '\\_r\\_%')`,
     [table],
   );
-  for (const { indexname } of rows)
-    if (!wanted.some((w) => w.name === indexname))
+  // A concurrent build that was cut short leaves an invalid index, which `if not exists` would keep.
+  for (const { indexname, valid } of rows)
+    if (!valid || !wanted.some((w) => w.name === indexname))
       await client.query(`drop index${concurrently} if exists ${indexname}`);
   for (const index of wanted)
     await client.query(

@@ -11,6 +11,7 @@ import { stopPostgres } from '@genai/providers-postgres/testing';
 import {
   attachGeneration,
   migrateKnowledgeServer,
+  syncFilterIndexes,
   openKnowledgePools,
   partitionOf,
   pgvectorEngine,
@@ -199,7 +200,7 @@ describe('generations as partitions on the knowledge server', () => {
     expect(after.filter((n) => n.endsWith('_fields'))).toHaveLength(1);
   });
 
-  it("the worker changes a dataset's filter indexes when its filters change in the catalog", async () => {
+  it('the engine changes filter indexes only where it has the owner pool', async () => {
     const d = dataset('digdir/follow', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
     await fill(d, 'g-20261030-0201', [doc('a', 8, { type: ['rapport'], year: 2023 })]);
     const table = partitionOf('kn_docs', 'g-20261030-0201');
@@ -379,7 +380,7 @@ describe('generations as partitions on the knowledge server', () => {
     );
   });
 
-  it('a range filter value that is a list or not of its type is stored and left out of its index', async () => {
+  it('a range filter value that is a list or not of its type is stored and matched by no range query', async () => {
     const d = dataset('digdir/ranges', 8);
     await fill(d, 'g-20261030-1101', [
       doc('list', 8, { year: [2020, 2021] }),
@@ -397,6 +398,26 @@ describe('generations as partitions on the knowledge server', () => {
       { id: 'ok', year: '2022' },
       { id: 'text', year: null },
     ]);
+    const codes = dataset('digdir/codes', 8, { filters: { code: 'range' }, valueTypes: {} });
+    await fill(codes, 'g-20261030-1102', [
+      doc('list', 8, { code: ['a', 'b'] }),
+      doc('number', 8, { code: 7 }),
+      doc('ok', 8, { code: 'k-12' }),
+    ]);
+    const { rows: texts } = await owner.query<{ id: string; code: string | null }>(
+      `select id, kn_text(fields -> 'code') as code from kn_docs
+         where generation = 'g-20261030-1102' order by id`,
+    );
+    expect(texts).toEqual([
+      { id: 'list', code: null },
+      { id: 'number', code: null },
+      { id: 'ok', code: 'k-12' },
+    ]);
+    const { rows: inRange } = await owner.query<{ id: string }>(
+      `select id from kn_docs where generation = 'g-20261030-1101'
+         and kn_int(fields -> 'year') between 1900 and 2100`,
+    );
+    expect(inRange).toEqual([{ id: 'ok' }]);
   });
 
   it('reads a stored generation back with its vectors', async () => {
@@ -468,5 +489,35 @@ describe('generations as partitions on the knowledge server', () => {
       (await admin.query(`select 1 from kn_generations where generation = 'g-20261030-1401'`))
         .rowCount,
     ).toBe(1);
+  });
+
+  it('a filter index whose concurrent build was cut short is built again on the next sync', async () => {
+    const d = dataset('digdir/invalid', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
+    await fill(d, 'g-20261030-1501', [doc('a', 8, { type: ['rapport'], year: 2024 })]);
+    const table = partitionOf('kn_docs', 'g-20261030-1501');
+    const withRange: Dataset = {
+      ...d,
+      filters: { type: 'multiselect', year: 'range' },
+      valueTypes: { year: 'integer' },
+    };
+    const writer = await admin.connect();
+    try {
+      await writer.query('begin');
+      await writer.query(`update ${table} set title = title`);
+      await expect(syncFilterIndexes(owner, withRange, { lockTimeoutMs: 300 })).rejects.toThrow();
+    } finally {
+      await writer.query('rollback');
+      writer.release();
+    }
+    const validity = async () =>
+      (
+        await admin.query<{ name: string; valid: boolean }>(
+          `select c.relname as name, i.indisvalid as valid from pg_index i
+             join pg_class c on c.oid = i.indexrelid where i.indrelid = $1::regclass and c.relname like '%\\_r\\_%'`,
+          [table],
+        )
+      ).rows;
+    await syncFilterIndexes(owner, withRange);
+    expect(await validity()).toEqual([{ name: expect.stringContaining('_r_'), valid: true }]);
   });
 });

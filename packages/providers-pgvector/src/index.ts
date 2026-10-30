@@ -14,5 +14,6 @@ export {
   migrateKnowledgeServer,
   partitionOf,
   prepareGeneration,
+  syncFilterIndexes,
   type PartitionOptions,
 } from './partitions.js';
