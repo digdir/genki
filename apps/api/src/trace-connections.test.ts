@@ -213,9 +213,61 @@ describe("an agency's Langfuse connections", () => {
     expect(errorsOf(clear.body)).toEqual([
       'connection.secretKey: must be a secret://tenant/<tenant>/<name> reference',
     ]);
-    // Refused before an admin task starts, so the typed key never reaches a task's input.
-    expect(clear.task).toBeNull();
-    expect(foreign.task).not.toBeNull();
+    // Refused before an admin task starts, so a key typed in clear, or typed as a secret's name,
+    // never reaches a task's input.
+    expect([clear.task, foreign.task, wrongHost.task]).toEqual([null, null, null]);
+  });
+
+  it('takes a host only as an address, without a path, credentials or a trailing dot', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+
+    const refusedFor = async (host: string) =>
+      errorsOf((await env.connect('a', ownConnection({ host }))).body);
+
+    expect(await refusedFor('https://bruker:passord@langfuse.etaten.example.no')).toEqual([
+      'connection.host: the host is an address like https://langfuse.example.no, without a path or credentials',
+    ]);
+    expect(await refusedFor('https://langfuse.etaten.example.no/api')).toEqual([
+      'connection.host: the host is an address like https://langfuse.example.no, without a path or credentials',
+    ]);
+    await env.secret('langfuse-punktum', 'https://langfuse.digdir.example.no.');
+    const dotted = await env.connect(
+      'b',
+      ownConnection({
+        host: 'https://langfuse.digdir.example.no.',
+        secretKey: `secret://tenant/${tenant}/langfuse-punktum`,
+      }),
+    );
+    expect(errorsOf(dotted.body)).toContain('connection.host: the host name ends with a dot');
+  });
+
+  it("refuses content outside development mode while Digdir's Langfuse is not configured", async () => {
+    const env = await boot({});
+    await env.secret('langfuse-etaten', own);
+
+    const refused = await env.connect(
+      'etaten',
+      ownConnection({ content: true, erasureDeclared: true }),
+    );
+
+    expect(errorsOf(refused.body)).toEqual([
+      "connection.content: content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
+    ]);
+  });
+
+  it('removes a connection, and answers 404 for one that does not exist', async () => {
+    const env = await boot();
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+
+    const removed = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+    const missing = await env.send('DELETE', `/tenants/${tenant}/tracing/connections/ukjent`);
+    const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+
+    expect(removed.status).toBe(200);
+    expect(missing.status).toBe(404);
+    expect(listed.body.data).toEqual([]);
   });
 
   it('covers a service with at most one connection', async () => {
@@ -257,7 +309,10 @@ describe("an agency's Langfuse connections", () => {
       { residency: 'eu' },
     );
     const listed = await env.send('GET', `/tenants/${tenant}/tracing/connections`);
+    // Saved again without a residency, it keeps the one the operator set.
+    const resaved = await env.connect('digdir', { ...connection, services: ['svar', 'annen'] });
 
+    expect(resaved.body).toMatchObject({ residency: 'eu', services: ['svar', 'annen'] });
     expect(saved.body).toMatchObject({ residency: 'global' });
     expect(errorsOf(tenantSays.body)).toEqual([
       "connection.residency: an operator sets the residency of a connection to Digdir's Langfuse",

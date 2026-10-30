@@ -12,6 +12,7 @@ import {
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { enterTenant } from './access.js';
+import { rightsOf } from './rights.js';
 import { actorOf, AdminRefused, refusedBy, type AdminHandler } from './admin.js';
 import { appendVersion, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, problem, reasonTooShort } from './http.js';
@@ -23,7 +24,10 @@ const slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
 export const traceConnection = z.strictObject({
   id: slug,
-  host: z.url({ protocol: /^https?$/ }),
+  host: z.url({ protocol: /^https?$/ }).refine((h) => {
+    const url = new URL(h);
+    return !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash;
+  }, 'the host is an address like https://langfuse.example.no, without a path or credentials'),
   publicKey: z.string().min(1).max(200),
   secretKey: z
     .string()
@@ -118,8 +122,30 @@ export const traceConnections = (
     return name === 'localhost' || isLoopbackAddress(name);
   };
 
+  /** The secret is the tenant's own and set for the connection's host. */
+  const secretProblems = async (
+    tenant: string,
+    next: Pick<TraceConnection, 'secretKey' | 'host'>,
+  ) => {
+    if (secretTenant(next.secretKey) !== tenant)
+      return [{ path: 'connection.secretKey', message: 'the secret belongs to another tenant' }];
+    const outside = deps.tenantSecrets
+      ? await deps.tenantSecrets.outside(tenant, next.secretKey, [next.host])
+      : [];
+    return outside.length > 0
+      ? [
+          {
+            path: 'connection.secretKey',
+            message: `the secret is not set for ${outside.join(', ')}`,
+          },
+        ]
+      : [];
+  };
+
   const hostProblem = async (host: string) => {
     const url = new URL(host);
+    // A trailing dot names the same host, so Digdir's Langfuse would not be recognised by it.
+    if (url.hostname.endsWith('.')) return 'the host name ends with a dot';
     if (url.protocol !== 'https:' && !(options.devMode && (await loopback(host))))
       return 'the host must use HTTPS';
     try {
@@ -164,20 +190,7 @@ export const traceConnections = (
     if (!parsed.success) return { ok: false, errors: errorsOf(parsed.error), target };
     const next = parsed.data;
     const before = await find(tenant, next.id);
-    const errors: { path: string; message: string }[] = [];
-    if (secretTenant(next.secretKey) !== tenant)
-      errors.push({
-        path: 'connection.secretKey',
-        message: 'the secret belongs to another tenant',
-      });
-    else if (deps.tenantSecrets) {
-      const outside = await deps.tenantSecrets.outside(tenant, next.secretKey, [next.host]);
-      if (outside.length > 0)
-        errors.push({
-          path: 'connection.secretKey',
-          message: `the secret is not set for ${outside.join(', ')}`,
-        });
-    }
+    const errors: { path: string; message: string }[] = await secretProblems(tenant, next);
     const hostRefused = await hostProblem(next.host);
     if (hostRefused) errors.push({ path: 'connection.host', message: hostRefused });
     for (const service of next.services) {
@@ -189,12 +202,16 @@ export const traceConnections = (
         });
     }
     const instance = onInstance(next.host);
+    const residencyGiven =
+      typeof input.connection === 'object' &&
+      input.connection !== null &&
+      'residency' in input.connection;
     const residency = instance
       ? before && onInstance(before.host)
         ? before.residency
         : 'global'
       : next.residency;
-    if (instance && next.residency !== residency)
+    if (instance && residencyGiven && next.residency !== residency)
       errors.push({
         path: 'connection.residency',
         message: "an operator sets the residency of a connection to Digdir's Langfuse",
@@ -202,7 +219,13 @@ export const traceConnections = (
     const receivesContent = instance
       ? options.instanceReceivesContent === true
       : next.erasureDeclared || (options.devMode === true && (await loopback(next.host)));
-    if (next.content && !receivesContent)
+    if (next.content && options.instance === undefined && !options.devMode)
+      errors.push({
+        path: 'connection.content',
+        message:
+          "content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
+      });
+    else if (next.content && !receivesContent)
       errors.push({
         path: 'connection.content',
         message: instance
@@ -277,7 +300,17 @@ export const traceConnections = (
     return { ok: true, value: spec, target, audit: { before, after: spec } };
   };
 
-  return { list, find, coveringService, onInstance, check, save, remove, setResidency };
+  return {
+    list,
+    find,
+    coveringService,
+    onInstance,
+    check,
+    save,
+    remove,
+    setResidency,
+    secretProblems,
+  };
 };
 
 export type TraceConnections = ReturnType<typeof traceConnections>;
@@ -356,6 +389,8 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const parsed = traceConnection.safeParse(connection);
         if (!parsed.success)
           return problem(c, 400, 'Invalid request', { errors: errorsOf(parsed.error) });
+        const secret = await connections.secretProblems(guard.tenant, parsed.data);
+        if (secret.length > 0) return problem(c, 400, 'Invalid request', { errors: secret });
         return perform(c, guard.principal, guard.tenant, 'platform.tracing.connection.save', {
           connection,
         });
@@ -364,6 +399,12 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
       app.delete('/tenants/:tenant/tracing/connections/:id', async (c) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
+        // Only someone who may change connections learns that one does not exist.
+        if (
+          rightsOf(guard.principal, guard.tenant).has('manage-services') &&
+          !(await connections.find(guard.tenant, c.req.param('id') ?? ''))
+        )
+          return problem(c, 404, 'Not found');
         return perform(c, guard.principal, guard.tenant, 'platform.tracing.connection.remove', {
           id: c.req.param('id'),
         });
