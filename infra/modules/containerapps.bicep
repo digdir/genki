@@ -216,9 +216,6 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
           resources: { cpu: json(cpu), memory: memory }
           env: serverEnv
           volumeMounts: dataMount
-          probes: [
-            { type: 'Readiness', httpGet: { path: '/readyz', port: 8081 }, periodSeconds: 10 }
-          ]
         }
       ]
       volumes: dataVolume
