@@ -42,6 +42,29 @@ describe('agent loop with caller filters', () => {
     expect(out.sources.slice(0, 2).map((s) => s.chunkId)).toEqual(['c1', 'c2']);
   });
 
+  it('rewrites OpenAI-style markers such as 【1†L1-L4】 in the answer as [N]', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['tildelingsbrev'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1', 'c2'] })]),
+          ],
+          synth: [
+            () =>
+              'Digdir skal styrke felles løsninger 【1†L1-L4】 og ha bedre data 【2:0†source】.',
+          ],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Digdir skal styrke felles løsninger [1] og ha bedre data [2].');
+    expect(out.meta?.citations).toEqual([
+      { index: 1, chunkId: 'c1' },
+      { index: 2, chunkId: 'c2' },
+    ]);
+  });
+
   it('says nothing about filters when the caller set none', async () => {
     const out = await run({
       scripts: { primary: { loop: [() => result('Svaret er 42.')] } },
