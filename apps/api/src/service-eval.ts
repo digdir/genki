@@ -3,6 +3,7 @@ import type { Principal } from '@genai/contracts';
 import {
   caseTypeOf,
   caseView,
+  defaultObserve,
   gradeAnswer,
   splitsFor,
   type CaseSplit,
@@ -223,7 +224,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
-        { text: outcome.answer, noAnswer: outcome.noAnswer },
+        {
+          ...defaultObserve(outcome.parts, []),
+          text: outcome.answer,
+          noAnswer: outcome.noAnswer,
+        },
         {
           ...(judge ? { judge } : {}),
           context: {
