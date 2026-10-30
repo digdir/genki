@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { Event, Input, Part, Principal } from '@genai/contracts';
 import type { Kernel } from '@genai/kernel';
-import { EvalError, type EvalContext, type Evaluator } from './evaluators.js';
+import {
+  EvalError,
+  type CollectedScore,
+  type EvalContext,
+  type Evaluator,
+  type PendingScore,
+} from './evaluators.js';
 import { defaultObserve, type Observation, type Observe } from './observe.js';
 import type { EvalRun, MetricSummary, Score, Split, TestCase, TestSet } from './schema.js';
 import {
@@ -73,6 +79,14 @@ export const kernelTarget = (
     kernel.annotate(principal, task, { type: 'kernel.score', data: score }),
 });
 
+export interface WaitOptions {
+  deadlineMs?: number;
+  everyMs?: number;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}
+
+export const scoreWaitMs = 5 * 60_000;
+
 export interface RunEvalOptions {
   target: EvalTarget;
   testSet: TestSet;
@@ -83,7 +97,11 @@ export interface RunEvalOptions {
   modelFamily?: (model: string) => string | undefined;
   observe?: Observe;
   bootstrap?: BootstrapOptions;
+  wait?: WaitOptions;
+  /** Cancels the run, including its wait for scores. */
+  signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
+  onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
 }
 
@@ -131,6 +149,170 @@ const aggregate = (results: EvalRun['results'], bootstrap?: BootstrapOptions) =>
   return { metrics: table(), byTag: Object.fromEntries(tags.map((t) => [t, table(t)])) };
 };
 
+const unsettled = new Set<Score['state']>(['pending', 'failed', 'missing']);
+
+/** Per result, not per metric: a judge that missed one of its metrics on a case missed the case. */
+export const incompleteOf = (results: EvalRun['results']): EvalRun['incomplete'] => {
+  const byEvaluator = new Map<
+    string,
+    { of: Set<string>; missing: Set<string>; failed: Set<string> }
+  >();
+  for (const r of results) {
+    const key = `${r.case}#${r.repeat}`;
+    for (const s of r.scores) {
+      if (s.state === 'not-applicable') continue;
+      const seen = byEvaluator.get(s.evaluator) ?? {
+        of: new Set<string>(),
+        missing: new Set<string>(),
+        failed: new Set<string>(),
+      };
+      seen.of.add(key);
+      if (s.state === 'missing' || s.state === 'pending') seen.missing.add(key);
+      if (s.state === 'failed') seen.failed.add(key);
+      byEvaluator.set(s.evaluator, seen);
+    }
+  }
+  return [...byEvaluator]
+    .filter(([, seen]) => seen.missing.size + seen.failed.size > 0)
+    .map(([evaluator, seen]) => ({
+      evaluator,
+      missing: seen.missing.size,
+      failed: seen.failed.size,
+      of: seen.of.size,
+      reason: [
+        ...(seen.missing.size > 0
+          ? [`no score from ${evaluator} for ${seen.missing.size} of ${seen.of.size} cases`]
+          : []),
+        ...(seen.failed.size > 0
+          ? [`${evaluator} failed on ${seen.failed.size} of ${seen.of.size} cases`]
+          : []),
+      ].join('; '),
+    }));
+};
+
+/** Counted per result, as for incompleteOf; a not-applicable score is no gap. */
+export const unscoredIn = (run: Pick<EvalRun, 'results'>, metric: string, split: Split) => {
+  let of = 0;
+  let missing = 0;
+  for (const r of run.results) {
+    if (r.split !== split) continue;
+    const scores = r.scores.filter((s) => s.metric === metric && s.state !== 'not-applicable');
+    if (scores.length === 0) continue;
+    of += 1;
+    if (scores.some((s) => unsettled.has(s.state))) missing += 1;
+  }
+  return { of, missing };
+};
+
+const pauseFor = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
+const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`;
+
+const collectPending = async (
+  results: EvalRun['results'],
+  evaluators: Evaluator[],
+  options: {
+    lastSent: Date;
+    wait: WaitOptions;
+    now: () => Date;
+    annotate: (task: string, score: Score) => Promise<void>;
+    onWaiting?: (pending: number, until: string) => void;
+    signal?: AbortSignal;
+  },
+) => {
+  const pendingNow = (): PendingScore[] =>
+    results.flatMap((r) =>
+      r.scores
+        .filter((s) => s.state === 'pending')
+        .map((score) => ({ case: r.case, repeat: r.repeat, task: r.task, score })),
+    );
+  let pending = pendingNow();
+  if (pending.length === 0) return;
+  const deadlineMs = options.wait.deadlineMs ?? scoreWaitMs;
+  const everyMs = options.wait.everyMs ?? 5_000;
+  const sleep = options.wait.sleep ?? pauseFor;
+  const deadline = options.lastSent.getTime() + deadlineMs;
+  const until = new Date(deadline).toISOString();
+  const byId = new Map(evaluators.map((e) => [e.id, e]));
+  const lastError = new Map<string, string>();
+  let reported = 0;
+  const report = () => {
+    if (pending.length === 0 || pending.length === reported) return;
+    reported = pending.length;
+    options.onWaiting?.(pending.length, until);
+  };
+
+  const settle = async (collected: CollectedScore) => {
+    if (collected.score.state === 'pending') return;
+    const result = results.find((r) => r.case === collected.case && r.repeat === collected.repeat);
+    const at = result?.scores.findIndex(
+      (s) =>
+        s.state === 'pending' &&
+        s.evaluator === collected.score.evaluator &&
+        s.metric === collected.score.metric,
+    );
+    if (!result || at === undefined || at < 0) return;
+    result.scores[at] = collected.score;
+    await options.annotate(result.task, collected.score);
+  };
+
+  const left = () => deadline - options.now().getTime();
+  report();
+  while (pending.length > 0 && left() > 0) {
+    await sleep(Math.min(everyMs, left()), options.signal);
+    options.signal?.throwIfAborted();
+    const byEvaluator = Map.groupBy(pending, (p) => p.score.evaluator);
+    for (const [id, items] of byEvaluator) {
+      if (left() <= 0) break;
+      const expiry = AbortSignal.timeout(left());
+      const signal = options.signal ? AbortSignal.any([options.signal, expiry]) : expiry;
+      let collected: CollectedScore[];
+      try {
+        collected = (await byId.get(id)?.collect?.(items, { signal })) ?? [];
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        lastError.set(id, error instanceof Error ? error.message : String(error));
+        continue;
+      }
+      options.signal?.throwIfAborted();
+      // What arrives after the deadline is not taken, so a run never outlasts its wait.
+      if (left() <= 0) break;
+      for (const c of collected) await settle(c);
+    }
+    pending = pendingNow();
+    report();
+  }
+
+  for (const item of pending) {
+    const { evaluator, version, metric } = item.score;
+    const error = lastError.get(evaluator);
+    await settle({
+      case: item.case,
+      repeat: item.repeat,
+      score: {
+        evaluator,
+        version,
+        metric,
+        value: null,
+        applicable: true,
+        state: 'missing',
+        reason: `no score within ${minutes(deadlineMs)} of the last case${error ? ` (last error: ${error})` : ''}`,
+      },
+    });
+  }
+};
+
 export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const { target, testSet, evaluators, provenance } = options;
   const repeats = options.repeats ?? 1;
@@ -153,8 +335,12 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const servedModels = new Set<string>();
   const services = new Set<string>();
   const total = cases.length * repeats;
+  const annotate = (task: string, score: Score) =>
+    target.annotate ? target.annotate(task, score) : Promise.resolve();
+  let lastSent = now();
   for (let repeat = 0; repeat < repeats; repeat++) {
     for (const c of cases) {
+      options.signal?.throwIfAborted();
       let outcome: TargetResult;
       try {
         outcome = await target.invoke(inputOf(c));
@@ -171,18 +357,27 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       const ctx: EvalContext = {
         servedModels: outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
+        ...(options.signal ? { signal: options.signal } : {}),
       };
       const scores: Score[] = [];
+      lastSent = now();
       for (const evaluator of evaluators) {
+        options.signal?.throwIfAborted();
+        let answered: Score[];
         try {
-          scores.push(...(await evaluator.evaluate(c, observation, ctx)));
+          answered = await evaluator.evaluate(c, observation, ctx);
         } catch (error) {
           throw new EvalError(
             `evaluator ${evaluator.id} failed on case ${c.id}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+        if (!evaluator.collect && answered.some((s) => s.state === 'pending'))
+          throw new EvalError(
+            `evaluator ${evaluator.id} answered pending on case ${c.id} but cannot be collected`,
+          );
+        scores.push(...answered);
       }
-      if (target.annotate) for (const s of scores) await target.annotate(outcome.task, s);
+      for (const s of scores) if (s.state !== 'pending') await annotate(outcome.task, s);
       results.push({
         case: c.id,
         split: c.split,
@@ -195,6 +390,14 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       options.onProgress?.(results.length, total);
     }
   }
+  await collectPending(results, evaluators, {
+    lastSent,
+    wait: options.wait ?? {},
+    now,
+    annotate,
+    ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 
   return {
     id: randomUUID(),
@@ -217,6 +420,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     },
     results,
     ...aggregate(results, options.bootstrap),
+    incomplete: incompleteOf(results),
   };
 };
 

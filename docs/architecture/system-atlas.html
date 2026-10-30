@@ -5235,7 +5235,7 @@
               'An eval run invokes the service under test like any caller (ADR 0003). Scores and feedback are kernel events. A judge blocks publishing only once it is calibrated against human labels.',
             responsibilities: [
               'Versioned test sets with locked splits',
-              'Deterministic and model-based evaluators',
+              'Deterministic and model-based evaluators, answering at once or later (evaluator@2)',
               'Publishing gates and feedback',
             ],
             files: [
@@ -5441,6 +5441,10 @@
                       anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }],
                     },
                     applicable: { type: 'boolean' },
+                    state: {
+                      type: 'string',
+                      enum: ['scored', 'not-applicable', 'pending', 'failed', 'missing'],
+                    },
                     reason: { type: 'string' },
                     details: {
                       type: 'object',
@@ -5448,7 +5452,7 @@
                       additionalProperties: {},
                     },
                   },
-                  required: ['evaluator', 'version', 'metric', 'value', 'applicable'],
+                  required: ['evaluator', 'version', 'metric', 'value', 'applicable', 'state'],
                   additionalProperties: false,
                 },
               },

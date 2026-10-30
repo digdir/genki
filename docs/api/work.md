@@ -28,7 +28,8 @@ To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenan
 ## Two kinds of evaluation run
 
 - A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`.
-- An eval capability run starts with `POST /tenants/{tenant}/eval-runs` (capability, test set, evaluators and provenance are required) and is listed by `GET /tenants/{tenant}/eval-runs`. Follow it with `GET /eval-tasks/{task}`; every instance answers the same status, read from the task and the stored run.
+- An eval capability run starts with `POST /tenants/{tenant}/eval-runs` (capability, test set, evaluators and provenance are required) and is listed by `GET /tenants/{tenant}/eval-runs`. Follow it with `GET /eval-tasks/{task}`; every instance answers the same status, read from the task and the stored run, except `waiting-for-scores`, which only the instance running the eval knows.
+- A score has a `state`: `scored`, `not-applicable`, `pending`, `failed` or `missing`. A judge on `evaluator@2` may answer pending. The run then waits up to 5 minutes from its last case, `GET /eval-tasks/{task}` answers `waiting-for-scores` with how many scores are pending, and what has not arrived is `missing`. The run's `incomplete` names each judge with missing or failed scores, and a gate on a metric with any of them in its split fails.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both. `kind` tells them apart: `service` answers the run with its case results, `kernel` answers the same body as `GET /eval-runs/{id}`.
 - Neither kind shows its lease (`owner`, `heartbeatAt`).
 - `GET /tenants/{tenant}/test-sets`, `GET /tenants/{tenant}/eval-runs` and `GET /tenants/{tenant}/feedback` answer `{ "data": [...] }`, like every other list.

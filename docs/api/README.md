@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-10-30: judges that answer later (evaluator@2)
+
+- Registering an evaluator plug-in under `evaluator@1` answers `400`; one stored under it judges nothing until it is registered again under `evaluator@2`.
+- Every score in an eval run has a `state`: `scored`, `not-applicable`, `pending`, `failed` or `missing`. A run stored before reads with the state its value implies.
+- `GET /eval-tasks/{task}` can answer `waiting-for-scores` with how many scores are pending, and an eval run has `incomplete`, naming each judge with missing or failed scores.
+- A gate fails when its metric has missing or failed scores in its split, in the run or, for a no-regression gate, in its baseline.
+
 ### 2026-10-26: rights stay within their scope
 
 - Saving or attaching an API key policy answers `403` when the policy's scopes need a right the person lacks: `admin` needs all five rights, `ingest` needs `manage-datasets`. API keys, machine clients and operators are unchanged.
@@ -115,7 +122,7 @@ Other
 
 - Service eval runs no longer show the lease fields `owner` and `heartbeatAt`.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both kinds of run and tells them apart with `kind` (`service` or `kernel`); see [work.md](work.md).
-- `GET /eval-tasks/{task}` answers the same from every instance.
+- `GET /eval-tasks/{task}` answers the same from every instance, except `waiting-for-scores`, which only the instance running the eval knows.
 - `GET /operator/tasks?status=` filters on every task status; an unknown status answers `400`.
 - `GET /operator/tracing` no longer has the always-empty `tenants` member.
 - Pipeline `/versions` marks the version that removed the pipeline with `deleted: true`.

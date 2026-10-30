@@ -36,6 +36,7 @@ export interface StartRunRequest {
 
 export type RunStatus =
   | { state: 'running'; task: string }
+  | { state: 'waiting-for-scores'; task: string; pending: number; until: string }
   | { state: 'completed'; task: string; run: string }
   | { state: 'failed'; task: string; error: string };
 
@@ -122,6 +123,22 @@ export const createEvalService = (options: EvalServiceOptions) => {
         },
       });
       jobs.set(run.task, { state: 'running', task: run.task, tenant: request.tenant });
+      void (async () => {
+        for await (const event of run.events) {
+          const data = event.data as
+            { kind?: string; pending?: number; until?: string } | undefined;
+          if (event.type !== 'kernel.notice' || data?.kind !== 'eval.waiting') continue;
+          const state = jobs.get(run.task)?.state;
+          if (state !== 'running' && state !== 'waiting-for-scores') continue;
+          jobs.set(run.task, {
+            state: 'waiting-for-scores',
+            task: run.task,
+            pending: data.pending ?? 0,
+            until: data.until ?? '',
+            tenant: request.tenant,
+          });
+        }
+      })().catch(() => undefined);
       run.result
         .then(async (parts) => {
           const result = runOf(parts);
@@ -157,6 +174,8 @@ export const createEvalService = (options: EvalServiceOptions) => {
           throw new EvalAccessError(`eval task ${task} not found`);
         if (job.state === 'completed') return { state: job.state, task: job.task, run: job.run };
         if (job.state === 'failed') return { state: job.state, task: job.task, error: job.error };
+        if (job.state === 'waiting-for-scores')
+          return { state: job.state, task: job.task, pending: job.pending, until: job.until };
       }
       const found = await options.kernel.task(principal, task).catch(() => undefined);
       if (!found || found.service.capability.id !== options.evalCapability)

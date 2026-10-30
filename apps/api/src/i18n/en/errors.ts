@@ -98,6 +98,7 @@ export const catalogErrors = {
   idStartsWith: 'the id starts with {id}/',
   noPluginRegistry: 'no plug-in registry',
   builtInPlugin: '{id} is a built-in plug-in',
+  pluginContractOutdated: '{kind} plug-ins meet {expected}; register {id} again under {expected}',
   noExternalPlugin: 'no external plug-in {id}',
   invalidManifest: 'Invalid manifest',
   pluginEndpointNeedsAuth: 'a {kind} endpoint needs auth',

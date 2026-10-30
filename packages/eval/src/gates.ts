@@ -1,5 +1,5 @@
 import { EvalError } from './evaluators.js';
-import { compareRuns, perCaseMeans, type ComparableField } from './runner.js';
+import { compareRuns, perCaseMeans, unscoredIn, type ComparableField } from './runner.js';
 import type { EvalRun, Gate } from './schema.js';
 import type { EvalRunStore } from './store.js';
 import { mean, type BootstrapOptions } from './stats.js';
@@ -90,6 +90,16 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
           note = ` (advisory: judge ${uncalibrated.join(', ') || 'unknown'} is not calibrated to ${minimumJudgeAgreement})`;
         }
       }
+      const unscored = unscoredIn(run, gate.metric, gate.split);
+      if (unscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score for ${unscored.missing} of ${unscored.of} cases${note}`,
+        });
+        continue;
+      }
       if (gate.kind === 'threshold') {
         const values = [...perCaseMeans(run, gate.metric, undefined, gate.split).values()];
         if (values.length === 0) {
@@ -119,6 +129,16 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
           pass: false,
           blocking,
           reason: `no baseline run for test set ${testSet}${note}`,
+        });
+        continue;
+      }
+      const baselineUnscored = unscoredIn(previous, gate.metric, gate.split);
+      if (baselineUnscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score in the baseline for ${baselineUnscored.missing} of ${baselineUnscored.of} cases${note}`,
         });
         continue;
       }
