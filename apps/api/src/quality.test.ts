@@ -314,6 +314,36 @@ describe('test sets for a service', () => {
     ).toBe(400);
     expect((await send('POST', path, 'erik', { input: 'Hei', expected: 'x' })).status).toBe(403);
   });
+
+  it('adds a case with a reference answer and named criteria as they are, and refuses other shapes', async () => {
+    const { platform, send } = await boot();
+    const path = `/tenants/${tenant}/test-sets/svar-frister/cases`;
+
+    const added = await send('POST', path, 'kari', {
+      id: 'kudos-eier',
+      input: 'Hvem eier Kudos?',
+      expected: {
+        referenceAnswer: 'DFØ eier Kudos.',
+        criteria: { criteria: 'Nevner DFØ', supporting_quotes: 'Kudos driftes av DFØ' },
+      },
+    });
+    const refused = await send('POST', path, 'kari', {
+      input: 'Hei',
+      expected: { criteria: { 'Ugyldig navn': 'x' } },
+    });
+    const stored = await platform.evalStores.testSets.get(tenant, 'svar-frister');
+
+    expect(added.status).toBe(201);
+    expect(stored?.spec.cases.find((c) => c.id === 'kudos-eier')?.expected).toEqual({
+      sources: [],
+      referenceAnswer: 'DFØ eier Kudos.',
+      criteria: { criteria: 'Nevner DFØ', supporting_quotes: 'Kudos driftes av DFØ' },
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.errors).toEqual([
+      { path: 'expected', message: 'expected is a text, or a reference answer and named criteria' },
+    ]);
+  });
 });
 
 describe('eval runs for a service', () => {

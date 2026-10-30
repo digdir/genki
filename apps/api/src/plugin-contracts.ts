@@ -126,9 +126,14 @@ const pause = (ms: number, signal: AbortSignal) =>
     );
   });
 
-/** Asks again for what was pending until nothing is, or the check runs out of time. */
-const settledScores = async (s: EvaluatorSubject, signal: AbortSignal) => {
-  const scores = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
+/**
+ * Asks again for what was pending until nothing is, or the check runs out of time. Given the
+ * scores of an earlier answer, it collects those, so the check follows the ticket it was handed.
+ */
+const settledScores = async (s: EvaluatorSubject, signal: AbortSignal, answered?: Score[]) => {
+  const scores = answered
+    ? [...answered]
+    : await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
   const pending = () => scores.filter((x) => x.state === 'pending');
   if (pending().length > 0)
     check(s.evaluator.collect, 'an evaluator that answers pending can be collected');
@@ -184,7 +189,7 @@ export const evaluatorContract: ContractSuite<EvaluatorSubject> = {
       run: async (s, signal) => {
         const first = await s.evaluator.evaluate(exampleCase, exampleObservation, evalContext);
         if (!first.some((x) => x.state === 'pending')) return skipped;
-        const scores = await settledScores(s, signal);
+        const scores = await settledScores(s, signal, first);
         check(
           scores.every((x) => x.state !== 'pending'),
           'every pending score is settled after collecting',
@@ -220,8 +225,15 @@ export type JudgeSend = (
 ) => Promise<{ status: number; body: string }>;
 
 export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSend): Evaluator => {
-  const ask = async <T>(body: Record<string, unknown>, shape: z.ZodType<T>): Promise<T> => {
-    const response = await send(JSON.stringify({ contract: evaluatorContractVersion, ...body }));
+  const ask = async <T>(
+    body: Record<string, unknown>,
+    shape: z.ZodType<T>,
+    signal?: AbortSignal,
+  ): Promise<T> => {
+    const response = await send(
+      JSON.stringify({ contract: evaluatorContractVersion, ...body }),
+      signal,
+    );
     if (response.status < 200 || response.status >= 300)
       throw new Error(`the evaluator ${plugin.id} answered HTTP ${response.status}`);
     const parsed = shape.safeParse(JSON.parse(response.body));
@@ -230,6 +242,8 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
   };
 
   const scoreOf = (s: JudgeScore, ticket: string | undefined): Score => {
+    if (s.state === undefined && s.value === undefined)
+      throw new Error(`the evaluator ${plugin.id} answered ${s.metric} without a value or a state`);
     const state = s.state ?? (typeof s.value === 'number' ? 'scored' : 'not-applicable');
     if (state === 'scored' && typeof s.value !== 'number')
       throw new Error(`the evaluator ${plugin.id} scored ${s.metric} without a value`);
@@ -273,15 +287,24 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
       );
       return reply.scores.map((s) => scoreOf(s, reply.ticket));
     },
-    collect: async (pending): Promise<CollectedScore[]> => {
+    collect: async (pending, { signal } = {}): Promise<CollectedScore[]> => {
       const ticketOf = (score: Score) => score.details?.ticket as string | undefined;
       const tickets = [...new Set(pending.flatMap((p) => ticketOf(p.score) ?? []))];
       const collected: CollectedScore[] = [];
+      let failure: unknown;
       for (let i = 0; i < tickets.length; i += collectBatch) {
-        const { results } = await ask(
-          { collect: { tickets: tickets.slice(i, i + collectBatch) } },
-          collectReply,
-        );
+        let results: z.infer<typeof collectReply>['results'];
+        try {
+          ({ results } = await ask(
+            { collect: { tickets: tickets.slice(i, i + collectBatch) } },
+            collectReply,
+            signal,
+          ));
+        } catch (error) {
+          // What other batches brought in is kept; the runner asks again for what is still pending.
+          failure = error;
+          continue;
+        }
         for (const result of results)
           for (const item of pending.filter((p) => ticketOf(p.score) === result.ticket)) {
             const found = result.scores.find((s) => s.metric === item.score.metric);
@@ -291,6 +314,7 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
               collected.push({ case: item.case, repeat: item.repeat, score });
           }
       }
+      if (failure !== undefined && collected.length === 0) throw failure;
       return collected;
     },
   };
