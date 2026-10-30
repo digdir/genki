@@ -1146,6 +1146,20 @@ describe('the criteria judge', () => {
     expect(judge.judge).toBeUndefined();
   });
 
+  it('picks the judge again once a case has writers, if the first case reached no model', async () => {
+    const picked: string[][] = [];
+    const judge = criteriaJudge(async (writers) => {
+      picked.push(writers);
+      return claude;
+    });
+
+    await judge.evaluate(criteriaCase, observation({ answer: '' }), { ...ctx, servedModels: [] });
+    await judge.evaluate(criteriaCase, observation({ answer: 'x' }), ctx);
+    await judge.evaluate(criteriaCase, observation({ answer: 'y' }), ctx);
+
+    expect(picked).toEqual([[], ['foundry/gpt-4o']]);
+  });
+
   it('records a failed score when no judge model is available, picking one fails, or the judge call fails', async () => {
     const none = criteriaJudge(async () => undefined);
     const broken = criteriaJudge(async () => ({

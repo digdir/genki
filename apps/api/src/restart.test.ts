@@ -57,6 +57,10 @@ const seed = async (entries: InMemoryConfigEntryStore, runs: InMemoryEvalRunStor
   );
   await stored(run('legacy', {}, minutesAgo(60)));
   await stored(run('other-instance', { owner: 'live', heartbeatAt: minutesAgo(0) }, minutesAgo(5)));
+  await stored({
+    ...run('waiting', { owner: 'old', heartbeatAt: minutesAgo(8) }, minutesAgo(9)),
+    status: 'waiting-for-scores',
+  });
   await entries.append({
     kind: improvementKind,
     scope: tenant,
@@ -128,7 +132,7 @@ const boot = async () => {
 };
 
 describe('background work after a restart', () => {
-  it('marks test runs and proposals left running before the restart as interrupted or failed, but not a live run on another instance', async () => {
+  it('marks test runs and proposals left running or waiting before the restart as interrupted or failed, ended at their last heartbeat, but not a live run on another instance', async () => {
     const { entries, runs, get } = await boot();
 
     const listed = (await get(`/tenants/${tenant}/services/svar/eval-runs`)).data;
@@ -139,10 +143,17 @@ describe('background work after a restart', () => {
       'before-restart': 'interrupted',
       legacy: 'interrupted',
       'other-instance': 'running',
+      waiting: 'interrupted',
+    });
+    const all = (await get(`/tenants/${tenant}/eval-runs`)).data;
+    expect(Object.fromEntries(all.map((r) => [r.id, r.status]))).toMatchObject({
+      'other-instance': 'running',
+      waiting: 'interrupted',
     });
     expect((await runs.get('before-restart'))?.run).toMatchObject({
       status: 'interrupted',
       error: restartMessage,
+      endedAt: (await runs.get('before-restart'))?.run.heartbeatAt,
     });
     expect((await runs.get('other-instance'))?.run.status).toBe('running');
     expect(await latest(improvementKind, 'proposal')).toMatchObject({

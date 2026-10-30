@@ -17,6 +17,9 @@ import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 
+/** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
+const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
+
 const pathParam = (name: string, example: string) =>
   z.string().openapi({ param: { name, in: 'path' }, example });
 
@@ -1243,7 +1246,7 @@ const evalRoutes: RouteConfig[] = [
       headers: readHeaders,
       query: z.object({ service: z.string().optional() }),
     },
-    responses: { 200: json(z.object({ data: z.array(evalRun) }), 'Runs'), ...memberRead },
+    responses: { 200: json(z.object({ data: z.array(shownEvalRun) }), 'Runs'), ...memberRead },
   }),
   createRoute({
     method: 'post',
@@ -1293,7 +1296,7 @@ const evalRoutes: RouteConfig[] = [
           ServiceEvalRun.extend({ kind: z.literal('service') }),
           z.object({
             kind: z.literal('kernel'),
-            run: evalRun,
+            run: shownEvalRun,
             provenance: evalRun.shape.provenance,
             metrics: z.record(z.string(), metricSummary),
             byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
@@ -1355,7 +1358,7 @@ const evalRoutes: RouteConfig[] = [
     responses: {
       200: json(
         z.object({
-          run: evalRun,
+          run: shownEvalRun,
           provenance: evalRun.shape.provenance,
           metrics: z.record(z.string(), metricSummary),
           byTag: z.record(z.string(), z.record(z.string(), metricSummary)),

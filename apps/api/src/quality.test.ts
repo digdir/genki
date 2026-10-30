@@ -12,6 +12,7 @@ import type { ModelCatalog } from '@genai/port-model';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { definitionSubject } from './definition-subject.js';
+import { confirmedAs } from './risk-confirmation.js';
 import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
@@ -413,6 +414,23 @@ describe('the platform eval capability with the criteria judge', () => {
   });
 });
 
+describe('a run on a draft that cannot run', () => {
+  it('answers 422 with the reasons instead of starting', async () => {
+    const env = await boot();
+    const norwegian = structuredClone(service);
+    norwegian.spec.model.residency = 'norway';
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: norwegian,
+    });
+
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.body)).toContain('outside norway');
+  });
+});
+
 describe('eval runs for a service', () => {
   it('runs the published version and records each case with its output and reason', async () => {
     const env = await boot();
@@ -652,6 +670,37 @@ describe('eval runs for a service', () => {
     expect(rawWithUsage.run).toHaveProperty('usage');
   });
 
+  it('compares only completed runs, and finds a run only under its own tenant', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+    const stored = await env.platform.evalStores.runs.get(id);
+    if (!stored) throw new Error('no run');
+    await env.platform.evalStores.runs.save({
+      ...stored,
+      run: { ...stored.run, id: 'pagar', status: 'running' },
+    });
+
+    const compared = await env.send(
+      'GET',
+      `/eval-runs/compare?baseline=${id}&candidate=pagar&metric=refusal`,
+    );
+    const elsewhere = await env.send('GET', `/tenants/${other}/eval-runs/${id}`, 'ola');
+
+    expect(compared.status).not.toBe(200);
+    expect(JSON.stringify(compared.body)).toContain('eval run pagar is running, not completed');
+    expect(elsewhere.status).toBe(404);
+  });
+
+  it('shows no cost for a run whose model has no price, rather than a cost of nothing', async () => {
+    const env = await boot();
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'kari')).body;
+
+    expect(run.cost).toBeNull();
+    expect(run.tokens).toMatchObject({ input: expect.any(Number) });
+  });
+
   it('compares two runs of the same version, since a run names the service it tested, not its one-off draft', async () => {
     const env = await boot();
     const first = await runPublished(env);
@@ -703,6 +752,32 @@ describe('eval runs for a service', () => {
     expect(found.map((s) => [s.run.status, s.run.tested?.version])).toEqual([
       ['completed', 'draft'],
     ]);
+  });
+
+  it("finds a risk-confirmed draft's run under the spec publish checks, though publish stamps the confirmation", async () => {
+    const env = await boot();
+    const draft = structuredClone(service) as typeof service & {
+      spec: { riskClass?: string; riskConfirmation?: Record<string, unknown> };
+    };
+    draft.spec.riskClass = 'limited';
+    draft.spec.riskConfirmation = { reasons: ['Tjenesten svarer innbyggere'] };
+
+    await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: draft,
+    });
+    await env.settled();
+    const validated = validateDefinition(draft, env.platform.plugins);
+    if (!validated.ok) throw new Error('the draft is invalid');
+    const published = confirmedAs(validated.definition, 'employee:test:kari', new Date());
+    const found = await env.platform.evalStores.runs.list({
+      tenant,
+      service: 'svar',
+      subject: definitionSubject(published.spec),
+    });
+
+    expect(found.map((s) => s.run.status)).toEqual(['completed']);
   });
 
   it('runs a draft without publishing it', async () => {
@@ -1065,6 +1140,24 @@ describe('a test run as the portal shows it', () => {
     ]);
 
     expect(runSummary(run)).toMatchObject({ passed: 1, total: 2, score: 0.5 });
+  });
+
+  it('decides a criteria case by its criteria, also when it must refuse as well', () => {
+    const run = finishedRun([
+      {
+        case: 'a',
+        split: 'validation',
+        repeat: 0,
+        task: 't1',
+        tags: [],
+        scores: [
+          score('refusal', 1, 'scored'),
+          { ...score('judge.criteria', 0, 'scored'), evaluator: 'judge:criteria' },
+        ],
+      },
+    ]);
+
+    expect(runSummary(run)).toMatchObject({ passed: 0, total: 1 });
   });
 
   it('never moves a finished run back to waiting or to running progress', () => {

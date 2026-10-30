@@ -10,6 +10,14 @@ const stable = (value: unknown): string =>
           .join(',')}}`
       : JSON.stringify(value);
 
+/** What a run's result does not depend on: publish stamps the risk confirmation with its time. */
+const untested = new Set(['riskConfirmation']);
+
 /** What a publishing gate looks a service's eval runs up by: the spec they tested. */
-export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256').update(stable(spec)).digest('hex').slice(0, 16)}`;
+export const definitionSubject = (spec: unknown) => {
+  const tested =
+    spec && typeof spec === 'object' && !Array.isArray(spec)
+      ? Object.fromEntries(Object.entries(spec).filter(([k]) => !untested.has(k)))
+      : spec;
+  return `spec:${createHash('sha256').update(stable(tested)).digest('hex').slice(0, 16)}`;
+};
