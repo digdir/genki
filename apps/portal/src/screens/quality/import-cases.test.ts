@@ -78,4 +78,46 @@ describe('importing test cases from a file', () => {
       problem: 'headerMissing',
     });
   });
+
+  it('keeps every named criterion and a reference answer beside them, so none is dropped on import', () => {
+    const result = parseCaseFile(
+      'x.yaml',
+      [
+        'cases:',
+        '  - input: Hvem eier Kudos?',
+        '    expected:',
+        '      referenceAnswer: DFØ eier Kudos.',
+        '      criteria:',
+        '        criteria: Svaret nevner DFØ',
+        '        supporting_quotes: Kudos driftes av DFØ',
+        '  - input: Hva er Kudos?',
+        '    expected:',
+        '      criteria:',
+        '        supporting_quotes: Kudos er et dokumentarkiv',
+        '',
+      ].join('\n'),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      rows: [
+        {
+          problems: [],
+          value: {
+            expected: {
+              referenceAnswer: 'DFØ eier Kudos.',
+              criteria: {
+                criteria: 'Svaret nevner DFØ',
+                supporting_quotes: 'Kudos driftes av DFØ',
+              },
+            },
+          },
+        },
+        {
+          problems: [],
+          value: { expected: { criteria: { supporting_quotes: 'Kudos er et dokumentarkiv' } } },
+        },
+      ],
+    });
+  });
 });

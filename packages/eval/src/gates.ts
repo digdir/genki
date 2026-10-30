@@ -132,6 +132,16 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
         });
         continue;
       }
+      const baselineUnscored = unscoredIn(previous, gate.metric, gate.split);
+      if (baselineUnscored.missing > 0) {
+        results.push({
+          ...base,
+          pass: false,
+          blocking,
+          reason: `${gate.metric}: no score in the baseline for ${baselineUnscored.missing} of ${baselineUnscored.of} cases${note}`,
+        });
+        continue;
+      }
       const tags = [
         undefined,
         ...(gate.perTag ? tagsOf(run).filter((t) => tagsOf(previous).includes(t)) : []),
