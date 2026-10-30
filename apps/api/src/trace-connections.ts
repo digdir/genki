@@ -431,7 +431,7 @@ export interface SinkJudge {
   version: string;
   dataType: string;
   fields: { variable: string; source: string; jsonPath?: string }[];
-  refused?: { reason: string; field?: string; message: string };
+  refused?: { reason: string; field?: string; connection?: string; message: string };
   /** The judge as it was read, which a run scores with. */
   snapshot: unknown;
 }
