@@ -19,7 +19,7 @@ const nav = () => screen.getByRole('navigation', { name: 'Endepunkter' });
 describe('API-referanse', () => {
   it('links to the platform reference served by the api, in both languages', async () => {
     await renderAt('#/api-reference');
-    const link = screen.getByRole('link', { name: /Hele plattformens API-referanse/ });
+    const link = await screen.findByRole('link', { name: /Hele plattformens API-referanse/ });
     expect(link.getAttribute('href')).toBe(`${publicApiBase}/reference`);
     expect(translator('en')('apiref.platformReference')).toBe(
       'The whole platform API reference (every endpoint)',
@@ -28,7 +28,7 @@ describe('API-referanse', () => {
 
   it('lists the real endpoints by area and shows the selected one', async () => {
     await renderAt('#/api-reference?endpoint=tj-pub');
-    expect(screen.getByRole('heading', { level: 1, name: 'API-referanse' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'API-referanse' })).toBeTruthy();
     expect(within(nav()).getByText('Eksport og import')).toBeTruthy();
     const detail = screen.getByRole('article');
     expect(
@@ -47,7 +47,7 @@ describe('API-referanse', () => {
 
   it('keeps /v1 as the OpenAI-compatible endpoint and requires the caller for a timeline', async () => {
     await renderAt('#/api-reference?endpoint=oa-chat');
-    expect(screen.getByText('/v1/chat/completions')).toBeTruthy();
+    expect(await screen.findByText('/v1/chat/completions')).toBeTruthy();
     fireEvent.click(within(nav()).getByRole('button', { name: /Hent tidslinjen/ }));
     await waitFor(() => expect(window.location.hash).toContain('endpoint=op-tl'));
     expect(
@@ -58,6 +58,7 @@ describe('API-referanse', () => {
 
   it('lists the v4 areas with their real paths and rights', async () => {
     await renderAt('#/api-reference');
+    await screen.findByRole('navigation', { name: 'Endepunkter' });
     for (const area of [
       'Byggeassistenten',
       'Forslag',
@@ -81,7 +82,9 @@ describe('API-referanse', () => {
 
   it('searches the endpoints', async () => {
     await renderAt('#/api-reference');
-    fireEvent.change(screen.getByLabelText('Søk i endepunkter'), { target: { value: 'api-keys' } });
+    fireEvent.change(await screen.findByLabelText('Søk i endepunkter'), {
+      target: { value: 'api-keys' },
+    });
     expect(within(nav()).getAllByRole('button', { name: /API-nøkkel/ })).toHaveLength(2);
     expect(within(nav()).queryByText('Datasett')).toBeNull();
     fireEvent.change(screen.getByLabelText('Søk i endepunkter'), {
@@ -92,7 +95,7 @@ describe('API-referanse', () => {
 
   it('says so when an endpoint does not exist in the API', async () => {
     await renderAt('#/api-reference?endpoint=ds-inn');
-    expect(screen.getByText(/Endepunktet «ds-inn» finnes ikke i API-et ennå/)).toBeTruthy();
+    expect(await screen.findByText(/Endepunktet «ds-inn» finnes ikke i API-et ennå/)).toBeTruthy();
   });
 
   it('says who calls with which rights, and that the answer is only an example', async () => {

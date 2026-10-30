@@ -204,3 +204,82 @@ describe('failed and skipped steps in the timeline', () => {
     ]);
   });
 });
+
+const usageEvent = (seq: number, model: string, usage: Record<string, number>) =>
+  ({
+    seq,
+    ts: '2026-10-07T12:32:01.000Z',
+    type: 'kernel.usage',
+    data: { usage, model: { kind: 'model', id: model } },
+  }) as unknown as Event;
+
+describe('run timeline cost', () => {
+  const at = new Date('2026-10-07T12:32:04.000Z');
+  const used = (usage: Record<string, number>) => ({ ...task, usage }) as Task;
+
+  it('adds up what each call cost, below one øre too', () => {
+    const timeline = toTimeline(
+      used({ inputTokens: 7234, outputTokens: 930, costMicroNok: 257_905 }),
+      [
+        usageEvent(1, 'foundry-openai/gpt-4o', {
+          inputTokens: 7134,
+          outputTokens: 920,
+          costMicroNok: 257_373,
+        }),
+        usageEvent(2, 'foundry-openai/gpt-4.1-mini', {
+          inputTokens: 100,
+          outputTokens: 10,
+          costMicroNok: 532,
+        }),
+      ],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ costMicroNok: 257_905, costOre: 26, priced: true });
+    expect(timeline.stats).toMatchObject({
+      unpricedTokens: 0,
+      byModel: [
+        expect.objectContaining({ model: 'foundry-openai/gpt-4o', costMicroNok: 257_373 }),
+        expect.objectContaining({ model: 'foundry-openai/gpt-4.1-mini', costMicroNok: 532 }),
+      ],
+    });
+  });
+
+  it('marks a run on an unpriced model as unpriced instead of free', () => {
+    const timeline = toTimeline(
+      used({ inputTokens: 37_758, outputTokens: 1346 }),
+      [usageEvent(1, 'foundry-openai/gpt-5.6-sol', { inputTokens: 37_758, outputTokens: 1346 })],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ costMicroNok: null, priced: false });
+    expect(timeline.stats).toMatchObject({ unpricedTokens: 39_104 });
+  });
+
+  it('keeps the priced part of a run that also used an unpriced model', () => {
+    const timeline = toTimeline(
+      used({ inputTokens: 1500, outputTokens: 150, costMicroNok: 5320 }),
+      [
+        usageEvent(1, 'foundry-openai/gpt-4.1-mini', {
+          inputTokens: 1000,
+          outputTokens: 100,
+          costMicroNok: 5320,
+        }),
+        usageEvent(2, 'foundry-openai/gpt-5.6-sol', { inputTokens: 500, outputTokens: 50 }),
+      ],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ costMicroNok: 5320, priced: false });
+  });
+
+  it('shows the cost to a reader who cannot see the calls', () => {
+    const timeline = toTimeline(
+      used({ inputTokens: 10, outputTokens: 5, costMicroNok: 714 }),
+      [],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ costMicroNok: 714, priced: true });
+  });
+});
