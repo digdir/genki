@@ -34,7 +34,7 @@ describe('Tilgang', () => {
       return base(input, init);
     });
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Tilgang' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Tilgang' })).toBeTruthy();
     expect(screen.getByText('Henter fra Altinn')).toBeTruthy();
     expect((await ready()).getAttribute('role')).toBe('status');
     expect(calls.some((c) => /\/tenants\/999888777\/access$/.test(c))).toBe(true);

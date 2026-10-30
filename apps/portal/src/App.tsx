@@ -1,37 +1,55 @@
 import { Alert, Button, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { negotiate, type Locale } from '@genai/i18n';
 import { LocaleProvider, useFormat, useLocale } from '@genai/i18n/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createApiClient } from './api';
 import type { AuthClient } from './auth';
 import { navigate, parseRoute, useRoute } from './hooks';
 import type { ScreenProps } from './screen';
-import { Access } from './screens/Access';
-import { ApiReference } from './screens/ApiReference';
-import { BuildingBlocks } from './screens/BuildingBlocks';
-import { DataHandling, PublicDataHandling } from './screens/DataHandling';
-import { Contact, Guide, Status } from './screens/FooterPages';
-import { Datasets } from './screens/Datasets';
-import { Integrations } from './screens/Integrations';
-import { Log } from './screens/Log';
-import { NoAccess } from './screens/NoAccess';
 import { Overview } from './screens/Overview';
-import { Playground } from './screens/Playground';
-import { Services } from './screens/Services';
-import { Settings } from './screens/Settings';
-import { SharedServices } from './screens/SharedServices';
-import { Skills } from './screens/Skills';
 import { Startside } from './screens/Startside';
-import { StepFlows } from './screens/StepFlows';
 import { tenantNotRegistered } from './screens/Unregistered';
-import { Usage } from './screens/Usage';
 import { translator, useT } from './i18n';
 import { navigation, Shell } from './Shell';
 import { useSessionTimer } from './session-timer';
 import { StrategyCatalogue } from './strategy-catalogue';
-import { EmptyState } from './states';
+import { EmptyState, Loading } from './states';
 import { pendingInputHash, restoreUnsavedInput, saveUnsavedInput } from './unsaved-input';
 import type { Organisation, Session } from './types';
+
+const Access = lazy(() => import('./screens/Access').then((m) => ({ default: m.Access })));
+const ApiReference = lazy(() =>
+  import('./screens/ApiReference').then((m) => ({ default: m.ApiReference })),
+);
+const BuildingBlocks = lazy(() =>
+  import('./screens/BuildingBlocks').then((m) => ({ default: m.BuildingBlocks })),
+);
+const DataHandling = lazy(() =>
+  import('./screens/DataHandling').then((m) => ({ default: m.DataHandling })),
+);
+const PublicDataHandling = lazy(() =>
+  import('./screens/DataHandling').then((m) => ({ default: m.PublicDataHandling })),
+);
+const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Contact })));
+const Guide = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Guide })));
+const Status = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Status })));
+const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
+const Integrations = lazy(() =>
+  import('./screens/Integrations').then((m) => ({ default: m.Integrations })),
+);
+const Log = lazy(() => import('./screens/Log').then((m) => ({ default: m.Log })));
+const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
+const Playground = lazy(() =>
+  import('./screens/Playground').then((m) => ({ default: m.Playground })),
+);
+const Services = lazy(() => import('./screens/Services').then((m) => ({ default: m.Services })));
+const Settings = lazy(() => import('./screens/Settings').then((m) => ({ default: m.Settings })));
+const SharedServices = lazy(() =>
+  import('./screens/SharedServices').then((m) => ({ default: m.SharedServices })),
+);
+const Skills = lazy(() => import('./screens/Skills').then((m) => ({ default: m.Skills })));
+const StepFlows = lazy(() => import('./screens/StepFlows').then((m) => ({ default: m.StepFlows })));
+const Usage = lazy(() => import('./screens/Usage').then((m) => ({ default: m.Usage })));
 
 interface Props {
   auth: AuthClient;
@@ -292,7 +310,7 @@ const Portal = ({
         .catch(() => undefined);
   };
 
-  return content();
+  return <Suspense fallback={null}>{content()}</Suspense>;
 
   function content() {
     if (!session && route.segments[0] === 'data-handling') return <PublicDataHandling />;
@@ -385,14 +403,16 @@ const Portal = ({
             </Button>
           </Alert>
         ) : null}
-        <Page
-          api={api}
-          tenant={organisation.orgNumber}
-          tenantName={organisation.name}
-          route={effective}
-          live={live}
-          onFailingIngests={reportFailing}
-        />
+        <Suspense fallback={<Loading label={t('common.loading')} />}>
+          <Page
+            api={api}
+            tenant={organisation.orgNumber}
+            tenantName={organisation.name}
+            route={effective}
+            live={live}
+            onFailingIngests={reportFailing}
+          />
+        </Suspense>
       </Shell>
     );
   }

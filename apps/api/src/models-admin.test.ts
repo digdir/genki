@@ -10,6 +10,7 @@ const stubModels = () => {
       'foundry-openai/gpt-4o-2m-tps',
       {
         id: 'foundry-openai/gpt-4o-2m-tps',
+        transport: { api: 'responses', source: 'learned' },
         residency: 'global',
         capabilities: ['stream', 'tools', 'json-schema'],
         enabled: true,
@@ -221,12 +222,26 @@ describe('operator model changes', () => {
     expect(models.calls).toEqual([]);
   });
 
-  it('lists every model for operators and describes the routes in the OpenAPI document', async () => {
+  it('lists runtime transport selection for operators and describes it in the OpenAPI document', async () => {
     const { app, send } = setup();
 
-    expect((await send('/operator/models', 'operator', { method: 'GET' })).status).toBe(200);
+    const listed = await send('/operator/models', 'operator', { method: 'GET' });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      data: [{ transport: { api: 'responses', source: 'learned' } }],
+    });
     expect((await send('/operator/models', 'kari', { method: 'GET' })).status).toBe(403);
     const doc = app.getOpenAPI31Document({ openapi: '3.1.0', info: { title: 't', version: '1' } });
+    expect(doc.components?.schemas?.OperatorModel).toMatchObject({
+      properties: {
+        transport: {
+          properties: {
+            api: { type: 'string' },
+            source: { enum: ['configured', 'learned', 'default'] },
+          },
+        },
+      },
+    });
     expect(Object.keys(doc.paths ?? {})).toEqual(
       expect.arrayContaining([
         '/operator/models',

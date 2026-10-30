@@ -161,6 +161,7 @@ The import was removed on 2026-10-09 because the platform replaces headless-rag 
 - Each Different or Missing row that KA or another client could notice is agreed with that client before the switch.
 - Security fixes are never blocked by parity.
 - A new row goes in this ADR in the same change that introduces the divergence.
+- [ADR 0042](0042-the-knowledge-database.md), proposed, changes three rows when it is built: the failure-budget row (runs update documents in place), the Marker row (the queue's retries replace the ladder, ADR 0041) and the executions row (a second run of a pipeline waits instead of being refused).
 
 ## Closed in this round
 

@@ -11,7 +11,7 @@ Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
 - All capabilities from one service version carry that version.
 - Each variant has a public name, `<service>__<variant>` unless the definition sets one, and may keep extra names as aliases.
 - A caller may pin a version with the `GenAI-Version` header, or `metadata.version` on the OpenAI-compatible API. If both are sent they must agree. MCP and REST read the header; A2A takes no pin. Without a pin, the name resolves to the version published to that environment.
-- Every task records the capability and service version, the strategy and its version, a hash of the resolved configuration, each model deployment it called, and each dataset it read with the index generation the engine served. An engine without generations, such as the shared read-only Typesense, records the collection names instead.
+- Every task records the capability and service version, the strategy and its version, a hash of the resolved configuration, each model deployment it called, and each dataset it read with the index generation the engine served. An engine without generations, such as the shared read-only Typesense, records the collection names instead. [ADR 0042](0042-the-knowledge-database.md), proposed, adds the generation's data version for datasets updated in place.
 
 ## Why
 

@@ -13,3 +13,4 @@ apps/parity/reports/**/*-runs.jsonl
 .claude/*
 !.claude/skills/
 CLAUDE.md
+.scratch/

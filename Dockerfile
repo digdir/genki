@@ -35,6 +35,8 @@ FROM build AS apps-build
 RUN for app in portal workspace console; do \
       (cd "apps/$app" && npx vite build --outDir "/web/$app") || exit 1; \
     done
+RUN find /web -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' -o -name '*.html' \) \
+      -size +1k -exec gzip -9 -k -n {} +
 
 FROM ${NGINX_IMAGE} AS apps
 COPY --from=apps-build /web /usr/share/nginx/html

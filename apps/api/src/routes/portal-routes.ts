@@ -413,9 +413,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const serviceOf = (caps: CompiledCapability[], capabilityId: string) =>
     caps.find((c) => c.capability.descriptor.id === capabilityId)?.service.id ?? capabilityId;
 
-  const tenantTasks = async (
+  const tasksOf = async (
     tenant: string,
-    keep: (row: PortalTaskRow) => boolean = () => true,
+    keep: (row: PortalTaskRow) => boolean,
+    fromService: boolean,
   ) => {
     const rows = (await deps.tasks(tenant)).filter((t) => t.tenant === tenant && keep(t));
     const tasks = await Promise.all(rows.map((r) => deps.task(r.task)));
@@ -423,9 +424,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       (t): t is Task =>
         t !== undefined &&
         (t.tenant === tenant || t.owner === tenant) &&
-        originOf(t.service.capability.id) === serviceOrigin,
+        (originOf(t.service.capability.id) === serviceOrigin) === fromService,
     );
   };
+  const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
+    tasksOf(tenant, keep, true);
+  const tenantTestRuns = async (tenant: string) =>
+    (await tasksOf(tenant, () => true, false)).filter(
+      (t) => originOf(t.service.capability.id) !== 'assistant',
+    );
 
   const taskBase = (caps: CompiledCapability[], t: Task) => ({
     id: t.id,
@@ -687,6 +694,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         bumpOn(dailyModel, date, m.model, used);
       }
     }
+    let testing = empty();
+    const byOrigin = new Map<string, Tally>();
+    for (const t of project === undefined ? await tenantTestRuns(tenant) : []) {
+      if (!within(t.createdAt)) continue;
+      const { tally, models } = await taskTally(t);
+      testing = add(testing, tally);
+      totals = add(totals, tally);
+      bump(daily, day(t.createdAt), tally);
+      bump(byOrigin, originOf(t.service.capability.id), tally);
+      for (const m of models) {
+        const used = tallyOf(m.usage, deps.prices?.[m.model]);
+        bump(byModel, m.model, used);
+        bumpOn(dailyModel, day(t.createdAt), m.model, used);
+      }
+    }
     let ingestion = empty();
     for (const run of project === undefined ? ((await deps.ingestionUsage?.(tenant)) ?? []) : []) {
       if (!within(run.at)) continue;
@@ -747,6 +769,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       })),
       ...(project === undefined ? {} : { project }),
       ingestion: { usage: usageView(ingestion), byDataset: rows(byDataset, 'dataset') },
+      testing: { usage: usageView(testing), byOrigin: rows(byOrigin, 'origin') },
     };
   };
 

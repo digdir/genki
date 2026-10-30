@@ -265,6 +265,39 @@ describe('model router', () => {
     ]);
   });
 
+  it('meters a call at its list price, keeps a reported cost and leaves an unpriced call unpriced', async () => {
+    const a = recording('proto-a', async () => ({
+      ...answer('ok'),
+      usage: { inputTokens: 2000, outputTokens: 500, requests: 1 },
+    }));
+    let reported = true;
+    const b = recording('proto-b', async () => ({
+      ...answer('ok'),
+      usage: {
+        inputTokens: 10,
+        outputTokens: 10,
+        requests: 1,
+        ...(reported ? { costMicroNok: 42 } : {}),
+      },
+    }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, b.adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      priceOf: (id) =>
+        id === 'a/small' ? { inputPerThousand: 0.0238, outputPerThousand: 0.0952 } : undefined,
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+    await open(router, 'b/large', ctx).chat({ messages: [] });
+    reported = false;
+    await open(router, 'b/large', ctx).chat({ messages: [] });
+
+    expect(metered.map((m) => m.usage.costMicroNok)).toEqual([95_200, 42, undefined]);
+  });
+
   it('reports a provider crash as unavailable, a cancelled task as cancelled, and lets a metering refusal through', async () => {
     const crashing = recording('proto-a', async () => {
       throw new TypeError('socket hang up');

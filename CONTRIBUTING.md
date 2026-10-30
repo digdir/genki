@@ -18,7 +18,7 @@ Never commit `.env.local` or any secret, and never paste one into an issue or pu
 ## Checks
 
 ```sh
-npm run check   # prettier, eslint, type check, dependency boundaries and all tests
+npm run check   # prettier, eslint, type check, dependency boundaries, size budgets and all tests
 ```
 
 Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. While you work, run a part with `npx vitest run <paths>`, plus `npx tsc -b` and `npx eslint <files>`. CI runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks secret scan and a Docker image build on every pull request.

@@ -7,17 +7,28 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { localDevLogin, mockAnsattporten } from './auth';
-import { exampleOrganisations, mockFetch } from './mock';
 import { setting } from './runtime-config';
 import { ansattporten, organisationsFromApi } from './oidc';
 
-const useMock = setting('API') === 'mock';
+const reloadedFor = 'genki:reloaded-for';
+window.addEventListener('vite:preloadError', (event) => {
+  try {
+    if (window.sessionStorage.getItem(reloadedFor) === import.meta.url) return;
+    window.sessionStorage.setItem(reloadedFor, import.meta.url);
+  } catch {
+    return;
+  }
+  event.preventDefault();
+  window.location.reload();
+});
+
+const mock = setting('API') === 'mock' ? await import('./mock') : undefined;
 const send = window.fetch.bind(window);
 const locale = () => resolveLocale(document.documentElement.lang);
 const configuredIssuer = setting('ANSATTPORTEN_ISSUER');
 const issuer = configuredIssuer ?? 'http://localhost:8080/mock/ansattporten';
-const auth = useMock
-  ? mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations }, 300)
+const auth = mock
+  ? mockAnsattporten({ name: 'Kari Nordmann', organisations: mock.exampleOrganisations }, 300)
   : ansattporten({
       issuer,
       clientId: setting('OIDC_CLIENT_ID') ?? 'local-portal',
@@ -41,8 +52,8 @@ if (root) {
     <StrictMode>
       <App
         auth={auth}
-        fetch={useMock ? mockFetch() : send}
-        live={!useMock}
+        fetch={mock ? mock.mockFetch() : send}
+        live={!mock}
         languages={navigator.languages}
       />
     </StrictMode>,

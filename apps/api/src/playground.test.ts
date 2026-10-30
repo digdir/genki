@@ -270,18 +270,21 @@ describe('the playground', () => {
     expect(await platform.definitions.list(tenant)).toEqual([]);
   });
 
-  it('playground runs are excluded from service statistics', async () => {
+  it('playground runs count as testing in usage, never as a service run', async () => {
     const { call, run } = await boot();
 
     const res = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
     const usage = (await call(`/tenants/${tenant}/usage`)).body as {
       totals: { inputTokens: number };
       byService: unknown[];
+      testing: { usage: { inputTokens: number }; byOrigin: { origin: string }[] };
     };
     const tasks = (await call(`/tenants/${tenant}/tasks`)).body as { data: unknown[] };
 
     expect(res.status).toBe(200);
-    expect(usage.totals.inputTokens).toBe(0);
+    expect(usage.totals.inputTokens).toBe(usage.testing.usage.inputTokens);
+    expect(usage.testing.usage.inputTokens).toBeGreaterThan(0);
+    expect(usage.testing.byOrigin.map((o) => o.origin)).toEqual(['playground']);
     expect(usage.byService).toEqual([]);
     expect(tasks.data).toEqual([]);
   });

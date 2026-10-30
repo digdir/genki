@@ -21,7 +21,7 @@ export const usageArea = {
     range: '{month} 1–{last}, {year}',
     rangeSix: '{from}–{month} {year}',
     counted:
-      'The figures cover runs of the services. Runs in the playground, the builder and the assistant are not shown here, but count towards the quota.',
+      'The figures cover runs of the services and tests in the playground and the builder, which all count towards the quota. The assistant has its own daily budget and is not included.',
     legend: 'Legend',
     barFuture: '{period}: not here yet',
     barTokens: '{period}: {tokens} tokens',
@@ -144,7 +144,7 @@ export const usageArea = {
     emptyProjectText: 'Usage appears here once the project has run a service over its documents.',
     emptyTitle: 'No usage yet',
     emptyText:
-      'Usage appears here as soon as a service has run. Runs in the playground, the builder and the assistant are not shown here, but count towards the quota.',
+      'Usage appears here as soon as a service has run or someone has tested in the playground or the builder. The assistant has its own daily budget and is not included.',
     quotaUnknown: 'The quota is not stated.',
     quotaIs: 'The quota for {tenant} is {millions} million tokens per month.',
     createService: 'Create a service',

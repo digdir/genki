@@ -325,7 +325,7 @@ Details are in [docs/api/README.md](docs/api/README.md).
 npm run check
 ```
 
-This runs prettier, eslint, the type check, dependency boundaries and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
+This runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 CI runs the same check, a secret scan with gitleaks and a Docker image build.
 

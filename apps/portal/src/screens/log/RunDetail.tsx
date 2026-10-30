@@ -246,7 +246,11 @@ export const RunDetail = ({
                         header.data.usage.costMicroNok === undefined
                         ? null
                         : header.data.usage.costMicroNok / 10_000
-                      : (run.costOre ?? null),
+                      : run.costMicroNok !== undefined
+                        ? run.costMicroNok === null
+                          ? null
+                          : run.costMicroNok / 10_000
+                        : (run.costOre ?? null),
                   ),
                 },
               ]

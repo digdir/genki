@@ -231,6 +231,8 @@ const RunStats = z
     inputTokens: z.number().int().optional(),
     outputTokens: z.number().int().optional(),
     cachedInputTokens: z.number().int().optional(),
+    costMicroNok: z.number().int().optional(),
+    unpricedTokens: z.number().int().optional(),
     byModel: z
       .array(
         z.object({
@@ -238,6 +240,7 @@ const RunStats = z
           inputTokens: z.number().int(),
           outputTokens: z.number().int(),
           calls: z.number().int(),
+          costMicroNok: z.number().int().optional(),
         }),
       )
       .optional(),
@@ -257,6 +260,8 @@ const Timeline = z
     inputTokens: z.number().optional(),
     outputTokens: z.number().optional(),
     costOre: z.number().optional(),
+    costMicroNok: z.number().int().nullable().optional(),
+    priced: z.boolean().optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -603,6 +608,9 @@ const OperatorModel = z
     classified: z.boolean().optional(),
     parameters: parameterRules.optional(),
     rejectedParameters: z.record(z.string(), z.string()).optional(),
+    transport: z
+      .object({ api: z.string(), source: z.enum(['configured', 'learned', 'default']) })
+      .optional(),
   })
   .openapi('OperatorModel');
 

@@ -49,7 +49,7 @@ describe('Forbruk', () => {
     const { calls, fetch } = recording();
     await renderAt('#/usage', fetch);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Forbruk' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Forbruk' })).toBeTruthy();
     expect(screen.getByText('Henter forbruk')).toBeTruthy();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
@@ -200,9 +200,7 @@ describe('Forbruk', () => {
     );
     const empty = await screen.findByRole('heading', { level: 2, name: 'Ingen forbruk ennå' });
     const text = empty.parentElement?.textContent ?? '';
-    expect(text).toContain(
-      'Kjøringer i prøveområdet, byggeren og assistenten vises ikke her, men teller med i kvoten.',
-    );
+    expect(text).toContain('Assistenten har sitt eget daglige budsjett og er ikke med.');
     expect(text).not.toContain('også når dere tester i byggeren');
   });
 

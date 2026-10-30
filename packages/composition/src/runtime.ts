@@ -1,4 +1,4 @@
-import type { Principal, Ref, Usage } from '@genai/contracts';
+import type { Principal, Ref, Usage, UsagePrice } from '@genai/contracts';
 import {
   platformSettings,
   SettingsRegistry,
@@ -306,6 +306,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
+    priceOf: (id) => prices[id] as UsagePrice | undefined,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const embeddingModels = new Set(embedders.describe().map((e) => e.id));
@@ -369,8 +370,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
-    priceOf: (id) =>
-      prices[id] as { inputPerThousand: number; outputPerThousand: number } | undefined,
+    priceOf: (id) => prices[id] as UsagePrice | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     onParameterDropped: (model, parameter) =>

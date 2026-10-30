@@ -20,7 +20,7 @@ export const usageArea = {
     range: '1.–{last}. {month} {year}',
     rangeSix: '{from}–{month} {year}',
     counted:
-      'Tallene gjelder kjøringer av tjenestene. Kjøringer i prøveområdet, byggeren og assistenten vises ikke her, men teller med i kvoten.',
+      'Tallene gjelder kjøringer av tjenestene og tester i prøveområdet og byggeren, som alle teller med i kvoten. Assistenten har sitt eget daglige budsjett og er ikke med.',
     legend: 'Forklaring',
     barFuture: '{period}: ikke kommet ennå',
     barTokens: '{period}: {tokens} tokens',
@@ -144,7 +144,7 @@ export const usageArea = {
       'Forbruket vises her når prosjektet har kjørt en tjeneste over dokumentene sine.',
     emptyTitle: 'Ingen forbruk ennå',
     emptyText:
-      'Forbruket vises her så snart en tjeneste har kjørt. Kjøringer i prøveområdet, byggeren og assistenten vises ikke her, men teller med i kvoten.',
+      'Forbruket vises her så snart en tjeneste har kjørt eller noen har testet i prøveområdet eller byggeren. Assistenten har sitt eget daglige budsjett og er ikke med.',
     quotaUnknown: 'Kvoten er ikke oppgitt.',
     quotaIs: 'Kvoten for {tenant} er {millions} millioner tokens per måned.',
     createService: 'Lag en tjeneste',

@@ -74,7 +74,7 @@ describe('Byggeklosser: liste', () => {
   it('shows the blocks in use grouped by type with tabs, filters and a live count', async () => {
     await open('#/building-blocks');
     expect(await screen.findByRole('heading', { level: 1, name: 'Byggeklosser' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'I bruk hos oss (18)' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'I bruk hos oss (18)' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Katalog (27)' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe(
       'Viser 18 byggeklosser som Testetaten bruker',

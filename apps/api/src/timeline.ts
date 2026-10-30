@@ -22,11 +22,19 @@ export interface TaskTimeline {
   inputTokens?: number;
   outputTokens?: number;
   costOre?: number;
+  costMicroNok?: number | null;
+  priced?: boolean;
   steps: TimelineStep[];
   stats: RunStats | Omit<RunStats, UsageStats>;
 }
 
-type UsageStats = 'inputTokens' | 'outputTokens' | 'cachedInputTokens' | 'byModel';
+type UsageStats =
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'cachedInputTokens'
+  | 'costMicroNok'
+  | 'unpricedTokens'
+  | 'byModel';
 
 const seconds = (from: string, to: string) =>
   Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 10) / 100);
@@ -67,7 +75,17 @@ export const toTimeline = (
     usage,
     startedAt: task.createdAt,
   });
-  const { inputTokens, outputTokens, cachedInputTokens, byModel, ...counts } = mapper.stats();
+  const {
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    costMicroNok,
+    unpricedTokens,
+    byModel,
+    ...counts
+  } = mapper.stats();
+  const tokens = (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+  const unpricedRun = tokens > 0 && task.usage.costMicroNok === undefined;
   return {
     id: task.id,
     service: task.service.capability.id,
@@ -82,6 +100,8 @@ export const toTimeline = (
           inputTokens: task.usage.inputTokens ?? 0,
           outputTokens: task.usage.outputTokens ?? 0,
           costOre: Math.round((task.usage.costMicroNok ?? 0) / 10_000),
+          costMicroNok: unpricedRun ? null : (task.usage.costMicroNok ?? 0),
+          priced: !unpricedRun && unpricedTokens === 0,
         }
       : {}),
     steps: mapper.steps,
@@ -91,6 +111,8 @@ export const toTimeline = (
           inputTokens,
           outputTokens,
           ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+          costMicroNok,
+          unpricedTokens,
           byModel,
         }
       : counts,
