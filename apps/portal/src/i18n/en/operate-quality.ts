@@ -164,6 +164,18 @@ export const qualityArea = {
     sinkJudgeNotApplicable: 'Not applicable: {count} cases',
     sinkJudgeChanged: 'The judge has changed since the run started.',
     sinkJudgeExperiment: 'See the experiment in Langfuse',
+    sinkCostLabel: 'Cost reported by Langfuse: {cost}',
+    sinkOthersLabel: "The Langfuse project's other judges judged the same cases: {cost}",
+    sinkCostKroner: '{kroner} ({usd} USD at a rate of {rate} from {date}), {tokens} tokens.',
+    sinkCostUsd:
+      '{usd} USD, {tokens} tokens. The amount in kroner shows once the rate from Norges Bank is read.',
+    sinkCostTokens: 'no price for the model, {tokens} tokens.',
+    sinkCostUnpriced:
+      'Langfuse had no price for {count} of the calls; only their tokens are included.',
+    sinkCostUnread:
+      'Langfuse had not reported the cost of {count} calls yet, so the amount is at least this.',
+    judgeOthersWarning:
+      'The Langfuse project of the connection {connection} also has these active judges: {judges}. They judge and bill every case sent, but genki does not show their scores. Switch them off in Langfuse, or give the service a project of its own.',
     sinkJudgeOnCase: '{name} (Langfuse)',
     verdictYes: 'Yes',
     verdictNo: 'No',

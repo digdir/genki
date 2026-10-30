@@ -382,9 +382,16 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const usageSoFar = (): EvalRun['usage'] => {
     if (!options.meterAnswers) return undefined;
     const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    // A sink's judges share what they report, so one key may come from several evaluators.
+    const reported = Object.fromEntries(
+      evaluators
+        .flatMap((e) => Object.entries(e.reportedUsage?.() ?? {}))
+        .filter(([, r]) => r.inputTokens + r.outputTokens > 0 || r.unpriced + r.unread > 0),
+    );
     return {
       answers: sumUsage(answered),
       ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+      ...(Object.keys(reported).length > 0 ? { reported } : {}),
     };
   };
   let lastSent = now();
@@ -453,6 +460,9 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  // What a sink reports may still arrive after its scores; a failed read never fails the run.
+  for (const e of evaluators)
+    await e.settle?.(options.signal ? { signal: options.signal } : {}).catch(() => undefined);
 
   return {
     id: options.id ?? randomUUID(),
