@@ -1,13 +1,13 @@
 # 0041 Durable jobs on pg-boss
 
-Status: proposed, 2026-10-29
+Status: proposed, 2026-10-29 (stale ingestion runs found by heartbeat, 2026-10-29)
 
 ## Context
 
 The platform has no durable job queue. `@genai/jobs` defines a `MessageQueue` port (`send`, `subscribe`) with only an in-memory implementation (`packages/jobs/src/queue.ts`), so a message is lost on restart and its consumer runs in the same process. Long work runs inside one process, guarded by locks and heartbeats:
 
 - an ingestion run holds a writer lock per dataset and collection (`writerLockKeys`) in a map in the API process (`apps/api/src/ingestion.ts`), so the lock does not hold across API replicas;
-- an ingestion run still `running` more than 6 hours after it started is marked failed when an API instance starts, unless that instance is running it (`failStaleRuns` in `apps/api/src/ingestion.ts`), so an instance that starts beside another fails a long run the other is still working on (issue 176);
+- an ingestion run keeps a 30-second heartbeat from the instance working on it, and every API instance marks a `running` run failed once its heartbeat is two minutes old, when it starts and every minute after (`failStaleRuns` in `apps/api/src/ingestion.ts`, issue 176);
 - pipeline schedules (`none`, `daily`, `weekly` at 03:00) fire from the API every minute and are safe across replicas because a firing writes a versioned config entry;
 - an engine switch runs on the instance that started it and fails when its 30-second heartbeat stops (ADR 0025);
 - batch, eval, project and quality-matrix runs keep an owner and a heartbeat in the API (`apps/api/src/background-lease.ts`), and a run whose instance stops is marked failed once its heartbeat is two minutes old;
@@ -63,5 +63,5 @@ The spike tested only the `short` policy, which allows one queued job per key bu
 - pg-boss uses each process's pool for its server through its `db` adapter, so it gets the same Entra ID token as the rest of the platform; each pool's size and each server's `max_connections` include pg-boss's polling.
 - pg-boss's documentation does not mention Azure Database for PostgreSQL. It was checked only in a container; the first deploy to test checks install, migrations and deletion before anything depends on it.
 - An expiry cannot exceed 24 hours (`expireInSeconds` at most 86400). Work that lasts longer, such as an ingestion run over several nights, is split into jobs that each fit under that limit and keeps its progress in its record, so the next job goes on where the last one stopped. A single job that needs longer is out of contract.
-- The 6-hour startup check for ingestion runs is unchanged here (issue 176). A record that moves runs into jobs must keep the check away from them.
+- The heartbeat check for stale ingestion runs (issue 176) is unchanged here. A record that moves runs into jobs must keep the check away from them.
 - Not built (issue 155). Tests to add with the build, each named for its rule, on a test queue: a job sent in a rolled-back transaction does not exist; a killed worker's job is retried after its heartbeat; a job that keeps failing ends in the dead-letter queue and is reported; job payloads hold no content; an ended job is deleted after 7 days; a nightly schedule sends one job per occurrence with two instances; the console reads jobs only with platform access; `genai_runtime` cannot read, change or delete a job; the worker sends and works jobs as `genai_worker`; the migration refuses a `genai_worker` that is a superuser or bypasses row-level security. With the first queue that has a real handler and record (issue 135): a handler run twice leaves the same result; a client of an outside service makes one request per attempt and waits longer than 300 seconds when its service's timeout says so; a handler acts for the organisation of the record it loads when the job's data names another. With the console screen (issue 181): sending back is audited and only operators can do it.
