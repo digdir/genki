@@ -49,8 +49,16 @@ export interface EvalRun {
   total?: number | null;
   cost?: number | null;
   metrics?: Record<string, MetricSummary>;
-  incomplete?: { evaluator: string; reason: string }[];
+  incomplete?: {
+    evaluator: string;
+    reason: string;
+    missing?: number;
+    failed?: number;
+    of?: number;
+  }[];
   judges?: string[];
+  /** Why a failed or interrupted run stopped. */
+  error?: string;
 }
 
 export interface EvalCaseResult {

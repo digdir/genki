@@ -19,7 +19,12 @@ import {
   type TestCase,
   type TestSet,
 } from '@genai/eval';
-import { backgroundLeases, restartMessage, type LeaseOptions } from './background-lease.js';
+import {
+  backgroundLeases,
+  restartMessage,
+  type BackgroundLeases,
+  type LeaseOptions,
+} from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
 import { connectionsCovering } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
@@ -102,11 +107,14 @@ export const summarize = (results: CaseResult[]): Outcome => {
   };
 };
 
-const verdictMetrics = new Set(['judge.criteria', 'exact-text', 'refusal']);
+/** In this order: a criteria case that must also refuse is still decided by its criteria. */
+const verdictMetrics = ['judge.criteria', 'exact-text', 'refusal'];
 
 /** A case passes on its case type's own metric: the criteria judge, the exact text or the refusal. */
 const verdictOf = (scores: Score[]) =>
-  scores.find((s) => verdictMetrics.has(s.metric) && s.state !== 'not-applicable');
+  verdictMetrics
+    .map((m) => scores.find((s) => s.metric === m && s.state !== 'not-applicable'))
+    .find((s) => s !== undefined);
 
 const passes = (scores: Score[]) => {
   const verdict = verdictOf(scores);
@@ -173,6 +181,26 @@ export const runDetail = (
     };
   }),
 });
+
+/**
+ * A run left running by an instance that stopped is interrupted, ended at its last heartbeat. Any
+ * reader can tell, since a live run's heartbeat is never older than the lease allows.
+ */
+export const interruptedIfAbandoned = (
+  tenant: string,
+  run: EvalRun,
+  leases: Pick<BackgroundLeases, 'abandoned'>,
+): EvalRun => {
+  const state = runState(run);
+  if (state !== 'running' && state !== 'waiting-for-scores') return run;
+  if (!leases.abandoned(`${tenant}/${run.id}`, run, run.startedAt)) return run;
+  return {
+    ...run,
+    status: 'interrupted',
+    endedAt: run.heartbeatAt ?? run.startedAt,
+    error: restartMessage,
+  };
+};
 
 /** A run as a reader sees it: never its lease, and what it used only with view-usage. */
 export const shownRun = (run: EvalRun, usage: boolean): EvalRun => {
@@ -342,19 +370,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
 
   /** A run whose instance stopped without settling it is interrupted, as other background work. */
   const settled = async (stored: StoredRun): Promise<StoredRun> => {
-    const state = runState(stored.run);
-    if (state !== 'running' && state !== 'waiting-for-scores') return stored;
-    if (!leases.abandoned(`${stored.tenant}/${stored.run.id}`, stored.run, stored.run.startedAt))
-      return stored;
-    const interrupted: StoredRun = {
-      ...stored,
-      run: {
-        ...stored.run,
-        status: 'interrupted',
-        endedAt: leases.now().toISOString(),
-        error: restartMessage,
-      },
-    };
+    const run = interruptedIfAbandoned(stored.tenant, stored.run, leases);
+    if (run === stored.run) return stored;
+    const interrupted: StoredRun = { ...stored, run };
     const replaced = await deps.evalStores.runs
       .replace(interrupted, { status: stored.run.status, heartbeatAt: stored.run.heartbeatAt })
       .catch(() => false);

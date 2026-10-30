@@ -175,7 +175,8 @@ export const criteriaJudge = (
           }),
         ];
       try {
-        if (!chosen) {
+        // A judge picked before any case reached a model is picked again once one has writers.
+        if (!chosen || (pickedAgainst.length === 0 && ctx.servedModels.length > 0)) {
           pickedAgainst = ctx.servedModels;
           chosen = pick(ctx.servedModels);
         }

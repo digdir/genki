@@ -14,7 +14,7 @@ import type { ApiClient } from '../../api';
 import type { EvalRun, RunVersion, ServiceTestSet } from '../../api/quality';
 import { formatKroner, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
-import { useT, type Format, type T } from '../../i18n';
+import { useT, type Format, type PlainKey, type T } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { problemTitle, type SetFlash } from './shared';
@@ -54,6 +54,32 @@ const costText = (t: T, f: Format, cost: number | null | undefined) =>
 
 const active = (r: EvalRun) => r.status === 'running' || r.status === 'waiting-for-scores';
 
+const metricKeys: Record<string, PlainKey> = {
+  'exact-text': 'quality.metricExactText',
+  'non-empty-answer': 'quality.metricNonEmpty',
+  refusal: 'quality.metricRefusal',
+  'judge.criteria': 'quality.metricCriteria',
+  'answer-pattern': 'quality.metricAnswerPattern',
+};
+
+const metricLabel = (t: T, metric: string) => {
+  const key = metricKeys[metric];
+  return key ? t(key) : metric;
+};
+
+/** What a judge left unscored, said from the counts so it reads in the person's language. */
+const incompleteText = (t: T, i: NonNullable<EvalRun['incomplete']>[number]) =>
+  i.of === undefined
+    ? i.reason
+    : [
+        ...(i.missing
+          ? [t('quality.runMissing', { judge: i.evaluator, count: i.missing, of: i.of })]
+          : []),
+        ...(i.failed
+          ? [t('quality.runJudgeFailed', { judge: i.evaluator, count: i.failed, of: i.of })]
+          : []),
+      ].join(' ');
+
 const RunMetrics = ({ run }: { run: EvalRun }) => {
   const { t, f } = usePortalFormat();
   const metrics = Object.entries(run.metrics ?? {});
@@ -70,7 +96,7 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
       ) : null}
       {(run.incomplete ?? []).map((i) => (
         <Paragraph key={i.evaluator} data-size="sm" className="danger-text">
-          {i.reason}
+          {incompleteText(t, i)}
         </Paragraph>
       ))}
       <Table data-size="sm" zebra>
@@ -85,7 +111,7 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
         <Table.Body>
           {metrics.map(([metric, m]) => (
             <Table.Row key={metric}>
-              <Table.Cell>{metric}</Table.Cell>
+              <Table.Cell>{metricLabel(t, metric)}</Table.Cell>
               <Table.Cell>{f.percent(m.mean)}</Table.Cell>
               <Table.Cell>
                 {f.percent(m.ci[0])} – {f.percent(m.ci[1])}
@@ -184,7 +210,11 @@ const RunDetail = ({
       ) : state.status === 'error' ? (
         <ErrorState error={state.error} onRetry={retry} headingLevel={4} />
       ) : state.data.cases.length === 0 ? (
-        <Paragraph data-size="sm">{t('quality.runNoResults')}</Paragraph>
+        <Paragraph data-size="sm" className={state.data.error ? 'danger-text' : undefined}>
+          {state.data.error
+            ? t('quality.runStopped', { error: state.data.error })
+            : t('quality.runNoResults')}
+        </Paragraph>
       ) : (
         <>
           <RunMetrics run={state.data} />
