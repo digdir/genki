@@ -142,6 +142,9 @@ const startPostgres = async (root: string) => {
   return true;
 };
 
+export const knowledgeSetupWanted = (root: string) =>
+  Boolean(parseEnv(readFileSync(join(root, '.env.local'), 'utf8')).KNOWLEDGE_DATABASE_URL);
+
 const main = async () => {
   const args = process.argv.slice(2);
   const rootFlag = args.indexOf('--root');
@@ -174,7 +177,11 @@ const main = async () => {
 
   if (!skipDocker) {
     console.log('Setting up the knowledge server: roles, the API and worker logins, the binding');
-    if (!run('npm', ['run', 'knowledge:setup', '--', '--local'], root)) process.exit(1);
+    if (!knowledgeSetupWanted(root))
+      console.log(
+        'KNOWLEDGE_DATABASE_URL is empty in .env.local, so the knowledge server is left out',
+      );
+    else if (!run('npm', ['run', 'knowledge:setup', '--', '--local'], root)) process.exit(1);
   }
 
   console.log(`

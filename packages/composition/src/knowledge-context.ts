@@ -124,3 +124,11 @@ export const databaseHosts = (env: Record<string, string | undefined>): string[]
       return [];
     }
   });
+
+/** Knowledge endpoints saved through the API, which the catalog registry skips when they fail its checks. */
+export const savedKnowledgeCatalog = (
+  entries: { id: string; spec: unknown; deleted?: boolean }[],
+) => ({
+  endpoints: Object.fromEntries(entries.filter((e) => !e.deleted).map((e) => [e.id, e.spec])),
+  datasets: [],
+});

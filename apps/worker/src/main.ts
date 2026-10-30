@@ -6,6 +6,8 @@ import {
   boundPlatformId,
   createRuntime,
   databaseHosts,
+  knowledgeServerEndpoints,
+  savedKnowledgeCatalog,
   followChanges,
   isLockdown,
   loadCatalog,
@@ -62,7 +64,11 @@ import {
   workerDevModeWarning,
 } from './boot-guard.js';
 import { followPublished } from './follow.js';
-import { startHealthServer, watchKnowledgeBinding } from './knowledge-binding.js';
+import {
+  knowledgeRuntimeInput,
+  startHealthServer,
+  watchKnowledgeBinding,
+} from './knowledge-binding.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -126,7 +132,21 @@ const catalogs = {
     ? loadCatalog(configDir, 'embeddings.yaml', 'models')
     : { catalog: { endpoints: {}, models: [] }, skipped: [] },
 };
-const knowledgeRefused = knowledgeServerProblems(process.env, catalogs.knowledge.catalog);
+const savedKnowledge = savedKnowledgeCatalog(
+  db ? await db.configEntries.latest({ kind: 'knowledge-endpoint' }) : [],
+);
+const knowledgeRefused = [
+  ...knowledgeServerProblems(process.env, catalogs.knowledge.catalog),
+  ...knowledgeServerProblems(process.env, savedKnowledge),
+];
+if (
+  !process.env.KNOWLEDGE_DATABASE_URL &&
+  !process.env.KNOWLEDGE_PGHOST &&
+  knowledgeServerEndpoints(savedKnowledge).length > 0
+)
+  log('warning', {
+    message: `saved knowledge endpoints skipped, no knowledge server is configured: ${knowledgeServerEndpoints(savedKnowledge).join(', ')}`,
+  });
 if (knowledgeRefused.length > 0) {
   log('refusing to start', { problems: knowledgeRefused });
   process.exit(1);
@@ -240,12 +260,7 @@ const runtime = await createRuntime({
   ...(db
     ? {
         knowledgePool: db.pool,
-        ...(knowledgeServer
-          ? {
-              knowledgeServer: knowledgeServer.pools,
-              knowledgeGuard: () => knowledgeBinding.knowledgeBound(),
-            }
-          : {}),
+        ...knowledgeRuntimeInput(knowledgeServer, knowledgeBinding),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
       }
