@@ -7,6 +7,7 @@ import {
   devProcesses,
   localModelPort,
   missingCallbacks,
+  npmCommand,
   portInUse,
   prefixer,
   repoRoot,
@@ -162,5 +163,48 @@ describe('dev:all', () => {
     expect(await run.exited).toBe(3);
     expect(lines.join('')).toContain('dies  | stopped (exit 3), stopping the rest');
     expect(pids.map(alive)).toEqual([false, false]);
+  });
+
+  it('runs npm through the npm CLI that started it, on Windows and elsewhere', () => {
+    for (const cli of [
+      'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+      '/usr/local/lib/node_modules/npm/bin/npm-cli.js',
+    ])
+      expect(npmCommand(['run', 'dev'], cli)).toEqual({
+        command: process.execPath,
+        args: [cli, 'run', 'dev'],
+      });
+  });
+
+  it('falls back to plain npm outside npm or under another package manager', () => {
+    for (const cli of ['', '/usr/local/lib/node_modules/pnpm/bin/pnpm.cjs', '/x/not-npm-cli.js'])
+      expect(npmCommand(['run', 'dev'], cli)).toEqual({ command: 'npm', args: ['run', 'dev'] });
+  });
+
+  it('stops the rest when a command cannot start', async () => {
+    const lines: string[] = [];
+    const run = runAll(
+      [forever('stays'), { name: 'gone', port: 0, command: 'no-such-command-genki', args: [] }],
+      { cwd: repoRoot, colour: false, write: (t) => lines.push(t) },
+    );
+    const pids = run.pids();
+    expect(await run.exited).toBe(1);
+    expect(lines.join('')).toContain('gone  | could not start');
+    expect(alive(pids[0])).toBe(false);
+  });
+
+  it('stops the processes a child started, as npm starts the servers', async () => {
+    const lines: string[] = [];
+    const grandchild = `require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }).pid`;
+    const run = runAll([forever('parent', `console.log('child ' + ${grandchild});`)], {
+      cwd: repoRoot,
+      colour: false,
+      write: (t) => lines.push(t),
+    });
+    await vi.waitFor(() => expect(lines.join('')).toMatch(/child \d+/));
+    const pid = Number(/child (\d+)/.exec(lines.join(''))?.[1]);
+    run.stop(0);
+    await run.exited;
+    await vi.waitFor(() => expect(alive(pid)).toBe(false));
   });
 });

@@ -189,7 +189,7 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       children.map(
         (child) =>
           new Promise((resolve) =>
-            child.exitCode !== null || child.signalCode !== null
+            child.pid === undefined || child.exitCode !== null || child.signalCode !== null
               ? resolve(undefined)
               : child.once('exit', resolve),
           ),
@@ -220,6 +220,14 @@ export const runAll = (processes: DevProcess[], options: RunOptions) => {
       stream.on('data', out.push);
       stream.on('end', out.flush);
     }
+    // A command that cannot start emits error and never exit, so stop the rest here.
+    child.on('error', (error) => {
+      if (stopping) return;
+      // Plain npm is only used outside an npm script, where Windows cannot spawn it.
+      const hint = p.command === 'npm' ? '; start it with `npm run dev:all`' : '';
+      options.write(`${label} could not start (${error.message}${hint}), stopping the rest\n`);
+      stop(1);
+    });
     child.on('exit', (code, sig) => {
       if (stopping) return;
       options.write(`${label} stopped (${sig ?? `exit ${code}`}), stopping the rest\n`);
@@ -265,6 +273,14 @@ const main = async () => {
 
 const signal = (child: ChildProcess, sig: NodeJS.Signals) => {
   if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  // Windows has no process groups: kill the tree, or the servers npm started keep their ports.
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on(
+      'error',
+      () => child.kill(sig),
+    );
+    return;
+  }
   try {
     process.kill(-child.pid, sig);
   } catch {
