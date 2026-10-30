@@ -1101,6 +1101,31 @@ describe('the criteria judge', () => {
     expect(picked).toEqual([['foundry/gpt-4o']]);
   });
 
+  it('judges a fields-only answer on its fields, and scores an empty answer 0 without asking the model', async () => {
+    const asked: string[] = [];
+    const judge = criteriaJudge(async () => ({
+      ...claude,
+      complete: async (messages) => {
+        asked.push(messages[1]?.content ?? '');
+        return claude.complete(messages);
+      },
+    }));
+
+    const fieldsOnly = await judge.evaluate(
+      criteriaCase,
+      observation({ answer: '', fields: { text: 'Fristen er 1. mai.', changes: [] } }),
+      ctx,
+    );
+    const empty = await judge.evaluate(criteriaCase, observation({ answer: '  ' }), ctx);
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('Fristen er 1. mai.');
+    expect(fieldsOnly).toMatchObject([{ state: 'scored', value: 1, reason: 'Fristen er nevnt.' }]);
+    expect(empty).toMatchObject([
+      { state: 'scored', value: 0, reason: 'the answer is empty, so it meets no criterion' },
+    ]);
+  });
+
   it('is not applicable to exact and must_reject cases, or to a case without criteria', async () => {
     const judge = criteriaJudge(async () => claude);
     const states = async (c: TestCase) =>
