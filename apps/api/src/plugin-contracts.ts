@@ -142,6 +142,7 @@ const settledScores = async (s: EvaluatorSubject, signal: AbortSignal, answered?
     const collected: CollectedScore[] =
       (await s.evaluator.collect?.(
         pending().map((score) => ({ case: exampleCase.id, repeat: 0, task: 'kontrakt', score })),
+        { signal },
       )) ?? [];
     for (const c of collected) {
       if (c.score.state === 'pending') continue;
@@ -266,7 +267,7 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
     version: plugin.version,
     kind: 'model',
     judge: plugin.id,
-    evaluate: async (testCase, observation): Promise<Score[]> => {
+    evaluate: async (testCase, observation, ctx): Promise<Score[]> => {
       const reply = await ask(
         {
           case: {
@@ -283,6 +284,7 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
           })),
         },
         judgeReply,
+        ctx.signal,
       );
       return reply.scores.map((s) => scoreOf(s, reply.ticket));
     },
@@ -308,7 +310,17 @@ export const httpJudge = (plugin: { id: string; version: string }, send: JudgeSe
           for (const item of pending.filter((p) => ticketOf(p.score) === result.ticket)) {
             const found = result.scores.find((s) => s.metric === item.score.metric);
             if (!found) continue;
-            const score = scoreOf(found, result.ticket);
+            let score: Score;
+            try {
+              score = scoreOf(found, result.ticket);
+            } catch (error) {
+              // One malformed score fails its own case, not every case the judge had pending.
+              score = {
+                ...item.score,
+                state: 'failed',
+                reason: error instanceof Error ? error.message : String(error),
+              };
+            }
             if (score.state !== 'pending')
               collected.push({ case: item.case, repeat: item.repeat, score });
           }

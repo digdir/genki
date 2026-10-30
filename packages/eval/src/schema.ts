@@ -97,23 +97,37 @@ export type TestSet = z.infer<typeof testSet>;
 export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
 export type ScoreState = (typeof scoreStates)[number];
 
-export const score = z
-  .strictObject({
-    evaluator: z.string(),
-    version: z.string(),
-    metric: z.string(),
-    value: z.number().min(0).max(1).nullable(),
-    applicable: z.boolean(),
-    state: z.enum(scoreStates),
-    reason: z.string().optional(),
-    details: z.record(z.string(), z.unknown()).optional(),
-  })
-  .refine(
-    (s) =>
-      (s.state === 'scored') === (s.value !== null) &&
-      (s.state === 'not-applicable') === !s.applicable,
-    'only a scored score has a value, and only a not-applicable one does not apply',
-  );
+/** A score stored before scores had a state: a value is scored, otherwise it failed or did not apply. */
+const withState = (raw: unknown) => {
+  if (typeof raw !== 'object' || raw === null || 'state' in raw) return raw;
+  const s = raw as { value?: unknown; applicable?: unknown };
+  return {
+    ...raw,
+    state:
+      typeof s.value === 'number' ? 'scored' : s.applicable === false ? 'not-applicable' : 'failed',
+  };
+};
+
+export const score = z.preprocess(
+  withState,
+  z
+    .strictObject({
+      evaluator: z.string(),
+      version: z.string(),
+      metric: z.string(),
+      value: z.number().min(0).max(1).nullable(),
+      applicable: z.boolean(),
+      state: z.enum(scoreStates),
+      reason: z.string().optional(),
+      details: z.record(z.string(), z.unknown()).optional(),
+    })
+    .refine(
+      (s) =>
+        (s.state === 'scored') === (s.value !== null) &&
+        (s.state === 'not-applicable') === !s.applicable,
+      'only a scored score has a value, and only a not-applicable one does not apply',
+    ),
+);
 export type Score = z.infer<typeof score>;
 
 export const feedback = z.strictObject({
