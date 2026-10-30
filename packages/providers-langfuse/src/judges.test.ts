@@ -522,6 +522,64 @@ describe('Langfuse judges', () => {
     expect(second.reportedUsage?.()).toEqual(first.reportedUsage?.());
   });
 
+  it("counts a project judge that scores after the run's own judges, and shows the amount as at least for one that never does", async () => {
+    const call = (cost: number): FakeGeneration => ({
+      type: 'GENERATION',
+      inputUsage: 1000,
+      outputUsage: 100,
+      costDetails: { total: cost },
+    });
+    const scored = (rule: string, execution: string): FakeScore => ({
+      name: rule,
+      value: true,
+      dataType: 'BOOLEAN',
+      metadata: { job_configuration_id: rule, job_execution_id: execution },
+    });
+    const onTrace: FakeScore[] = [scored('regel-1', 'jobb-1')];
+    const project = {
+      rules: [
+        rule(),
+        rule({ id: 'regel-3', name: 'tone-eksperimenter' }),
+        rule({ id: 'regel-4', name: 'lengde-eksperimenter' }),
+      ],
+      evaluators: [evaluator()],
+      scores: { [traceIdFor('sak-1')]: onTrace },
+      judgeTraces: {
+        [judgeTraceIdOf('jobb-1')]: [call(0.001)],
+        [judgeTraceIdOf('jobb-3')]: [call(0.004)],
+      },
+    };
+    const judges = langfuseJudges(api(fakeLangfuse(project)));
+    judges.expectJudges(['regel-1', 'regel-3', 'regel-4']);
+    const judge = judges.evaluator(await listed(fakeLangfuse(project)), {
+      tenant: 'dfo',
+      content: true,
+    });
+    const [pending] = await judge.evaluate(kriteriesak, svar, ctx);
+
+    await judge.collect?.([pendingOf(pending as Score)]);
+    // The tone judge scores after the run's own judge has; the length judge never does.
+    onTrace.push(scored('regel-3', 'jobb-3'));
+    await judge.settle?.();
+
+    expect(judge.reportedUsage?.()).toEqual({
+      'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter': {
+        inputTokens: 1000,
+        outputTokens: 100,
+        costUsd: 0.001,
+        unpriced: 0,
+        unread: 0,
+      },
+      'langfuse:kudos': {
+        inputTokens: 1000,
+        outputTokens: 100,
+        costUsd: 0.004,
+        unpriced: 0,
+        unread: 1,
+      },
+    });
+  });
+
   it("keeps a judge's score when its cost cannot be read, and counts the cost when a later read finds it", async () => {
     let down = true;
     const project = {

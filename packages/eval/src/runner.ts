@@ -460,6 +460,9 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  // What a sink reports may still arrive after its scores; a failed read never fails the run.
+  for (const e of evaluators)
+    await e.settle?.(options.signal ? { signal: options.signal } : {}).catch(() => undefined);
 
   return {
     id: options.id ?? randomUUID(),

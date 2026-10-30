@@ -56,6 +56,8 @@ export interface Evaluator {
    * answered. A case none of a run's sink judges can read is not sent, so it is not billed.
    */
   canRead?(testCase: TestCase): boolean;
+  /** Once the run's wait for scores is over: a last read of what a sink reports, before the run ends. */
+  settle?(options?: { signal?: AbortSignal }): Promise<void>;
 }
 
 /**

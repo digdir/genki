@@ -443,7 +443,8 @@ const exchangeRate = db
 if (db)
   void latestUsdNok(db.configEntries)
     .then(async (known) => {
-      if (known) return;
+      // One replica reads it, as the daily job does.
+      if (known || (rateLease && !(await rateLease.tryAcquire()))) return;
       const rate = await readUsdNok(rateGuard);
       await saveUsdNok(db.configEntries, rate, new Date());
       log('usd/nok rate', { ...rate });

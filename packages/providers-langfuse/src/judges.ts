@@ -343,6 +343,12 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     byRule: new Map<string, ReportedUsage>(),
     counted: new Set<string>(),
     unread: new Map<string, string>(),
+    /** Every active judge in the project at the run's start: each judges every case sent. */
+    expected: new Set<string>(),
+    /** The case tasks sent, and per case the judges whose score never came. */
+    sent: new Set<string>(),
+    missing: new Map<string, string>(),
+    settled: false,
     async read(execution: string, rule: string, signal?: AbortSignal) {
       let calls: RawObservation[];
       try {
@@ -388,6 +394,24 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     async retry(signal?: AbortSignal) {
       for (const [execution, rule] of [...this.unread]) await this.read(execution, rule, signal);
     },
+    /** A last read of every case sent: a judge that scored late is counted, one that never did is unread. */
+    async settle(signal?: AbortSignal) {
+      if (this.settled) return;
+      this.settled = true;
+      await this.retry(signal);
+      const judging = new Set([...this.expected, ...this.judges.keys()]);
+      for (const task of this.sent) {
+        const scores = await scoresOn(traceIdFor(task), signal).catch(() => undefined);
+        if (!scores) {
+          for (const rule of judging) this.missing.set(`${task}|${rule}`, rule);
+          continue;
+        }
+        await this.count(scores, signal);
+        const scored = new Set(scores.map((s) => s.metadata?.job_configuration_id));
+        for (const rule of judging)
+          if (!scored.has(rule)) this.missing.set(`${task}|${rule}`, rule);
+      }
+    },
     usage(): Record<string, ReportedUsage> {
       const out: Record<string, ReportedUsage> = {};
       const add = (key: string, used: ReportedUsage) => {
@@ -411,7 +435,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       };
       const keyOf = (rule: string) => this.judges.get(rule) ?? `langfuse:${this.connection}`;
       for (const [rule, used] of this.byRule) add(keyOf(rule), used);
-      for (const rule of this.unread.values())
+      for (const rule of [...this.unread.values(), ...this.missing.values()])
         add(keyOf(rule), {
           inputTokens: 0,
           outputTokens: 0,
@@ -434,6 +458,9 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     const version = `v${judge.evaluator.version}+${modelText(judge.evaluator.model)}`;
     ledger.judges.set(judge.rule.id, judge.id);
     ledger.connection = judge.connection;
+    // Only the answer is unknown before the case runs; every other field the rule maps is not.
+    const readable = (c: TestCase) =>
+      judge.rule.mapping.every((m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)));
     const base = { evaluator: judge.id, version, metric: judge.id };
     const notApplicable = (reason: string): Score => ({
       ...base,
@@ -450,12 +477,12 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       reasonsOnTheCase: true,
       advisory: true,
       reportedUsage: () => ledger.usage(),
-      // Only the answer is unknown before the case runs; every other field the rule maps is not.
-      canRead: (c) =>
-        judge.rule.mapping.every(
-          (m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)),
-        ),
-      evaluate: async (c, o) => {
+      settle: (options) => ledger.settle(options?.signal),
+      canRead: readable,
+      evaluate: async (c, o, ctx) => {
+        // The case went to Langfuse if any of the run's judges can read it, and is judged by all.
+        if (c.split !== 'holdout' && run.content && ctx.task && readable(c))
+          ledger.sent.add(ctx.task);
         if (c.split === 'holdout') return [notApplicable('holdout cases are never sent')];
         if (!run.content) return [notApplicable('the connection does not receive content')];
         const empty = judge.rule.mapping.find((m) => isEmpty(fieldOf(m, c, o)));
@@ -525,5 +552,10 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       : undefined;
   };
 
-  return { list, evaluator, experimentUrl };
+  /** The project's active experiment judges at the run's start: each judges every case sent. */
+  const expectJudges = (rules: string[]) => {
+    ledger.expected = new Set(rules);
+  };
+
+  return { list, evaluator, experimentUrl, expectJudges };
 };

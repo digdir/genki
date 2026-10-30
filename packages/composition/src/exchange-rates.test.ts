@@ -15,7 +15,7 @@ const answer = (rate: string, day: string) =>
   });
 
 describe('the USD/NOK rate', () => {
-  it("reads Norges Bank's USD/NOK rate once a day through the egress guard, and shows dollars until one is known", async () => {
+  it("reads Norges Bank's USD/NOK rate once a day through the egress guard", async () => {
     const configEntries = new InMemoryConfigEntryStore();
     const asked: { allow: unknown; url: string }[] = [];
     const days = [answer('9.2826', '2026-10-29'), answer('9.3110', '2026-10-30')];
