@@ -327,7 +327,7 @@ Response headers: `genai-task` (use it for feedback), `genai-conversation`, `gen
 
 ### Feedback
 
-`POST /api/feedback` with `{ "task": "<genai-task>", "rating": "up" | "down", "comment"?, "reasons"? }` answers `201 { "ok": true, "task": "<task>" }`. The platform takes feedback on a run only from the credential that made it: the same API key, or the same signed-in person. `X-User-Id` plays no part, so your server should send feedback only for task ids it got for that end user. Another key answers `403` with `errors: [{ "path": "task" }]`; an unknown task `404`. Comments are stored with personal data masked.
+`POST /api/feedback` with `{ "task": "<genai-task>", "rating": "up" | "down", "comment"?, "reasons"? }` answers `201 { "ok": true, "task": "<task>" }`. The platform takes feedback on a run only from the credential that made it: the same API key, or the same signed-in person. `X-User-Id` plays no part, so your server should send feedback only for task ids it got for that end user. Another key answers `403` with `errors: [{ "path": "task" }]`; an unknown task `404`. Comments are stored with personal data masked. Send feedback again on the same task to change it or add to it, for example a rating first and a comment later: the latest feedback from a credential on a task is the one that counts, so a later post replaces the earlier one in feedback lists and quality figures instead of counting twice. Every post is kept on the run's timeline, and each one sends a `feedback.received` webhook.
 
 ## Use the client (repository only)
 
