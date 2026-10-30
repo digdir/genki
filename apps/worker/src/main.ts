@@ -33,7 +33,7 @@ import {
   type TokenPrice,
   type TriggerBinding,
   InMemoryJobQueue,
-  platformQueues,
+  workQueues,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -57,6 +57,7 @@ import {
 import { parse as parseYaml } from 'yaml';
 import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
 import { followPublished } from './follow.js';
+import { platformWork } from './platform-work.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -107,17 +108,22 @@ const db = databaseSource
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
 const jobs = db
-  ? await openJobQueue({ owner: db.pool, runtime: db.runtimePool }, platformQueues, {
-      worker: workerRole,
-      readers: [runtimeRole],
-      works: true,
-      onError: (error) =>
-        log('job queue error', {
-          error: error instanceof Error ? error.message : JSON.stringify(error),
-        }),
-    })
+  ? await openJobQueue(
+      { owner: db.pool, runtime: db.runtimePool },
+      platformWork.map((work) => work.queue),
+      {
+        worker: workerRole,
+        readers: [runtimeRole],
+        works: true,
+        onError: (error) =>
+          log('job queue error', {
+            error: error instanceof Error ? error.message : JSON.stringify(error),
+          }),
+      },
+    )
   : new InMemoryJobQueue();
-log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformQueues.length });
+await workQueues(jobs, platformWork);
+log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformWork.length });
 
 const secrets = envSecrets();
 const catalogs = {

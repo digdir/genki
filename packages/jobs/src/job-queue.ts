@@ -122,6 +122,22 @@ export const deadLetterQueue = (queue: string) => `${queue}.dead`;
 export const jobTenant = (data: JobData) =>
   typeof data.tenant === 'string' ? data.tenant : undefined;
 
+/** A queue with the handler that works it. */
+export interface QueueWork<T extends JobData = JobData> {
+  queue: QueueDefinition<T>;
+  handler(job: Job<T>): Promise<void>;
+}
+
+/** Pairs a queue with its handler, so the handler gets the queue's payload type. */
+export const queueWork = <T extends JobData>(
+  queue: QueueDefinition<T>,
+  handler: JobHandler<T>,
+): QueueWork<T> => ({ queue, handler });
+
+export const workQueues = async (jobs: JobQueue, work: QueueWork[]) => {
+  for (const entry of work) await jobs.work(entry.queue, (job) => entry.handler(job));
+};
+
 const keyLike = /^[^\s]{1,128}$/;
 
 export const admitPayload = <T extends JobData>(queue: QueueDefinition<T>, data: unknown): T => {

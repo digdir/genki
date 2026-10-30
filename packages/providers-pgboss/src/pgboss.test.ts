@@ -118,21 +118,37 @@ describe('pg-boss on the platform server', () => {
   const guarded = testQueue('guarded');
   const denied = testQueue('denied');
   const asWorker = testQueue('as-worker');
+  const ending = testQueue('ending');
+  const dropping = testQueue('dropping');
+  const waiting = testQueue('waiting');
 
   beforeAll(async () => {
-    await installJobQueue(login(), [crashed, nightly, guarded, asWorker], roles);
+    await installJobQueue(
+      login(),
+      [crashed, nightly, guarded, asWorker, ending, dropping, waiting],
+      roles,
+    );
   }, 60_000);
 
-  it('only the owner installs pgboss, and the API and the worker run with migrate and createSchema off', async () => {
+  it("only the owner installs pgboss, and the worker's instance runs with migrate and createSchema off", async () => {
     const admin = superuser();
     await admin.query('create database fresh');
     await admin.query('grant connect on database fresh to genai_owner');
     const fresh = login({ database: 'fresh', role: WORKER });
+    await expect(installJobQueue(fresh, [], roles)).rejects.toThrow(/permission denied/);
     await expect(start(fresh, { works: false })).rejects.toThrow();
     const { rows } = await fresh.query(
       `select count(*)::int as n from pg_namespace where nspname = 'pgboss'`,
     );
     expect(rows[0].n).toBe(0);
+  });
+
+  it('two workers that start at once both install the job queue', async () => {
+    const together = testQueue('together');
+    const installs = await Promise.allSettled(
+      Array.from({ length: 4 }, () => installJobQueue(login(), [together], roles)),
+    );
+    expect(installs.map((install) => install.status)).toEqual(Array(4).fill('fulfilled'));
   });
 
   it('genai_runtime cannot read, change or delete a job', async () => {
@@ -208,21 +224,64 @@ describe('pg-boss on the platform server', () => {
     ).toEqual([{ queue: guarded.name, queued: 0, active: 0, failed: 0, deadLetters: 0 }]);
   });
 
-  it('an ended job is deleted after 7 days', async () => {
-    const { rows } = await superuser().query(
-      `select name, deletion_seconds, retention_seconds from pgboss.queue
-        where name = any($1) order by name`,
-      [[guarded.name, `${guarded.name}.dead`]],
-    );
-    expect(rows).toEqual([
-      { name: guarded.name, deletion_seconds: 7 * 86_400, retention_seconds: 14 * 86_400 },
-      {
-        name: `${guarded.name}.dead`,
-        deletion_seconds: 7 * 86_400,
-        retention_seconds: 14 * 86_400,
-      },
-    ]);
-  });
+  it('an ended job is deleted after 7 days, and one nobody takes after 14', async () => {
+    const admin = superuser();
+    const queue = await start(login({ role: WORKER }));
+    const [ended, recentlyEnded] = [
+      await queue.send(ending, { tenant: ORG_A }),
+      await queue.send(ending, { tenant: ORG_A }),
+    ];
+    await queue.work(ending, async () => undefined);
+    await queue.work(dropping, async () => {
+      throw new Error('broken');
+    });
+    await queue.send(dropping, { tenant: ORG_A });
+    const [untaken, recentlyUntaken] = [
+      await queue.send(waiting, { tenant: ORG_A }),
+      await queue.send(waiting, { tenant: ORG_A }),
+    ];
+    const jobs = async (name: string) =>
+      (
+        await admin.query<{ id: string; state: string }>(
+          `select id, state from pgboss.job where name = $1`,
+          [name],
+        )
+      ).rows;
+    await waitFor(async () => (await jobs(ending.name)).every((job) => job.state === 'completed'));
+    const [deadLetter] = await waitFor(async () => {
+      const dead = await jobs(`${dropping.name}.dead`);
+      return dead.length === 1 ? dead : undefined;
+    });
+    // Moves each job back in time, as if that long had passed since it ended or was sent.
+    const age = (ids: (string | null | undefined)[], column: string, by: string) =>
+      admin.query(
+        `update pgboss.job set ${column} = ${column} - $2::interval${
+          column === 'keep_until' ? `, created_on = created_on - $2::interval` : ''
+        } where id = any($1)`,
+        [ids, by],
+      );
+    await age([ended], 'completed_on', '7 days 1 minute');
+    await age([recentlyEnded], 'completed_on', '6 days');
+    await age([untaken, deadLetter?.id], 'keep_until', '14 days 1 minute');
+    await age([recentlyUntaken], 'keep_until', '13 days');
+    const left = async () =>
+      new Set(
+        (
+          await admin.query<{ id: string }>(`select id from pgboss.job where id = any($1)`, [
+            [ended, recentlyEnded, untaken, recentlyUntaken, deadLetter?.id],
+          ])
+        ).rows.map((row) => row.id),
+      );
+    const old = [ended, untaken, deadLetter?.id];
+    await waitFor(async () => {
+      const ids = await left();
+      return old.every((id) => !ids.has(id as string));
+    }, 30_000);
+    // One more maintenance pass, so a recent job that should be kept has had its chance to go.
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    expect(await left()).toEqual(new Set([recentlyEnded, recentlyUntaken]));
+    await queue.stop();
+  }, 60_000);
 
   it('refuses to change a queue policy in place', async () => {
     await expect(

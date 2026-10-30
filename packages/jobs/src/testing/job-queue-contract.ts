@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   defineQueue,
   JobQueueError,
+  queueWork,
+  workQueues,
   type DeadLetterFilter,
   type JobQueue,
   type JobTransaction,
@@ -49,6 +51,8 @@ export const contractQueues = {
   rekeyed: contractQueue('rekeyed', { policy: 'short' }),
   prioritised: contractQueue('prioritised'),
   expiring: contractQueue('expiring', { expireInSeconds: 11, retryLimit: 1 }),
+  listed: contractQueue('listed'),
+  alsoListed: contractQueue('also-listed'),
 };
 
 export const waitFor = async <T>(
@@ -125,6 +129,22 @@ export const describeJobQueueContract = (
       await waitFor(() => seen.length === 1);
       await pause(1_000);
       expect(seen).toEqual([`${ORG_A}/once`]);
+    });
+
+    it("works every queue on the worker's list with its own handler", async () => {
+      const seen: string[] = [];
+      await workQueues(target.queue, [
+        queueWork(q.listed, async (job) => {
+          seen.push(`listed/${job.data.item}`);
+        }),
+        queueWork(q.alsoListed, async (job) => {
+          seen.push(`also-listed/${job.data.item}`);
+        }),
+      ]);
+      await target.queue.send(q.listed, { tenant: ORG_A, item: 'a' });
+      await target.queue.send(q.alsoListed, { tenant: ORG_A, item: 'b' });
+      await waitFor(() => seen.length === 2);
+      expect(seen.sort()).toEqual(['also-listed/b', 'listed/a']);
     });
 
     it('a job sent in a rolled-back transaction does not exist', async () => {

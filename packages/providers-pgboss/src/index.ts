@@ -154,7 +154,7 @@ export const installJobQueue = async (
     await boss.stop({ graceful: false, close: false });
   }
   const reads = readFunctionSignatures(schema);
-  for (const sql of [
+  const grants = [
     ...readFunctions(schema),
     `revoke all on all functions in schema ${schema} from public`,
     `grant usage on schema ${schema} to ${options.worker}`,
@@ -168,8 +168,20 @@ export const installJobQueue = async (
       `grant usage on schema ${schema} to ${reader}`,
       `grant execute on function ${reads.join(', ')} to ${reader}`,
     ]),
-  ])
-    await owner.query(sql);
+  ];
+  // Workers that start together would otherwise fail on each other's grants and functions.
+  const client = await owner.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select pg_advisory_xact_lock(hashtext('genai-jobs-install'))`);
+    for (const sql of grants) await client.query(sql);
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 interface CountRow {

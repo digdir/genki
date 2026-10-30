@@ -26,6 +26,7 @@ files:
   - apps/worker/src/worker.ts
   - apps/worker/src/follow.ts
   - apps/worker/src/boot-guard.ts
+  - apps/worker/src/platform-work.ts
 input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
