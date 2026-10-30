@@ -302,8 +302,8 @@ export const traceConnections = (
 
 export type TraceConnections = ReturnType<typeof traceConnections>;
 
-/** The connection that covers a service, if any. */
-export const connectionCovering = async (
+/** Every connection that covers a service: more than one means the service is sent nowhere. */
+export const connectionsCovering = async (
   configEntries: ConfigEntryStore,
   tenant: string,
   service: string,
@@ -311,7 +311,8 @@ export const connectionCovering = async (
   (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
     .filter((e) => !e.deleted)
     .map((e) => e.spec as TraceConnection)
-    .find((c) => !c.removing && c.services.includes(service));
+    .filter((c) => !c.removing && c.services.includes(service))
+    .sort((a, b) => a.id.localeCompare(b.id));
 
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
@@ -355,7 +356,8 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const tenant = c.req.param('tenant') ?? '';
         const entered = enterTenant(c, mountDeps.access, principal, tenant);
         if ('response' in entered) return { response: entered.response };
-        return { principal, tenant };
+        // The entered principal: an operator outside a support session has no more than members.
+        return { principal: entered.principal, tenant };
       };
       const reasonOf = (c: Context) => (changeReasonOf(c) ?? '').trim();
       const perform = async (
@@ -391,8 +393,13 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
         const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+        const connection = { ...body, id: c.req.param('id') };
+        // Checked before the admin task starts, so a key typed in clear never enters its input.
+        const parsed = traceConnection.safeParse(connection);
+        if (!parsed.success)
+          return problem(c, 400, 'Invalid request', { errors: errorsOf(parsed.error) });
         return perform(c, guard.principal, guard.tenant, 'platform.tracing.connection.save', {
-          connection: { ...body, id: c.req.param('id') },
+          connection,
         });
       });
 

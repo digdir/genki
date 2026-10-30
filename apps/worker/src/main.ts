@@ -13,6 +13,7 @@ import {
   runtimeBlocksOf,
   TenantSecretVault,
   traceSinkAccess,
+  tracesContent,
   tracingEgress,
   withBlockSettings,
 } from '@genai/composition';
@@ -139,7 +140,7 @@ const traces = process.env.TRACES_ENDPOINT
               secretKey: 'secret://env/langfuse-secret-key',
             }
           : { kind: 'none' },
-        content: process.env.TRACES_CONTENT === 'true',
+        content: tracesContent(process.env),
         ...(process.env.TRACES_ENVIRONMENT ? { environment: process.env.TRACES_ENVIRONMENT } : {}),
       },
       { secrets, tasks: async (id) => (await tasks.get(id))?.task, serviceName: 'genai-worker' },

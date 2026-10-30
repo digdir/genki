@@ -102,7 +102,7 @@ export const kernelTarget = (
 export interface WaitOptions {
   deadlineMs?: number;
   everyMs?: number;
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 export const scoreWaitMs = 5 * 60_000;
@@ -120,7 +120,10 @@ export interface RunEvalOptions {
   bootstrap?: BootstrapOptions;
   wait?: WaitOptions;
   meterAnswers?: (events: Event[]) => UsageSummary;
-  onProgress?: (done: number, total: number) => void;
+  /** Cancels the run, including its wait for scores. */
+  signal?: AbortSignal;
+  /** After each case, with what the run has used so far when answers are metered. */
+  onProgress?: (done: number, total: number, usage?: EvalRun['usage']) => void;
   onWaiting?: (pending: number, until: string) => void;
   now?: () => Date;
 }
@@ -224,6 +227,19 @@ export const unscoredIn = (run: Pick<EvalRun, 'results'>, metric: string, split:
   return { of, missing };
 };
 
+const pauseFor = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
 const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`;
 
 const collectPending = async (
@@ -235,6 +251,7 @@ const collectPending = async (
     now: () => Date;
     annotate: (task: string, score: Score) => Promise<void>;
     onWaiting?: (pending: number, until: string) => void;
+    signal?: AbortSignal;
   },
 ) => {
   const pendingNow = (): PendingScore[] =>
@@ -247,8 +264,7 @@ const collectPending = async (
   if (pending.length === 0) return;
   const deadlineMs = options.wait.deadlineMs ?? scoreWaitMs;
   const everyMs = options.wait.everyMs ?? 5_000;
-  const sleep =
-    options.wait.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = options.wait.sleep ?? pauseFor;
   const deadline = options.lastSent.getTime() + deadlineMs;
   const until = new Date(deadline).toISOString();
   const byId = new Map(evaluators.map((e) => [e.id, e]));
@@ -274,17 +290,28 @@ const collectPending = async (
     await options.annotate(result.task, collected.score);
   };
 
+  const left = () => deadline - options.now().getTime();
   report();
-  while (pending.length > 0 && options.now().getTime() < deadline) {
-    await sleep(Math.min(everyMs, deadline - options.now().getTime()));
+  while (pending.length > 0 && left() > 0) {
+    await sleep(Math.min(everyMs, left()), options.signal);
+    options.signal?.throwIfAborted();
     const byEvaluator = Map.groupBy(pending, (p) => p.score.evaluator);
     for (const [id, items] of byEvaluator) {
+      if (left() <= 0) break;
+      const expiry = AbortSignal.timeout(left());
+      const signal = options.signal ? AbortSignal.any([options.signal, expiry]) : expiry;
+      let collected: CollectedScore[];
       try {
-        const collected = (await byId.get(id)?.collect?.(items)) ?? [];
-        for (const c of collected) await settle(c);
+        collected = (await byId.get(id)?.collect?.(items, { signal })) ?? [];
       } catch (error) {
+        options.signal?.throwIfAborted();
         lastError.set(id, error instanceof Error ? error.message : String(error));
+        continue;
       }
+      options.signal?.throwIfAborted();
+      // What arrives after the deadline is not taken, so a run never outlasts its wait.
+      if (left() <= 0) break;
+      for (const c of collected) await settle(c);
     }
     pending = pendingNow();
     report();
@@ -334,9 +361,18 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const answered: UsageSummary[] = [];
   const annotate = (task: string, score: Score) =>
     target.annotate ? target.annotate(task, score) : Promise.resolve();
+  const usageSoFar = (): EvalRun['usage'] => {
+    if (!options.meterAnswers) return undefined;
+    const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    return {
+      answers: sumUsage(answered),
+      ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
+    };
+  };
   let lastSent = now();
   for (let repeat = 0; repeat < repeats; repeat++) {
     for (const c of cases) {
+      options.signal?.throwIfAborted();
       let outcome: TargetResult;
       try {
         outcome = await target.invoke(inputOf(c), { case: c, repeat });
@@ -345,8 +381,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
           `case ${c.id} failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (outcome.servedModels.length === 0)
-        throw new EvalError(`case ${c.id} recorded no served model`);
+      // A case may reach no model, as when a guardrail refuses before it; the run must reach one.
       outcome.servedModels.forEach((m) => servedModels.add(m));
       if (outcome.service) services.add(outcome.service);
       if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
@@ -354,10 +389,12 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       const ctx: EvalContext = {
         servedModels: outcome.writers ?? outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
+        ...(options.signal ? { signal: options.signal } : {}),
       };
       const scores: Score[] = [];
       lastSent = now();
       for (const evaluator of evaluators) {
+        options.signal?.throwIfAborted();
         let answered: Score[];
         try {
           answered = await evaluator.evaluate(c, observation, ctx);
@@ -382,18 +419,19 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
         ...(c.language ? { language: c.language } : {}),
         scores,
       });
-      options.onProgress?.(results.length, total);
+      options.onProgress?.(results.length, total, usageSoFar());
     }
   }
+  if (servedModels.size === 0) throw new EvalError('the run recorded no served model');
   await collectPending(results, evaluators, {
     lastSent,
     wait: options.wait ?? {},
     now,
     annotate,
     ...(options.onWaiting ? { onWaiting: options.onWaiting } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
 
-  const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
   return {
     id: options.id ?? randomUUID(),
     testSet: {
@@ -417,14 +455,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
     ...aggregate(results, options.bootstrap),
     incomplete: incompleteOf(results),
     status: 'completed',
-    ...(options.meterAnswers
-      ? {
-          usage: {
-            answers: sumUsage(answered),
-            ...(judged.length > 0 ? { judges: sumUsage(judged) } : {}),
-          },
-        }
-      : {}),
+    ...(options.meterAnswers ? { usage: usageSoFar() } : {}),
   };
 };
 

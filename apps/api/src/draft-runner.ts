@@ -54,8 +54,12 @@ export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 
 const draftPrefix = 'platform/draft/';
 
+/** The platform's eval run: its task runs a test, so it counts as testing, as its cases do. */
+export const evalCapabilityId = 'platform/eval';
+
 export const originOf = (capabilityId: string): RunOrigin => {
   if (capabilityId.startsWith(assistantCapabilityPrefix)) return 'assistant';
+  if (capabilityId === evalCapabilityId) return 'builder';
   if (!capabilityId.startsWith(draftPrefix)) return serviceOrigin;
   const segment = capabilityId.slice(draftPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';
@@ -192,6 +196,8 @@ export type DraftTarget = Pick<
 export interface PreparedDraft {
   ok: true;
   capability: string;
+  /** The definition as it runs, completed: a residency left out is filled from the model. */
+  definition: Record<string, unknown>;
   release(): void;
 }
 
@@ -440,7 +446,7 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
     input: DraftTarget,
     definition: unknown,
     compiled: CompiledCapability,
-  ): Promise<PreparedDraft | DraftRunFailure> => {
+  ): Promise<Omit<PreparedDraft, 'definition'> | DraftRunFailure> => {
     const id = `${draftPrefix}${input.origin}/${createHash('sha256')
       .update(
         `${input.tenant}/${(definition as { metadata: { id: string } }).metadata.id}/${Date.now()}/${Math.random()}`,
@@ -471,7 +477,11 @@ export const createDraftRunner = (deps: DraftRunnerDeps): DraftRunner => {
 
   const prepare = async (input: DraftTarget): Promise<PreparedDraft | DraftRunFailure> => {
     const compiled = compile(input);
-    return compiled.ok ? register(input, compiled.definition, compiled.compiled) : compiled;
+    if (!compiled.ok) return compiled;
+    const registered = await register(input, compiled.definition, compiled.compiled);
+    return registered.ok
+      ? { ...registered, definition: compiled.definition as unknown as Record<string, unknown> }
+      : registered;
   };
 
   const run = async (input: DraftRunInput): Promise<DraftRunOutcome> => {

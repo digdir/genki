@@ -5,6 +5,7 @@ import {
   InMemoryConfigEntryStore,
   strategyModelNeeds,
   allowOf,
+  pinnedFetch,
   tracingEgress,
 } from '@genai/composition';
 import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
@@ -211,7 +212,7 @@ import {
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
 import {
   createDraftRunner,
@@ -932,7 +933,7 @@ export const createPlatform = async (input: PlatformInput) => {
                 tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
             },
             tasks: async (id) => (await taskStore.get(id))?.task,
-            fetch: sinkEgress.fetch(allowOf(connection.host)),
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
             serviceName: 'genai-eval',
           },
         ),
@@ -998,7 +999,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',

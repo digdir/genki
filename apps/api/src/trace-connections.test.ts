@@ -7,6 +7,7 @@ import { createAdmin } from './admin.js';
 import { tracesContent } from './boot-guard.js';
 import { createPlatform } from './composition.js';
 import type { TracingOptions } from './trace-connections.js';
+import { pinnedFetch } from '@genai/composition';
 import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
 
 const tenant = '991825827';
@@ -37,6 +38,12 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: other }],
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'digdir-drift' },
+  driftsmedlem: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'digdir-drift-medlem',
+    authorizedFor: [{ org: tenant, actions: ['read'] }],
+  },
 };
 
 const addresses: Record<string, string> = {
@@ -92,6 +99,7 @@ const boot = async (
     });
     return {
       status: res.status,
+      task: res.headers.get('genai-task'),
       body: (await res.json().catch(() => ({}))) as Record<string, unknown>,
     };
   };
@@ -211,6 +219,9 @@ describe("an agency's Langfuse connections", () => {
     expect(errorsOf(clear.body)).toEqual([
       'connection.secretKey: must be a secret://tenant/<tenant>/<name> reference',
     ]);
+    // Refused before an admin task starts, so the typed key never reaches a task's input.
+    expect(clear.task).toBeNull();
+    expect(foreign.task).not.toBeNull();
   });
 
   it('covers a service with at most one connection', async () => {
@@ -296,7 +307,7 @@ describe("an agency's Langfuse connections", () => {
     expect(declared.body).toMatchObject({ content: true, erasureDeclared: true });
   });
 
-  it('lets only a person with manage-services change connections', async () => {
+  it('lets only a person with manage-services change connections, also an operator who is a member', async () => {
     const env = await boot();
     await env.secret('langfuse-etaten', own);
 
@@ -306,9 +317,11 @@ describe("an agency's Langfuse connections", () => {
       `/tenants/${tenant}/tracing/connections/etaten`,
       'erik',
     );
+    const operator = await env.connect('etaten', ownConnection(), 'driftsmedlem');
 
     expect(refused.status).toBe(403);
     expect(removed.status).toBe(403);
+    expect(operator.status).toBe(403);
   });
 });
 
@@ -388,5 +401,42 @@ describe.skipIf(!localLangfuse)('a local Langfuse 4.4.0 in development mode', ()
     const checked = await env.send('POST', `/tenants/${tenant}/tracing/connections/lokal/check`);
 
     expect(checked.body).toMatchObject({ ok: true, project: { id: expect.any(String) } });
+  });
+});
+
+describe("an exporter's requests to a connection", () => {
+  it("go through the guard's pinned request, with the method, headers, body and signal", async () => {
+    const seen: unknown[][] = [];
+    const guard = {
+      request: async (...args: unknown[]) => {
+        seen.push(args);
+        return { status: seen.length === 1 ? 200 : 204, headers: {}, body: '{}' };
+      },
+    };
+    const allow = [{ host: 'langfuse.etaten.example.no', protocol: 'https' as const }];
+    const send = pinnedFetch(guard as never, allow as never);
+    const signal = new AbortController().signal;
+
+    const sent = await send('https://langfuse.etaten.example.no/api/public/otel/v1/traces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"resourceSpans":[]}',
+      signal,
+    });
+    const empty = await send('https://langfuse.etaten.example.no/api/public/health');
+
+    expect(seen[0]).toEqual([
+      allow,
+      'https://langfuse.etaten.example.no/api/public/otel/v1/traces',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"resourceSpans":[]}',
+      },
+      signal,
+    ]);
+    expect(sent.status).toBe(200);
+    expect(await sent.text()).toBe('{}');
+    expect(empty.status).toBe(204);
   });
 });

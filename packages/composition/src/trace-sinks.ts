@@ -1,5 +1,11 @@
 import type { SecretResolver } from '@genai/kernel';
-import { EgressGuard, TenantSecrets, type EgressOptions } from '@genai/providers-mcp-client';
+import {
+  EgressGuard,
+  TenantSecrets,
+  type AllowedHost,
+  type EgressOptions,
+  type EgressRequest,
+} from '@genai/providers-mcp-client';
 import type { ConfigEntryStore } from './config-store.js';
 
 /** A tenant's connection to a trace sink is a config entry of this kind (ADR 0040). */
@@ -66,4 +72,29 @@ export const traceSinkAccess =
       secretKey,
       fetch: deps.egress.fetch(allowOf(settings.host)),
     };
+  };
+
+const nullBody = new Set([101, 204, 205, 304]);
+
+/**
+ * A fetch for an exporter that goes through the guard's request: the connection is pinned to the
+ * address the guard checked, with its time and size limits, instead of a second DNS lookup.
+ */
+export const pinnedFetch =
+  (guard: Pick<EgressGuard, 'request'>, allow: AllowedHost[]): typeof fetch =>
+  async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const response = await guard.request(
+      allow,
+      url,
+      {
+        method: (init?.method ?? 'GET') as EgressRequest['method'],
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      },
+      init?.signal ?? undefined,
+    );
+    return new Response(nullBody.has(response.status) ? null : response.body, {
+      status: response.status,
+    });
   };

@@ -21,7 +21,7 @@ import {
 } from '@genai/eval';
 import { backgroundLeases, restartMessage, type LeaseOptions } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
-import { connectionCovering } from './trace-connections.js';
+import { connectionsCovering } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -121,7 +121,8 @@ const textOfParts = (parts: unknown) =>
 /** A test run as the portal lists it, read from the eval run. */
 export const runSummary = (run: EvalRun) => {
   const state = runState(run);
-  const counted = run.results.filter((r) => verdictOf(r.scores));
+  // Every case counts, as the case list shows it: one without a verdict did not pass.
+  const counted = run.results;
   const passed = counted.filter((r) => passes(r.scores)).length;
   const used = [run.usage?.answers, run.usage?.judges].filter((u) => u !== undefined);
   const usage = used.length > 0 ? sumUsage(used) : undefined;
@@ -172,6 +173,30 @@ export const runDetail = (
     };
   }),
 });
+
+/** A run as a reader sees it: never its lease, and what it used only with view-usage. */
+export const shownRun = (run: EvalRun, usage: boolean): EvalRun => {
+  const shown = { ...run };
+  delete shown.owner;
+  delete shown.heartbeatAt;
+  if (!usage) delete shown.usage;
+  return shown;
+};
+
+const finished = (run: EvalRun) => {
+  const state = runState(run);
+  return state !== 'running' && state !== 'waiting-for-scores';
+};
+
+/** Progress from the eval task; a run that has finished keeps what it finished with. */
+export const progressed = (
+  run: EvalRun,
+  progress: { done: number; total: number },
+  usage?: EvalRun['usage'],
+): EvalRun => (finished(run) ? run : { ...run, progress, ...(usage ? { usage } : {}) });
+
+export const waitingForScores = (run: EvalRun): EvalRun =>
+  finished(run) ? run : { ...run, status: 'waiting-for-scores' };
 
 const modelsOf = (definition: Record<string, unknown>) => {
   const model = (isRecord(definition.spec) ? definition.spec.model : undefined) as
@@ -330,8 +355,12 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         error: restartMessage,
       },
     };
-    await save(interrupted).catch(() => undefined);
-    return interrupted;
+    const replaced = await deps.evalStores.runs
+      .replace(interrupted, { status: stored.run.status, heartbeatAt: stored.run.heartbeatAt })
+      .catch(() => false);
+    if (replaced) return interrupted;
+    // The owner saved the run after it was read: show what it saved.
+    return (await deps.evalStores.runs.get(stored.run.id)) ?? stored;
   };
 
   const runOf = async (tenant: string, id: string) => {
@@ -378,16 +407,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
-    const sink = options.trace
-      ? await connectionCovering(deps.configEntries, tenant, service)
-      : undefined;
+    const covering = options.trace
+      ? await connectionsCovering(deps.configEntries, tenant, service)
+      : [];
+    const sink = covering[0];
     if (options.trace) {
       if (!sink || !deps.traceSinks)
         throw new TraceRefused(`no trace connection covers the service ${service}`);
-      const residency = residencyOf(subject.definition);
-      if (!residencyAllows(residency, sink.residency))
+      if (covering.length > 1)
         throw new TraceRefused(
-          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+          `two trace connections cover the service ${service}: ${covering.map((c) => c.id).join(', ')}`,
         );
     }
     const prepared = await deps.drafts.prepare({
@@ -400,6 +429,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ...(subject.variant ? { variant: subject.variant } : {}),
     });
     if (!prepared.ok) throw new RunRefused(prepared.errors);
+    if (sink) {
+      // The residency the run has, filled from its model when the draft leaves it out.
+      const residency = residencyOf(prepared.definition);
+      if (!residencyAllows(residency, sink.residency)) {
+        prepared.release();
+        throw new TraceRefused(
+          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+        );
+      }
+    }
     const cases = casesIn(set, split);
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {
@@ -460,25 +499,40 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           },
         });
         task = invoked.task;
+        // Notices are applied in order to the latest state, and never reopen a finished run.
         void (async () => {
           for await (const event of invoked.events) {
-            const data = event.data as { kind?: string; done?: number; total?: number } | undefined;
+            const data = event.data as
+              { kind?: string; done?: number; total?: number; usage?: unknown } | undefined;
             if (event.type !== 'kernel.notice') continue;
-            if (data?.kind === 'eval.progress' && data.done !== undefined)
+            if (data?.kind === 'eval.progress' && data.done !== undefined) {
+              const usage = evalRun.shape.usage.safeParse(data.usage);
               await lease.update(
-                (run) => ({ ...run, progress: { done: data.done ?? 0, total: data.total ?? 0 } }),
+                (run) =>
+                  progressed(
+                    run,
+                    { done: data.done ?? 0, total: data.total ?? 0 },
+                    usage.success ? usage.data : undefined,
+                  ),
                 'progress',
               );
-            if (data?.kind === 'eval.waiting')
-              await lease.update((run) => ({ ...run, status: 'waiting-for-scores' }), 'waiting');
+            }
+            if (data?.kind === 'eval.waiting') await lease.update(waitingForScores, 'waiting');
           }
         })().catch(() => undefined);
         const parts = await invoked.result;
         const json = parts.find((p) => p.body.kind === 'json')?.body;
         const result = evalRun.parse(json?.kind === 'json' ? json.json : undefined);
+        // The draft's capability lives for one run; the service it tests is what runs compare by.
+        const services = result.provenance.services.map((s) =>
+          s.startsWith(`${prepared.capability}@`)
+            ? `${tenant}/${service}${s.slice(prepared.capability.length)}`
+            : s,
+        );
         await lease.update(
           () => ({
             ...result,
+            provenance: { ...result.provenance, services },
             ...(first.tested ? { tested: first.tested } : {}),
             progress: { done: cases.length, total: cases.length },
           }),

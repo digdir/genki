@@ -1,18 +1,14 @@
 import {
   databaseRequirement,
-  isDevMode,
   lockdownEntraProblems,
   platformTenantProblems,
   unmetOutsideDevMode,
 } from '@genai/composition';
 import { operatorSubjectProblems } from './operators.js';
 
-export { isDevMode, isProduction } from '@genai/composition';
+export { isDevMode, isProduction, tracesContent } from '@genai/composition';
 
 type Env = Record<string, string | undefined>;
-
-/** Answer text goes to the platform-wide exporter only in development mode (ADR 0040). */
-export const tracesContent = (env: Env) => env.TRACES_CONTENT === 'true' && isDevMode(env);
 
 export const hasIdentityProvider = (env: Env) =>
   Boolean(env.ANSATTPORTEN_ISSUER) ||

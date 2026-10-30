@@ -11,6 +11,7 @@ import type { TestCaseCandidate } from './feedback.js';
 import {
   caseTypes,
   expectedFor,
+  type CaseExpectation,
   type CaseType,
   type Score,
   type Split,
@@ -58,7 +59,8 @@ export const caseView = (c: TestCase): CaseView => ({
 export interface NewCase {
   id: string;
   input: string;
-  expected?: string;
+  /** A text, read by the case type, or a reference answer and named criteria as they are. */
+  expected?: string | CaseExpectation;
   type?: CaseType;
   split?: CaseSplit;
 }
@@ -76,7 +78,8 @@ export const caseFrom = (input: NewCase) => {
     id: input.id,
     split,
     input: input.input,
-    expected: expectedFor(type, input.expected),
+    expected:
+      typeof input.expected === 'object' ? input.expected : expectedFor(type, input.expected),
     grounding: type === 'must_reject' ? 'refusal-expected' : 'answer-only',
     type,
   };
@@ -170,18 +173,18 @@ export const criteriaJudge = (
             reason: 'the case has no criteria',
           }),
         ];
-      chosen ??= pick(ctx.servedModels);
-      model = await chosen;
-      if (!model)
-        return [
-          score({
-            value: null,
-            applicable: true,
-            state: 'failed',
-            reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
-          }),
-        ];
       try {
+        chosen ??= pick(ctx.servedModels);
+        model = await chosen;
+        if (!model)
+          return [
+            score({
+              value: null,
+              applicable: true,
+              state: 'failed',
+              reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
+            }),
+          ];
         const judged = await rubricJudge(model, criteriaJudgePrompt(criteria)).evaluate(c, o, ctx);
         const value = judged.find((s) => s.metric === 'judge.criteria')?.value ?? null;
         const rationale = judged.find((s) => s.metric === 'judge.overall')?.details?.rationale;
