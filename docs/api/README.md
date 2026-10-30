@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-10-30: the portal's test runs are eval runs
+
+- `POST /tenants/{tenant}/services/{id}/eval-runs` starts an eval run. Its `status` is `running`, `waiting-for-scores`, `completed`, `failed` or `interrupted` (was `queued`, `running`, `succeeded`, `failed`), and a draft that cannot run answers `422`.
+- `GET /tenants/{tenant}/services/{id}/eval-runs` lists eval runs with `metrics`, `judges` and `incomplete`; runs from before are no longer listed.
+- An eval run's `provenance.services` names the service it tested, `<tenant>/<service>@<version>#<config hash>`.
+
 ### 2026-10-30: case types judged as evaluators
 
 - The `contract` evaluator is version 2: it scores an exact case's text (`exact-text`, 0 when the case has no text) and counts an empty answer as a refusal on a must_reject case.

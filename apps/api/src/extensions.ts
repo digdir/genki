@@ -52,7 +52,8 @@ import {
   type AdminOutcome,
 } from './admin.js';
 import { rightRefused, seesUsage, type Right } from './rights.js';
-import { shownRun } from './service-eval.js';
+import { backgroundLeases } from './background-lease.js';
+import { interruptedIfAbandoned, shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 
 export interface TrackedTask {
@@ -646,6 +647,8 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     return c.json({ data: (await deps.allTasks()).filter((task) => task.status === status) });
   });
 
+  // Judges a run abandoned by staleness alone, which every instance reads the same.
+  const readLeases = backgroundLeases();
   const evalGuard = async (c: Context, tenant: string, right?: Right) => {
     const principal = await who(c);
     if (!principal) return { response: problem(c, 401, 'Unauthorized') };
@@ -664,7 +667,9 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const service = c.req.query('service');
     const runs = await deps.eval.runs.list({ tenant, ...(service ? { service } : {}) });
     const usage = seesUsage(guard.principal, tenant);
-    return c.json({ data: runs.map((s) => shownRun(s.run, usage)) });
+    return c.json({
+      data: runs.map((s) => shownRun(interruptedIfAbandoned(tenant, s.run, readLeases), usage)),
+    });
   });
   app.post('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
@@ -723,9 +728,13 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if (!principal) return problem(c, 401, 'Unauthorized');
     try {
       const found = await evalService.getRun(actingFor(c, principal), param(c, 'id'));
+      const owner = found.run.testSet.tenant;
       return c.json({
         ...found,
-        run: shownRun(found.run, seesUsage(principal, found.run.testSet.tenant)),
+        run: shownRun(
+          interruptedIfAbandoned(owner, found.run, readLeases),
+          seesUsage(principal, owner),
+        ),
       });
     } catch (error) {
       return evalProblem(c, error);
