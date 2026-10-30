@@ -80,8 +80,22 @@ const pinnedNode = (root: string) => {
   return /^node\s*=\s*"([^"]+)"/m.exec(readFileSync(mise, 'utf8'))?.[1];
 };
 
-const run = (command: string, args: string[], cwd: string, quiet = false) =>
-  spawnSync(command, args, { cwd, stdio: quiet ? 'ignore' : 'inherit' }).status === 0;
+// Run npm through the node that runs this script: spawning `npm` without a shell fails on
+// Windows, where npm is npm.cmd. npm sets npm_execpath to its own CLI when it runs a script;
+// under pnpm or yarn it points to their CLI, so fall back to plain `npm` then.
+export const npmCommand = (
+  args: string[],
+  execPath = process.env.npm_execpath,
+): { command: string; args: string[] } =>
+  execPath && /(^|[\\/])npm-cli\.js$/.test(execPath)
+    ? { command: process.execPath, args: [execPath, ...args] }
+    : { command: 'npm', args };
+
+const run = (command: string, args: string[], cwd: string, quiet = false) => {
+  const result = spawnSync(command, args, { cwd, stdio: quiet ? 'ignore' : 'inherit' });
+  if (result.error) console.error(result.error.message);
+  return result.status === 0;
+};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -119,7 +133,8 @@ const main = async () => {
 
   if (!existsSync(join(root, 'node_modules'))) {
     console.log('Installing dependencies');
-    if (!run('npm', ['install'], root)) process.exit(1);
+    const npm = npmCommand(['install']);
+    if (!run(npm.command, npm.args, root)) process.exit(1);
   }
 
   if (!skipDocker) {
