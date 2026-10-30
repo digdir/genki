@@ -207,6 +207,7 @@ export type Split = 'train' | 'validation' | 'holdout';
 export interface TestCaseSummary {
   id: string;
   split: Split;
+  type?: string;
   input: string | { data?: unknown; parts?: unknown[] };
   tags: string[];
   needsReview: boolean;

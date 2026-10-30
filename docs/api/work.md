@@ -17,7 +17,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 ## Typical sequence: evaluate a draft before publishing
 
 1. `GET /tenants/{tenant}/services/{id}/test-sets`: the service's test sets.
-2. `POST /tenants/{tenant}/test-sets/{setId}/cases`: add a case if one is missing. `expected` is a text, read as a criteria case's criteria and as the reference answer otherwise, or `{ referenceAnswer, criteria }` with named criteria such as `criteria` and `supporting_quotes`, kept as they are.
+2. `POST /tenants/{tenant}/test-sets/{setId}/cases`: add a case if one is missing. `expected` is a text, read as a criteria case's criteria and as the reference answer otherwise, or `{ referenceAnswer, criteria }` with named criteria such as `criteria` and `supporting_quotes`, kept as they are. Given as fields, a criteria case needs `criteria` and an exact case `referenceAnswer`.
 3. `POST /tenants/{tenant}/services/{id}/eval-runs` for the draft: runs in the background.
 4. `GET /tenants/{tenant}/services/{id}/eval-runs`, then `GET /tenants/{tenant}/eval-runs/{runId}` for case results.
 5. `GET /eval-runs/compare`: compare with the run of the published version.

@@ -47,6 +47,14 @@ interface CaseDraft {
   stored?: TestCaseSummary;
 }
 
+/** The field holds a criteria case's criteria, otherwise the reference answer. */
+const judgedOnCriteria = (stored?: TestCaseSummary) =>
+  stored?.type === 'criteria' || stored?.expected.criteria !== undefined;
+
+/** Criteria fields other than the one the form edits, which a save keeps. */
+const otherCriteria = (stored?: TestCaseSummary) =>
+  Object.keys(stored?.expected.criteria ?? {}).filter((k) => k !== 'criteria');
+
 const CaseForm = ({
   initial,
   fixedId,
@@ -70,6 +78,13 @@ const CaseForm = ({
     const next: Record<string, string> = {};
     if (!/^[a-z0-9][a-z0-9-]*$/.test(draft.id)) next.id = t('config.caseIdInvalid');
     if (!draft.input.trim()) next.input = t('config.caseInputMissing');
+    // A criteria case without criteria would have its reference answer read as its criteria.
+    if (
+      judgedOnCriteria(draft.stored) &&
+      !draft.referenceAnswer.trim() &&
+      otherCriteria(draft.stored).length === 0
+    )
+      next.expected = t('config.caseCriteriaMissing');
     const reasonError = reasonProblem(t, reason);
     if (reasonError) next.reason = reasonError;
     setErrors(next);
@@ -96,13 +111,22 @@ const CaseForm = ({
         {errors.input ? <Field.Description role="alert">{errors.input}</Field.Description> : null}
       </Field>
       <Field>
-        <Label htmlFor={`svar-${initial.id || 'ny'}`}>{t('config.caseExpectedLabel')}</Label>
+        <Label htmlFor={`svar-${initial.id || 'ny'}`}>
+          {t(
+            judgedOnCriteria(draft.stored)
+              ? 'config.caseCriteriaLabel'
+              : 'config.caseExpectedLabel',
+          )}
+        </Label>
         <Textarea
           id={`svar-${initial.id || 'ny'}`}
           rows={3}
           value={draft.referenceAnswer}
           onChange={(e) => setDraft({ ...draft, referenceAnswer: e.target.value })}
         />
+        {errors.expected ? (
+          <Field.Description role="alert">{errors.expected}</Field.Description>
+        ) : null}
       </Field>
       <Field>
         <Label htmlFor={`del-${initial.id || 'ny'}`}>{t('config.caseSplitLabel')}</Label>
@@ -143,7 +167,7 @@ const caseBody = (draft: CaseDraft) => {
   const without = (o: object, keys: string[]) =>
     Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
   const stored = draft.stored?.expected ?? {};
-  const storedCriteria = stored.criteria;
+  const storedCriteria = judgedOnCriteria(draft.stored) ? (stored.criteria ?? {}) : undefined;
   const rest = draft.stored ? without(draft.stored, ['id', 'expected']) : {};
   const others = without(stored, ['criteria', 'referenceAnswer']);
   // The field holds a criteria case's criteria, otherwise the reference answer.

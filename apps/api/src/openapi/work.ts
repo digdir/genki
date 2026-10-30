@@ -1191,7 +1191,7 @@ const evalRoutes: RouteConfig[] = [
               z.string(),
               z.object({
                 referenceAnswer: z.string().optional(),
-                criteria: z.record(z.string(), z.string()).optional(),
+                criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string()).optional(),
               }),
             ])
             .optional()
