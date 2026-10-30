@@ -425,11 +425,11 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
-    const covering = options.trace
-      ? await connectionsCovering(deps.configEntries, tenant, service)
-      : [];
+    // Locked cases never leave the platform, so a run of them alone sends nothing anywhere.
+    const traced = options.trace === true && split !== 'locked';
+    const covering = traced ? await connectionsCovering(deps.configEntries, tenant, service) : [];
     const sink = covering[0];
-    if (options.trace) {
+    if (traced) {
       if (!sink || !deps.traceSinks)
         throw new TraceRefused(`no trace connection covers the service ${service}`);
       if (covering.length > 1)

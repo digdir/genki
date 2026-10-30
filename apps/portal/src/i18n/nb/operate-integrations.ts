@@ -671,13 +671,15 @@ export const integrationsArea = {
     checkedOk: 'Nøklene åpner prosjektet {project}.',
     edit: 'Endre',
     add: 'Koble til Langfuse',
+    nameTaken:
+      'Det finnes allerede en kobling som heter {id}. Velg et annet navn, eller endre den.',
     addHeading: 'Ny Langfuse-kobling',
     editHeading: 'Endre Langfuse-koblingen',
     id: 'Navn på koblingen',
     host: 'Adresse',
     hostHelp: 'For eksempel https://langfuse.digdir.cloud. Bare HTTPS.',
     publicKey: 'Offentlig nøkkel',
-    secretName: 'Hemmelig nøkkel',
+    secretName: 'Navn på hemmeligheten',
     secretHelp:
       'Navnet på hemmeligheten der dere har lagret den hemmelige nøkkelen, satt for adressen over.',
     servicesLabel: 'Tjenester',

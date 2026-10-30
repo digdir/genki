@@ -113,6 +113,11 @@ export const LiveTracing = ({
       reasonProblem(reason, t)
     )
       return;
+    // Saving under a name that exists would replace that connection; only Endre does that.
+    if (!editing && state.status === 'ready' && state.data.some((c) => c.id === draft.id.trim())) {
+      setFailed(t('integLangfuse.nameTaken', { id: draft.id.trim() }));
+      return;
+    }
     setBusy(true);
     setFailed(undefined);
     try {

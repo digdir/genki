@@ -41,8 +41,8 @@ export const itemAttributes = (experiment: Experiment) => ({
 });
 
 export interface ExperimentRouter {
-  /** Send the cases of a run to this exporter until the run is closed. */
-  open(run: string, exporter: TraceExporter): void;
+  /** Send the cases of a tenant's run to this exporter until the run is closed. */
+  open(run: string, exporter: TraceExporter, tenant?: string): void;
   /** Flushes the run's sink and answers the case tasks whose traces went there. */
   close(run: string): Promise<string[]>;
   observe(event: Event, scope: ContentScope): void;
@@ -54,15 +54,18 @@ export interface ExperimentRouter {
  */
 export const createExperimentRouter = (): ExperimentRouter => {
   const exporters = new Map<string, TraceExporter>();
+  const tenantOf = new Map<string, string>();
   const runOf = new Map<string, string>();
   const cases = new Map<string, Set<string>>();
   return {
-    open: (run, exporter) => {
+    open: (run, exporter, tenant) => {
       exporters.set(run, exporter);
+      if (tenant !== undefined) tenantOf.set(run, tenant);
     },
     close: async (run) => {
       const exporter = exporters.get(run);
       exporters.delete(run);
+      tenantOf.delete(run);
       for (const [task, owner] of runOf) if (owner === run) runOf.delete(task);
       await exporter?.shutdown();
       const sent = [...(cases.get(run) ?? [])];
@@ -71,7 +74,13 @@ export const createExperimentRouter = (): ExperimentRouter => {
     },
     observe: (event, scope) => {
       const evaluation = evaluationIn(event);
-      if (evaluation && exporters.has(evaluation.run.id)) {
+      // A case reaches a run's sink only from the tenant the run was opened for.
+      const owner = evaluation && tenantOf.get(evaluation.run.id);
+      if (
+        evaluation &&
+        exporters.has(evaluation.run.id) &&
+        (owner === undefined || owner === scope.tenant)
+      ) {
         runOf.set(event.task, evaluation.run.id);
         cases.set(evaluation.run.id, (cases.get(evaluation.run.id) ?? new Set()).add(event.task));
       }

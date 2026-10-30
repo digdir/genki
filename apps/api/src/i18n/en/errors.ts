@@ -104,6 +104,15 @@ export const catalogErrors = {
   tracingBeingRemoved: 'the connection {id} is being removed',
   tracingDeletesOwed: 'the connection {id} still has traces to delete where it points now',
   tracingNoConnection: 'no connection {id}',
+  tracingNotCovered: 'no trace connection covers the service {service}',
+  tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
+  tracingResidencyForbids:
+    "the service's residency {residency} does not allow the connection's {connection}",
+  tracingHostOrigin:
+    'the host is an address like https://langfuse.example.no, without a path or credentials',
+  tracingHostDot: 'the host name ends with a dot',
+  tracingContentNeedsInstance:
+    "content needs LANGFUSE_BASE_URL, so Digdir's Langfuse is never taken for an agency's own",
   tracingResidencyValues: 'norway, eu or global',
   tracingResidencyByTenant: 'the tenant declares the residency of its own Langfuse',
   tracingKeysRefused: 'Langfuse refused the keys',

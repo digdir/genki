@@ -175,7 +175,7 @@ describe('live Testsett', () => {
     expect(screen.queryByRole('checkbox', { name: /Send kjøringen til Langfuse/ })).toBeNull();
   });
 
-  it('sends a run to Langfuse when the person ticks it, for a service a connection covers', async () => {
+  it('sends a run to Langfuse when the person ticks it for that run, for a service a connection covers', async () => {
     const { writes } = await openLive('', {}, {}, (path) =>
       /\/tracing\/connections$/.test(path)
         ? Response.json({
@@ -186,7 +186,7 @@ describe('live Testsett', () => {
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     const send = await screen.findByRole('checkbox', {
-      name: 'Send kjøringen til Langfuse (lokal). Holdout-tilfeller sendes aldri.',
+      name: 'Send kjøringen til Langfuse (lokal). Låste testtilfeller sendes aldri.',
     });
 
     expect((send as HTMLInputElement).checked).toBe(false);
@@ -194,6 +194,10 @@ describe('live Testsett', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
     await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
     expect(writes().at(-1)?.body).toMatchObject({ trace: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const again = await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse/ });
+    expect((again as HTMLInputElement).checked).toBe(false);
   });
 
   it('says in bokmål why a run stopped and which judge left cases unscored', async () => {

@@ -104,6 +104,15 @@ export const catalogErrors = defineNamespace({
   tracingBeingRemoved: 'koblingen {id} er i ferd med å bli fjernet',
   tracingDeletesOwed: 'koblingen {id} har fortsatt sporinger å slette der den peker nå',
   tracingNoConnection: 'ingen kobling {id}',
+  tracingNotCovered: 'ingen sporingskobling dekker tjenesten {service}',
+  tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
+  tracingResidencyForbids:
+    'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
+  tracingHostOrigin:
+    'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
+  tracingHostDot: 'vertsnavnet slutter med punktum',
+  tracingContentNeedsInstance:
+    'innhold krever at LANGFUSE_BASE_URL er satt, så Digdirs Langfuse aldri forveksles med en virksomhets egen',
   tracingResidencyValues: 'norway, eu eller global',
   tracingResidencyByTenant: 'virksomheten oppgir lagringssted for sin egen Langfuse',
   tracingKeysRefused: 'Langfuse avviste nøklene',

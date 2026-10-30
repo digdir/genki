@@ -29,6 +29,11 @@ export interface ExporterDeps {
    * sent: a sink records them first, so nothing it sent goes unrecorded. False drops the batch.
    */
   beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>;
+  /**
+   * Export eval run cases as experiment items. Only a run's own sink does; the platform-wide
+   * exporter leaves them as ordinary traces, so no tenant's run lands in Digdir's project.
+   */
+  experiments?: boolean;
 }
 
 interface Open {
@@ -101,7 +106,7 @@ export const createTraceExporter = (
   };
 
   const track = (event: Event) => {
-    const evaluation = evaluationIn(event);
+    const evaluation = deps.experiments ? evaluationIn(event) : undefined;
     if (evaluation && experiments.size < config.limits.openTasks)
       experiments.set(event.task, { ...evaluation, rootTask: event.task });
     if (event.type !== 'kernel.task.spawned') return;

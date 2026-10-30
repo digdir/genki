@@ -100,7 +100,7 @@ describe('Integrasjoner: Langfuse', () => {
     fill('Navn på koblingen', 'etaten');
     fill('Adresse', 'https://langfuse.etaten.example.no');
     fill('Offentlig nøkkel', 'pk-lf-etaten');
-    fill('Hemmelig nøkkel', 'langfuse-etaten');
+    fill('Navn på hemmeligheten', 'langfuse-etaten');
     fill('Tjenester', 'soknadsuttrekk, rapportassistenten');
     fill('Lagringssted', 'norway');
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
@@ -123,5 +123,30 @@ describe('Integrasjoner: Langfuse', () => {
         erasureDeclared: false,
       },
     });
+  });
+
+  it('asks for another name rather than replacing a connection that has it', async () => {
+    const { calls, section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Koble til Langfuse' }));
+    const form = within(section).getByRole('form', { name: 'Ny Langfuse-kobling' });
+    const fill = (label: string, value: string) =>
+      fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fill('Navn på koblingen', 'digdir');
+    fill('Adresse', 'https://langfuse.etaten.example.no');
+    fill('Offentlig nøkkel', 'pk-lf-etaten');
+    fill('Navn på hemmeligheten', 'langfuse-etaten');
+    fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
+      target: { value: 'Teamet bruker Langfuse til dommere' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(
+      await within(form).findByText(
+        'Det finnes allerede en kobling som heter digdir. Velg et annet navn, eller endre den.',
+      ),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 });
