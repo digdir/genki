@@ -93,7 +93,7 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 - In genki-test: deploy, then a person in one of `LOCKDOWN_ENTRA_GROUPS` logs in to the console with Entra ID and starts the pipeline the same way, or calls the same route with that login's token. Scheduled runs are skipped in lockdown, so nothing reindexes by itself.
 - In the console, Systematlas (`#/atlas`) shows the System Atlas on the whole window, with a link back to the console in its topbar. The guide is the chat panel under the details panel. Each module offers prepared questions (explain it, how it connects, where it is in the code, how to change it), each connection and each traced request has its own ask, and an answer lists the atlas modules it mentions so you can jump to them. The atlas page only sends the question to the console; the console asks the guide through `POST /v1/chat/completions` (model `genki-guide__default`) with its login's token and sends the answer back, so the token never reaches the atlas page. The login needs the right to use services in the platform organisation, so in genki-test that is the Entra ID login. Opened on its own, the atlas shows the chat panel with a note and no input.
 
-**Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
+**Tests.** `npm run check` runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets and every test. `npm run size` builds the portal, console and workspace and fails when an app's first load, its entry and the chunks that entry imports up front, grows past its gzip budget in `scripts/size-budget.ts`. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 ## Repository layout
 
@@ -108,12 +108,14 @@ Only `.env.local` is loaded automatically. Secrets in config are referenced as `
 | Client            | `client` (`@genai/client`, typed client for your own frontend), `schema-forms` (forms and results drawn from a service's JSON Schema)                                                                                                                                                                                |
 | Apps              | `api`, `worker`, `portal`, `workspace`, `console`, `parity` (records headless-rag and compares against it)                                                                                                                                                                                                           |
 
+Model provider APIs and catalog options are documented in [providers.md](providers.md).
+
 Vendor SDKs live only in `packages/providers-*`, and only composition roots may import those providers. `npm run boundaries` enforces both.
 
 ## Quality
 
 ```sh
-npm run check   # prettier, eslint, typecheck, dependency boundaries, all tests
+npm run check   # prettier, eslint, typecheck, dependency boundaries, size budgets, all tests
 ```
 
 Tests use Vitest; the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers, so Docker must be running. CI (`.github/workflows/ci.yml`) runs the same steps as `npm run check`, with the tests split over four runners, plus a gitleaks scan and a Docker image build, without pushing.

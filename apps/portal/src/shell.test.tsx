@@ -222,7 +222,7 @@ describe('shell', () => {
   ])('renders the %s page and highlights %s in the menu', async (path, heading, item) => {
     await renderAt(`#${path}`);
 
-    expect(screen.getByRole('heading', { level: 1, name: heading })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeTruthy();
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
     expect(within(menu).getByRole('link', { name: item }).getAttribute('aria-current')).toBe(
       'page',
@@ -251,7 +251,7 @@ describe('shell', () => {
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
     await renderAt(`#${path}`);
-    expect(screen.getByRole('heading', { level: 1, name: title })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeTruthy();
   });
 
   it.each([

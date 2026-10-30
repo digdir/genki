@@ -38,5 +38,6 @@ Rejected:
 - New package `port-usage`, a gateway provider, a usage poll job in the worker, and a "Gateway-nøkler" section in the portal. Each step gets tests against a fake that implements the contract.
 - Step 4 needs the model adapters to send per-call headers from the port context, which they cannot do today.
 - `costMicroNok` gains a sibling for cost in another currency with its rate, or usage rows carry `{ currency, micros }` as the gateway does. Decide in step 1.
+- The model and embedding routers put the list price on each call's `costMicroNok` when the call is metered (#189), unless the provider already reported a cost, and leave a call on an unpriced model unpriced. A gateway that reports its charge per call therefore wins over the price list without a change to the routers.
 - To agree with the gateway team before step 1 is built: sign-in for genki as a client and what it may read, how keys already handed out get a subject, whether `/v1/models` on the API and the OpenAI-compatible `/v1` on the gateway listener stay on separate hosts, and `claim:<name>` subjects once the gateway supports JWT.
 - The lab API is a prototype. genki builds against the contract and the fake, and runs against a real gateway only once it has sign-in.
