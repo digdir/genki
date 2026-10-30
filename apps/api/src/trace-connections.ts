@@ -6,7 +6,9 @@ import {
   isLoopbackAddress,
   secretTenant,
   tenantSecretPattern,
+  type AllowedHost,
   type EgressOptions,
+  type EgressRequest,
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context } from 'hono';
@@ -283,7 +285,8 @@ export const traceConnections = (
 export type TraceConnections = ReturnType<typeof traceConnections>;
 
 /** The connection that covers a service, if any. */
-export const connectionCovering = async (
+/** Every connection that covers a service: more than one means the service is sent nowhere. */
+export const connectionsCovering = async (
   configEntries: ConfigEntryStore,
   tenant: string,
   service: string,
@@ -291,7 +294,33 @@ export const connectionCovering = async (
   (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
     .filter((e) => !e.deleted)
     .map((e) => e.spec as TraceConnection)
-    .find((c) => c.services.includes(service));
+    .filter((c) => c.services.includes(service))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+const nullBody = new Set([101, 204, 205, 304]);
+
+/**
+ * A fetch for an exporter that goes through the guard's request: the connection is pinned to the
+ * address the guard checked, with its time and size limits, instead of a second DNS lookup.
+ */
+export const pinnedFetch =
+  (guard: Pick<EgressGuard, 'request'>, allow: AllowedHost[]): typeof fetch =>
+  async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const response = await guard.request(
+      allow,
+      url,
+      {
+        method: (init?.method ?? 'GET') as EgressRequest['method'],
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+      },
+      init?.signal ?? undefined,
+    );
+    return new Response(nullBody.has(response.status) ? null : response.body, {
+      status: response.status,
+    });
+  };
 
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {

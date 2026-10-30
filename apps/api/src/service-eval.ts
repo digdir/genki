@@ -21,7 +21,7 @@ import {
 } from '@genai/eval';
 import { backgroundLeases, restartMessage, type LeaseOptions } from './background-lease.js';
 import { definitionSubject } from './definition-subject.js';
-import { connectionCovering } from './trace-connections.js';
+import { connectionsCovering } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
@@ -407,16 +407,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     options: { trace?: boolean } = {},
   ) => {
     if (!deps.evalCapability) throw new Error('the platform has no eval capability');
-    const sink = options.trace
-      ? await connectionCovering(deps.configEntries, tenant, service)
-      : undefined;
+    const covering = options.trace
+      ? await connectionsCovering(deps.configEntries, tenant, service)
+      : [];
+    const sink = covering[0];
     if (options.trace) {
       if (!sink || !deps.traceSinks)
         throw new TraceRefused(`no trace connection covers the service ${service}`);
-      const residency = residencyOf(subject.definition);
-      if (!residencyAllows(residency, sink.residency))
+      if (covering.length > 1)
         throw new TraceRefused(
-          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+          `two trace connections cover the service ${service}: ${covering.map((c) => c.id).join(', ')}`,
         );
     }
     const prepared = await deps.drafts.prepare({
@@ -429,6 +429,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ...(subject.variant ? { variant: subject.variant } : {}),
     });
     if (!prepared.ok) throw new RunRefused(prepared.errors);
+    if (sink) {
+      // The residency the run has, filled from its model when the draft leaves it out.
+      const residency = residencyOf(prepared.definition);
+      if (!residencyAllows(residency, sink.residency)) {
+        prepared.release();
+        throw new TraceRefused(
+          `the service's residency ${residency} does not allow the connection's ${sink.residency}`,
+        );
+      }
+    }
     const cases = casesIn(set, split);
     const startedAt = leases.now().toISOString();
     const first: EvalRun = {

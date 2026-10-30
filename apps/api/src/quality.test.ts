@@ -139,7 +139,11 @@ const testSet = parseTestSet({
   },
 });
 
-const boot = async (prices?: Record<string, ModelPrice>, tracing?: TracingOptions) => {
+const boot = async (
+  prices?: Record<string, ModelPrice>,
+  tracing?: TracingOptions,
+  options: { localModel?: boolean } = {},
+) => {
   const optimiserPrompts: string[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
@@ -180,6 +184,8 @@ const boot = async (prices?: Record<string, ModelPrice>, tracing?: TracingOption
     FOUNDRY_OPENAI_BASE_URL: `${model.url}/v1`,
     TYPESENSE_URL: search.url,
     COLBERT_API_URL: search.url,
+    // local/echo, whose catalogue entry says norway, for a draft that leaves its residency out.
+    ...(options.localModel ? { LOCAL_MODEL_URL: `${model.url}/v1` } : {}),
   };
   const background: Promise<void>[] = [];
   const platform = await createPlatform({
@@ -188,7 +194,12 @@ const boot = async (prices?: Record<string, ModelPrice>, tracing?: TracingOption
       knowledge: resolveCatalog(yaml('knowledge.yaml'), 'datasets', env).catalog,
       rerank: resolveCatalog(yaml('rerank.yaml'), 'rerankers', env).catalog,
     },
-    secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
+    secrets: envSecrets({
+      FOUNDRY_OPENAI_KEY: 'm',
+      TYPESENSE_KEY: 't',
+      COLBERT_API_KEY: 'c',
+      LOCAL_MODEL_KEY: 'l',
+    }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     blobStore: new InMemoryBlobStore(),
     policy: { decide: async () => ({ allow: true }) },
@@ -720,10 +731,10 @@ describe('eval runs sent to a trace connection', () => {
   it('refuses a traced run when no connection covers the service, or its residency forbids the connection', async () => {
     const collector = await otlpCollector();
     const uncovered = await boot(undefined, { devMode: true });
-    const covered = await boot(undefined, { devMode: true });
+    const covered = await boot(undefined, { devMode: true }, { localModel: true });
     await connect(covered, collector.url, 'global');
     const norwegian = structuredClone(service);
-    norwegian.spec.model.residency = 'norway';
+    norwegian.spec.model = { primary: 'local/echo', residency: 'norway' };
 
     const none = await uncovered.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
@@ -748,6 +759,54 @@ describe('eval runs sent to a trace connection', () => {
       "the service's residency norway does not allow the connection's global",
     );
     expect(allowed.status).toBe(202);
+  });
+
+  it('checks the residency the draft runs with, filled from its model when the draft leaves it out', async () => {
+    const collector = await otlpCollector();
+    const env = await boot(undefined, { devMode: true }, { localModel: true });
+    await connect(env, collector.url, 'global');
+    const unstated = structuredClone(service) as { spec: { model: Record<string, unknown> } };
+    unstated.spec.model = { primary: 'local/echo' };
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+      version: 'draft',
+      definition: unstated,
+    });
+
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain(
+      "the service's residency norway does not allow the connection's global",
+    );
+  });
+
+  it('sends a run nowhere when two connections cover its service, rather than picking one', async () => {
+    const collector = await otlpCollector();
+    const env = await boot(undefined, { devMode: true });
+    await connect(env, collector.url, 'global');
+    const first = await env.platform.configEntries.latest({
+      kind: 'trace-connection',
+      scope: tenant,
+    });
+    const copy = first[0];
+    if (!copy) throw new Error('no connection was saved');
+    await env.platform.configEntries.append({
+      ...copy,
+      id: 'kopi',
+      version: 1,
+      spec: { ...(copy.spec as Record<string, unknown>), id: 'kopi' },
+    });
+
+    const refused = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain(
+      'two trace connections cover the service svar: kopi, lokal',
+    );
   });
 });
 

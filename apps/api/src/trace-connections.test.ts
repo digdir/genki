@@ -6,7 +6,7 @@ import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { tracesContent } from './boot-guard.js';
 import { createPlatform } from './composition.js';
-import type { TracingOptions } from './trace-connections.js';
+import { pinnedFetch, type TracingOptions } from './trace-connections.js';
 
 const tenant = '991825827';
 const other = '889640782';
@@ -348,5 +348,42 @@ describe.skipIf(!localLangfuse)('a local Langfuse 4.4.0 in development mode', ()
     const checked = await env.send('POST', `/tenants/${tenant}/tracing/connections/lokal/check`);
 
     expect(checked.body).toMatchObject({ ok: true, project: { id: expect.any(String) } });
+  });
+});
+
+describe("an exporter's requests to a connection", () => {
+  it("go through the guard's pinned request, with the method, headers, body and signal", async () => {
+    const seen: unknown[][] = [];
+    const guard = {
+      request: async (...args: unknown[]) => {
+        seen.push(args);
+        return { status: seen.length === 1 ? 200 : 204, headers: {}, body: '{}' };
+      },
+    };
+    const allow = [{ host: 'langfuse.etaten.example.no', protocol: 'https' as const }];
+    const send = pinnedFetch(guard as never, allow as never);
+    const signal = new AbortController().signal;
+
+    const sent = await send('https://langfuse.etaten.example.no/api/public/otel/v1/traces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"resourceSpans":[]}',
+      signal,
+    });
+    const empty = await send('https://langfuse.etaten.example.no/api/public/health');
+
+    expect(seen[0]).toEqual([
+      allow,
+      'https://langfuse.etaten.example.no/api/public/otel/v1/traces',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"resourceSpans":[]}',
+      },
+      signal,
+    ]);
+    expect(sent.status).toBe(200);
+    expect(await sent.text()).toBe('{}');
+    expect(empty.status).toBe(204);
   });
 });

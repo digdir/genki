@@ -245,6 +245,7 @@ import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
 import {
   allowOf,
+  pinnedFetch,
   traceConnectionsModule,
   tracingEgress,
   type TraceSinks,
@@ -923,7 +924,7 @@ export const createPlatform = async (input: PlatformInput) => {
                 tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
             },
             tasks: async (id) => (await taskStore.get(id))?.task,
-            fetch: sinkEgress.fetch(allowOf(connection.host)),
+            fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
             serviceName: 'genai-eval',
           },
         ),
