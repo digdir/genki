@@ -39,7 +39,9 @@ describe('Fellestjenester: liste', () => {
     await renderAt('#/shared-services', fetch);
     expect(await screen.findByRole('heading', { level: 1, name: 'Fellestjenester' })).toBeTruthy();
     expect(urls.some((u) => u.endsWith('/shared-services'))).toBe(true);
-    const cards = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    const cards = within(screen.getByRole('main'))
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent);
     expect(cards).toEqual([
       'Klarspråk',
       'Bokmål til nynorsk',
@@ -371,9 +373,9 @@ describe('Fellestjenester: detalj', () => {
     expect(response.textContent).toContain('"total_tokens": 1240');
     expect(screen.getByText('200 OK')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Kopier' })).toHaveLength(2);
-    expect(screen.getByRole('link', { name: 'Mer om integrasjoner' }).getAttribute('href')).toBe(
-      '#/integrations',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Mer om Maskinporten-klienter' }).getAttribute('href'),
+    ).toBe('#/developer/systems');
     expectAccessible();
   });
 

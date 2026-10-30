@@ -15,14 +15,6 @@
   padding-top: 20px;
 }
 
-.int-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-}
-
 .int-intro-text {
   max-width: 720px;
 }

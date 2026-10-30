@@ -227,7 +227,7 @@ const UsageFigures = ({
       ) : (
         <p className="empty-text">{t('overview.noUsage')}</p>
       )}
-      <a href="#/usage">{t('overview.seeUsage')}</a>
+      <a href="#/statistics">{t('overview.seeUsage')}</a>
     </div>
   );
 };
@@ -367,7 +367,7 @@ export const Overview = ({
               <Button variant="primary" data-size="sm">
                 {t('overview.requestQuota')}
               </Button>
-              <a className="ds-button" data-variant="secondary" data-size="sm" href="#/usage">
+              <a className="ds-button" data-variant="secondary" data-size="sm" href="#/statistics">
                 {t('overview.seeUsagePerService')}
               </a>
             </div>

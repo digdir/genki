@@ -342,7 +342,9 @@ export const NewDataset = ({
             </label>
           ))}
           <p className="meta">
-            {t.rich('datasets.integrationsHint', { link: (c) => <a href="#/integrations">{c}</a> })}
+            {t.rich('datasets.integrationsHint', {
+              link: (c) => <a href="#/developer/systems">{c}</a>,
+            })}
           </p>
         </Fieldset>
       ) : null}

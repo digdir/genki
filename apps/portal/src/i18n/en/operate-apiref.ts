@@ -6,7 +6,7 @@ export const apirefArea = {
     titleRef: 'API reference',
     titleService: 'The service as an API',
     titleActions: 'Show API call',
-    crumbIntegrations: 'Integrations',
+    crumbIntegrations: 'Developer tools',
     lead: 'Everything you do in the portal goes through the same public API. What you can click your way to, your systems can do too.',
     platformReference: 'The whole platform API reference (every endpoint)',
     tabList: 'API',

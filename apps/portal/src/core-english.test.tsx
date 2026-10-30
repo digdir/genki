@@ -141,12 +141,12 @@ describe('screens in English', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent)
-        .slice(0, 3),
+        .slice(1, 4),
     ).toEqual(['Overview', 'Services', 'Shared services']);
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Latest changes' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /open user menu/ }));
-    expect(screen.getByText('Your rights')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Profile' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Log out' })).toBeTruthy();
   });
 });

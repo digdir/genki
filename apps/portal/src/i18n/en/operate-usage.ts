@@ -129,7 +129,7 @@ export const usageArea = {
     cannotEstimate: 'The cost cannot be estimated because the model is not priced.',
     aboutPerMonth: 'About {value} per month.',
     save: 'Save',
-    title: 'Usage',
+    title: 'Statistics',
     lead: 'Tokens and estimated cost for the services of {tenant}. The cost is an estimate. The final amount is on the invoice from Digdir.',
     export: 'Export',
     allProjects: 'All services and projects',
