@@ -51,6 +51,7 @@ export interface ConfigDeps {
     tenant: string;
     principal: Principal;
   }) => Promise<number | undefined>;
+  gateProblem?: (gate: string, metric: string) => string | undefined;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -244,6 +245,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const id = String(input.id);
     const target = `gate:${scope}/${id}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to change this gate');
+    const metric = (input.spec as { metric?: unknown } | undefined)?.metric;
+    const problem = typeof metric === 'string' ? deps.gateProblem?.(id, metric) : undefined;
+    if (problem) return { ok: false, errors: [{ path: 'metric', message: problem }], target };
     const result = await deps.gates.save({
       scope,
       id,

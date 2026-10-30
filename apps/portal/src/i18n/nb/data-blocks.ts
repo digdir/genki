@@ -150,6 +150,28 @@ export const blocks = defineNamespace({
   factRuns: 'Kjøres',
   factChangedBy: 'Endres av',
   factId: 'ID',
+  judgeModel: 'Modell',
+  judgeDefaultModel: 'Prosjektets standardmodell',
+  judgeVersion: 'Dommerversjon',
+  judgeDataType: 'Svartype',
+  judgeBoolean: 'Ja eller nei',
+  judgeNumeric: 'Tall',
+  judgeCategorical: 'Kategori',
+  judgeFields: 'Leser',
+  judgeAdvisory:
+    'Langfuse-dommer i koblingen {connection}. Den er rådgivende og stopper aldri en publisering.',
+  judgeRefusedDefaultModel:
+    'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
+  judgeRefusedField: 'Dommeren leser {field}, som genki ikke sender.',
+  judgeRefusedNoContent:
+    'Koblingen {connection} får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Integrasjoner, Sporing og evaluering, for å ta den i bruk.',
+  judgeRefusedNotAModel:
+    'Dommeren er ikke en LLM-som-dommer i Langfuse, så den har ingen modell genki kan navngi.',
+  judgeRefusedSampled:
+    'Dommeren vurderer bare en del av svarene den får, så noen testtilfeller ville aldri fått vurdering. Sett sampling til 100 % i Langfuse for å ta den i bruk.',
+  judgeRefusedFiltered:
+    'Dommeren vurderer bare svarene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering. Fjern filteret i Langfuse for å ta den i bruk.',
+  judgeRefusedPath: 'Dommeren leser {field}, en JSON-sti genki ikke kan lese.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',
   updateHeading: 'Versjon {version}, tilgjengelig fra {date}',

@@ -59,6 +59,34 @@ export interface EvalRun {
   judges?: string[];
   /** Why a failed or interrupted run stopped. */
   error?: string;
+  /** Langfuse judges: advisory, shown apart from genki's metrics. */
+  sinkJudges?: SinkJudgeSummary[];
+  /** Where Langfuse shows the run as an experiment. */
+  experiment?: string;
+}
+
+export interface SinkJudgeSummary {
+  id: string;
+  name: string;
+  version: string;
+  dataType?: string;
+  metric?: MetricSummary;
+  categories?: Record<string, number>;
+  notApplicable: number;
+  missing: number;
+  failed: number;
+  of: number;
+  /** What changed in the judge since the run started; empty when nothing did. */
+  changed: string[];
+}
+
+export interface CaseJudgement {
+  judge: string;
+  state: 'scored' | 'not-applicable' | 'pending' | 'failed' | 'missing';
+  value: number | null;
+  dataType?: string;
+  asItCame?: unknown;
+  reason?: string;
 }
 
 export interface EvalCaseResult {
@@ -68,6 +96,19 @@ export interface EvalCaseResult {
   output: string;
   pass: boolean;
   reason?: string;
+  judges?: CaseJudgement[];
+}
+
+export type RunResidency = 'norway' | 'eu' | 'global';
+
+/** Where a run would be sent and which Langfuse judges would score it, before it starts. */
+export interface RunSending {
+  connection?: { id: string; residency: RunResidency };
+  judges: { id: string; name: string }[];
+  refused?:
+    | { reason: 'residency'; service: RunResidency; connection: RunResidency }
+    | { reason: 'covered-twice'; connections: string[] }
+    | { reason: 'no-content'; connection: string };
 }
 
 export interface EvalRunDetail extends EvalRun {
@@ -273,6 +314,13 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>
       (await get<{ data: EvalRun[] }>(`${service(tenant, id)}/eval-runs`, signal)).data,
+    sending: (tenant: string, id: string, version: RunVersion, signal?: AbortSignal) =>
+      get<RunSending>(
+        `${service(tenant, id)}/eval-runs/sending${
+          version === 'published' ? '' : `?version=${encodeURIComponent(String(version))}`
+        }`,
+        signal,
+      ),
     run: (tenant: string, runId: string, signal?: AbortSignal) =>
       get<EvalRunDetail>(`${tenantPath(tenant)}/eval-runs/${encodeURIComponent(runId)}`, signal),
     candidates: async (tenant: string, id: string, signal?: AbortSignal) =>

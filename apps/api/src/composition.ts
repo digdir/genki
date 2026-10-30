@@ -59,6 +59,7 @@ import {
   type Gate,
   type LabelStore,
   type TestSetStore,
+  type WaitOptions,
 } from '@genai/eval';
 import {
   InMemoryTraceDeliveries,
@@ -69,8 +70,11 @@ import { type BlobStore } from '@genai/port-blob';
 import {
   createExperimentRouter,
   createTraceExporter,
+  langfuseJudges,
+  mappedContent,
   observedEventLog,
   traceIdFor,
+  type LangfuseJudge,
 } from '@genai/providers-langfuse';
 import {
   deleteConversationDocuments,
@@ -252,7 +256,9 @@ import { projectTasks } from './project-usage.js';
 import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
 import {
+  connectionOf,
   traceConnectionsModule,
+  type TraceConnection,
   type TraceSinks,
   type TracingOptions,
 } from './trace-connections.js';
@@ -421,6 +427,8 @@ export interface PlatformInput {
   tracing?: TracingOptions;
   /** Every trace sent to a tenant's sink, until its delete is confirmed. */
   traceDeliveries?: TraceDeliveryStore;
+  /** How an eval run waits for a sink's judges' scores; tests poll fast. */
+  evalWait?: WaitOptions;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -905,6 +913,14 @@ export const askFilterIssues = (
   );
 };
 
+/** A Langfuse judge is advisory (ADR 0040): no gate may read its metric. */
+const advisoryGate = (gate: string, metric: string | undefined) => {
+  const judge = /^langfuse:([^/]+)\/(.+)$/.exec(metric ?? '');
+  return judge
+    ? `the gate ${gate} reads the Langfuse judge ${judge[2]} on the connection ${judge[1]}, which is advisory and never blocks a publish`
+    : undefined;
+};
+
 export const createPlatform = async (input: PlatformInput) => {
   const platformTenant = input.platformTenant ?? defaultPlatformTenant;
   const configEntries = input.configurables?.store ?? new InMemoryConfigEntryStore();
@@ -913,9 +929,46 @@ export const createPlatform = async (input: PlatformInput) => {
   const experiments = createExperimentRouter();
   const sinkEgress = tracingEgress(input.egress ?? {}, input.tracing?.devMode);
   const traceDeliveries = input.traceDeliveries ?? new InMemoryTraceDeliveries();
+  const langfuseOf = async (tenant: string, connection: TraceConnection) =>
+    langfuseJudges({
+      host: connection.host,
+      publicKey: connection.publicKey,
+      secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+      fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+    });
   const traceSinks: TraceSinks = {
     traceIdOf: (task) => traceIdFor(task),
-    open: (run, tenant, connection, beforeSend) =>
+    judges: async (tenant, connection) =>
+      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) => ({
+        id: j.id,
+        name: j.rule.name,
+        source: `Langfuse (${connection.id})`,
+        ...(j.evaluator.model
+          ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
+          : {}),
+        version: String(j.evaluator.version),
+        dataType: j.evaluator.dataType,
+        fields: j.rule.mapping,
+        // A judge on a connection without answer text would be paid for and judge nothing.
+        ...(j.refused
+          ? { refused: j.refused }
+          : connection.content
+            ? {}
+            : {
+                refused: {
+                  reason: 'no-content',
+                  connection: connection.id,
+                  message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+                },
+              }),
+        snapshot: j,
+      })),
+    judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
+    isSinkJudge: (judge) => judge.startsWith('langfuse:'),
+    experimentUrl: async (tenant, connection, run) =>
+      (await langfuseOf(tenant, connection)).experimentUrl(run),
+    fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
+    open: (run, tenant, connection, beforeSend, fields = []) =>
       experiments.open(
         run,
         createTraceExporter(
@@ -926,6 +979,11 @@ export const createPlatform = async (input: PlatformInput) => {
               publicKey: connection.publicKey,
               secretKey: 'secret://sink/key',
             },
+            // Only what the run's judges map, and only to a connection that receives content.
+            content: connection.content && fields.length > 0,
+            fields: fields.filter(
+              (f) => f === 'input' || f === 'output' || f === 'expected_output',
+            ),
           },
           {
             secrets: {
@@ -1052,7 +1110,21 @@ export const createPlatform = async (input: PlatformInput) => {
       evalRunStrategy({
         kernel,
         evaluators,
-        forRun: runJudges(() => modelChoice(moduleDeps)),
+        forRun: async (principal, run) => {
+          const own = runJudges(() => modelChoice(moduleDeps))(principal, run);
+          const tenant = principal.tenant;
+          if (!tenant || !run.sink || !run.sinkJudges?.length) return own;
+          const connection = await connectionOf(configEntries, tenant, run.sink);
+          if (!connection) return own;
+          const judges = await langfuseOf(tenant, connection);
+          for (const snapshot of run.sinkJudges as LangfuseJudge[])
+            own.set(
+              snapshot.id,
+              judges.evaluator(snapshot, { tenant, content: connection.content }),
+            );
+          return own;
+        },
+        ...(input.evalWait ? { wait: input.evalWait } : {}),
         modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
         meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
@@ -1136,6 +1208,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.ingestionExecutions ? { executions: input.ingestionExecutions } : {}),
     builtinGates: new Map([...defaultGates, ...(input.gates ?? [])]),
     platformTenant,
+    gateProblem: advisoryGate,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
   const ingestSources: IngestSourceOptions = {
@@ -1238,6 +1311,11 @@ export const createPlatform = async (input: PlatformInput) => {
     const unknown = listed.filter((g) => !gates.has(g));
     if (unknown.length > 0)
       return unknown.map((g) => ({ path: 'spec.evaluation.gates', message: `unknown gate ${g}` }));
+    const advisory = listed.flatMap((g) => {
+      const message = advisoryGate(g, gates.get(g)?.metric);
+      return message ? [{ path: 'spec.evaluation.gates', message }] : [];
+    });
+    if (advisory.length > 0) return advisory;
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
@@ -1251,6 +1329,7 @@ export const createPlatform = async (input: PlatformInput) => {
       evaluation: { testSets: evaluation?.testSets ?? [], gates: listed },
       runs: evalStores.runs,
       registry: gates,
+      advisoryJudge: (judge) => judge.startsWith('langfuse:'),
     });
     if (decision.allow) return undefined;
     return [

@@ -5,16 +5,24 @@ import {
   Chip,
   Fieldset,
   Heading,
+  Link,
   Paragraph,
   Table,
   Tag,
 } from '@digdir/designsystemet-react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../api';
-import type { EvalRun, RunVersion, ServiceTestSet } from '../../api/quality';
+import type {
+  CaseJudgement,
+  EvalRun,
+  RunSending,
+  RunVersion,
+  ServiceTestSet,
+} from '../../api/quality';
+import { storageLabels } from '../../data/building-blocks';
 import { formatKroner, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
-import { useT, type Format, type PlainKey, type T } from '../../i18n';
+import type { Format, PlainKey, T } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
 import { problemTitle, type SetFlash } from './shared';
@@ -80,25 +88,110 @@ const incompleteText = (t: T, i: NonNullable<EvalRun['incomplete']>[number]) =>
           : []),
       ].join(' ');
 
+/** A Langfuse judge's name on a case: its rule, as the run's summary names it. */
+const sinkJudgeName = (run: EvalRun, judge: string) =>
+  run.sinkJudges?.find((j) => j.id === judge)?.name ?? judge.slice(judge.indexOf('/') + 1);
+
+const verdictText = (t: T, f: Format, j: CaseJudgement) => {
+  if (j.state === 'not-applicable') return t('quality.verdictNotApplicable');
+  if (j.state === 'pending') return t('quality.verdictPending');
+  if (j.state === 'missing') return t('quality.verdictMissing');
+  if (j.state === 'failed') return t('quality.verdictFailed');
+  if (j.asItCame !== undefined) return String(j.asItCame);
+  if (j.dataType === 'BOOLEAN')
+    return t(j.value === 1 ? 'quality.verdictYes' : 'quality.verdictNo');
+  return j.value === null ? '' : f.percent(j.value);
+};
+
+/** Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. */
+const SinkJudges = ({ run }: { run: EvalRun }) => {
+  const { t, f } = usePortalFormat();
+  const judges = run.sinkJudges ?? [];
+  if (judges.length === 0) return null;
+  return (
+    <section aria-labelledby="sink-judges-h" className="stack-sm">
+      <Heading level={4} data-size="2xs" id="sink-judges-h">
+        {t('quality.sinkJudgesTitle')}
+      </Heading>
+      <Paragraph data-size="sm">{t('quality.sinkJudgesAdvisory')}</Paragraph>
+      {judges.map((j) => (
+        <div key={j.id} className="stack-xs">
+          <Heading level={5} data-size="2xs">
+            {j.name}
+          </Heading>
+          {j.metric ? (
+            <Paragraph data-size="sm">
+              {t(j.dataType === 'BOOLEAN' ? 'quality.sinkJudgeYes' : 'quality.sinkJudgeMean', {
+                mean: f.percent(j.metric.mean),
+                low: f.percent(j.metric.ci[0]),
+                high: f.percent(j.metric.ci[1]),
+                n: j.metric.n,
+              })}
+            </Paragraph>
+          ) : null}
+          {j.categories ? (
+            <Paragraph data-size="sm">
+              {t('quality.sinkJudgeCategories', {
+                categories: Object.entries(j.categories)
+                  .map(([answer, count]) => `${answer}: ${count}`)
+                  .join(', '),
+              })}
+            </Paragraph>
+          ) : null}
+          {j.notApplicable > 0 ? (
+            <Paragraph data-size="sm">
+              {t('quality.sinkJudgeNotApplicable', { count: j.notApplicable })}
+            </Paragraph>
+          ) : null}
+          {j.missing > 0 ? (
+            <Paragraph data-size="sm" className="danger-text">
+              {t('quality.runMissing', { judge: j.name, count: j.missing, of: j.of })}
+            </Paragraph>
+          ) : null}
+          {j.failed > 0 ? (
+            <Paragraph data-size="sm" className="danger-text">
+              {t('quality.runJudgeFailed', { judge: j.name, count: j.failed, of: j.of })}
+            </Paragraph>
+          ) : null}
+          {j.changed.length > 0 ? (
+            <Paragraph data-size="sm">{t('quality.sinkJudgeChanged')}</Paragraph>
+          ) : null}
+        </div>
+      ))}
+      {run.experiment ? (
+        <Paragraph data-size="sm">
+          <Link href={run.experiment} target="_blank" rel="noreferrer">
+            {t('quality.sinkJudgeExperiment')}
+          </Link>
+        </Paragraph>
+      ) : null}
+    </section>
+  );
+};
+
 const RunMetrics = ({ run }: { run: EvalRun }) => {
   const { t, f } = usePortalFormat();
-  const metrics = Object.entries(run.metrics ?? {});
+  const sink = new Set((run.sinkJudges ?? []).map((j) => j.id));
+  const metrics = Object.entries(run.metrics ?? {}).filter(([m]) => !sink.has(m));
+  const judges = (run.judges ?? []).filter((j) => !j.startsWith('langfuse:'));
   if (metrics.length === 0) return null;
   return (
     <>
       <Heading level={4} data-size="2xs">
         {t('quality.runMetrics')}
       </Heading>
-      {run.judges?.length ? (
+      {judges.length ? (
         <Paragraph data-size="sm">
-          {t('quality.runJudges', { judges: run.judges.join(', ') })}
+          {t('quality.runJudges', { judges: judges.join(', ') })}
         </Paragraph>
       ) : null}
-      {(run.incomplete ?? []).map((i) => (
-        <Paragraph key={i.evaluator} data-size="sm" className="danger-text">
-          {incompleteText(t, i)}
-        </Paragraph>
-      ))}
+      {(run.incomplete ?? [])
+        .filter((i) => !sink.has(i.evaluator))
+        .map((i) => (
+          <Paragraph key={i.evaluator} data-size="sm" className="danger-text">
+            {incompleteText(t, i)}
+          </Paragraph>
+        ))}
       <Table data-size="sm" zebra>
         <Table.Head>
           <Table.Row>
@@ -123,6 +216,22 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
       </Table>
     </>
   );
+};
+
+/** Why a run that a Langfuse judge scores cannot start, before it is started. */
+const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
+  const refused = plan?.refused;
+  if (!refused) return undefined;
+  if (refused.reason === 'covered-twice')
+    return t('quality.judgeCoveredTwice', { judges, connections: refused.connections.join(', ') });
+  if (refused.reason === 'no-content')
+    return t('quality.judgeNoContent', { judges, connection: refused.connection });
+  return t('quality.judgeResidencyRefused', {
+    connection: plan.connection?.id ?? '',
+    judges,
+    where: t(storageLabels[refused.connection]),
+    service: t(storageLabels[refused.service]),
+  });
 };
 
 const usageDays = 30;
@@ -190,7 +299,7 @@ const RunDetail = ({
   runId: string;
   onClose: () => void;
 }) => {
-  const t = useT();
+  const { t, f } = usePortalFormat();
   const [state, retry] = useAsync(
     (signal) => api.quality.run(tenant, runId, signal),
     [api, tenant, runId],
@@ -218,6 +327,7 @@ const RunDetail = ({
       ) : (
         <>
           <RunMetrics run={state.data} />
+          <SinkJudges run={state.data} />
           <ul className="live-case-list">
             {state.data.cases.map((c) => (
               <li key={c.caseId}>
@@ -240,6 +350,22 @@ const RunDetail = ({
                       <dd className={c.pass ? undefined : 'danger-text'}>{c.reason}</dd>
                     </>
                   ) : null}
+                  {(c.judges ?? []).map((j) => (
+                    <Fragment key={j.judge}>
+                      <dt>
+                        {t('quality.sinkJudgeOnCase', { name: sinkJudgeName(state.data, j.judge) })}
+                      </dt>
+                      <dd>
+                        <strong>{verdictText(t, f, j)}</strong>
+                        {j.state === 'scored' && j.reason ? (
+                          <>
+                            {' '}
+                            <span>{j.reason}</span>
+                          </>
+                        ) : null}
+                      </dd>
+                    </Fragment>
+                  ))}
                 </dl>
               </li>
             ))}
@@ -281,6 +407,18 @@ export const RunHistory = ({
     sinks.status === 'ready'
       ? sinks.data.find((c) => !c.removing && c.services.includes(serviceId))
       : undefined;
+  // A service that uses a Langfuse judge is always sent: the dialog says so before the run starts.
+  const [sending] = useAsync(
+    (signal) =>
+      confirming && sink
+        ? api.quality.sending(tenant, serviceId, version, signal).catch(() => undefined)
+        : Promise.resolve(undefined),
+    [api, tenant, serviceId, version, confirming, sink?.id],
+  );
+  const plan = sending.status === 'ready' ? sending.data : undefined;
+  const judgeNames = (plan?.judges ?? []).map((j) => j.name).join(', ');
+  const judged = (plan?.judges.length ?? 0) > 0;
+  const refusedText = judged ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(
@@ -307,14 +445,14 @@ export const RunHistory = ({
   }, [running, round]);
 
   const start = async () => {
-    if (starting || running || !canRun) return;
+    if (starting || running || !canRun || refusedText) return;
     setConfirming(false);
     setStarting(true);
     try {
       const started = await api.quality.startRun(
         tenant,
         serviceId,
-        { testSet: testSet.id, version, ...(trace && sink ? { trace: true } : {}) },
+        { testSet: testSet.id, version, ...((trace || judged) && sink ? { trace: true } : {}) },
         t('quality.runReason', {
           name: testSet.name,
           version: versionText(t, version).toLowerCase(),
@@ -383,15 +521,26 @@ export const RunHistory = ({
             <Checkbox
               data-size="sm"
               label={t('quality.sendToTrace', { connection: sink.id })}
-              checked={trace}
-              onChange={(e) => setTrace(e.target.checked)}
+              checked={trace || judged}
+              aria-disabled={judged || undefined}
+              {...(judged
+                ? { description: t('quality.sendBecauseJudges', { judges: judgeNames }) }
+                : {})}
+              onChange={(e) => {
+                if (!judged) setTrace(e.target.checked);
+              }}
             />
+          ) : null}
+          {refusedText ? (
+            <Alert data-color="danger" data-size="sm">
+              <Paragraph data-size="sm">{refusedText}</Paragraph>
+            </Alert>
           ) : null}
           <div className="actions">
             <Button
               variant="primary"
               data-size="sm"
-              aria-disabled={blocked || undefined}
+              aria-disabled={blocked || refusedText !== undefined || undefined}
               onClick={() => void start()}
             >
               {t('quality.confirmRun')}

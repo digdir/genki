@@ -7,6 +7,7 @@ import type {
   CatalogItem,
   LoggedChange,
   Permission,
+  SinkJudgeInfo,
 } from '../../api/building-blocks';
 import { ApiCallPanel, type ApiCallPreview } from '../../components/ApiCall';
 import { ChangeLogged } from '../../components/ChangeLogged';
@@ -15,6 +16,50 @@ import { permissionLabels } from '../../data/building-blocks';
 import { useT, type Format, type T } from '../../i18n';
 import { rightLabel, useRights } from '../../Shell';
 import type { PortalRight } from '../../types';
+
+/** Why a Langfuse judge cannot be taken in use, in the reader's language. */
+export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) => {
+  switch (refused.reason) {
+    case 'not-a-model':
+      return t('blocks.judgeRefusedNotAModel');
+    case 'default-model':
+      return t('blocks.judgeRefusedDefaultModel');
+    case 'sampled':
+      return t('blocks.judgeRefusedSampled');
+    case 'filtered':
+      return t('blocks.judgeRefusedFiltered');
+    case 'unread-path':
+      return t('blocks.judgeRefusedPath', { field: refused.field ?? '' });
+    case 'no-content':
+      return t('blocks.judgeRefusedNoContent', { connection: refused.connection ?? '' });
+    default:
+      return t('blocks.judgeRefusedField', { field: refused.field ?? '' });
+  }
+};
+
+/** A judge's facts: what it runs on, which version, what it answers and what it reads. */
+export const judgeFacts = (t: T, judge: SinkJudgeInfo) => [
+  { label: t('blocks.judgeModel'), value: judge.model ?? t('blocks.judgeDefaultModel') },
+  { label: t('blocks.judgeVersion'), value: judge.version },
+  {
+    label: t('blocks.judgeDataType'),
+    value:
+      judge.dataType === 'BOOLEAN'
+        ? t('blocks.judgeBoolean')
+        : judge.dataType === 'NUMERIC'
+          ? t('blocks.judgeNumeric')
+          : t('blocks.judgeCategorical'),
+  },
+  {
+    label: t('blocks.judgeFields'),
+    value: judge.fields
+      .map(
+        (f) =>
+          `${f.variable} ← ${f.source}${f.jsonPath && f.jsonPath !== '$' ? ` ${f.jsonPath}` : ''}`,
+      )
+      .join(', '),
+  },
+];
 
 export type Flash =
   { kind: 'logged'; text: string; change: LoggedChange } | { kind: 'plain'; text: string };

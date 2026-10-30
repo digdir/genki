@@ -419,15 +419,50 @@ export const connectionsCovering = async (
     .filter((c) => !c.removing && c.services.includes(service))
     .sort((a, b) => a.id.localeCompare(b.id));
 
+/** A judge in a connection's project, refused with why when genki cannot use it (ADR 0040). */
+export interface SinkJudge {
+  /** The evaluator and its metric. */
+  id: string;
+  name: string;
+  /** Where the judge comes from, as a person names it. */
+  source: string;
+  /** provider/model, absent when the judge falls back to a default model. */
+  model?: string;
+  version: string;
+  dataType: string;
+  fields: { variable: string; source: string; jsonPath?: string }[];
+  refused?: { reason: string; field?: string; connection?: string; message: string };
+  /** The judge as it was read, which a run scores with. */
+  snapshot: unknown;
+}
+
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
-  /** beforeSend sees each batch's traces before it goes out, and false drops the batch. */
+  /**
+   * beforeSend sees each batch's traces before it goes out, and false drops the batch. Text goes
+   * only to a connection that receives content, and then only the fields named.
+   */
   open(
     run: string,
     tenant: string,
     connection: TraceConnection,
     beforeSend?: (traces: { trace: string; task: string }[]) => Promise<boolean>,
+    fields?: string[],
   ): void;
+  /** The judges of the connection's project that can score an eval run. */
+  judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
+  /** Whether a judge building block is one of the connection's judges. */
+  judgeOf?(connection: string, block: string): boolean;
+  /** Whether a run's judge identity, or an evaluator, is a sink's judge. */
+  isSinkJudge?(judge: string): boolean;
+  /** Where the sink shows a run as an experiment. */
+  experimentUrl?(
+    tenant: string,
+    connection: TraceConnection,
+    run: string,
+  ): Promise<string | undefined>;
+  /** The content fields the judges read. */
+  fieldsOf?(judges: SinkJudge[]): string[];
   /** Flushes the run's sink and answers the case tasks whose traces went there. */
   close(run: string): Promise<string[]>;
   /** The id the sink knows a case task's trace by. */
