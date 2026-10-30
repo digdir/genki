@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { databaseHosts, knowledgeServerProblems, withoutKnowledgeServer } from './index.js';
+import {
+  databaseHosts,
+  knowledgeServerProblems,
+  savedKnowledgeCatalog,
+  withoutKnowledgeServer,
+} from './index.js';
 
 const catalog = {
   endpoints: {
@@ -39,5 +44,21 @@ describe('the knowledge server at boot', () => {
       'knowledge.postgres.database.azure.com',
       'knowledge-replica.postgres.database.azure.com',
     ]);
+  });
+
+  it('a saved `knowledge` endpoint without a knowledge server stops the API outside development mode', () => {
+    const saved = savedKnowledgeCatalog([
+      { id: 'kunnskap-pg', spec: { engine: 'pgvector', options: { connection: 'knowledge' } } },
+      {
+        id: 'gammel-pg',
+        spec: { engine: 'pgvector', options: { connection: 'knowledge' } },
+        deleted: true,
+      },
+      { id: 'annen-pg', spec: { engine: 'pgvector' } },
+    ]);
+    expect(knowledgeServerProblems({ DATABASE_URL: 'postgres://db/genai' }, saved)).toEqual([
+      expect.stringContaining('kunnskap-pg'),
+    ]);
+    expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, saved)).toEqual([]);
   });
 });

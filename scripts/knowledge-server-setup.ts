@@ -59,6 +59,27 @@ export const setUpKnowledge = async (options: {
   return binding;
 };
 
+const usage = `Usage:
+  npm run knowledge:setup -- --local
+  npm run knowledge:setup -- --admin-user <name> --api-login <name> --worker-login <name> [--rebind --reason "<why>"]
+
+The platform server comes from DATABASE_URL or PGHOST, the knowledge server from KNOWLEDGE_PGHOST and
+KNOWLEDGE_PGDATABASE. In Azure both log in as you, with your Entra ID token (az login).`;
+
+/** Outside --local the platform server must be named by PGHOST, so a local DATABASE_URL in .env.local is never bound to. */
+export const platformSourceForSetup = (
+  env: Record<string, string | undefined>,
+  local: boolean,
+): ReturnType<typeof postgresSourceFromEnv> => {
+  if (local) return postgresSourceFromEnv(env);
+  if (!env.PGHOST) throw new Error(`set PGHOST to the platform server to bind to\n\n${usage}`);
+  if (env.DATABASE_URL)
+    throw new Error(
+      `unset DATABASE_URL (it may come from .env.local); outside --local the platform server is PGHOST\n\n${usage}`,
+    );
+  return postgresSourceFromEnv(env);
+};
+
 const createLocalLogin = async (admin: Pool, login: string, password: string) => {
   await admin.query(`do $$ begin
       create role ${login} login;
@@ -66,13 +87,6 @@ const createLocalLogin = async (admin: Pool, login: string, password: string) =>
     end $$`);
   await admin.query(`alter role ${login} with login password ${pg.escapeLiteral(password)}`);
 };
-
-const usage = `Usage:
-  npm run knowledge:setup -- --local
-  npm run knowledge:setup -- --admin-user <name> --api-login <name> --worker-login <name> [--rebind --reason "<why>"]
-
-The platform server comes from DATABASE_URL or PGHOST, the knowledge server from KNOWLEDGE_PGHOST and
-KNOWLEDGE_PGDATABASE. In Azure both log in as you, with your Entra ID token (az login).`;
 
 const main = async () => {
   const envFile = join(repoRoot, '.env.local');
@@ -87,7 +101,7 @@ const main = async () => {
       reason: { type: 'string' },
     },
   });
-  const platformSource = postgresSourceFromEnv(process.env);
+  const platformSource = platformSourceForSetup(process.env, values.local);
   if (!platformSource) throw new Error(`no platform server configured\n\n${usage}`);
   if (values.rebind && !values.reason?.trim())
     throw new Error(`--rebind needs --reason\n\n${usage}`);
@@ -121,6 +135,9 @@ const main = async () => {
       await createLocalLogin(knowledge, apiLogin, process.env.KNOWLEDGE_API_PASSWORD ?? '');
       await createLocalLogin(knowledge, workerLogin, process.env.KNOWLEDGE_WORKER_PASSWORD ?? '');
     }
+    console.log(
+      `Platform server ${platformSource.host ?? 'from DATABASE_URL'}, id ${await platformId(platform).catch(() => 'not migrated yet')}`,
+    );
     const binding = await setUpKnowledge({
       platform,
       knowledge,

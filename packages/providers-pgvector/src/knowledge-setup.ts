@@ -60,6 +60,28 @@ const memberships = async (client: PoolClient, login: string, allowed: string[])
       `grant ${role} to ${roleName(login)} with admin false, inherit false, set true`,
     );
   }
+  // A revoke only removes this admin's own grants; one another role made stays and must be removed by it.
+  const { rows: after } = await client.query<{
+    role: string;
+    grantor: string;
+    admin_option: boolean;
+    inherit_option: boolean;
+    set_option: boolean;
+  }>(
+    `select r.rolname as role, g.rolname as grantor, a.admin_option, a.inherit_option, a.set_option
+       from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
+       join pg_roles g on g.oid = a.grantor
+       where m.rolname = $1 and r.rolname = any($2)`,
+    [login, roles],
+  );
+  const stray = after.find(
+    (row) =>
+      !allowed.includes(row.role) || row.admin_option || row.inherit_option || !row.set_option,
+  );
+  if (stray)
+    throw new Error(
+      `${login} is still a member of ${stray.role}, granted by ${stray.grantor}; revoke it as ${stray.grantor} and run setup again`,
+    );
 };
 
 const bind = async (

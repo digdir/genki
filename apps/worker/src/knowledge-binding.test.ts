@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  knowledgeRuntimeInput,
   startHealthServer,
   watchKnowledgeBinding,
   type KnowledgeBindingWatch,
@@ -85,5 +86,19 @@ describe('the knowledge server binding', () => {
     await expect(startHealthServer({ port, ready: () => true })).rejects.toThrow(
       `WORKER_HEALTH_PORT ${port} is taken`,
     );
+  });
+
+  it("the worker's knowledge writes are guarded by its binding", async () => {
+    watch = watchKnowledgeBinding({
+      platformId: async () => platform,
+      boundTo: async () => production,
+      log: vi.fn(),
+    });
+    await watch.start();
+    const pools = { writer: {}, owner: {} } as never;
+    const input = knowledgeRuntimeInput({ pools }, watch);
+    expect(input.knowledgeServer).toBe(pools);
+    expect(() => input.knowledgeGuard?.()).toThrow('bound to platform server');
+    expect(knowledgeRuntimeInput(undefined, watch)).toEqual({});
   });
 });

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrate, platformId, PostgresAdminRecords } from '@genai/providers-postgres';
 import { boundPlatformId } from '@genai/providers-pgvector';
 import { stopPostgres } from '@genai/providers-postgres/testing';
-import { setUpKnowledge } from './knowledge-server-setup.ts';
+import { platformSourceForSetup, setUpKnowledge } from './knowledge-server-setup.ts';
 
 let container: StartedPostgreSqlContainer;
 let platform: pg.Pool;
@@ -69,5 +69,20 @@ describe('the knowledge server setup script', () => {
         reason,
       }),
     ]);
+  });
+
+  it('setup outside --local binds only to a platform server named by PGHOST', () => {
+    const local = { DATABASE_URL: 'postgres://genai:genai-local-only@127.0.0.1:55432/genai' };
+    expect(() => platformSourceForSetup(local, false)).toThrow('PGHOST');
+    expect(() =>
+      platformSourceForSetup(
+        { ...local, PGHOST: 'genki-test-pg.postgres.database.azure.com' },
+        false,
+      ),
+    ).toThrow('DATABASE_URL');
+    expect(
+      platformSourceForSetup({ PGHOST: 'genki-test-pg.postgres.database.azure.com' }, false),
+    ).toMatchObject({ host: 'genki-test-pg.postgres.database.azure.com' });
+    expect(platformSourceForSetup(local, true)).toEqual({ connectionString: local.DATABASE_URL });
   });
 });

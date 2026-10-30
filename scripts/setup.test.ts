@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ensureEnvFile,
   fillEnv,
+  knowledgeSetupWanted,
   localDatabaseUrl,
   localModelUrl,
   nodeProblem,
@@ -122,6 +123,21 @@ describe('setup env file', () => {
     expect(result.missing).not.toContain('KNOWLEDGE_WORKER_PASSWORD');
     ensureEnvFile(root);
     expect(readFileSync(join(root, '.env.local'), 'utf8')).toBe(text);
+  });
+
+  it('setup leaves the knowledge server out when KNOWLEDGE_DATABASE_URL is empty', () => {
+    const root = tempRoot();
+    writeFileSync(
+      join(root, '.env.local'),
+      'DATABASE_URL=postgres://mine\nKNOWLEDGE_DATABASE_URL=\n',
+    );
+    ensureEnvFile(root, counter());
+    expect(knowledgeSetupWanted(root)).toBe(false);
+    writeFileSync(
+      join(root, '.env.local'),
+      'KNOWLEDGE_DATABASE_URL=postgres://127.0.0.1:55433/genai_knowledge\n',
+    );
+    expect(knowledgeSetupWanted(root)).toBe(true);
   });
 
   it('is idempotent: a second run keeps the keys from the first', () => {

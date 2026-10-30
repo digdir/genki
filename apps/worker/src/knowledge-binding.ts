@@ -123,3 +123,10 @@ export const startHealthServer = async (options: {
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 };
+
+/** The knowledge pools go to the runtime only together with the binding check that guards every knowledge write. */
+export const knowledgeRuntimeInput = <P>(
+  server: { pools: P } | undefined,
+  binding: KnowledgeBindingWatch,
+): { knowledgeServer?: P; knowledgeGuard?: () => void } =>
+  server ? { knowledgeServer: server.pools, knowledgeGuard: () => binding.knowledgeBound() } : {};

@@ -216,4 +216,36 @@ describe('knowledge server setup', () => {
       await asLogin(logins.workerLogin, knowledgeRoles.writer, (c) => boundPlatformId(c)),
     ).toBe(otherPlatform);
   });
+
+  it('setup fails while a login keeps a knowledge role another admin granted', async () => {
+    await admin.query(`create role second_admin nologin`);
+    await admin.query(`grant ${knowledgeRoles.writer} to second_admin with admin option`);
+    const client = await admin.connect();
+    try {
+      await client.query(`set role second_admin`);
+      await client.query(`grant ${knowledgeRoles.writer} to ${logins.apiLogin}`);
+      await client.query(`reset role`);
+      await expect(
+        setUpKnowledgeServer(admin, { ...logins, platformId: otherPlatform }),
+      ).rejects.toThrow(`${logins.apiLogin} is still a member of ${knowledgeRoles.writer}`);
+    } finally {
+      await client.query(`set role second_admin`);
+      await client.query(`revoke ${knowledgeRoles.writer} from ${logins.apiLogin}`);
+      await client.query(`reset role`);
+      client.release();
+    }
+  });
+
+  it('setup refuses a knowledge role that bypasses row-level security', async () => {
+    await admin.query(`alter role ${knowledgeRoles.writer} bypassrls`);
+    try {
+      await expect(
+        setUpKnowledgeServer(admin, { ...logins, platformId: otherPlatform }),
+      ).rejects.toThrow(
+        `${knowledgeRoles.writer} must not be a superuser or bypass row-level security`,
+      );
+    } finally {
+      await admin.query(`alter role ${knowledgeRoles.writer} nobypassrls`);
+    }
+  });
 });
