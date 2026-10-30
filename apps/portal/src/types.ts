@@ -114,6 +114,7 @@ export interface TaskTimeline {
   inputTokens?: number;
   outputTokens?: number;
   costOre?: number | null;
+  costMicroNok?: number | null;
   steps: TimelineStep[];
 }
 
