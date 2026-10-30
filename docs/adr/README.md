@@ -38,5 +38,5 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0039](0039-parquet-sources.md)                          | Parquet sources                                              | Proposed                                                            |
 | [0040](0040-evaluating-with-langfuse.md)                 | Evaluating with Langfuse                                     | Accepted, not built; judges that block proposed                     |
 | [0041](0041-durable-jobs-on-pg-boss.md)                  | Durable jobs on pg-boss                                      | Proposed                                                            |
-| [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed                                                            |
+| [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed, connection to the knowledge server built                  |
 | [0044](0044-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built                                                     |

@@ -23,6 +23,7 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
   postgresSourceFromEnv,
@@ -38,7 +39,11 @@ import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
 import {
+  databaseHosts,
+  knowledgeServerEndpoints,
+  savedKnowledgeCatalog,
   defaultPlatformTenant,
+  openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
 } from '@genai/composition';
@@ -66,7 +71,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
+import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -122,15 +127,6 @@ log('altinn pdp', {
   kind: altinnPdp.kind,
   ...(altinnPdp.kind === 'altinn' ? { baseURL: altinnPdp.baseURL } : {}),
 });
-
-const databaseHosts = (...urls: (string | undefined)[]) =>
-  urls.flatMap((url) => {
-    try {
-      return url ? [new URL(url).hostname.replace(/^\[|\]$/g, '')] : [];
-    } catch {
-      return [];
-    }
-  });
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
@@ -305,6 +301,29 @@ const catalogs = {
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
+const savedKnowledge = savedKnowledgeCatalog(
+  db ? await db.configEntries.latest({ kind: 'knowledge-endpoint' }) : [],
+);
+const knowledgeRefused = [
+  ...knowledgeServerProblems(process.env, catalogs.knowledge.catalog),
+  ...knowledgeServerProblems(process.env, savedKnowledge),
+];
+if (
+  !process.env.KNOWLEDGE_DATABASE_URL &&
+  !process.env.KNOWLEDGE_PGHOST &&
+  knowledgeServerEndpoints(savedKnowledge).length > 0
+)
+  log('warning', {
+    message: `saved knowledge endpoints skipped, no knowledge server is configured: ${knowledgeServerEndpoints(savedKnowledge).join(', ')}`,
+  });
+if (knowledgeRefused.length > 0) {
+  log('refusing to start', { problems: knowledgeRefused });
+  process.exit(1);
+}
+const knowledgeSource = knowledgeSourceFromEnv(process.env, 'api');
+const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'api') : undefined;
+log('knowledge server', { configured: Boolean(knowledgeServer) });
+
 const dataDir = process.env.DATA_DIR ?? join(import.meta.dirname, '..', '.data');
 
 const allowWorker = (inner: PolicyDecisionPoint): PolicyDecisionPoint => ({
@@ -408,6 +427,7 @@ const platform = await createPlatform({
     embeddings: catalogs.embeddings.catalog,
   },
   ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
   ...(db
     ? {
         rateLimits: {
@@ -448,13 +468,7 @@ const platform = await createPlatform({
   tasks,
   blobStore: new FileSystemBlobStore(process.env.BLOB_DIR ?? join(dataDir, 'blobs')),
   egress: {
-    platformHosts: [
-      'localhost',
-      '127.0.0.1',
-      `localhost:${port}`,
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
-      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
-    ],
+    platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`, ...databaseHosts(process.env)],
   },
   catalogSkips: skipped,
   ...(db

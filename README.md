@@ -81,7 +81,7 @@ npm start
 
 This runs two steps, which you can also run on their own:
 
-1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432`, and creates `.env.local` with a local database, generated keys and the local test model. It is safe to run again: an existing `.env.local` is never changed, only checked, and setup names the settings it lacks.
+1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432` and the knowledge server on `127.0.0.1:55433`, creates `.env.local` with a local database, generated keys and the local test model, and sets up the knowledge server. It is safe to run again: in an existing `.env.local` it only adds the knowledge settings that are absent, and names the other settings it lacks.
 2. `npm run dev:all` starts the API, portal, console and workspace in one terminal, with prefixed output. At startup the API runs database migrations and publishes the definitions in `apps/api/config/local`.
 
 **Docker must be running** before you start, or setup stops at Postgres. If a port is already taken, `dev:all` refuses to start and names the port; [docs/development.md](docs/development.md) shows how to move every port.

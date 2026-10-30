@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ensureEnvFile,
   fillEnv,
+  knowledgeSetupWanted,
   localDatabaseUrl,
   localModelUrl,
   nodeProblem,
@@ -75,6 +76,9 @@ describe('setup env file', () => {
       'DEV_API_KEY',
       'DEV_SERVICE_API_KEY',
       'GENAI_DEV_MODE',
+      'KNOWLEDGE_API_PASSWORD',
+      'KNOWLEDGE_DATABASE_URL',
+      'KNOWLEDGE_WORKER_PASSWORD',
       'LOCAL_MODEL_KEY',
       'LOCAL_MODEL_URL',
     ]);
@@ -91,8 +95,8 @@ describe('setup env file', () => {
     writeFileSync(join(root, '.env.local'), 'DATABASE_URL=postgres://mine\nDEV_API_KEY=\n');
     const result = ensureEnvFile(root, counter());
     expect(result.created).toBe(false);
-    expect(readFileSync(join(root, '.env.local'), 'utf8')).toBe(
-      'DATABASE_URL=postgres://mine\nDEV_API_KEY=\n',
+    expect(readFileSync(join(root, '.env.local'), 'utf8')).toMatch(
+      /^DATABASE_URL=postgres:\/\/mine\nDEV_API_KEY=\n/,
     );
     expect(result.missing).toEqual([
       'GENAI_DEV_MODE',
@@ -102,6 +106,38 @@ describe('setup env file', () => {
       'LOCAL_MODEL_URL',
       'LOCAL_MODEL_KEY',
     ]);
+  });
+
+  it('setup adds the missing local knowledge settings and keeps the ones already set', () => {
+    const root = tempRoot();
+    const mine =
+      'DATABASE_URL=postgres://mine\nKNOWLEDGE_API_PASSWORD=kept\nKNOWLEDGE_DATABASE_URL=\n';
+    writeFileSync(join(root, '.env.local'), mine);
+    const result = ensureEnvFile(root, counter(), { GENAI_KNOWLEDGE_PORT: '8111' });
+    const text = readFileSync(join(root, '.env.local'), 'utf8');
+    expect(text.startsWith(mine)).toBe(true);
+    const env = parseEnv(text);
+    expect(env.KNOWLEDGE_DATABASE_URL).toBe('');
+    expect(env.KNOWLEDGE_API_PASSWORD).toBe('kept');
+    expect(env.KNOWLEDGE_WORKER_PASSWORD).toMatch(/^[\w-]{32}$/);
+    expect(result.missing).not.toContain('KNOWLEDGE_WORKER_PASSWORD');
+    ensureEnvFile(root);
+    expect(readFileSync(join(root, '.env.local'), 'utf8')).toBe(text);
+  });
+
+  it('setup leaves the knowledge server out when KNOWLEDGE_DATABASE_URL is empty', () => {
+    const root = tempRoot();
+    writeFileSync(
+      join(root, '.env.local'),
+      'DATABASE_URL=postgres://mine\nKNOWLEDGE_DATABASE_URL=\n',
+    );
+    ensureEnvFile(root, counter());
+    expect(knowledgeSetupWanted(root)).toBe(false);
+    writeFileSync(
+      join(root, '.env.local'),
+      'KNOWLEDGE_DATABASE_URL=postgres://127.0.0.1:55433/genai_knowledge\n',
+    );
+    expect(knowledgeSetupWanted(root)).toBe(true);
   });
 
   it('is idempotent: a second run keeps the keys from the first', () => {

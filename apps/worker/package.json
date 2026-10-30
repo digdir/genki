@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx watch --conditions=source src/main.ts",
     "start": "node dist/main.js",
     "build": "tsc -b"
   },

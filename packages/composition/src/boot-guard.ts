@@ -1,3 +1,5 @@
+import { knowledgeServerEndpoints } from './knowledge-context.js';
+
 type Env = Record<string, string | undefined>;
 
 export interface BootRequirement {
@@ -20,4 +22,14 @@ export const unmetOutsideDevMode = (env: Env, requirements: BootRequirement[]): 
   if (isDevMode(env))
     return isProduction(env) ? ['GENAI_DEV_MODE=true is not allowed in production; remove it'] : [];
   return requirements.filter((requirement) => !requirement.met).map(({ problem }) => problem);
+};
+
+export const knowledgeServerProblems = (env: Env, catalog: unknown): string[] => {
+  const endpoints = knowledgeServerEndpoints(catalog);
+  return unmetOutsideDevMode(env, [
+    {
+      met: endpoints.length === 0 || Boolean(env.KNOWLEDGE_DATABASE_URL || env.KNOWLEDGE_PGHOST),
+      problem: `set KNOWLEDGE_PGHOST, or KNOWLEDGE_DATABASE_URL locally, for the knowledge endpoints ${endpoints.join(', ')}; without a knowledge server they are left out only with GENAI_DEV_MODE=true`,
+    },
+  ]);
 };

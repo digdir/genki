@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bootProblems } from './boot-guard.js';
+import { bootProblems, knowledgeServerProblems } from './boot-guard.js';
 
 const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
@@ -128,5 +128,19 @@ describe('booting the API', () => {
       expect(bootProblems({ ...flag, ...dev, ...real })).toEqual([
         expect.stringContaining('GENAI_DEV_MODE'),
       ]);
+  });
+
+  it('an endpoint set to `knowledge` without a knowledge server stops the API outside development mode', () => {
+    const catalog = {
+      endpoints: { 'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } } },
+      datasets: [],
+    };
+    expect(knowledgeServerProblems(real, catalog)).toEqual([
+      expect.stringContaining('KNOWLEDGE_PGHOST'),
+    ]);
+    expect(
+      knowledgeServerProblems({ ...real, KNOWLEDGE_PGHOST: 'knowledge.example' }, catalog),
+    ).toEqual([]);
+    expect(knowledgeServerProblems(real, { endpoints: {}, datasets: [] })).toEqual([]);
   });
 });

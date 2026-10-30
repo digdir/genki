@@ -93,6 +93,33 @@ const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
 
 describe('pluggable search engines over the API', () => {
+  it('the API keeps and saves `knowledge` endpoints only when it has a knowledge server', async () => {
+    const knowledgePg = { engine: 'pgvector', options: { connection: 'knowledge' } };
+    const catalogs = {
+      models: { endpoints: {}, models: [] },
+      knowledge: {
+        endpoints: { 'platform-pg': platformPg, 'knowledge-pg': knowledgePg },
+        datasets: [],
+      },
+      rerank: { endpoints: {}, rerankers: [] },
+    };
+    const save = (call: Awaited<ReturnType<typeof boot>>['call']) =>
+      call('/operator/catalog/knowledge-endpoint/kunnskap-pg', 'drift', {
+        method: 'PUT',
+        body: knowledgePg,
+      });
+
+    const withServer = await boot({ catalogs, knowledgeServer: { reader: pool } });
+    expect(withServer.warnings.filter((w) => w.includes('knowledge-pg'))).toEqual([]);
+    expect((await save(withServer.call)).status).toBe(200);
+
+    const without = await boot({ catalogs });
+    expect(without.warnings).toEqual([expect.stringContaining('knowledge-pg')]);
+    const refused = await save(without.call);
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await json(refused))).toContain('no knowledge server configured');
+  });
+
   it('a pgvector endpoint needs no baseURL', async () => {
     const { call } = await boot();
     const pg = await call('/operator/catalog/knowledge-endpoint/annen-pg', 'drift', {

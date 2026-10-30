@@ -224,6 +224,7 @@ describe('row-level security under a non-superuser owner', () => {
       'identities',
       'judge_labels',
       'model_classifications',
+      'platform_identity',
       'rate_limit_windows',
       'setting_default_versions',
       'setting_locks',

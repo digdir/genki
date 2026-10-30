@@ -42,8 +42,12 @@ export {
 } from './pool.js';
 export {
   cachedEntraPassword,
+  knowledgeIdentityTokenSource,
+  knowledgeLocalLogins,
+  knowledgeSourceFromEnv,
   managedIdentityTokenSource,
   postgresSourceFromEnv,
+  type KnowledgeLogin,
   usesEntraPostgres,
   type AccessToken,
   type TokenSource,
@@ -90,7 +94,7 @@ export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
 export { PostgresModelClassifications } from './models.js';
 export { ContentKeys } from './keys.js';
-export { grantRuntimeRole, migrate, runtimeRole } from './schema.js';
+export { grantRuntimeRole, migrate, platformId, runtimeRole } from './schema.js';
 export {
   PostgresStateStore,
   PostgresTaskStore,

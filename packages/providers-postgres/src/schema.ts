@@ -676,6 +676,12 @@ const migrations: string[] = [
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
+  `create table if not exists platform_identity (
+     singleton boolean primary key default true check (singleton),
+     id uuid not null default gen_random_uuid(),
+     created_at timestamptz not null default now()
+   )`,
+  `insert into platform_identity default values on conflict do nothing`,
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
@@ -725,4 +731,11 @@ export const migrate = async (pool: Pool) => {
   } finally {
     client.release();
   }
+};
+
+export const platformId = async (pool: Pool): Promise<string> => {
+  const { rows } = await pool.query<{ id: string }>('select id from platform_identity');
+  const id = rows[0]?.id;
+  if (!id) throw new Error('the platform server has no id; run its migrations first');
+  return id;
 };

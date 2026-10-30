@@ -2350,12 +2350,14 @@
               'Record each trigger run and skip paused triggers',
               'Read published services from the definition store and re-bind triggers when they change',
               'Fire schedules from one worker at a time through a Postgres advisory lock',
+              'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
             ],
             files: [
               'apps/worker/src/main.ts',
               'apps/worker/src/worker.ts',
               'apps/worker/src/follow.ts',
               'apps/worker/src/boot-guard.ts',
+              'apps/worker/src/knowledge-binding.ts',
             ],
             input: 'Files in blob folders, schedules',
             output: 'Results written back to blob storage',
@@ -7779,9 +7781,10 @@
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-pgvector'],
-            summary: "Built-in search engine and index writer in the platform's own Postgres.",
+            summary:
+              "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
             description:
-              'Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs only in the platform database (ADR 0023).',
+              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles and stores the platform server's id there.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
@@ -7791,6 +7794,7 @@
               'packages/providers-pgvector/src/engine.ts',
               'packages/providers-pgvector/src/schema.ts',
               'packages/providers-pgvector/src/sql.ts',
+              'packages/providers-pgvector/src/knowledge-setup.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',

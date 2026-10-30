@@ -128,7 +128,7 @@ describe('knowledge engine descriptions', () => {
 
     expect((pg.endpoint as Schema).properties).not.toHaveProperty('auth');
     expect((pg.endpointOptions as Schema).properties?.connection).toMatchObject({
-      enumTitles: ['Plattformens database'],
+      enumTitles: ['Plattformens database', 'Kunnskapsserveren'],
     });
     const profile = (pg.datasetOptions as Schema).properties?.profiles?.additionalProperties;
     expect(profile?.properties?.mode).toMatchObject({
