@@ -21,6 +21,8 @@ export const evalRunConfig = z.strictObject({
   provenance: z.strictObject({ commit: z.string().min(1), data: z.string().min(1) }),
   /** Send each case's trace to this sink, as one experiment; holdout cases never go. */
   sink: z.string().min(1).optional(),
+  /** Models the run's judges must not share a family with: the tested service's own models. */
+  avoidAsJudge: z.array(z.string()).optional(),
 });
 export type EvalRunConfig = z.input<typeof evalRunConfig>;
 
@@ -32,7 +34,7 @@ export interface EvalStrategyDeps {
   wait?: WaitOptions;
   meterAnswers?: RunEvalOptions['meterAnswers'];
   /** Evaluators made for one run, such as a judge whose model is picked for the run's tenant. */
-  forRun?: (principal: Principal) => Map<string, Evaluator>;
+  forRun?: (principal: Principal, run: { avoid: string[] }) => Map<string, Evaluator>;
 }
 
 export interface EvalNotice {
@@ -51,7 +53,9 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
         `invalid eval run: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
       );
     const options = parsed.data;
-    const ownEvaluators = deps.forRun?.(ctx.principal) ?? new Map<string, Evaluator>();
+    const ownEvaluators =
+      deps.forRun?.(ctx.principal, { avoid: options.avoidAsJudge ?? [] }) ??
+      new Map<string, Evaluator>();
     const evaluators = options.evaluators.map((id) => {
       const evaluator = ownEvaluators.get(id) ?? deps.evaluators.get(id);
       if (!evaluator) throw new EvalError(`unknown evaluator ${id}`);

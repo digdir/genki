@@ -241,6 +241,8 @@ export const qualityArea = {
     'importProblem.inputMissing': 'input is missing',
     'importProblem.inputStructured': 'structured input cannot be imported here, use text',
     'importProblem.expectedMissing': 'the expected answer or criteria are missing',
+    'importProblem.criterionNameInvalid':
+      'criteria names are lowercase letters, digits and underscores, like supporting_quotes',
     'importProblem.typeUnknown': 'type must be criteria, exact or must_reject',
     'importProblem.splitUnknown': 'split must be open, locked, train, validation or holdout',
     'importProblem.idInvalid': 'id can only have lowercase letters, digits and dashes',

@@ -238,6 +238,8 @@ export const qualityArea = {
     'importProblem.inputMissing': 'input mangler',
     'importProblem.inputStructured': 'strukturert input kan ikke importeres her, bruk tekst',
     'importProblem.expectedMissing': 'forventet svar eller kriterier mangler',
+    'importProblem.criterionNameInvalid':
+      'kriterienavn skrives med små bokstaver, tall og understrek, som supporting_quotes',
     'importProblem.typeUnknown': 'type må være criteria, exact eller must_reject',
     'importProblem.splitUnknown': 'split må være open, locked, train, validation eller holdout',
     'importProblem.idInvalid': 'id kan bare ha små bokstaver, tall og bindestrek',

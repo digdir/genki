@@ -332,7 +332,7 @@ describe('test sets for a service', () => {
     expect((await send('POST', path, 'erik', { input: 'Hei', expected: 'x' })).status).toBe(403);
   });
 
-  it('adds a case with a reference answer and named criteria as they are, and refuses other shapes', async () => {
+  it('adds a case with a reference answer and named criteria as they are, and refuses a shape its type cannot be judged on', async () => {
     const { platform, send } = await boot();
     const path = `/tenants/${tenant}/test-sets/svar-frister/cases`;
 
@@ -360,6 +360,73 @@ describe('test sets for a service', () => {
     expect(refused.body.errors).toEqual([
       { path: 'expected', message: 'expected is a text, or a reference answer and named criteria' },
     ]);
+    const refusedFor = async (body: Record<string, unknown>) =>
+      (await send('POST', path, 'kari', { input: 'Hei', ...body })).body.errors;
+    expect(await refusedFor({ expected: { referenceAnswer: 'DFØ eier Kudos.' } })).toEqual([
+      { path: 'expected.criteria', message: 'a criteria case needs criteria' },
+    ]);
+    expect(
+      await refusedFor({ type: 'exact', expected: { criteria: { criteria: 'Nevner DFØ' } } }),
+    ).toEqual([
+      { path: 'expected.referenceAnswer', message: 'an exact case needs the text to find' },
+    ]);
+    for (const expected of [{}, { criteria: {} }])
+      expect(await refusedFor({ expected })).toEqual([
+        { path: 'expected', message: 'the expected answer or criteria are required' },
+      ]);
+  });
+});
+
+describe('the platform eval capability with the criteria judge', () => {
+  it('judges criteria cases with a model from another family, named in provenance, and falls back to the reference answer', async () => {
+    const env = await boot();
+    await env.platform.evalStores.testSets.put(
+      parseTestSet({
+        apiVersion: 'genai/v1',
+        kind: 'TestSet',
+        metadata: { tenant, id: 'svar-dommer', name: 'Dommer', version: 1 },
+        spec: {
+          service: 'svar',
+          cases: [
+            {
+              id: 'kriterier',
+              split: 'train',
+              input: 'Når er fristen for søknad?',
+              type: 'criteria',
+              expected: { criteria: { criteria: 'Svaret oppgir fristen' } },
+            },
+            {
+              id: 'gullsett',
+              split: 'train',
+              input: 'Når er fristen?',
+              expected: { referenceAnswer: 'Svaret oppgir fristen' },
+            },
+          ],
+        },
+      }),
+    );
+
+    const started = await env.send('POST', `/tenants/${tenant}/eval-runs`, 'kari', {
+      capability: `${tenant}/svar/default`,
+      testSet: { id: 'svar-dommer' },
+      evaluators: ['contract', 'judge:criteria'],
+      provenance: { commit: 'abc', data: 'd' },
+    });
+    expect(started.status).toBe(202);
+    let status = '';
+    for (let i = 0; i < 100 && status !== 'completed' && status !== 'failed'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      status = String(
+        (await env.send('GET', `/eval-tasks/${String(started.body.task)}`)).body.state,
+      );
+    }
+    const [stored] = await env.platform.evalStores.runs.list({ tenant, testSet: 'svar-dommer' });
+
+    expect(status).toBe('completed');
+    expect(stored?.run.provenance.judges).toEqual([`judge:criteria@1+${judgeId}`]);
+    expect(
+      stored?.run.results.map((r) => r.scores.find((s) => s.metric === 'judge.criteria')?.state),
+    ).toEqual(['scored', 'scored']);
   });
 });
 
@@ -414,6 +481,28 @@ describe('eval runs for a service', () => {
       status: 'completed',
       provenance: { judges: [`judge:criteria@1+${judgeId}`], servedModels: [modelId] },
     });
+  });
+
+  it('never judges with a model the service may answer with, its fallback too', async () => {
+    const env = await boot();
+    const withFallback = structuredClone(service) as { spec: { model: Record<string, unknown> } };
+    withFallback.spec.model = { ...withFallback.spec.model, fallback: judgeId };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+      definition: withFallback,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(stored?.run.provenance.judges).not.toContain(`judge:criteria@1+${judgeId}`);
+    expect(
+      stored?.run.results
+        .flatMap((r) => r.scores)
+        .filter((s) => s.metric === 'judge.criteria' && s.applicable)
+        .every((s) => s.state === 'failed'),
+    ).toBe(true);
   });
 
   it('feeds a publishing gate: the run is found under the spec it tested, as the gate looks it up', async () => {

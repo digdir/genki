@@ -53,6 +53,9 @@ describe('criteria apart from the reference answer', () => {
       caseFrom({ id: 'c2', input: 'x', expected: '1. mai', type: 'exact' }),
     );
 
+    expect(caseFrom({ id: 'c1', input: 'x', expected: 'Nevner fristen' }).expected).toEqual({
+      criteria: { criteria: 'Nevner fristen' },
+    });
     expect(criteria.expected).toEqual({ sources: [], criteria: { criteria: 'Nevner fristen' } });
     expect(caseView(criteria).expected).toBe('Nevner fristen');
     expect(exact.expected).toEqual({ sources: [], referenceAnswer: '1. mai' });
