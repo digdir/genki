@@ -5,6 +5,8 @@ import type { Score, TestCase, UsageSummary } from './schema.js';
 export interface EvalContext {
   servedModels: string[];
   modelFamily(model: string): string | undefined;
+  /** Aborts when the eval run is cancelled. */
+  signal?: AbortSignal;
 }
 
 export interface PendingScore {
@@ -30,7 +32,8 @@ export interface Evaluator {
   kind: 'deterministic' | 'model' | 'human';
   judge?: string | undefined;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
-  collect?(pending: PendingScore[]): Promise<CollectedScore[]>;
+  /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
+  collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
   /** What the evaluator's own model calls used, for a judge that calls one. */
   usage?(): UsageSummary;
 }
@@ -83,7 +86,10 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
     kind: 'deterministic',
     evaluate: async (c, o) => {
       const scores: Score[] = [];
-      const refused = o.answer.trim() === '' || refusals.some((r) => r.test(o.answer));
+      // No answer at all is a refusal; a structured answer has no text but is still an answer.
+      const refused =
+        (o.answer.trim() === '' && o.fields === undefined) ||
+        refusals.some((r) => r.test(o.answer));
       if (c.grounding === 'refusal-expected' || c.type === 'must_reject') {
         scores.push(scored(self, 'refusal', refused ? 1 : 0));
         scores.push(skipped(self, 'answer-pattern', 'a refusal is expected'));

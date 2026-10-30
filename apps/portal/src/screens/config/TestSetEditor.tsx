@@ -43,7 +43,8 @@ interface CaseDraft {
   split: string;
   input: string;
   referenceAnswer: string;
-  criteria?: Record<string, string>;
+  /** The case as stored: a save replaces the whole case, so it keeps what the form does not edit. */
+  stored?: TestCaseSummary;
 }
 
 const CaseForm = ({
@@ -139,20 +140,30 @@ const CaseForm = ({
 
 const caseBody = (draft: CaseDraft) => {
   const text = draft.referenceAnswer.trim();
-  const criteria = {
-    ...Object.fromEntries(Object.entries(draft.criteria ?? {}).filter(([k]) => k !== 'criteria')),
-    ...(text ? { criteria: text } : {}),
+  const without = (o: object, keys: string[]) =>
+    Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+  const stored = draft.stored?.expected ?? {};
+  const storedCriteria = stored.criteria;
+  const rest = draft.stored ? without(draft.stored, ['id', 'expected']) : {};
+  const others = without(stored, ['criteria', 'referenceAnswer']);
+  // The field holds a criteria case's criteria, otherwise the reference answer.
+  const criteria = storedCriteria
+    ? {
+        ...Object.fromEntries(Object.entries(storedCriteria).filter(([k]) => k !== 'criteria')),
+        ...(text ? { criteria: text } : {}),
+      }
+    : undefined;
+  const reference = storedCriteria ? stored.referenceAnswer : text || undefined;
+  const expected = {
+    ...others,
+    ...(reference ? { referenceAnswer: reference } : {}),
+    ...(criteria && Object.keys(criteria).length > 0 ? { criteria } : {}),
   };
   return {
+    ...rest,
     split: draft.split,
     input: draft.input.trim(),
-    ...(draft.criteria
-      ? Object.keys(criteria).length > 0
-        ? { expected: { criteria } }
-        : {}
-      : text
-        ? { expected: { referenceAnswer: text } }
-        : {}),
+    ...(Object.keys(expected).length > 0 ? { expected } : {}),
   };
 };
 
@@ -240,7 +251,7 @@ const SetCases = ({
                   input: inputText(c.input),
                   referenceAnswer:
                     c.expected.criteria?.criteria ?? c.expected.referenceAnswer ?? '',
-                  ...(c.expected.criteria ? { criteria: c.expected.criteria } : {}),
+                  stored: c,
                 }}
                 fixedId
                 busy={busy}

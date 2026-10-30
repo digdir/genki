@@ -10,6 +10,9 @@ export const isProduction = (env: Env) =>
 
 export const isDevMode = (env: Env) => env.GENAI_DEV_MODE === 'true';
 
+/** Answer text goes to the platform-wide exporter only in development mode (ADR 0040). */
+export const tracesContent = (env: Env) => env.TRACES_CONTENT === 'true' && isDevMode(env);
+
 export const databaseRequirement = (env: Env): BootRequirement => ({
   met: Boolean(env.DATABASE_URL || env.PGHOST),
   problem:

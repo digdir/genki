@@ -54,8 +54,12 @@ export type RunOrigin = DraftOrigin | typeof serviceOrigin;
 
 const draftPrefix = 'platform/draft/';
 
+/** The platform's eval run: its task runs a test, so it counts as testing, as its cases do. */
+export const evalCapabilityId = 'platform/eval';
+
 export const originOf = (capabilityId: string): RunOrigin => {
   if (capabilityId.startsWith(assistantCapabilityPrefix)) return 'assistant';
+  if (capabilityId === evalCapabilityId) return 'builder';
   if (!capabilityId.startsWith(draftPrefix)) return serviceOrigin;
   const segment = capabilityId.slice(draftPrefix.length).split('/')[0];
   return draftOrigins.find((o) => o === segment) ?? 'builder';

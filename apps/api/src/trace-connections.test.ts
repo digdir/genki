@@ -36,6 +36,12 @@ const people: Record<string, Principal> = {
     authorizedFor: [{ org: other }],
   },
   operator: { kind: 'operator', issuer: 'test', subject: 'digdir-drift' },
+  driftsmedlem: {
+    kind: 'operator',
+    issuer: 'test',
+    subject: 'digdir-drift-medlem',
+    authorizedFor: [{ org: tenant, actions: ['read'] }],
+  },
 };
 
 const addresses: Record<string, string> = {
@@ -87,6 +93,7 @@ const boot = async (tracing: TracingOptions = { instance }) => {
     });
     return {
       status: res.status,
+      task: res.headers.get('genai-task'),
       body: (await res.json().catch(() => ({}))) as Record<string, unknown>,
     };
   };
@@ -206,6 +213,9 @@ describe("an agency's Langfuse connections", () => {
     expect(errorsOf(clear.body)).toEqual([
       'connection.secretKey: must be a secret://tenant/<tenant>/<name> reference',
     ]);
+    // Refused before an admin task starts, so the typed key never reaches a task's input.
+    expect(clear.task).toBeNull();
+    expect(foreign.task).not.toBeNull();
   });
 
   it('covers a service with at most one connection', async () => {
@@ -291,7 +301,7 @@ describe("an agency's Langfuse connections", () => {
     expect(declared.body).toMatchObject({ content: true, erasureDeclared: true });
   });
 
-  it('lets only a person with manage-services change connections', async () => {
+  it('lets only a person with manage-services change connections, also an operator who is a member', async () => {
     const env = await boot();
     await env.secret('langfuse-etaten', own);
 
@@ -301,9 +311,11 @@ describe("an agency's Langfuse connections", () => {
       `/tenants/${tenant}/tracing/connections/etaten`,
       'erik',
     );
+    const operator = await env.connect('etaten', ownConnection(), 'driftsmedlem');
 
     expect(refused.status).toBe(403);
     expect(removed.status).toBe(403);
+    expect(operator.status).toBe(403);
   });
 });
 

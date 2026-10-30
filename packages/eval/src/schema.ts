@@ -45,6 +45,9 @@ const withCriteriaMoved = (raw: unknown) => {
   return { ...raw, expected: { ...expected, criteria: { criteria: referenceAnswer } } };
 };
 
+/** A criteria field, named as judges read it: criteria, supporting_quotes. */
+const criterionName = z.string().regex(/^[a-z][a-z0-9_]*$/);
+
 export const testCase = z.preprocess(
   withCriteriaMoved,
   z.strictObject({
@@ -59,7 +62,7 @@ export const testCase = z.preprocess(
         sources: z.array(sourceRef).default([]),
         answerPattern: pattern.optional(),
         referenceAnswer: z.string().min(1).optional(),
-        criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string().min(1)).optional(),
+        criteria: z.record(criterionName, z.string().min(1)).optional(),
         fields: z.record(z.string(), z.unknown()).optional(),
       })
       .prefault({}),
@@ -75,6 +78,13 @@ export const testCase = z.preprocess(
 export type TestCase = z.infer<typeof testCase>;
 
 /** One text for a new case: a criteria case's criteria, otherwise its reference answer. */
+/** What a case in the portal's simple form may expect besides a text: an answer and named criteria. */
+export const caseExpectation = z.strictObject({
+  referenceAnswer: z.string().trim().min(1).optional(),
+  criteria: z.record(criterionName, z.string().trim().min(1)).optional(),
+});
+export type CaseExpectation = z.infer<typeof caseExpectation>;
+
 export const expectedFor = (type: CaseType, text: string | undefined) =>
   !text ? {} : type === 'criteria' ? { criteria: { criteria: text } } : { referenceAnswer: text };
 
@@ -116,23 +126,37 @@ export type TestSet = z.infer<typeof testSet>;
 export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
 export type ScoreState = (typeof scoreStates)[number];
 
-export const score = z
-  .strictObject({
-    evaluator: z.string(),
-    version: z.string(),
-    metric: z.string(),
-    value: z.number().min(0).max(1).nullable(),
-    applicable: z.boolean(),
-    state: z.enum(scoreStates),
-    reason: z.string().optional(),
-    details: z.record(z.string(), z.unknown()).optional(),
-  })
-  .refine(
-    (s) =>
-      (s.state === 'scored') === (s.value !== null) &&
-      (s.state === 'not-applicable') === !s.applicable,
-    'only a scored score has a value, and only a not-applicable one does not apply',
-  );
+/** A score stored before scores had a state: a value is scored, otherwise it failed or did not apply. */
+const withState = (raw: unknown) => {
+  if (typeof raw !== 'object' || raw === null || 'state' in raw) return raw;
+  const s = raw as { value?: unknown; applicable?: unknown };
+  return {
+    ...raw,
+    state:
+      typeof s.value === 'number' ? 'scored' : s.applicable === false ? 'not-applicable' : 'failed',
+  };
+};
+
+export const score = z.preprocess(
+  withState,
+  z
+    .strictObject({
+      evaluator: z.string(),
+      version: z.string(),
+      metric: z.string(),
+      value: z.number().min(0).max(1).nullable(),
+      applicable: z.boolean(),
+      state: z.enum(scoreStates),
+      reason: z.string().optional(),
+      details: z.record(z.string(), z.unknown()).optional(),
+    })
+    .refine(
+      (s) =>
+        (s.state === 'scored') === (s.value !== null) &&
+        (s.state === 'not-applicable') === !s.applicable,
+      'only a scored score has a value, and only a not-applicable one does not apply',
+    ),
+);
 export type Score = z.infer<typeof score>;
 
 export const feedback = z.strictObject({

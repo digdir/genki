@@ -51,7 +51,8 @@ import {
   type AdminHandler,
   type AdminOutcome,
 } from './admin.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
+import { shownRun } from './service-eval.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 
 export interface TrackedTask {
@@ -662,7 +663,8 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     if ('response' in guard) return guard.response;
     const service = c.req.query('service');
     const runs = await deps.eval.runs.list({ tenant, ...(service ? { service } : {}) });
-    return c.json({ data: runs.map((s) => s.run) });
+    const usage = seesUsage(guard.principal, tenant);
+    return c.json({ data: runs.map((s) => shownRun(s.run, usage)) });
   });
   app.post('/tenants/:tenant/eval-runs', async (c) => {
     const tenant = param(c, 'tenant');
@@ -720,7 +722,11 @@ export const mountExtensions = <E extends Env, S extends Schema, B extends strin
     const principal = await who(c);
     if (!principal) return problem(c, 401, 'Unauthorized');
     try {
-      return c.json(await evalService.getRun(actingFor(c, principal), param(c, 'id')));
+      const found = await evalService.getRun(actingFor(c, principal), param(c, 'id'));
+      return c.json({
+        ...found,
+        run: shownRun(found.run, seesUsage(principal, found.run.testSet.tenant)),
+      });
     } catch (error) {
       return evalProblem(c, error);
     }

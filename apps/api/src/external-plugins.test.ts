@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Evaluator } from '@genai/eval';
 import { manifest, PluginRegistry } from '@genai/plugins';
 import { InMemoryConfigEntryStore } from './config-store.js';
-import { externalPlugins, type ExternalPlugin } from './external-plugins.js';
+import { externalPlugins, judgeSender, type ExternalPlugin } from './external-plugins.js';
 
 const judgeOf = (contract: string): ExternalPlugin => ({
   manifest: manifest({
@@ -44,5 +44,29 @@ describe('stored evaluator plug-ins', () => {
 
     await external.save(judgeOf('evaluator@2'), 'ops', 'Registrert på nytt under evaluator@2');
     expect(evaluators.has('evaluator.dommer')).toBe(true);
+  });
+});
+
+describe('the judge sender', () => {
+  it('passes the signal on to the egress request', async () => {
+    const seen: (AbortSignal | undefined)[] = [];
+    const guard = {
+      request: async (_allow: unknown, _url: unknown, _req: unknown, signal?: AbortSignal) => {
+        seen.push(signal);
+        return { status: 200, body: '{}' };
+      },
+    };
+    const plugin = judgeOf('evaluator@2');
+    const send = judgeSender(
+      guard as never,
+      plugin.manifest,
+      plugin.endpoint as NonNullable<ExternalPlugin['endpoint']>,
+      {} as never,
+    );
+    const signal = new AbortController().signal;
+
+    await send('{}', signal);
+
+    expect(seen).toEqual([signal]);
   });
 });

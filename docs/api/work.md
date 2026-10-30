@@ -17,7 +17,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 ## Typical sequence: evaluate a draft before publishing
 
 1. `GET /tenants/{tenant}/services/{id}/test-sets`: the service's test sets.
-2. `POST /tenants/{tenant}/test-sets/{setId}/cases`: add a case if one is missing.
+2. `POST /tenants/{tenant}/test-sets/{setId}/cases`: add a case if one is missing. `expected` is a text, read as a criteria case's criteria and as the reference answer otherwise, or `{ referenceAnswer, criteria }` with named criteria such as `criteria` and `supporting_quotes`, kept as they are.
 3. `POST /tenants/{tenant}/services/{id}/eval-runs` for the draft: runs in the background.
 4. `GET /tenants/{tenant}/services/{id}/eval-runs`, then `GET /tenants/{tenant}/eval-runs/{runId}` for case results.
 5. `GET /eval-runs/compare`: compare with the run of the published version.
@@ -32,5 +32,5 @@ To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenan
 - An eval capability run names its evaluators: `contract` (answer pattern, an exact case's text, refusal and fields), `retrieval` (recall at 10 and grounded citations), `judge:criteria` and registered evaluator plug-ins. `judge:criteria` scores criteria cases on `expected.criteria`, or on the reference answer when a case has none. Its model is picked for the run's tenant, from another family than the models that wrote the answer (an embedder or reranker that only searched does not count), and the run's provenance names it as `judge:criteria@<version>+<model>`.
 - A score has a `state`: `scored`, `not-applicable`, `pending`, `failed` or `missing`. A judge on `evaluator@2` may answer pending. The run then waits up to 5 minutes from its last case, `GET /eval-tasks/{task}` answers `waiting-for-scores` with how many scores are pending, and what has not arrived is `missing`. The run's `incomplete` names each judge with missing or failed scores, and a gate on a metric with any of them in its split fails.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both. `kind` tells them apart: `service` answers the run with its metrics, confidence intervals and case results, each answer read from its case's task, `kernel` answers the same body as `GET /eval-runs/{id}`. Cost and tokens cover the answers and the judges, and show only with view-usage.
-- Neither kind shows its lease (`owner`, `heartbeatAt`).
+- No eval run endpoint shows a run's lease (`owner`, `heartbeatAt`), and `usage` shows only with view-usage, also in `GET /tenants/{tenant}/eval-runs` and `GET /eval-runs/{id}`. A failed run keeps the usage of the cases it got through. A run names the service it tested in `provenance.services`, not the draft capability made for it, so two runs of the same configuration can be compared.
 - `GET /tenants/{tenant}/test-sets`, `GET /tenants/{tenant}/eval-runs` and `GET /tenants/{tenant}/feedback` answer `{ "data": [...] }`, like every other list.
