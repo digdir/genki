@@ -11,6 +11,7 @@ import {
   runtimeRole,
   withPlatformAccess,
   withTenant,
+  workerRole,
 } from './index.js';
 import { stopPostgres } from './testing/index.js';
 
@@ -204,6 +205,59 @@ describe('database roles', () => {
       [ORG_A, ORG_B].sort(),
     );
     await separate.close();
+  });
+
+  it('runs the worker as genai_worker, a member of genai_runtime under the same row-level security', async () => {
+    const worker = await createPostgresStores(owner, wrapper, { role: workerRole });
+    pools.push(worker.runtimePool);
+    try {
+      const [role] = (
+        await worker.runtimePool.query<{
+          name: string;
+          rolsuper: boolean;
+          rolbypassrls: boolean;
+          runtime: boolean;
+        }>(
+          `select current_user as name, rolsuper, rolbypassrls,
+                  pg_has_role(current_user, '${runtimeRole}', 'USAGE') as runtime
+             from pg_roles where rolname = current_user`,
+        )
+      ).rows;
+      expect(role).toEqual({
+        name: workerRole,
+        rolsuper: false,
+        rolbypassrls: false,
+        runtime: true,
+      });
+      for (const table of Object.keys(tenantRows)) {
+        const sql = `select * from ${table} order by 1`;
+        const seen = await asTenant(worker.runtimePool, ORG_A, sql);
+        expect(seen.length, table).toBeGreaterThan(0);
+        expect(seen, table).toEqual(await asTenant(stores.runtimePool, ORG_A, sql));
+        expect((await worker.runtimePool.query(sql)).rows, table).toEqual(
+          (await stores.runtimePool.query(sql)).rows,
+        );
+      }
+    } finally {
+      await worker.close();
+    }
+  });
+
+  it('the migration refuses a genai_worker that is a superuser or bypasses row-level security', async () => {
+    for (const [unsafe, safe] of [
+      ['bypassrls', 'nobypassrls'],
+      ['superuser', 'nosuperuser'],
+    ]) {
+      await superuser.query(`alter role ${workerRole} ${unsafe}`);
+      try {
+        await expect(migrate(owner)).rejects.toThrow(
+          `${workerRole} must not be a superuser or bypass row-level security`,
+        );
+      } finally {
+        await superuser.query(`alter role ${workerRole} ${safe}`);
+      }
+    }
+    await expect(migrate(owner)).resolves.toBeUndefined();
   });
 });
 

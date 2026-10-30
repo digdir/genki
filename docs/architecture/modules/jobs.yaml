@@ -25,6 +25,7 @@ files:
   - packages/jobs/src/batch.ts
   - packages/jobs/src/scheduler.ts
   - packages/jobs/src/cron.ts
+  - packages/jobs/src/job-queue.ts
 input: Triggers + inputs
 output: Tasks and batch results
 replaces: []

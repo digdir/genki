@@ -30,7 +30,7 @@ module.exports = {
       severity: 'error',
       from: { pathNot: '^packages/providers-' },
       to: {
-        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth|hyparquet|hyparquet-compressors)/',
+        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|pg-boss|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth|hyparquet|hyparquet-compressors)/',
       },
     },
     {
@@ -49,7 +49,7 @@ module.exports = {
         ],
       },
       to: {
-        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector)/',
+        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector|pgboss)/',
       },
     },
     {
