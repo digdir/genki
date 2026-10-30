@@ -948,7 +948,18 @@ export const createPlatform = async (input: PlatformInput) => {
         version: String(j.evaluator.version),
         dataType: j.evaluator.dataType,
         fields: j.rule.mapping,
-        ...(j.refused ? { refused: j.refused } : {}),
+        // A judge on a connection without answer text would be paid for and judge nothing.
+        ...(j.refused
+          ? { refused: j.refused }
+          : connection.content
+            ? {}
+            : {
+                refused: {
+                  reason: 'no-content',
+                  field: connection.id,
+                  message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+                },
+              }),
         snapshot: j,
       })),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),

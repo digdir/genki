@@ -163,6 +163,8 @@ export const blocks = defineNamespace({
   judgeRefusedDefaultModel:
     'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
   judgeRefusedField: 'Dommeren leser {field}, som genki ikke sender.',
+  judgeRefusedNoContent:
+    'Koblingen {connection} får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Integrasjoner, Sporing og evaluering, for å ta den i bruk.',
   judgeRefusedNotAModel:
     'Dommeren er ikke en LLM-som-dommer i Langfuse, så den har ingen modell genki kan navngi.',
   judgeRefusedSampled:

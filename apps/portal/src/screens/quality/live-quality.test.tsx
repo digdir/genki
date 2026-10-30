@@ -670,4 +670,23 @@ describe('live Testsett: Langfuse-dommere', () => {
     ).toBeTruthy();
     expect(verdict(o2 as HTMLElement).textContent).toBe('Ikke aktuelt');
   });
+
+  it("says before a run starts that the Langfuse judges' connection gets no answer text, and does not start it", async () => {
+    const { writes } = await openLive(
+      '',
+      {},
+      {},
+      sending({ reason: 'no-content', connection: 'lokal' }),
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    await screen.findByText(
+      `Kjøringen kan ikke starte. Langfuse-dommerne (${rule}) har ingenting å vurdere, fordi koblingen lokal ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.`,
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
+  });
 });

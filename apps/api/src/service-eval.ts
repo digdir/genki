@@ -585,7 +585,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ? { reason: 'covered-twice' as const, connections: covering.map((c) => c.id) }
         : !residencyAllows(residency, sink.residency)
           ? { reason: 'residency' as const, service: residency, connection: sink.residency }
-          : undefined;
+          : adopted.length > 0 && !sink.content
+            ? { reason: 'no-content' as const, connection: sink.id }
+            : undefined;
     return {
       connection: { id: sink.id, residency: sink.residency },
       judges: adopted.map((id) => ({ id, name: id.slice(id.indexOf('/') + 1) })),

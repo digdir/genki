@@ -112,6 +112,8 @@ export const catalogErrors = {
     'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
   sinkJudgeGone:
     'the judge {id} is no longer an active experiment judge in the project of the connection {connection}',
+  sinkJudgeNoContent:
+    '{rule} has nothing to judge: the connection {connection} gets no answer text',
   sinkJudgesUnreadable: 'the judges of the connection {connection} could not be read: {error}',
   sinkJudgeNotAModel:
     '{rule} is not an LLM-as-a-judge evaluator, so it has no model genki can name',

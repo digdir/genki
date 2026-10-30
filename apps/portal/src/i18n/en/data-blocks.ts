@@ -165,6 +165,8 @@ export const blocksLane = {
     judgeRefusedDefaultModel:
       "The judge uses the project's default model, which cannot be read through Langfuse. Pick a model for the judge in Langfuse to use it.",
     judgeRefusedField: 'The judge reads {field}, which genki does not send.',
+    judgeRefusedNoContent:
+      'The connection {connection} gets no answer text, so the judge has nothing to judge. Turn on "Send text" for the connection under Integrations, Tracing and evaluation, to use it.',
     judgeRefusedNotAModel:
       'The judge is not an LLM-as-a-judge in Langfuse, so it has no model genki can name.',
     judgeRefusedSampled:

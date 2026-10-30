@@ -1219,4 +1219,26 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
     expectAccessible();
   });
+
+  it('shows that a Langfuse judge on a connection without answer text cannot be taken in use', async () => {
+    const message = `${rule} has nothing to judge: the connection kudos gets no answer text`;
+    const silent = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'no-content', field: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(silent), { items: [silent] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Koblingen kudos får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Integrasjoner, Sporing og evaluering, for å ta den i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
 });

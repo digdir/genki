@@ -226,6 +226,7 @@ const RunSending = z
           connection: z.enum(['norway', 'eu', 'global']),
         }),
         z.object({ reason: z.literal('covered-twice'), connections: z.array(z.string()) }),
+        z.object({ reason: z.literal('no-content'), connection: z.string() }),
       ])
       .optional()
       .describe('Why a run that is sent to the connection would be refused'),

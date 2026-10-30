@@ -149,6 +149,8 @@ export const qualityArea = {
     sendBecauseJudges: 'Sendes fordi tjenesten bruker Langfuse-dommere: {judges}.',
     judgeResidencyRefused:
       'Kjøringen kan ikke starte. Den må sendes til Langfuse-koblingen {connection} fordi tjenesten bruker Langfuse-dommere ({judges}), men koblingens dataplassering ({where}) er ikke tillatt for tjenesten ({service}).',
+    judgeNoContent:
+      'Kjøringen kan ikke starte. Langfuse-dommerne ({judges}) har ingenting å vurdere, fordi koblingen {connection} ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.',
     judgeCoveredTwice:
       'Kjøringen kan ikke starte. Tjenesten bruker Langfuse-dommere ({judges}), men flere Langfuse-koblinger dekker den: {connections}.',
     sinkJudgesTitle: 'Langfuse-dommere',

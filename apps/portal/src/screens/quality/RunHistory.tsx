@@ -224,6 +224,8 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
   if (!refused) return undefined;
   if (refused.reason === 'covered-twice')
     return t('quality.judgeCoveredTwice', { judges, connections: refused.connections.join(', ') });
+  if (refused.reason === 'no-content')
+    return t('quality.judgeNoContent', { judges, connection: refused.connection });
   return t('quality.judgeResidencyRefused', {
     connection: plan.connection?.id ?? '',
     judges,

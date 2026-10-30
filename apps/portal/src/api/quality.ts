@@ -107,7 +107,8 @@ export interface RunSending {
   judges: { id: string; name: string }[];
   refused?:
     | { reason: 'residency'; service: RunResidency; connection: RunResidency }
-    | { reason: 'covered-twice'; connections: string[] };
+    | { reason: 'covered-twice'; connections: string[] }
+    | { reason: 'no-content'; connection: string };
 }
 
 export interface EvalRunDetail extends EvalRun {

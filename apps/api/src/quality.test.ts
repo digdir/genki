@@ -1111,7 +1111,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
 
 describe('Langfuse judges on a run', () => {
   const why = { 'change-reason': 'Kobler tjenesten til Langfuse-dommerne' };
-  const judged = async (rules?: FakeRule[], residency = 'global') => {
+  const judged = async (rules?: FakeRule[], residency = 'global', content = true) => {
     const langfuse = await fakeLangfuse(rules);
     const env = await boot(undefined, { devMode: true }, undefined, {
       evalWait: { everyMs: 50, deadlineMs: 20_000 },
@@ -1124,21 +1124,23 @@ describe('Langfuse judges on a run', () => {
       { value: 'sk-lf-lokal', allowedHosts: [langfuse.url] },
       why,
     );
-    const saved = await env.send(
-      'PUT',
-      `/tenants/${tenant}/tracing/connections/lokal`,
-      'kari',
-      {
-        host: langfuse.url,
-        publicKey: 'pk-lf-lokal',
-        secretKey: `secret://tenant/${tenant}/sporing`,
-        services: ['svar'],
-        residency,
-        content: true,
-        erasureDeclared: true,
-      },
-      why,
-    );
+    const saveConnection = (receives: boolean) =>
+      env.send(
+        'PUT',
+        `/tenants/${tenant}/tracing/connections/lokal`,
+        'kari',
+        {
+          host: langfuse.url,
+          publicKey: 'pk-lf-lokal',
+          secretKey: `secret://tenant/${tenant}/sporing`,
+          services: ['svar'],
+          residency,
+          content: receives,
+          erasureDeclared: true,
+        },
+        why,
+      );
+    const saved = await saveConnection(content);
     expect(saved.status).toBe(200);
     const adopt = (name: string) =>
       env.send(
@@ -1148,7 +1150,7 @@ describe('Langfuse judges on a run', () => {
         undefined,
         why,
       );
-    return { env, langfuse, adopt };
+    return { env, langfuse, adopt, saveConnection };
   };
 
   it("scores a run's cases with a Langfuse judge under the identity langfuse:<tenant>/<connection>/<name>@v<version>+<model>", async () => {
@@ -1351,6 +1353,33 @@ describe('Langfuse judges on a run', () => {
     expect(JSON.stringify(started.body)).toContain(
       'the judges of the connection lokal could not be read',
     );
+  });
+
+  it('refuses a Langfuse judge on a connection that gets no answer text, when it is taken in use and when a run starts', async () => {
+    const { env, adopt, saveConnection } = await judged(undefined, 'global', false);
+    const nothing = `${judgeRule} has nothing to judge: the connection lokal gets no answer text`;
+
+    const listed = await env.send('GET', `/tenants/${tenant}/building-blocks?kind=judge`);
+    const refusedAdopt = await adopt(judgeRule);
+    expect((await saveConnection(true)).status).toBe(200);
+    expect((await adopt(judgeRule)).status).toBe(200);
+    expect((await saveConnection(false)).status).toBe(200);
+    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+
+    expect(
+      (listed.body.data as { id: string }[]).find((b) => b.id === `langfuse:lokal/${judgeRule}`),
+    ).toMatchObject({
+      status: 'not_allowed',
+      judge: { refused: { reason: 'no-content', field: 'lokal' } },
+    });
+    expect(refusedAdopt.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(refusedAdopt.body)).toContain(nothing);
+    expect(sending.body).toMatchObject({ refused: { reason: 'no-content', connection: 'lokal' } });
+    expect(started.status).toBe(409);
+    expect(JSON.stringify(started.body)).toContain(nothing);
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {

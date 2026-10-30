@@ -152,6 +152,8 @@ export const qualityArea = {
     sendBecauseJudges: 'Sent because the service uses Langfuse judges: {judges}.',
     judgeResidencyRefused:
       "The run cannot start. It must go to the Langfuse connection {connection} because the service uses Langfuse judges ({judges}), but the connection's data location ({where}) is not allowed for the service ({service}).",
+    judgeNoContent:
+      'The run cannot start. The Langfuse judges ({judges}) have nothing to judge, because the connection {connection} gets no answer text. Turn on "Send text" for the connection, or stop using the judges.',
     judgeCoveredTwice:
       'The run cannot start. The service uses Langfuse judges ({judges}), but more than one Langfuse connection covers it: {connections}.',
     sinkJudgesTitle: 'Langfuse judges',
