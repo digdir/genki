@@ -7,6 +7,7 @@ import {
   Paragraph,
   ToggleGroup,
 } from '@digdir/designsystemet-react';
+import { CogIcon } from '@navikt/aksel-icons';
 import { cloneElement, isValidElement, useRef, useState, type ReactNode } from 'react';
 import { Icon, icons } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
@@ -347,7 +348,18 @@ const TryBlock = ({ id, chat, where }: { id: BlockId; chat: ReactNode; where: Pa
         </div>
       );
     case 'settings':
-      return <span className="try-item">{t('builderBlocks.settings')}</span>;
+      return (
+        <Button
+          data-size="sm"
+          data-color="neutral"
+          variant="tertiary"
+          className="try-settings"
+          tabIndex={-1}
+        >
+          <CogIcon aria-hidden fontSize="1.25em" />
+          {t('builderBlocks.settings')}
+        </Button>
+      );
     case 'procedure':
       return (
         <Details data-color="neutral" className="try-procedure">

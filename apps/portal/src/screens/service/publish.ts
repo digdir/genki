@@ -74,7 +74,10 @@ const messages: [RegExp, (m: RegExpExecArray, t: T) => string][] = [
         required: residencyName(m[2]),
       }),
   ],
-  [/^Required$|received undefined/, (_m, t) => t('service.required')],
+  [
+    /^Required$|received undefined|expected string to have >=1 characters/,
+    (_m, t) => t('service.required'),
+  ],
 ];
 
 export const describeProblem = (problem: PublishProblem, t: T = translator('nb')) => {

@@ -107,6 +107,10 @@
   max-width: 880px;
 }
 
+.service-body.service-advanced {
+  max-width: none;
+}
+
 .service-page .spread {
   justify-content: space-between;
 }

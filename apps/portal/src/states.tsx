@@ -127,9 +127,17 @@ export const ErrorState = ({
   );
 };
 
-export const EmptyState = ({ title, children }: { title: string; children?: ReactNode }) => (
+export const EmptyState = ({
+  title,
+  children,
+  headingLevel = 2,
+}: {
+  title: string;
+  children?: ReactNode;
+  headingLevel?: 2 | 3 | 4;
+}) => (
   <div className="state empty">
-    <Heading level={2} data-size="sm">
+    <Heading level={headingLevel} data-size="sm">
       {title}
     </Heading>
     {children}

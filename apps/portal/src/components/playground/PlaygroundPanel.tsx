@@ -60,6 +60,7 @@ import {
 } from '../../data/playground';
 import { useEscape, useNarrow } from '../../hooks';
 import { useT, type T } from '../../i18n';
+import { describeProblem } from '../../screens/service/publish';
 import { ApiCallPanel } from '../ApiCall';
 import { Icon, icons } from '../Icon';
 import { isModelFailure, ModelNoAnswer, RunFailure, type RunFailureInfo } from '../RunFailure';
@@ -191,6 +192,14 @@ const errorText = (error: unknown, model: string, t: T) => {
   if (error instanceof ApiError && error.status === 403) {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
+  }
+  const missing = error instanceof ApiError && error.status === 422 ? error.problem?.errors : [];
+  if (missing?.length) {
+    const problems = missing
+      .map((e) => describeProblem({ ...e, path: e.path.replace(/^setup\./, '') }, t))
+      .map((p) => `${p.section}: ${p.message}`)
+      .join(' ');
+    return t('playground.setupNotReady', { problems, notStored });
   }
   if (error instanceof ApiError && error.status === 429)
     return error.problem?.title ?? t('playground.quotaUsedUp', { notStored });

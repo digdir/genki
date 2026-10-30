@@ -117,6 +117,20 @@ const setupSections: SectionId[] = [
 
 const developerSetupSections: SectionId[] = ['tools', 'how', 'model', 'variants'];
 
+/** The pages under Avanserte innstillinger, by their address. */
+const advancedPages: readonly (readonly [string, SectionId | 'definition', PlainKey])[] = [
+  ['tools', 'tools', 'setup.sectionTools'],
+  ['how', 'how', 'setup.sectionHow'],
+  ['model', 'model', 'setup.sectionModel'],
+  ['variants', 'variants', 'setup.sectionVariants'],
+  ['input', 'inputKinds', 'setup.sectionInput'],
+  ['input-form', 'inputForm', 'inputForm.heading'],
+  ['safety', 'risk', 'setup.sectionSafety'],
+  ['safeguards', 'guards', 'setup.safetyGuards'],
+  ['refuse', 'refuse', 'setup.refuseTopics'],
+  ['definition', 'definition', 'service.advancedTools'],
+];
+
 export interface BuilderInit {
   id: string;
   isNew: boolean;
@@ -183,6 +197,12 @@ const fromTemplate = (template: Record<string, unknown>, name: string): ServiceD
     name,
   );
 
+/** A new service that answers always shows its sources under the answer. */
+const withSourcesShown = (d: ServiceDefinition): ServiceDefinition =>
+  d.spec.output.kind === 'answer'
+    ? { ...d, spec: { ...d.spec, output: { ...d.spec.output, withSources: true } } }
+    : d;
+
 export const newServiceInit = (
   job: JobId,
   userText: string,
@@ -196,7 +216,9 @@ export const newServiceInit = (
     return {
       id: 'new',
       isNew: true,
-      definition: template ? fromTemplate(template, name) : exampleTemplate(job, name),
+      definition: withSourcesShown(
+        template ? fromTemplate(template, name) : exampleTemplate(job, name),
+      ),
       messages: [],
       extraCards: {},
       versions: [],
@@ -206,7 +228,7 @@ export const newServiceInit = (
   return {
     id: 'new',
     isNew: true,
-    definition: exampleTemplate(job, name),
+    definition: withSourcesShown(exampleTemplate(job, name)),
     messages: [
       { role: 'user', text: userText },
       {
@@ -225,6 +247,42 @@ export const newServiceInit = (
     versions: [],
     status: 'Utkast',
   };
+};
+
+const BuilderSplit = ({ children }: { children: ReactNode }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const split = ref.current;
+    if (!split) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      const aside = split.firstElementChild;
+      if (!(aside instanceof HTMLElement)) return;
+      const style = getComputedStyle(aside);
+      const top = Math.max(
+        split.getBoundingClientRect().top + parseFloat(style.marginTop),
+        parseFloat(style.top) || 0,
+      );
+      split.style.setProperty('--assistant-room', `${Math.round(window.innerHeight - top)}px`);
+    };
+    const queue = () => {
+      if (!frame) frame = requestAnimationFrame(fit);
+    };
+    fit();
+    window.addEventListener('scroll', queue, { passive: true });
+    window.addEventListener('resize', queue);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', queue);
+      window.removeEventListener('resize', queue);
+    };
+  }, []);
+  return (
+    <div ref={ref} className="builder-split">
+      {children}
+    </div>
+  );
 };
 
 export const Builder = ({
@@ -993,8 +1051,9 @@ export const Builder = ({
   };
 
   const testsetFact = hasTestSet ? scoreFact : t('services.testsetNotMade');
-  const suggestions =
-    testKind(id, service) === 'fields'
+  const suggestions = isNew
+    ? []
+    : testKind(id, service) === 'fields'
       ? [t('services.suggestCost'), t('services.suggestRerun'), t('services.suggestPrivacy')]
       : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
   const name = service.metadata.name || t('services.newServiceName');
@@ -1055,10 +1114,13 @@ export const Builder = ({
       strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
       instructionsAssist={improveSlot}
       instructionsUnderPurpose={isNew}
-      safetyTogether={isNew}
+      apart={isNew}
       sourcesTogether={isNew}
+      continuous={isNew}
       resultWish={resultWish}
       onResultWish={setResultWish}
+      onAsk={isNew ? send : undefined}
+      askOff={assistantOff || typing || assistant.pending || assistant.streaming}
       {...(service.spec.strategy.id === 'remote-agent' || isNew
         ? {}
         : {
@@ -1151,6 +1213,49 @@ export const Builder = ({
           live={live}
         />
       );
+    if (section === 'advanced') {
+      const page = advancedPages.find(([slug]) => slug === detail) ?? advancedPages[0];
+      return (
+        <div className="advanced">
+          <nav aria-label={t('service.advancedMenu')} className="advanced-nav">
+            <ul className="nav-list">
+              {advancedPages.map(([slug, , label]) => (
+                <li key={slug}>
+                  <a
+                    href={`#${servicePath(id, 'advanced', `/${slug}`)}`}
+                    aria-current={slug === page?.[0] ? 'page' : undefined}
+                    className={slug === page?.[0] ? 'active' : undefined}
+                  >
+                    {t(label)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="advanced-page">
+            {!page || page[1] === 'definition' ? (
+              <section aria-labelledby="sek-avansert-tittel" className="setup-part">
+                <Heading level={2} data-size="xs" id="sek-avansert-tittel">
+                  {t('service.advancedTools')}
+                </Heading>
+                <ul className="advanced-links">
+                  <li>
+                    <a href={`#${servicePath(id, 'test')}`}>{t('service.advancedTest')}</a>
+                  </li>
+                  <li>
+                    <a href={`#${servicePath(id, 'versions', '?view=yaml')}`}>
+                      {t('service.advancedYaml')}
+                    </a>
+                  </li>
+                </ul>
+              </section>
+            ) : (
+              setup([page[1]])
+            )}
+          </div>
+        </div>
+      );
+    }
     if (section === 'versions')
       return live && !isNew ? (
         <VersionsSection
@@ -1195,7 +1300,7 @@ export const Builder = ({
           isNew
             ? setupSections.filter(
                 (id) =>
-                  !['io', 'instructions', 'guards'].includes(id) &&
+                  !['io', 'instructions', 'risk', 'guards'].includes(id) &&
                   !developerSetupSections.includes(id),
               )
             : setupSections.filter((id) => id !== 'result'),
@@ -1260,7 +1365,6 @@ export const Builder = ({
         chat={previewChat}
         address={previewAddress}
         onFullscreen={() => go('blocks', '/preview')}
-        {...(route.query.get('klosser') === 'radio' ? { variant: 'radio' as const } : {})}
       />
     );
 
@@ -1341,10 +1445,10 @@ export const Builder = ({
           ) : !withAssistant ? (
             content
           ) : split ? (
-            <div className="builder-split">
+            <BuilderSplit>
               {assistantPanel}
               <div className="builder-canvas">{content}</div>
-            </div>
+            </BuilderSplit>
           ) : (
             <Tabs value={pane} onChange={(v) => setPane(v as 'assistent' | 'tjeneste')}>
               <TabsList aria-label={t('services.viewLabel')}>

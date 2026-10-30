@@ -2,7 +2,7 @@ import { defineNamespace } from '@genai/i18n';
 
 export const blocksUi = {
   builderBlocks: defineNamespace({
-    sectionLabel: 'Byggeklosser',
+    sectionLabel: 'Grensesnitt',
     tabChat: 'Chat',
     tabBlocks: 'Byggeklosser',
     tabTemplates: 'Utgangspunkt',
@@ -10,16 +10,11 @@ export const blocksUi = {
     paneBlocks: 'Byggeklosser',
     panePreview: 'Forhåndsvisning',
     intro:
-      'De fleste klossene har fast plass og slås på med en bryter. Fire klosser kan stå flere steder. Slår du en av dem på, velger du hvor den skal stå.',
-    introPerPanel:
       'Slå på klossene du vil ha i hvert panel. Noen klosser kan stå flere steder, men bare ett sted om gangen.',
     usedIn: 'Står i {panel}. Slår du den på her, flyttes den hit.',
     groupLeft: 'Venstre sidepanel',
     groupMain: 'Midten',
-    groupMainHelp: 'Velg hva du vil ha her',
     groupRight: 'Høyre sidepanel',
-    groupFlexible: 'Klosser som kan stå flere steder',
-    whereQuestion: 'Hvor skal {block} stå?',
     panelLeft: 'Venstre sidepanel',
     panelMain: 'Midten',
     panelRight: 'Høyre sidepanel',

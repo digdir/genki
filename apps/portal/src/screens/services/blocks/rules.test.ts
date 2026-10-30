@@ -103,8 +103,8 @@ describe('building block rules', () => {
     expect(blocksIn(templates.notesFocus, 'right')).toEqual(['notes']);
   });
 
-  it('puts the document view in the middle with chat and sources on the right', () => {
-    expect(blocksIn(templates.documentFocus, 'left')).toEqual(['threads']);
+  it('puts the document view in the middle with chat and sources on the right, and nothing on the left', () => {
+    expect(blocksIn(templates.documentFocus, 'left')).toEqual([]);
     expect(blocksIn(templates.documentFocus, 'main')).toEqual(['documentView']);
     expect(blocksIn(templates.documentFocus, 'right')).toEqual(['chat', 'sources']);
   });

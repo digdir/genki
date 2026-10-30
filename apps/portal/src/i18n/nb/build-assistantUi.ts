@@ -3,7 +3,6 @@ import { defineNamespace } from '@genai/i18n';
 export const assistantUi = {
   assistant: defineNamespace({
     title: 'Byggeassistent',
-    tagline: 'Foreslår, forklarer og tester. Publiserer aldri selv.',
     assistantName: 'Assistenten',
     typing: 'Assistenten skriver',
     changeTag: 'Endring',
@@ -22,12 +21,8 @@ export const assistantUi = {
     previousMessage: 'Forrige melding',
     composerLabel: 'Skriv til assistenten',
     composerPlaceholder: 'Spør om noe …',
-    starterGoal: 'Hva brukerne skal oppnå',
-    starterSources: 'Relevante kilder',
-    starterReplaces: 'Eksisterende arbeid som skal erstattes',
-    starterOutcome: 'Hva brukeren skal sitte igjen med',
     emptyWelcome:
-      'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Velg et av temaene over for å komme i gang, eller skriv fritt.',
+      'La meg hjelpe deg med å fylle ut skjemaet til høyre, så lager vi tjenesten sammen. Skriv fritt, eller bruk spørsmålene i skjemaet.',
     send: 'Send',
     bannerUnavailableTitle: 'Byggeassistenten er ikke tilgjengelig',
     bannerUnavailable:

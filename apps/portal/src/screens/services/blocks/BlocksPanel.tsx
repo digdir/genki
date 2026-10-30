@@ -1,18 +1,10 @@
-import { Divider, Fieldset, Heading, Paragraph, Radio, Switch } from '@digdir/designsystemet-react';
+import { Divider, Fieldset, Heading, Paragraph, Switch } from '@digdir/designsystemet-react';
 import { Fragment } from 'react';
 import { useT, type PlainKey } from '../../../i18n';
 import {
   blocksAllowedIn,
-  blockPanels,
-  fixedBlocks,
-  flexibleBlocks,
-  isOn,
-  moveTo,
-  panels,
   placeIn,
-  placeOf,
   turnOff,
-  turnOn,
   type BlockId,
   type BlockLayout,
   type Panel,
@@ -62,77 +54,29 @@ export const panelLabel: Record<Panel, PlainKey> = {
   right: 'builderBlocks.panelRight',
 };
 
-const groups: { panel: Panel; legend: PlainKey; help?: PlainKey }[] = [
+const groups: { panel: Panel; legend: PlainKey }[] = [
   { panel: 'left', legend: 'builderBlocks.groupLeft' },
-  { panel: 'main', legend: 'builderBlocks.groupMain', help: 'builderBlocks.groupMainHelp' },
+  { panel: 'main', legend: 'builderBlocks.groupMain' },
   { panel: 'right', legend: 'builderBlocks.groupRight' },
 ];
-
-export type BlocksPanelVariant = 'perPanel' | 'radio';
 
 export const BlocksPanel = ({
   layout,
   onChange,
-  variant = 'perPanel',
 }: {
   layout: BlockLayout;
   onChange: (next: BlockLayout) => void;
-  variant?: BlocksPanelVariant;
 }) => {
   const t = useT();
-  const toggle = (id: BlockId) =>
-    onChange(isOn(layout, id) ? turnOff(layout, id) : turnOn(layout, id));
   const help = (id: BlockId) =>
     id === 'settings'
       ? `${t(blockHelp[id])}. ${t('builderBlocks.bottomOfPanel')}`
       : t(blockHelp[id]);
 
-  if (variant === 'perPanel')
-    return (
-      <div className="blocks-panel">
-        <Paragraph data-size="sm">{t('builderBlocks.introPerPanel')}</Paragraph>
-        {groups.map(({ panel, legend }) => (
-          <Fragment key={panel}>
-            <Divider />
-            <Fieldset className="blocks-group">
-              <Fieldset.Legend>
-                <Heading level={2} data-size="2xs">
-                  {t(legend)}
-                </Heading>
-              </Fieldset.Legend>
-              {blocksAllowedIn(panel).map((id) => {
-                const at = layout.placed[id];
-                const elsewhere = at !== undefined && at !== panel;
-                return (
-                  <Switch
-                    key={id}
-                    variant="outline"
-                    position="end"
-                    label={t(blockLabel[id])}
-                    description={
-                      elsewhere
-                        ? t('builderBlocks.usedIn', {
-                            panel: t(panelLabel[at]).toLowerCase(),
-                          })
-                        : help(id)
-                    }
-                    checked={at === panel}
-                    onChange={() =>
-                      onChange(at === panel ? turnOff(layout, id) : placeIn(layout, id, panel))
-                    }
-                  />
-                );
-              })}
-            </Fieldset>
-          </Fragment>
-        ))}
-      </div>
-    );
-
   return (
     <div className="blocks-panel">
       <Paragraph data-size="sm">{t('builderBlocks.intro')}</Paragraph>
-      {groups.map(({ panel, legend, help: groupHelp }) => (
+      {groups.map(({ panel, legend }) => (
         <Fragment key={panel}>
           <Divider />
           <Fieldset className="blocks-group">
@@ -141,65 +85,32 @@ export const BlocksPanel = ({
                 {t(legend)}
               </Heading>
             </Fieldset.Legend>
-            {groupHelp ? <Fieldset.Description>{t(groupHelp)}</Fieldset.Description> : null}
-            {fixedBlocks[panel].map((id) => (
-              <Switch
-                key={id}
-                variant="outline"
-                position="end"
-                label={t(blockLabel[id])}
-                description={help(id)}
-                checked={isOn(layout, id)}
-                onChange={() => toggle(id)}
-              />
-            ))}
+            {blocksAllowedIn(panel).map((id) => {
+              const at = layout.placed[id];
+              const elsewhere = at !== undefined && at !== panel;
+              return (
+                <Switch
+                  key={id}
+                  variant="outline"
+                  position="end"
+                  label={t(blockLabel[id])}
+                  description={
+                    elsewhere
+                      ? t('builderBlocks.usedIn', {
+                          panel: t(panelLabel[at]).toLowerCase(),
+                        })
+                      : help(id)
+                  }
+                  checked={at === panel}
+                  onChange={() =>
+                    onChange(at === panel ? turnOff(layout, id) : placeIn(layout, id, panel))
+                  }
+                />
+              );
+            })}
           </Fieldset>
         </Fragment>
       ))}
-      <Divider />
-      <Fieldset className="blocks-group">
-        <Fieldset.Legend>
-          <Heading level={2} data-size="2xs">
-            {t('builderBlocks.groupFlexible')}
-          </Heading>
-        </Fieldset.Legend>
-        {flexibleBlocks.map((id) => {
-          const on = isOn(layout, id);
-          const place = placeOf(layout, id);
-          const name = t(blockLabel[id]);
-          return (
-            <div key={id} className="blocks-flexible">
-              <Switch
-                variant="outline"
-                position="end"
-                label={name}
-                description={t(blockHelp[id])}
-                checked={on}
-                onChange={() => toggle(id)}
-              />
-              {on ? (
-                <Fieldset className="blocks-where" data-size="sm">
-                  <Fieldset.Legend>
-                    {t('builderBlocks.whereQuestion', { block: name })}
-                  </Fieldset.Legend>
-                  {panels
-                    .filter((p) => blockPanels[id].includes(p))
-                    .map((panel) => (
-                      <Radio
-                        key={panel}
-                        name={`plassering-${id}`}
-                        value={panel}
-                        label={t(panelLabel[panel])}
-                        checked={place === panel}
-                        onChange={() => onChange(moveTo(layout, id, panel))}
-                      />
-                    ))}
-                </Fieldset>
-              ) : null}
-            </div>
-          );
-        })}
-      </Fieldset>
     </div>
   );
 };

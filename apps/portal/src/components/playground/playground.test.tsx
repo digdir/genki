@@ -434,6 +434,26 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
+  it('says what is missing when the API refuses the setup, not that the model was silent', async () => {
+    await openPage({
+      invalidSetup: [
+        {
+          path: 'setup.spec.purpose',
+          message: 'Too small: expected string to have >=1 characters',
+        },
+      ],
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^Oppsettet er ikke klart til å prøves ennå\. Formål og målgruppe: Må fylles ut\. Fyll ut/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
   it('starts on the first service exposed for chat, not the first in the list', async () => {
     const options = structuredClone(examplePlaygroundOptions);
     options.services.sort((x) => (x.chat ? 1 : -1));

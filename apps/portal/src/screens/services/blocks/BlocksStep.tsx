@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
-import { BlocksPanel, type BlocksPanelVariant } from './BlocksPanel';
+import { BlocksPanel } from './BlocksPanel';
 import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
 import { ServicePreview, type PreviewDevice, type PreviewMode } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
@@ -119,9 +119,7 @@ export const BlocksStep = ({
   chat,
   address,
   onFullscreen,
-  variant,
 }: {
-  variant?: BlocksPanelVariant;
   state: BlocksState;
   narrow: boolean;
   assistant: ReactNode;
@@ -143,7 +141,6 @@ export const BlocksStep = ({
       <ToggleGroup
         ref={switcher}
         data-size="sm"
-        data-color="neutral"
         variant="secondary"
         className="blocks-switcher"
         aria-label={t('builderBlocks.leftLabel')}
@@ -156,11 +153,7 @@ export const BlocksStep = ({
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
-        <BlocksPanel
-          layout={state.layout}
-          onChange={state.change}
-          {...(variant ? { variant } : {})}
-        />
+        <BlocksPanel layout={state.layout} onChange={state.change} />
       ) : null}
       {state.tab === 'templates' ? (
         <TemplatesPanel current={state.template} onPick={state.pick} />

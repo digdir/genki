@@ -308,7 +308,7 @@ a.ds-button {
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
-.main-inner:has(.builder-split, .blocks-split, .blocks-fullscreen) {
+.main-inner:has(.builder-split, .blocks-split, .blocks-fullscreen, .service-advanced) {
   max-width: none;
 }
 
@@ -319,22 +319,39 @@ a.ds-button {
 }
 
 .builder-split > .assistant {
-  flex: 0 0 420px;
-  border-right: 1px solid var(--ds-color-neutral-border-subtle);
-  height: calc(100dvh - var(--header-height) - 200px);
+  flex: 1 0 420px;
+  max-width: 640px;
+  margin: var(--ds-size-4) var(--ds-size-4) var(--ds-size-4) 0;
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-neutral-background-tinted);
+  height: calc(var(--assistant-room, 100dvh - var(--header-height) - 200px) - var(--ds-size-4));
   min-height: 420px;
   position: sticky;
-  top: var(--header-height);
+  top: calc(var(--header-height) + var(--ds-size-4));
+}
+
+.builder-split > .assistant > .assistant-head {
+  border-bottom: 0;
+}
+
+.builder-split > .assistant > .assistant-compose {
+  background: transparent;
+  padding: var(--ds-size-2) var(--ds-size-4) var(--ds-size-4);
+}
+
+.builder-split > .assistant .compose-form {
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .builder-assistant-off {
-  flex: 0 0 420px;
+  flex: 1 0 420px;
+  max-width: 640px;
   padding: 20px;
   border-right: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
 .builder-canvas {
-  flex: 1;
+  flex: 1 1 752px;
   min-width: 0;
 }
 
@@ -392,21 +409,9 @@ a.ds-button {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: var(--ds-size-5);
-}
-
-.assistant-starters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--ds-size-2);
-}
-
-.assistant-starter {
-  border-radius: var(--ds-border-radius-full);
-  color: var(--ds-color-neutral-text-default);
+  gap: var(--ds-size-6);
 }
 
 .assistant-welcome {
@@ -574,6 +579,42 @@ a.ds-button {
   margin: 0;
 }
 
+.setup-part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-5);
+  padding: var(--ds-size-8) 0;
+  border-top: 1px solid var(--ds-color-neutral-border-subtle);
+  scroll-margin-top: var(--header-height);
+}
+
+.setup-part:first-of-type {
+  border-top: 0;
+  padding-top: var(--ds-size-2);
+}
+
+.setup-part.highlight {
+  margin-inline: calc(-1 * var(--ds-size-4));
+  padding-inline: var(--ds-size-4);
+  border-radius: var(--ds-border-radius-lg);
+  background: var(--ds-color-accent-surface-tinted);
+  transition: background 0.3s;
+}
+
+.setup-part-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-3);
+}
+
+.setup-part-head > .ds-heading {
+  margin: 0;
+}
+
+.setup-part > .setup-body {
+  padding: 0;
+}
+
 .setup-toggle {
   font: inherit;
   width: 100%;
@@ -636,6 +677,10 @@ a.ds-button {
   display: flex;
   flex-direction: column;
   gap: var(--ds-size-8);
+}
+
+.setup-body > .ds-field + .field-action {
+  margin-top: calc(var(--ds-size-4) - var(--ds-size-8));
 }
 
 .setup-readonly {
@@ -735,6 +780,10 @@ a.ds-button {
   font-size: 16px;
   line-height: 1.6;
   resize: vertical;
+}
+
+textarea.instructions-editor:not([rows]) {
+  min-height: 6lh;
 }
 
 .example-row {
@@ -1190,4 +1239,48 @@ a.ds-button {
   .channel-row {
     grid-template-columns: 1fr;
   }
+}
+
+.advanced {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--ds-size-8);
+  align-items: start;
+  padding-top: var(--ds-size-4);
+}
+
+.advanced-nav {
+  padding-right: var(--ds-size-6);
+  border-right: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.advanced-nav a {
+  justify-content: flex-start;
+  font-size: var(--ds-font-size-4);
+}
+
+.advanced-page {
+  min-width: 0;
+  max-width: 752px;
+}
+
+.advanced-page .setup-part:first-child {
+  padding-top: 0;
+}
+
+@media (max-width: 900px) {
+  .advanced {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-nav {
+    padding-right: 0;
+    border-right: 0;
+  }
+}
+
+.own-documents {
+  list-style: none;
+  margin: var(--ds-size-2) 0 0;
+  padding: 0;
 }

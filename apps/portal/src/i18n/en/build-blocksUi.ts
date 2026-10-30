@@ -3,7 +3,7 @@ import type { blocksUi as source } from '../nb/build-blocksUi';
 
 export const blocksUi = {
   builderBlocks: {
-    sectionLabel: 'Building blocks',
+    sectionLabel: 'Interface',
     tabChat: 'Chat',
     tabBlocks: 'Building blocks',
     tabTemplates: 'Starting point',
@@ -11,16 +11,11 @@ export const blocksUi = {
     paneBlocks: 'Building blocks',
     panePreview: 'Preview',
     intro:
-      'Most blocks have a fixed place and are turned on with a switch. Four blocks can stand in more than one place. When you turn one of them on, you choose where it goes.',
-    introPerPanel:
       'Turn on the blocks you want in each panel. Some blocks can stand in more than one place, but only one place at a time.',
     usedIn: 'In the {panel}. Turn it on here to move it here.',
     groupLeft: 'Left side panel',
     groupMain: 'Middle',
-    groupMainHelp: 'Choose what you want here',
     groupRight: 'Right side panel',
-    groupFlexible: 'Blocks that can stand in more than one place',
-    whereQuestion: 'Where should {block} go?',
     panelLeft: 'Left side panel',
     panelMain: 'Middle',
     panelRight: 'Right side panel',

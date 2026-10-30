@@ -2,6 +2,8 @@ import type { FlowInputCheck } from '../../data/flow-inputs';
 import {
   Alert,
   Button,
+  EXPERIMENTAL_FileUpload,
+  EXPERIMENTAL_Suggestion,
   Card,
   Heading,
   Checkbox,
@@ -18,6 +20,7 @@ import {
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
+import { SparklesIcon } from '@navikt/aksel-icons';
 import { useState, type ReactNode } from 'react';
 import { Icon, icons } from '../../components/Icon';
 import {
@@ -122,7 +125,10 @@ export type SectionId =
   | 'variants'
   | 'risk'
   | 'guards'
-  | 'start';
+  | 'start'
+  | 'inputKinds'
+  | 'inputForm'
+  | 'refuse';
 
 export const sectionTitles: Record<SectionId, PlainKey> = {
   purpose: 'setup.sectionPurpose',
@@ -137,6 +143,9 @@ export const sectionTitles: Record<SectionId, PlainKey> = {
   risk: 'setup.sectionRisk',
   guards: 'setup.sectionGuards',
   start: 'setup.sectionStart',
+  inputKinds: 'setup.sectionInput',
+  inputForm: 'inputForm.heading',
+  refuse: 'setup.refuseTopics',
 };
 
 const audienceKeys: Record<string, PlainKey> = {
@@ -371,6 +380,11 @@ export const summaries = (
       ]
         .filter(Boolean)
         .join(', ') || t('setup.guardNone'),
+    inputKinds: ioIn,
+    inputForm: s.input.fields?.length
+      ? t('setup.formWithFields', { count: s.input.fields.length })
+      : t('setup.nothingChosen'),
+    refuse: refuseTopicsOf(s).join(', ') || t('setup.nothingChosen'),
     start:
       [
         ...channelKeys.filter((x) => channelOn(s, x)).map((x) => labelOf(t, startKeys, x)),
@@ -405,9 +419,11 @@ const Section = ({
   summary,
   onToggle,
   readOnly = false,
+  continuous = false,
   title,
   children,
 }: {
+  continuous?: boolean;
   title?: string;
   id: SectionId;
   visible: boolean;
@@ -420,7 +436,37 @@ const Section = ({
   children: ReactNode;
 }) => {
   const t = useT();
-  return !visible ? null : (
+  const body = readOnly ? (
+    <fieldset disabled className="setup-readonly">
+      {children}
+    </fieldset>
+  ) : (
+    children
+  );
+  if (!visible) return null;
+  if (continuous)
+    return (
+      <section
+        id={`sek-${id}`}
+        aria-labelledby={`sek-${id}-tittel`}
+        className={highlight ? 'setup-part highlight' : 'setup-part'}
+      >
+        <div className="setup-part-head">
+          <Heading level={2} data-size="xs" id={`sek-${id}-tittel`}>
+            {title ?? t(sectionTitles[id])}
+          </Heading>
+          {fromAi ? (
+            <Tag data-size="sm" data-color="info">
+              {t('setup.fromAssistant')}
+            </Tag>
+          ) : null}
+        </div>
+        <div id={`sek-${id}-innhold`} className="setup-body">
+          {body}
+        </div>
+      </section>
+    );
+  return (
     <section id={`sek-${id}`} className={highlight ? 'setup-section highlight' : 'setup-section'}>
       <h2 className="setup-heading">
         <button
@@ -446,13 +492,7 @@ const Section = ({
       </h2>
       {open ? (
         <div id={`sek-${id}-innhold`} className="setup-body">
-          {readOnly ? (
-            <fieldset disabled className="setup-readonly">
-              {children}
-            </fieldset>
-          ) : (
-            children
-          )}
+          {body}
         </div>
       ) : null}
     </section>
@@ -482,8 +522,12 @@ interface Props {
   instructionsUnderPurpose?: boolean;
   safetyTogether?: boolean;
   sourcesTogether?: boolean;
+  continuous?: boolean;
+  apart?: boolean;
   resultWish?: string;
   onResultWish?: (text: string) => void;
+  onAsk?: ((question: string) => void) | undefined;
+  askOff?: boolean;
   languageTabs?: (shared: ReactNode) => ReactNode;
   inputLockedIds?: string[];
   inputLookup?: InputOptionLookup | undefined;
@@ -493,6 +537,18 @@ interface Props {
   readOnly?: boolean;
   api?: ApiClient | undefined;
 }
+
+/** A web address the owner typed, with https added when it is left out, or nothing when it is not one. */
+export const webAddress = (text: string) => {
+  try {
+    const url = new URL(/^[a-z]+:\/\//i.test(text) ? text : `https://${text}`);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname.includes('.')
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const pickClass = (on: boolean) => (on ? 'pick-card picked' : 'pick-card');
 
@@ -519,8 +575,12 @@ export const SetupTab = ({
   instructionsUnderPurpose = false,
   safetyTogether = false,
   sourcesTogether = false,
+  continuous = false,
+  apart = false,
   resultWish = '',
   onResultWish,
+  onAsk,
+  askOff = false,
   languageTabs,
   inputLockedIds,
   inputLookup,
@@ -536,6 +596,19 @@ export const SetupTab = ({
   const [catalog, setCatalog] = useState(false);
   const [datasetPicker, setDatasetPicker] = useState(false);
   const [refuseInput, setRefuseInput] = useState('');
+  const [ownDocuments, setOwnDocuments] = useState<string[]>([]);
+  const [webPages, setWebPages] = useState<string[]>([]);
+  const [webInput, setWebInput] = useState('');
+  const [webInvalid, setWebInvalid] = useState(false);
+  const addWebPage = () => {
+    const v = webInput.trim();
+    if (!v) return;
+    const url = webAddress(v);
+    if (!url) return setWebInvalid(true);
+    setWebPages((cur) => (cur.includes(url) ? cur : [...cur, url]));
+    setWebInput('');
+    setWebInvalid(false);
+  };
   const s = d.spec;
   const datasetNames =
     live?.datasets.status === 'ready'
@@ -604,52 +677,78 @@ export const SetupTab = ({
                 .map((m) => sum[m])
                 .filter(Boolean)
                 .join(' · '),
-    ...(safetyTogether && id === 'risk' ? { title: t('setup.sectionSafety') } : {}),
+    ...((safetyTogether || apart) && id === 'risk' ? { title: t('setup.sectionSafety') } : {}),
+    ...(apart && id === 'guards' ? { title: t('setup.safetyGuards') } : {}),
     ...(sourcesTogether && id === 'knowledge' ? { title: t('setup.sectionSources') } : {}),
     onToggle: () => onToggle(id),
     readOnly,
+    continuous,
   });
+
+  const inputFormBody = (
+    <InputFieldsEditor
+      headingHidden={apart}
+      fields={s.input.fields ?? []}
+      datasets={datasets.map((x) => x.dataset)}
+      onChange={(inputFields) =>
+        patch((cur) => ({
+          input: defined({ ...cur.spec.input, fields: inputFields }) as ServiceSpec['input'],
+        }))
+      }
+      {...(inputLockedIds ? { lockedIds: inputLockedIds } : {})}
+      flowCheck={flowCheck}
+      lookup={inputLookup}
+      serviceId={serviceId}
+      tenant={tenant ?? d.metadata.tenant}
+    />
+  );
+
+  const runtimeDocsSwitch = (
+    <Switch
+      label={t('setup.runtimeDocs')}
+      description={t.rich('setup.runtimeDocsHelp', {
+        notDecided: (chunk) => <span className="not-decided-inline">{chunk}</span>,
+      })}
+      checked={s.knowledge?.runtimeDocuments === true}
+      onChange={() =>
+        patch((cur) =>
+          withRuntimeDocuments(cur.spec, cur.spec.knowledge?.runtimeDocuments !== true),
+        )
+      }
+    />
+  );
+
+  const inputKindsBody = (
+    <fieldset className="plain-fieldset stack-xs">
+      <legend className="ds-label">{t('setup.whatGoesIn')}</legend>
+      <div className="tag-row">
+        {inputChoiceIds.map((id) => (
+          <Chip.Checkbox
+            key={id}
+            checked={inputChoiceOn(s, id)}
+            onChange={() => patch((cur) => withInputChoice(cur.spec, id))}
+          >
+            {labelOf(t, inputKeys, id)}
+          </Chip.Checkbox>
+        ))}
+      </div>
+      {inputChoiceOn(s, 'files') || s.input.ocr === true ? (
+        <Switch
+          label={t('setup.ocr')}
+          description={t('setup.ocrHelp')}
+          checked={s.input.ocr === true}
+          onChange={() =>
+            patch((cur) => ({ input: { ...cur.spec.input, ocr: cur.spec.input.ocr !== true } }))
+          }
+        />
+      ) : null}
+    </fieldset>
+  );
 
   const ioInputBody = (
     <>
-      <fieldset className="plain-fieldset stack-xs">
-        <legend className="ds-label">{t('setup.whatGoesIn')}</legend>
-        <div className="tag-row">
-          {inputChoiceIds.map((id) => (
-            <Chip.Checkbox
-              key={id}
-              checked={inputChoiceOn(s, id)}
-              onChange={() => patch((cur) => withInputChoice(cur.spec, id))}
-            >
-              {labelOf(t, inputKeys, id)}
-            </Chip.Checkbox>
-          ))}
-        </div>
-        {inputChoiceOn(s, 'files') || s.input.ocr === true ? (
-          <Switch
-            label={t('setup.ocr')}
-            description={t('setup.ocrHelp')}
-            checked={s.input.ocr === true}
-            onChange={() =>
-              patch((cur) => ({ input: { ...cur.spec.input, ocr: cur.spec.input.ocr !== true } }))
-            }
-          />
-        ) : null}
-      </fieldset>
-      <InputFieldsEditor
-        fields={s.input.fields ?? []}
-        datasets={datasets.map((x) => x.dataset)}
-        onChange={(inputFields) =>
-          patch((cur) => ({
-            input: defined({ ...cur.spec.input, fields: inputFields }) as ServiceSpec['input'],
-          }))
-        }
-        {...(inputLockedIds ? { lockedIds: inputLockedIds } : {})}
-        flowCheck={flowCheck}
-        lookup={inputLookup}
-        serviceId={serviceId}
-        tenant={tenant ?? d.metadata.tenant}
-      />
+      {inputKindsBody}
+      {apart ? null : inputFormBody}
     </>
   );
 
@@ -673,7 +772,13 @@ export const SetupTab = ({
                 description={t(desc)}
                 checked={s.output.kind === id}
                 disabled={id === 'table' && !tableAllowed && s.output.kind !== 'table'}
-                onChange={() => patch((cur) => withOutputKind(cur.spec, id))}
+                onChange={() =>
+                  patch((cur) =>
+                    apart && id === 'answer'
+                      ? { output: { ...cur.spec.output, kind: 'answer', withSources: true } }
+                      : withOutputKind(cur.spec, id),
+                  )
+                }
               />
             </div>
           ))}
@@ -798,7 +903,7 @@ export const SetupTab = ({
           ) : null}
         </div>
       ) : null}
-      {s.output.kind === 'answer' ? (
+      {s.output.kind === 'answer' && !apart ? (
         <Switch
           label={t('setup.showSources')}
           checked={s.output.withSources === true}
@@ -829,6 +934,53 @@ export const SetupTab = ({
         </Field>
       ) : null}
     </>
+  );
+
+  const refuseBody = (
+    <div className="stack-xs">
+      <Label htmlFor="felt-avsla" className={apart ? 'visually-hidden' : undefined}>
+        {t('setup.refuseTopics')}
+      </Label>
+      <div className="tag-row">
+        {refuse.map((r) => (
+          <Chip.Removable
+            key={r}
+            aria-label={t('setup.removeTopicLabel', { topic: r })}
+            onClick={() =>
+              patch((cur) =>
+                withRefuseTopics(
+                  cur.spec,
+                  refuseTopicsOf(cur.spec).filter((x) => x !== r),
+                ),
+              )
+            }
+          >
+            {r}
+          </Chip.Removable>
+        ))}
+      </div>
+      <div className="inline-add">
+        <Input
+          id="felt-avsla"
+          data-size="sm"
+          value={refuseInput}
+          placeholder={t('setup.refusePlaceholder')}
+          onChange={(e) => setRefuseInput(e.target.value)}
+        />
+        <Button
+          variant="secondary"
+          data-size="sm"
+          onClick={() => {
+            const v = refuseInput.trim();
+            if (!v) return;
+            patch((cur) => withRefuseTopics(cur.spec, [...refuseTopicsOf(cur.spec), v]));
+            setRefuseInput('');
+          }}
+        >
+          {t('setup.add')}
+        </Button>
+      </div>
+    </div>
   );
 
   const guardsBody = (
@@ -867,48 +1019,7 @@ export const SetupTab = ({
         readOnly={s.output.kind === 'fields'}
         onChange={() => s.output.kind !== 'fields' && toggleGuard('require-sources')}
       />
-      <div className="stack-xs">
-        <Label htmlFor="felt-avsla">{t('setup.refuseTopics')}</Label>
-        <div className="tag-row">
-          {refuse.map((r) => (
-            <Chip.Removable
-              key={r}
-              aria-label={t('setup.removeTopicLabel', { topic: r })}
-              onClick={() =>
-                patch((cur) =>
-                  withRefuseTopics(
-                    cur.spec,
-                    refuseTopicsOf(cur.spec).filter((x) => x !== r),
-                  ),
-                )
-              }
-            >
-              {r}
-            </Chip.Removable>
-          ))}
-        </div>
-        <div className="inline-add">
-          <Input
-            id="felt-avsla"
-            data-size="sm"
-            value={refuseInput}
-            placeholder={t('setup.refusePlaceholder')}
-            onChange={(e) => setRefuseInput(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            data-size="sm"
-            onClick={() => {
-              const v = refuseInput.trim();
-              if (!v) return;
-              patch((cur) => withRefuseTopics(cur.spec, [...refuseTopicsOf(cur.spec), v]));
-              setRefuseInput('');
-            }}
-          >
-            {t('setup.add')}
-          </Button>
-        </div>
-      </div>
+      {apart ? null : refuseBody}
       <Field className="narrow-field">
         <Label htmlFor="felt-sprak">{t('setup.resultLanguage')}</Label>
         <Select
@@ -949,12 +1060,11 @@ export const SetupTab = ({
             <p className="meta">{t('setup.instructionsRemoteHelp')}</p>
           ) : (
             <>
-              {defaultInstructions(t, s) ? (
+              {!continuous && defaultInstructions(t, s) ? (
                 <p className="meta">{t('setup.instructionsBuiltInHelp')}</p>
               ) : null}
               <Textarea
                 id="felt-instr"
-                rows={14}
                 className="instructions-editor"
                 value={instructions}
                 onChange={(e) => {
@@ -967,7 +1077,7 @@ export const SetupTab = ({
           )}
         </Field>,
       )}
-      {instructionsAssist}
+      {instructionsAssist ? <div className="field-action">{instructionsAssist}</div> : null}
       {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
         <BuiltInInstructions
           strategy={s.strategy.id}
@@ -1025,9 +1135,23 @@ export const SetupTab = ({
     </>
   );
 
+  const ask = (key: 'setup.askGoal' | 'setup.askSources' | 'setup.askOutcome') =>
+    onAsk && !readOnly ? (
+      <Button
+        variant="secondary"
+        data-size="sm"
+        className="align-start field-action"
+        aria-disabled={askOff || undefined}
+        onClick={() => (askOff ? undefined : onAsk(t(key)))}
+      >
+        <SparklesIcon aria-hidden fontSize="1.25em" />
+        {t(key)}
+      </Button>
+    ) : null;
+
   return (
     <div className="stack-sm">
-      {!sections || sections.includes('purpose') ? (
+      {!continuous && (!sections || sections.includes('purpose')) ? (
         <p className="meta setup-intro">{t('setup.intro')}</p>
       ) : null}
 
@@ -1048,6 +1172,7 @@ export const SetupTab = ({
             onChange={(e) => patch({ purpose: e.target.value })}
           />
         </Field>
+        {ask('setup.askGoal')}
         {instructionsUnderPurpose ? instructionsBody : null}
         <fieldset className="chip-fieldset">
           <legend className="ds-label">{t('setup.audience')}</legend>
@@ -1090,7 +1215,38 @@ export const SetupTab = ({
       </Section>
 
       <Section {...props('knowledge')}>
-        {datasets.map((ref, i) => {
+        {apart ? (
+          <DatasetSuggestion
+            options={
+              live
+                ? live.datasets
+                : {
+                    status: 'ready',
+                    data: Object.entries(exampleDatasets).map(([id, d]) => ({
+                      id,
+                      name: d.name,
+                      shared: false,
+                    })),
+                  }
+            }
+            chosen={datasets.map((ref) => ({
+              value: ref.dataset,
+              label: datasetName(ref.dataset, datasetNames),
+            }))}
+            onChange={(ids) =>
+              patch((cur) =>
+                withDatasets(
+                  cur.spec,
+                  ids.map(
+                    (id) => datasetsOf(cur.spec).find((x) => x.dataset === id) ?? { dataset: id },
+                  ),
+                ),
+              )
+            }
+          />
+        ) : null}
+        {ask('setup.askSources')}
+        {(apart ? [] : datasets).map((ref, i) => {
           const shown = datasetName(ref.dataset, datasetNames);
           const reranker = rerankerOf(s);
           const filter = filterText(ref.filters);
@@ -1130,8 +1286,10 @@ export const SetupTab = ({
             </div>
           );
         })}
-        {datasets.length === 0 ? <p className="meta">{t('setup.noDatasets')}</p> : null}
-        {live ? (
+        {apart ? null : datasets.length === 0 ? (
+          <p className="meta">{t('setup.noDatasets')}</p>
+        ) : null}
+        {apart ? null : live ? (
           <>
             <Button
               variant="secondary"
@@ -1171,19 +1329,96 @@ export const SetupTab = ({
             {t('setup.addDataset')}
           </Button>
         )}
-        <Switch
-          label={t('setup.runtimeDocs')}
-          description={t.rich('setup.runtimeDocsHelp', {
-            notDecided: (chunk) => <span className="not-decided-inline">{chunk}</span>,
-          })}
-          checked={s.knowledge?.runtimeDocuments === true}
-          onChange={() =>
-            patch((cur) =>
-              withRuntimeDocuments(cur.spec, cur.spec.knowledge?.runtimeDocuments !== true),
-            )
-          }
-        />
-        {sourcesTogether ? ioInputBody : null}
+        {apart ? (
+          <Field>
+            <Label htmlFor="felt-nettside">{t('setup.webPages')}</Label>
+            <Field.Description>{t('setup.webPagesHelp')}</Field.Description>
+            <div className="inline-add">
+              <Input
+                id="felt-nettside"
+                type="url"
+                inputMode="url"
+                data-size="sm"
+                value={webInput}
+                placeholder={t('setup.webPagesPlaceholder')}
+                aria-invalid={webInvalid || undefined}
+                onChange={(e) => {
+                  setWebInput(e.target.value);
+                  setWebInvalid(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  addWebPage();
+                }}
+              />
+              <Button variant="secondary" data-size="sm" onClick={addWebPage}>
+                {t('setup.add')}
+              </Button>
+            </div>
+            {webInvalid ? (
+              <ValidationMessage>{t('setup.webPagesInvalid')}</ValidationMessage>
+            ) : null}
+            {apart ? (
+              <Field>
+                <Label>{t('setup.ownDocuments')}</Label>
+                <Field.Description>{t('setup.ownDocumentsHelp')}</Field.Description>
+                <EXPERIMENTAL_FileUpload>
+                  <Field.Description>{t('setup.ownDocumentsDrop')}</Field.Description>
+                  <Button asChild data-variant="secondary">
+                    <span>{t('setup.ownDocumentsPick')}</span>
+                  </Button>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.txt,.md"
+                    onChange={(e) => {
+                      const picked = [...(e.target.files ?? [])].map((f) => f.name);
+                      setOwnDocuments((cur) => [...cur, ...picked.filter((n) => !cur.includes(n))]);
+                      e.target.value = '';
+                    }}
+                  />
+                </EXPERIMENTAL_FileUpload>
+                {ownDocuments.length ? (
+                  <ul className="own-documents">
+                    {ownDocuments.map((name) => (
+                      <li key={name} className="item-row">
+                        <span className="item-text">{name}</span>
+                        <Button
+                          variant="tertiary"
+                          data-size="sm"
+                          aria-label={t('setup.ownDocumentsRemove', { name })}
+                          onClick={() => setOwnDocuments((cur) => cur.filter((n) => n !== name))}
+                        >
+                          {t('setup.remove')}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </Field>
+            ) : null}
+            {webPages.length ? (
+              <ul className="own-documents">
+                {webPages.map((url) => (
+                  <li key={url} className="item-row">
+                    <span className="item-text">{url}</span>
+                    <Button
+                      variant="tertiary"
+                      data-size="sm"
+                      aria-label={t('setup.ownDocumentsRemove', { name: url })}
+                      onClick={() => setWebPages((cur) => cur.filter((u) => u !== url))}
+                    >
+                      {t('setup.remove')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Field>
+        ) : null}
+        {apart ? null : runtimeDocsSwitch}
+        {sourcesTogether && !apart ? ioInputBody : null}
       </Section>
 
       <Section {...props('result')}>
@@ -1197,6 +1432,7 @@ export const SetupTab = ({
             onChange={(e) => onResultWish?.(e.target.value)}
           />
         </Field>
+        {ask('setup.askOutcome')}
         {ioOutputBody}
       </Section>
 
@@ -1494,6 +1730,15 @@ export const SetupTab = ({
 
       <Section {...props('guards')}>{safetyTogether ? null : guardsBody}</Section>
 
+      {apart ? (
+        <Section {...props('inputKinds')}>
+          {inputKindsBody}
+          {runtimeDocsSwitch}
+        </Section>
+      ) : null}
+      {apart ? <Section {...props('inputForm')}>{inputFormBody}</Section> : null}
+      {apart ? <Section {...props('refuse')}>{refuseBody}</Section> : null}
+
       <Section {...props('start')}>
         {channelGroups.map(([group, keys]) => (
           <fieldset key={group} className="chip-fieldset">
@@ -1612,6 +1857,49 @@ export const SetupTab = ({
         ) : null}
       </Section>
     </div>
+  );
+};
+
+/** Datasets picked by searching, with the chosen ones as chips. */
+const DatasetSuggestion = ({
+  options,
+  chosen,
+  onChange,
+}: {
+  options: AsyncState<DatasetOption[]>;
+  chosen: { value: string; label: string }[];
+  onChange: (ids: string[]) => void;
+}) => {
+  const t = useT();
+  const items = options.status === 'ready' ? options.data : [];
+  return (
+    <Field>
+      <Label>{t('setup.datasets')}</Label>
+      <Field.Description>{t('setup.datasetsHelp')}</Field.Description>
+      <EXPERIMENTAL_Suggestion
+        multiple
+        selected={chosen}
+        onSelectedChange={(picked) => onChange(picked.map((p) => p.value))}
+      >
+        <EXPERIMENTAL_Suggestion.Input />
+        <EXPERIMENTAL_Suggestion.Clear aria-label={t('setup.datasetsClear')} />
+        <EXPERIMENTAL_Suggestion.List>
+          <EXPERIMENTAL_Suggestion.Empty>
+            {options.status === 'loading'
+              ? t('setup.loadingDatasets')
+              : options.status === 'error'
+                ? t('setup.datasetsFailed')
+                : t('setup.datasetsNone')}
+          </EXPERIMENTAL_Suggestion.Empty>
+          {items.map((d) => (
+            <EXPERIMENTAL_Suggestion.Option key={d.id} label={d.name} value={d.id}>
+              {d.name}
+              <div className="meta">{d.shared ? t('setup.sharedDatasets') : d.id}</div>
+            </EXPERIMENTAL_Suggestion.Option>
+          ))}
+        </EXPERIMENTAL_Suggestion.List>
+      </EXPERIMENTAL_Suggestion>
+    </Field>
   );
 };
 

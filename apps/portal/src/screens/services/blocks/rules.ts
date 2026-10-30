@@ -25,14 +25,6 @@ export const blockPanels: Record<BlockId, Panel[]> = {
   documentView: ['right', 'main'],
 };
 
-export const fixedBlocks: Record<Panel, BlockId[]> = {
-  left: ['projects', 'threads', 'settings'],
-  main: [],
-  right: ['sources', 'notes'],
-};
-
-export const flexibleBlocks: BlockId[] = ['chat', 'filter', 'procedure', 'documentView'];
-
 export const panelOrder: Record<Panel, BlockId[]> = {
   left: ['projects', 'threads', 'filter', 'settings'],
   main: ['procedure', 'filter', 'chat', 'documentView'],
@@ -113,12 +105,7 @@ export const templates: Record<TemplateId, BlockLayout> = {
   }),
   procedureFocus: layoutOf({ threads: 'left', chat: 'main', procedure: 'right' }),
   notesFocus: layoutOf({ projects: 'left', threads: 'left', chat: 'main', notes: 'right' }),
-  documentFocus: layoutOf({
-    threads: 'left',
-    documentView: 'main',
-    chat: 'right',
-    sources: 'right',
-  }),
+  documentFocus: layoutOf({ documentView: 'main', chat: 'right', sources: 'right' }),
   classic: layoutOf({ threads: 'left', procedure: 'main', chat: 'main', sources: 'right' }),
   noRight: layoutOf({ threads: 'left', filter: 'left', procedure: 'main', chat: 'main' }),
   noLeft: layoutOf({ procedure: 'main', chat: 'main', sources: 'right' }),

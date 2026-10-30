@@ -4,6 +4,7 @@ export type ServiceSection =
   | 'overview'
   | 'setup'
   | 'blocks'
+  | 'advanced'
   | 'test'
   | 'channels'
   | 'settings'
@@ -16,6 +17,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
   setup: 'service.sectionSetup',
   blocks: 'builderBlocks.sectionLabel',
+  advanced: 'service.sectionAdvanced',
   test: 'service.sectionTest',
   channels: 'service.sectionChannels',
   settings: 'service.sectionSettings',
@@ -29,6 +31,7 @@ const order: ServiceSection[] = [
   'overview',
   'setup',
   'blocks',
+  'advanced',
   'test',
   'channels',
   'settings',
@@ -40,8 +43,11 @@ const order: ServiceSection[] = [
 
 export const availableSections = ({ isNew }: { isNew: boolean }) =>
   isNew
-    ? order.filter((s) => s === 'setup' || s === 'blocks' || s === 'test' || s === 'versions')
-    : order.filter((s) => s !== 'blocks');
+    ? order.filter(
+        (s) =>
+          s === 'setup' || s === 'blocks' || s === 'advanced' || s === 'test' || s === 'versions',
+      )
+    : order.filter((s) => s !== 'blocks' && s !== 'advanced');
 
 export const developerSections: ServiceSection[] = ['test', 'versions'];
 
