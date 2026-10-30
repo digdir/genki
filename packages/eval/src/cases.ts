@@ -133,6 +133,7 @@ export const criteriaJudge = (
 ): Evaluator => {
   const prompt = criteriaJudgePrompt('');
   let chosen: Promise<JudgeModel | undefined> | undefined;
+  let pickedAgainst: string[] = [];
   let model: JudgeModel | undefined;
   const score = (fields: Pick<Score, 'value' | 'applicable' | 'state'> & { reason?: string }) => ({
     evaluator: criteriaJudgeId,
@@ -171,7 +172,10 @@ export const criteriaJudge = (
           }),
         ];
       try {
-        chosen ??= pick(ctx.servedModels);
+        if (!chosen) {
+          pickedAgainst = ctx.servedModels;
+          chosen = pick(ctx.servedModels);
+        }
         model = await chosen;
         if (!model)
           return [
@@ -179,21 +183,20 @@ export const criteriaJudge = (
               value: null,
               applicable: true,
               state: 'failed',
-              reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
+              reason: `no judge model from another family than ${pickedAgainst.join(', ')}`,
             }),
           ];
         const judged = await rubricJudge(model, criteriaJudgePrompt(criteria)).evaluate(c, o, ctx);
-        const value = judged.find((s) => s.metric === 'judge.criteria')?.value ?? null;
+        // rubricJudge throws when the model gives no verdict, which the catch records as failed.
+        const value = judged.find((s) => s.metric === 'judge.criteria')?.value as number;
         const rationale = judged.find((s) => s.metric === 'judge.overall')?.details?.rationale;
         return [
-          value === null
-            ? score({ value: null, applicable: true, state: 'failed', reason: 'no verdict' })
-            : score({
-                value,
-                applicable: true,
-                state: 'scored',
-                ...(typeof rationale === 'string' ? { reason: rationale } : {}),
-              }),
+          score({
+            value,
+            applicable: true,
+            state: 'scored',
+            ...(typeof rationale === 'string' ? { reason: rationale } : {}),
+          }),
         ];
       } catch (error) {
         return [

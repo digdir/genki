@@ -1,4 +1,4 @@
-import { EvalError } from './evaluators.js';
+import { EvalError, evaluatorOfJudge } from './evaluators.js';
 import { compareRuns, perCaseMeans, unscoredIn, type ComparableField } from './runner.js';
 import type { EvalRun, Gate } from './schema.js';
 import type { EvalRunStore } from './store.js';
@@ -83,7 +83,9 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
       let note = '';
       if (usesJudge(gate.metric)) {
         const uncalibrated = run.provenance.judges.filter(
-          (j) => (input.judgeAgreement?.get(j) ?? 0) < minimumJudgeAgreement,
+          (j) =>
+            (input.judgeAgreement?.get(j) ?? input.judgeAgreement?.get(evaluatorOfJudge(j)) ?? 0) <
+            minimumJudgeAgreement,
         );
         if (run.provenance.judges.length === 0 || uncalibrated.length > 0) {
           blocking = false;

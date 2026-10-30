@@ -27,9 +27,9 @@ const choiceWith = (calls: unknown[][]) =>
   }) as unknown as ModelChoice;
 
 describe('judges an eval run gets for itself', () => {
-  it("picks the criteria judge's model for the run's tenant, from another family than the writers, and charges it there", async () => {
+  it("picks the criteria judge's model for the run's tenant, from another family than the writers and the service's own models, and charges it there", async () => {
     const calls: unknown[][] = [];
-    const judges = runJudges(() => choiceWith(calls))(kari);
+    const judges = runJudges(() => choiceWith(calls))(kari, { avoid: ['foundry/gpt-4o-mini'] });
     const criteria = judges.get('judge:criteria');
 
     const scores = await criteria?.evaluate(
@@ -49,7 +49,7 @@ describe('judges an eval run gets for itself', () => {
 
     expect(calls.slice(0, 3)).toEqual([
       ['usable', '991825827'],
-      ['pickJudge', '991825827', ['foundry/gpt-4o']],
+      ['pickJudge', '991825827', ['foundry/gpt-4o', 'foundry/gpt-4o-mini']],
       ['judgeModel', 'kari', '991825827', 'foundry/claude-sonnet', 'builder'],
     ]);
     expect(criteria?.judge).toBe('judge:criteria@1+foundry/claude-sonnet');

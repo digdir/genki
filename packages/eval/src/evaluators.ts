@@ -36,6 +36,13 @@ export interface Evaluator {
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
 }
 
+/**
+ * The evaluator a judge in a run's provenance belongs to: a judge that names its version and model,
+ * judge:criteria@1+foundry/claude, is the evaluator judge:criteria; any other judge is itself.
+ * Labels and calibration are kept per evaluator.
+ */
+export const evaluatorOfJudge = (judge: string) => /^([^@+]+)@[^+]+\+/.exec(judge)?.[1] ?? judge;
+
 export class EvalError extends Error {
   constructor(message: string) {
     super(message);
@@ -105,9 +112,10 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
       }
       if (c.type === 'exact') {
         const expected = c.expected.referenceAnswer ?? c.expected.answerPattern;
+        // An exact case without its text cannot pass, as the portal grades it.
         scores.push(
-          expected === undefined
-            ? skipped(self, 'exact-text', 'the case has no text to find')
+          expected === undefined || expected.trim() === ''
+            ? { ...scored(self, 'exact-text', 0), reason: 'the case has no text to find' }
             : scored(
                 self,
                 'exact-text',

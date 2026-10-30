@@ -39,7 +39,10 @@ export const defaultObserve: Observe = (parts, events) => {
     .flatMap((p) => (p.body.kind === 'text' ? [p.body.text] : []))
     .join('\n')
     .trim();
-  const json = parts.flatMap((p) => (p.body.kind === 'json' ? [p.body.json] : []));
+  // Only application/json is the answer's fields; sources and retrieval parts ride beside any answer.
+  const json = parts.flatMap((p) =>
+    p.body.kind === 'json' && p.mime === 'application/json' ? [p.body.json] : [],
+  );
   const fields = json.find(
     (j): j is Record<string, unknown> => typeof j === 'object' && j !== null && !Array.isArray(j),
   );
