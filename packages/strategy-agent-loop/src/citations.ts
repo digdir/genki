@@ -107,6 +107,13 @@ export const detectInsufficientContext = (
   return hit ? { insufficient: true, signal: hit.signal } : { insufficient: false };
 };
 
+/**
+ * Rewrites OpenAI file-search style citation markers, such as 【3†source】, 【3†L1-L4】 or 【3:0†source】,
+ * as the contract's [3]. Some models use them even when told to cite with [N].
+ */
+export const normaliseCitationMarkers = (text: string): string =>
+  text.replace(/【 ?(\d+)(?::\d+)?(?:†[^】\n]{0,200})? ?】/g, '[$1]');
+
 export const stripPageMarkers = (text: string): string =>
   text.replace(/\{(\d+)\}/g, '').replace(/\n-{3,}\n/g, '\n');
 

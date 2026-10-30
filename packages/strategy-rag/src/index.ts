@@ -12,6 +12,7 @@ import {
   generationPromptFor,
   modelRoles,
   sessionFor,
+  normaliseCitationMarkers,
   numberByDocument,
   runtimeSkills,
   skillsSection,
@@ -232,7 +233,7 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
       filter.end();
       return full;
     });
-    const text = stripSourceLists(generated);
+    const text = normaliseCitationMarkers(stripSourceLists(generated));
     const citations = parseCitations(text, numbered.index);
     yield {
       type: 'kernel.result',
