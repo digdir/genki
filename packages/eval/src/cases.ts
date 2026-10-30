@@ -1,5 +1,6 @@
 import { splitFor } from './drafting.js';
 import {
+  answerText,
   contractAssertions,
   rubricJudge,
   type EvalContext,
@@ -172,6 +173,16 @@ export const criteriaJudge = (
             applicable: false,
             state: 'not-applicable',
             reason: 'the case has no criteria',
+          }),
+        ];
+      // An empty answer meets no criterion; asked anyway, a judge grades the criteria themselves.
+      if (answerText(o).trim() === '')
+        return [
+          score({
+            value: 0,
+            applicable: true,
+            state: 'scored',
+            reason: 'the answer is empty, so it meets no criterion',
           }),
         ];
       try {

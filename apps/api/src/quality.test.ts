@@ -19,7 +19,13 @@ import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
-import { progressed, runSummary, waitingForScores, type runDetail } from './service-eval.js';
+import {
+  answerOfParts,
+  progressed,
+  runSummary,
+  waitingForScores,
+  type runDetail,
+} from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -1414,6 +1420,27 @@ describe('a test run as the portal shows it', () => {
     ]);
 
     expect(runSummary(run)).toMatchObject({ passed: 0, total: 1 });
+  });
+
+  it("shows a fields-only answer as the case's output", () => {
+    const fieldsOnly = [
+      {
+        mime: 'application/json',
+        body: { kind: 'json' as const, json: { text: 'Fristen er 1. mai.', changes: [] } },
+      },
+      {
+        mime: 'application/vnd.genai.sources+json',
+        body: { kind: 'json' as const, json: [{ id: 'kilde' }] },
+      },
+    ];
+
+    expect(JSON.parse(answerOfParts(fieldsOnly))).toEqual({
+      text: 'Fristen er 1. mai.',
+      changes: [],
+    });
+    expect(answerOfParts([{ mime: 'text/plain', body: { kind: 'text', text: 'Svar.' } }])).toBe(
+      'Svar.',
+    );
   });
 
   it('never moves a finished run back to waiting or to running progress', () => {

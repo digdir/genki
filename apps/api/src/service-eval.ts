@@ -3,9 +3,11 @@ import type { Part, Principal } from '@genai/contracts';
 import { validateDefinition } from '@genai/definitions';
 import { residencies, residencyAllows, type Residency } from '@genai/port-model';
 import {
+  answerText,
   caseTypeOf,
   caseView,
   criteriaJudgeId,
+  defaultObserve,
   evalRun,
   gradeAnswer,
   runState,
@@ -121,10 +123,9 @@ const passes = (scores: Score[]) => {
   return verdict?.state === 'scored' && verdict.value === 1;
 };
 
-const textOfParts = (parts: unknown) =>
-  Array.isArray(parts)
-    ? (parts as Part[]).flatMap((p) => (p.body.kind === 'text' ? [p.body.text] : [])).join('\n')
-    : '';
+/** A case's answer as the portal shows it: its text, or a structured answer's fields as JSON. */
+export const answerOfParts = (parts: unknown) =>
+  Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
 
 /** A test run as the portal lists it, read from the eval run. */
 export const runSummary = (run: EvalRun) => {
@@ -406,7 +407,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       let answer = '';
       try {
         for await (const event of deps.events(r.task))
-          if (event.type === 'kernel.result') answer = textOfParts(event.data);
+          if (event.type === 'kernel.result') answer = answerOfParts(event.data);
       } catch {
         answer = '';
       }
