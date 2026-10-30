@@ -156,7 +156,11 @@ const loginRoles = {
 export const openKnowledgePools = (source: KnowledgePoolSource, login: 'api' | 'worker') => {
   const pools = Object.fromEntries(
     Object.entries(loginRoles[login]).map(([name, role]) => {
-      const pool = new pg.Pool({ ...source, options: `-c role=${role}` });
+      const pool = new pg.Pool({
+        ...source,
+        options: `-c role=${role}`,
+        connectionTimeoutMillis: 10_000,
+      });
       pool.on('connect', (client) => client.on('error', () => undefined));
       return [name, pool];
     }),

@@ -55,7 +55,12 @@ import {
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
-import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
+import {
+  isDevMode,
+  knowledgeServerProblems,
+  workerBootProblems,
+  workerDevModeWarning,
+} from './boot-guard.js';
 import { followPublished } from './follow.js';
 import { startHealthServer, watchKnowledgeBinding } from './knowledge-binding.js';
 import { createWorker, ownTenantOnly } from './worker.js';
@@ -121,6 +126,11 @@ const catalogs = {
     ? loadCatalog(configDir, 'embeddings.yaml', 'models')
     : { catalog: { endpoints: {}, models: [] }, skipped: [] },
 };
+const knowledgeRefused = knowledgeServerProblems(process.env, catalogs.knowledge.catalog);
+if (knowledgeRefused.length > 0) {
+  log('refusing to start', { problems: knowledgeRefused });
+  process.exit(1);
+}
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
