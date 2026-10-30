@@ -219,6 +219,7 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { runJudges } from './eval-judges.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
@@ -243,6 +244,7 @@ import { triggersModule } from './triggers.js';
 import { lifecycleOf, pausedMessage, serviceLifecycleModule } from './service-lifecycle.js';
 import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
+import { modelChoice } from './model-choice.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
@@ -997,6 +999,8 @@ export const createPlatform = async (input: PlatformInput) => {
       evalRunStrategy({
         kernel,
         evaluators,
+        forRun: runJudges(() => modelChoice(moduleDeps)),
+        modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,

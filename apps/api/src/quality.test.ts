@@ -359,6 +359,59 @@ describe('test sets for a service', () => {
   });
 });
 
+describe('the platform eval capability with the criteria judge', () => {
+  it('judges criteria cases with a model from another family, named in provenance, and falls back to the reference answer', async () => {
+    const env = await boot();
+    await env.platform.evalStores.testSets.put(
+      parseTestSet({
+        apiVersion: 'genai/v1',
+        kind: 'TestSet',
+        metadata: { tenant, id: 'svar-dommer', name: 'Dommer', version: 1 },
+        spec: {
+          service: 'svar',
+          cases: [
+            {
+              id: 'kriterier',
+              split: 'train',
+              input: 'Når er fristen for søknad?',
+              type: 'criteria',
+              expected: { criteria: { criteria: 'Svaret oppgir fristen' } },
+            },
+            {
+              id: 'gullsett',
+              split: 'train',
+              input: 'Når er fristen?',
+              expected: { referenceAnswer: 'Svaret oppgir fristen' },
+            },
+          ],
+        },
+      }),
+    );
+
+    const started = await env.send('POST', `/tenants/${tenant}/eval-runs`, 'kari', {
+      capability: `${tenant}/svar/default`,
+      testSet: { id: 'svar-dommer' },
+      evaluators: ['contract', 'judge:criteria'],
+      provenance: { commit: 'abc', data: 'd' },
+    });
+    expect(started.status).toBe(202);
+    let status = '';
+    for (let i = 0; i < 100 && status !== 'completed' && status !== 'failed'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      status = String(
+        (await env.send('GET', `/eval-tasks/${String(started.body.task)}`)).body.state,
+      );
+    }
+    const [stored] = await env.platform.evalStores.runs.list({ tenant, testSet: 'svar-dommer' });
+
+    expect(status).toBe('completed');
+    expect(stored?.run.provenance.judges).toEqual([`judge:criteria@1+${judgeId}`]);
+    expect(
+      stored?.run.results.map((r) => r.scores.find((s) => s.metric === 'judge.criteria')?.state),
+    ).toEqual(['scored', 'scored']);
+  });
+});
+
 describe('eval runs for a service', () => {
   it('runs the published version and records each case with its output and reason', async () => {
     const env = await boot();
