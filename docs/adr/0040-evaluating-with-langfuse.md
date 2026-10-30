@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (not built; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -78,7 +78,7 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
   - It finds judge traces through the scores on the case's trace (`metadata.job_execution_id`, whose trace id is the first 32 hex characters of `sha256(job_execution_id)`) and through traces whose metadata names the case's trace (`target_trace_id`), so a judge call that wrote no score is found too.
   - After the deletes it checks that no trace with the case's trace as target remains.
 - A failed delete stays pending and is tried again the next night, without holding back the purge in the platform. A delete that keeps failing, for example because the connection's secret was rotated, is reported to operators, and the connection shows as failing.
-- A connection with pending deletes cannot be removed. The tenant fixes its secret, or waits until the purge has confirmed every delete, so removing a connection never leaves text in the sink.
+- Removing a connection that has received traces first marks every trace sent through it for deletion. While it is being removed it covers no service and nothing is sent to it, and it is gone once the purge has confirmed every delete, so removing a connection never leaves text in the sink. While deletes are owed, its host and project cannot change; a new secret for the same project can be set.
 - A connection receives content only when ADR 0011's conditions for content-receiving sinks hold. In development mode a Langfuse on the developer's own machine is exempt from the 7-day rule, for made-up test sets only.
 
 ## Langfuse judges that block (proposed separately)
@@ -114,15 +114,10 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 
 ## Consequences
 
-- Not built. Building it needs:
-  - `evaluator@2` and its contract suite, and the `waiting for scores` state in `EvalRun`
-  - the tenant connections through the egress path, with their residency checked when a run starts
+- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode. Not built yet:
   - refusing service definitions whose gates use a Langfuse judge's metric
-  - the kernel change that records the evaluation context beside the input, and readers that leave it out
-  - per-case traces under a run
-  - the experiment export, the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
-  - the pending sink deletes, their pass in the nightly purge, and refusing to remove a connection with pending deletes
-  - limiting `TRACES_CONTENT` to development mode
+  - the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
+  - pending sink deletes after an erasure other than the nightly purge
 - Before agency data goes to Digdir's instance:
   - whose model key an agency's judges use there, and so who pays for their calls, is decided. The cost of each judge call is readable (about USD 0.008 per call on `claude-sonnet-5` at Langfuse's list price, measured on Digdir's instance on 2026-10-29), so Digdir's key with the cost shown per tenant is an option beside each tenant's own key.
   - where the instance stores what it receives is confirmed, so operators can set its connections' residency

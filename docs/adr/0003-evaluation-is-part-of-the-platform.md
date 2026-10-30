@@ -17,7 +17,7 @@ These rules replace or extend the decision above once they are built. The ones m
 
 - **One kind of run** (built). A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it.
 - **Evaluators may answer later** (built). An evaluator returns its scores at once or later (`evaluator@2`, ADR 0040).
-- **Holdout stays in the platform.** Holdout cases never leave the platform for a trace sink.
+- **Holdout stays in the platform** (built). Holdout cases never leave the platform for a trace sink.
 - **`expected.criteria`.** A test case carries the named fields judges read in `expected.criteria`, such as `criteria` or `supporting_quotes`. A `criteria` case's criteria move there from `referenceAnswer`, which then holds only a reference answer. Existing test sets are upgraded when they are read, so stored versions keep their numbers (built).
 - **Calibration for every model-based judge.** A judge, built in or a plug-in, blocks a publish only when both hold:
   - its agreement with human calibration labels is a Cohen's kappa of at least 0.6, over at least 30 labels with both verdicts among the judge's own;
@@ -43,4 +43,4 @@ The rules accepted with ADR 0040 follow from the same lesson. Calibration has to
 - The harness fails loudly when anything it needs is missing.
 - With the rules accepted with ADR 0040, the portal's run history shows scores and confidence intervals, not only pass or fail.
 - The calibration rule accepted with ADR 0040 also governs skill publishing (ADR 0024).
-- Not built yet from the amendment: holdout kept out of a trace sink, calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions, and re-running the baseline when a judge changes.
+- Not built yet from the amendment: calibration for every model-based judge (kappa over at least 30 labels, plug-ins too), labels that outlive judge versions, and re-running the baseline when a judge changes.
