@@ -167,18 +167,18 @@ export const criteriaJudge = (
             reason: 'the case has no criteria',
           }),
         ];
-      chosen ??= pick(ctx.servedModels);
-      model = await chosen;
-      if (!model)
-        return [
-          score({
-            value: null,
-            applicable: true,
-            state: 'failed',
-            reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
-          }),
-        ];
       try {
+        chosen ??= pick(ctx.servedModels);
+        model = await chosen;
+        if (!model)
+          return [
+            score({
+              value: null,
+              applicable: true,
+              state: 'failed',
+              reason: `no judge model from another family than ${ctx.servedModels.join(', ')}`,
+            }),
+          ];
         const judged = await rubricJudge(model, criteriaJudgePrompt(criteria)).evaluate(c, o, ctx);
         const value = judged.find((s) => s.metric === 'judge.criteria')?.value ?? null;
         const rationale = judged.find((s) => s.metric === 'judge.overall')?.details?.rationale;

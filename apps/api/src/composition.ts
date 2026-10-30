@@ -1000,6 +1000,7 @@ export const createPlatform = async (input: PlatformInput) => {
         kernel,
         evaluators,
         forRun: runJudges(() => modelChoice(moduleDeps)),
+        modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,

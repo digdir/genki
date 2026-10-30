@@ -81,7 +81,10 @@ export const contractAssertions = (refusalPatterns = defaultRefusalPatterns): Ev
     kind: 'deterministic',
     evaluate: async (c, o) => {
       const scores: Score[] = [];
-      const refused = o.answer.trim() === '' || refusals.some((r) => r.test(o.answer));
+      // No answer at all is a refusal; a structured answer has no text but is still an answer.
+      const refused =
+        (o.answer.trim() === '' && o.fields === undefined) ||
+        refusals.some((r) => r.test(o.answer));
       if (c.grounding === 'refusal-expected' || c.type === 'must_reject') {
         scores.push(scored(self, 'refusal', refused ? 1 : 0));
         scores.push(skipped(self, 'answer-pattern', 'a refusal is expected'));

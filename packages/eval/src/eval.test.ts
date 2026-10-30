@@ -194,7 +194,7 @@ describe('evaluators', () => {
     expect(values(fields)['fields-match']).toBe(0.5);
   });
 
-  it('checks the case types a person writes: exact text, and a refusal that may be no answer at all', async () => {
+  it('checks the case types a person writes: exact text, and a refusal that may be no answer at all, but never a structured answer', async () => {
     const contract = contractAssertions();
 
     const exact = (answer: string) =>
@@ -211,6 +211,15 @@ describe('evaluators', () => {
     expect(values(await exact('Snart.'))['exact-text']).toBe(0);
     expect(values(await rejected(''))).toMatchObject({ refusal: 1 });
     expect(values(await rejected('Her er svaret.'))).toMatchObject({ refusal: 0 });
+    expect(
+      values(
+        await contract.evaluate(
+          caseOf({ id: 'm', type: 'must_reject' }),
+          observation({ answer: '', fields: { personnummer: '01017012345' } }),
+          ctx,
+        ),
+      ),
+    ).toMatchObject({ refusal: 0 });
     expect(
       values(await contract.evaluate(caseOf({ id: 'c' }), observation({ answer: 'x' }), ctx))[
         'exact-text'
@@ -865,7 +874,7 @@ describe('the criteria judge', () => {
     expect(judge.judge).toBeUndefined();
   });
 
-  it('records a failed score when no judge model is available, or the judge call fails', async () => {
+  it('records a failed score when no judge model is available, picking one fails, or the judge call fails', async () => {
     const none = criteriaJudge(async () => undefined);
     const broken = criteriaJudge(async () => ({
       ...claude,
@@ -878,6 +887,10 @@ describe('the criteria judge', () => {
     expect(await broken.evaluate(criteriaCase, observation({ answer: 'x' }), ctx)).toMatchObject([
       { state: 'failed', reason: 'the model answered HTTP 429' },
     ]);
+    const unpickable = criteriaJudge(() => Promise.reject(new Error('the policy store is down')));
+    expect(
+      await unpickable.evaluate(criteriaCase, observation({ answer: 'x' }), ctx),
+    ).toMatchObject([{ state: 'failed', reason: 'the policy store is down' }]);
   });
 
   it('puts its identity with version and model in the provenance of the run', async () => {
