@@ -73,7 +73,6 @@ export const integrationsArea = {
     addTrigger: 'Koble til mappe eller kø',
     triggerSetupInfo:
       'Utløsere settes opp i tjenesten. Hvordan mapper og køer kobles til her, er ikke bestemt.',
-    tracingNotAvailable: 'Sporing til eget verktøy kan ikke settes opp herfra ennå.',
     loadingTriggers: 'Henter utløsere',
     noSystems: 'Ingen systemer er koblet til',
     noSystemsText: 'Koble til et system når dere vil kalle tjenester fra egne fagsystemer.',
@@ -653,5 +652,60 @@ export const integrationsArea = {
     outputValue: 'Svar med kilder',
     authNow: 'API-nøkkel nå. Maskinporten, scope',
     undecided: 'Ikke bestemt',
+  }),
+  integLangfuse: defineNamespace({
+    loading: 'Henter Langfuse-koblinger',
+    heading: 'Langfuse',
+    intro:
+      'Koble en tjeneste til virksomhetens Langfuse. Testkjøringer av tjenesten sendes dit som eksperimenter, og genki sletter det den sendte når den sletter sin egen kopi. Holdout-testtilfeller sendes aldri.',
+    none: 'Ingen tjenester er koblet til Langfuse.',
+    services: 'Tjenester: {services}',
+    residencyByDigdir: 'Lagringssted: {residency}, satt av Digdir',
+    residencyByYou: 'Lagringssted: {residency}, oppgitt av dere',
+    inNorway: 'i Norge',
+    inEu: 'i EU/EØS',
+    global: 'ikke avklart (global)',
+    contentOn: 'Får tekst',
+    contentOff: 'Får bare metadata',
+    check: 'Sjekk koblingen',
+    checkedOk:
+      'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',
+    edit: 'Endre',
+    add: 'Koble til Langfuse',
+    nameTaken: 'Det finnes allerede en kobling med id-en {id}. Velg en annen, eller endre den.',
+    addHeading: 'Ny Langfuse-kobling',
+    editHeading: 'Endre Langfuse-koblingen',
+    id: 'Id for koblingen',
+    idHelp: 'Små bokstaver, tall og bindestrek. Den kan ikke endres senere.',
+    idInvalid:
+      'Bruk bare små bokstaver, tall og bindestrek, og start med en bokstav eller et tall, for eksempel etaten-langfuse.',
+    host: 'Adresse',
+    hostHelp: 'For eksempel https://langfuse.digdir.cloud. Bare HTTPS.',
+    hostInvalid: 'Skriv hele adressen, for eksempel https://langfuse.digdir.cloud.',
+    publicKey: 'Offentlig nøkkel',
+    secret: 'Hemmelig nøkkel',
+    secretHelp:
+      'Lagres som en hemmelighet som bare kan sendes til adressen over, og vises ikke igjen.',
+    secretKeepHelp:
+      'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for adressen over.',
+    secretAgain:
+      'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
+    servicesLabel: 'Tjenester',
+    servicesHelp: 'Tjenestenes id, skilt med komma. En tjeneste kan bare ha én kobling.',
+    residency: 'Lagringssted',
+    residencyHelp:
+      'Hvor Langfuse lagrer det den får, og hvor dommernes modeller kjører. For Digdirs Langfuse setter Digdir dette.',
+    content: 'Send tekst',
+    contentHelp:
+      'Spørsmål, svar og det dommerne leser. Krever at Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
+    declaration:
+      'Vi bekrefter at vår Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
+    required: 'Fyll ut feltet',
+    save: 'Lagre',
+    remove: 'Fjern koblingen',
+    cancel: 'Avbryt',
+    saved: 'Koblingen {id} er lagret.',
+    removed: 'Koblingen {id} er fjernet.',
+    failed: 'Koblingen ble ikke lagret.',
   }),
 } as const;

@@ -24,6 +24,19 @@ A client's webhook test (`POST /tenants/{tenant}/clients/{id}/webhook/test`) sen
 
 For tools: `POST /tenants/{tenant}/tool-connections`, then `.../sync` and `.../approve` for each new tool before a service may name it.
 
+## Langfuse connections
+
+A tenant connects its services to a Langfuse with `PUT /tenants/{tenant}/tracing/connections/{id}` (`manage-services`, `change-reason`). A connection carries eval runs only, never live answers (ADR 0040).
+
+- The secret key is a `secret://tenant/{tenant}/{name}` reference to a tenant secret set for the connection's host. A secret of another tenant, or one not set for the host, is refused.
+- The host is HTTPS and never a private or link-local address; every call to it goes through the egress path (ADR 0015). In development mode a Langfuse on loopback may use HTTP.
+- The host is an address only, without a path, credentials or a trailing dot. The secret is checked before anything is recorded, so a key typed in place of a secret's name never reaches the audit log.
+- Outside development mode no connection receives content while `LANGFUSE_BASE_URL` is unset. A connection to Digdir's Langfuse saved without `residency` keeps the one an operator set. `DELETE` answers 404 for a connection that does not exist.
+- A service is covered by at most one connection.
+- On Digdir's Langfuse (`LANGFUSE_BASE_URL`) a new connection's residency is `global`, and only an operator changes it, with `PUT /operator/tracing/connections/{tenant}/{id}/residency`. For its own Langfuse the tenant declares the residency.
+- `content: true` is refused unless the Langfuse shows erasure: Digdir's once operators set `LANGFUSE_INSTANCE_RECEIVES_CONTENT=true`, a tenant's own once it sets `erasureDeclared`, or one on loopback in development mode.
+- `GET /tenants/{tenant}/tracing/connections` lists them with the secret's reference, never its value. `POST .../{id}/check` opens the connection's project with its keys.
+
 ## Tenant secrets
 
 A tenant secret is used only for the hosts it is set for.

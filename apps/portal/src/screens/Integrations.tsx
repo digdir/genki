@@ -1,7 +1,6 @@
 import { Alert, Badge, Button, Heading, Paragraph, Tabs } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import { NotAvailable } from '../components/NotAvailable';
 import type { TriggerView } from '../api/triggers';
 import { API_BASE, endpoints } from '../data/api-reference';
 import {
@@ -26,6 +25,7 @@ import { KeyPolicies } from './integrations/KeyPolicies';
 import { Keys } from './integrations/Keys';
 import { HookEditor, Hooks } from './integrations/Hooks';
 import { MaskinportenClients } from './integrations/MaskinportenClients';
+import { LiveTracing } from './integrations/LiveTracing';
 import { Tracing } from './integrations/Tracing';
 import { problemOf, Triggers } from './integrations/Triggers';
 import './integrations.css';
@@ -499,7 +499,7 @@ const Overview = ({ api, tenant, tenantName, route, live }: ScreenProps) => {
                   </div>
                 ) : null}
                 {live && id === 'tracing' ? (
-                  <NotAvailable>{t('integrations.tracingNotAvailable')}</NotAvailable>
+                  <LiveTracing api={api} tenant={tenant} onFlash={say} />
                 ) : null}
                 {id === 'frontends' && live ? (
                   <Frontends api={api} tenant={tenant} onFlash={say} />

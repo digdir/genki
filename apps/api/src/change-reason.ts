@@ -24,6 +24,7 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'POST /tenants/:tenant/definitions/input-fields': 'check',
   'POST /tenants/:tenant/definitions/complete': 'check',
   'POST /definitions/validate': 'check',
+  'POST /tenants/:tenant/tracing/connections/:id/check': 'check',
   'POST /tenants/:tenant/services/:id/batch-runs/estimate': 'check',
   'POST /tenants/:tenant/services/:id/assistant/turns': 'run',
   'POST /tenants/:tenant/skills/:id/assistant/turns': 'run',
