@@ -82,12 +82,20 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
       let blocking = true;
       let note = '';
       if (usesJudge(gate.metric)) {
-        const uncalibrated = run.provenance.judges.filter(
+        // Only the judges that scored the gate's metric; a run whose judges cannot be told apart keeps them all.
+        const scoredBy = new Set(
+          run.results.flatMap((r) =>
+            r.scores.filter((s) => s.metric === gate.metric).map((s) => s.evaluator),
+          ),
+        );
+        const own = run.provenance.judges.filter((j) => scoredBy.has(evaluatorOfJudge(j)));
+        const judges = own.length > 0 ? own : run.provenance.judges;
+        const uncalibrated = judges.filter(
           (j) =>
             (input.judgeAgreement?.get(j) ?? input.judgeAgreement?.get(evaluatorOfJudge(j)) ?? 0) <
             minimumJudgeAgreement,
         );
-        if (run.provenance.judges.length === 0 || uncalibrated.length > 0) {
+        if (judges.length === 0 || uncalibrated.length > 0) {
           blocking = false;
           note = ` (advisory: judge ${uncalibrated.join(', ') || 'unknown'} is not calibrated to ${minimumJudgeAgreement})`;
         }

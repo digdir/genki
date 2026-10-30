@@ -1305,6 +1305,38 @@ describe('Langfuse judges on a run', () => {
     );
   });
 
+  it('refuses a run whose adopted Langfuse judge is refused or gone when it starts, and never adopts a refused one', async () => {
+    const rules = [
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: 'verktøy-eksperimenter' }),
+    ];
+    const toolCalls = { variable: 'verktøy', source: 'tool_calls' };
+    rules[1]?.mapping.push(toolCalls);
+    const { env, adopt } = await judged(rules);
+    const start = () =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister' });
+
+    const refusedBlock = await adopt('verktøy-eksperimenter');
+    expect((await adopt(judgeRule)).status).toBe(200);
+    rules[0]?.mapping.push(toolCalls);
+    const nowRefused = await start();
+    rules.splice(0, 1);
+    const gone = await start();
+
+    expect(refusedBlock.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(refusedBlock.body)).toContain(
+      'verktøy-eksperimenter reads tool_calls, which genki does not send',
+    );
+    expect(nowRefused.status).toBe(409);
+    expect(JSON.stringify(nowRefused.body)).toContain(
+      `the judge langfuse:lokal/${judgeRule}: ${judgeRule} reads tool_calls, which genki does not send`,
+    );
+    expect(gone.status).toBe(409);
+    expect(JSON.stringify(gone.body)).toContain(
+      `the judge langfuse:lokal/${judgeRule} is no longer an active experiment judge in the project of the connection lokal`,
+    );
+  });
+
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
     const env = await boot();
     const save = (metric: string) =>

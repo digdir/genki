@@ -110,6 +110,13 @@ export const catalogErrors = {
     "the service's residency {residency} does not allow the connection's {connection}",
   gateOnSinkJudge:
     'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
+  sinkJudgeGone:
+    'the judge {id} is no longer an active experiment judge in the project of the connection {connection}',
+  sinkJudgeRefused: 'the judge {id}: {reason}',
+  sinkJudgeDefaultModel:
+    "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
+  sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
+  sinkJudgeUnreadPath: '{rule} reads {field} at {path}, a JSON path genki cannot read',
   tracingHostOrigin:
     'the host is an address like https://langfuse.example.no, without a path or credentials',
   tracingHostDot: 'the host name ends with a dot',

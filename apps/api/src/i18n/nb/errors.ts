@@ -110,6 +110,13 @@ export const catalogErrors = defineNamespace({
     'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
   gateOnSinkJudge:
     'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
+  sinkJudgeGone:
+    'dommeren {id} er ikke lenger en aktiv eksperimentdommer i prosjektet til koblingen {connection}',
+  sinkJudgeRefused: 'dommeren {id}: {reason}',
+  sinkJudgeDefaultModel:
+    '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
+  sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',
+  sinkJudgeUnreadPath: '{rule} leser {field} på {path}, en JSON-sti genki ikke kan lese',
   tracingHostOrigin:
     'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
   tracingHostDot: 'vertsnavnet slutter med punktum',

@@ -1425,6 +1425,28 @@ describe('publishing gates', () => {
     expect(outcome.results[0]).toMatchObject({ blocking: true });
   });
 
+  it("checks a gate's calibration only against the judges that scored its metric", () => {
+    const run = fakeRun(
+      cases(10, () => 0.5),
+      {
+        judges: [
+          'judge:answer-quality@1+foundry/claude',
+          'langfuse:dfo/kudos/regel@v1+openai/gpt-4.1',
+        ],
+      },
+    );
+    const outcome = evaluateGates({
+      evaluation: evaluation(['judge-quality']),
+      registry,
+      candidate: new Map([['ka-kudos', run]]),
+      judgeAgreement: new Map([['judge:answer-quality', 0.72]]),
+    });
+
+    // The second judge scored no judge.overall, so its missing calibration cannot weaken the gate.
+    expect(outcome.results[0]).toMatchObject({ pass: false, blocking: true });
+    expect(outcome.results[0]?.reason).not.toContain('advisory');
+  });
+
   it('catches a regression in one tag that the overall number hides', () => {
     const tags = Object.fromEntries(
       Array.from({ length: 40 }, (_, i) => [`c${i}`, [i < 20 ? 'broker' : 'events']]),
