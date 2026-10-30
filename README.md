@@ -13,7 +13,7 @@
 > [!NOTE]
 > **Under development, not in production.** A test environment runs in Azure against Ansattporten TEST and Altinn tt02. Locally, Ansattporten and Altinn are mocked in development mode unless you configure the real ones. See [Status](#status) before you rely on it.
 
-genki is a shared platform for generative AI services in the Norwegian public sector, from Digdir. An agency describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks built in.
+Genki is a shared platform for generative AI services in the Norwegian public sector, from Digdir. An agency describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks built in.
 
 It provides:
 
