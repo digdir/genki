@@ -646,6 +646,20 @@ export const createBuildingBlocksModule =
     const sameDataset = (ref: string, id: string, tenant: string) =>
       (deps.knowledge.resolve(ref) ?? ref) === id || `${tenant}/${ref}` === id;
 
+    /** What a sink's judge reads of a case, in the reader's words. */
+    const sinkFieldsText = (fields: SinkJudge['fields']) => {
+      const named: Record<string, ApiKey> = {
+        input: 'blocks.sinkFieldInput',
+        output: 'blocks.sinkFieldOutput',
+        expected_output: 'blocks.sinkFieldExpected',
+      };
+      const read = [...new Set(fields.map((f) => f.source))].map((source) => {
+        const key = named[source];
+        return key ? translate(key) : source;
+      });
+      return read.length > 0 ? read.join(', ') : t('blocks.none');
+    };
+
     /** Each judge in the projects of the tenant's trace connections; one that cannot be read is left out. */
     const sinkJudges = async (tenant: string) => {
       const list = deps.traceSinks?.judges;
@@ -662,6 +676,7 @@ export const createBuildingBlocksModule =
             ...j,
             connection: c.id,
             residency: c.residency,
+            host: c.host,
           })),
         ),
       );
@@ -973,11 +988,23 @@ export const createBuildingBlocksModule =
             kind: 'judge',
             name: judge.name,
             description: '',
-            publisher: { type: 'own', name: tenant },
+            publisher: { type: 'own', name: judge.source },
             version: judge.version,
             dataLocation: judge.residency,
-            capabilities: [],
-            permissions: [],
+            capabilities: [t('blocks.sinkJudgeCapability', { connection: judge.connection })],
+            permissions: [
+              { type: 'network', value: judge.host, note: t('blocks.sinkJudgeNetwork') },
+              {
+                type: 'data',
+                value: sinkFieldsText(judge.fields),
+                note: '',
+              },
+              {
+                type: 'model',
+                value: judge.model ?? t('blocks.sinkJudgeDefaultModel'),
+                note: t('blocks.sinkJudgeModel'),
+              },
+            ],
             settingsSchema: noSettings,
             judge: {
               connection: judge.connection,

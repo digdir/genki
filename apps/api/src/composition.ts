@@ -942,6 +942,7 @@ export const createPlatform = async (input: PlatformInput) => {
       (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) => ({
         id: j.id,
         name: j.rule.name,
+        source: `Langfuse (${connection.id})`,
         ...(j.evaluator.model
           ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
           : {}),

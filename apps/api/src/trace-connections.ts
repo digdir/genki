@@ -424,6 +424,8 @@ export interface SinkJudge {
   /** The evaluator and its metric. */
   id: string;
   name: string;
+  /** Where the judge comes from, as a person names it. */
+  source: string;
   /** provider/model, absent when the judge falls back to a default model. */
   model?: string;
   version: string;

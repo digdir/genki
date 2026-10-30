@@ -1228,7 +1228,7 @@ describe('Langfuse judges on a run', () => {
 
   it("lists each experiment rule of a connection's project as a judge building block, and scores a run only with the ones the agency added", async () => {
     const short = 'svar_er_kort-eksperimenter';
-    const { env, adopt } = await judged([
+    const { env, adopt, langfuse } = await judged([
       experimentRule(),
       experimentRule({ id: 'regel-2', name: short }),
       experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' }),
@@ -1254,6 +1254,19 @@ describe('Langfuse judges on a run', () => {
       kind: 'judge',
       name: judgeRule,
       status: 'available',
+      publisher: { type: 'own', name: 'Langfuse (lokal)' },
+      capabilities: [
+        'Vurderer testkjøringer som sendes til koblingen lokal. Rådgivende: stopper aldri en publisering.',
+      ],
+      permissions: [
+        { type: 'network', value: langfuse.url, note: 'Hit sendes testkjøringene' },
+        { type: 'data', value: 'spørsmålet, svaret, kriteriene', note: '' },
+        {
+          type: 'model',
+          value: 'foundry-claude/claude-sonnet-5',
+          note: 'Kjøres av Langfuse, ikke av plattformen',
+        },
+      ],
       judge: {
         model: 'foundry-claude/claude-sonnet-5',
         version: '1',

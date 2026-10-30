@@ -1,5 +1,6 @@
 import {
   answerText,
+  judgedExpectation,
   type CollectedScore,
   type Evaluator,
   type Observation,
@@ -189,7 +190,7 @@ const fieldOf = (m: JudgeMapping, c: TestCase, o: Observation): unknown => {
   const keys = pathKeys(m.jsonPath) ?? [];
   if (m.source === 'input') return at(c.input, keys);
   if (m.source === 'output') return at(answerText(o), keys);
-  if (m.source === 'expected_output') return at(c.expected.criteria, keys);
+  if (m.source === 'expected_output') return at(judgedExpectation(c), keys);
   return 'metadata';
 };
 

@@ -1,6 +1,7 @@
 import {
   agreementMap,
   evaluatorOfJudge,
+  judgedExpectation,
   testCase,
   type Observation,
   type PendingScore,
@@ -373,6 +374,23 @@ describe('Langfuse judges', () => {
     expect(await states(withContent.evaluate(kriteriesak, svar, ctx))).toEqual([
       { state: 'pending', reason: undefined },
     ]);
+  });
+
+  it("reads a criteria case's reference answer as its criteria when it names none, as genki's criteria judge does", async () => {
+    const fake = fakeLangfuse({ rules: [rule()], evaluators: [evaluator()] });
+    const judge = langfuseJudges(api(fake)).evaluator(await listed(fake), {
+      tenant: 'dfo',
+      content: true,
+    });
+    const golden = testCase.parse({
+      id: 'frist-gull',
+      split: 'validation',
+      input: 'Hvor lang er klagefristen?',
+      expected: { referenceAnswer: 'Klagefristen er tre uker.' },
+    });
+
+    expect(judgedExpectation(golden)).toEqual({ criteria: 'Klagefristen er tre uker.' });
+    expect((await judge.evaluate(golden, svar, ctx))[0]).toMatchObject({ state: 'pending' });
   });
 
   it("reads a boolean as 1 or 0, scales a number by its config's bounds, and keeps a category as it came", async () => {

@@ -9,6 +9,7 @@ import {
   type RunEvalOptions,
   type WaitOptions,
 } from './runner.js';
+import { judgedExpectation } from './cases.js';
 import { splits, testSet } from './schema.js';
 
 export const evalRunConfig = z.strictObject({
@@ -98,8 +99,8 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
                     id: item.case.id,
                     repeat: item.repeat,
                     split: item.case.split,
-                    ...(item.case.expected.criteria
-                      ? { expected: item.case.expected.criteria }
+                    ...(judgedExpectation(item.case)
+                      ? { expected: judgedExpectation(item.case) }
                       : {}),
                   },
                   sink: options.sink,
