@@ -82,9 +82,9 @@ export const liveCodeServices = (
 const BackLink = () => {
   const t = useT();
   return (
-    <Link href="#/integrations" className="int-back">
+    <Link href="#/developer/api" className="int-back">
       <Icon d={back} size={18} />
-      {t('integrations.heading')}
+      {t('devTools.api')}
     </Link>
   );
 };

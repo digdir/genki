@@ -5,7 +5,7 @@ export const apirefArea = {
     titleRef: 'API-referanse',
     titleService: 'Tjenesten som API',
     titleActions: 'Vis API-kall',
-    crumbIntegrations: 'Integrasjoner',
+    crumbIntegrations: 'Utviklerverktøy',
     lead: 'Alt du gjør i portalen, går gjennom det samme offentlige API-et. Det du kan klikke deg til, kan systemene deres også gjøre.',
     platformReference: 'Hele plattformens API-referanse (alle endepunkter, på engelsk)',
     tabList: 'API',

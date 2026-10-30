@@ -1,5 +1,9 @@
 import type { Translation } from '@genai/i18n';
-import type { app as appSource, shell as shellSource } from '../nb/core-shell';
+import type {
+  app as appSource,
+  devTools as devToolsSource,
+  shell as shellSource,
+} from '../nb/core-shell';
 
 export const shell = {
   navOverview: 'Overview',
@@ -9,10 +13,7 @@ export const shell = {
   navBuildingBlocks: 'Building blocks',
   navPlayground: 'Playground',
   navAccess: 'Access',
-  navUsage: 'Usage',
-  navIntegrations: 'Integrations',
   navLog: 'Log',
-  navSettings: 'Settings',
   skipToContent: 'Skip to main content',
   menu: 'Menu',
   mainMenu: 'Main menu',
@@ -41,9 +42,19 @@ export const shell = {
   rightsGivenBy: 'The rights are granted by the access managers at your organisation, in Altinn.',
   seeInAltinn: 'View or change in Altinn (opens in a new tab)',
   logout: 'Log out',
-  guide: 'User guide',
   status: 'Service status',
   contact: 'Contact Digdir',
+  navStatistics: 'Statistics',
+  navSettings: 'Settings',
+  groupBuild: 'Build',
+  groupAnalyse: 'Analyse',
+  groupAdmin: 'Administration',
+  hideSidebar: 'Hide the sidebar',
+  showSidebar: 'Show the sidebar',
+  menuOnboarding: 'Getting started',
+  menuProfile: 'Profile',
+  menuDeveloper: 'Developer tools',
+  menuDataHandling: 'Data handling',
   badgeIngest: {
     one: '{count} ingestion needs follow-up',
     other: '{count} ingestions need follow-up',
@@ -66,9 +77,9 @@ export const app = {
     'Try a service in the <playground>Playground</playground>. Call it from your own system with the examples in <code>Call a service from code</code> and the endpoints in the <api>API reference</api>.',
   guideFollowTitle: 'Follow up and control',
   guideFollow:
-    'See use and cost in <usage>Usage</usage>, runs in the <log>Log</log>, who has access in <access>Access</access>, and defaults for the organisation in <settings>Settings</settings>.',
+    'See use and cost in <usage>Statistics</usage>, runs in the <log>Log</log>, who has access in <access>Access</access>, and defaults for the organisation in <settings>Settings</settings>.',
   guideRights:
-    'What you can do depends on the rights your organisation has given you in Altinn. You see them in the user menu.',
+    'What you can do depends on the rights your organisation has given you in Altinn. You see them on your Profile.',
   statusIntro: 'This page asks the platform API whether it answers.',
   statusChecking: 'Checking the API',
   statusApi: 'API',
@@ -90,5 +101,35 @@ export const app = {
   sessionRelogin: 'Sign in again',
   login: 'Sign in',
   unknownUser: 'Unknown user',
-  languageReason: 'Changed the language in the user menu',
+  languageReason: 'Changed the language on the profile page',
 } satisfies Translation<typeof appSource>;
+
+export const devTools = {
+  title: 'Developer tools',
+  menu: 'Developer tools',
+  intro: 'Tools for developers who connect systems and services to the platform.',
+  livesElsewhere: 'The content lives elsewhere in the portal until it moves here.',
+  status: 'Service status',
+  statusDesc: 'Status of the services right now.',
+  runsDesc: 'Detailed log with steps, tokens and raw view, together with tracing.',
+  systems: 'Systems',
+  systemsDesc: 'Connections to external systems and tools.',
+  frontends: 'Frontends',
+  frontendsDesc: 'Client registration.',
+  triggers: 'Triggers',
+  triggersDesc: 'Triggers that start services.',
+  keys: 'Keys',
+  keysDesc: 'API keys.',
+  hooks: 'Hooks',
+  stepFlows: 'Step flows',
+  stepFlowsDesc: 'Editing step flows.',
+  guardrails: 'Common safety filters',
+  guardrailsDesc:
+    'Rules the organisation shares. Rules marked as mandatory apply to every service; each service chooses the others itself.',
+  guardrailsNotAvailable: 'Shared rules are shown when the portal is connected to the platform.',
+  api: 'API reference and documentation',
+  apiDesc: 'The API reference and documentation for developers.',
+  openLog: 'Open Log',
+  openStepFlows: 'Open Step flows',
+  openApiReference: 'Open the API reference',
+} satisfies Translation<typeof devToolsSource>;

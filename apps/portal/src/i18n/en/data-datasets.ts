@@ -238,7 +238,7 @@ const datasets = {
   liveChoiceUploadDesc: 'Documents you have yourself: PDF, Word, text, Markdown or HTML.',
   choiceUploadExample: 'For example consultation responses or internal guides.',
   integrationsHint:
-    'Publishing systems, archives and other line-of-business systems are connected under <link>Integrations</link>. They then appear here as sources.',
+    'Publishing systems, archives and other line-of-business systems are connected under <link>Systems in developer tools</link>. They then appear here as sources.',
   nameOfDataset: 'Name of the dataset',
   reportsFrom: 'Reports from',
   allOrgs: 'All organisations',

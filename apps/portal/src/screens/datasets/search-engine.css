@@ -315,7 +315,7 @@
 
 .dataset-try-sheet {
   position: fixed;
-  top: 76px;
+  top: calc(var(--header-offset) + 9px);
   right: 16px;
   bottom: 16px;
   z-index: 35;

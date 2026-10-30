@@ -46,17 +46,36 @@ const recording = () => {
 };
 
 describe('Integrasjoner: oversikt', () => {
-  it('shows what needs follow-up and opens the failing system with its fix', async () => {
-    await renderAt('#/integrations');
+  it('opens a failing trigger from the follow-up list when it is on the same page', async () => {
+    await renderAt('#/developer/triggers?open=plan-uke');
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Integrasjoner' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('link', { name: /^Køen «innkommende-post»/ }));
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: /^Køen «innkommende-post»/ })
+          .getAttribute('aria-expanded'),
+      ).toBe('true'),
+    );
+  });
+
+  it('keeps the follow-up list off pages that have nothing to follow up', async () => {
+    await renderAt('#/developer/keys');
+
+    expect(screen.queryByRole('heading', { name: /trenger oppfølging/ })).toBeNull();
+  });
+
+  it('shows what needs follow-up and opens the failing system with its fix', async () => {
+    await renderAt('#/developer/systems');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Utviklerverktøy' })).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: '2 integrasjoner trenger oppfølging' }),
     ).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /Systemer/ }).getAttribute('aria-selected')).toBe(
-      'true',
+    expect(screen.getByRole('link', { name: 'Systemer' }).getAttribute('aria-current')).toBe(
+      'page',
     );
-    expect(screen.getAllByLabelText('1 med feil')).toHaveLength(2);
     expect(
       screen.getByText('Kallene blir avvist fordi klienten mangler en tillatelse.'),
     ).toBeTruthy();
@@ -80,7 +99,7 @@ describe('Integrasjoner: oversikt', () => {
   });
 
   it('validates a new system and adds it', async () => {
-    await renderAt('#/integrations');
+    await renderAt('#/developer/systems');
     fireEvent.click(await screen.findByRole('button', { name: 'Koble til system' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Koble til' }));
@@ -99,7 +118,7 @@ describe('Integrasjoner: oversikt', () => {
   });
 
   it('lists frontends and registers one in the test environment', async () => {
-    await renderAt('#/integrations?tab=frontends');
+    await renderAt('#/developer/frontends');
     expect(await screen.findByRole('button', { name: /Intranettet/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Registrer brukerflate' }));
     const dialog = await screen.findByRole('dialog');
@@ -115,7 +134,7 @@ describe('Integrasjoner: oversikt', () => {
 
 describe('Integrasjoner: utløser feiler', () => {
   it('opens the failing queue and pastes a new key', async () => {
-    await renderAt('#/integrations?tab=triggers');
+    await renderAt('#/developer/triggers');
     expect(
       await screen.findByText('Vi får ikke lest fra køen fordi tilgangsnøkkelen er utløpt.'),
     ).toBeTruthy();
@@ -141,7 +160,7 @@ describe('Integrasjoner: utløser feiler', () => {
   });
 
   it('pauses and restarts a trigger', async () => {
-    await renderAt('#/integrations?tab=triggers&open=plan-uke');
+    await renderAt('#/developer/triggers?open=plan-uke');
     fireEvent.click(await screen.findByRole('button', { name: 'Start igjen' }));
     expect(await screen.findByText('Hver mandag kl. 06.00 er startet igjen.')).toBeTruthy();
   });
@@ -149,7 +168,7 @@ describe('Integrasjoner: utløser feiler', () => {
 
 describe('Integrasjoner: Nøkler', () => {
   it('lists keys from the API with access, rate and last use', async () => {
-    await renderAt('#/integrations?tab=keys');
+    await renderAt('#/developer/keys');
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     expect(within(list).getByText('Publiseringssystemet')).toBeTruthy();
     expect(within(list).getByText('Alle tjenester og datasett')).toBeTruthy();
@@ -159,7 +178,7 @@ describe('Integrasjoner: Nøkler', () => {
   });
 
   it('offers the server default of 120 calls per minute for a new key', async () => {
-    await renderAt('#/integrations?tab=keys');
+    await renderAt('#/developer/keys');
     await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
     expect((screen.getByLabelText('Kall per minutt') as HTMLInputElement).value).toBe('120');
@@ -167,7 +186,7 @@ describe('Integrasjoner: Nøkler', () => {
 
   it('validates and creates a key shown once, through the API with a reason', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/integrations?tab=keys', fetch);
+    await renderAt('#/developer/keys', fetch);
     await screen.findByRole('list', { name: 'API-nøkler' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Lag API-nøkkel' }));
@@ -206,7 +225,7 @@ describe('Integrasjoner: Nøkler', () => {
 
   it('asks for confirmation and a reason before revoking', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/integrations?tab=keys', fetch);
+    await renderAt('#/developer/keys', fetch);
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(
       within(list).getAllByRole('button', { name: 'Trekk tilbake' })[0] as HTMLElement,
@@ -230,7 +249,7 @@ describe('Integrasjoner: Nøkler', () => {
 
   it('refuses a revoke reason shorter than 10 characters', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/integrations?tab=keys', fetch);
+    await renderAt('#/developer/keys', fetch);
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(
       within(list).getAllByRole('button', { name: 'Trekk tilbake' })[0] as HTMLElement,
@@ -243,7 +262,7 @@ describe('Integrasjoner: Nøkler', () => {
   });
 
   it('shows the name read-only when changing access to a key', async () => {
-    await renderAt('#/integrations?tab=keys');
+    await renderAt('#/developer/keys');
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(
       within(list).getAllByRole('button', { name: 'Endre tilgang' })[0] as HTMLElement,
@@ -257,7 +276,7 @@ describe('Integrasjoner: Nøkler', () => {
   it('offers no access change in live mode, where the API cannot change a key', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
-    window.location.hash = '#/integrations?tab=keys';
+    window.location.hash = '#/developer/keys';
     render(<App auth={auth} fetch={mockFetch()} live />);
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
 
@@ -267,7 +286,7 @@ describe('Integrasjoner: Nøkler', () => {
 
   it('rotates a key: a new secret, and the old one is revoked', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/integrations?tab=keys', fetch);
+    await renderAt('#/developer/keys', fetch);
     const list = await screen.findByRole('list', { name: 'API-nøkler' });
     fireEvent.click(within(list).getAllByRole('button', { name: 'Roter' })[0] as HTMLElement);
     expect(await screen.findByLabelText('Den nye nøkkelen')).toBeTruthy();
@@ -278,7 +297,7 @@ describe('Integrasjoner: Nøkler', () => {
   });
 
   it('shows an error with retry when keys cannot be loaded', async () => {
-    await renderAt('#/integrations?tab=keys', failingFetch(/\/access$/));
+    await renderAt('#/developer/keys', failingFetch(/\/access$/));
     expect(await screen.findByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
   });
 });
@@ -286,7 +305,7 @@ describe('Integrasjoner: Nøkler', () => {
 describe('Integrasjoner: verktøy fra egne systemer', () => {
   it('needs a reason, then approves a pending tool change', async () => {
     const { calls, fetch } = recording();
-    await renderAt('#/integrations', fetch);
+    await renderAt('#/developer/systems', fetch);
     const arkiv = await screen.findByRole('region', { name: 'Arkivsøk' });
     fireEvent.click(within(arkiv).getByRole('button', { name: 'Godkjenn arkiv.sok' }));
     expect(await screen.findByText('Skriv en begrunnelse på minst 10 tegn.')).toBeTruthy();
@@ -302,19 +321,19 @@ describe('Integrasjoner: verktøy fra egne systemer', () => {
 
 describe('Integrasjoner: Sporing og evaluering', () => {
   it('shows a failing Langfuse connection, then a healthy one', async () => {
-    await renderAt('#/integrations?tab=tracing');
+    await renderAt('#/developer/runs');
     expect(screen.getByRole('heading', { name: 'Sporing og evaluering' })).toBeTruthy();
     expect(screen.getByText('Langfuse avviser nøkkelen siden kl. 09.40.')).toBeTruthy();
     expectAccessible();
 
     cleanup();
-    await renderAt('#/integrations?tab=tracing&status=ok');
+    await renderAt('#/developer/runs?status=ok');
     expect(screen.queryByText('Langfuse avviser nøkkelen siden kl. 09.40.')).toBeNull();
     expect(screen.getAllByText('Tilkoblet').length).toBeGreaterThan(0);
   });
 
   it('validates before connecting a new tool', async () => {
-    await renderAt('#/integrations?tab=tracing&status=ok');
+    await renderAt('#/developer/runs?status=ok');
     fireEvent.click(screen.getByRole('button', { name: /Arize Phoenix/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Koble til' }));
     expect(screen.getByText('Rett opp i dette før du lagrer:')).toBeTruthy();
@@ -323,17 +342,17 @@ describe('Integrasjoner: Sporing og evaluering', () => {
 
 describe('Integrasjoner: dokumentasjon og kode', () => {
   it('links to the guides and the API reference', async () => {
-    await renderAt('#/integrations?tab=docs');
-    expect(screen.getByRole('link', { name: /API-referanse/ }).getAttribute('href')).toBe(
-      '#/api-reference',
-    );
+    await renderAt('#/developer/api');
+    expect(
+      screen.getAllByRole('link', { name: /API-referanse/ }).map((a) => a.getAttribute('href')),
+    ).toContain('#/api-reference');
     fireEvent.click(screen.getByRole('button', { name: 'Last ned OpenAPI-fil' }));
     expect(await screen.findByText('OpenAPI-filen er lastet ned.')).toBeTruthy();
     expectAccessible();
   });
 
   it('shows how to call a service from code in each channel', async () => {
-    await renderAt('#/integrations/code');
+    await renderAt('#/developer/api/code');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Kall en tjeneste fra kode' }),
     ).toBeTruthy();
@@ -350,7 +369,7 @@ describe('Integrasjoner: dokumentasjon og kode', () => {
   });
 
   it('says the example answer is only an example and nothing was sent', async () => {
-    await renderAt('#/integrations/code');
+    await renderAt('#/developer/api/code');
     fireEvent.click(screen.getByRole('button', { name: 'Vis eksempel på svar' }));
 
     expect(
@@ -404,7 +423,7 @@ describe('Integrasjoner: kall fra kode i live-modus', () => {
   it("lists only the tenant's published services by their public name, not demo services", async () => {
     const auth = mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations });
     await auth.login();
-    window.location.hash = '#/integrations/code';
+    window.location.hash = '#/developer/api/code';
     render(<App auth={auth} fetch={liveFetch()} live />);
     const select = await screen.findByLabelText('Tjeneste');
     const options = within(select)
@@ -421,7 +440,7 @@ describe('Integrasjoner: Maskinporten-klienter', () => {
   const renderLive = async (fetch: typeof globalThis.fetch) => {
     const auth = mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations });
     await auth.login();
-    window.location.hash = '#/integrations?tab=systems';
+    window.location.hash = '#/developer/systems';
     render(<App auth={auth} fetch={fetch} live />);
     return screen.findByRole('region', { name: 'Maskinporten-klienter' });
   };
@@ -524,7 +543,7 @@ describe('Integrasjoner: kroker', () => {
     render(<App auth={auth} fetch={fetch} live />);
   };
   const renderHooks = async (fetch: typeof globalThis.fetch) => {
-    await renderAtHash(fetch, '#/integrations?tab=hooks');
+    await renderAtHash(fetch, '#/developer/hooks');
     return screen.findByRole('region', { name: 'Kroker' });
   };
 
@@ -542,7 +561,7 @@ describe('Integrasjoner: kroker', () => {
     expect((within(row).getByRole('switch', { name: /er på/ }) as HTMLInputElement).checked).toBe(
       true,
     );
-    expect(link.getAttribute('href')).toBe('#/integrations/hooks/fodselsnummer');
+    expect(link.getAttribute('href')).toBe('#/developer/hooks/fodselsnummer');
   });
 
   it('turns a hook off from the list with a logged reason', async () => {
@@ -559,7 +578,7 @@ describe('Integrasjoner: kroker', () => {
 
   it('adds a webhook hook on its own page with a reason after checking the address and secret', async () => {
     const { calls, fetch } = recording();
-    await renderAtHash(fetch, '#/integrations/hooks/new');
+    await renderAtHash(fetch, '#/developer/hooks/new');
     const form = await screen.findByRole('form', { name: 'Ny krok' });
 
     fireEvent.change(within(form).getByLabelText('Navn'), {
@@ -600,7 +619,7 @@ describe('Integrasjoner: kroker', () => {
   });
 
   it('tests a saved hook and shows how long it took and what it did', async () => {
-    await renderAtHash(mockFetch(), '#/integrations/hooks/fodselsnummer');
+    await renderAtHash(mockFetch(), '#/developer/hooks/fodselsnummer');
     const panel = await screen.findByRole('region', { name: 'Test kroken' });
     fireEvent.click(within(panel).getByRole('button', { name: 'Test kroken' }));
 
