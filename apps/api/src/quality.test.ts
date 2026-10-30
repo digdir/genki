@@ -1459,6 +1459,31 @@ describe('Langfuse judges on a run', () => {
     expect(JSON.stringify(unseen.body)).not.toContain('9.2826');
   });
 
+  it("leaves a case out of what is sent when none of the run's Langfuse judges can read it, as holdout cases are", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const sent = new Set(
+      langfuse.spans.map((s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case')),
+    );
+    const scoreOf = (id: string) =>
+      stored?.run.results
+        .find((r) => r.case === id)
+        ?.scores.find((s) => s.evaluator === `langfuse:lokal/${judgeRule}`);
+
+    // o2 must refuse and names no criteria, so Langfuse would bill a call genki cannot count.
+    expect(sent.has('o1')).toBe(true);
+    expect(sent.has('o2')).toBe(false);
+    expect(sent.has('l1')).toBe(false);
+    expect(scoreOf('o2')).toMatchObject({ state: 'not-applicable' });
+    expect(stored?.run.status).toBe('completed');
+  });
+
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
     const env = await boot();
     const save = (metric: string) =>

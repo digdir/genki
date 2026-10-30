@@ -5,6 +5,7 @@ import { EvalError, type Evaluator } from './evaluators.js';
 import {
   describeTask,
   runEval,
+  type EvalItem,
   type EvalTarget,
   type RunEvalOptions,
   type WaitOptions,
@@ -78,6 +79,10 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       if (!evaluator) throw new EvalError(`unknown evaluator ${id}`);
       return evaluator;
     });
+    // A sink's judges bill every case they get, so a case none of them can read is not sent.
+    const sinkJudges = evaluators.filter((e) => e.canRead);
+    const sendable = (c: EvalItem['case']) =>
+      c.split !== 'holdout' && (sinkJudges.length === 0 || sinkJudges.some((e) => e.canRead?.(c)));
     const kernel = deps.kernel();
     const target: EvalTarget = {
       capability: options.capability,
@@ -88,7 +93,7 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
         const run = await ctx.invoke(
           options.capability,
           caseInput,
-          options.sink && options.id && item && item.case.split !== 'holdout'
+          options.sink && options.id && item && sendable(item.case)
             ? {
                 evaluation: {
                   run: {

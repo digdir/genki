@@ -48,6 +48,11 @@ export interface Evaluator {
   advisory?: boolean;
   /** What a sink reports this evaluator's own calls used, outside the platform's metering. */
   reportedUsage?(): ReportedUsage;
+  /**
+   * For a judge in a sink: whether it can judge the case at all, known before the case is
+   * answered. A case none of a run's sink judges can read is not sent, so it is not billed.
+   */
+  canRead?(testCase: TestCase): boolean;
 }
 
 /**

@@ -194,6 +194,8 @@ const at = (value: unknown, keys: string[]) =>
     value,
   );
 
+const unanswered: Observation = { answer: '', retrieved: [], citations: [] };
+
 /** The field a mapping reads, as genki would send it for this case. */
 const fieldOf = (m: JudgeMapping, c: TestCase, o: Observation): unknown => {
   const keys = pathKeys(m.jsonPath) ?? [];
@@ -374,6 +376,11 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       reasonsOnTheCase: true,
       advisory: true,
       reportedUsage: () => ({ ...reported }),
+      // Only the answer is unknown before the case runs; every other field the rule maps is not.
+      canRead: (c) =>
+        judge.rule.mapping.every(
+          (m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)),
+        ),
       evaluate: async (c, o) => {
         if (c.split === 'holdout') return [notApplicable('holdout cases are never sent')];
         if (!run.content) return [notApplicable('the connection does not receive content')];
