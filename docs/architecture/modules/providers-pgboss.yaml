@@ -10,9 +10,10 @@ packages:
 summary: The durable job queue behind the JobQueue port, on pg-boss in schema pgboss.
 description:
   The owner role installs and migrates schema pgboss and creates the queues; the worker sends
-  and works as genai_worker with migrate and createSchema off, and only genai_worker has rights
-  on the job tables. Jobs are sent in the caller's transaction, and the console reads counts and
-  dead letters as genai_runtime only through functions that need platform access (ADR 0041).
+  and works as genai_worker with migrate and createSchema off. Of the roles the apps run as, only
+  genai_worker has rights on the job tables. Jobs are sent in the caller's transaction. Counts
+  and dead letters can be read as genai_runtime only through functions that need platform
+  access, with PgBossJobReads, for the console screen still to come (ADR 0041).
 responsibilities:
   - Install, migrate and grant schema pgboss
   - Send, work, schedule, cancel and redrive jobs

@@ -9,6 +9,7 @@ export type QueuePolicy = 'standard' | 'short' | 'singleton' | 'stately' | 'excl
 export interface QueueDefinition<T extends JobData = JobData> {
   name: string;
   policy: QueuePolicy;
+  /** Keys only. A job that serves an organisation names it under `tenant`, the only key dead letters are filtered on. */
   payload: z.ZodType<T>;
   expireInSeconds: number;
   heartbeatSeconds: number;
