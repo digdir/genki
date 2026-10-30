@@ -37,6 +37,7 @@ import {
   validateConnection,
   type ConnectionRegistry,
   type ConnectionToolSource,
+  toolSyncDeadlineMs,
   type TenantSecrets,
 } from '@genai/providers-mcp-client';
 import type { Context, Env, Hono, Schema } from 'hono';
@@ -63,6 +64,7 @@ export interface TrackedTask {
 export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
+  tokensUsed?(tenant: string, since: string): Promise<number>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
@@ -190,20 +192,18 @@ export const adminExtensions = (deps: {
         target,
       };
     const name = String(input.name ?? '').trim() || org;
-    await deps.directory.add(
-      { orgNumber: org, name, status: 'onboarding' },
-      `${principal.issuer}:${principal.subject}`,
-    );
-    return {
-      ok: true,
-      value: { orgNumber: org, name, status: 'onboarding' },
-      target,
-      audit: { scope: 'platform' },
-    };
+    const existing = (await deps.directory.list()).find((e) => e.orgNumber === org);
+    const entry = { orgNumber: org, name, status: existing?.status ?? 'onboarding' } as const;
+    await deps.directory.add(entry, `${principal.issuer}:${principal.subject}`);
+    return { ok: true, value: entry, target, audit: { scope: 'platform' } };
   },
   'platform.tools.register': async (input, principal) => {
     const tenant = input.tenant;
-    const connection = (input.connection ?? {}) as Record<string, unknown>;
+    const given = (input.connection ?? {}) as Record<string, unknown>;
+    const connection =
+      principal.kind === 'operator' || given.writes === undefined
+        ? given
+        : { ...given, writes: false };
     const target = `tool-connection:${tenant}/${String(connection.id ?? '')}`;
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator registers tools');
@@ -256,7 +256,11 @@ export const adminExtensions = (deps: {
     if (!forTenant(principal, tenant))
       return refused(target, 'only the tenant or an operator syncs tools');
     try {
-      const result = await deps.tools.source.sync(tenant, id);
+      const result = await deps.tools.source.sync(
+        tenant,
+        id,
+        AbortSignal.timeout(toolSyncDeadlineMs),
+      );
       await deps.tools.source.load(tenant);
       await deps.tools.onToolsChanged(tenant);
       return { ok: true, value: result, target, audit: { result } };

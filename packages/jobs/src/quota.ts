@@ -24,6 +24,8 @@ export const monthStart = (at: Date) =>
 
 export const quotaExhaustedMessage = 'the monthly token quota is used up';
 
+export const assistantCapabilityPrefix = 'platform/draft/assistant/';
+
 export const monthlyQuotaGate =
   (quota: MonthlyTokenQuota) =>
   async (tenant: string): Promise<Admission> => {

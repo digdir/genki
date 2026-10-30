@@ -74,6 +74,7 @@ export const audit = {
   actionRecipeUnshare: 'Stopped sharing a recipe',
   actionTriggerPause: 'Paused trigger',
   otherAction: 'Other action',
+  platformActor: 'The platform',
   personIn: 'Person at {org}',
   csvHeader: 'Time;Person;From;Organisation;Action;Concerns;Reason',
   csvFile: 'audit-log.csv',

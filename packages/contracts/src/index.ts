@@ -40,10 +40,12 @@ export interface Principal {
   kind: PrincipalKind;
   issuer: string;
   subject: string;
+  name?: string;
   tenant?: string;
   client?: string;
   assurance?: Assurance;
   authorizedFor?: { org: string; resource?: string; actions?: string[] }[];
+  orgNames?: Record<string, string>;
   scopes?: string[];
   supplier?: string;
   systemUser?: string;
@@ -149,6 +151,23 @@ export interface Usage {
   requests?: number;
   costMicroNok?: number;
 }
+
+export interface UsagePrice {
+  inputPerThousand: number;
+  outputPerThousand: number;
+}
+
+export const withListPrice = (usage: Usage, price: UsagePrice | undefined): Usage =>
+  usage.costMicroNok !== undefined || !price
+    ? usage
+    : {
+        ...usage,
+        costMicroNok: Math.round(
+          (((usage.inputTokens ?? 0) / 1000) * price.inputPerThousand +
+            ((usage.outputTokens ?? 0) / 1000) * price.outputPerThousand) *
+            1_000_000,
+        ),
+      };
 
 export interface ModelProvenance {
   id: string;

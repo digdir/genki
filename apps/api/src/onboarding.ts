@@ -102,7 +102,7 @@ export const createOnboardingModule =
           const request: OnboardingRequest = {
             id: newId(),
             org,
-            orgName: text(input.orgName),
+            orgName: principal.orgNames?.[org] ?? text(input.orgName),
             contactName: text(input.contactName),
             contactEmail: text(input.contactEmail),
             purpose: text(input.purpose),

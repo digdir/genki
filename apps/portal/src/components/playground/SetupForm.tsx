@@ -18,6 +18,8 @@ import {
   modelOf,
   serviceSetup,
   shortModelName,
+  variantLabel,
+  variantOf,
   versionLabel,
   versionOf,
 } from '../../data/playground';
@@ -103,6 +105,19 @@ export const SetupForm = ({
     const next = serviceSetup(options, found.service.id, version);
     if (next) onChange({ ...next, model: draft.model });
   };
+  const pickVariant = (variantId: string) => {
+    const variants = found?.version.variants ?? [];
+    const variant = variants.find((v) => v.id === variantId);
+    if (!found || !draft.service || !variant) return;
+    const service = { ...draft.service };
+    delete service.variant;
+    onChange({
+      ...draft,
+      service: variant === variants[0] ? service : { ...service, variant: variant.id },
+      model: variant.model ?? found.version.setup.model,
+    });
+  };
+  const variant = variantOf(options, draft);
   const chipGroup = (key: ListKey, legend: string, list: { id: string; name: string }[]) => (
     <Fieldset>
       <Fieldset.Legend>{legend}</Fieldset.Legend>
@@ -182,6 +197,22 @@ export const SetupForm = ({
                 ))}
               </Select>
             </Field>
+            {variant && found.version.variants ? (
+              <Field className="playground-grow-sm">
+                <Label htmlFor={`${id}-var`}>{t('playground.variantLabel')}</Label>
+                <Select
+                  id={`${id}-var`}
+                  value={variant.id}
+                  onChange={(e) => pickVariant(e.target.value)}
+                >
+                  {found.version.variants.map((v) => (
+                    <Select.Option key={v.id} value={v.id}>
+                      {variantLabel(v, t)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
           </div>
           <Paragraph data-size="sm" className="playground-subtle">
             {t('playground.versionHelp', {

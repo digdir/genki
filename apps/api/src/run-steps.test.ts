@@ -142,6 +142,15 @@ describe('the run mapper', () => {
     expect(mapRun(ragRun()).hits.get('c1')).toMatchObject({ score: 0.91 });
   });
 
+  it('leaves token counts out of the steps when usage is hidden, but keeps the model', () => {
+    const steps = mapRun(ragRun(), { usage: false }).steps;
+    const model = steps.find((s) => s.type === 'model');
+
+    expect(steps.some((s) => s.tokens !== undefined)).toBe(false);
+    expect(JSON.stringify(steps)).not.toMatch(/1[\s\u00a0]?020|900/);
+    expect(model?.model).toBe('gpt-test');
+  });
+
   it('keeps raw data out unless the caller may see details', () => {
     expect(JSON.stringify(mapRun(ragRun()).steps)).not.toContain('"raw"');
     expect(

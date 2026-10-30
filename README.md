@@ -13,7 +13,7 @@
 > [!NOTE]
 > **Under development, not in production.** A test environment runs in Azure against Ansattporten TEST and Altinn tt02. Locally, Ansattporten and Altinn are mocked in development mode unless you configure the real ones. See [Status](#status) before you rely on it.
 
-genki is a shared platform for generative AI services in the Norwegian public sector, from Digdir. An agency describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks built in.
+Genki is a shared platform for generative AI services in the Norwegian public sector, from Digdir. An agency describes a service in a short definition: what it is for, which documents it may search, which model answers, and where people can reach it. The platform runs it, with sources, access control, cost tracking and quality checks built in.
 
 It provides:
 
@@ -325,7 +325,7 @@ Details are in [docs/api/README.md](docs/api/README.md).
 npm run check
 ```
 
-This runs prettier, eslint, the type check, dependency boundaries and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
+This runs prettier, eslint, the type check, dependency boundaries, the apps' size budgets and every test. Docker must be running: the Postgres, pgvector and Typesense-writer suites start containers with Testcontainers. Run a part with `npx vitest run <paths>`. Tests never call real models; the live suites skip themselves unless their settings are set.
 
 CI runs the same check, a secret scan with gitleaks and a Docker image build.
 

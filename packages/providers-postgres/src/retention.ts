@@ -4,6 +4,7 @@ import type {
   RetentionGroup,
   RetentionStore,
   ThreadCutoff,
+  ThreadErasure,
   ThreadRetentionStore,
 } from '@genai/kernel';
 import type { Pool, PoolClient } from 'pg';
@@ -117,5 +118,22 @@ export class PostgresThreadRetention implements ThreadRetentionStore {
     );
     for (const { id } of removed.rows) await this.keys.erase(cutoff.tenant, threadScope(id));
     return removed.rows.length;
+  }
+}
+
+export class PostgresThreadErasure implements ThreadErasure {
+  constructor(
+    private readonly pool: Pool,
+    private readonly keys: ContentKeys,
+  ) {}
+
+  async erase(tenant: string, thread: string): Promise<number> {
+    const found = await this.pool.query<{ scope: string }>(
+      `select distinct scope from tasks
+       where tenant = $1 and envelope->>'thread' = $2 and starts_with(scope, '["thread",')`,
+      [tenant, thread],
+    );
+    for (const { scope } of found.rows) await this.keys.erase(tenant, scope);
+    return found.rows.length;
   }
 }

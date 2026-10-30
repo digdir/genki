@@ -1730,7 +1730,7 @@
             summary:
               'Exposes published service variants as MCP tools, with the headers, errors and progress KA expects.',
             description:
-              'Implements the current MCP revision on /api/mcp: discovery, tools/list and tools/call, SSE progress and the three result channels. Each tool is a capability invoked through the kernel; bodies over 1 MiB are refused (ADR 0017).',
+              'Implements the current MCP revision on /api/mcp: discovery, tools/list and tools/call, SSE progress and the three result channels. Each tool is a capability invoked through the kernel; bodies over 1 MiB are refused (ADR 0017). Every tools/call checks the monthly token quota and answers 429 with a JSON-RPC quota-exhausted error once it is used.',
             responsibilities: [
               'MCP protocol handling and version negotiation',
               'Map tools to capabilities and invoke them via the kernel',
@@ -2027,6 +2027,16 @@
                 witness: {
                   file: 'apps/api/src/composition.ts',
                   imports: '@genai/providers-pgvector',
+                },
+              },
+              {
+                to: 'providers-parquet',
+                label: 'Composes the Parquet reader of the parquet source',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/api/src/composition.ts',
+                  imports: '@genai/providers-parquet',
                 },
               },
               {
@@ -6843,17 +6853,23 @@
             id: 'providers-openai',
             plane: 'providers',
             name: 'openai-chat adapter',
-            note: 'Chat + Foundry discovery',
+            note: 'Chat, Responses + Foundry discovery',
             icon: 'llm',
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-openai'],
             summary:
-              'The openai-chat wire protocol, and discovery of Azure AI Foundry deployments.',
+              'OpenAI Chat Completions and stateless Responses, and discovery of Azure AI Foundry deployments.',
             description:
-              'Translates the model port to the OpenAI chat API with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
-            responsibilities: ['openai-chat protocol', 'Azure deployment discovery'],
-            files: ['packages/providers-openai/src/index.ts'],
+              'Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
+            responsibilities: [
+              'openai-chat protocol with per-model API selection and learned Responses recovery',
+              'Azure deployment discovery',
+            ],
+            files: [
+              'packages/providers-openai/src/index.ts',
+              'packages/providers-openai/src/responses.ts',
+            ],
             input: 'Port request',
             output: 'OpenAI API call',
             replaces: [{ module: 'llm', how: 'OpenAI-compatible provider' }],
@@ -6890,7 +6906,7 @@
               },
               {
                 to: 'azure-foundry',
-                label: 'Chat completions and deployment listing',
+                label: 'Chat completions, Responses and deployment listing',
                 kind: 'http',
                 target: 'http',
                 witness: {
@@ -7799,6 +7815,42 @@
               },
             ],
             keywords: 'pgvector postgres hybrid search vectors writer',
+            schemas: [],
+          },
+          {
+            id: 'providers-parquet',
+            plane: 'providers',
+            name: 'Parquet reader',
+            note: 'File decoder',
+            icon: 'database',
+            color: '#8fa8b3',
+            status: 'Provider',
+            packages: ['@genai/providers-parquet'],
+            summary: 'Decodes Parquet files for pipelines with a parquet source.',
+            description:
+              "Implements the Parquet reader of the parquet source (ADR 0039) with hyparquet and hyparquet-compressors, JavaScript with embedded WebAssembly for Snappy and no platform-specific native binaries. It lists a file's columns, so the source can name the mapped columns a file lacks, and reads only the mapped columns, in steps, up to the pipeline's row limit. Lists stay lists and nulls stay null. The ingestion fetches the bytes through its guarded fetch before the reader sees them.",
+            responsibilities: [
+              'Column listing',
+              'Row reads of the mapped columns with a row limit',
+              'Snappy, gzip, ZSTD, Brotli and LZ4 pages',
+            ],
+            files: ['packages/providers-parquet/src/reader.ts'],
+            input: 'Parquet file bytes, columns, row limit',
+            output: 'Rows',
+            replaces: [],
+            edges: [
+              {
+                to: 'ingest',
+                label: 'Implements the Parquet reader of the parquet source',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/providers-parquet/src/reader.ts',
+                  imports: '@genai/ingest',
+                },
+              },
+            ],
+            keywords: 'parquet hugging face open data file reader hyparquet',
             schemas: [],
           },
           {

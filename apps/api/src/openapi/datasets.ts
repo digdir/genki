@@ -136,7 +136,16 @@ const DatasetWithStatus = Dataset.extend({
   embeddingResidency: Residency.nullable().optional(),
   editable: z.boolean(),
   state: z.enum(['needs-pipeline', 'configured', 'running', 'ready', 'degraded', 'external']),
-  source: z.enum(['website', 'upload', 'kudos', 'folder', 'database', 'episerver', 'none']),
+  source: z.enum([
+    'website',
+    'upload',
+    'kudos',
+    'folder',
+    'database',
+    'parquet',
+    'episerver',
+    'none',
+  ]),
   documents: z.number().int().nullable(),
   chunks: z.number().int().nullable(),
   lastExecution: LastExecution.nullable(),
@@ -147,7 +156,10 @@ const DatasetDetail = DatasetWithStatus.extend({
   skipped: z.array(SkippedDocument),
 }).openapi('DatasetDetail');
 
-const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec');
+const PipelineSpec = pipelineSpec.extend({}).openapi('IngestionPipelineSpec', {
+  description:
+    'Parquet sources accept url (one file), urls with a stable table name, or huggingface with dataset and file, or dataset, table and files (a glob or list). Shards are sorted and downloaded sequentially. mapping.maxRows caps rows across the table before filtering; maxBytes caps each file on disk (default 1 GiB, maximum 20 GiB), never above the platform ceiling. Pages and row groups have decompression limits. Duplicate row ids in sharded tables or any shard failure fail the run without promotion. Single-file document ids stay unchanged. mapping.lookups (at most 3) join fields from another Parquet file on a key: file (same Hugging Face dataset and revision) or url, key (lookup column), on (source column) and fields (columns, optionally renamed with as). Each lookup file is read once per run, before the first shard; a row without a matching key gets no joined fields, the run report counts matches and misses, and a key repeated with different values, more than maxRows rows or more than maxMemoryBytes fails the run; the lookups of one mapping may set at most 256 MiB of maxMemoryBytes together. Document ids do not change.',
+});
 const Pipeline = z
   .object({
     dataset: z.string(),
@@ -192,7 +204,16 @@ const Execution = z
         generation: z.string().optional(),
         promoted: z.boolean().optional(),
         previous: z.string().optional(),
-        usage: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+        usage: z
+          .record(z.string(), z.record(z.string(), z.unknown()))
+          .optional()
+          .describe('Only for callers with view-usage'),
+        source: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            'Source-specific facts. A Parquet source with lookups reports, per lookup, the file, its rows and keys, and how many documents matched or missed a key.',
+          ),
       })
       .optional(),
     error: z.string().optional(),
@@ -1047,6 +1068,7 @@ const uploadRoutes: RouteConfig[] = (() => {
         201: json(UploadResult, 'What was stored and what was skipped'),
         400: problem('Not multipart/form-data, no files, or a missing reason'),
         ...failures,
+        413: problem('Too many files, or the request is too large'),
       },
     }),
     createRoute({

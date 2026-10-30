@@ -1,6 +1,9 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   databaseConnection,
+  huggingFaceSource,
+  parquetTableName,
+  parquetMapping,
   readableTextExtensions,
   rowMapping,
   type SkipReason,
@@ -80,6 +83,40 @@ export const pipelineSpec = z.strictObject({
       limit: z.number().int().positive().optional(),
       baseUrl: z.url().optional(),
     }),
+    z
+      .strictObject({
+        kind: z.literal('parquet'),
+        url: z.url({ protocol: /^https$/ }).optional(),
+        huggingface: huggingFaceSource.optional(),
+        urls: z
+          .array(z.url({ protocol: /^https$/ }))
+          .min(1)
+          .max(1000)
+          .optional(),
+        table: parquetTableName.optional(),
+        mapping: parquetMapping,
+        maxBytes: z
+          .number()
+          .int()
+          .min(1024)
+          .max(20 * 1024 * 1024 * 1024)
+          .default(1024 * 1024 * 1024)
+          .describe(
+            'Disk byte cap per shard, up to the platform ceiling; shards download sequentially',
+          ),
+      })
+      .refine((s) => [s.url, s.urls, s.huggingface].filter((v) => v !== undefined).length === 1, {
+        message: 'a Parquet source needs exactly one of url, urls and huggingface',
+        path: ['url'],
+      })
+      .refine((s) => (s.urls ? s.table !== undefined : s.table === undefined), {
+        message: 'table is required exactly when urls is set',
+        path: ['table'],
+      })
+      .refine((s) => s.huggingface !== undefined || s.mapping.lookups.every((l) => !l.file), {
+        message: 'a lookup file needs a huggingface source; use url otherwise',
+        path: ['mapping', 'lookups'],
+      }),
     z.strictObject({
       kind: z.literal('database'),
       connection: databaseConnection,
@@ -158,6 +195,8 @@ export interface IngestionReport {
   promoted?: boolean;
   previous?: string;
   usage?: Record<string, Usage>;
+  /** Source-specific facts, such as how many rows a Parquet lookup matched. */
+  source?: Record<string, unknown>;
 }
 
 export interface IngestionBackend {
@@ -272,6 +311,12 @@ export interface ExecutionStore {
   save(execution: Execution): Promise<void>;
   get(id: string): Promise<Execution | undefined>;
   list(dataset: string, pipeline: string): Promise<Execution[]>;
+  failStale(input: {
+    startedBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }): Promise<number>;
 }
 
 export class InMemoryExecutionStore implements ExecutionStore {
@@ -291,6 +336,26 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((e) => e.dataset === dataset && e.pipeline === pipeline)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
       .map((e) => structuredClone(e));
+  }
+
+  async failStale(input: {
+    startedBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }) {
+    const stale = [...this.#executions.values()].filter(
+      (e) =>
+        e.status === 'running' && e.startedAt < input.startedBefore && !input.except.includes(e.id),
+    );
+    for (const e of stale)
+      this.#executions.set(e.id, {
+        ...e,
+        status: 'failed',
+        endedAt: input.endedAt,
+        error: input.error,
+      });
+    return stale.length;
   }
 }
 
@@ -320,6 +385,10 @@ export const ingestionLockedMessage =
 
 export const runLockedMessage = (dataset: string, execution: string) =>
   `the dataset ${dataset} is already being ingested by run ${execution}; wait for it to finish or cancel it`;
+
+export const staleRunMessage = 'the platform restarted while the run was going';
+
+export const staleRunHours = 6;
 
 export const writerLockKeys = (target: IngestionTarget) => [
   `dataset:${target.dataset}`,
@@ -352,6 +421,7 @@ export class IngestionService {
       newId?: () => string;
       admits?: (principal: Principal | undefined) => boolean;
       onRefused?: (message: string) => void;
+      onError?: (message: string) => void;
     },
   ) {}
 
@@ -371,6 +441,16 @@ export class IngestionService {
       ? backend.unavailableFor?.(target, pipeline)
       : (backend.unavailableReason ?? 'ingestion is not available');
     return { name: backend.name, available: reason === undefined, ...(reason ? { reason } : {}) };
+  }
+
+  async failStaleRuns(): Promise<number> {
+    const now = this.options.now?.() ?? new Date();
+    return this.options.executions.failStale({
+      startedBefore: new Date(now.getTime() - staleRunHours * 3_600_000).toISOString(),
+      except: [...this.#running.keys()],
+      endedAt: now.toISOString(),
+      error: staleRunMessage,
+    });
   }
 
   #now() {
@@ -571,6 +651,12 @@ export class IngestionService {
       .then(async (finished) => {
         try {
           await this.options.executions.save(finished);
+        } catch (error) {
+          this.options.onError?.(
+            `ingestion ${execution.id} ended as ${finished.status} but was not saved: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         } finally {
           this.#running.delete(execution.id);
         }

@@ -74,7 +74,9 @@ export const admitConfined = async (
 ): Promise<boolean> => {
   const confined = principal.confinedTo;
   if (!confined) return true;
-  const channel = channelOf(new URL(request.url).pathname);
+  const path = new URL(request.url).pathname;
+  if (path === '/me' && request.method === 'GET') return true;
+  const channel = channelOf(path);
   if (!channel) return false;
   if (!confined.client) return true;
   const client = await clients.get(confined.tenant, confined.client);

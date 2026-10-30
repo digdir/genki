@@ -19,12 +19,22 @@ export interface TaskTimeline {
   caller: string;
   startedAt: string;
   durationSeconds: number;
-  inputTokens: number;
-  outputTokens: number;
-  costOre: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costOre?: number;
+  costMicroNok?: number | null;
+  priced?: boolean;
   steps: TimelineStep[];
-  stats: RunStats;
+  stats: RunStats | Omit<RunStats, UsageStats>;
 }
+
+type UsageStats =
+  | 'inputTokens'
+  | 'outputTokens'
+  | 'cachedInputTokens'
+  | 'costMicroNok'
+  | 'unpricedTokens'
+  | 'byModel';
 
 const seconds = (from: string, to: string) =>
   Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 10) / 100);
@@ -57,9 +67,25 @@ export const toTimeline = (
   events: Event[],
   now: Date,
   serviceName?: string,
-  options: { details?: boolean } = {},
+  options: { details?: boolean; usage?: boolean } = {},
 ): TaskTimeline => {
-  const mapper = mapRun(events, { details: options.details ?? false, startedAt: task.createdAt });
+  const usage = options.usage ?? true;
+  const mapper = mapRun(events, {
+    details: options.details ?? false,
+    usage,
+    startedAt: task.createdAt,
+  });
+  const {
+    inputTokens,
+    outputTokens,
+    cachedInputTokens,
+    costMicroNok,
+    unpricedTokens,
+    byModel,
+    ...counts
+  } = mapper.stats();
+  const tokens = (task.usage.inputTokens ?? 0) + (task.usage.outputTokens ?? 0);
+  const unpricedRun = tokens > 0 && task.usage.costMicroNok === undefined;
   return {
     id: task.id,
     service: task.service.capability.id,
@@ -69,10 +95,26 @@ export const toTimeline = (
     caller: task.principal.kind,
     startedAt: task.createdAt,
     durationSeconds: seconds(task.createdAt, task.endedAt ?? now.toISOString()),
-    inputTokens: task.usage.inputTokens ?? 0,
-    outputTokens: task.usage.outputTokens ?? 0,
-    costOre: Math.round((task.usage.costMicroNok ?? 0) / 10_000),
+    ...(usage
+      ? {
+          inputTokens: task.usage.inputTokens ?? 0,
+          outputTokens: task.usage.outputTokens ?? 0,
+          costOre: Math.round((task.usage.costMicroNok ?? 0) / 10_000),
+          costMicroNok: unpricedRun ? null : (task.usage.costMicroNok ?? 0),
+          priced: !unpricedRun && unpricedTokens === 0,
+        }
+      : {}),
     steps: mapper.steps,
-    stats: mapper.stats(),
+    stats: usage
+      ? {
+          ...counts,
+          inputTokens,
+          outputTokens,
+          ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+          costMicroNok,
+          unpricedTokens,
+          byModel,
+        }
+      : counts,
   };
 };

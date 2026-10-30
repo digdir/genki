@@ -22,7 +22,9 @@ const people: Record<string, Principal> = {
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
 };
 
-const highRisk = (by = 'employee:test:kari') => ({
+const kari = 'employee:test:kari';
+
+const highRisk = (by = kari) => ({
   apiVersion: 'genai/v1',
   kind: 'Service',
   metadata: { tenant: digdir, id: 'vedtak' },
@@ -73,7 +75,7 @@ describe('risk governance', () => {
     const { governance, confirm } = boot();
     await confirm('kari');
 
-    const problems = await governance.checkPublish?.(highRisk('employee:test:kari'));
+    const problems = await governance.checkPublish?.(highRisk(), kari);
 
     expect(problems).toEqual([expect.objectContaining({ path: 'spec.riskConfirmation' })]);
   });
@@ -82,11 +84,23 @@ describe('risk governance', () => {
     const { governance, confirm } = boot();
 
     const confirmed = await confirm('ola');
-    const problems = await governance.checkPublish?.(highRisk('employee:test:kari'));
+    const problems = await governance.checkPublish?.(highRisk(), kari);
 
     expect(confirmed.status).toBe(201);
     expect(await confirmed.json()).toMatchObject({ riskClass: 'high', by: 'employee:test:ola' });
     expect(problems).toEqual([]);
+  });
+
+  it('counts the publisher and recorded confirmations, never a confirmer named in the definition', async () => {
+    const { governance, confirm } = boot();
+    await confirm('ola');
+
+    const problems = await governance.checkPublish?.(
+      highRisk('employee:test:someone-else'),
+      'employee:test:ola',
+    );
+
+    expect(problems).toEqual([expect.objectContaining({ path: 'spec.riskConfirmation' })]);
   });
 
   it('a risk confirmation is saved as an admin task', async () => {
@@ -104,7 +118,7 @@ describe('risk governance', () => {
     const { governance, confirm } = boot({ publishedAt: '2999-01-01T00:00:00.000Z' });
     await confirm('ola');
 
-    expect(await governance.checkPublish?.(highRisk())).toHaveLength(1);
+    expect(await governance.checkPublish?.(highRisk(), kari)).toHaveLength(1);
   });
 
   it('refuses a high-risk service with no confirmation at all', async () => {
@@ -112,7 +126,7 @@ describe('risk governance', () => {
     const service = highRisk();
     delete (service.spec as { riskConfirmation?: unknown }).riskConfirmation;
 
-    expect(await governance.checkPublish?.(service)).toHaveLength(1);
+    expect(await governance.checkPublish?.(service, kari)).toHaveLength(1);
   });
 
   it('only people with the publish right in the tenant can confirm', async () => {

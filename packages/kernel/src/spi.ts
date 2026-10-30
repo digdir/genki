@@ -81,7 +81,7 @@ export interface StateHandle {
 
 export interface Budget {
   remaining(): Usage | undefined;
-  charge(usage: Usage): Promise<void>;
+  charge(usage: Usage, model?: Ref): Promise<void>;
 }
 
 export interface InvocationContext {

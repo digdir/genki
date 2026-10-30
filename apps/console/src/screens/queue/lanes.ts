@@ -157,7 +157,10 @@ export const lanes: Lane[] = [
           title: p.title,
           org: p.tenant,
           orgName: tenantLabel(p.tenant, p.tenantName, t),
-          by: p.createdBy && p.createdBy !== 'assistant' ? personOf(p.createdBy) : '',
+          by:
+            p.createdBy && p.createdBy !== 'assistant'
+              ? personOf(p.createdBy)
+              : (p.requestedByName ?? ''),
           ...(p.createdBy && p.createdBy !== 'assistant' ? {} : { assistant: true }),
           at: p.createdAt,
           reason: p.summary ?? '',

@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16)
 
 ## Context
 
@@ -27,7 +27,7 @@ The embedding port is not locked, so search keeps embedding queries and reading 
 
 ## Entra logins in lockdown
 
-Ansattporten also offers login with Entra ID (`acr=entraid`). Outside lockdown the API refuses such a login, as before. In lockdown with `LOCKDOWN_ENTRA_GROUPS` set (comma-separated Entra group object ids; the API refuses to start if one is not a GUID), the API accepts an Entra login whose `groups` claim holds at least one of them. When `LOCKDOWN_ENTRA_EMAIL_DOMAIN` is set as well, the `email` claim must also end with `@` and that domain, without regard to case. genki-test sets both, the domain to `digdir.no`.
+Ansattporten also offers login with Entra ID (`acr=entraid`). Outside lockdown the API refuses such a login, as before. In lockdown with `LOCKDOWN_ENTRA_GROUPS` set (comma-separated Entra group object ids; the API refuses to start if one is not a GUID), the API accepts an Entra login whose `groups` claim holds at least one of them. When `LOCKDOWN_ENTRA_EMAIL_DOMAIN` is set as well, the `email` claim must also end with `@` and that domain, without regard to case. genki-test sets both, the domain to `digdir.no`. The login must also come from one of the clients in `OPERATOR_CLIENT_IDS` (comma-separated Ansattporten client ids), checked against the token's `client_id`, and never through a client a tenant registered; the API refuses to start in lockdown with `LOCKDOWN_ENTRA_GROUPS` set and `OPERATOR_CLIENT_IDS` empty. genki-test lists the portal, workspace and console clients, since all three use models. The API also reserves these client ids, so no tenant can register a client with one of them.
 
 A trusted Entra login gets the whole platform, so the team can work in test:
 
@@ -37,7 +37,7 @@ A trusted Entra login gets the whole platform, so the team can work in test:
 
 Work such a login starts keeps its admission. Batch, eval and project runs, test runs and resumed tasks run in the API under the person's own principal. The quality matrix, ingestion runs and the re-ingestion of an engine switch run under a system user; when the person who started them may use models, the API gives that system user the configured-credential mark, the same mark a configured key carries. The ingestion service sets it on a run it admitted, and an engine switch records it when it is started or retried. Nothing a caller sends can set it. Work that no person starts stays refused in lockdown, whoever configured it: worker triggers, scheduled ingestion and project subscriptions that run a service on new documents.
 
-An Entra login outside the groups, or with an email outside the domain, gets a 403 problem `urn:genai:problem:entra-not-trusted` that says so, instead of an empty session. The token lists no organisations, so the portal and workspace ask `GET /me` for the organisations, names and rights of the login, and show the email when the token has no name.
+An Entra login outside the groups, with an email outside the domain, or from another client, gets a 403 problem `urn:genai:problem:entra-not-trusted` that says so, instead of an empty session. The token lists no organisations, so the portal and workspace ask `GET /me` for the organisations, names and rights of the login, and show the email when the token has no name.
 
 Why groups and not the email alone: the token carries no Entra tenant id, and anyone can create an Entra tenant and give a user any email address, including one at `digdir.no`. A group object id is a GUID that only exists in the tenant that created it, so membership of a Digdir group is evidence of a Digdir account. The email domain is an extra guard, not the gate.
 
@@ -59,8 +59,9 @@ Test should stay open for the team to look at, and for configuration to be tried
 
 - genki-test has no credential from configuration, so models run there for trusted Entra logins and for the keys and clients they create, such as the KA test backend's key.
 - An admitted key stays admitted until it is revoked or rotated by someone else. Removing a person from the Entra group does not revoke the keys they made; revoke them in the portal.
-- TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS`, can only read in genki-test.
+- TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS` (`issuer|subject` pairs for Ansattporten logins), can only read in genki-test.
 - Who may work in test is decided by Entra group membership in Digdir, not by the platform. Removing someone from the group takes effect at their next token.
 - Production does not run in lockdown. It will have a real Kunnskapsassistenten service and a separate test service for KA's test backend.
 - A new check that sends a stored secret somewhere goes in `secretSendingChecks`.
 - A new route that runs a model goes in `modelRunRoutes` in `apps/api/src/lockdown.ts`, and a new route that ingests or writes embeddings goes in `ingestionRoutes`, so it gets the clear problem and not a failed task.
+- [ADR 0042](0042-the-knowledge-database.md), proposed, runs ingestion into the knowledge database as jobs in the worker (ADR 0041) and checks admission at the start of every job that fetches, converts or embeds, on the record that admitted it (a run, or a generation build, activation or rollback), instead of in the API process. Admission lasts 24 hours, so a run that stays open for nights stops when it runs out and is started again. The worker's model calls for admitted jobs (embeddings, search phrases) then need an exception to the rule above that refuses every model call the worker makes.

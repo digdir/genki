@@ -133,6 +133,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         settings,
         ...(options.platform.models ? { models: options.platform.models } : {}),
         ...(options.platform.now ? { now: options.platform.now } : {}),
+        ...(options.platform.names ? { names: options.platform.names } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
     const tasks =

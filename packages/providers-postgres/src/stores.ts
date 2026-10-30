@@ -132,6 +132,24 @@ export class PostgresTaskStore implements TaskStore {
     }));
   }
 
+  async tokensUsed(query: {
+    tenant: string;
+    since: string;
+    excludeCapabilityPrefix?: string;
+  }): Promise<number> {
+    const found = await this.pool.query<{ tokens: string }>(
+      `select coalesce(sum(
+         coalesce((envelope->'usage'->>'inputTokens')::numeric, 0) +
+         coalesce((envelope->'usage'->>'outputTokens')::numeric, 0)), 0) as tokens
+       from tasks
+       where tenant = $1 and created_at >= $2
+         and ($3::text is null
+           or not starts_with(coalesce(envelope->'service'->'capability'->>'id', ''), $3))`,
+      [query.tenant, query.since, query.excludeCapabilityPrefix ?? null],
+    );
+    return Number(found.rows[0]?.tokens ?? 0);
+  }
+
   async #decode(row: TaskRow): Promise<StoredTask> {
     if (row.body) {
       const key = await this.keys.get(row.tenant, row.scope, false);

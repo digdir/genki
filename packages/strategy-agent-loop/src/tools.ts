@@ -13,9 +13,11 @@ import {
   citationInstruction,
   defaultGenerationPrompt,
   sameLanguageRule,
+  untrustedData,
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
+import { skillsSection } from './skills.js';
 import {
   defaultSearchDisplayLimit,
   expandShortDocReads,
@@ -268,7 +270,8 @@ export const formatReadResult = (
       ` ---\n${c.content}`,
   );
   return (
-    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):\n\n${blocks.join('\n\n')}` +
+    `Read ${chunks.length} chunks (${charsThisCall} chars this call, ${cumulative} cumulative):` +
+    (blocks.length ? `\n\n${untrustedData('documents', blocks.join('\n\n'))}` : '') +
     (skippedNote ? `\n\n${skippedNote}` : '') +
     (budgetNote ? `\n\n${budgetNote}` : '')
   );
@@ -629,7 +632,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   try {
     text = stripSourceLists(
       await env.synthesize(
-        env.systemPrompt,
+        env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
         generationPromptFor(
           env.generationPrompt ?? defaultGenerationPrompt,
           context,

@@ -270,18 +270,21 @@ describe('the playground', () => {
     expect(await platform.definitions.list(tenant)).toEqual([]);
   });
 
-  it('playground runs are excluded from service statistics', async () => {
+  it('playground runs count as testing in usage, never as a service run', async () => {
     const { call, run } = await boot();
 
     const res = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
     const usage = (await call(`/tenants/${tenant}/usage`)).body as {
       totals: { inputTokens: number };
       byService: unknown[];
+      testing: { usage: { inputTokens: number }; byOrigin: { origin: string }[] };
     };
     const tasks = (await call(`/tenants/${tenant}/tasks`)).body as { data: unknown[] };
 
     expect(res.status).toBe(200);
-    expect(usage.totals.inputTokens).toBe(0);
+    expect(usage.totals.inputTokens).toBe(usage.testing.usage.inputTokens);
+    expect(usage.testing.usage.inputTokens).toBeGreaterThan(0);
+    expect(usage.testing.byOrigin.map((o) => o.origin)).toEqual(['playground']);
     expect(usage.byService).toEqual([]);
     expect(tasks.data).toEqual([]);
   });
@@ -347,6 +350,33 @@ describe('the playground', () => {
       ['zzz-chat', true, ['Hva er fristen?']],
       ['aaa-benchmark', false, []],
     ]);
+  });
+
+  it('lists the variants of a version with their title and model, and none for a single variant', async () => {
+    const { platform, call } = await boot();
+    const plain = service('aaa-plain', 'Svar kort.');
+    const varied = service('bbb-varied', 'Svar kort.');
+    Object.assign(varied.spec, {
+      variants: [
+        'default',
+        { id: 'rask', title: { nb: 'Rask', en: 'Fast' }, model: modelId },
+        { id: 'kort', chat: false },
+      ],
+    });
+    await platform.definitions.publish(plain, 'test', 'første');
+    const published = await platform.definitions.publish(varied, 'test', 'første');
+    expect(published.ok ? [] : published.errors).toEqual([]);
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const versionsOf = (id: string) => options.services.find((s) => s.id === id)?.versions;
+
+    expect(versionsOf('bbb-varied')?.[0]?.variants).toEqual([
+      { id: 'default' },
+      { id: 'rask', title: 'Rask', model: modelId },
+      { id: 'kort' },
+    ]);
+    expect(versionsOf('aaa-plain')?.[0]).not.toHaveProperty('variants');
   });
 
   it('gives each sample question in the language the caller reads, and keeps a plain question as written', async () => {

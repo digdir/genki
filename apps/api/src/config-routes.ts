@@ -29,11 +29,11 @@ import {
   type Pipeline,
 } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
-import { rightRefused, type Right } from './rights.js';
+import { rightRefused, seesUsage, type Right } from './rights.js';
 import type { GateRegistry, GuardrailRuleRegistry, ScopedResult } from './scoped-registry.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
 import { datasetStatus } from './dataset-status.js';
-import { candidateRelease } from './model-access.js';
+import { candidateRelease, tenantModelRefusal } from './model-access.js';
 import { effectiveResidency, locationOf } from './residency.js';
 
 export interface ConfigDeps {
@@ -83,6 +83,20 @@ const fromScoped = <T>(
     : { ok: false, errors: result.errors, target };
 
 const scopeOf = (input: Record<string, unknown>) => String(input.scope ?? platformScope);
+
+const phraseModelErrors = (
+  catalog: Pick<CatalogRegistry, 'get'>,
+  spec: unknown,
+  tenant: string,
+) => {
+  const phrases = (spec as { phrases?: Record<string, unknown> } | undefined)?.phrases;
+  return (['model', 'fallbackModel'] as const).flatMap((field) => {
+    const model = phrases?.[field];
+    const message =
+      typeof model === 'string' ? tenantModelRefusal(catalog, model, tenant) : undefined;
+    return message ? [{ path: `spec.phrases.${field}`, message }] : [];
+  });
+};
 
 const releaseKept = (
   kind: CatalogKind,
@@ -292,6 +306,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const dataset = String(input.dataset);
     const target = `pipeline:${dataset}/${String(input.id)}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to change this pipeline');
+    const modelErrors =
+      scope === platformScope ? [] : phraseModelErrors(deps.catalog, input.spec, scope);
+    if (modelErrors.length) return { ok: false, errors: modelErrors, target };
     const result = await deps.ingestion.save({
       scope,
       dataset,
@@ -1032,8 +1049,16 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
       const refusedKey = keyRefused(c, guard.principal, item);
       if (refusedKey) return refusedKey;
       const pipeline = await deps.ingestion.get(guard.scope, item.id, param(c, 'id'));
+      const executions = await deps.ingestion.executions(item.id, param(c, 'id'));
       return c.json({
-        data: await deps.ingestion.executions(item.id, param(c, 'id')),
+        data: seesUsage(guard.principal, guard.scope)
+          ? executions
+          : executions.map(({ report, ...rest }) => {
+              if (!report) return rest;
+              const shown = { ...report };
+              delete shown.usage;
+              return { ...rest, report: shown };
+            }),
         backend: deps.ingestion.availability(ingestionTarget(item)),
         nextRunAt: pipeline ? await deps.ingestion.nextRunAt(guard.scope, pipeline) : null,
       });

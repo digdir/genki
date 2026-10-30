@@ -413,9 +413,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   const serviceOf = (caps: CompiledCapability[], capabilityId: string) =>
     caps.find((c) => c.capability.descriptor.id === capabilityId)?.service.id ?? capabilityId;
 
-  const tenantTasks = async (
+  const tasksOf = async (
     tenant: string,
-    keep: (row: PortalTaskRow) => boolean = () => true,
+    keep: (row: PortalTaskRow) => boolean,
+    fromService: boolean,
   ) => {
     const rows = (await deps.tasks(tenant)).filter((t) => t.tenant === tenant && keep(t));
     const tasks = await Promise.all(rows.map((r) => deps.task(r.task)));
@@ -423,9 +424,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       (t): t is Task =>
         t !== undefined &&
         (t.tenant === tenant || t.owner === tenant) &&
-        originOf(t.service.capability.id) === serviceOrigin,
+        (originOf(t.service.capability.id) === serviceOrigin) === fromService,
     );
   };
+  const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
+    tasksOf(tenant, keep, true);
+  const tenantTestRuns = async (tenant: string) =>
+    (await tasksOf(tenant, () => true, false)).filter(
+      (t) => originOf(t.service.capability.id) !== 'assistant',
+    );
 
   const taskBase = (caps: CompiledCapability[], t: Task) => ({
     id: t.id,
@@ -598,6 +605,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     caps: CompiledCapability[],
     tasks: Task[],
     withInput: boolean,
+    withUsage: boolean,
   ) => {
     const actors = await taskActors(tasks, tenant);
     const names = new Map<string, string>();
@@ -614,7 +622,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const base = taskBase(caps, t);
         const excerpt = withInput ? excerptOf(await inputTextOf(t.id)) : '';
         return {
-          ...(await taskRow(caps, t)),
+          ...(withUsage ? await taskRow(caps, t) : base),
           serviceName: names.get(base.service) ?? base.service,
           ...(excerpt ? { excerpt } : {}),
           actor: actors.get(t.id) ?? { kind: 'system' as const },
@@ -686,6 +694,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         bumpOn(dailyModel, date, m.model, used);
       }
     }
+    let testing = empty();
+    const byOrigin = new Map<string, Tally>();
+    for (const t of project === undefined ? await tenantTestRuns(tenant) : []) {
+      if (!within(t.createdAt)) continue;
+      const { tally, models } = await taskTally(t);
+      testing = add(testing, tally);
+      totals = add(totals, tally);
+      bump(daily, day(t.createdAt), tally);
+      bump(byOrigin, originOf(t.service.capability.id), tally);
+      for (const m of models) {
+        const used = tallyOf(m.usage, deps.prices?.[m.model]);
+        bump(byModel, m.model, used);
+        bumpOn(dailyModel, day(t.createdAt), m.model, used);
+      }
+    }
     let ingestion = empty();
     for (const run of project === undefined ? ((await deps.ingestionUsage?.(tenant)) ?? []) : []) {
       if (!within(run.at)) continue;
@@ -746,6 +769,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       })),
       ...(project === undefined ? {} : { project }),
       ingestion: { usage: usageView(ingestion), byDataset: rows(byDataset, 'dataset') },
+      testing: { usage: usageView(testing), byOrigin: rows(byOrigin, 'origin') },
     };
   };
 
@@ -767,13 +791,16 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     );
     const start = now();
     const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-    const usage = await usageOver(g.tenant, month, start);
+    const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
+    const usage = seesUsage ? await usageOver(g.tenant, month, start) : undefined;
     const connections = await deps.connections.list(g.tenant);
     const dayAgo = start.getTime() - 86_400_000;
     return c.json({
       services,
-      recentTasks: await Promise.all(tasks.slice(0, 5).map((t) => taskRow(caps, t))),
-      usageThisMonth: usage.totals,
+      recentTasks: await Promise.all(
+        tasks.slice(0, 5).map((t) => (seesUsage ? taskRow(caps, t) : taskBase(caps, t))),
+      ),
+      ...(usage ? { usageThisMonth: usage.totals } : {}),
       qualityWarnings: (await deps.qualityWarnings?.(g.tenant)) ?? [],
       review: {
         pendingToolChanges: connections.reduce((n, s) => n + s.pending.length, 0),
@@ -1013,6 +1040,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       caps,
       rows.slice(0, limit).map((r) => byId.get(r.id) as Task),
       requireRight(g.principal, g.tenant, 'manage-services').ok,
+      requireRight(g.principal, g.tenant, 'view-usage').ok,
     );
     return c.json({ data, total: rows.length });
   });
@@ -1069,6 +1097,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       await capabilitiesOf(g.tenant),
       [found],
       requireRight(g.principal, g.tenant, 'manage-services').ok,
+      requireRight(g.principal, g.tenant, 'view-usage').ok,
     );
     return c.json(view);
   });

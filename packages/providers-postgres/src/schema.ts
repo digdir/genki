@@ -48,6 +48,7 @@ const definerFunctions = [
   'platform_clients()',
   'platform_tenants()',
   'find_ingestion_execution(text)',
+  'fail_stale_ingestion_executions(text, text[], text, text)',
   'find_api_key_policy(text)',
 ];
 
@@ -131,6 +132,7 @@ const migrations: string[] = [
      body bytea
    )`,
   `create index if not exists tasks_pending on tasks (status) where status = 'interrupted'`,
+  `create index if not exists tasks_thread on tasks (tenant, (envelope->>'thread'))`,
   `create table if not exists state (
      key text primary key,
      v integer not null,
@@ -632,7 +634,7 @@ const migrations: string[] = [
      pipeline text not null,
      pipeline_version integer not null,
      backend text not null,
-     status text not null check (status in ('running', 'succeeded', 'failed')),
+     status text not null check (status in ('running', 'succeeded', 'failed', 'cancelled')),
      started_by text not null,
      started_at text collate "C" not null,
      ended_at text,
@@ -641,12 +643,35 @@ const migrations: string[] = [
    )`,
   `create index if not exists ingestion_executions_recent
      on ingestion_executions (scope, dataset, pipeline, started_at desc)`,
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%cancelled%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('running', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
   ...tenantIsolation('ingestion_executions', 'scope'),
   `create or replace function find_ingestion_execution(p_id text) returns setof ingestion_executions
      language plpgsql stable security definer set search_path = public
      as $$ begin
        perform require_platform_access();
        return query select * from ingestion_executions where id = p_id;
+     end $$`,
+  `create or replace function fail_stale_ingestion_executions(
+       p_started_before text, p_except text[], p_ended_at text, p_error text) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare changed integer; begin
+       perform require_platform_access();
+       update ingestion_executions set status = 'failed', ended_at = p_ended_at, error = p_error
+         where status = 'running' and started_at < p_started_before and not (id = any(p_except));
+       get diagnostics changed = row_count;
+       return changed;
      end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,

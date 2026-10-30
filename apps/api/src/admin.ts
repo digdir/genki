@@ -24,6 +24,7 @@ import {
 } from '@genai/kernel';
 import type { Context } from 'hono';
 import { refusedAction, type RightProblem } from './rights.js';
+import { confirmedAs, riskConfirmationProblems } from './risk-confirmation.js';
 import { serviceHealth, type ServiceModels } from './service-health.js';
 
 export const platformActions = [
@@ -100,6 +101,7 @@ export interface ModelSummary {
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
   parameters?: Record<string, unknown>;
   rejectedParameters?: Record<string, string>;
+  transport?: { api: string; source: 'configured' | 'learned' | 'default' };
   services?: Record<string, unknown>[];
 }
 
@@ -144,6 +146,7 @@ export interface AdminOptions {
   extensions?: Record<string, AdminHandler>;
   records?: AdminRecordStore;
   tenants?: () => Promise<{ orgNumber: string; name: string }[]>;
+  names?: { remember(principal: Principal, name: string): Promise<void> };
 }
 
 export type AdminOutcome = Outcome;
@@ -247,6 +250,23 @@ export const createAdmin = (options: AdminOptions) => {
     return validated.ok ? checkPromptFiles(validated.definition, files) : validated.errors;
   };
 
+  const checkImport = (definition: unknown, files: PromptFiles): ValidationError[] => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? [
+          ...checkPromptFiles(validated.definition, files),
+          ...riskConfirmationProblems(validated.definition),
+        ]
+      : validated.errors;
+  };
+
+  const confirmedOnImport = (principal: Principal) => (definition: unknown) => {
+    const validated = validateDefinition(definition, plugins);
+    return validated.ok
+      ? confirmedAs(validated.definition, actorOf(principal.actor ?? principal), now())
+      : definition;
+  };
+
   const platformWide = {
     scope: 'platform',
     supportSession: 'not required: models are platform-wide, not tenant data',
@@ -328,7 +348,8 @@ export const createAdmin = (options: AdminOptions) => {
         onConflict: input.onConflict === 'overwrite' ? 'overwrite' : 'skip',
         actor: actorOf(principal),
         reason: input.reason,
-        check,
+        check: checkImport,
+        prepare: confirmedOnImport(principal),
       });
       const conflict = await flushTenant(`tenant:${input.tenant}`);
       if (conflict) return conflict;
@@ -606,6 +627,7 @@ export const createAdmin = (options: AdminOptions) => {
       target: result.target || action,
       reason: data.reason,
     });
+    if (actor.name) await options.names?.remember(actor, actor.name).catch(() => undefined);
     return { ...result, task: started.task };
   };
 
@@ -768,6 +790,7 @@ export const createAdmin = (options: AdminOptions) => {
       return extended;
     },
     check,
+    checkImport,
     audit: (tenant?: string) => records.audit(tenant),
     events: async (task: string): Promise<Event[]> => {
       const events: Event[] = [];

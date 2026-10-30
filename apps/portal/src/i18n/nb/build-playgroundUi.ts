@@ -157,6 +157,8 @@ export const playgroundUi = {
     kindOwn: 'Et eget oppsett',
     service: 'Tjeneste',
     versionLabel: 'Versjon',
+    variantLabel: 'Variant',
+    variantDefault: 'Standard',
     versionHelp:
       'Bruker modellen, datasettene, ferdighetene og byggeklossene i {version}. Du kan bytte modell her uten å endre tjenesten.',
     model: 'Modell',

@@ -29,6 +29,7 @@ import {
   InMemoryConnections,
   McpToolSource,
   tenantSecretPattern,
+  toolSyncDeadlineMs,
   type EgressOptions,
 } from '@genai/providers-mcp-client';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
@@ -371,7 +372,7 @@ export const externalTarget =
           tools: [],
           pending: [],
         });
-        await source.sync(options.tenant, 'ekstern');
+        await source.sync(options.tenant, 'ekstern', AbortSignal.timeout(toolSyncDeadlineMs));
         const pinned = (await registry.get(options.tenant, 'ekstern'))?.tools ?? [];
         const name = endpoint.example
           ? `ekstern.${endpoint.example.tool}`

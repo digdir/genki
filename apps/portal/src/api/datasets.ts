@@ -2,7 +2,8 @@ import type { ApiContext } from '../api';
 import { ApiError } from './error';
 import type { Problem, Residency } from '../types';
 
-export type DatasetSourceKind = 'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'none';
+export type DatasetSourceKind =
+  'website' | 'upload' | 'kudos' | 'folder' | 'database' | 'parquet' | 'none';
 export type Schedule = 'none' | 'daily' | 'weekly';
 export type SkipReason =
   | 'unsupported_type'

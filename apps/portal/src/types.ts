@@ -111,9 +111,10 @@ export interface TaskTimeline {
   caller: string;
   startedAt: string;
   durationSeconds: number;
-  inputTokens: number;
-  outputTokens: number;
-  costOre: number | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  costOre?: number | null;
+  costMicroNok?: number | null;
   steps: TimelineStep[];
 }
 
@@ -277,7 +278,7 @@ export interface TaskRow {
   capability: string;
   createdAt: string;
   endedAt: string | null;
-  usage: UsageTotals;
+  usage?: UsageTotals;
 }
 
 export interface ServiceLifecycleView {
@@ -312,7 +313,7 @@ export interface Overview {
     runsThisWeek?: number;
   }[];
   recentTasks: TaskRow[];
-  usageThisMonth: UsageTotals;
+  usageThisMonth?: UsageTotals;
   qualityWarnings: { service: string; message: string }[];
   review: { pendingToolChanges: number; failedTasksLastDay: number };
 }

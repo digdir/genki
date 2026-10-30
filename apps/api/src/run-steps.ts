@@ -38,6 +38,7 @@ export interface ModelTokens {
   inputTokens: number;
   outputTokens: number;
   calls: number;
+  costMicroNok?: number;
 }
 
 export interface RunStats {
@@ -49,6 +50,8 @@ export interface RunStats {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens?: number;
+  costMicroNok: number;
+  unpricedTokens: number;
   byModel: ModelTokens[];
 }
 
@@ -271,6 +274,7 @@ const fieldRows = (value: unknown): [string, string][] =>
 
 export interface RunMapperOptions {
   details?: boolean;
+  usage?: boolean;
   startedAt?: string;
 }
 
@@ -278,6 +282,7 @@ export class RunMapper {
   readonly steps: TimelineStep[] = [];
   readonly hits = new Map<string, HitView>();
   private readonly details: boolean;
+  private readonly usageShown: boolean;
   private start: number | undefined;
   private prev: number | undefined;
   private out: RunChange[] = [];
@@ -301,9 +306,12 @@ export class RunMapper {
   private inputTokens = 0;
   private outputTokens = 0;
   private cachedInputTokens = 0;
+  private costMicroNok = 0;
+  private unpricedTokens = 0;
 
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
+    this.usageShown = options.usage ?? true;
     if (options.startedAt) this.start = Date.parse(options.startedAt);
   }
 
@@ -317,6 +325,8 @@ export class RunMapper {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       ...(this.cachedInputTokens ? { cachedInputTokens: this.cachedInputTokens } : {}),
+      costMicroNok: this.costMicroNok,
+      unpricedTokens: this.unpricedTokens,
       byModel: [...this.byModel.values()],
     };
   }
@@ -1092,20 +1102,23 @@ export class RunMapper {
     this.inputTokens += input;
     this.outputTokens += output;
     this.cachedInputTokens += cached;
+    const cost = num(usage.costMicroNok);
+    if (cost === undefined) this.unpricedTokens += input + output;
+    else this.costMicroNok += cost;
     const seen = this.byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, calls: 0 };
+    const modelCost = cost === undefined ? seen.costMicroNok : (seen.costMicroNok ?? 0) + cost;
     this.byModel.set(model, {
       model,
       inputTokens: seen.inputTokens + input,
       outputTokens: seen.outputTokens + output,
       calls: seen.calls + 1,
+      ...(modelCost === undefined ? {} : { costMicroNok: modelCost }),
     });
     if (data.port !== undefined && data.port !== 'model') return;
-    const tokens = input + output;
-    const tokenText = t('steps.modelTokens', {
-      model,
-      input: nbCount(input),
-      output: nbCount(output),
-    });
+    const tokens = this.usageShown ? input + output : undefined;
+    const tokenText = this.usageShown
+      ? t('steps.modelTokens', { model, input: nbCount(input), output: nbCount(output) })
+      : model;
     const host =
       (this.turn?.state === 'running' ? this.turn : undefined) ??
       this.openOf('model', 'plan', 'tool', 'search', 'read');
@@ -1113,16 +1126,20 @@ export class RunMapper {
       kind: 'kv',
       rows: [
         [t('steps.model'), step.model ?? model],
-        [
-          t('steps.tokens'),
-          t('steps.tokenCounts', { input: nbCount(input), output: nbCount(output) }),
-        ],
-        ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
+        ...(this.usageShown
+          ? [
+              [
+                t('steps.tokens'),
+                t('steps.tokenCounts', { input: nbCount(input), output: nbCount(output) }),
+              ] as [string, string],
+              ...(cached ? [[t('steps.cached'), nbCount(cached)] as [string, string]] : []),
+            ]
+          : []),
       ],
       usage: true,
     });
     if (host) {
-      host.tokens = (host.tokens ?? 0) + tokens;
+      if (tokens !== undefined) host.tokens = (host.tokens ?? 0) + tokens;
       host.model = model;
       host.blocks = [...host.blocks.filter((b) => !b.usage), kv(host)];
       if (host === this.turn) {
@@ -1136,7 +1153,7 @@ export class RunMapper {
       type: 'model',
       title: t('steps.modelCall'),
       summary: tokenText,
-      tokens,
+      ...(tokens === undefined ? {} : { tokens }),
       model,
       blocks: [],
       ...this.rawOf(data),

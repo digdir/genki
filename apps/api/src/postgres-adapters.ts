@@ -1,4 +1,5 @@
 import type { TaskStatus } from '@genai/contracts';
+import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { DirectoryEntry, TaskIndex, TenantDirectoryStore, TrackedTask } from './extensions.js';
 
 type TenantStatus = NonNullable<DirectoryEntry['status']>;
@@ -13,6 +14,11 @@ export interface TenantRows {
 
 export interface TaskRows {
   list(query: { tenant?: string; status?: TaskStatus[]; limit: number }): Promise<TaskRow[]>;
+  tokensUsed?(query: {
+    tenant: string;
+    since: string;
+    excludeCapabilityPrefix?: string;
+  }): Promise<number>;
 }
 
 interface TaskRow {
@@ -49,4 +55,14 @@ const tracked = (row: TaskRow): TrackedTask => ({
 export const postgresTaskIndex = (tasks: TaskRows, limit = 1000): TaskIndex => ({
   all: async (tenant) => (await tasks.list({ ...(tenant ? { tenant } : {}), limit })).map(tracked),
   running: async () => (await tasks.list({ status: ['queued', 'running'], limit })).map(tracked),
+  ...(tasks.tokensUsed
+    ? {
+        tokensUsed: (tenant: string, since: string) =>
+          tasks.tokensUsed?.({
+            tenant,
+            since,
+            excludeCapabilityPrefix: assistantCapabilityPrefix,
+          }) ?? Promise.resolve(0),
+      }
+    : {}),
 });

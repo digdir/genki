@@ -4,7 +4,13 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Strategy } from '@genai/kernel';
-import { createPostgresStores, erased, LocalKeyWrapper, migrate } from './index.js';
+import {
+  createPostgresStores,
+  erased,
+  LocalKeyWrapper,
+  migrate,
+  PostgresIngestionExecutions,
+} from './index.js';
 import { stopPostgres } from './testing/index.js';
 
 let container: StartedPostgreSqlContainer;
@@ -256,6 +262,58 @@ describe('postgres task and state stores', () => {
     await stores.close();
   });
 
+  it('sums the tokens of every task a tenant started this month, past the newest thousand, without builder assistant turns', async () => {
+    const stores = await openStores(pool, wrapper);
+    const tenant = '444555666';
+    const principal: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
+    const put = (id: string, capability: string, createdAt: string, tokens: number) =>
+      stores.tasks.put(
+        {
+          task: {
+            id,
+            service: {
+              capability: { id: capability, version: '1' },
+              strategy: { id: 's', version: '1' },
+              configHash: 'h',
+            },
+            principal: { kind: 'employee', id: 'kari', tenant },
+            tenant,
+            owner: tenant,
+            status: 'completed',
+            artifacts: [],
+            usage: { inputTokens: tokens, outputTokens: tokens },
+            createdAt,
+          },
+          principal,
+          lastSeq: 1,
+        },
+        { tenant, key: 'thread:quota' },
+      );
+    for (let i = 0; i < 1001; i++)
+      await put(
+        `q-${i}`,
+        `${tenant}/svar`,
+        `2026-10-${String(2 + (i % 20)).padStart(2, '0')}T08:00:00.000Z`,
+        1,
+      );
+    await put(
+      'q-assistant',
+      'platform/draft/assistant/0f3a9c2e7b1d4e65',
+      '2026-10-05T08:00:00.000Z',
+      500,
+    );
+    await put('q-september', `${tenant}/svar`, '2026-09-30T23:00:00.000Z', 500);
+
+    expect(
+      await stores.tasks.tokensUsed({
+        tenant,
+        since: '2026-10-01T00:00:00.000Z',
+        excludeCapabilityPrefix: 'platform/draft/assistant/',
+      }),
+    ).toBe(2002);
+    await stores.close();
+  });
+
   it('refuses a state write when the value changed since it was read', async () => {
     const stores = await openStores(pool, wrapper);
     const v = await stores.state.put('counter', 1, scope);
@@ -341,5 +399,33 @@ describe('the kernel on postgres', () => {
     const audit = await collect(await after.events(kari, run.task, { audience: 'audit' }));
     expect(audit.map((e) => e.seq)).toEqual([...audit.keys()]);
     await second.close();
+  });
+});
+
+describe('postgres ingestion executions', () => {
+  it('stores a cancelled run, also after upgrading a table that did not allow it', async () => {
+    await pool.query(
+      'alter table ingestion_executions drop constraint ingestion_executions_status_check',
+    );
+    await pool.query(
+      `alter table ingestion_executions add constraint ingestion_executions_status_check
+         check (status in ('running', 'succeeded', 'failed'))`,
+    );
+    await migrate(pool);
+    const executions = new PostgresIngestionExecutions(pool);
+    const run = {
+      id: 'run-cancelled',
+      dataset: '999888777/sider',
+      pipeline: 'nettsider',
+      pipelineVersion: 1,
+      backend: 'test',
+      status: 'running' as const,
+      startedBy: 'kari',
+      startedAt: '2026-10-26T10:00:00.000Z',
+    };
+    await executions.save(run);
+    await executions.save({ ...run, status: 'cancelled', endedAt: '2026-10-26T10:01:00.000Z' });
+
+    expect(await executions.get(run.id)).toMatchObject({ status: 'cancelled' });
   });
 });

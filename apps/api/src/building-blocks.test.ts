@@ -665,6 +665,40 @@ describe('building blocks API', () => {
     expect(after?.tools.map((t) => t.name)).toEqual(['saks-api.hentsak', 'saks-api.slettsak']);
   });
 
+  it('registering a tool connection directly keeps OpenAPI writes off unless an operator registers it', async () => {
+    const { send, connections, admin, vault } = await setup();
+    await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);
+    await send(base, 'kari', {
+      body: {
+        type: 'openapi',
+        name: 'Saks-API',
+        endpoint: 'https://api.example.no/v1',
+        document: JSON.stringify(openApiDocument),
+        auth: { kind: 'api-key', secret: 'saks-api' },
+        operations: ['hentSak', 'slettSak'],
+      },
+      reason: 'Saks-API uten sletting',
+    });
+    const stored = (await connections.get(digdir, 'saks-api'))?.connection;
+    const register = (principal: Principal, id: string) =>
+      admin.perform(principal, 'platform.tools.register', {
+        tenant: digdir,
+        reason: 'Saks-API med sletting',
+        connection: { ...stored, id, writes: true },
+      });
+
+    const byTenant = await register(people.kari as Principal, 'saks-tenant');
+    const byOperator = await register(
+      { ...(people.operator as Principal), actor: people.operator as Principal },
+      'saks-operator',
+    );
+
+    expect(byTenant.ok).toBe(true);
+    expect((await connections.get(digdir, 'saks-tenant'))?.connection.writes).toBe(false);
+    expect(byOperator.ok).toBe(true);
+    expect((await connections.get(digdir, 'saks-operator'))?.connection.writes).toBe(true);
+  });
+
   it('a write grant is saved inside the decision task that approves it', async () => {
     const { send, connections, admin, vault } = await setup();
     await vault.set(digdir, 'saks-api', 'verdi', ['https://api.example.no']);

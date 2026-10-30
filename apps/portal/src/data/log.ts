@@ -1049,10 +1049,11 @@ export const logTasks: TaskRow[] = logTimelines.map((t) => {
         ? null
         : new Date(Date.parse(t.startedAt) + t.durationSeconds * 1000).toISOString(),
     usage: {
-      inputTokens: t.inputTokens,
-      outputTokens: t.outputTokens,
+      inputTokens: t.inputTokens ?? 0,
+      outputTokens: t.outputTokens ?? 0,
       requests: t.steps.filter((s) => s.type === 'model').length,
-      costMicroNok: t.costOre === null ? null : Math.round(t.costOre * 10_000),
+      costMicroNok:
+        t.costOre === null || t.costOre === undefined ? null : Math.round(t.costOre * 10_000),
     },
   };
 });
