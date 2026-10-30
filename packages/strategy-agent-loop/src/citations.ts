@@ -112,7 +112,7 @@ export const detectInsufficientContext = (
  * as the contract's [3]. Some models use them even when told to cite with [N].
  */
 export const normaliseCitationMarkers = (text: string): string =>
-  text.replace(/【\s*(\d+)(?::\d+)?(?:†[^】\n]*)?\s*】/g, '[$1]');
+  text.replace(/【 ?(\d+)(?::\d+)?(?:†[^】\n]{0,200})? ?】/g, '[$1]');
 
 export const stripPageMarkers = (text: string): string =>
   text.replace(/\{(\d+)\}/g, '').replace(/\n-{3,}\n/g, '\n');
