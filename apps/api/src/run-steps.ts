@@ -38,6 +38,7 @@ export interface ModelTokens {
   inputTokens: number;
   outputTokens: number;
   calls: number;
+  costMicroNok?: number;
 }
 
 export interface RunStats {
@@ -49,6 +50,8 @@ export interface RunStats {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens?: number;
+  costMicroNok: number;
+  unpricedTokens: number;
   byModel: ModelTokens[];
 }
 
@@ -303,6 +306,8 @@ export class RunMapper {
   private inputTokens = 0;
   private outputTokens = 0;
   private cachedInputTokens = 0;
+  private costMicroNok = 0;
+  private unpricedTokens = 0;
 
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
@@ -320,6 +325,8 @@ export class RunMapper {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       ...(this.cachedInputTokens ? { cachedInputTokens: this.cachedInputTokens } : {}),
+      costMicroNok: this.costMicroNok,
+      unpricedTokens: this.unpricedTokens,
       byModel: [...this.byModel.values()],
     };
   }
@@ -1095,12 +1102,17 @@ export class RunMapper {
     this.inputTokens += input;
     this.outputTokens += output;
     this.cachedInputTokens += cached;
+    const cost = num(usage.costMicroNok);
+    if (cost === undefined) this.unpricedTokens += input + output;
+    else this.costMicroNok += cost;
     const seen = this.byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, calls: 0 };
+    const modelCost = cost === undefined ? seen.costMicroNok : (seen.costMicroNok ?? 0) + cost;
     this.byModel.set(model, {
       model,
       inputTokens: seen.inputTokens + input,
       outputTokens: seen.outputTokens + output,
       calls: seen.calls + 1,
+      ...(modelCost === undefined ? {} : { costMicroNok: modelCost }),
     });
     if (data.port !== undefined && data.port !== 'model') return;
     const tokens = this.usageShown ? input + output : undefined;
