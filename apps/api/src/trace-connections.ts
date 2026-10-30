@@ -314,7 +314,8 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const tenant = c.req.param('tenant') ?? '';
         const entered = enterTenant(c, mountDeps.access, principal, tenant);
         if ('response' in entered) return { response: entered.response };
-        return { principal, tenant };
+        // The entered principal: an operator outside a support session has no more than members.
+        return { principal: entered.principal, tenant };
       };
       const reasonOf = (c: Context) => (changeReasonOf(c) ?? '').trim();
       const perform = async (
@@ -350,8 +351,13 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
         const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+        const connection = { ...body, id: c.req.param('id') };
+        // Checked before the admin task starts, so a key typed in clear never enters its input.
+        const parsed = traceConnection.safeParse(connection);
+        if (!parsed.success)
+          return problem(c, 400, 'Invalid request', { errors: errorsOf(parsed.error) });
         return perform(c, guard.principal, guard.tenant, 'platform.tracing.connection.save', {
-          connection: { ...body, id: c.req.param('id') },
+          connection,
         });
       });
 
