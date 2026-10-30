@@ -16,7 +16,13 @@ export interface DeploymentConfig<O = unknown> {
   options: O;
 }
 
+export interface ModelTransport {
+  api: string;
+  source: 'configured' | 'learned' | 'default';
+}
+
 export interface ModelConnection<M = unknown> {
+  describe?(model: DeploymentConfig<M>): ModelTransport;
   chat(model: DeploymentConfig<M>, request: ChatRequest, signal: AbortSignal): Promise<ChatResult>;
   chatStream(
     model: DeploymentConfig<M>,
