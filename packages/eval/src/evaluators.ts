@@ -7,6 +7,9 @@ export interface EvalContext {
   modelFamily(model: string): string | undefined;
   /** Aborts when the eval run is cancelled. */
   signal?: AbortSignal;
+  /** The eval run and the case's task, for a judge that scores the trace the case sent. */
+  run?: string;
+  task?: string;
 }
 
 export interface PendingScore {
@@ -36,6 +39,11 @@ export interface Evaluator {
   collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
   /** What the evaluator's own model calls used, for a judge that calls one. */
   usage?(): UsageSummary;
+  /**
+   * Its reasons may quote the answer, so they are kept only on the case's task, whose retention
+   * purges them with the case; the run keeps its scores without them.
+   */
+  reasonsOnTheCase?: boolean;
 }
 
 /**

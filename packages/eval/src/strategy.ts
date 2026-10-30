@@ -23,6 +23,8 @@ export const evalRunConfig = z.strictObject({
   sink: z.string().min(1).optional(),
   /** Models the run's judges must not share a family with: the tested service's own models. */
   avoidAsJudge: z.array(z.string()).optional(),
+  /** The sink's judges as they were when the run started, for forRun to score with. */
+  sinkJudges: z.array(z.unknown()).optional(),
 });
 export type EvalRunConfig = z.input<typeof evalRunConfig>;
 
@@ -34,7 +36,16 @@ export interface EvalStrategyDeps {
   wait?: WaitOptions;
   meterAnswers?: RunEvalOptions['meterAnswers'];
   /** Evaluators made for one run, such as a judge whose model is picked for the run's tenant. */
-  forRun?: (principal: Principal, run: { avoid: string[] }) => Map<string, Evaluator>;
+  forRun?: (
+    principal: Principal,
+    run: {
+      avoid: string[];
+      id?: string;
+      evaluators: string[];
+      sink?: string;
+      sinkJudges?: unknown[];
+    },
+  ) => Map<string, Evaluator> | Promise<Map<string, Evaluator>>;
 }
 
 export interface EvalNotice {
@@ -54,8 +65,13 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
       );
     const options = parsed.data;
     const ownEvaluators =
-      deps.forRun?.(ctx.principal, { avoid: options.avoidAsJudge ?? [] }) ??
-      new Map<string, Evaluator>();
+      (await deps.forRun?.(ctx.principal, {
+        avoid: options.avoidAsJudge ?? [],
+        ...(options.id ? { id: options.id } : {}),
+        evaluators: options.evaluators,
+        ...(options.sink ? { sink: options.sink } : {}),
+        ...(options.sinkJudges ? { sinkJudges: options.sinkJudges } : {}),
+      })) ?? new Map<string, Evaluator>();
     const evaluators = options.evaluators.map((id) => {
       const evaluator = ownEvaluators.get(id) ?? deps.evaluators.get(id);
       if (!evaluator) throw new EvalError(`unknown evaluator ${id}`);
@@ -78,7 +94,14 @@ export const evalRunStrategy = (deps: EvalStrategyDeps): Strategy<Partial<EvalRu
                     id: options.id,
                     name: `${options.testSet.metadata.id} v${options.testSet.metadata.version}`,
                   },
-                  case: { id: item.case.id, repeat: item.repeat, split: item.case.split },
+                  case: {
+                    id: item.case.id,
+                    repeat: item.repeat,
+                    split: item.case.split,
+                    ...(item.case.expected.criteria
+                      ? { expected: item.case.expected.criteria }
+                      : {}),
+                  },
                   sink: options.sink,
                 },
               }

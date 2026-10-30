@@ -108,6 +108,8 @@ export const catalogErrors = defineNamespace({
   tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
   tracingResidencyForbids:
     'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
+  gateOnSinkJudge:
+    'kvalitetskravet {gate} leser Langfuse-dommeren {judge} på koblingen {connection}, som er rådgivende og aldri stopper en publisering',
   tracingHostOrigin:
     'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
   tracingHostDot: 'vertsnavnet slutter med punktum',

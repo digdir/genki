@@ -152,6 +152,20 @@ export const blocksLane = {
     factRuns: 'Runs',
     factChangedBy: 'Changed by',
     factId: 'ID',
+    judgeModel: 'Model',
+    judgeDefaultModel: "The project's default model",
+    judgeVersion: 'Judge version',
+    judgeDataType: 'Answer type',
+    judgeBoolean: 'Yes or no',
+    judgeNumeric: 'Number',
+    judgeCategorical: 'Category',
+    judgeFields: 'Reads',
+    judgeAdvisory:
+      'Langfuse judge on the connection {connection}. It is advisory and never stops a publish.',
+    judgeRefusedDefaultModel:
+      "The judge uses the project's default model, which cannot be read through Langfuse. Pick a model for the judge in Langfuse to use it.",
+    judgeRefusedField: 'The judge reads {field}, which genki does not send.',
+    judgeRefusedPath: 'The judge reads {field}, a JSON path genki cannot read.',
     pendingNotice:
       'The request has been sent to {approver}. You will be notified on Overview when it has been handled.',
     updateHeading: 'Version {version}, available from {date}',

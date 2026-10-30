@@ -9,6 +9,7 @@ const evaluationContext = z.object({
     id: z.string().min(1),
     repeat: z.number().int().nonnegative(),
     split: z.enum(['train', 'validation', 'holdout']),
+    expected: z.record(z.string(), z.string()).optional(),
   }),
   sink: z.string().min(1).optional(),
 });
@@ -33,11 +34,14 @@ export const experimentAttributes = (experiment: Experiment, rootObservationId: 
   'langfuse.experiment.item.root_observation_id': rootObservationId,
 });
 
-/** Only on the item's root span. */
-export const itemAttributes = (experiment: Experiment) => ({
+/** Only on the item's root span; what the case expects only when a judge maps it. */
+export const itemAttributes = (experiment: Experiment, expected = false) => ({
   'langfuse.experiment.item.metadata.case': experiment.case.id,
   'langfuse.experiment.item.metadata.repeat': String(experiment.case.repeat),
   'langfuse.experiment.item.metadata.split': experiment.case.split,
+  ...(expected && experiment.case.expected
+    ? { 'langfuse.experiment.item.expected_output': JSON.stringify(experiment.case.expected) }
+    : {}),
 });
 
 export interface ExperimentRouter {

@@ -191,6 +191,40 @@ describe('quality gates and test sets for a service', () => {
     });
   });
 
+  it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
+    const refusal =
+      'kvalitetskravet kriterier-langfuse leser Langfuse-dommeren svar_oppfyller_kriteriene-eksperimenter på koblingen kudos, som er rådgivende og aldri stopper en publisering';
+    const { api } = platform({
+      [`GET /tenants/${tenant}/gates`]: () => [200, { data: [] }],
+      [`PUT /tenants/${tenant}/gates/kriterier-langfuse`]: () => [
+        400,
+        {
+          type: 'about:blank',
+          title: 'Ugyldig forespørsel',
+          status: 400,
+          errors: [{ path: 'metric', message: refusal }],
+        },
+      ],
+    });
+    render(<TenantGates api={api} tenant={tenant} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ny' }));
+    fill('Id', 'kriterier-langfuse');
+    fill(
+      'Innhold (JSON)',
+      JSON.stringify({
+        metric: 'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter',
+        kind: 'threshold',
+        threshold: 0.8,
+      }),
+    );
+    fill(/Begrunnelse/, 'Krav til Langfuse-dommeren');
+    fireEvent.click(screen.getByRole('button', { name: 'Opprett' }));
+
+    expect(await screen.findByText(new RegExp(refusal))).toBeTruthy();
+    expect(screen.queryByText(/kriterier-langfuse er lagret/)).toBeNull();
+  });
+
   it('adds a case to a test set', async () => {
     const set = {
       metadata: { tenant, id: 'kudos', name: 'Kudos-spørsmål', version: 1 },

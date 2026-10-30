@@ -1087,6 +1087,35 @@ describe('deferred judges (evaluator@2)', () => {
       }),
     ).rejects.toThrow(/evaluator judge:later answered pending on case a but cannot be collected/);
   });
+
+  it("purges a judge's reason with the case, as its retention says", async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => ({
+      ...scoredAs(item, 1),
+      reason: 'Svaret siterer saksnummeret 2026/41.',
+    }));
+    evaluator.reasonsOnTheCase = true;
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+    });
+    const onTheCase: Score[] = [];
+    for await (const e of await kernel.events(kari, run.results[0]?.task as string, {
+      audience: 'audit',
+    }))
+      if (e.type === 'kernel.score') onTheCase.push(e.data as Score);
+
+    // The run outlives the case's task; the reason lives only on the task, so it goes with it.
+    expect(judged(run)).toMatchObject([{ state: 'scored', value: 1 }, { state: 'scored' }]);
+    expect(JSON.stringify(run)).not.toContain('saksnummeret');
+    expect(onTheCase).toMatchObject([
+      { state: 'scored', value: 1, reason: 'Svaret siterer saksnummeret 2026/41.' },
+    ]);
+  });
 });
 
 describe('the criteria judge', () => {

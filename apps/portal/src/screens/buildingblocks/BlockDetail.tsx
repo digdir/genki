@@ -38,6 +38,8 @@ import { refusalOf } from '../../states';
 import {
   ApiCallButton,
   approverName,
+  judgeFacts,
+  judgeRefusalText,
   PermissionList,
   ReadOnlyAlert,
   rightLabelFor,
@@ -178,10 +180,14 @@ export const BlockDetail = ({
   const facts = [
     { label: t('blocks.factType'), value: kindLabel(t, item.kind) },
     { label: t('blocks.publisher'), value: item.publisher.name },
-    {
-      label: item.kind === 'dataset' ? t('blocks.factContent') : t('blocks.factVersion'),
-      value: item.version,
-    },
+    ...(item.judge
+      ? judgeFacts(t, item.judge)
+      : [
+          {
+            label: item.kind === 'dataset' ? t('blocks.factContent') : t('blocks.factVersion'),
+            value: item.version,
+          },
+        ]),
     ...(item.dataLocation
       ? [{ label: t('blocks.factStorage'), value: t(storageLabels[item.dataLocation]) }]
       : []),
@@ -208,14 +214,20 @@ export const BlockDetail = ({
           <Tag data-color={status.color}>{t(status.label)}</Tag>
           {item.dataLocation ? <DataLocationTag location={item.dataLocation} /> : null}
         </div>
-        <p className="lead bb-desc">{item.description}</p>
+        <p className="lead bb-desc">
+          {item.judge
+            ? t('blocks.judgeAdvisory', { connection: item.judge.connection })
+            : item.description}
+        </p>
       </div>
 
       {!canChange ? <ReadOnlyAlert right={right} /> : null}
 
       {item.status === 'not_allowed' && item.policyBlock ? (
         <Alert data-color="danger">
-          <Paragraph>{item.policyBlock.text}</Paragraph>
+          <Paragraph>
+            {item.judge?.refused ? judgeRefusalText(t, item.judge.refused) : item.policyBlock.text}
+          </Paragraph>
         </Alert>
       ) : null}
       {item.status === 'requires_approval' && item.policyBlock ? (

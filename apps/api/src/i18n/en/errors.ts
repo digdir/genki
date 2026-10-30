@@ -108,6 +108,8 @@ export const catalogErrors = {
   tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',
   tracingResidencyForbids:
     "the service's residency {residency} does not allow the connection's {connection}",
+  gateOnSinkJudge:
+    'the gate {gate} reads the Langfuse judge {judge} on the connection {connection}, which is advisory and never blocks a publish',
   tracingHostOrigin:
     'the host is an address like https://langfuse.example.no, without a path or credentials',
   tracingHostDot: 'the host name ends with a dot',

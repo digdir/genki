@@ -117,6 +117,17 @@ export interface CatalogItem {
   pendingRequest?: PendingRequest;
   extensionPoint?: ExtensionPoint;
   isNew?: boolean;
+  /** A judge from the project of one of the tenant's Langfuse connections. */
+  judge?: SinkJudgeInfo;
+}
+
+export interface SinkJudgeInfo {
+  connection: string;
+  model?: string | undefined;
+  version: string;
+  dataType: string;
+  fields: { variable: string; source: string; jsonPath?: string }[];
+  refused?: { reason: string; field?: string; message: string };
 }
 
 export interface BuildingBlockList {

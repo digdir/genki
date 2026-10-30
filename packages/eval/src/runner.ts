@@ -240,6 +240,15 @@ const pauseFor = (ms: number, signal?: AbortSignal) =>
     );
   });
 
+/** The score as the run keeps it: without a judge's reason, which stays only on the case's task. */
+const keptInRun = (evaluator: Evaluator | undefined, score: Score): Score => {
+  if (!evaluator?.reasonsOnTheCase || score.state !== 'scored' || score.reason === undefined)
+    return score;
+  const kept = { ...score };
+  delete kept.reason;
+  return kept;
+};
+
 const minutes = (ms: number) => `${Math.round(ms / 60_000)} minute${ms === 60_000 ? '' : 's'}`;
 
 const collectPending = async (
@@ -286,7 +295,7 @@ const collectPending = async (
         s.metric === collected.score.metric,
     );
     if (!result || at === undefined || at < 0) return;
-    result.scores[at] = collected.score;
+    result.scores[at] = keptInRun(byId.get(collected.score.evaluator), collected.score);
     await options.annotate(result.task, collected.score);
   };
 
@@ -387,6 +396,8 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
       if (options.meterAnswers) answered.push(options.meterAnswers(outcome.events));
       const observation: Observation = observe(outcome.parts, outcome.events);
       const ctx: EvalContext = {
+        ...(options.id ? { run: options.id } : {}),
+        task: outcome.task,
         servedModels: outcome.writers ?? outcome.servedModels,
         modelFamily: options.modelFamily ?? (() => undefined),
         ...(options.signal ? { signal: options.signal } : {}),
@@ -410,6 +421,8 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
         scores.push(...answered);
       }
       for (const s of scores) if (s.state !== 'pending') await annotate(outcome.task, s);
+      const byId = new Map(evaluators.map((e) => [e.id, e]));
+      const kept = scores.map((s) => keptInRun(byId.get(s.evaluator), s));
       results.push({
         case: c.id,
         split: c.split,
@@ -417,7 +430,7 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
         task: outcome.task,
         tags: c.tags,
         ...(c.language ? { language: c.language } : {}),
-        scores,
+        scores: kept,
       });
       options.onProgress?.(results.length, total, usageSoFar());
     }

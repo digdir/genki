@@ -17,6 +17,7 @@ import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
+import { translateMessage } from './i18n/index.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
 import { deleteSinkTraces, InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
@@ -152,7 +153,11 @@ const boot = async (
   prices?: Record<string, ModelPrice>,
   tracing?: TracingOptions,
   traceDeliveries?: TraceDeliveryStore,
-  options: { localModel?: boolean } = {},
+  options: {
+    localModel?: boolean;
+    evalWait?: { everyMs: number; deadlineMs: number };
+    gates?: Map<string, ReturnType<typeof gate.parse>>;
+  } = {},
 ) => {
   const optimiserPrompts: string[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
@@ -216,6 +221,8 @@ const boot = async (
     ...(prices ? { prices } : {}),
     ...(tracing ? { tracing } : {}),
     ...(traceDeliveries ? { traceDeliveries } : {}),
+    ...(options.evalWait ? { evalWait: options.evalWait } : {}),
+    ...(options.gates ? { gates: options.gates } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -1004,6 +1011,353 @@ describe('eval runs sent to a trace connection', () => {
     expect(refused.status).toBe(409);
     expect(JSON.stringify(refused.body)).toContain(
       'two trace connections cover the service svar: kopi, lokal',
+    );
+  });
+});
+
+const judgeRule = 'svar_oppfyller_kriteriene-eksperimenter';
+
+interface FakeRule {
+  id: string;
+  name: string;
+  target: string;
+  status: string;
+  enabled: boolean;
+  mapping: { variable: string; source: string; jsonPath?: string }[];
+  evaluator: { id: string; name: string };
+}
+
+const experimentRule = (over: Partial<FakeRule> = {}): FakeRule => ({
+  id: 'regel-1',
+  name: judgeRule,
+  target: 'experiment',
+  status: 'active',
+  enabled: true,
+  mapping: [
+    { variable: 'input', source: 'input' },
+    { variable: 'output', source: 'output' },
+    { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+  ],
+  evaluator: { id: 'dommer-1', name: 'svar_oppfyller_kriteriene' },
+  ...over,
+});
+
+/**
+ * A Langfuse 4.4.0 project whose active experiment rules judge each item as its root span arrives,
+ * as Langfuse does a few seconds after a trace comes in.
+ */
+const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
+  const spans: {
+    traceId: string;
+    spanId: string;
+    attributes: { key: string; value: { stringValue?: string } }[];
+  }[] = [];
+  const scores = new Map<string, Record<string, unknown>[]>();
+  const attr = (span: (typeof spans)[number], key: string) =>
+    span.attributes.find((a) => a.key === key)?.value.stringValue;
+  const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
+  const server = await fakeHttp((body, _attempt, path) => {
+    const url = new URL(path, 'http://langfuse.test');
+    const ok = (json: unknown) => ({ status: 200, json });
+    if (url.pathname === '/api/public/otel/v1/traces') {
+      const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
+      const got = resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans));
+      spans.push(...got);
+      for (const span of got)
+        if (attr(span, 'langfuse.experiment.item.root_observation_id') === span.spanId)
+          for (const r of judging())
+            scores.set(span.traceId, [
+              ...(scores.get(span.traceId) ?? []),
+              {
+                id: `${r.id}-${span.traceId}`,
+                name: r.name,
+                value: true,
+                dataType: 'BOOLEAN',
+                source: 'EVAL',
+                comment: 'Svaret oppgir fristen.',
+                metadata: { job_configuration_id: r.id },
+              },
+            ]);
+      return ok({});
+    }
+    if (url.pathname === '/api/public/unstable/evaluation-rules')
+      return ok({
+        data: rules,
+        meta: { page: 1, limit: 50, totalItems: rules.length, totalPages: 1 },
+      });
+    const ruleId = /evaluation-rules\/(.+)$/.exec(url.pathname)?.[1];
+    if (ruleId) {
+      const found = rules.find((r) => r.id === decodeURIComponent(ruleId));
+      return found ? ok(found) : { status: 404, json: {} };
+    }
+    const evaluatorId = /unstable\/evaluators\/(.+)$/.exec(url.pathname)?.[1];
+    if (evaluatorId)
+      return ok({
+        id: decodeURIComponent(evaluatorId),
+        name: 'svar_oppfyller_kriteriene',
+        version: 1,
+        outputDefinition: { dataType: 'BOOLEAN' },
+        modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
+      });
+    if (url.pathname === '/api/public/v3/scores')
+      return ok({ data: scores.get(url.searchParams.get('traceId') ?? '') ?? [], meta: {} });
+    if (url.pathname === '/api/public/projects')
+      return ok({ data: [{ id: 'genki-test', name: 'genki test' }] });
+    return { status: 404, json: {} };
+  });
+  servers.push(server);
+  return { url: server.url, spans, attr };
+};
+
+describe('Langfuse judges on a run', () => {
+  const why = { 'change-reason': 'Kobler tjenesten til Langfuse-dommerne' };
+  const judged = async (rules?: FakeRule[], residency = 'global') => {
+    const langfuse = await fakeLangfuse(rules);
+    const env = await boot(undefined, { devMode: true }, undefined, {
+      evalWait: { everyMs: 50, deadlineMs: 20_000 },
+      localModel: true,
+    });
+    await env.send(
+      'PUT',
+      `/tenants/${tenant}/secrets/sporing`,
+      'kari',
+      { value: 'sk-lf-lokal', allowedHosts: [langfuse.url] },
+      why,
+    );
+    const saved = await env.send(
+      'PUT',
+      `/tenants/${tenant}/tracing/connections/lokal`,
+      'kari',
+      {
+        host: langfuse.url,
+        publicKey: 'pk-lf-lokal',
+        secretKey: `secret://tenant/${tenant}/sporing`,
+        services: ['svar'],
+        residency,
+        content: true,
+        erasureDeclared: true,
+      },
+      why,
+    );
+    expect(saved.status).toBe(200);
+    const adopt = (name: string) =>
+      env.send(
+        'POST',
+        `/tenants/${tenant}/building-blocks/judge/${encodeURIComponent(`langfuse:lokal/${name}`)}/adopt`,
+        'kari',
+        undefined,
+        why,
+      );
+    return { env, langfuse, adopt };
+  };
+
+  it("scores a run's cases with a Langfuse judge under the identity langfuse:<tenant>/<connection>/<name>@v<version>+<model>", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const scoreOf = (id: string) =>
+      stored?.run.results
+        .find((r) => r.case === id)
+        ?.scores.find((s) => s.evaluator === `langfuse:lokal/${judgeRule}`);
+    const rootOf = (id: string) =>
+      langfuse.spans.find((s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case') === id);
+
+    expect(started.status).toBe(202);
+    expect(stored?.run.status).toBe('completed');
+    expect(stored?.run.provenance.judges).toContain(
+      `langfuse:${tenant}/lokal/${judgeRule}@v1+foundry-claude/claude-sonnet-5`,
+    );
+    expect(stored?.run.tested).toMatchObject({ sink: 'lokal' });
+    expect(scoreOf('o1')).toMatchObject({ state: 'scored', value: 1 });
+    expect(scoreOf('o2')).toMatchObject({
+      state: 'not-applicable',
+      reason: 'the case has no expected_output $.criteria',
+    });
+    expect(scoreOf('l1')).toMatchObject({
+      state: 'not-applicable',
+      reason: 'holdout cases are never sent',
+    });
+    expect(stored?.run.metrics[`langfuse:lokal/${judgeRule}`]).toMatchObject({ mean: 1, n: 1 });
+    // Only the fields the judge maps go out: the question, the answer and the case's criteria.
+    const o1 = rootOf('o1');
+    if (!o1) throw new Error('case o1 was not sent');
+    expect(langfuse.attr(o1, 'langfuse.observation.input')).toContain('Når er fristen for søknad?');
+    expect(langfuse.attr(o1, 'langfuse.observation.output')).toContain('Vi svarer snart.');
+    expect(
+      JSON.parse(langfuse.attr(o1, 'langfuse.experiment.item.expected_output') ?? '{}'),
+    ).toEqual({ criteria: 'Svaret oppgir fristen' });
+    expect(rootOf('l1')).toBeUndefined();
+    // The portal reads the judge apart from genki's metrics, and its reason from the case's task.
+    const detail = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
+    expect(detail.body).toMatchObject({
+      experiment: `${langfuse.url}/project/genki-test/experiments/results?baseline=${String(started.body.id)}`,
+      sinkJudges: [
+        {
+          id: `langfuse:lokal/${judgeRule}`,
+          name: judgeRule,
+          version: 'v1+foundry-claude/claude-sonnet-5',
+          dataType: 'BOOLEAN',
+          metric: { mean: 1, n: 1 },
+          notApplicable: 2,
+          missing: 0,
+          changed: [],
+        },
+      ],
+    });
+    expect(
+      (detail.body.cases as { caseId: string; judges?: unknown }[]).find((c) => c.caseId === 'o1')
+        ?.judges,
+    ).toEqual([
+      {
+        judge: `langfuse:lokal/${judgeRule}`,
+        state: 'scored',
+        value: 1,
+        dataType: 'BOOLEAN',
+        reason: 'Svaret oppgir fristen.',
+      },
+    ]);
+  });
+
+  it("lists each experiment rule of a connection's project as a judge building block, and scores a run only with the ones the agency added", async () => {
+    const short = 'svar_er_kort-eksperimenter';
+    const { env, adopt } = await judged([
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: short }),
+      experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' }),
+      experimentRule({ id: 'regel-4', name: 'pause-eksperimenter', status: 'inactive' }),
+    ]);
+
+    const listed = await env.send('GET', `/tenants/${tenant}/building-blocks?kind=judge`);
+    const blocks = (listed.body.data as { id: string }[]).filter((b) =>
+      b.id.startsWith('langfuse:'),
+    );
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(blocks.map((b) => b.id).sort()).toEqual([
+      `langfuse:lokal/${short}`,
+      `langfuse:lokal/${judgeRule}`,
+    ]);
+    expect(blocks.find((b) => b.id === `langfuse:lokal/${judgeRule}`)).toMatchObject({
+      kind: 'judge',
+      name: judgeRule,
+      status: 'available',
+      judge: {
+        model: 'foundry-claude/claude-sonnet-5',
+        version: '1',
+        dataType: 'BOOLEAN',
+        fields: [
+          { variable: 'input', source: 'input' },
+          { variable: 'output', source: 'output' },
+          { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+        ],
+      },
+    });
+    expect(stored?.run.provenance.judges.filter((j) => j.startsWith('langfuse:'))).toEqual([
+      `langfuse:${tenant}/lokal/${judgeRule}@v1+foundry-claude/claude-sonnet-5`,
+    ]);
+    expect(
+      new Set(
+        stored?.run.results.flatMap((r) =>
+          r.scores.filter((s) => s.evaluator.startsWith('langfuse:')).map((s) => s.evaluator),
+        ),
+      ),
+    ).toEqual(new Set([`langfuse:lokal/${judgeRule}`]));
+  });
+
+  it("says before a run starts that the service's residency forbids sending to a Langfuse judge's connection, and does not start it", async () => {
+    const { env, adopt } = await judged(undefined, 'global');
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const norwegian = structuredClone(service);
+    norwegian.spec.model = { primary: 'local/echo', residency: 'norway' };
+    const savedDraft = await env.send('PUT', `${services}/draft`, 'kari', {
+      definition: norwegian,
+    });
+    expect(savedDraft.status).toBe(200);
+
+    const published = await env.send('GET', `${services}/eval-runs/sending`);
+    const draft = await env.send('GET', `${services}/eval-runs/sending?version=draft`);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      version: 'draft',
+    });
+
+    expect(published.body).toEqual({
+      connection: { id: 'lokal', residency: 'global' },
+      judges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+    });
+    expect(draft.body).toMatchObject({
+      judges: [{ name: judgeRule }],
+      refused: { reason: 'residency', service: 'norway', connection: 'global' },
+    });
+    expect(started.status).toBe(409);
+    expect(JSON.stringify(started.body)).toContain(
+      "the service's residency norway does not allow the connection's global",
+    );
+  });
+
+  it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
+    const env = await boot();
+    const save = (metric: string) =>
+      env.send(
+        'PUT',
+        `/tenants/${tenant}/gates/kriterier-minst-80`,
+        'kari',
+        { metric, kind: 'threshold', threshold: 0.8 },
+        why,
+      );
+
+    const refused = await save(`langfuse:lokal/${judgeRule}`);
+    const saved = await save('judge.criteria');
+
+    const [error] = refused.body.errors as { path: string; message: string }[];
+
+    expect(refused.status).toBe(400);
+    expect(error).toEqual({
+      path: 'metric',
+      message: `the gate kriterier-minst-80 reads the Langfuse judge ${judgeRule} on the connection lokal, which is advisory and never blocks a publish`,
+    });
+    // The portal asks in bokmål, and the API answers in it.
+    expect(translateMessage(error?.message ?? '', 'nb')).toBe(
+      `kvalitetskravet kriterier-minst-80 leser Langfuse-dommeren ${judgeRule} på koblingen lokal, som er rådgivende og aldri stopper en publisering`,
+    );
+    expect(saved.status).toBe(200);
+  });
+
+  it("refuses a service definition with a gate on a Langfuse judge's metric, naming the rule", async () => {
+    // A gate set up before Kvalitetskrav refused such metrics, here as one of the platform's own.
+    const env = await boot(undefined, undefined, undefined, {
+      gates: new Map([
+        [
+          'kriterier-langfuse',
+          gate.parse({
+            id: 'kriterier-langfuse',
+            metric: `langfuse:lokal/${judgeRule}`,
+            kind: 'threshold',
+            threshold: 0.8,
+          }),
+        ],
+      ]),
+    });
+    const gated = structuredClone(service) as typeof service & {
+      spec: { evaluation?: { testSets: string[]; gates: string[] } };
+    };
+    gated.spec.evaluation = { testSets: ['svar-frister'], gates: ['kriterier-langfuse'] };
+
+    const published = await env.platform.definitions.publish(gated, 'kari', 'med Langfuse-krav');
+
+    expect(published.ok).toBe(false);
+    expect(JSON.stringify(published)).toContain(
+      `the gate kriterier-langfuse reads the Langfuse judge ${judgeRule} on the connection lokal, which is advisory and never blocks a publish`,
     );
   });
 });

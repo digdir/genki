@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (partly built, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -13,8 +13,8 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 **The platform stays the default and the record.**
 
 - Every eval run is started by the platform, answered by the service under test and recorded as an `EvalRun`. Publishing gates read only the platform's records.
-- Langfuse is optional and chosen per judge. An eval run lists its judges, and any of them may be a Langfuse judge, for example `contract`, `retrieval` and `langfuse:kudos_quotes_covered`. A Langfuse judge is named as it is in the project of the connection that covers the service.
-- A Langfuse judge is advisory. Its scores are recorded on the run and shown in the portal, and never block a publish: a service definition with a gate whose metric comes from a Langfuse judge is refused. Langfuse judges that block are a separate proposal, below.
+- Langfuse is optional and chosen per judge. Each active experiment judge (evaluation rule) in the project of a tenant's connection is a judge building block, `langfuse:<connection>/<rule>`, named after the rule as Langfuse names the rule's scores. The tenant takes it in use with "Ta i bruk" and a reason, as any building block. A run of a service the connection covers is scored by every judge the tenant has taken in use from it, beside the platform's own judges, for example `contract`, `retrieval` and `langfuse:kudos/kudos_quotes_covered`.
+- A Langfuse judge is advisory. Its scores are recorded on the run and shown in the portal, and never block a publish: a gate whose metric comes from a Langfuse judge is refused when it is saved in Kvalitetskrav (`PUT /tenants/{tenant}/gates/{id}`), and a service definition whose gates include one is refused at publish, naming the rule. Langfuse judges that block are a separate proposal, below.
 
 **Connections per tenant.**
 
@@ -34,28 +34,29 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 **Deferred judges: `evaluator@2`.**
 
 - The evaluator contract becomes `evaluator@2` and replaces `evaluator@1`. An evaluator returns its scores at once or answers `pending`, and the runner collects pending scores later. One contract suite tests both paths.
-- A Langfuse judge is a built-in evaluator of this kind. Its identity is `langfuse:<tenant>/<connection>/<name>@v<version>+<model>`, for example `langfuse:dfo/kudos/kudos_quotes_covered@v3+gpt-4.1`. Langfuse names judges within a project, so two tenants, or two projects of one tenant, can each have a judge called `kudos_quotes_covered` with its own prompt. With the tenant and the connection in the identity, the results and calibration labels of one never count for the other.
-- A Langfuse judge must name its model. A judge that falls back to the project's or the organisation's default model is refused when it is added to a run, because a default cannot be read through Langfuse's API.
-- A judge whose mapping reads a field the platform does not send, such as tool calls or a metadata key the platform does not produce, is refused when it is added to a run.
+- A Langfuse judge is a built-in evaluator of this kind. Its identity is `langfuse:<tenant>/<connection>/<rule>@v<version>+<model>`, with the evaluator's version and its model as `<provider>/<model>` from the evaluator's model config, for example `langfuse:dfo/kudos/kudos_quotes_covered@v3+openai/gpt-4.1`. Its metric is `langfuse:<connection>/<rule>`. Langfuse names judges within a project, so two tenants, or two projects of one tenant, can each have a judge called `kudos_quotes_covered` with its own prompt. With the tenant and the connection in the identity, the results and calibration labels of one never count for the other.
+- A Langfuse judge must name its model. A judge that falls back to the project's or the organisation's default model is refused, because a default cannot be read through Langfuse's API.
+- A judge whose mapping reads a field the platform does not send, such as `tool_calls` or `metadata`, or reads it at a JSON path other than `$` or `$.a.b`, is refused.
+- A refused judge's building block says why and cannot be taken in use. A judge taken in use that is refused, inactive or gone when a run starts stops the run before it starts, with the reason.
 - At the start of a run the platform takes a snapshot of the Langfuse evaluation rule, its variable mapping, the evaluator version it points to and the named model (`GET /api/public/unstable/evaluation-rules/{id}`, `GET /api/public/unstable/evaluators/{id}`). If any of them differs when the scores are collected, those scores are marked `judge changed`.
 
 **What an eval run sends.**
 
-- A run goes to the tenant's Langfuse when it uses a Langfuse judge. Otherwise it goes only when the run asks for it with `trace: true`, which the portal shows as a checkbox, unticked by default.
+- A run goes to the tenant's Langfuse when it uses a Langfuse judge. Otherwise it goes only when the run asks for it with `trace: true`, which the portal shows as a checkbox, unticked by default. When the service uses a Langfuse judge, the portal shows the checkbox ticked and locked, naming the judges, and says before the run starts when the service's residency does not allow the connection's (`GET /tenants/{tenant}/services/{id}/eval-runs/sending`).
 - A run is one Langfuse experiment (Langfuse's word for a single run), with no Langfuse dataset. Each case of each repeat is its own Langfuse trace and experiment item, with the item id `<case>#<repeat>`: the exporter starts a new trace at a case's task, although that task is a sub-task of the run's task.
 - The evaluation context (run, case, repeat, split and what the case expects) is recorded beside the case task's input, not in it. The kernel keeps it as its own audit field. The strategy never receives it, and the trace input, the timeline and every other reader of the task's input leave it out. The exporter sends from it only what the judges map.
 - Only train and validation cases are sent. A Langfuse judge's score on a holdout case is not applicable, never pending, so a run never waits for it.
-- Text is sent only on a connection that receives content, and only the fields the run's Langfuse judges map, read from the snapshot of their rules: the question and the answer, and the cited sources, the retrieved documents, the case's `expected.criteria` or the case's metadata when a judge maps them. A field no judge maps is not sent, so a run whose judges only check the answer key sends no documents.
+- Text is sent only on a connection that receives content, and only the fields the run's Langfuse judges map, read from the snapshot of their rules: the question (`input`), the answer (`output`) and the case's `expected.criteria` (`expected_output`). The item's case, repeat and split go as `experiment_item_metadata`, which is not text. A field no judge maps is not sent, and no error text is sent with a run's traces. Cited sources and retrieved documents are not sent yet, so no judge can map them.
 
 **Collecting scores.**
 
-- While scores are pending, the run is `waiting for scores`. The platform reads the run's scores in pages (`GET /api/public/v3/scores?experimentId=…&fields=details,subject`) and maps each one to its case and repeat by trace id.
+- While scores are pending, the run is `waiting for scores`. The platform reads each pending case's scores from its trace, in pages (`GET /api/public/v3/scores?traceId=…&fields=details`). Reading by `experimentId` returns no scores for an experiment without a Langfuse dataset (measured on a local Langfuse 4.4.0, 2026-10-30).
 - The wait runs inside the eval run's background lease, like its cases. A restart during the wait interrupts the run, as a restart during its cases does today.
 - Only scores whose `metadata.job_configuration_id` is the snapshotted rule count. A score with the same name from another rule is ignored.
 - The wait lasts at most 5 minutes from when the run's last case was sent. A score still missing then is recorded as missing, and the run shows the judge's result as incomplete with a reason, such as `no score from langfuse:kudos_quotes_covered for 20 of 84 cases`. The platform never falls back to another judge.
 - A boolean score becomes 1 or 0. A numeric score is scaled to the range 0 to 1 with its score config's minimum and maximum. A categorical score, or a numeric one without both bounds, is shown as it came.
 - A score is not applicable when a field the judge's mapping reads is empty for the case, or when the connection does not receive content. Langfuse fills a missing variable with empty text and still scores it.
-- Scores are written as `kernel.score` events on the case's task (`Kernel.annotate`) and into the `EvalRun`, whose provenance lists the judge's identity. The judge's reason may quote the answer, so it follows the case's retention (ADR 0011).
+- Scores are written as `kernel.score` events on the case's task (`Kernel.annotate`) and into the `EvalRun`, whose provenance lists the judge's identity. The judge's reason may quote the answer, so it is kept only in the case task's `kernel.score` event and follows the case's retention (ADR 0011); the `EvalRun` keeps the score without it.
 - **Judge cost.** In the same pass the platform reads the judges' generations (`GET /api/public/observations?type=GENERATION&environment=langfuse-llm-as-a-judge`, in pages) and keeps those in the judge traces it found for the run's cases, as for erasure. It stores each judge's tokens and Langfuse's cost in USD on the run, with the rate used to show kroner (ADR 0038), marked as reported by Langfuse. The cost is shown beside the platform's own and does not count against the tenant's quota. Langfuse prices a call only when the model name the call reports matches its price table; otherwise only the tokens are stored.
 
 **Labels from Langfuse.**
@@ -114,9 +115,9 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 
 ## Consequences
 
-- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode. Not built yet:
-  - refusing service definitions whose gates use a Langfuse judge's metric
-  - the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
+- Partly built. Built: `evaluator@2` and its contract suite with the `waiting for scores` state in `EvalRun`; the tenant connections through the egress path, with their residency checked when a run starts; the kernel change that records the evaluation context beside the input, with readers that leave it out; per-case traces under a run and the experiment export; the pending sink deletes and their pass after the nightly purge, and removing a connection by deleting first; limiting `TRACES_CONTENT` to development mode; Langfuse judges as building blocks with their snapshot, refusals and identity, the mapped fields they read, the score collector inside the run's lease, `judge changed`, and refusing gates on their metrics at save and at publish. Not built yet:
+  - judge cost, the label import with approval and the dataset import
+  - naming a Langfuse judge directly in an API eval run without taking it in use
   - pending sink deletes after an erasure other than the nightly purge
   - showing a connection whose deletes keep failing as failing
 - Before agency data goes to Digdir's instance:
@@ -132,7 +133,8 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - Labelling is an operator right today (ADR 0027). Whether agencies get it is not decided here.
 - The portal changes:
   - the Tracing screen manages a tenant's connections, shows each one's residency and brings labels back as pending calibration labels, not feedback
-  - the Quality screen shows Langfuse scores as advisory, with each judge's agreement with its labels and its reported cost, and links to the experiment
+  - the Quality screen shows Langfuse scores as advisory, apart from the platform's metrics, with not-applicable counts, missing scores, `judge changed`, each case's verdict and reason, and a link to the experiment (`/project/<project>/experiments/results?baseline=<run>` in 4.4.0); each judge's agreement with its labels and its reported cost are not built yet
+  - Byggeklosser lists each experiment judge with its model, evaluator version, data type and mapped fields, and says why a refused one cannot be taken in use
   - a run started in the portal can be sent to Langfuse with a checkbox
 - The operator of a Langfuse that receives content must meet ADR 0011's conditions.
 - Langfuse hides deleted rows in ClickHouse at once and removes them from disk later. The platform cannot speed that up.

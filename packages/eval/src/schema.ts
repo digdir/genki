@@ -122,6 +122,8 @@ export type TestSet = z.infer<typeof testSet>;
 /**
  * Only a scored score has a value. Pending waits to be collected, missing never arrived in time,
  * failed is the evaluator's own failure; all three still apply to the case, unlike not-applicable.
+ * A scored score without a value keeps what came in details.asItCame, as a Langfuse judge's
+ * category does: it is shown, never averaged.
  */
 export const scoreStates = ['scored', 'not-applicable', 'pending', 'failed', 'missing'] as const;
 export type ScoreState = (typeof scoreStates)[number];
@@ -152,8 +154,9 @@ export const score = z.preprocess(
     })
     .refine(
       (s) =>
-        (s.state === 'scored') === (s.value !== null) &&
-        (s.state === 'not-applicable') === !s.applicable,
+        (s.state === 'scored'
+          ? s.value !== null || s.details?.asItCame !== undefined
+          : s.value === null) && (s.state === 'not-applicable') === !s.applicable,
       'only a scored score has a value, and only a not-applicable one does not apply',
     ),
 );
@@ -261,6 +264,8 @@ export const evalRun = z.strictObject({
       split: z.enum(['locked', 'open']).optional(),
       /** The tenant's trace connection the run's cases were sent to. */
       sink: z.string().optional(),
+      /** Where the sink shows the run as an experiment. */
+      experiment: z.string().optional(),
     })
     .optional(),
   owner: z.string().optional(),

@@ -182,6 +182,56 @@ const TestSetSummary = z
   })
   .openapi('ServiceTestSetSummary');
 
+/** A Langfuse judge on a run: advisory, shown apart from the platform's metrics (ADR 0040). */
+export const SinkJudgeSummary = z
+  .object({
+    id: z.string().describe('The evaluator and its metric, langfuse:<connection>/<rule>'),
+    name: z.string().describe("The evaluation rule's name"),
+    version: z.string().describe('v<evaluator version>+<provider>/<model>'),
+    dataType: z.string().optional().describe('BOOLEAN, NUMERIC or CATEGORICAL'),
+    metric: metricSummary.optional(),
+    categories: z
+      .record(z.string(), z.number().int())
+      .optional()
+      .describe('Count per answer, for a score shown as it came'),
+    notApplicable: z.number().int(),
+    missing: z.number().int(),
+    failed: z.number().int(),
+    of: z.number().int(),
+    changed: z
+      .array(z.string())
+      .describe('What changed in the judge since the run started; empty when nothing did'),
+  })
+  .openapi('SinkJudgeSummary');
+
+/** Run fields for its Langfuse judges. */
+export const sinkJudgeFields = {
+  sinkJudges: z.array(SinkJudgeSummary),
+  experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
+};
+
+const RunSending = z
+  .object({
+    connection: z
+      .object({ id: z.string(), residency: z.enum(['norway', 'eu', 'global']) })
+      .optional(),
+    judges: z
+      .array(z.object({ id: z.string(), name: z.string() }))
+      .describe('The Langfuse judges the tenant has taken in use from the connection'),
+    refused: z
+      .union([
+        z.object({
+          reason: z.literal('residency'),
+          service: z.enum(['norway', 'eu', 'global']),
+          connection: z.enum(['norway', 'eu', 'global']),
+        }),
+        z.object({ reason: z.literal('covered-twice'), connections: z.array(z.string()) }),
+      ])
+      .optional()
+      .describe('Why a run that is sent to the connection would be refused'),
+  })
+  .openapi('EvalRunSending');
+
 const EvalRunSummary = z
   .object({
     id: z.string(),
@@ -216,6 +266,7 @@ const EvalRunSummary = z
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
+    ...sinkJudgeFields,
   })
   .openapi('ServiceEvalRunSummary');
 
@@ -1114,7 +1165,7 @@ export const serviceRoutes: RouteConfig[] = [
           files: files.optional(),
           trace: z.boolean().optional().openapi({
             description:
-              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent",
+              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent. A run is sent without it when the tenant has taken one of the connection's Langfuse judges in use",
           }),
         }),
       ),
@@ -1125,9 +1176,29 @@ export const serviceRoutes: RouteConfig[] = [
       ...tenantErrors,
       404: problem('No such test set or version'),
       409: problem(
-        "The test set has no cases, or trace is asked for but no connection covers the service or the service's residency does not allow the connection's",
+        "The test set has no cases, or the run is sent but no connection covers the service, the service's residency does not allow the connection's, or a Langfuse judge taken in use is refused or gone",
       ),
       422: problem('The draft or version cannot run'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/services/{id}/eval-runs/sending',
+    summary:
+      'Where a run would be sent and which Langfuse judges would score it, before it starts. Any member',
+    request: {
+      params: z.object({ tenant, id: service }),
+      query: z.object({
+        version: z
+          .string()
+          .optional()
+          .openapi({ description: 'draft, or a version number; defaults to the published one' }),
+      }),
+    },
+    responses: {
+      200: json(RunSending, 'What the run would send'),
+      ...tenantErrors,
+      404: problem('No such version'),
     },
   }),
   createRoute({

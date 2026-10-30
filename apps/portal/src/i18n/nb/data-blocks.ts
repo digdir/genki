@@ -150,6 +150,20 @@ export const blocks = defineNamespace({
   factRuns: 'Kjøres',
   factChangedBy: 'Endres av',
   factId: 'ID',
+  judgeModel: 'Modell',
+  judgeDefaultModel: 'Prosjektets standardmodell',
+  judgeVersion: 'Dommerversjon',
+  judgeDataType: 'Svartype',
+  judgeBoolean: 'Ja eller nei',
+  judgeNumeric: 'Tall',
+  judgeCategorical: 'Kategori',
+  judgeFields: 'Leser',
+  judgeAdvisory:
+    'Langfuse-dommer i koblingen {connection}. Den er rådgivende og stopper aldri en publisering.',
+  judgeRefusedDefaultModel:
+    'Dommeren bruker prosjektets standardmodell, som ikke kan leses gjennom Langfuse. Velg en modell for dommeren i Langfuse for å ta den i bruk.',
+  judgeRefusedField: 'Dommeren leser {field}, som genki ikke sender.',
+  judgeRefusedPath: 'Dommeren leser {field}, en JSON-sti genki ikke kan lese.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',
   updateHeading: 'Versjon {version}, tilgjengelig fra {date}',
