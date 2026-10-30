@@ -19,7 +19,14 @@ import { changeReasonOf } from './http.js';
 import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
-import { runDetail, runSummary, serviceEval, shownRun, type ServiceDraft } from './service-eval.js';
+import {
+  runDetail,
+  runSummary,
+  RunRefused,
+  serviceEval,
+  shownRun,
+  type ServiceDraft,
+} from './service-eval.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
 
@@ -484,9 +491,15 @@ export const createQualityModule =
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);
-          const started = await evals.startRun(principal, tenant, service, set, subject, split);
-          background(started.done);
-          return c.json({ id: started.run.id }, 202);
+          try {
+            const started = await evals.startRun(principal, tenant, service, set, subject, split);
+            background(started.done);
+            return c.json({ id: started.run.id }, 202);
+          } catch (error) {
+            if (error instanceof RunRefused)
+              return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
+            throw error;
+          }
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {

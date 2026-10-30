@@ -10,7 +10,7 @@ The platform has no durable job queue. `@genai/jobs` defines a `MessageQueue` po
 - an ingestion run still `running` more than 6 hours after it started is marked failed when an API instance starts, unless that instance is running it (`failStaleRuns` in `apps/api/src/ingestion.ts`), so an instance that starts beside another fails a long run the other is still working on (issue 176);
 - pipeline schedules (`none`, `daily`, `weekly` at 03:00) fire from the API every minute and are safe across replicas because a firing writes a versioned config entry;
 - an engine switch runs on the instance that started it and fails when its 30-second heartbeat stops (ADR 0025);
-- batch, eval, project and quality-matrix runs keep an owner and a heartbeat in the API (`apps/api/src/background-lease.ts`), and a run whose instance stops is marked failed once its heartbeat is two minutes old;
+- batch, eval, project and quality-matrix runs keep an owner and a heartbeat in the API (`apps/api/src/background-lease.ts`), and a run whose instance stops is marked failed, or interrupted for an eval run, once its heartbeat is two minutes old;
 - the worker fires trigger schedules from one instance at a time through a leader lease (`packages/providers-postgres/src/leader-lease.ts`).
 
 The knowledge database proposal ([PR 125](https://github.com/digdir/genki/pull/125)) needs work that outlives a process: ingestion runs that last several nights, conversions that take hours on a GPU host outside Azure, and index builds that wait for a night window. A deploy must not lose any of it, and two replicas must not do the same work twice. This record sets the queue that work runs on; the knowledge database's own queues belong to its record.

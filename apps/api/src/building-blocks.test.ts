@@ -8,7 +8,7 @@ import {
 } from '@genai/definitions';
 import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
 import type { ToolPort } from '@genai/port-tools';
-import { InMemoryEvalRunStore } from '@genai/eval';
+import { InMemoryEvalRunStore, type EvalRun } from '@genai/eval';
 import type { ModelDescription } from '@genai/port-model';
 import { A2aToolSource } from '@genai/providers-a2a-client';
 import { OpenApiToolSource } from '@genai/providers-openapi-tools';
@@ -153,6 +153,7 @@ const setup = async ({
   catalog = undefined as unknown as CatalogRegistry | undefined,
   access = undefined as Access | undefined,
 } = {}) => {
+  const runs = new InMemoryEvalRunStore();
   const blockSet = new Set(blockRefs);
   const store = new InMemoryDefinitionStore({
     ...plugins,
@@ -206,7 +207,7 @@ const setup = async ({
     },
     knowledge: { resolve: () => undefined },
     engines: () => [],
-    evalStores: { runs: new InMemoryEvalRunStore() },
+    evalStores: { runs },
     connections,
   } as unknown as ModuleDeps;
   let ids = 0;
@@ -272,7 +273,7 @@ const setup = async ({
   const serve = (tools: RemoteTool[]) => {
     served = tools;
   };
-  return { send, admin, configEntries, connections, serve, vault, blocks, store, sent };
+  return { send, admin, configEntries, connections, serve, vault, blocks, store, sent, runs };
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -322,6 +323,51 @@ describe('building blocks API', () => {
       usedBy: [{ id: 'klarsprak', name: 'Klarspråk' }],
     });
     expect(adopt.status).toBe(409);
+  });
+
+  it("scores a block by the services' latest completed runs, never a newer run still running or failed", async () => {
+    const { send, runs } = await setup();
+    const evalRun = (id: string, endedAt: string, extra: Partial<EvalRun>): EvalRun => ({
+      id,
+      testSet: { tenant: digdir, id: 'klarsprak-sett', version: 1 },
+      capability: `${digdir}/klarsprak/default`,
+      splits: ['validation'],
+      repeats: 1,
+      startedAt: endedAt,
+      endedAt,
+      provenance: {
+        commit: 'abc',
+        data: 'd',
+        servedModels: ['foundry/gpt-4o'],
+        judges: [],
+        services: [],
+      },
+      results: [],
+      metrics: { 'exact-text': { mean: 0.9, ci: [0.8, 1], n: 10 } },
+      byTag: {},
+      incomplete: [],
+      ...extra,
+    });
+    await runs.save({
+      run: evalRun('ferdig', '2026-10-01T10:00:00Z', { status: 'completed' }),
+      tenant: digdir,
+      task: 't1',
+      service: 'klarsprak',
+    });
+    await runs.save({
+      run: evalRun('feilet', '2026-10-02T10:00:00Z', { status: 'failed', metrics: {} }),
+      tenant: digdir,
+      task: 't2',
+      service: 'klarsprak',
+    });
+
+    const list = await json<{ data: { id: string; scores: { run: string; score: number }[] }[] }>(
+      await send(base, 'kari'),
+    );
+
+    expect(list.data.find((b) => b.id === 'foundry/gpt-4o')?.scores).toEqual([
+      expect.objectContaining({ run: 'ferdig', score: 90 }),
+    ]);
   });
 
   it('adopting needs a reason and records Endret av', async () => {
