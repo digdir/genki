@@ -39,16 +39,23 @@ export const langfuseTraceSink = (options: LangfuseSinkOptions) => {
     return (await response.json()) as T;
   };
 
-  /** Every page: traces are paged by number, so a judge on a later page is found too. */
+  /**
+   * The traces whose observations name a trace as their target, from every page. The v2
+   * observations API answers in every write mode; the traces list is off in events_only.
+   */
   const targeting = async (trace: string) => {
-    const ids: string[] = [];
-    for (let page = 1; ; page += 1) {
-      const found = await json<{ data: { id: string }[]; meta?: { totalPages?: number } }>(
-        `/api/public/traces?limit=100&page=${page}&filter=${encodeURIComponent(targetFilter(trace))}`,
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const found = await json<{ data: { traceId: string }[]; meta?: { cursor?: string } }>(
+        `/api/public/v2/observations?fields=core&limit=100&filter=${encodeURIComponent(targetFilter(trace))}${
+          cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+        }`,
       );
-      ids.push(...found.data.map((t) => t.id));
-      if (found.data.length === 0 || page >= (found.meta?.totalPages ?? page)) return ids;
-    }
+      for (const o of found.data) ids.add(o.traceId);
+      cursor = found.data.length > 0 ? found.meta?.cursor : undefined;
+    } while (cursor);
+    return [...ids];
   };
 
   /** Every page: v3 scores are paged by cursor. */
@@ -72,12 +79,13 @@ export const langfuseTraceSink = (options: LangfuseSinkOptions) => {
     return ids;
   };
 
-  const exists = async (trace: string) => {
-    const response = await call(`/api/public/traces/${encodeURIComponent(trace)}`);
-    if (response.status === 404) return false;
-    if (!response.ok) throw new Error(`Langfuse answered HTTP ${response.status} reading a trace`);
-    return true;
-  };
+  /** A trace is there while it has an observation, read as targeting is, in every write mode. */
+  const exists = async (trace: string) =>
+    (
+      await json<{ data: unknown[] }>(
+        `/api/public/v2/observations?fields=core&limit=1&traceId=${encodeURIComponent(trace)}`,
+      )
+    ).data.length > 0;
 
   return {
     exists,

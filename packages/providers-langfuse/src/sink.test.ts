@@ -30,7 +30,7 @@ const eventually = async <T>(read: () => Promise<T>, done: (value: T) => boolean
 };
 
 describe('finding the judges of a trace', () => {
-  it('reads every page of scores and of targeting traces, so a judge on a later page is found', async () => {
+  it('reads every page of scores and of targeting observations, so a judge on a later page is found', async () => {
     const asked: string[] = [];
     const fake: typeof fetch = async (input) => {
       const url = new URL(String(input));
@@ -43,8 +43,11 @@ describe('finding the judges of a trace', () => {
             ? { data: [{ metadata: { job_execution_id: 'jobb-2' } }], meta: {} }
             : { data: [{ metadata: { job_execution_id: 'jobb-1' } }], meta: { cursor: 'neste' } },
         );
-      const page = Number(url.searchParams.get('page'));
-      return Response.json({ data: [{ id: `mål-${page}` }], meta: { page, totalPages: 2 } });
+      return Response.json(
+        url.searchParams.get('cursor') === 'side-2'
+          ? { data: [{ traceId: 'mål-2' }], meta: {} }
+          : { data: [{ traceId: 'mål-1' }], meta: { cursor: 'side-2' } },
+      );
     };
     const sink = langfuseTraceSink({
       host: 'https://langfuse.etaten.example.no',
@@ -61,8 +64,8 @@ describe('finding the judges of a trace', () => {
     expect(asked).toEqual([
       '/api/public/v3/scores?',
       '/api/public/v3/scores?neste',
-      '/api/public/traces?1',
-      '/api/public/traces?2',
+      '/api/public/v2/observations?',
+      '/api/public/v2/observations?side-2',
     ]);
   });
 });
@@ -115,6 +118,47 @@ describe.skipIf(!host)('deleting from a local Langfuse 4.4.0 (dual write mode)',
         },
       },
     ]);
+
+    // Observations arrive over OTLP, as genki's exporter and Langfuse's judges send them; a judge's
+    // execution names its target in the observation's metadata.
+    const ns = String(BigInt(Date.now()) * 1_000_000n);
+    const span = (traceId: string, metadata: Record<string, string> = {}) => ({
+      traceId,
+      spanId: randomBytes(8).toString('hex'),
+      name: 'steg',
+      kind: 1,
+      startTimeUnixNano: ns,
+      endTimeUnixNano: ns,
+      attributes: Object.entries(metadata).map(([key, value]) => ({
+        key: `langfuse.observation.metadata.${key}`,
+        value: { stringValue: value },
+      })),
+    });
+    const otlp = await fetch(new URL('/api/public/otel/v1/traces', host), {
+      method: 'POST',
+      headers: {
+        authorization: `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString('base64')}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        resourceSpans: [
+          {
+            resource: { attributes: [] },
+            scopeSpans: [
+              {
+                scope: { name: 'genki-test' },
+                spans: [
+                  span(caseTrace),
+                  span(targetedJudge, { target_trace_id: caseTrace }),
+                  span(scoredJudge),
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(otlp.status).toBe(200);
 
     const judges = await eventually(
       () => sink.judgeTraces(caseTrace),

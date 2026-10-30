@@ -1077,7 +1077,7 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       deleteSinkTraces({
         deliveries,
         sinkFor: async () => sink,
-        verify: { tries: 5, everyMs: 1000, wait: (ms) => new Promise((r) => setTimeout(r, ms)) },
+        verify: { tries: 120, everyMs: 1000, wait: (ms) => new Promise((r) => setTimeout(r, ms)) },
       });
     const traces = (await deliveries.pending(10)).map((d) => d.trace);
 

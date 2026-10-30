@@ -113,13 +113,19 @@ export const scheduleRetention = (
     active?: () => Promise<boolean>;
     onRun?: (run: RetentionRun) => void;
     onError?: (error: unknown) => void;
+    /** Runs after every purge, also one that failed, such as the deletes owed to trace sinks. */
+    afterPurge?: () => Promise<void>;
   },
 ): ScheduledJob =>
   schedule(
     deps.cron ?? '17 3 * * *',
     async () => {
       if (deps.active && !(await deps.active())) return;
-      deps.onRun?.(await purgeExpired(deps));
+      try {
+        deps.onRun?.(await purgeExpired(deps));
+      } finally {
+        await deps.afterPurge?.();
+      }
     },
     {
       timeZone: 'Europe/Oslo',

@@ -75,6 +75,11 @@ export class InMemoryTraceDeliveries implements TraceDeliveryStore {
   ) {
     const current = this.#deliveries.get(keyOf(delivery));
     if (!current) return;
+    // A confirmed delete leaves nothing behind: the id is kept only until then (ADR 0040).
+    if ('deleted' in outcome) {
+      this.#deliveries.delete(keyOf(delivery));
+      return;
+    }
     const sent = {
       tenant: current.tenant,
       sink: current.sink,
@@ -82,18 +87,13 @@ export class InMemoryTraceDeliveries implements TraceDeliveryStore {
       trace: current.trace,
       ...(current.judges ? { judges: current.judges } : {}),
     };
-    this.#deliveries.set(
-      keyOf(delivery),
-      'deleted' in outcome
-        ? { ...sent, state: 'deleted', attempts: current.attempts, updatedAt: at }
-        : {
-            ...sent,
-            state: current.state,
-            attempts: current.attempts + 1,
-            lastError: outcome.error,
-            updatedAt: at,
-          },
-    );
+    this.#deliveries.set(keyOf(delivery), {
+      ...sent,
+      state: current.state,
+      attempts: current.attempts + 1,
+      lastError: outcome.error,
+      updatedAt: at,
+    });
   }
 
   async outstanding(tenant: string, sink: string) {
@@ -127,6 +127,8 @@ export interface DeleteSinkTracesDeps {
   limit?: number;
   /** A delete that has failed this many nights is reported to operators. */
   failingAfter?: number;
+  /** Keep taking pending deletes, a batch at a time, until none is left or this much time has gone. */
+  budgetMs?: number;
   /** The sink deletes in the background: how often and how long to look before giving up. */
   verify?: { tries: number; wait: (ms: number) => Promise<void>; everyMs: number };
 }
@@ -154,7 +156,21 @@ export const deleteSinkTraces = async (
     wait: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
   };
   const run: DeleteSinkTracesRun = { deleted: 0, failed: 0, failing: [] };
-  for (const delivery of await deps.deliveries.pending(deps.limit ?? 500)) {
+  const until = deps.budgetMs === undefined ? undefined : now().getTime() + deps.budgetMs;
+  const tried = new Set<string>();
+  const next = async () =>
+    (await deps.deliveries.pending(deps.limit ?? 500)).filter(
+      (d) => !tried.has(`${d.tenant}/${d.sink}/${d.trace}`),
+    );
+  for (let batch = await next(); batch.length > 0; batch = until === undefined ? [] : await next())
+    for (const delivery of batch) {
+      if (until !== undefined && now().getTime() >= until) return run;
+      tried.add(`${delivery.tenant}/${delivery.sink}/${delivery.trace}`);
+      await deleteOne(delivery);
+    }
+  return run;
+
+  async function deleteOne(delivery: TraceDelivery) {
     const fail = async (error: string) => {
       await deps.deliveries.settle(delivery, { error }, now().toISOString());
       run.failed += 1;
@@ -165,7 +181,7 @@ export const deleteSinkTraces = async (
       const sink = await deps.sinkFor(delivery.tenant, delivery.sink);
       if (!sink) {
         await fail(`the connection ${delivery.sink} is gone`);
-        continue;
+        return;
       }
       // Judges found through the case's scores cannot be found again once the case is deleted.
       const judges = [
@@ -190,7 +206,7 @@ export const deleteSinkTraces = async (
       }
       if (left.length > 0) {
         await fail(`still in the sink: ${left.join(', ')}`);
-        continue;
+        return;
       }
       await deps.deliveries.settle(delivery, { deleted: true }, now().toISOString());
       run.deleted += 1;
@@ -198,5 +214,4 @@ export const deleteSinkTraces = async (
       await fail(messageOf(error));
     }
   }
-  return run;
 };

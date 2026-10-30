@@ -343,4 +343,29 @@ describe('the scheduled purge', () => {
 
     expect(runs).toEqual([1]);
   });
+
+  it('works through the deletes owed to trace sinks after every purge, also one that failed', async () => {
+    const { deps } = await setup([taskOf('old', 'svar', 100)], [capability('svar', 'minimal')]);
+    const afterPurge: string[] = [];
+    const leader = manualClock();
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    const failing = scheduleRetention({
+      ...deps,
+      store: {
+        groups: () => deps.store.groups(),
+        purge: () => Promise.reject(new Error('the database is down')),
+      },
+      clock: leader.clock,
+      afterPurge: async () => {
+        afterPurge.push('deletes');
+      },
+      onError: () => undefined,
+    });
+    leader.fire();
+    await settle();
+    failing.stop();
+
+    expect(afterPurge).toEqual(['deletes']);
+  });
 });

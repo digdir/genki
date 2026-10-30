@@ -393,12 +393,16 @@ const retention = db
           groups: run.groups.length,
           traceDeletes: run.traceDeletes,
         });
-        void deleteSinkTraces({
+      },
+      // After every purge, also one that failed, for up to three hours a night.
+      afterPurge: () =>
+        deleteSinkTraces({
           deliveries: db.traceDeliveries,
           sinkFor: async (tenant, sink) => {
             const access = await sinkAccess(tenant, sink);
             return access && langfuseTraceSink(access);
           },
+          budgetMs: 3 * 60 * 60_000,
         })
           .then((deleted) => {
             log('trace sink deletes', { deleted: deleted.deleted, failed: deleted.failed });
@@ -413,8 +417,7 @@ const retention = db
                 })),
               });
           })
-          .catch((error: unknown) => log('trace sink deletes failed', { error: String(error) }));
-      },
+          .catch((error: unknown) => log('trace sink deletes failed', { error: String(error) })),
       onError: (error) => log('retention purge failed', { error: String(error) }),
     })
   : undefined;

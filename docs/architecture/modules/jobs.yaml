@@ -21,6 +21,7 @@ files:
   - packages/jobs/src/trigger-runs.ts
   - packages/jobs/src/quota.ts
   - packages/jobs/src/retention.ts
+  - packages/jobs/src/trace-deliveries.ts
   - packages/jobs/src/retention-policy.ts
   - packages/jobs/src/batch.ts
   - packages/jobs/src/scheduler.ts

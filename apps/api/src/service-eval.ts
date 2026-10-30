@@ -513,6 +513,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
               deliveries: deps.traceDeliveries,
               tenant,
               sink: sink.id,
+              opened: { host: sink.host, publicKey: sink.publicKey },
               now: () => leases.now().toISOString(),
             })
           : undefined,

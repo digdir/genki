@@ -131,6 +131,32 @@ describe('deleting what genki sent to a trace sink', () => {
     ]);
   });
 
+  it('takes batch after batch within its time budget, and tries each delete once a night', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    await deliveries.record(
+      Array.from({ length: 5 }, (_, i) => ({
+        tenant,
+        sink: 'etaten',
+        task: `t${i}`,
+        trace: `case-${i}`,
+      })),
+      at,
+    );
+    await deliveries.markPending(tenant, { sink: 'etaten' }, at);
+    const sink = sinkWith({}, { failOn: 'case-0' });
+
+    const run = await deleteSinkTraces({
+      deliveries,
+      sinkFor: async () => sink.client,
+      verify: noWait,
+      limit: 2,
+      budgetMs: 60_000,
+    });
+
+    expect(run).toMatchObject({ deleted: 4, failed: 1 });
+    expect((await deliveries.pending(10)).map((d) => d.trace)).toEqual(['case-0']);
+  });
+
   it('keeps a failed delete pending for the next night and reports it once it has failed three nights', async () => {
     const deliveries = new InMemoryTraceDeliveries();
     await deliveries.record([{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }], at);

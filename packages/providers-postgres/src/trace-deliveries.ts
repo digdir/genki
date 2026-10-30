@@ -70,13 +70,13 @@ export class PostgresTraceDeliveries implements TraceDeliveryStore {
   ): Promise<void> {
     await withTenant(this.pool, delivery.tenant, (client) =>
       client.query(
+        // A confirmed delete leaves nothing behind: the id is kept only until then (ADR 0040).
         'deleted' in outcome
-          ? `update trace_deliveries set state = 'deleted', last_error = null, updated_at = $4
-             where tenant = $1 and sink = $2 and trace = $3`
+          ? `delete from trace_deliveries where tenant = $1 and sink = $2 and trace = $3`
           : `update trace_deliveries set attempts = attempts + 1, last_error = $5, updated_at = $4
              where tenant = $1 and sink = $2 and trace = $3`,
         'deleted' in outcome
-          ? [delivery.tenant, delivery.sink, delivery.trace, at]
+          ? [delivery.tenant, delivery.sink, delivery.trace]
           : [delivery.tenant, delivery.sink, delivery.trace, at, outcome.error],
       ),
     );

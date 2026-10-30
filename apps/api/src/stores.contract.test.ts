@@ -337,7 +337,7 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(listed?.expected).toEqual(read?.expected);
   });
 
-  it('keeps each trace sent to a sink until its delete is confirmed, per tenant', async () => {
+  it('keeps each trace sent to a sink until its delete is confirmed, and nothing after, per tenant', async () => {
     const { traceDeliveries } = backend().stores();
     const at = '2026-10-29T02:00:00.000Z';
     await traceDeliveries.record(
@@ -376,6 +376,9 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     const reopened = (await backend().reopen()).traceDeliveries;
     expect(await reopened.pending(10)).toEqual([]);
     expect(await reopened.outstanding(ORG_A, 'etaten')).toBe(1);
+    // A confirmed delete leaves no row: recorded again, the trace is a new delivery.
+    await reopened.record([{ tenant: ORG_A, sink: 'etaten', task: 't1', trace: 'case-1' }], at);
+    expect(await reopened.outstanding(ORG_A, 'etaten')).toBe(2);
     expect(await reopened.markPending(ORG_B, { sink: 'etaten' }, at)).toBe(1);
     expect(await reopened.outstanding(ORG_B, 'etaten')).toBe(1);
   });

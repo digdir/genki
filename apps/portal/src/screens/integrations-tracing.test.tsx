@@ -149,4 +149,28 @@ describe('Integrasjoner: Langfuse', () => {
     ).toBeTruthy();
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
+
+  it('shows a connection being removed as such, without letting anyone edit it', async () => {
+    const removing = {
+      ...digdir,
+      id: 'etaten',
+      host: 'https://langfuse.etaten.example.no',
+      removing: true,
+    };
+    const auth = mockAnsattporten({ name: 'Kari Nordmann', organisations: exampleOrganisations });
+    await auth.login();
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      return /\/tracing\/connections$/.test(new URL(url, 'http://localhost').pathname)
+        ? Response.json({ data: [removing] })
+        : base(input, init);
+    };
+    window.location.hash = '#/integrations?tab=tracing';
+    render(<App auth={auth} fetch={fetch} live />);
+    const section = await screen.findByRole('region', { name: 'Langfuse' });
+
+    expect(await within(section).findByText('Fjernes: sletter det som er sendt')).toBeTruthy();
+    expect(within(section).queryByRole('button', { name: 'Endre' })).toBeNull();
+  });
 });

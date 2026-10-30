@@ -754,7 +754,12 @@ const tracingRoutes: RouteConfig[] = [
       params: z.object({ tenant, id: connectionId }),
       headers: reason,
       body: body(
-        TraceConnection.omit({ id: true, instance: true, residencySetBy: true }).partial({
+        TraceConnection.omit({
+          id: true,
+          instance: true,
+          residencySetBy: true,
+          removing: true,
+        }).partial({
           services: true,
           residency: true,
           content: true,

@@ -274,15 +274,8 @@ export const traceConnections = (
     if (!before)
       return { ok: false, errors: [{ path: 'id', message: `no connection ${id}` }], target };
     const reason = String(input.reason ?? '');
-    await deps.deliveries?.markPending(
-      tenant,
-      { sink: id },
-      (deps.now?.() ?? new Date()).toISOString(),
-    );
-    if ((await outstanding(tenant, id)) === 0) {
-      await drop(tenant, before, actorOf(principal), reason);
-      return { ok: true, value: { removed: id }, target, audit: { before } };
-    }
+    // Removing first, so a batch about to be sent sees it and is held back; then everything
+    // already recorded is queued for deletion.
     const removing: TraceConnection = { ...before, removing: true };
     await appendVersion<TraceConnection>(deps.configEntries, {
       kind: traceConnectionKind,
@@ -293,6 +286,15 @@ export const traceConnections = (
       by: actorOf(principal),
       reason,
     });
+    await deps.deliveries?.markPending(
+      tenant,
+      { sink: id },
+      (deps.now?.() ?? new Date()).toISOString(),
+    );
+    if ((await outstanding(tenant, id)) === 0) {
+      await drop(tenant, removing, actorOf(principal), reason);
+      return { ok: true, value: { removed: id }, target, audit: { before } };
+    }
     return { ok: true, value: { removing: id }, target, audit: { before, after: removing } };
   };
 
@@ -365,12 +367,20 @@ export const deliveryGate =
     deliveries: Pick<TraceDeliveryStore, 'record' | 'markPending' | 'settle'>;
     tenant: string;
     sink: string;
+    /** Where the run's exporter sends: deletes go where the connection points now. */
+    opened?: Pick<TraceConnection, 'host' | 'publicKey'>;
     now: () => string;
   }) =>
   async (traces: { trace: string; task: string }[]) => {
     const live = async () => {
       const current = await connectionOf(deps.configEntries, deps.tenant, deps.sink);
-      return current && !current.removing ? 'live' : current ? 'removing' : 'gone';
+      if (!current) return 'gone';
+      if (current.removing) return 'removing';
+      // Moved to another host or project since the run opened: its traces could not be deleted.
+      const moved =
+        deps.opened &&
+        (current.host !== deps.opened.host || current.publicKey !== deps.opened.publicKey);
+      return moved ? 'moved' : 'live';
     };
     if ((await live()) !== 'live') return false;
     const sent = traces.map((t) => ({ tenant: deps.tenant, sink: deps.sink, ...t }));
@@ -379,7 +389,7 @@ export const deliveryGate =
     if (after === 'live') return true;
     if (after === 'removing')
       await deps.deliveries.markPending(deps.tenant, { sink: deps.sink }, deps.now());
-    else
+    else if (after === 'gone' || after === 'moved')
       for (const s of sent)
         await deps.deliveries.settle(
           { ...s, state: 'sent', attempts: 0, updatedAt: deps.now() },

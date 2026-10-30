@@ -77,7 +77,7 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - When the nightly purge or any other erasure removes a case's task, the platform records the deletion of its traces in the sink as pending, in the database. The nightly purge works through the pending deletes. For each case trace it first finds the judges' execution traces, then deletes them, then deletes the case's trace (`DELETE /api/public/traces/{traceId}`).
   - It finds judge traces through the scores on the case's trace (`metadata.job_execution_id`, whose trace id is the first 32 hex characters of `sha256(job_execution_id)`) and through traces whose metadata names the case's trace (`target_trace_id`), so a judge call that wrote no score is found too.
   - After the deletes it checks that no trace with the case's trace as target remains.
-- A failed delete stays pending and is tried again the next night, without holding back the purge in the platform. A delete that keeps failing, for example because the connection's secret was rotated, is reported to operators, and the connection shows as failing.
+- A failed delete stays pending and is tried again the next night, without holding back the purge in the platform. A delete that keeps failing, for example because the connection's secret was rotated, is reported to operators. Showing the connection as failing to its tenant is not built yet.
 - Removing a connection that has received traces first marks every trace sent through it for deletion. While it is being removed it covers no service and nothing is sent to it, and it is gone once the purge has confirmed every delete, so removing a connection never leaves text in the sink. While deletes are owed, its host and project cannot change; a new secret for the same project can be set.
 - A connection receives content only when ADR 0011's conditions for content-receiving sinks hold. In development mode a Langfuse on the developer's own machine is exempt from the 7-day rule, for made-up test sets only.
 
@@ -118,6 +118,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - refusing service definitions whose gates use a Langfuse judge's metric
   - the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
   - pending sink deletes after an erasure other than the nightly purge
+  - showing a connection whose deletes keep failing as failing
 - Before agency data goes to Digdir's instance:
   - whose model key an agency's judges use there, and so who pays for their calls, is decided. The cost of each judge call is readable (about USD 0.008 per call on `claude-sonnet-5` at Langfuse's list price, measured on Digdir's instance on 2026-10-29), so Digdir's key with the cost shown per tenant is an option beside each tenant's own key.
   - where the instance stores what it receives is confirmed, so operators can set its connections' residency

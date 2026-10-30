@@ -6,7 +6,7 @@ import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { tracesContent } from './boot-guard.js';
 import { createPlatform } from './composition.js';
-import { deliveryGate, type TracingOptions } from './trace-connections.js';
+import { connectionsCovering, deliveryGate, type TracingOptions } from './trace-connections.js';
 import { pinnedFetch } from '@genai/composition';
 import { InMemoryTraceDeliveries, type TraceDeliveryStore } from '@genai/jobs';
 
@@ -438,6 +438,33 @@ describe('removing a connection', () => {
     expect(rotated.status).toBe(200);
   });
 
+  it('reads as being removed before it marks anything for deletion, so no batch slips through in between', async () => {
+    const seen: (boolean | undefined)[] = [];
+    let readRemoving = async (): Promise<boolean | undefined> => undefined;
+    const deliveries = new (class extends InMemoryTraceDeliveries {
+      override async markPending(...args: Parameters<InMemoryTraceDeliveries['markPending']>) {
+        seen.push(await readRemoving());
+        return super.markPending(...args);
+      }
+    })();
+    const env = await boot({ instance }, deliveries);
+    readRemoving = async () =>
+      (
+        (await env.platform.configEntries.latest({ kind: 'trace-connection', scope: tenant }))[0]
+          ?.spec as { removing?: boolean } | undefined
+      )?.removing;
+    await env.secret('langfuse-etaten', own);
+    await env.connect('etaten', ownConnection());
+    await deliveries.record(
+      [{ tenant, sink: 'etaten', task: 't1', trace: 'case-1' }],
+      new Date().toISOString(),
+    );
+
+    await env.send('DELETE', `/tenants/${tenant}/tracing/connections/etaten`);
+
+    expect(seen).toEqual([true]);
+  });
+
   it('removes a connection that never received a trace at once', async () => {
     const env = await boot();
     await env.secret('langfuse-etaten', own);
@@ -570,6 +597,28 @@ describe('recording what goes to a connection before it is sent', () => {
     expect(await before.outstanding(tenant, 'etaten')).toBe(0);
     expect(await gate(['live', 'removing'], during)(batch)).toBe(false);
     expect((await during.pending(10)).map((d) => d.trace)).toEqual(['case-1']);
+  });
+
+  it('lets a connection being removed cover no service', async () => {
+    const entries = saved(['removing']);
+
+    expect(await connectionsCovering(entries, tenant, 'svar')).toEqual([]);
+    expect(await connectionsCovering(saved(['live']), tenant, 'svar')).toHaveLength(1);
+  });
+
+  it('sends nothing for a run whose connection moved to another host or project since it opened', async () => {
+    const deliveries = new InMemoryTraceDeliveries();
+    const moved = deliveryGate({
+      configEntries: saved(['live']),
+      deliveries,
+      tenant,
+      sink: 'etaten',
+      opened: { host: 'https://gammel.example.no', publicKey: 'pk-gammel' },
+      now: () => at,
+    });
+
+    expect(await moved(batch)).toBe(false);
+    expect(await deliveries.outstanding(tenant, 'etaten')).toBe(0);
   });
 
   it('settles what it recorded when the connection was removed meanwhile, since nothing was sent', async () => {
