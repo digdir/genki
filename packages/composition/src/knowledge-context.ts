@@ -43,20 +43,23 @@ export class ContextualKnowledgeRouter extends KnowledgeRouter {
   }
 }
 
-export const withoutEngines = (
+type RawCatalog = {
+  endpoints?: Record<string, { engine?: string; options?: { connection?: unknown } }>;
+  datasets?: { id?: string; endpoint?: string }[];
+};
+
+const withoutEndpoints = (
   catalog: unknown,
-  engines: string[],
+  drop: (endpoint: { engine?: string; options?: { connection?: unknown } }) => boolean,
+  warning: string,
   warn?: (message: string) => void,
 ) => {
-  const raw = (catalog ?? {}) as {
-    endpoints?: Record<string, { engine?: string }>;
-    datasets?: { id?: string; endpoint?: string }[];
-  };
+  const raw = (catalog ?? {}) as RawCatalog;
   const dropped = Object.entries(raw.endpoints ?? {})
-    .filter(([, e]) => engines.includes(String(e.engine)))
+    .filter(([, e]) => drop(e))
     .map(([name]) => name);
   if (dropped.length === 0) return catalog;
-  warn?.(`knowledge endpoints skipped, their engine needs a database: ${dropped.join(', ')}`);
+  warn?.(`${warning}: ${dropped.join(', ')}`);
   return {
     ...raw,
     endpoints: Object.fromEntries(
@@ -65,6 +68,31 @@ export const withoutEngines = (
     datasets: (raw.datasets ?? []).filter((d) => !dropped.includes(String(d.endpoint))),
   };
 };
+
+export const withoutEngines = (
+  catalog: unknown,
+  engines: string[],
+  warn?: (message: string) => void,
+) =>
+  withoutEndpoints(
+    catalog,
+    (e) => engines.includes(String(e.engine)),
+    'knowledge endpoints skipped, their engine needs a database',
+    warn,
+  );
+
+export const knowledgeServerEndpoints = (catalog: unknown) =>
+  Object.entries((catalog as RawCatalog | undefined)?.endpoints ?? {})
+    .filter(([, e]) => e.options?.connection === 'knowledge')
+    .map(([name]) => name);
+
+export const withoutKnowledgeServer = (catalog: unknown, warn?: (message: string) => void) =>
+  withoutEndpoints(
+    catalog,
+    (e) => e.options?.connection === 'knowledge',
+    'knowledge endpoints skipped, no knowledge server is configured',
+    warn,
+  );
 
 export const routerCatalog = (catalog: unknown) => {
   const raw = (catalog ?? {}) as { endpoints?: Record<string, Record<string, unknown>> };
@@ -78,3 +106,21 @@ export const routerCatalog = (catalog: unknown) => {
     ),
   };
 };
+
+export const databaseHosts = (env: Record<string, string | undefined>): string[] =>
+  [
+    env.DATABASE_URL,
+    env.DATABASE_RUNTIME_URL,
+    env.PGHOST,
+    env.KNOWLEDGE_DATABASE_URL,
+    env.KNOWLEDGE_PGHOST,
+    env.KNOWLEDGE_READ_PGHOST,
+  ].flatMap((value) => {
+    if (!value) return [];
+    if (!value.includes('://')) return [value];
+    try {
+      return [new URL(value).hostname.replace(/^\[|\]$/g, '')];
+    } catch {
+      return [];
+    }
+  });

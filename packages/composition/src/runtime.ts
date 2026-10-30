@@ -70,6 +70,7 @@ import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
   pgvectorEngineName,
+  type KnowledgePools,
   type PgvectorEngineOptions,
 } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
@@ -112,6 +113,7 @@ import {
   portContexts,
   routerCatalog,
   withoutEngines,
+  withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
 import { openRetrievalPorts, usingRetrievalPorts, type RuntimeConfig } from './retrieval-ports.js';
@@ -191,6 +193,7 @@ export interface RuntimeInput {
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
@@ -344,6 +347,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const pgvector = input.knowledgePool
     ? pgvectorEngine({
         pool: input.knowledgePool,
+        ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
       })
     : undefined;
@@ -359,7 +363,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(pgvector ? [pgvector.writer as IndexWriterAdapter] : []),
   ];
   const knowledgeSeed = withoutEngines(
-    input.catalogs.knowledge,
+    input.knowledgeServer
+      ? input.catalogs.knowledge
+      : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning),
     pgvector ? [] : [pgvectorEngineName],
     input.onWarning,
   );

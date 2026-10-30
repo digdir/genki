@@ -21,11 +21,13 @@ responsibilities:
   - Record each trigger run and skip paused triggers
   - Read published services from the definition store and re-bind triggers when they change
   - Fire schedules from one worker at a time through a Postgres advisory lock
+  - Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not
 files:
   - apps/worker/src/main.ts
   - apps/worker/src/worker.ts
   - apps/worker/src/follow.ts
   - apps/worker/src/boot-guard.ts
+  - apps/worker/src/knowledge-binding.ts
 input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []

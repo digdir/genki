@@ -6,7 +6,7 @@ import {
 } from '@genai/composition';
 import { operatorSubjectProblems } from './operators.js';
 
-export { isDevMode, isProduction } from '@genai/composition';
+export { isDevMode, isProduction, knowledgeServerProblems } from '@genai/composition';
 
 type Env = Record<string, string | undefined>;
 

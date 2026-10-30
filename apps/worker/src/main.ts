@@ -3,11 +3,14 @@ import { join } from 'node:path';
 import {
   attachRuntimeBlocks,
   type BlockTexts,
+  boundPlatformId,
   createRuntime,
+  databaseHosts,
   followChanges,
   isLockdown,
   loadCatalog,
   mayUseModels,
+  openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
   runtimeBlocksOf,
@@ -44,7 +47,9 @@ import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  platformId,
   PostgresDefinitionStore,
   PostgresLeaderLease,
   postgresSourceFromEnv,
@@ -52,6 +57,7 @@ import {
 import { parse as parseYaml } from 'yaml';
 import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
 import { followPublished } from './follow.js';
+import { startHealthServer, watchKnowledgeBinding } from './knowledge-binding.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -76,15 +82,6 @@ const configDir = process.env.CONFIG_DIR ?? join(root, 'apps', 'api', 'config', 
 const blobDir = process.env.BLOB_DIR ?? join(root, '.data', 'blobs');
 const platformTenant = platformTenantFrom(process.env);
 
-const databaseHosts = (...urls: (string | undefined)[]) =>
-  urls.flatMap((url) => {
-    try {
-      return url ? [new URL(url).hostname.replace(/^\[|\]$/g, '')] : [];
-    } catch {
-      return [];
-    }
-  });
-
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
   ? await createPostgresStores(
@@ -99,6 +96,21 @@ const db = databaseSource
     )
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
+
+const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
+const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'worker') : undefined;
+const knowledgeWriter = knowledgeServer?.pools.writer;
+const knowledgeBinding = watchKnowledgeBinding({
+  platformId: () => (db ? platformId(db.pool) : Promise.resolve('')),
+  ...(knowledgeWriter ? { boundTo: () => boundPlatformId(knowledgeWriter) } : {}),
+  log,
+});
+await knowledgeBinding.start();
+const health = await startHealthServer({
+  port: Number(process.env.WORKER_HEALTH_PORT ?? 8081),
+  ready: () => knowledgeBinding.ready(),
+});
+log('health', { url: health.url, knowledgeServer: Boolean(knowledgeServer) });
 
 const secrets = envSecrets();
 const catalogs = {
@@ -212,17 +224,13 @@ const runtime = await createRuntime({
   state: db?.state ?? new InMemoryStateStore(),
   blobStore: blob,
   egress: {
-    platformHosts: [
-      'localhost',
-      '127.0.0.1',
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
-      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
-    ],
+    platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)],
   },
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
         knowledgePool: db.pool,
+        ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
       }

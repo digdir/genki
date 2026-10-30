@@ -8,18 +8,32 @@ import { parseEnv } from 'node:util';
 export const repoRoot = join(import.meta.dirname, '..');
 export const localPorts = (env: Record<string, string | undefined> = process.env) => ({
   postgres: Number(env.GENAI_POSTGRES_PORT) || 55432,
+  knowledge: Number(env.GENAI_KNOWLEDGE_PORT) || 55433,
   model: Number(env.GENAI_MODEL_PORT) || 8095,
 });
 export const databaseUrlFor = (port: number) =>
   `postgres://genai:genai-local-only@127.0.0.1:${port}/genai`;
+export const knowledgeUrlFor = (port: number) => `postgres://127.0.0.1:${port}/genai_knowledge`;
+export const knowledgeAdminUrlFor = (port: number) =>
+  `postgres://genai:genai-local-only@127.0.0.1:${port}/genai_knowledge`;
 export const modelUrlFor = (port: number) => `http://127.0.0.1:${port}/v1`;
 export const localDatabaseUrl = databaseUrlFor(55432);
 export const localModelUrl = modelUrlFor(8095);
+
+export const knowledgeSettings = (
+  random: (size: number) => Buffer = randomBytes,
+  env: Record<string, string | undefined> = process.env,
+) => ({
+  KNOWLEDGE_DATABASE_URL: knowledgeUrlFor(localPorts(env).knowledge),
+  KNOWLEDGE_API_PASSWORD: random(24).toString('base64url'),
+  KNOWLEDGE_WORKER_PASSWORD: random(24).toString('base64url'),
+});
 
 export const generatedSettings = (
   random: (size: number) => Buffer = randomBytes,
   env: Record<string, string | undefined> = process.env,
 ) => ({
+  ...knowledgeSettings(random, env),
   GENAI_DEV_MODE: 'true',
   DATABASE_URL: databaseUrlFor(localPorts(env).postgres),
   CONTENT_MASTER_KEY: random(32).toString('base64'),
@@ -44,6 +58,7 @@ export interface EnvResult {
   path: string;
   created: boolean;
   missing: string[];
+  added?: string[];
 }
 
 export const ensureEnvFile = (
@@ -60,9 +75,19 @@ export const ensureEnvFile = (
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
   }
-  const current = parseEnv(readFileSync(path, 'utf8'));
-  const missing = Object.keys(values).filter((name) => !current[name]);
-  return { path, created: false, missing };
+  const text = readFileSync(path, 'utf8');
+  const current = parseEnv(text);
+  const knowledge = Object.entries(knowledgeSettings(random, env)).filter(
+    ([name]) => !current[name],
+  );
+  if (knowledge.length)
+    writeFileSync(
+      path,
+      `${text.replace(/\n*$/, '\n')}${knowledge.map(([name, value]) => `${name}=${value}`).join('\n')}\n`,
+    );
+  const added = new Set(knowledge.map(([name]) => name));
+  const missing = Object.keys(values).filter((name) => !current[name] && !added.has(name));
+  return { path, created: false, missing, ...(added.size ? { added: [...added] } : {}) };
 };
 
 export const nodeProblem = (version: string, pinned: string | undefined): string | undefined => {
@@ -92,19 +117,29 @@ const startPostgres = async (root: string) => {
     );
     return false;
   }
-  if (!run('docker', ['compose', 'up', '-d', 'postgres'], root)) return false;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const ready = run(
-      'docker',
-      ['compose', 'exec', '-T', 'postgres', 'pg_isready', '-U', 'genai', '-d', 'genai'],
-      root,
-      true,
-    );
-    if (ready) return true;
-    await sleep(1000);
+  if (!run('docker', ['compose', 'up', '-d', 'postgres', 'knowledge'], root)) return false;
+  for (const [service, database] of [
+    ['postgres', 'genai'],
+    ['knowledge', 'genai_knowledge'],
+  ] as const) {
+    let ready = false;
+    for (let attempt = 0; attempt < 60 && !ready; attempt++) {
+      ready = run(
+        'docker',
+        ['compose', 'exec', '-T', service, 'pg_isready', '-U', 'genai', '-d', database],
+        root,
+        true,
+      );
+      if (!ready) await sleep(1000);
+    }
+    if (!ready) {
+      console.error(
+        `Postgres did not become ready within 60 seconds: docker compose logs ${service}`,
+      );
+      return false;
+    }
   }
-  console.error('Postgres did not become ready within 60 seconds: docker compose logs postgres');
-  return false;
+  return true;
 };
 
 const main = async () => {
@@ -124,7 +159,7 @@ const main = async () => {
 
   if (!skipDocker) {
     console.log(
-      `Starting Postgres (pgvector) on 127.0.0.1:${localPorts().postgres}, compose project ${process.env.COMPOSE_PROJECT_NAME ?? 'named after this folder'}`,
+      `Starting Postgres (pgvector) on 127.0.0.1:${localPorts().postgres} and the knowledge server on 127.0.0.1:${localPorts().knowledge}, compose project ${process.env.COMPOSE_PROJECT_NAME ?? 'named after this folder'}`,
     );
     if (!(await startPostgres(root))) process.exit(1);
     console.log('Postgres is ready');
@@ -135,6 +170,12 @@ const main = async () => {
   else if (env.missing.length)
     console.log(`Kept ${env.path}. Not set there: ${env.missing.join(', ')} (see .env.example)`);
   else console.log(`Kept ${env.path}`);
+  if (env.added) console.log(`Added to ${env.path}: ${env.added.join(', ')}`);
+
+  if (!skipDocker) {
+    console.log('Setting up the knowledge server: roles, the API and worker logins, the binding');
+    if (!run('npm', ['run', 'knowledge:setup', '--', '--local'], root)) process.exit(1);
+  }
 
   console.log(`
 Next:
