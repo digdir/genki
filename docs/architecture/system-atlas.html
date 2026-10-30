@@ -5429,6 +5429,7 @@
                       required: ['commit', 'data'],
                       additionalProperties: false,
                     },
+                    avoidAsJudge: { type: 'array', items: { type: 'string' } },
                   },
                   required: ['capability', 'testSet', 'evaluators', 'provenance'],
                   additionalProperties: false,
