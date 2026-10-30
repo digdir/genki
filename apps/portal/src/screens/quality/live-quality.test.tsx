@@ -696,7 +696,7 @@ describe('live Testsett: Langfuse-dommere', () => {
     ...(usdNok ? { usdNok } : {}),
     sinkJudges: judgedRun.sinkJudges.map((j) => ({
       ...j,
-      reported: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unpriced: 0 },
+      reported: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unpriced: 0, unread: 0 },
     })),
   });
   const costLine = async (run: ReturnType<typeof costedRun>) => {
@@ -710,13 +710,57 @@ describe('live Testsett: Langfuse-dommere', () => {
 
   it('shows the cost in kroner with the rate the run stored', async () => {
     expect(await costLine(costedRun({ rate: 9.2826, date: '2026-10-29' }))).toMatch(
-      /^Kostnad rapportert av Langfuse: 0,11\skr \(0,0123 USD med kurs 9,2826 fra 29\.\soktober 2026\), 5\s308 tokens$/,
+      /^Kostnad rapportert av Langfuse: 0,11\skr \(0,0123 USD med kurs 9,2826 fra 29\.\soktober 2026\), 5\s308 tokens\.$/,
     );
   });
 
-  it("reads Norges Bank's USD/NOK rate once a day through the egress guard, and shows dollars until one is known", async () => {
+  it('shows the cost in dollars until a rate is known', async () => {
     expect(await costLine(costedRun())).toMatch(
       /^Kostnad rapportert av Langfuse: 0,0123 USD, 5\s308 tokens\. Kronebeløpet vises når kursen fra Norges Bank er hentet\.$/,
+    );
+  });
+
+  it("warns before a run starts that the project's other active Langfuse judges will also judge and bill every case sent", async () => {
+    await openLive('', {}, {}, (path) =>
+      /\/eval-runs\/sending/.test(path)
+        ? Response.json({
+            connection: { id: 'lokal', residency: 'global' },
+            judges: [{ id: judge, name: rule }],
+            otherJudges: ['tone-eksperimenter', 'lengde-eksperimenter'],
+          })
+        : connections(path),
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+
+    const warning = await screen.findByText(
+      'Langfuse-prosjektet til koblingen lokal har også disse aktive dommerne: tone-eksperimenter, lengde-eksperimenter. De vurderer og fakturerer hvert testtilfelle som sendes, men genki viser ikke vurderingene deres. Slå dem av i Langfuse, eller gi tjenesten et eget prosjekt.',
+    );
+    expect(warning.closest('.ds-alert')?.getAttribute('data-color')).toBe('warning');
+  });
+
+  it("shows what the project's other judges cost apart from the judges taken in use, as at least while some costs are not yet reported", async () => {
+    await openLive('', {
+      runs: [
+        {
+          ...costedRun({ rate: 9.2826, date: '2026-10-29' }),
+          sinkOthers: {
+            inputTokens: 900,
+            outputTokens: 100,
+            costUsd: 0.01,
+            unpriced: 0,
+            unread: 2,
+          },
+        },
+      ],
+    });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+
+    expect(within(langfuse).getByText(/^Andre dommere i Langfuse-prosjektet/).textContent).toMatch(
+      /^Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: 0,09\skr \(0,0100 USD med kurs 9,2826 fra 29\.\soktober 2026\), 1\s000 tokens\. Langfuse hadde ikke rapportert kostnaden for 2 kall ennå, så beløpet er minst dette\.$/,
     );
   });
 });

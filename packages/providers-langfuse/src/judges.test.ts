@@ -82,6 +82,7 @@ const fakeLangfuse = (project: {
   configs?: Record<string, { minValue?: number; maxValue?: number }>;
   /** The observations of each judge execution trace. */
   judgeTraces?: Record<string, FakeGeneration[]>;
+  observationsDown?: () => boolean;
 }): typeof fetch => {
   return async (input) => {
     const url = new URL(String(input));
@@ -117,6 +118,7 @@ const fakeLangfuse = (project: {
         : new Response('{}', { status: 404 });
     }
     if (path === '/api/public/v2/observations') {
+      if (project.observationsDown?.()) return new Response('{}', { status: 503 });
       const trace = url.searchParams.get('traceId') ?? '';
       return Response.json({ data: project.judgeTraces?.[trace] ?? [], meta: {} });
     }
@@ -447,10 +449,131 @@ describe('Langfuse judges', () => {
     await judge.collect?.([pendingOf(first as Score), pendingOf(second as Score, 'sak-2')]);
 
     expect(judge.reportedUsage?.()).toEqual({
-      inputTokens: 2400,
-      outputTokens: 600,
-      costUsd: 0.0054,
-      unpriced: 1,
+      'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter': {
+        inputTokens: 2400,
+        outputTokens: 600,
+        costUsd: 0.0054,
+        unpriced: 1,
+        unread: 0,
+      },
+    });
+  });
+
+  it("counts every judge call Langfuse made on the run's cases once, its own judges' apart from the project's other judges", async () => {
+    const call = (cost: number): FakeGeneration => ({
+      type: 'GENERATION',
+      inputUsage: 1000,
+      outputUsage: 100,
+      costDetails: { total: cost },
+    });
+    const scored = (rule: string, execution: string): FakeScore => ({
+      name: rule,
+      value: true,
+      dataType: 'BOOLEAN',
+      metadata: { job_configuration_id: rule, job_execution_id: execution },
+    });
+    const sitater = rule({
+      id: 'regel-2',
+      name: 'svar_siterer-eksperimenter',
+      mapping: [
+        { variable: 'sitater', source: 'expected_output', jsonPath: '$.supporting_quotes' },
+      ],
+    });
+    const project = {
+      rules: [rule(), sitater, rule({ id: 'regel-3', name: 'tone-eksperimenter' })],
+      evaluators: [evaluator()],
+      // Every active judge in the project judges the case, also those genki does not use.
+      scores: {
+        [traceIdFor('sak-1')]: [
+          scored('regel-1', 'jobb-1'),
+          scored('regel-2', 'jobb-2'),
+          scored('regel-3', 'jobb-3'),
+        ],
+      },
+      judgeTraces: {
+        [judgeTraceIdOf('jobb-1')]: [call(0.001)],
+        [judgeTraceIdOf('jobb-2')]: [call(0.002)],
+        [judgeTraceIdOf('jobb-3')]: [call(0.004)],
+      },
+    };
+    const judges = langfuseJudges(api(fakeLangfuse(project)));
+    const [kriterier, siterer] = await langfuseJudges(api(fakeLangfuse(project))).list('kudos');
+    const first = judges.evaluator(kriterier as LangfuseJudge, { tenant: 'dfo', content: true });
+    const second = judges.evaluator(siterer as LangfuseJudge, { tenant: 'dfo', content: true });
+    const [pending] = await first.evaluate(kriteriesak, svar, ctx);
+    // The second judge cannot read the case, yet Langfuse judged it and billed the call.
+    expect((await second.evaluate(kriteriesak, svar, ctx))[0]?.state).toBe('not-applicable');
+
+    await first.collect?.([pendingOf(pending as Score)]);
+    await first.collect?.([pendingOf(pending as Score)]);
+    const usage = (cost: number) => ({
+      inputTokens: 1000,
+      outputTokens: 100,
+      costUsd: cost,
+      unpriced: 0,
+      unread: 0,
+    });
+
+    expect(first.reportedUsage?.()).toEqual({
+      'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter': usage(0.001),
+      'langfuse:kudos/svar_siterer-eksperimenter': usage(0.002),
+      'langfuse:kudos': usage(0.004),
+    });
+    expect(second.reportedUsage?.()).toEqual(first.reportedUsage?.());
+  });
+
+  it("keeps a judge's score when its cost cannot be read, and counts the cost when a later read finds it", async () => {
+    let down = true;
+    const project = {
+      rules: [rule()],
+      evaluators: [evaluator()],
+      scores: {
+        [traceIdFor('sak-1')]: [
+          {
+            name: 'svar_oppfyller_kriteriene-eksperimenter',
+            value: true,
+            dataType: 'BOOLEAN',
+            metadata: { job_configuration_id: 'regel-1', job_execution_id: 'jobb-1' },
+          },
+        ],
+      },
+      judgeTraces: {
+        [judgeTraceIdOf('jobb-1')]: [
+          { type: 'GENERATION', inputUsage: 900, outputUsage: 90, costDetails: { total: 0.002 } },
+        ],
+      },
+      observationsDown: () => down,
+    };
+    const judge = langfuseJudges(api(fakeLangfuse(project))).evaluator(
+      await listed(fakeLangfuse(project)),
+      { tenant: 'dfo', content: true },
+    );
+    const [pending] = await judge.evaluate(kriteriesak, svar, ctx);
+    const [later] = await judge.evaluate(kriteriesak, svar, { ...ctx, task: 'sak-2' });
+
+    const collected = await judge.collect?.([pendingOf(pending as Score)]);
+    const unread = judge.reportedUsage?.();
+    down = false;
+    await judge.collect?.([pendingOf(later as Score, 'sak-2')]);
+
+    expect(collected).toMatchObject([{ score: { state: 'scored', value: 1 } }]);
+    expect(unread).toEqual({
+      'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter': {
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+        unpriced: 0,
+        unread: 1,
+      },
+    });
+    expect(judge.reportedUsage?.()).toEqual({
+      'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter': {
+        inputTokens: 900,
+        outputTokens: 90,
+        costUsd: 0.002,
+        unpriced: 0,
+        unread: 0,
+      },
     });
   });
 

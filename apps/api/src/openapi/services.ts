@@ -207,6 +207,7 @@ export const SinkJudgeSummary = z
         outputTokens: z.number().int(),
         costUsd: z.number().nullable().describe('null when Langfuse priced none of the calls'),
         unpriced: z.number().int().describe('Calls Langfuse had no price for'),
+        unread: z.number().int().describe('Calls whose cost was not reported yet'),
       })
       .optional()
       .describe("What Langfuse reports the judge's own calls used; only with view-usage"),
@@ -217,6 +218,18 @@ export const SinkJudgeSummary = z
 export const sinkJudgeFields = {
   sinkJudges: z.array(SinkJudgeSummary),
   experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
+  sinkOthers: z
+    .object({
+      inputTokens: z.number().int(),
+      outputTokens: z.number().int(),
+      costUsd: z.number().nullable(),
+      unpriced: z.number().int(),
+      unread: z.number().int(),
+    })
+    .optional()
+    .describe(
+      "What the Langfuse project's other judges cost on the run's cases; only with view-usage",
+    ),
   usdNok: z
     .object({ rate: z.number(), date: z.string() })
     .optional()
@@ -231,6 +244,12 @@ const RunSending = z
     judges: z
       .array(z.object({ id: z.string(), name: z.string() }))
       .describe('The Langfuse judges the tenant has taken in use from the connection'),
+    otherJudges: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "The project's other active experiment judges: Langfuse runs them on every case sent",
+      ),
     refused: z
       .union([
         z.object({

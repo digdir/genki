@@ -1076,7 +1076,10 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
                 dataType: 'BOOLEAN',
                 source: 'EVAL',
                 comment: 'Svaret oppgir fristen.',
-                metadata: { job_configuration_id: r.id, job_execution_id: `jobb-${span.traceId}` },
+                metadata: {
+                  job_configuration_id: r.id,
+                  job_execution_id: `jobb-${r.id}-${span.traceId}`,
+                },
               },
             ]);
       return ok({});
@@ -1324,6 +1327,7 @@ describe('Langfuse judges on a run', () => {
     expect(published.body).toEqual({
       connection: { id: 'lokal', residency: 'global' },
       judges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+      otherJudges: [],
     });
     expect(draft.body).toMatchObject({
       judges: [{ name: judgeRule }],
@@ -1434,6 +1438,7 @@ describe('Langfuse judges on a run', () => {
         outputTokens: 987,
         costUsd: 0.0123,
         unpriced: 0,
+        unread: 0,
       },
     });
     const summary = (listed.body.data as { id: string; tokens: { input: number } }[]).find(
@@ -1482,6 +1487,28 @@ describe('Langfuse judges on a run', () => {
     expect(sent.has('l1')).toBe(false);
     expect(scoreOf('o2')).toMatchObject({ state: 'not-applicable' });
     expect(stored?.run.status).toBe('completed');
+  });
+
+  it("names the project's other active judges before a run starts and counts what they cost apart, since Langfuse runs them on every case it gets", async () => {
+    const { env, adopt } = await judged([
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: 'tone-eksperimenter' }),
+    ]);
+    expect((await adopt(judgeRule)).status).toBe(200);
+
+    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const listed = await env.send('GET', `${services}/eval-runs`);
+    const summary = (listed.body.data as { id: string }[]).find((r) => r.id === started.body.id);
+
+    expect(sending.body).toMatchObject({ otherJudges: ['tone-eksperimenter'] });
+    expect(summary).toMatchObject({
+      sinkJudges: [{ name: judgeRule, reported: { inputTokens: 4321, costUsd: 0.0123 } }],
+      sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
+    });
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {

@@ -333,6 +333,97 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
   };
 
   /**
+   * What Langfuse reports the judge calls on a run's cases cost, shared by the run's judges so each
+   * call counts once: per judge the run uses, and under the connection for the project's others.
+   * A call whose cost cannot be read yet is read again on the next pass, never at a score's expense.
+   */
+  const ledger = {
+    connection: '',
+    judges: new Map<string, string>(),
+    byRule: new Map<string, ReportedUsage>(),
+    counted: new Set<string>(),
+    unread: new Map<string, string>(),
+    async read(execution: string, rule: string, signal?: AbortSignal) {
+      let calls: RawObservation[];
+      try {
+        const found = await read<{ data: RawObservation[] }>(
+          `/api/public/v2/observations?traceId=${judgeTraceIdOf(execution)}&fields=core,basic,usage,model&limit=100`,
+          signal,
+        );
+        calls = (found?.data ?? []).filter((o) => o.type === 'GENERATION');
+      } catch {
+        calls = [];
+      }
+      if (calls.length === 0) {
+        this.unread.set(execution, rule);
+        return;
+      }
+      this.unread.delete(execution);
+      this.counted.add(execution);
+      const used = this.byRule.get(rule) ?? {
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: null,
+        unpriced: 0,
+        unread: 0,
+      };
+      for (const o of calls) {
+        used.inputTokens += o.inputUsage ?? 0;
+        used.outputTokens += o.outputUsage ?? 0;
+        const cost = o.costDetails?.total;
+        if (typeof cost === 'number') used.costUsd = (used.costUsd ?? 0) + cost;
+        else used.unpriced += 1;
+      }
+      this.byRule.set(rule, used);
+    },
+    async count(scores: RawScore[], signal?: AbortSignal) {
+      for (const s of scores) {
+        const execution = s.metadata?.job_execution_id;
+        const rule = s.metadata?.job_configuration_id;
+        if (typeof execution !== 'string' || typeof rule !== 'string') continue;
+        if (this.counted.has(execution) || this.unread.has(execution)) continue;
+        await this.read(execution, rule, signal);
+      }
+    },
+    async retry(signal?: AbortSignal) {
+      for (const [execution, rule] of [...this.unread]) await this.read(execution, rule, signal);
+    },
+    usage(): Record<string, ReportedUsage> {
+      const out: Record<string, ReportedUsage> = {};
+      const add = (key: string, used: ReportedUsage) => {
+        const sum = out[key] ?? {
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+          unpriced: 0,
+          unread: 0,
+        };
+        out[key] = {
+          inputTokens: sum.inputTokens + used.inputTokens,
+          outputTokens: sum.outputTokens + used.outputTokens,
+          costUsd:
+            sum.costUsd === null && used.costUsd === null
+              ? null
+              : (sum.costUsd ?? 0) + (used.costUsd ?? 0),
+          unpriced: sum.unpriced + used.unpriced,
+          unread: sum.unread + used.unread,
+        };
+      };
+      const keyOf = (rule: string) => this.judges.get(rule) ?? `langfuse:${this.connection}`;
+      for (const [rule, used] of this.byRule) add(keyOf(rule), used);
+      for (const rule of this.unread.values())
+        add(keyOf(rule), {
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: null,
+          unpriced: 0,
+          unread: 1,
+        });
+      return out;
+    },
+  };
+
+  /**
    * A judge as a built-in evaluator of a run, from its snapshot at the run's start. Its scores
    * come from Langfuse later, so each case it applies to is pending until they are collected.
    */
@@ -341,25 +432,8 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     run: { tenant: string; content: boolean },
   ): Evaluator => {
     const version = `v${judge.evaluator.version}+${modelText(judge.evaluator.model)}`;
-    // What Langfuse reports the judge's own calls cost, read from each execution's trace once.
-    const reported: ReportedUsage = { inputTokens: 0, outputTokens: 0, costUsd: null, unpriced: 0 };
-    const counted = new Set<string>();
-    const countCalls = async (execution: string, signal?: AbortSignal) => {
-      if (counted.has(execution)) return;
-      const found = await read<{ data: RawObservation[] }>(
-        `/api/public/v2/observations?traceId=${judgeTraceIdOf(execution)}&fields=core,basic,usage,model&limit=100`,
-        signal,
-      );
-      counted.add(execution);
-      for (const o of found?.data ?? []) {
-        if (o.type !== 'GENERATION') continue;
-        reported.inputTokens += o.inputUsage ?? 0;
-        reported.outputTokens += o.outputUsage ?? 0;
-        const cost = o.costDetails?.total;
-        if (typeof cost === 'number') reported.costUsd = (reported.costUsd ?? 0) + cost;
-        else reported.unpriced += 1;
-      }
-    };
+    ledger.judges.set(judge.rule.id, judge.id);
+    ledger.connection = judge.connection;
     const base = { evaluator: judge.id, version, metric: judge.id };
     const notApplicable = (reason: string): Score => ({
       ...base,
@@ -375,7 +449,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       judge: `langfuse:${run.tenant}/${judge.connection}/${judge.rule.name}@${version}`,
       reasonsOnTheCase: true,
       advisory: true,
-      reportedUsage: () => ({ ...reported }),
+      reportedUsage: () => ledger.usage(),
       // Only the answer is unknown before the case runs; every other field the rule maps is not.
       canRead: (c) =>
         judge.rule.mapping.every(
@@ -406,14 +480,16 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           return bounds.get(id);
         };
         const collected: CollectedScore[] = [];
+        await ledger.retry(signal);
         for (const p of pending) {
-          const ours = (await scoresOn(traceIdFor(p.task), signal))
+          const scores = await scoresOn(traceIdFor(p.task), signal);
+          const ours = scores
             .filter((s) => s.metadata?.job_configuration_id === judge.rule.id)
             .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''));
           const raw = ours[0];
           if (!raw) continue;
-          if (typeof raw.metadata?.job_execution_id === 'string')
-            await countCalls(raw.metadata.job_execution_id, signal);
+          // Every judge in the project judged the case, and each call is billed: count them all.
+          await ledger.count(scores, signal);
           const read = valueOf(raw, raw.configId ? await boundsOf(raw.configId) : undefined);
           const details = {
             ...(raw.dataType ? { dataType: raw.dataType } : {}),

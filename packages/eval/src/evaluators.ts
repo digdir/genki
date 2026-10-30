@@ -46,8 +46,11 @@ export interface Evaluator {
   reasonsOnTheCase?: boolean;
   /** Its scores are shown apart and never count in the run's metrics or its gates. */
   advisory?: boolean;
-  /** What a sink reports this evaluator's own calls used, outside the platform's metering. */
-  reportedUsage?(): ReportedUsage;
+  /**
+   * What a sink reports its judges' calls on the run's cases used, outside the platform's
+   * metering: per evaluator, and under the sink's own key for its judges the run does not use.
+   */
+  reportedUsage?(): Record<string, ReportedUsage>;
   /**
    * For a judge in a sink: whether it can judge the case at all, known before the case is
    * answered. A case none of a run's sink judges can read is not sent, so it is not billed.

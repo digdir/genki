@@ -86,6 +86,7 @@ const costless = <
   delete shown.cost;
   delete shown.tokens;
   delete shown.usdNok;
+  delete (shown as { sinkOthers?: unknown }).sinkOthers;
   // What a sink reports its judges' calls cost is usage too.
   if (view.sinkJudges)
     shown.sinkJudges = view.sinkJudges.map((j) => {

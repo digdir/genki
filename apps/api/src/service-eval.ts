@@ -197,6 +197,15 @@ const passes = (scores: Score[]) => {
 export const answerOfParts = (parts: unknown) =>
   Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
 
+/** What a sink reports its judges the run does not use cost: Langfuse runs every judge in the project. */
+const sinkOthersOf = (run: EvalRun, isSinkJudge: IsSinkJudge) => {
+  const judges = new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)));
+  const others = Object.entries(run.usage?.reported ?? {}).filter(
+    ([key]) => isSinkJudge(key) && !judges.has(key),
+  );
+  return others.length > 0 ? { sinkOthers: others[0]?.[1] } : {};
+};
+
 /** A test run as the portal lists it, read from the eval run. */
 export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge) => {
   const state = runState(run);
@@ -226,6 +235,7 @@ export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge)
     tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
     ...(run.error ? { error: run.error } : {}),
     sinkJudges: sinkJudgesOf(run, isSinkJudge),
+    ...sinkOthersOf(run, isSinkJudge),
     ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
     ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
   };
@@ -591,9 +601,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           : adopted.length > 0 && !sink.content
             ? { reason: 'no-content' as const, connection: sink.id }
             : undefined;
+    // Every active judge in the project judges, and bills, each case sent, also those not in use.
+    const otherJudges = deps.traceSinks?.judges
+      ? (await deps.traceSinks.judges(tenant, sink).catch(() => []))
+          .filter((j) => !adopted.includes(j.id))
+          .map((j) => j.name)
+      : [];
     return {
       connection: { id: sink.id, residency: sink.residency },
       judges: adopted.map((id) => ({ id, name: id.slice(id.indexOf('/') + 1) })),
+      otherJudges,
       ...(refused ? { refused } : {}),
     };
   };

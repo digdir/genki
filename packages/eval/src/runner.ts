@@ -382,11 +382,11 @@ export const runEval = async (options: RunEvalOptions): Promise<EvalRun> => {
   const usageSoFar = (): EvalRun['usage'] => {
     if (!options.meterAnswers) return undefined;
     const judged = evaluators.flatMap((e) => (e.usage ? [e.usage()] : []));
+    // A sink's judges share what they report, so one key may come from several evaluators.
     const reported = Object.fromEntries(
-      evaluators.flatMap((e) => {
-        const r = e.reportedUsage?.();
-        return r && (r.inputTokens + r.outputTokens > 0 || r.unpriced > 0) ? [[e.id, r]] : [];
-      }),
+      evaluators
+        .flatMap((e) => Object.entries(e.reportedUsage?.() ?? {}))
+        .filter(([, r]) => r.inputTokens + r.outputTokens > 0 || r.unpriced + r.unread > 0),
     );
     return {
       answers: sumUsage(answered),

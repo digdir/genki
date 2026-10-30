@@ -220,6 +220,8 @@ export const reportedUsage = z.strictObject({
   costUsd: z.number().nonnegative().nullable(),
   /** Calls the sink had no price for: their tokens count, their cost is unknown. */
   unpriced: z.number().int().nonnegative(),
+  /** Calls whose cost the sink had not reported when the run read it: the totals are at least this. */
+  unread: z.number().int().nonnegative().default(0),
 });
 export type ReportedUsage = z.infer<typeof reportedUsage>;
 

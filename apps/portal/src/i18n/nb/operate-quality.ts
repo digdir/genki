@@ -161,13 +161,18 @@ export const qualityArea = {
     sinkJudgeNotApplicable: 'Ikke aktuelt: {count} tilfeller',
     sinkJudgeChanged: 'Dommeren er endret siden kjøringen startet.',
     sinkJudgeExperiment: 'Se eksperimentet i Langfuse',
-    sinkJudgeCost:
-      'Kostnad rapportert av Langfuse: {kroner} ({usd} USD med kurs {rate} fra {date}), {tokens} tokens',
-    sinkJudgeCostUsd:
-      'Kostnad rapportert av Langfuse: {usd} USD, {tokens} tokens. Kronebeløpet vises når kursen fra Norges Bank er hentet.',
-    sinkJudgeTokensOnly: 'Langfuse har ingen pris for modellen: {tokens} tokens.',
-    sinkJudgeUnpriced:
+    sinkCostLabel: 'Kostnad rapportert av Langfuse: {cost}',
+    sinkOthersLabel: 'Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: {cost}',
+    sinkCostKroner: '{kroner} ({usd} USD med kurs {rate} fra {date}), {tokens} tokens.',
+    sinkCostUsd:
+      '{usd} USD, {tokens} tokens. Kronebeløpet vises når kursen fra Norges Bank er hentet.',
+    sinkCostTokens: 'ingen pris for modellen, {tokens} tokens.',
+    sinkCostUnpriced:
       'Langfuse hadde ingen pris for {count} av kallene, bare tokenene deres er med.',
+    sinkCostUnread:
+      'Langfuse hadde ikke rapportert kostnaden for {count} kall ennå, så beløpet er minst dette.',
+    judgeOthersWarning:
+      'Langfuse-prosjektet til koblingen {connection} har også disse aktive dommerne: {judges}. De vurderer og fakturerer hvert testtilfelle som sendes, men genki viser ikke vurderingene deres. Slå dem av i Langfuse, eller gi tjenesten et eget prosjekt.',
     sinkJudgeOnCase: '{name} (Langfuse)',
     verdictYes: 'Ja',
     verdictNo: 'Nei',

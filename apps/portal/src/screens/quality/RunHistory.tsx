@@ -15,6 +15,7 @@ import type { ApiClient } from '../../api';
 import type {
   CaseJudgement,
   EvalRun,
+  ReportedCost,
   RunSending,
   RunVersion,
   ServiceTestSet,
@@ -103,30 +104,28 @@ const verdictText = (t: T, f: Format, j: CaseJudgement) => {
   return j.value === null ? '' : f.percent(j.value);
 };
 
-/** What Langfuse reports a judge's calls cost: kroner at the run's rate, dollars until one is known. */
-const reportedCostText = (
-  t: T,
-  f: Format,
-  reported: NonNullable<NonNullable<EvalRun['sinkJudges']>[number]['reported']>,
-  usdNok: EvalRun['usdNok'],
-) => {
+/** What Langfuse reports calls cost: kroner at the run's rate, dollars until one is known. */
+const reportedCostText = (t: T, f: Format, reported: ReportedCost, usdNok: EvalRun['usdNok']) => {
   const tokens = f.number(reported.inputTokens + reported.outputTokens);
-  const unpriced =
-    reported.unpriced > 0 ? ` ${t('quality.sinkJudgeUnpriced', { count: reported.unpriced })}` : '';
-  if (reported.costUsd === null)
-    return `${t('quality.sinkJudgeTokensOnly', { tokens })}${unpriced}`;
-  const usd = f.decimal(reported.costUsd, 4);
-  return `${
-    usdNok
-      ? t('quality.sinkJudgeCost', {
-          kroner: f.currency(reported.costUsd * usdNok.rate, { digits: 2 }),
-          usd,
-          rate: f.decimal(usdNok.rate, 4),
-          date: f.date(usdNok.date),
-          tokens,
-        })
-      : t('quality.sinkJudgeCostUsd', { usd, tokens })
-  }${unpriced}`;
+  const cost =
+    reported.costUsd === null
+      ? t('quality.sinkCostTokens', { tokens })
+      : usdNok
+        ? t('quality.sinkCostKroner', {
+            kroner: f.currency(reported.costUsd * usdNok.rate, { digits: 2 }),
+            usd: f.decimal(reported.costUsd, 4),
+            rate: f.decimal(usdNok.rate, 4),
+            date: f.date(usdNok.date),
+            tokens,
+          })
+        : t('quality.sinkCostUsd', { usd: f.decimal(reported.costUsd, 4), tokens });
+  return [
+    cost,
+    ...(reported.unpriced > 0 ? [t('quality.sinkCostUnpriced', { count: reported.unpriced })] : []),
+    ...((reported.unread ?? 0) > 0
+      ? [t('quality.sinkCostUnread', { count: reported.unread ?? 0 })]
+      : []),
+  ].join(' ');
 };
 
 /** Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. */
@@ -183,10 +182,21 @@ const SinkJudges = ({ run }: { run: EvalRun }) => {
             <Paragraph data-size="sm">{t('quality.sinkJudgeChanged')}</Paragraph>
           ) : null}
           {j.reported ? (
-            <Paragraph data-size="sm">{reportedCostText(t, f, j.reported, run.usdNok)}</Paragraph>
+            <Paragraph data-size="sm">
+              {t('quality.sinkCostLabel', {
+                cost: reportedCostText(t, f, j.reported, run.usdNok),
+              })}
+            </Paragraph>
           ) : null}
         </div>
       ))}
+      {run.sinkOthers ? (
+        <Paragraph data-size="sm">
+          {t('quality.sinkOthersLabel', {
+            cost: reportedCostText(t, f, run.sinkOthers, run.usdNok),
+          })}
+        </Paragraph>
+      ) : null}
       {run.experiment ? (
         <Paragraph data-size="sm">
           <Link href={run.experiment} target="_blank" rel="noreferrer">
@@ -563,6 +573,16 @@ export const RunHistory = ({
           {refusedText ? (
             <Alert data-color="danger" data-size="sm">
               <Paragraph data-size="sm">{refusedText}</Paragraph>
+            </Alert>
+          ) : null}
+          {sink && (plan?.otherJudges?.length ?? 0) > 0 ? (
+            <Alert data-color="warning" data-size="sm">
+              <Paragraph data-size="sm">
+                {t('quality.judgeOthersWarning', {
+                  connection: sink.id,
+                  judges: (plan?.otherJudges ?? []).join(', '),
+                })}
+              </Paragraph>
             </Alert>
           ) : null}
           <div className="actions">
