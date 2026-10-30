@@ -314,7 +314,7 @@ describe('test sets for a service', () => {
     expect((await send('POST', path, 'erik', { input: 'Hei', expected: 'x' })).status).toBe(403);
   });
 
-  it('adds a case with a reference answer and named criteria as they are, and refuses other shapes', async () => {
+  it('adds a case with a reference answer and named criteria as they are, and refuses a shape its type cannot be judged on', async () => {
     const { platform, send } = await boot();
     const path = `/tenants/${tenant}/test-sets/svar-frister/cases`;
 
@@ -342,6 +342,20 @@ describe('test sets for a service', () => {
     expect(refused.body.errors).toEqual([
       { path: 'expected', message: 'expected is a text, or a reference answer and named criteria' },
     ]);
+    const refusedFor = async (body: Record<string, unknown>) =>
+      (await send('POST', path, 'kari', { input: 'Hei', ...body })).body.errors;
+    expect(await refusedFor({ expected: { referenceAnswer: 'DFØ eier Kudos.' } })).toEqual([
+      { path: 'expected.criteria', message: 'a criteria case needs criteria' },
+    ]);
+    expect(
+      await refusedFor({ type: 'exact', expected: { criteria: { criteria: 'Nevner DFØ' } } }),
+    ).toEqual([
+      { path: 'expected.referenceAnswer', message: 'an exact case needs the text to find' },
+    ]);
+    for (const expected of [{}, { criteria: {} }])
+      expect(await refusedFor({ expected })).toEqual([
+        { path: 'expected', message: 'the expected answer or criteria are required' },
+      ]);
   });
 });
 

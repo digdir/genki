@@ -481,7 +481,9 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
           expected:
             typeof expected === 'string'
               ? expected
-              : (expected.criteria?.criteria ?? expected.referenceAnswer ?? ''),
+              : body.type === 'criteria'
+                ? (expected.criteria?.criteria ?? expected.referenceAnswer ?? '')
+                : (expected.referenceAnswer ?? ''),
         };
         caseSet.cases.push(created);
         return req.json(created, 201);

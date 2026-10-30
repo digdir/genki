@@ -5,6 +5,7 @@ export type RowProblem =
   | 'inputMissing'
   | 'inputStructured'
   | 'expectedMissing'
+  | 'criterionNameInvalid'
   | 'typeUnknown'
   | 'splitUnknown'
   | 'idInvalid'
@@ -23,6 +24,8 @@ export type ImportResult =
   { ok: true; unit: 'row' | 'case'; rows: ImportRow[] } | { ok: false; problem: FileProblem };
 
 const caseTypes: CaseType[] = ['criteria', 'exact', 'must_reject'];
+/** How judges read criteria fields, as the API checks them: criteria, supporting_quotes. */
+const criterionName = /^[a-z][a-z0-9_]*$/;
 const idPattern = /^[a-z0-9][a-z0-9-]*$/;
 
 const splitOf = (raw: unknown): CaseSplit | undefined => {
@@ -67,6 +70,11 @@ const toRow = (raw: Record<string, unknown>, row: number): ImportRow => {
   else if (!input) problems.push('inputMissing');
   if (!type) problems.push('typeUnknown');
   if (type !== 'must_reject' && !expected) problems.push('expectedMissing');
+  if (
+    typeof expected === 'object' &&
+    Object.keys(expected.criteria ?? {}).some((name) => !criterionName.test(name))
+  )
+    problems.push('criterionNameInvalid');
   if (!split) problems.push('splitUnknown');
   if (id && !idPattern.test(id)) problems.push('idInvalid');
   return {

@@ -120,4 +120,20 @@ describe('importing test cases from a file', () => {
       ],
     });
   });
+
+  it('refuses a row whose criteria name is not one judges read, rather than importing half the file', () => {
+    const result = parseCaseFile(
+      'x.yaml',
+      [
+        'cases:',
+        '  - input: Hei',
+        '    expected:',
+        '      criteria:',
+        '        Supporting quotes: x',
+        '',
+      ].join('\n'),
+    );
+
+    expect(result).toMatchObject({ ok: true, rows: [{ problems: ['criterionNameInvalid'] }] });
+  });
 });
