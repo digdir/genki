@@ -1178,7 +1178,11 @@ describe('the criteria judge', () => {
       return claude;
     });
 
-    await judge.evaluate(criteriaCase, observation({ answer: '' }), { ...ctx, servedModels: [] });
+    // A guardrail answered the first case before any model did.
+    await judge.evaluate(criteriaCase, observation({ answer: 'Jeg kan ikke svare på det.' }), {
+      ...ctx,
+      servedModels: [],
+    });
     await judge.evaluate(criteriaCase, observation({ answer: 'x' }), ctx);
     await judge.evaluate(criteriaCase, observation({ answer: 'y' }), ctx);
 
