@@ -21,6 +21,7 @@ export const runs = defineNamespace({
   skipUnsupportedType: 'Filtypen kan ikke søkes i',
   skipOutsideAccess: 'Utenfor tilgangen til tjenesten',
   skipConversionFailed: 'Kunne ikke lese dokumentet',
+  skipNoChunks: 'Ingen del av teksten passer innenfor lengdegrensene for oppdeling',
   skipScannedPdf: 'Skannet PDF uten tekst',
   skipNoText: 'Dokumentet har ingen tekst',
   searchNote: 'Søkemerknad',
