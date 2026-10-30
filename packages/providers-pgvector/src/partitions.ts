@@ -167,6 +167,12 @@ export const generationOf = async (db: Pool | PoolClient, generation: string) =>
     )
   ).rows[0];
 
+const attached = async (client: PoolClient, table: string) =>
+  Boolean(
+    (await client.query(`select 1 from pg_inherits where inhrelid = to_regclass($1)`, [table]))
+      .rowCount,
+  );
+
 export const recipeOf = (dataset: DatasetConfig) => ({
   ...(dataset.embedding ? { embedding: dataset.embedding } : {}),
   textSearchConfig:
@@ -239,7 +245,14 @@ const filterIndexesOf = (dataset: DatasetConfig, table: string): WantedIndex[] =
   return wanted;
 };
 
-const syncTableFilters = async (client: PoolClient, dataset: DatasetConfig, table: string) => {
+/** On a partition searches read, indexes change concurrently so neither search nor writes wait for the build. */
+const syncTableFilters = async (
+  client: PoolClient,
+  dataset: DatasetConfig,
+  table: string,
+  live = true,
+) => {
+  const concurrently = live ? ' concurrently' : '';
   const wanted = filterIndexesOf(dataset, table);
   const { rows } = await client.query<{ indexname: string }>(
     `select indexname from pg_indexes where tablename = $1
@@ -247,8 +260,12 @@ const syncTableFilters = async (client: PoolClient, dataset: DatasetConfig, tabl
     [table],
   );
   for (const { indexname } of rows)
-    if (!wanted.some((w) => w.name === indexname)) await client.query(`drop index ${indexname}`);
-  for (const index of wanted) await client.query(index.sql);
+    if (!wanted.some((w) => w.name === indexname))
+      await client.query(`drop index${concurrently} if exists ${indexname}`);
+  for (const index of wanted)
+    await client.query(
+      index.sql.replace('create index if not exists', `create index${concurrently} if not exists`),
+    );
 };
 
 /** Adds and drops filter indexes on one dataset's partitions only. */
@@ -277,19 +294,16 @@ export const attachGeneration = (
     const known = await generationOf(client, checkedGeneration(generation));
     if (!known || known.dataset !== dataset.id)
       throw new KnowledgeError('bad_request', `generation ${generation} is not prepared`);
-    if (known.state !== 'standalone') return;
+    if (known.state === 'attached') return;
     const dims = dataset.embedding?.dimensions;
     const docs = partitionOf('kn_docs', generation);
     const chunks = partitionOf('kn_chunks', generation);
     const phrases = partitionOf('kn_phrases', generation);
     const build = [
-      `alter table ${docs} add primary key (generation, id)`,
       `create index if not exists ${docs}_tsv on ${docs} using gin (tsv)`,
       `create index if not exists ${docs}_title_tsv on ${docs} using gin (title_tsv)`,
-      `alter table ${chunks} add primary key (generation, id)`,
       `create index if not exists ${chunks}_doc on ${chunks} (generation, doc_id, position)`,
       `create index if not exists ${chunks}_tsv on ${chunks} using gin (tsv)`,
-      `alter table ${phrases} add primary key (generation, id)`,
       `create index if not exists ${phrases}_doc on ${phrases} (generation, doc_id)`,
       `create index if not exists ${phrases}_tsv on ${phrases} using gin (tsv)`,
       ...(dims
@@ -300,12 +314,20 @@ export const attachGeneration = (
           )
         : []),
     ];
-    for (const sql of build) await client.query(sql);
-    await syncTableFilters(client, dataset, docs);
-    for (const table of knowledgeTables)
-      await client.query(
-        `alter table ${table} attach partition ${partitionOf(table, generation)} for values in (${literal(generation)})`,
+    for (const table of [docs, chunks, phrases]) {
+      const { rowCount } = await client.query(
+        `select 1 from pg_constraint where conrelid = $1::regclass and contype = 'p'`,
+        [table],
       );
+      if (!rowCount) await client.query(`alter table ${table} add primary key (generation, id)`);
+    }
+    for (const sql of build) await client.query(sql);
+    await syncTableFilters(client, dataset, docs, false);
+    for (const table of knowledgeTables)
+      if (!(await attached(client, partitionOf(table, generation))))
+        await client.query(
+          `alter table ${table} attach partition ${partitionOf(table, generation)} for values in (${literal(generation)})`,
+        );
     await client.query(`update kn_generations set state = 'attached' where generation = $1`, [
       generation,
     ]);
@@ -320,21 +342,14 @@ export const dropGeneration = (
   partitionDdl(owner, options, async (client) => {
     const known = await generationOf(client, checkedGeneration(generation));
     if (!known) return;
-    if (known.state !== 'standalone') {
-      await client.query(`update kn_generations set state = 'detaching' where generation = $1`, [
-        generation,
-      ]);
-      for (const table of knowledgeTables) {
-        const { rowCount } = await client.query(
-          `select 1 from pg_inherits where inhrelid = to_regclass($1)`,
-          [partitionOf(table, generation)],
+    await client.query(`update kn_generations set state = 'detaching' where generation = $1`, [
+      generation,
+    ]);
+    for (const table of knowledgeTables)
+      if (await attached(client, partitionOf(table, generation)))
+        await client.query(
+          `alter table ${table} detach partition ${partitionOf(table, generation)} concurrently`,
         );
-        if (rowCount)
-          await client.query(
-            `alter table ${table} detach partition ${partitionOf(table, generation)} concurrently`,
-          );
-      }
-    }
     for (const table of knowledgeTables)
       await client.query(`drop table if exists ${partitionOf(table, generation)}`);
     await client.query(`delete from kn_generations where generation = $1`, [generation]);

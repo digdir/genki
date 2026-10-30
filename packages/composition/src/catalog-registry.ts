@@ -563,7 +563,21 @@ export class CatalogRegistry {
     spec: Record<string, unknown>,
     previous: Record<string, unknown> | undefined,
   ): CatalogProblem | undefined {
-    if (spec.generation !== undefined || !this.#onKnowledgeServer(spec.endpoint)) return undefined;
+    if (!this.#onKnowledgeServer(spec.endpoint)) return undefined;
+    if (spec.generation !== undefined) {
+      const taken = [...this.#slots.values()].some(
+        (slot) =>
+          slot.kind === 'dataset' &&
+          slot.spec !== previous &&
+          slot.spec.generation === spec.generation,
+      );
+      return taken
+        ? {
+            path: 'spec.generation',
+            message: `${String(spec.generation)} is the generation of another dataset`,
+          }
+        : undefined;
+    }
     if (previous && previous.endpoint === spec.endpoint && previous.generation !== undefined) {
       spec.generation = previous.generation;
       return undefined;
@@ -578,7 +592,7 @@ export class CatalogRegistry {
       .toISOString()
       .slice(0, 10)
       .replaceAll('-', '');
-    spec.generation = `g-${day}-${randomBytes(2).toString('hex')}`;
+    spec.generation = `g-${day}-${randomBytes(3).toString('hex')}`;
     return undefined;
   }
 

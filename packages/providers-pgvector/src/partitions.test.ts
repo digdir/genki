@@ -415,4 +415,58 @@ describe('generations as partitions on the knowledge server', () => {
       phrases: 0,
     });
   });
+
+  it('a promote that gave up after `lock_timeout` can be retried', async () => {
+    const d = dataset('digdir/retry', 8);
+    const writer = writerFor();
+    await writer.prepare(d, 'g-20261030-1301');
+    await writer.store(d, 'g-20261030-1301', doc('a', 8, { type: ['rapport'] }));
+    const holder = await admin.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('lock table kn_chunks in access exclusive mode');
+      const client = await owner.connect();
+      try {
+        await expect(
+          attachGeneration(client, d, 'g-20261030-1301', { lockTimeoutMs: 300 }),
+        ).rejects.toThrow('busy');
+      } finally {
+        client.release();
+      }
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+    await writer.promote(d, 'g-20261030-1301');
+    const { rows } = await admin.query<{ child: string }>(
+      `select c.relname as child from pg_inherits i join pg_class c on c.oid = i.inhrelid
+         where c.relname = any($1) order by 1`,
+      [['kn_docs', 'kn_chunks', 'kn_phrases'].map((t) => partitionOf(t, 'g-20261030-1301'))],
+    );
+    expect(rows).toHaveLength(3);
+    await writer.drop(d, 'g-20261030-1301');
+    expect(
+      (
+        await admin.query(`select 1 from pg_class where relname = $1`, [
+          partitionOf('kn_docs', 'g-20261030-1301'),
+        ])
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it('a generation is dropped only through its own dataset', async () => {
+    const mine = dataset('digdir/mine', 8);
+    const theirs = dataset('digdir/theirs', 8);
+    await fill(theirs, 'g-20261030-1401', [doc('a', 8, {})]);
+    await expect(writerFor().drop(mine, 'g-20261030-1401')).rejects.toThrow(
+      'belongs to another dataset',
+    );
+    await expect(writerFor().drop(mine, 'g-20261030-1401', { force: true })).rejects.toThrow(
+      'belongs to another dataset',
+    );
+    expect(
+      (await admin.query(`select 1 from kn_generations where generation = 'g-20261030-1401'`))
+        .rowCount,
+    ).toBe(1);
+  });
 });

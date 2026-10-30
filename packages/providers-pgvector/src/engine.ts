@@ -392,15 +392,22 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     return serverReady;
   };
   const followedFilters = new Map<string, string>();
-  const followCatalog = async (datasets: DatasetConfig[]) => {
-    if (!owner) return;
-    await knowledgeServerReady();
-    for (const dataset of datasets) {
-      const filters = JSON.stringify([dataset.filters, dataset.valueTypes ?? {}]);
-      if (followedFilters.get(dataset.id) === filters) continue;
-      await syncFilterIndexes(owner, dataset);
-      followedFilters.set(dataset.id, filters);
-    }
+  let following: Promise<void> = Promise.resolve();
+  const followCatalog = (datasets: DatasetConfig[]) => {
+    if (!owner) return Promise.resolve();
+    // One sync at a time; a dataset that failed is tried again on the next call.
+    following = following
+      .catch(() => undefined)
+      .then(async () => {
+        await knowledgeServerReady();
+        for (const dataset of datasets) {
+          const filters = JSON.stringify([dataset.filters, dataset.valueTypes ?? {}]);
+          if (followedFilters.get(dataset.id) === filters) continue;
+          await syncFilterIndexes(owner, dataset);
+          followedFilters.set(dataset.id, filters);
+        }
+      });
+    return following;
   };
 
   const adapter = localKnowledgeAdapter({

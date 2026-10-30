@@ -200,6 +200,12 @@ export const knowledgeWriterOf = <O extends Options>(
     },
     drop: async (dataset, generation, options = {}) => {
       await begin();
+      const known = await generationOf(owner, generation);
+      if (known && known.dataset !== dataset.id)
+        throw new KnowledgeError(
+          'bad_request',
+          `generation ${generation} belongs to another dataset`,
+        );
       if (generation === dataset.generation && !options.force)
         throw new KnowledgeError('bad_request', `generation ${generation} is active`);
       await dropGeneration(owner, generation);

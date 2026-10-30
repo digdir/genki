@@ -172,7 +172,7 @@ describe('pluggable search engines over the API', () => {
       });
       const today = new Date().toISOString().slice(0, 10).replaceAll('-', '');
       const saved = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
-      expect(saved.body.spec?.generation).toMatch(new RegExp(`^g-${today}-[0-9a-f]{4}$`));
+      expect(saved.body.spec?.generation).toMatch(new RegExp(`^g-${today}-[0-9a-f]{6}$`));
     });
 
     it('an edit of a knowledge dataset that names no generation keeps the one it had', async () => {
@@ -194,6 +194,21 @@ describe('pluggable search engines over the API', () => {
         dataset('knowledge-pg', { generation: 'g-20261101-a1b2' }),
       );
       expect(named.body.spec?.generation).toBe('g-20261101-a1b2');
+    });
+
+    it("a generation another dataset's entry names is refused", async () => {
+      const { call } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      const first = await publish(call, 'digdir/kudos-next', dataset('knowledge-pg'));
+      const taken = await publish(
+        call,
+        'digdir/altinn-docs',
+        dataset('knowledge-pg', { generation: first.body.spec?.generation }),
+      );
+      expect(taken.status).toBe(400);
+      expect(JSON.stringify(taken.body)).toContain('generation of another dataset');
     });
 
     it('a plain publish that moves a dataset from another endpoint onto the knowledge database is refused', async () => {
