@@ -177,3 +177,14 @@ describe('the default instructions in the setup', () => {
     expect(screen.queryByText('Se standardinstruksjonene')).toBeNull();
   });
 });
+
+describe('text recognition in the setup', () => {
+  it('offers text recognition only when files can come in', () => {
+    render(<SetupHarness sections={['io']} initial={exampleTemplate('answers')} />);
+    fireEvent.click(screen.getByRole('button', { name: /Inn og ut/ }));
+    expect(screen.queryByLabelText('Tekstgjenkjenning for skannede filer')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Filer (PDF, Word)'));
+    expect(screen.getByLabelText('Tekstgjenkjenning for skannede filer')).toBeTruthy();
+  });
+});

@@ -18,6 +18,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { ApiCallLink } from '../../components/ApiCall';
+import { useDeveloperView } from '../../components/developer-view';
 import { alwaysProvided, type FlowInputCheck } from '../../data/flow-inputs';
 import {
   fieldIds,
@@ -61,6 +62,8 @@ interface Props {
   lookup?: InputOptionLookup | undefined;
   serviceId?: string | undefined;
   tenant?: string | undefined;
+  /** The page already has the heading, so it is only read out by screen readers. */
+  headingHidden?: boolean;
 }
 
 export const validId = /^[a-z][a-zA-Z0-9_]{0,63}$/;
@@ -233,7 +236,7 @@ const Preview = ({ fields, serviceId }: { fields: InputFormField[]; serviceId?: 
   return (
     <aside aria-labelledby="fv-h" className="if-preview">
       <div className="if-editor-head">
-        <Heading level={2} data-size="2xs" id="fv-h">
+        <Heading level={3} data-size="2xs" id="fv-h">
           {t('inputForm.previewHeading')}
         </Heading>
         {serviceId ? (
@@ -325,8 +328,10 @@ export const InputFormEditor = ({
   lookup,
   serviceId,
   tenant,
+  headingHidden = false,
 }: Props) => {
   const t = useT();
+  const developer = useDeveloperView();
   const [selected, setSelected] = useState<number | null>(fields.length > 0 ? 0 : null);
   const [flash, setFlash] = useState('');
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -671,7 +676,7 @@ export const InputFormEditor = ({
       {proposed.length > 0 && flowCheck ? (
         <section aria-labelledby="fs-h" className="if-proposal">
           <div className="row-wrap">
-            <Heading level={2} data-size="2xs" id="fs-h">
+            <Heading level={3} data-size="2xs" id="fs-h">
               {t('inputForm.proposal', { count: proposed.length })}
             </Heading>
           </div>
@@ -727,7 +732,12 @@ export const InputFormEditor = ({
       <div className="if-layout">
         <section aria-labelledby="sk-h" className="if-main">
           <div className="if-intro">
-            <Heading level={2} data-size="sm" id="sk-h">
+            <Heading
+              level={3}
+              data-size="2xs"
+              id="sk-h"
+              className={headingHidden ? 'visually-hidden' : undefined}
+            >
               {t('inputForm.heading')}
             </Heading>
             <p className="meta">{t('inputForm.intro')}</p>
@@ -848,17 +858,19 @@ export const InputFormEditor = ({
               </ul>
             </section>
           ) : null}
-          <Details>
-            <Details.Summary>{t('inputForm.schemaSummary')}</Details.Summary>
-            <Details.Content>
-              <div className="stack-xs">
-                <Paragraph data-size="sm">
-                  {t.rich('inputForm.schemaText', { code: (c) => <code>{c}</code> })}
-                </Paragraph>
-                <pre className="if-pre">{schemaOf(fields)}</pre>
-              </div>
-            </Details.Content>
-          </Details>
+          {developer ? (
+            <Details>
+              <Details.Summary>{t('inputForm.schemaSummary')}</Details.Summary>
+              <Details.Content>
+                <div className="stack-xs">
+                  <Paragraph data-size="sm">
+                    {t.rich('inputForm.schemaText', { code: (c) => <code>{c}</code> })}
+                  </Paragraph>
+                  <pre className="if-pre">{schemaOf(fields)}</pre>
+                </div>
+              </Details.Content>
+            </Details>
+          ) : null}
           {serviceId && tenant ? (
             <ApiCallLink
               call={{

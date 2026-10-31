@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ApiError, type ApiClient } from '../../api';
 import type { AssistantProposal } from '../../api/assistant';
 import { PlaygroundPanel } from '../../components/playground/PlaygroundPanel';
+import { DeveloperView } from '../../components/developer-view';
 import { PublishSummary, type PublishInput } from '../../components/PublishSummary';
 import {
   assistantStates,
@@ -86,7 +87,7 @@ import { LogSection } from '../service/LogSection';
 import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
-import { availableSections, servicePath, type ServiceSection } from '../service/sections';
+import { servicePath, tabSections, type ServiceSection } from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
 import { ServiceLifecycle } from '../service/ServiceLifecycle';
 import { ServiceNav } from '../service/ServiceNav';
@@ -97,18 +98,37 @@ import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
+import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
   'purpose',
   'io',
+  'result',
   'instructions',
   'knowledge',
   'tools',
   'how',
   'model',
   'variants',
+  'risk',
   'guards',
+];
+
+const developerSetupSections: SectionId[] = ['tools', 'how', 'model', 'variants'];
+
+/** The pages under Avanserte innstillinger, by their address. */
+const advancedPages: readonly (readonly [string, SectionId | 'definition', PlainKey])[] = [
+  ['tools', 'tools', 'setup.sectionTools'],
+  ['how', 'how', 'setup.sectionHow'],
+  ['model', 'model', 'setup.sectionModel'],
+  ['variants', 'variants', 'setup.sectionVariants'],
+  ['input', 'inputKinds', 'setup.sectionInput'],
+  ['input-form', 'inputForm', 'inputForm.heading'],
+  ['safety', 'risk', 'setup.sectionSafety'],
+  ['safeguards', 'guards', 'setup.safetyGuards'],
+  ['refuse', 'refuse', 'setup.refuseTopics'],
+  ['definition', 'definition', 'service.advancedTools'],
 ];
 
 export interface BuilderInit {
@@ -177,6 +197,12 @@ const fromTemplate = (template: Record<string, unknown>, name: string): ServiceD
     name,
   );
 
+/** A new service that answers always shows its sources under the answer. */
+const withSourcesShown = (d: ServiceDefinition): ServiceDefinition =>
+  d.spec.output.kind === 'answer'
+    ? { ...d, spec: { ...d.spec, output: { ...d.spec.output, withSources: true } } }
+    : d;
+
 export const newServiceInit = (
   job: JobId,
   userText: string,
@@ -190,7 +216,9 @@ export const newServiceInit = (
     return {
       id: 'new',
       isNew: true,
-      definition: template ? fromTemplate(template, name) : exampleTemplate(job, name),
+      definition: withSourcesShown(
+        template ? fromTemplate(template, name) : exampleTemplate(job, name),
+      ),
       messages: [],
       extraCards: {},
       versions: [],
@@ -200,7 +228,7 @@ export const newServiceInit = (
   return {
     id: 'new',
     isNew: true,
-    definition: exampleTemplate(job, name),
+    definition: withSourcesShown(exampleTemplate(job, name)),
     messages: [
       { role: 'user', text: userText },
       {
@@ -219,6 +247,42 @@ export const newServiceInit = (
     versions: [],
     status: 'Utkast',
   };
+};
+
+const BuilderSplit = ({ children }: { children: ReactNode }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const split = ref.current;
+    if (!split) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      const aside = split.firstElementChild;
+      if (!(aside instanceof HTMLElement)) return;
+      const style = getComputedStyle(aside);
+      const top = Math.max(
+        split.getBoundingClientRect().top + parseFloat(style.marginTop),
+        parseFloat(style.top) || 0,
+      );
+      split.style.setProperty('--assistant-room', `${Math.round(window.innerHeight - top)}px`);
+    };
+    const queue = () => {
+      if (!frame) frame = requestAnimationFrame(fit);
+    };
+    fit();
+    window.addEventListener('scroll', queue, { passive: true });
+    window.addEventListener('resize', queue);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', queue);
+      window.removeEventListener('resize', queue);
+    };
+  }, []);
+  return (
+    <div ref={ref} className="builder-split">
+      {children}
+    </div>
+  );
 };
 
 export const Builder = ({
@@ -364,6 +428,8 @@ export const Builder = ({
   const pushMsg = (m: ChatMessage) => setMessages((ms) => [...ms, m]);
   const addCard = (cid: string, card: ChangeCard) => setExtra((x) => ({ ...x, [cid]: card }));
   const split = !narrow;
+  const blocks = useBlocksState();
+  const [resultWish, setResultWish] = useState('');
   const showPane = (p: 'assistent' | 'tjeneste') => !split && setPane(p);
 
   const sessionCards = messages.flatMap((m) => m.cards ?? []);
@@ -774,7 +840,14 @@ export const Builder = ({
     <ImproveInstructions
       state={improve}
       off={assistantOff}
-      onToggle={() => void assistant.startImprove(sharedInstructionsOf(serviceRef.current.spec))}
+      draft={!sharedInstructionsOf(service.spec).trim()}
+      needsPurpose={!sharedInstructionsOf(service.spec).trim() && !service.spec.purpose.trim()}
+      onToggle={() =>
+        void assistant.startImprove(
+          sharedInstructionsOf(serviceRef.current.spec),
+          serviceRef.current.spec.purpose,
+        )
+      }
       onApply={() => {
         if (improve.status !== 'open') return;
         const text = improve.data.after;
@@ -978,13 +1051,15 @@ export const Builder = ({
   };
 
   const testsetFact = hasTestSet ? scoreFact : t('services.testsetNotMade');
-  const suggestions =
-    testKind(id, service) === 'fields'
+  const suggestions = isNew
+    ? []
+    : testKind(id, service) === 'fields'
       ? [t('services.suggestCost'), t('services.suggestRerun'), t('services.suggestPrivacy')]
       : [t('services.suggestCost'), t('services.suggestShorter'), t('services.suggestTest')];
   const name = service.metadata.name || t('services.newServiceName');
-  const sections = availableSections({ isNew });
+  const sections = tabSections({ isNew });
   const withAssistant = !readOnly && (section === 'setup' || section === 'test');
+  const ownLayout = section === 'blocks';
   const screenProps = { api, tenant, tenantName, route, live };
   const versionsView = route.query.get('view') === 'yaml' ? 'yaml' : 'history';
   const latest = versions[0];
@@ -1038,7 +1113,15 @@ export const Builder = ({
       api={api}
       strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
       instructionsAssist={improveSlot}
-      {...(service.spec.strategy.id === 'remote-agent'
+      instructionsUnderPurpose={isNew}
+      apart={isNew}
+      sourcesTogether={isNew}
+      continuous={isNew}
+      resultWish={resultWish}
+      onResultWish={setResultWish}
+      onAsk={isNew ? send : undefined}
+      askOff={assistantOff || typing || assistant.pending || assistant.streaming}
+      {...(service.spec.strategy.id === 'remote-agent' || isNew
         ? {}
         : {
             languageTabs: (shared: ReactNode) => (
@@ -1130,6 +1213,49 @@ export const Builder = ({
           live={live}
         />
       );
+    if (section === 'advanced') {
+      const page = advancedPages.find(([slug]) => slug === detail) ?? advancedPages[0];
+      return (
+        <div className="advanced">
+          <nav aria-label={t('service.advancedMenu')} className="advanced-nav">
+            <ul className="nav-list">
+              {advancedPages.map(([slug, , label]) => (
+                <li key={slug}>
+                  <a
+                    href={`#${servicePath(id, 'advanced', `/${slug}`)}`}
+                    aria-current={slug === page?.[0] ? 'page' : undefined}
+                    className={slug === page?.[0] ? 'active' : undefined}
+                  >
+                    {t(label)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="advanced-page">
+            {!page || page[1] === 'definition' ? (
+              <section aria-labelledby="sek-avansert-tittel" className="setup-part">
+                <Heading level={2} data-size="xs" id="sek-avansert-tittel">
+                  {t('service.advancedTools')}
+                </Heading>
+                <ul className="advanced-links">
+                  <li>
+                    <a href={`#${servicePath(id, 'test')}`}>{t('service.advancedTest')}</a>
+                  </li>
+                  <li>
+                    <a href={`#${servicePath(id, 'versions', '?view=yaml')}`}>
+                      {t('service.advancedYaml')}
+                    </a>
+                  </li>
+                </ul>
+              </section>
+            ) : (
+              setup([page[1]])
+            )}
+          </div>
+        </div>
+      );
+    }
     if (section === 'versions')
       return live && !isNew ? (
         <VersionsSection
@@ -1168,7 +1294,19 @@ export const Builder = ({
           }
         />
       );
-    return <div className="stack-sm">{setup(setupSections)}</div>;
+    return (
+      <div className="stack-sm">
+        {setup(
+          isNew
+            ? setupSections.filter(
+                (id) =>
+                  !['io', 'instructions', 'risk', 'guards'].includes(id) &&
+                  !developerSetupSections.includes(id),
+              )
+            : setupSections.filter((id) => id !== 'result'),
+        )}
+      </div>
+    );
   })();
 
   const assistantPanel = (
@@ -1194,258 +1332,300 @@ export const Builder = ({
     />
   );
 
+  const previewChat = (
+    <PlaygroundPanel
+      key={blocks.conversation}
+      layout="full"
+      bare
+      context="service"
+      name={serviceId}
+      api={api}
+      tenant={tenant}
+      tenantName={tenantName}
+      serviceDraft={{ definition, files }}
+    />
+  );
+  const previewAddress = `${serviceId}.genki.no`;
+
   const content = <div className={`service-body service-${section}`}>{body}</div>;
+  const blocksContent =
+    detail === 'preview' ? (
+      <BlocksFullscreen
+        state={blocks}
+        chat={previewChat}
+        address={previewAddress}
+        backHref={`#${servicePath(isNew ? 'new' : id, 'blocks')}`}
+        onExit={() => go('blocks')}
+      />
+    ) : (
+      <BlocksStep
+        state={blocks}
+        narrow={!split}
+        assistant={assistantPanel}
+        chat={previewChat}
+        address={previewAddress}
+        onFullscreen={() => go('blocks', '/preview')}
+      />
+    );
 
   return (
-    <ServicePageContext.Provider value>
-      <div className="service-page">
-        <ServiceHeader
-          name={name}
-          status={
-            init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
-              ? 'I bruk'
-              : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
-                ? 'I test'
-                : init.status
-          }
-          meta={meta}
-          flash={flash}
-          actions={
-            <>
-              {live && canPublish && !isNew ? (
-                <ServiceLifecycle
-                  api={api}
-                  tenant={tenant}
-                  id={id}
-                  name={service.metadata.name || id}
-                  {...(onPublished ? { onChanged: onPublished } : {})}
-                />
-              ) : null}
-              {live || !canPublish ? null : (
-                <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
-                  {t('services.publishToTest')}
-                </Button>
-              )}
-              {canPublish &&
-              !isNew &&
-              current > 0 &&
-              !changes.length &&
-              draftRevision === 0 &&
-              !edited ? (
-                <span className="meta">{t('services.nothingToPublish')}</span>
-              ) : canPublish ? (
-                <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
-                  {t('services.publish')}
-                </Button>
-              ) : (
-                <span className="meta">{needsRight('manage-services', t)}</span>
-              )}
-            </>
-          }
-        />
-        <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
-        {readOnly ? (
-          <Alert data-color="info" data-size="sm">
-            <Heading level={2} data-size="2xs">
-              {t('servicesScreen.readOnlyTitle')}
-            </Heading>
-            <Paragraph data-size="sm">
-              {t('servicesScreen.readOnlyText', { right: rightLabel(t, 'manage-services') })}
-            </Paragraph>
-          </Alert>
-        ) : null}
-        {rebasedNotice !== undefined ? (
-          <Alert data-color="success" data-size="sm">
-            {t('services.draftRebasedTo', { n: rebasedNotice })}
-          </Alert>
-        ) : null}
-        {openConflicts?.length ? (
-          <DraftOutdated
-            paths={openConflicts.map((c) => c.path)}
-            conflicts={openConflicts}
-            onRebase={rebaseDraft}
-            onResolve={resolveOpenConflicts}
+    <DeveloperView.Provider value={!isNew}>
+      <ServicePageContext.Provider value>
+        <div className="service-page">
+          <ServiceHeader
+            name={name}
+            status={
+              init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
+                ? 'I bruk'
+                : init.status === 'Utkast' && versions.some((v) => v.state === 'I test')
+                  ? 'I test'
+                  : init.status
+            }
+            meta={meta}
+            flash={flash}
+            actions={
+              <>
+                {live && canPublish && !isNew ? (
+                  <ServiceLifecycle
+                    api={api}
+                    tenant={tenant}
+                    id={id}
+                    name={service.metadata.name || id}
+                    {...(onPublished ? { onChanged: onPublished } : {})}
+                  />
+                ) : null}
+                {live || !canPublish ? null : (
+                  <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
+                    {t('services.publishToTest')}
+                  </Button>
+                )}
+                {canPublish &&
+                !isNew &&
+                current > 0 &&
+                !changes.length &&
+                draftRevision === 0 &&
+                !edited ? (
+                  <span className="meta">{t('services.nothingToPublish')}</span>
+                ) : canPublish ? (
+                  <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
+                    {t('services.publish')}
+                  </Button>
+                ) : (
+                  <span className="meta">{needsRight('manage-services', t)}</span>
+                )}
+              </>
+            }
           />
-        ) : null}
-        {!withAssistant ? (
-          content
-        ) : split ? (
-          <div className="builder-split">
-            {assistantPanel}
-            <div className="builder-canvas">{content}</div>
-          </div>
-        ) : (
-          <Tabs value={pane} onChange={(v) => setPane(v as 'assistent' | 'tjeneste')}>
-            <TabsList aria-label={t('services.viewLabel')}>
-              <TabsTab value="assistent">{t('services.tabAssistant')}</TabsTab>
-              <TabsTab value="tjeneste">{t('services.tabService')}</TabsTab>
-            </TabsList>
-            <TabsPanel value="assistent">{pane === 'assistent' ? assistantPanel : null}</TabsPanel>
-            <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
-          </Tabs>
-        )}
-        {publish && canPublish ? (
-          <Dialog
-            open
-            modal
-            closeButton={t('services.close')}
-            onClose={() => {
-              setPublish(null);
-              setProblems(undefined);
-            }}
-            aria-labelledby="pub-h"
-            className="publish-dialog"
-          >
-            <div className="stack">
-              <Heading level={2} data-size="sm" id="pub-h">
-                {t('services.publishTitle', {
-                  name: service.metadata.name || t('services.publishFallbackName'),
-                })}
+          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
+          {readOnly ? (
+            <Alert data-color="info" data-size="sm">
+              <Heading level={2} data-size="2xs">
+                {t('servicesScreen.readOnlyTitle')}
               </Heading>
-              <Paragraph>
-                {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
+              <Paragraph data-size="sm">
+                {t('servicesScreen.readOnlyText', { right: rightLabel(t, 'manage-services') })}
               </Paragraph>
-              {hasTestSet ? null : (
-                <Alert data-color="warning" data-size="sm">
-                  {t('services.noTestsetWarning')}
-                </Alert>
-              )}
-              {invalid ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
-                  <Heading level={3} data-size="2xs">
-                    {t('services.notAccepted')}
-                  </Heading>
-                  <ul className="bullets">
-                    {validationErrors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
-              {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
-                <Paragraph data-size="sm">
-                  {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
+            </Alert>
+          ) : null}
+          {rebasedNotice !== undefined ? (
+            <Alert data-color="success" data-size="sm">
+              {t('services.draftRebasedTo', { n: rebasedNotice })}
+            </Alert>
+          ) : null}
+          {openConflicts?.length ? (
+            <DraftOutdated
+              paths={openConflicts.map((c) => c.path)}
+              conflicts={openConflicts}
+              onRebase={rebaseDraft}
+              onResolve={resolveOpenConflicts}
+            />
+          ) : null}
+          {ownLayout ? (
+            blocksContent
+          ) : !withAssistant ? (
+            content
+          ) : split ? (
+            <BuilderSplit>
+              {assistantPanel}
+              <div className="builder-canvas">{content}</div>
+            </BuilderSplit>
+          ) : (
+            <Tabs value={pane} onChange={(v) => setPane(v as 'assistent' | 'tjeneste')}>
+              <TabsList aria-label={t('services.viewLabel')}>
+                <TabsTab value="assistent">{t('services.tabAssistant')}</TabsTab>
+                <TabsTab value="tjeneste">{t('services.tabService')}</TabsTab>
+              </TabsList>
+              <TabsPanel value="assistent">
+                {pane === 'assistent' ? assistantPanel : null}
+              </TabsPanel>
+              <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
+            </Tabs>
+          )}
+          {publish && canPublish ? (
+            <Dialog
+              open
+              modal
+              closeButton={t('services.close')}
+              onClose={() => {
+                setPublish(null);
+                setProblems(undefined);
+              }}
+              aria-labelledby="pub-h"
+              className="publish-dialog"
+            >
+              <div className="stack">
+                <Heading level={2} data-size="sm" id="pub-h">
+                  {t('services.publishTitle', {
+                    name: service.metadata.name || t('services.publishFallbackName'),
+                  })}
+                </Heading>
+                <Paragraph>
+                  {publish === 'test'
+                    ? t('services.publishTestInfo')
+                    : t('services.publishProdInfo')}
                 </Paragraph>
-              ) : null}
-              {problems?.outdated ? (
-                <DraftOutdated
-                  paths={problems.errors.map((e) => e.path)}
-                  onRebase={rebaseDraft}
-                  onResolve={resolveConflicts}
-                />
-              ) : problems ? (
-                <Alert data-color="danger" data-size="sm" role="alert">
+                {hasTestSet ? null : (
+                  <Alert data-color="warning" data-size="sm">
+                    {t('services.noTestsetWarning')}
+                  </Alert>
+                )}
+                {invalid ? (
+                  <Alert data-color="danger" data-size="sm" role="alert">
+                    <Heading level={3} data-size="2xs">
+                      {t('services.notAccepted')}
+                    </Heading>
+                    <ul className="bullets">
+                      {validationErrors.map((e) => {
+                        const problem = describeProblem(e, t);
+                        return (
+                          <li key={`${e.path}-${e.message}`}>
+                            <strong>{problem.section}:</strong> {problem.message}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Alert>
+                ) : null}
+                {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
                   <Paragraph data-size="sm">
-                    {problems.refusedByGates
-                      ? t('services.refusedByGates')
-                      : t('services.notAcceptedShort')}
+                    {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
                   </Paragraph>
-                  <ul className="bullets">
-                    {problems.errors.map((e) => {
-                      const problem = describeProblem(e, t);
-                      return (
-                        <li key={`${e.path}-${e.message}`}>
-                          <strong>{problem.section}:</strong> {problem.message}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </Alert>
-              ) : null}
-              <PublishSummary
-                tenantName={tenantName}
-                currentVersion={current}
-                nextVersion={current + 1}
-                changes={
-                  changes.length
-                    ? changes
-                    : current === 0
-                      ? [t('services.changeFirstVersion')]
-                      : draftRevision > 0
-                        ? [t('services.changeDraft')]
-                        : edited
-                          ? [t('services.changeForm')]
-                          : [t('services.changeNone')]
-                }
-                inTest={publish === 'test'}
-                blockedBy={blockedBy}
-                updates={live ? [] : (exampleUpdates[id] ?? [])}
-                facts={[
-                  { label: t('services.factTestset'), value: testsetFact },
-                  {
-                    label: t('services.factCost'),
-                    value: live
-                      ? notPricedLabel(t)
-                      : per1000
-                        ? t('services.factCostPer1000', { cost: per1000 })
-                        : t('services.factNotCalculated'),
-                  },
-                  {
-                    label: t('services.factResidency'),
-                    value: fallback
-                      ? t('services.residencyWithReserve', {
-                          where: modelWord(t, model?.where ?? 'Norge'),
-                          reserve: modelWord(t, fallback.where),
-                        })
-                      : modelWord(t, model?.where ?? 'Norge'),
-                  },
-                  { label: t('services.factRisk'), value: riskNote },
-                ]}
-                gates={[
-                  {
-                    name: t('services.gateNoForbidden'),
-                    value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
-                    passed: !forbidden,
-                    explanation: t('services.gateForbiddenWhy'),
-                  },
-                  {
-                    name: t('services.gateRiskConfirmed'),
-                    value: !riskSet
-                      ? t('services.unset')
-                      : riskConfirmed
-                        ? t('services.gateConfirmed')
-                        : t('services.gateNotConfirmed'),
-                    passed: riskPassed,
-                    explanation: t('services.gateRiskWhy'),
-                  },
-                ]}
-                apiCall={{
-                  action: t('services.publishAction'),
-                  method: 'POST',
-                  path: '/definitions',
-                  body: { definition, files },
-                  right: rightLabel(t, 'manage-services'),
-                }}
-                {...(riskPassed && !forbidden
-                  ? {}
-                  : {
-                      fixAction: {
-                        label: t('services.fixRisk'),
-                        onClick: () => {
-                          setPublish(null);
-                          go('setup', '/purpose');
-                          showPane('tjeneste');
-                          setOpen((o) => ({ ...o, purpose: true }));
+                ) : null}
+                {problems?.outdated ? (
+                  <DraftOutdated
+                    paths={problems.errors.map((e) => e.path)}
+                    onRebase={rebaseDraft}
+                    onResolve={resolveConflicts}
+                  />
+                ) : problems ? (
+                  <Alert data-color="danger" data-size="sm" role="alert">
+                    <Paragraph data-size="sm">
+                      {problems.refusedByGates
+                        ? t('services.refusedByGates')
+                        : t('services.notAcceptedShort')}
+                    </Paragraph>
+                    <ul className="bullets">
+                      {problems.errors.map((e) => {
+                        const problem = describeProblem(e, t);
+                        return (
+                          <li key={`${e.path}-${e.message}`}>
+                            <strong>{problem.section}:</strong> {problem.message}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Alert>
+                ) : null}
+                <PublishSummary
+                  tenantName={tenantName}
+                  currentVersion={current}
+                  nextVersion={current + 1}
+                  changes={
+                    changes.length
+                      ? changes
+                      : current === 0
+                        ? [t('services.changeFirstVersion')]
+                        : draftRevision > 0
+                          ? [t('services.changeDraft')]
+                          : edited
+                            ? [t('services.changeForm')]
+                            : [t('services.changeNone')]
+                  }
+                  inTest={publish === 'test'}
+                  blockedBy={blockedBy}
+                  updates={live ? [] : (exampleUpdates[id] ?? [])}
+                  facts={[
+                    { label: t('services.factTestset'), value: testsetFact },
+                    {
+                      label: t('services.factCost'),
+                      value: live
+                        ? notPricedLabel(t)
+                        : per1000
+                          ? t('services.factCostPer1000', { cost: per1000 })
+                          : t('services.factNotCalculated'),
+                    },
+                    {
+                      label: t('services.factResidency'),
+                      value: fallback
+                        ? t('services.residencyWithReserve', {
+                            where: modelWord(t, model?.where ?? 'Norge'),
+                            reserve: modelWord(t, fallback.where),
+                          })
+                        : modelWord(t, model?.where ?? 'Norge'),
+                    },
+                    { label: t('services.factRisk'), value: riskNote },
+                  ]}
+                  gates={[
+                    {
+                      name: t('services.gateNoForbidden'),
+                      value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
+                      passed: !forbidden,
+                      explanation: t('services.gateForbiddenWhy'),
+                    },
+                    {
+                      name: t('services.gateRiskConfirmed'),
+                      value: !riskSet
+                        ? t('services.unset')
+                        : riskConfirmed
+                          ? t('services.gateConfirmed')
+                          : t('services.gateNotConfirmed'),
+                      passed: riskPassed,
+                      explanation: t('services.gateRiskWhy'),
+                    },
+                  ]}
+                  apiCall={{
+                    action: t('services.publishAction'),
+                    method: 'POST',
+                    path: '/definitions',
+                    body: { definition, files },
+                    right: rightLabel(t, 'manage-services'),
+                  }}
+                  {...(riskPassed && !forbidden
+                    ? {}
+                    : {
+                        fixAction: {
+                          label: t('services.fixRisk'),
+                          onClick: () => {
+                            setPublish(null);
+                            go('setup', '/risk');
+                            showPane('tjeneste');
+                            setOpen((o) => ({ ...o, risk: true }));
+                          },
                         },
-                      },
-                    })}
-                headingLevel={3}
-                onPublish={doPublish}
-                {...(live ? {} : { onPublishToTest: doPublishToTest })}
-                onCancel={() => {
-                  setPublish(null);
-                  setProblems(undefined);
-                }}
-              />
-            </div>
-          </Dialog>
-        ) : null}
-      </div>
-    </ServicePageContext.Provider>
+                      })}
+                  headingLevel={3}
+                  onPublish={doPublish}
+                  {...(live ? {} : { onPublishToTest: doPublishToTest })}
+                  onCancel={() => {
+                    setPublish(null);
+                    setProblems(undefined);
+                  }}
+                />
+              </div>
+            </Dialog>
+          ) : null}
+        </div>
+      </ServicePageContext.Provider>
+    </DeveloperView.Provider>
   );
 };

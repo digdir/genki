@@ -14,6 +14,7 @@
     "@digdir/designsystemet-theme": "^1.11.0",
     "@genai/i18n": "0.0.0",
     "@genai/schema-forms": "0.0.0",
+    "@navikt/aksel-icons": "^8.20.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "yaml": "^2.9.1"

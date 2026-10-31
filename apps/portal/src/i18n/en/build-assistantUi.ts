@@ -4,7 +4,6 @@ import type { assistantUi as source } from '../nb/build-assistantUi';
 export const assistantUi = {
   assistant: {
     title: 'Build assistant',
-    tagline: 'Suggests, explains and tests. Never publishes on its own.',
     assistantName: 'The assistant',
     typing: 'The assistant is typing',
     changeTag: 'Change',
@@ -22,6 +21,9 @@ export const assistantUi = {
     showApiCall: 'Show API call',
     previousMessage: 'Previous message',
     composerLabel: 'Write to the assistant',
+    composerPlaceholder: 'Ask about anything …',
+    emptyWelcome:
+      'Let me help you fill in the form on the right, and we will build the service together. Write freely, or use the questions in the form.',
     send: 'Send',
     bannerUnavailableTitle: 'The build assistant is not available',
     bannerUnavailable:
@@ -158,6 +160,9 @@ export const assistantUi = {
       'Accepted suggestions are sent to the test set. It becomes a test case when the owner of the test set accepts it.',
     testsTally: '{sent} sent to the test set · {rejected} rejected',
     improveMessage: 'Improve the instructions',
+    draftInstructions: 'Suggest instructions',
+    draftInstructionsMessage: 'Suggest instructions based on the purpose: {purpose}',
+    draftNeedsPurpose: 'Write the purpose first, then the assistant can make a suggestion.',
     suggestMessage: 'Suggest test cases',
     apiEyebrow: 'API call for this message to the assistant',
     apiIntro:

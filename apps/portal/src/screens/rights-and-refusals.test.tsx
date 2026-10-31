@@ -119,12 +119,11 @@ describe('refusals from the API', () => {
       forbidden('Du trenger rettigheten «Administrere tjenester»'),
     );
     await renderAs('#/services/new', fetch);
-    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Svar på spørsmål' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-
     const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
+    const composer = within(panel).getByRole('textbox', { name: 'Skriv til assistenten' });
+    fireEvent.change(composer, { target: { value: 'Svar på spørsmål' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
+
     expect(
       await within(panel).findByText('Du trenger rettigheten «Administrere tjenester»'),
     ).toBeTruthy();
@@ -466,12 +465,7 @@ describe('the step flow picker', () => {
         },
       }),
     );
-    await renderAs('#/services/new', fetch);
-    fireEvent.change(await screen.findByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Sorter innkommende post' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    fireEvent.click(await screen.findByRole('button', { name: /^Arbeidsmåte/ }));
+    await renderAs('#/services/new/advanced/how', fetch);
 
     const picker = (await screen.findByRole('combobox', { name: 'Stegflyt' })) as HTMLSelectElement;
     expect(screen.queryByRole('textbox', { name: /Stegflyt/ })).toBeNull();

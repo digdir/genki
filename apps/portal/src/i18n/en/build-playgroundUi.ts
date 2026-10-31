@@ -64,6 +64,8 @@ export const playgroundUi = {
       '{model} did not respond within 60 seconds. There is nothing wrong with the setup. Try again in a moment. {notStored}',
     refused: '{model} cannot be used in this setup.',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
+    setupNotReady:
+      'The setup is not ready to try yet. {problems} Fill in what is missing in Setup, and try again. {notStored}',
     setupLabel: 'Setup {key}',
     setupSessionNote: 'Changes here do not affect anything that is published.',
     endCompare: 'End comparison',

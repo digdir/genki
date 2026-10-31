@@ -7,6 +7,7 @@ import { serviceUi } from './build-serviceUi';
 import { stepflowsUi } from './build-stepflowsUi';
 import { batchUi } from './build-batchUi';
 import { playgroundUi } from './build-playgroundUi';
+import { blocksUi } from './build-blocksUi';
 
 export const build = {
   ...servicesUi,
@@ -16,4 +17,5 @@ export const build = {
   ...batchUi,
   ...playgroundUi,
   ...assistantUi,
+  ...blocksUi,
 } satisfies Translation<typeof source>;

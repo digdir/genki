@@ -18,6 +18,7 @@ export interface PlaygroundMockOptions {
   failRuns?: number;
   failure?: { code: string; title: string; step?: string; detail?: string; runId?: string };
   quotaExhausted?: boolean;
+  invalidSetup?: { path: string; message: string }[];
   runs?: PlaygroundRunRequest[];
   candidates?: TestCaseCandidateRequest[];
 }
@@ -45,6 +46,18 @@ export const playgroundMock = (mockOptions: PlaygroundMockOptions = {}): MockHan
     if ((route === 'playground/runs' || streaming) && request.method === 'POST') {
       const body = request.body<PlaygroundRunRequest>();
       mockOptions.runs?.push(body);
+      if (mockOptions.invalidSetup)
+        return sse(
+          `event: failed\ndata: ${JSON.stringify({
+            setup: 'setup',
+            problem: {
+              type: 'about:blank',
+              title: 'Invalid setup',
+              status: 422,
+              errors: mockOptions.invalidSetup,
+            },
+          })}\n\n`,
+        );
       if (mockOptions.quotaExhausted)
         return request.json(
           {

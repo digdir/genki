@@ -41,6 +41,7 @@ export const GuardrailRules = ({ api, tenant }: { api: ApiClient; tenant: string
         }}
         template={ruleTemplate}
         mandatory
+        headingLevel={4}
         describe={(e) => describe(t, e)}
       />
     </div>

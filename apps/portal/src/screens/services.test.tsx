@@ -89,28 +89,13 @@ describe('service list', () => {
 });
 
 describe('new service', () => {
-  it('starts the builder from a job with the assistant asking questions', async () => {
+  it('opens the builder with the form and the assistant straight away', async () => {
     await renderAt('#/services/new');
     await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    expect(screen.getByRole('heading', { name: 'Lag med KI' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Lag med KI' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: 'Formål og målgruppe' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
     expectAccessible();
-
-    fireEvent.click(screen.getByRole('button', { name: /Henter ut opplysninger/ }));
-    expect(await screen.findByText('Satte jobb: henter ut opplysninger')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Ny tjeneste' })).toBeTruthy();
-    expect(screen.getByText('Ikke publisert · lagres automatisk')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
-    expectAccessible();
-  });
-
-  it('guesses the job from free text', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Utkast til svarbrev på klager' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
-    expect(await screen.findByText('Satte jobb: lager utkast')).toBeTruthy();
   });
 });
 
@@ -233,7 +218,7 @@ describe('builder', () => {
 describe('risk level and v3 checks', () => {
   const openPurpose = async () => {
     await openBuilder('#/services/soknadsuttrekk/setup', 'Søknadsuttrekk');
-    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Risiko og KI-forordningen/ }));
   };
 
   it('lets the user confirm the proposed risk level', async () => {
@@ -242,6 +227,7 @@ describe('risk level and v3 checks', () => {
     expect(
       screen.getByText('Ansatte bruker resultatene, men tjenesten tar ikke beslutninger om folk.'),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
     const audience = screen.getByLabelText(/Innbyggere og næringsliv · Kommer senere/);
     expect(audience.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
@@ -313,11 +299,7 @@ describe('developer view', () => {
   });
 
   it('applies and discards YAML edits', async () => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    await renderAt('#/services/new/versions');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     const apply = screen.getByRole('button', { name: 'Bruk endringene' });
     expect(apply.getAttribute('aria-disabled')).toBe('true');
@@ -339,11 +321,7 @@ describe('developer view', () => {
 
 describe('pasting the example definitions', () => {
   it.each(serviceExamples)('applies %s in the builder YAML tab', async (_, text) => {
-    await renderAt('#/services/new');
-    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
-    fireEvent.click(screen.getByRole('button', { name: /^Svarer/ }));
-    await screen.findByText('Satte jobb: svarer på spørsmål');
-    go('#/services/new/versions');
+    await renderAt('#/services/new/versions');
     await screen.findByLabelText('Tjenestedefinisjon (YAML)');
     fireEvent.change(yamlField(), { target: { value: text } });
     fireEvent.click(screen.getByRole('button', { name: 'Bruk endringene' }));
@@ -391,7 +369,7 @@ describe('publishing', () => {
   it('publishes with a reason through the API', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/rapportassistenten/setup', 'Rapportassistenten', fetch);
-    fireEvent.click(screen.getByRole('button', { name: /^Formål og målgruppe/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Risiko og KI-forordningen/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog');

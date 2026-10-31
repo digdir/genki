@@ -63,6 +63,8 @@ export const playgroundUi = {
       '{model} svarte ikke innen 60 sekunder. Det er ikke noe galt med oppsettet. Prøv igjen om litt. {notStored}',
     refused: '{model} kan ikke brukes i dette oppsettet.',
     quotaUsedUp: 'Kvoten for måneden er brukt opp. {notStored}',
+    setupNotReady:
+      'Oppsettet er ikke klart til å prøves ennå. {problems} Fyll ut det som mangler i Oppsett, og prøv igjen. {notStored}',
     setupLabel: 'Oppsett {key}',
     setupSessionNote: 'Endringer her påvirker ikke noe som er publisert.',
     endCompare: 'Avslutt sammenligning',

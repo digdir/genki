@@ -333,28 +333,15 @@ describe('live mode shows only platform data', () => {
   it('live mode opens the builder with the assistant', async () => {
     await renderLive('#/services/new');
 
-    await screen.findByRole('heading', { name: 'Lag med KI' });
-    fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-      target: { value: 'Svar på spørsmål om permisjon' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
     const panel = await screen.findByRole('complementary', { name: 'Byggeassistent' });
-    expect(await within(panel).findByText('Svar på spørsmål om permisjon')).toBeTruthy();
-    expect(
-      await within(panel.querySelector('.assistant-log') as HTMLElement).findByText(
-        /Hva skal tjenesten svare på\?/,
-        {},
-        { timeout: 3000 },
-      ),
-    ).toBeTruthy();
+    expect(within(panel).getByRole('textbox', { name: /assistenten/i })).toBeTruthy();
     expect(screen.queryByText(/Da setter jeg opp/)).toBeNull();
-    expect(screen.getByRole('button', { name: /^Formål og målgruppe/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Formål og målgruppe' })).toBeTruthy();
   });
 
   it('keeps the plain form for creating a service', async () => {
-    await renderLive('#/services/new');
+    await renderLive('#/services/new?skjema=1');
 
-    fireEvent.click(await screen.findByRole('link', { name: 'Bruk skjemaet' }));
     expect(await screen.findByRole('textbox', { name: 'Navn' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Opprett og publiser' })).toBeTruthy();
   });
@@ -384,7 +371,7 @@ describe('live mode shows only platform data', () => {
   it('offers no example templates in Ny tjeneste', async () => {
     await renderLive('#/services/new');
 
-    await screen.findByRole('heading', { name: 'Lag med KI' });
+    await screen.findByRole('complementary', { name: 'Byggeassistent' });
     expect(screen.queryByRole('button', { name: /Som Kunnskapsassistenten/ })).toBeNull();
   });
 });

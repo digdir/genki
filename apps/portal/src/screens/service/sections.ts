@@ -3,6 +3,8 @@ import type { PlainKey } from '../../i18n';
 export type ServiceSection =
   | 'overview'
   | 'setup'
+  | 'blocks'
+  | 'advanced'
   | 'test'
   | 'channels'
   | 'settings'
@@ -14,6 +16,8 @@ export type ServiceSection =
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
   setup: 'service.sectionSetup',
+  blocks: 'builderBlocks.sectionLabel',
+  advanced: 'service.sectionAdvanced',
   test: 'service.sectionTest',
   channels: 'service.sectionChannels',
   settings: 'service.sectionSettings',
@@ -26,6 +30,8 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
 const order: ServiceSection[] = [
   'overview',
   'setup',
+  'blocks',
+  'advanced',
   'test',
   'channels',
   'settings',
@@ -36,7 +42,19 @@ const order: ServiceSection[] = [
 ];
 
 export const availableSections = ({ isNew }: { isNew: boolean }) =>
-  isNew ? order.filter((s) => s === 'setup' || s === 'test' || s === 'versions') : order;
+  isNew
+    ? order.filter(
+        (s) =>
+          s === 'setup' || s === 'blocks' || s === 'advanced' || s === 'test' || s === 'versions',
+      )
+    : order.filter((s) => s !== 'blocks' && s !== 'advanced');
+
+export const developerSections: ServiceSection[] = ['test', 'versions'];
+
+export const tabSections = ({ isNew }: { isNew: boolean }) =>
+  isNew
+    ? availableSections({ isNew }).filter((s) => !developerSections.includes(s))
+    : availableSections({ isNew });
 
 export const servicePath = (id: string, section?: ServiceSection, rest = '') => {
   const base = `/services/${encodeURIComponent(id)}`;

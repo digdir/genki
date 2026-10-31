@@ -65,6 +65,7 @@ interface Props {
   detail?: (entry: ConfigEntry) => ReactNode;
   filter?: (entry: ConfigEntry) => boolean;
   canCreate?: boolean;
+  headingLevel?: 2 | 3 | 4;
 }
 
 const who = (t: T, actor?: string) =>
@@ -313,6 +314,7 @@ export const Registry = ({
   detail,
   filter,
   canCreate = true,
+  headingLevel = 2,
 }: Props) => {
   const t = useT();
   const f = useFormat();
@@ -325,7 +327,8 @@ export const Registry = ({
   const flash = useFlash();
   if (state.status === 'loading')
     return <Loading label={t('config.registryLoading', { label: label.toLowerCase() })} />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={retry} />;
+  if (state.status === 'error')
+    return <ErrorState error={state.error} onRetry={retry} headingLevel={headingLevel} />;
   const rows = state.data.data.filter(filter ?? (() => true));
   const selected = rows.find((r) => `${r.scope ?? ''}/${r.id}` === open);
   return (
@@ -362,7 +365,10 @@ export const Registry = ({
         />
       ) : null}
       {rows.length === 0 ? (
-        <EmptyState title={t('config.registryEmpty', { label: label.toLowerCase() })} />
+        <EmptyState
+          title={t('config.registryEmpty', { label: label.toLowerCase() })}
+          headingLevel={headingLevel}
+        />
       ) : (
         <TableRegion label={label}>
           <Table>

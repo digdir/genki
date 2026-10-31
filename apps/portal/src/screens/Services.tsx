@@ -21,7 +21,6 @@ import { EmptyState, ErrorState, Loading } from '../states';
 import { availableSections, locate } from './service/sections';
 import { Builder, newServiceInit, type BuilderInit } from './services/Builder';
 import { LiveNewService } from './services/LiveNewService';
-import { NewService } from './services/NewService';
 import { ServiceList } from './services/ServiceList';
 import { startKeys } from './services/SetupTab';
 import './services.css';
@@ -239,6 +238,13 @@ export const Services = (props: ScreenProps) => {
     }
   };
 
+  const startNew = id === 'new' && canCreate && !draft && !starting;
+  useEffect(() => {
+    if (!startNew || (props.live && route.query.get('skjema') === '1')) return;
+    if (props.live) void startLive('answers', '');
+    else setDraft(newServiceInit('answers', '', '', false));
+  }, [startNew]);
+
   if (!id) return <ListScreen {...props} />;
   if (id === 'new' && !canCreate)
     return (
@@ -262,17 +268,7 @@ export const Services = (props: ScreenProps) => {
       return <LiveNewService api={props.api} tenant={props.tenant} />;
     if (starting?.error) return <ErrorState error={starting.error} />;
     if (starting) return <Loading label={t('servicesScreen.loadingStart')} />;
-    if (!draft)
-      return (
-        <NewService
-          live={props.live}
-          onStart={(job, text, name) =>
-            props.live
-              ? void startLive(job, text, name)
-              : setDraft(newServiceInit(job, text, name, false))
-          }
-        />
-      );
+    if (!draft) return <Loading label={t('servicesScreen.loadingStart')} />;
     return (
       <Builder
         key="new"
