@@ -5,7 +5,7 @@ export const models = defineNamespace({
   intro:
     'Modellene virksomhetene kan velge. Når du tillater eller faser ut en modell, ser du hvilke tjenester som berøres.',
   discoveredNote:
-    'En modell som er funnet automatisk, står som <strong>Globalt</strong> til noen i driftsteamet har bekreftet hvor den kjører. Tjenester som krever at data blir i Norge eller EU, kan bare velge modeller som er satt til det.',
+    'En modell som er funnet automatisk, står som <strong>Globalt</strong> til noen i driftsteamet har bekreftet hvor den kjører. Tjenester som bare tillater behandling i Norge eller EU, kan bare velge modeller som er satt til det.',
   reasonDescription:
     'Kreves for alle endringer og for å hente modeller på nytt. Begrunnelsen lagres i revisjonsloggen.',
   refresh: 'Hent modeller på nytt',
