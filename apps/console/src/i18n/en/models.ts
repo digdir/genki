@@ -6,7 +6,7 @@ export const models = {
   intro:
     'The models organisations can choose from. When you allow or retire a model, you see which services are affected.',
   discoveredNote:
-    'A model that was found automatically is shown as <strong>Global</strong> until someone on the operations team has confirmed where it runs. Services that require data to stay in Norway or the EU can only choose models set to that.',
+    'A model that was found automatically is shown as <strong>Global</strong> until someone on the operations team has confirmed where it runs. Services that only allow processing in Norway or the EU can only choose models set to that.',
   reasonDescription:
     'Required for all changes and for fetching models again. The reason is saved in the audit log.',
   refresh: 'Fetch models again',

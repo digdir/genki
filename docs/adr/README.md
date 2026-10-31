@@ -40,3 +40,4 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0041](0041-durable-jobs-on-pg-boss.md)                  | Durable jobs on pg-boss                                      | Proposed                                                            |
 | [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed                                                            |
 | [0044](0044-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built                                                     |
+| [0045](0045-data-stays-in-the-eu-eea.md)                 | Data stays in the EU/EEA; the region is an operating detail  | Proposed                                                            |

@@ -82,9 +82,9 @@ const datasets = {
   residencyGlobalLabel: 'Globally, including outside the EU/EEA',
   residencyUnknown: 'Not specified',
   usableNorway:
-    'The dataset can be used by all services, including those that require data to stay in Norway.',
+    'The dataset can be used by all services, including those that only allow processing in Norway.',
   usableEu:
-    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that require data to stay in Norway.',
+    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that only allow processing in Norway.',
   usableGlobal: 'The dataset can therefore only be used by services that allow global processing.',
   usableUnknown:
     'Where the dataset is processed is not specified. It can therefore only be used by services that allow global processing.',
