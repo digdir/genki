@@ -128,7 +128,7 @@ The decision point needs, per environment, the Altinn resource, a Maskinporten c
 
 ## What the platform owner creates once
 
-1. **Resource group** for test, in `norwayeast`, e.g. `rg-genai-test`.
+1. **Resource group** for test, in `westeurope`, e.g. `rg-genki-test-weu`. Burstable Postgres is not available to the subscription in Sweden Central.
 2. **Deploy identity**: an Entra app registration (or user-assigned identity) with a federated credential for GitHub OIDC:
    - issuer `https://token.actions.githubusercontent.com`
    - subject `repo:digdir/genki:environment:test`, and the ID form `repo:digdir@51157288/genki@1411915404:environment:test` (the organisation uses ID-based OIDC subjects)

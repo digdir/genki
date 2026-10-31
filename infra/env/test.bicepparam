@@ -1,7 +1,7 @@
 using '../main.bicep'
 
 param environmentName = 'test'
-param location = 'norwayeast'
+param location = 'westeurope'
 param postgresAdminGroupObjectId = readEnvironmentVariable('PG_ADMIN_GROUP_OBJECT_ID')
 param postgresAdminGroupName = readEnvironmentVariable('PG_ADMIN_GROUP_NAME')
 param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
