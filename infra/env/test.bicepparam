@@ -50,11 +50,6 @@ param hostnames = {
   console: 'console.genki-test.digdir.cloud'
 }
 param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
-param existingCertificates = {
-  api: 'api.genki-test.digdir.cloud-rg-genai-261013140406'
-  portal: 'portal.genki-test.digdir.clo-rg-genai-261013140322'
-  workspace: 'workspace.genki-test.digdir-rg-genai-261013140358'
-  console: 'console.genki-test.digdir.cl-rg-genai-261013140345'
-}
+param existingCertificates = {}
 param createDnsZone = true
 param dnsZoneName = 'genki-test.digdir.cloud'
