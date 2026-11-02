@@ -11,6 +11,7 @@ export type SkipReason =
   | 'conversion_failed'
   | 'outside_access'
   | 'too_large'
+  | 'no_chunks'
   | (string & {});
 
 export interface SkippedDocument {

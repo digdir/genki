@@ -66,6 +66,8 @@ const datasets = {
   skipNoText: 'Scanned PDF without text. Text recognition is not turned on.',
   skipUnsupported: 'The file type is not supported. Use PDF, Word (docx), text, Markdown or HTML.',
   skipConversion: 'Could not read the document.',
+  skipNoChunks:
+    'The text is shorter or longer than the chunking allows, so no part of it can be searched.',
   skipOutsideAccess: 'The document is outside what the platform has access to.',
   skipTooLarge: 'The file is larger than 50 MB.',
   skipDefault: 'Was skipped.',
