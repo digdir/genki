@@ -1180,7 +1180,7 @@ export const serviceRoutes: RouteConfig[] = [
           files: files.optional(),
           trace: z.boolean().optional().openapi({
             description:
-              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent. A run is sent without it when the tenant has taken one of the connection's Langfuse judges in use",
+              "Send each case's trace to the tenant's trace connection that covers the service, as one experiment. Holdout cases are never sent. The connection's Langfuse judges in use score only a run that is sent",
           }),
         }),
       ),
@@ -1191,7 +1191,7 @@ export const serviceRoutes: RouteConfig[] = [
       ...tenantErrors,
       404: problem('No such test set or version'),
       409: problem(
-        "The test set has no cases, or the run is sent but no connection covers the service, the service's residency does not allow the connection's, or a Langfuse judge taken in use is refused or gone",
+        "The test set has no cases, or the run is sent but no connection covers the service, the service's residency does not allow the connection's, a Langfuse judge taken in use is refused or gone, or the connection's project has active judges genki does not read",
       ),
       422: problem('The draft or version cannot run'),
     },

@@ -1236,7 +1236,7 @@ describe('Byggeklosser: Langfuse-dommere', () => {
 
     expect(
       screen.getByText(
-        'Koblingen kudos får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Integrasjoner, Sporing og evaluering, for å ta den i bruk.',
+        'Koblingen kudos får ikke svartekst, så dommeren har ingenting å vurdere. Slå på «Send tekst» for koblingen under Utviklerverktøy, Sporing og evaluering, for å ta den i bruk.',
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
