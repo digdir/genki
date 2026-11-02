@@ -1295,7 +1295,7 @@ export const mockFetch = (
     if (path === '/operator/quality/label-queue') return json({ data: queue, total: queue.length });
     if (path === '/operator/quality/sink-labels' && method === 'GET') return json(sinkLabels);
     if (path === '/operator/quality/sink-labels/fetch' && method === 'POST')
-      return json({ pending: 0 });
+      return json({ pending: 0, shared: [] });
     const sinkDecision = /^\/operator\/quality\/sink-labels\/(accept|reject)$/.exec(path);
     if (sinkDecision && method === 'POST') {
       if (!reason) return needReason();

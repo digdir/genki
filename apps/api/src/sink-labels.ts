@@ -52,7 +52,10 @@ export interface SinkLabelDeps {
   connection(tenant: string, id: string): Promise<TraceConnection | undefined>;
   /** The tenant's connections, for the console's list of where labels can come from. */
   connections?(tenant: string): Promise<TraceConnection[]>;
-  sinks: Pick<TraceSinks, 'annotations' | 'calibrationKey' | 'traceIdOf' | 'isSinkJudge'>;
+  sinks: Pick<
+    TraceSinks,
+    'annotations' | 'calibrationKey' | 'traceIdOf' | 'isSinkJudge' | 'sharedScores'
+  >;
   now?: () => Date;
 }
 
@@ -62,6 +65,8 @@ interface SentCase {
   result: EvalRun['results'][number];
   /** Each sink judge's data type in the run, for a score that lost it, such as one timed out. */
   dataTypes: Map<string, string>;
+  /** The same for the name the sink gives each judge's scores. */
+  scoreNames: Map<string, string>;
 }
 
 /**
@@ -97,9 +102,13 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
     for (const stored of await deps.runs.list({ tenant })) {
       if (stored.run.tested?.sink !== connection) continue;
       const dataTypes = new Map<string, string>();
-      for (const s of stored.run.results.flatMap((r) => r.scores))
-        if (isSinkJudge(s.evaluator) && typeof s.details?.dataType === 'string')
-          dataTypes.set(s.evaluator, s.details.dataType);
+      const scoreNames = new Map<string, string>();
+      for (const s of stored.run.results.flatMap((r) => r.scores)) {
+        if (!isSinkJudge(s.evaluator)) continue;
+        if (typeof s.details?.dataType === 'string') dataTypes.set(s.evaluator, s.details.dataType);
+        if (typeof s.details?.scoreName === 'string')
+          scoreNames.set(s.evaluator, s.details.scoreName);
+      }
       for (const result of stored.run.results)
         // Sent: a sink judge could read it, or it went out with an empty answer. Holdout cases and
         // ones none can read never go out.
@@ -108,7 +117,12 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
             (s) => isSinkJudge(s.evaluator) && (s.applicable || s.details?.sent === true),
           )
         )
-          traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result, dataTypes });
+          traces.set(deps.sinks.traceIdOf(result.task), {
+            run: stored.run,
+            result,
+            dataTypes,
+            scoreNames,
+          });
     }
     return traces;
   };
@@ -133,7 +147,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
   };
 
   /** Reads the connection's annotations and saves what changed; callers hold its lock. */
-  const fetchNow = async (tenant: string, id: string): Promise<{ pending: number }> => {
+  const fetchNow = async (
+    tenant: string,
+    id: string,
+  ): Promise<{ pending: number; shared: { name: string; rules: string[] }[] }> => {
     const connection = await deps.connection(tenant, id);
     if (!connection) throw new SinkLabelsRefused(`no connection ${id}`, true);
     if (!connection.labels)
@@ -141,6 +158,9 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
         `the connection ${id} does not bring labels back; switch labels on first`,
       );
     const annotations = (await deps.sinks.annotations?.(tenant, connection)) ?? [];
+    // A score name two rules write cannot say which rule a label is for: neither gets it.
+    const shared = (await deps.sinks.sharedScores?.(tenant, connection)) ?? [];
+    const sharedNames = new Set(shared.map((s) => s.name));
     const traces = await sentThrough(tenant, id);
     const known = await deps.store.list(tenant, { connection: id });
     const key = await deps.store.pseudonymKey(tenant);
@@ -160,12 +180,15 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       // Still in the sink: a label whose case is not found here is not taken for deleted.
       seen.add(a.id);
       const sent = traces.get(a.trace);
-      if (!sent) continue;
-      // The judge of that name on this connection, with the label's type.
+      if (!sent || sharedNames.has(a.name)) continue;
+      // The judge on this connection whose scores have the label's name and type: the name the
+      // sink gave them, or the judge's own for a run that did not record one.
       const score = sent.result.scores.find(
         (s) =>
           isSinkJudge(s.evaluator) &&
-          keyOf(tenant, s.evaluator).endsWith(`/${id}/${a.name}`) &&
+          keyOf(tenant, s.evaluator).endsWith(`/${id}/${nameOf(s.evaluator)}`) &&
+          (s.details?.scoreName ?? sent.scoreNames.get(s.evaluator) ?? nameOf(s.evaluator)) ===
+            a.name &&
           (s.details?.dataType ?? sent.dataTypes.get(s.evaluator)) === a.dataType,
       );
       if (!score) continue;
@@ -208,7 +231,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       if (!seen.has(l.id) && (l.state === 'pending' || l.state === 'accepted'))
         changed.push({ ...l, state: 'gone' });
     if (changed.length > 0) await deps.store.save(tenant, changed);
-    return { pending };
+    return { pending, shared };
   };
 
   const accepted = async (tenant: string) =>
@@ -226,7 +249,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
      * Reads every label in the connection's project: a new one, or a new revision of one, on a case
      * a run sent becomes pending; one no longer there is gone. Labels on other traces are ignored.
      */
-    async fetch(tenant: string, id: string): Promise<{ pending: number }> {
+    async fetch(
+      tenant: string,
+      id: string,
+    ): Promise<{ pending: number; shared: { name: string; rules: string[] }[] }> {
       // One fetch or decision per connection at a time, across replicas: each reads then saves.
       return deps.store.exclusive(tenant, id, () => fetchNow(tenant, id));
     },

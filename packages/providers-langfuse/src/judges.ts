@@ -30,12 +30,23 @@ export type JudgeDataType = 'BOOLEAN' | 'NUMERIC' | 'CATEGORICAL';
 
 /** Why genki cannot use a judge; message is for the API, reason and field for a screen. */
 export interface JudgeRefusal {
-  reason: 'not-a-model' | 'default-model' | 'sampled' | 'filtered' | 'unsent-field' | 'unread-path';
+  reason:
+    | 'not-a-model'
+    | 'default-model'
+    | 'sampled'
+    | 'filtered'
+    | 'unsent-field'
+    | 'unread-path'
+    | 'several-evaluators'
+    /** Another judge in the project has the rule's name, so the two cannot be told apart. */
+    | 'same-name'
+    /** Langfuse does not run it: no screen lists it, and a run that uses it is refused. */
+    | 'paused';
   field?: string;
   message: string;
 }
 
-/** An experiment rule of the connection's project, as it was when it was read. */
+/** An experiment judge of the connection's project, as it was when it was read. */
 export interface LangfuseJudge {
   /** langfuse:<connection>/<rule name>: the evaluator, and its metric. */
   id: string;
@@ -63,16 +74,20 @@ const sentSources = new Set<string>([...contentSources, 'experiment_item_metadat
 export const mappedContent = (judges: Pick<LangfuseJudge, 'rule'>[]): ContentSource[] =>
   contentSources.filter((f) => judges.some((j) => j.rule.mapping.some((m) => m.source === f)));
 
+interface RawFilter {
+  column?: string;
+  operator?: string;
+  value?: unknown;
+}
+
+/** An evaluation rule as Langfuse 4.72.0's v2 API has it: every rule is an observation rule. */
 interface RawRule {
   id: string;
   name: string;
-  target?: string;
-  status?: string;
   enabled?: boolean;
   sampling?: number;
-  filter?: unknown[];
-  mapping?: JudgeMapping[];
-  evaluator?: { id: string; name: string };
+  filter?: RawFilter[];
+  evaluatorAssignments?: { evaluatorId: string; variableMapping?: JudgeMapping[] | null }[];
 }
 
 interface RawEvaluator {
@@ -80,9 +95,18 @@ interface RawEvaluator {
   name: string;
   version: number;
   type?: string;
+  status?: string;
+  pausedMessage?: string | null;
+  variableMapping?: JudgeMapping[] | null;
   outputDefinition?: { dataType?: string };
   modelConfig?: { provider?: string; model?: string } | null;
 }
+
+/** The filter that makes a rule judge each experiment item once, on its root span. */
+const isItemRoot = (f: RawFilter) =>
+  f.column === 'isExperimentItemRootSpan' && f.operator === '=' && f.value === true;
+
+const isActive = (e: RawEvaluator | undefined) => e !== undefined && e.status !== 'paused';
 
 interface RawScore {
   name: string;
@@ -113,7 +137,25 @@ const pathKeys = (path: string | undefined) => {
 /** Input and output go as genki's parts, so only the whole of them is what a judge expects. */
 const wholeOnly = new Set(['input', 'output']);
 
-const refusalOf = (rule: RawRule, evaluator: RawEvaluator): JudgeRefusal | undefined => {
+const refusalOf = (
+  rule: RawRule,
+  evaluators: (RawEvaluator | undefined)[],
+  mapping: JudgeMapping[],
+): JudgeRefusal | undefined => {
+  const evaluator = evaluators[0] as RawEvaluator;
+  // Langfuse runs a rule while any one of its evaluators is active, and nothing when all are paused.
+  if (evaluators.every((e) => e?.status === 'paused'))
+    return {
+      reason: 'paused',
+      message:
+        evaluator.pausedMessage ??
+        `${rule.name}'s evaluator ${evaluator.name} is paused in Langfuse`,
+    };
+  if (evaluators.length > 1)
+    return {
+      reason: 'several-evaluators',
+      message: `${rule.name} runs more than one evaluator; genki reads a rule with one`,
+    };
   if (evaluator.type !== undefined && evaluator.type !== 'llm_as_judge')
     return {
       reason: 'not-a-model',
@@ -130,12 +172,12 @@ const refusalOf = (rule: RawRule, evaluator: RawEvaluator): JudgeRefusal | undef
       reason: 'sampled',
       message: `${rule.name} judges only part of the items it gets, so some cases would never be scored`,
     };
-  if ((rule.filter ?? []).length > 0)
+  if ((rule.filter ?? []).some((f) => !isItemRoot(f)))
     return {
       reason: 'filtered',
       message: `${rule.name} judges only the items its filter lets through, so some cases would never be scored`,
     };
-  for (const m of rule.mapping ?? []) {
+  for (const m of mapping) {
     if (!sentSources.has(m.source))
       return {
         reason: 'unsent-field',
@@ -164,6 +206,7 @@ const changes = (
   now: { judge: LangfuseJudge | undefined; active: boolean } | undefined,
 ): string[] => {
   if (!now?.judge) return ['the rule is gone'];
+  if (now.judge.refused?.reason === 'paused') return ["the rule's evaluator is paused"];
   if (!now.active) return ['the rule is no longer active'];
   return changesOf(before, now.judge);
 };
@@ -230,7 +273,7 @@ const valueOf = (
 
 /**
  * Langfuse's evaluation rules and the scores its judges write, read through the connection's
- * keys (4.4.0's unstable evaluator API; ADR 0040).
+ * keys (4.72.0's v2 evaluation API; ADR 0040).
  */
 export const langfuseJudges = (api: LangfuseApiOptions) => {
   const send = api.fetch ?? fetch;
@@ -246,38 +289,56 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     return (await response.json()) as T;
   };
 
-  const rules = async () => {
-    const all: RawRule[] = [];
-    for (let page = 1; ; page += 1) {
-      const found = await read<{ data: RawRule[]; meta?: { totalPages?: number } }>(
-        `/api/public/unstable/evaluation-rules?page=${page}&limit=50`,
+  /** Every page of a v2 listing; one that cannot be read throws, never reads as empty. */
+  const all = async <T>(path: string): Promise<T[]> => {
+    const out: T[] = [];
+    let cursor: string | undefined;
+    do {
+      const found = await read<{ data: T[]; meta?: { cursor?: string } }>(
+        `${path}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
       );
-      all.push(...(found?.data ?? []));
-      if (!found || page >= (found.meta?.totalPages ?? 1)) return all;
-    }
+      if (!found) throw new Error(`Langfuse answered HTTP 404 for ${path}`);
+      if (!Array.isArray(found.data)) throw new Error(`Langfuse answered no list for ${path}`);
+      out.push(...found.data);
+      cursor = found.data.length > 0 ? found.meta?.cursor : undefined;
+    } while (cursor);
+    return out;
   };
 
-  const judgeOf = async (
+  /** The project's enabled rules, each with its evaluators as the listing has them. */
+  const project = async () => {
+    const [rules, evaluators] = await Promise.all([
+      all<RawRule>('/api/public/v2/evaluation-rules'),
+      all<RawEvaluator>('/api/public/v2/evaluators'),
+    ]);
+    const byId = new Map(evaluators.map((e) => [e.id, e]));
+    return rules
+      .filter((r) => r.enabled !== false)
+      .map((rule) => ({
+        rule,
+        evaluators: (rule.evaluatorAssignments ?? []).map((a) => byId.get(a.evaluatorId)),
+      }));
+  };
+
+  /** A rule that judges each experiment item once: one of genki's judges, refused or not. */
+  const isJudge = (rule: RawRule) => (rule.filter ?? []).some(isItemRoot);
+
+  const judgeOf = (
     connection: string,
     rule: RawRule,
-    evaluators: Map<string, Promise<RawEvaluator | undefined>>,
-  ): Promise<LangfuseJudge | undefined> => {
-    if (!rule.evaluator) return undefined;
-    const id = rule.evaluator.id;
-    if (!evaluators.has(id))
-      evaluators.set(
-        id,
-        read<RawEvaluator>(`/api/public/unstable/evaluators/${encodeURIComponent(id)}`),
-      );
-    const evaluator = await evaluators.get(id);
-    if (!evaluator) return undefined;
+    evaluators: (RawEvaluator | undefined)[],
+  ): LangfuseJudge | undefined => {
+    const assigned = rule.evaluatorAssignments?.[0];
+    const evaluator = evaluators[0];
+    if (!assigned || !evaluator) return undefined;
+    const mapping = assigned.variableMapping ?? evaluator.variableMapping ?? [];
     const dataType = evaluator.outputDefinition?.dataType ?? '';
-    const refused = refusalOf(rule, evaluator);
+    const refused = refusalOf(rule, evaluators, mapping);
     const model = evaluator.modelConfig;
     return {
       id: `langfuse:${connection}/${rule.name}`,
       connection,
-      rule: { id: rule.id, name: rule.name, mapping: rule.mapping ?? [] },
+      rule: { id: rule.id, name: rule.name, mapping },
       evaluator: {
         id: evaluator.id,
         name: evaluator.name,
@@ -291,38 +352,80 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     };
   };
 
-  /** Each active experiment rule of the project, refused with a reason when genki cannot use it. */
+  /**
+   * Each enabled rule of the project with the item-root filter, refused with a reason when genki
+   * cannot use it: one whose evaluator is paused is refused as paused, since Langfuse does not run it.
+   */
   const list = async (connection: string): Promise<LangfuseJudge[]> => {
-    const evaluators = new Map<string, Promise<RawEvaluator | undefined>>();
-    const found = await Promise.all(
-      (await rules())
-        .filter((r) => r.target === 'experiment' && r.status === 'active' && r.enabled !== false)
-        .map((r) => judgeOf(connection, r, evaluators)),
+    const judges = (await project())
+      .filter(({ rule }) => isJudge(rule))
+      .map(({ rule, evaluators }) => judgeOf(connection, rule, evaluators))
+      .filter((j): j is LangfuseJudge => j !== undefined);
+    // A judge is known by its rule's name, which Langfuse does not keep unique.
+    const named = new Map<string, number>();
+    for (const j of judges) named.set(j.rule.name, (named.get(j.rule.name) ?? 0) + 1);
+    return judges.map((j) =>
+      (named.get(j.rule.name) ?? 0) > 1 && j.refused?.reason !== 'paused'
+        ? {
+            ...j,
+            refused: {
+              reason: 'same-name',
+              message: `${j.rule.name} is the name of more than one rule in the project, so genki cannot tell them apart`,
+            },
+          }
+        : j,
     );
-    return found.filter((j): j is LangfuseJudge => j !== undefined);
   };
 
   /**
-   * The project's other active rules, such as observation and trace rules: Langfuse runs them on
-   * what genki sends, but they are no judges genki can read.
+   * The project's other enabled rules that Langfuse runs on what genki sends but genki cannot
+   * read: one without the item-root filter and an active evaluator, which judges every span, and
+   * one whose evaluator the listing does not have, which genki cannot tell is paused.
    */
   const others = async (): Promise<string[]> =>
-    (await rules())
-      .filter((r) => r.target !== 'experiment' && r.status === 'active' && r.enabled !== false)
-      .map((r) => r.name);
+    (await project())
+      .filter(({ rule, evaluators }) =>
+        isJudge(rule)
+          ? evaluators[0] === undefined
+          : evaluators.some((e) => e === undefined || isActive(e)),
+      )
+      .map(({ rule }) => rule.name);
+
+  /**
+   * Each score name two or more enabled rules write: their evaluators' name, which Langfuse does
+   * not keep unique either.
+   */
+  const shared = async (): Promise<{ name: string; rules: string[] }[]> => {
+    const byName = new Map<string, string[]>();
+    for (const { rule, evaluators } of await project())
+      for (const e of new Set(evaluators.map((x) => x?.name))) {
+        if (e === undefined) continue;
+        byName.set(e, [...(byName.get(e) ?? []), rule.name]);
+      }
+    return [...byName]
+      .filter(([, rules]) => rules.length > 1)
+      .map(([name, rules]) => ({ name, rules }));
+  };
 
   /** The rule as it is now, read by id, so a rename does not hide a change. */
   const current = async (judge: LangfuseJudge, signal?: AbortSignal) => {
     const rule = await read<RawRule>(
-      `/api/public/unstable/evaluation-rules/${encodeURIComponent(judge.rule.id)}`,
+      `/api/public/v2/evaluation-rules/${encodeURIComponent(judge.rule.id)}`,
       signal,
     );
-    return rule
-      ? {
-          judge: await judgeOf(judge.connection, rule, new Map()),
-          active: rule.status === 'active' && rule.enabled !== false,
-        }
-      : undefined;
+    if (!rule) return undefined;
+    const evaluators = await Promise.all(
+      (rule.evaluatorAssignments ?? []).map((a) =>
+        read<RawEvaluator>(
+          `/api/public/v2/evaluators/${encodeURIComponent(a.evaluatorId)}`,
+          signal,
+        ),
+      ),
+    );
+    return {
+      judge: judgeOf(judge.connection, rule, evaluators),
+      active: rule.enabled !== false && isJudge(rule),
+    };
   };
 
   const scoresOn = async (trace: string, signal?: AbortSignal) => {
@@ -471,8 +574,10 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     const readable = (c: TestCase) =>
       judge.rule.mapping.every((m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)));
     const base = { evaluator: judge.id, version, metric: judge.id };
-    // Every score says the judge's type, so a label can be matched to it before it scores.
-    const typed = { details: { dataType: judge.evaluator.dataType } };
+    // Every score says the judge's type, and the name Langfuse gives its scores (the
+    // evaluator's), so a label can be matched to it before it scores.
+    const named = { dataType: judge.evaluator.dataType, scoreName: judge.evaluator.name };
+    const typed = { details: named };
     const notApplicable = (reason: string): Score => ({
       ...base,
       ...typed,
@@ -505,7 +610,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
             ctx.task && ledger.sent.has(ctx.task)
               ? {
                   ...notApplicable(reason),
-                  details: { dataType: judge.evaluator.dataType, sent: true },
+                  details: { ...named, sent: true },
                 }
               : notApplicable(reason),
           ];
@@ -538,6 +643,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           const read = valueOf(raw, raw.configId ? await boundsOf(raw.configId) : undefined);
           const details = {
             dataType: raw.dataType ?? judge.evaluator.dataType,
+            scoreName: judge.evaluator.name,
             ...('asItCame' in read ? { asItCame: read.asItCame } : {}),
             ...(changed.length > 0 ? { judgeChanged: changed } : {}),
           };
@@ -621,7 +727,8 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           : undefined;
       out.push({
         id: a.id,
-        // 4.4.0 keeps updatedAt when someone edits an annotation in the UI, so the label is in it.
+        // 4.4.0 keeps updatedAt when someone edits an annotation in the UI (4.72.0 changes it), so
+        // the label is in it.
         revision: `${a.updatedAt ?? a.timestamp ?? ''}|${label ?? ''}`,
         trace,
         name: a.name,
@@ -639,7 +746,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     return out;
   };
 
-  return { list, others, evaluator, experimentUrl, expectJudges, annotations };
+  return { list, others, shared, evaluator, experimentUrl, expectJudges, annotations };
 };
 
 /** A person's annotation in Langfuse, read for genki's calibration labels (ADR 0040). */

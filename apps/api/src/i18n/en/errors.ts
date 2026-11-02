@@ -127,6 +127,10 @@ export const catalogErrors = {
     "{rule} uses the project's or organisation's default model, which cannot be read through Langfuse's API",
   sinkJudgeUnsentField: '{rule} reads {field}, which genki does not send',
   sinkJudgeUnreadPath: '{rule} reads {field} at {path}, a JSON path genki cannot read',
+  sinkJudgeSeveral: '{rule} runs more than one evaluator; genki reads a rule with one',
+  sinkJudgeSameName:
+    '{rule} is the name of more than one rule in the project, so genki cannot tell them apart',
+  sinkJudgePaused: "{rule}'s evaluator {evaluator} is paused in Langfuse",
   tracingHostOrigin:
     'the host is an address like https://langfuse.example.no, without a path or credentials',
   tracingHostDot: 'the host name ends with a dot',

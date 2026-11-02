@@ -58,6 +58,7 @@ export const blocks = defineNamespace({
   sinkJudgeNetwork: 'Hit sendes testkjøringene',
   sinkJudgeModel: 'Kjøres av Langfuse, ikke av plattformen',
   sinkJudgeDefaultModel: 'Prosjektets standardmodell',
+  sinkJudgesUnreadable: 'Dommerne i {source}',
   sinkFieldInput: 'spørsmålet',
   sinkFieldOutput: 'svaret',
   sinkFieldExpected: 'kriteriene',

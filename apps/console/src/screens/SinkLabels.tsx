@@ -104,8 +104,17 @@ export const SinkLabels = ({ api }: { api: ApiClient }) => {
   >();
   const fetchFrom = async (tenant: string, connection: string) => {
     try {
-      const { pending } = await api.fetchSinkLabels(tenant, connection);
-      flash.show(t('qualityMatrix.sinkFetched', { count: pending, connection }));
+      const { pending, shared = [] } = await api.fetchSinkLabels(tenant, connection);
+      flash.show(
+        [
+          t('qualityMatrix.sinkFetched', { count: pending, connection }),
+          ...shared.map((s) =>
+            t('qualityMatrix.sinkShared', { name: s.name, rules: s.rules.join(', ') }),
+          ),
+        ].join(' '),
+        // Some labels were left out, which the operator should see.
+        shared.length > 0 ? 'warning' : 'success',
+      );
       retry();
     } catch {
       flash.show(t('qualityMatrix.sinkFetchFailed', { connection }), 'danger');

@@ -411,9 +411,13 @@ export const createApiClient = ({
     sinkLabels: (signal?: AbortSignal) =>
       call<SinkLabels>('GET', '/operator/quality/sink-labels', { signal }),
     fetchSinkLabels: (tenant: string, connection: string) =>
-      call<{ pending: number }>('POST', '/operator/quality/sink-labels/fetch', {
-        body: { tenant, connection },
-      }),
+      call<{ pending: number; shared?: { name: string; rules: string[] }[] }>(
+        'POST',
+        '/operator/quality/sink-labels/fetch',
+        {
+          body: { tenant, connection },
+        },
+      ),
     decideSinkLabels: (batch: SinkLabelBatch, decision: 'accept' | 'reject', reason: string) =>
       call<{ accepted?: number; rejected?: number }>(
         'POST',
