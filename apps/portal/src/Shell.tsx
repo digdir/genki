@@ -319,7 +319,12 @@ export const Shell = ({
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
   }, [narrow]);
-  useEffect(closeAll, [path, closeAll]);
+  const shownPath = useRef(path);
+  useEffect(() => {
+    if (shownPath.current === path) return;
+    shownPath.current = path;
+    closeAll();
+  }, [path, closeAll]);
   const area = path.split('/')[1] ?? '';
   const shownArea = useRef(area);
   useEffect(() => {
