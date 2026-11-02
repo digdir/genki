@@ -33,10 +33,11 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0034](0034-tokens-in-the-browser.md)                    | Tokens in the browser                                        | Proposed                                                            |
 | [0035](0035-operator-login.md)                           | Operator login                                               | Proposed                                                            |
 | [0036](0036-delegating-platform-rights.md)               | Delegating platform rights                                   | Proposed                                                            |
-| [0037](0037-simple-and-developer-view.md)                | Simple and developer view in the portal                      | Proposed                                                            |
+| [0037](0037-simple-and-developer-view.md)                | Owner pages and developer tools in the portal                | Proposed                                                            |
 | [0038](0038-ai-gateway.md)                               | The AI Gateway as a usage source, key issuer and model route | Proposed                                                            |
 | [0039](0039-parquet-sources.md)                          | Parquet sources                                              | Proposed                                                            |
 | [0040](0040-evaluating-with-langfuse.md)                 | Evaluating with Langfuse                                     | Accepted, not built; judges that block proposed                     |
 | [0041](0041-durable-jobs-on-pg-boss.md)                  | Durable jobs on pg-boss                                      | Proposed                                                            |
 | [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed                                                            |
 | [0044](0044-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built                                                     |
+| [0045](0045-data-stays-in-the-eu-eea.md)                 | Data stays in the EU/EEA; the region is an operating detail  | Proposed                                                            |
