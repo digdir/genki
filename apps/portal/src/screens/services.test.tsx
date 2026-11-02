@@ -116,8 +116,7 @@ describe('builder', () => {
       ['Innstillinger', '#/services/rapportassistenten/settings'],
       ['Kvalitet', '#/services/rapportassistenten/quality'],
       ['Samlet jobb', '#/services/rapportassistenten/batch'],
-      ['Versjoner', '#/services/rapportassistenten/versions'],
-      ['Logg', '#/services/rapportassistenten/log'],
+      ['Utviklerverktøy', '#/services/rapportassistenten/developer'],
     ]);
     expect(navLink('Oversikt').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { level: 2, name: 'Hva tjenesten gjør' })).toBeTruthy();
@@ -128,7 +127,7 @@ describe('builder', () => {
 
     go('#/services/rapportassistenten/versions');
     expect(await screen.findByText('Versjon 7')).toBeTruthy();
-    expect(navLink('Versjoner').getAttribute('aria-current')).toBe('page');
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
     expect(screen.getByText('Versjon 6')).toBeTruthy();
     expect(screen.getByText('Begrunnelse: Strammere krav til kilder')).toBeTruthy();
     expectAccessible();
@@ -138,7 +137,7 @@ describe('builder', () => {
     ['/setup', 'Oppsett', /^Formål og målgruppe/],
     ['/settings', 'Innstillinger', /Eksporter og importer/],
     ['/quality', 'Kvalitet', /Testsett/],
-    ['/log', 'Logg', /Kjøringer/],
+    ['/log', 'Utviklerverktøy', /Kjøringer/],
     ['/channels', 'Kanaler og frontend', /Start og kanaler/],
   ])('deep-links %s inside the same page', async (path, label, content) => {
     await openBuilder(`#/services/rapportassistenten${path}`, 'Rapportassistenten');
@@ -172,7 +171,7 @@ describe('builder', () => {
     ['uttrekk-samtale', 'Oppsett'],
     ['uttrekk-inn-og-ut', 'Oppsett'],
     ['uttrekk-prove', 'Test'],
-    ['uttrekk-yaml', 'Versjoner'],
+    ['uttrekk-yaml', 'Utviklerverktøy'],
   ])('reaches the %s tweak', async (tweak, tab) => {
     await renderAt(`#/services?visning=${tweak}`);
     await screen.findByRole('heading', { level: 1, name: 'Søknadsuttrekk' });
@@ -275,6 +274,26 @@ describe('risk level and v3 checks', () => {
 });
 
 describe('developer view', () => {
+  it('keeps the developer tab technical and leaves what the owner sets up in advanced settings', async () => {
+    await renderAt('#/services/new/developer');
+    const menu = await screen.findByRole('navigation', { name: 'Utviklerverktøy for tjenesten' });
+    expect(
+      within(menu)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual([
+      'Kall fra kode',
+      'Nøkler',
+      'Utløsere',
+      'Kjøringer og sporing',
+      'Definisjon',
+      'Versjoner',
+    ]);
+    expect(navLink('Avanserte innstillinger')).toBeTruthy();
+    expect(navLink('Utviklerverktøy').getAttribute('aria-current')).toBe('page');
+    expectAccessible();
+  });
+
   it('shows the shared schema YAML and validates it against the API', async () => {
     const { calls, fetch } = recording();
     await openBuilder('#/services/soknadsuttrekk/versions?view=yaml', 'Søknadsuttrekk', fetch);

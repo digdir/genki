@@ -87,7 +87,7 @@ import { LogSection } from '../service/LogSection';
 import { OverviewSection } from '../service/OverviewSection';
 import { QualitySection } from '../service/QualitySection';
 import { BatchSection } from '../batch/BatchSection';
-import { servicePath, tabSections, type ServiceSection } from '../service/sections';
+import { servicePath, tabFor, tabSections, type ServiceSection } from '../service/sections';
 import { ServiceHeader } from '../service/ServiceHeader';
 import { ServiceLifecycle } from '../service/ServiceLifecycle';
 import { ServiceNav } from '../service/ServiceNav';
@@ -97,6 +97,9 @@ import { Versions } from '../service/Versions';
 import { problemErrors } from '../service/definition';
 import { describeProblem, publishDraft, type PublishProblem } from '../service/publish';
 import { VersionsSection } from '../service/VersionsSection';
+import { DeveloperSection, isDeveloperTool } from '../service/DeveloperSection';
+import { IntegrationService, IntegrationTab } from '../developer-routes';
+import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
 import '../service/service.css';
@@ -1243,7 +1246,7 @@ export const Builder = ({
                     <a href={`#${servicePath(id, 'test')}`}>{t('service.advancedTest')}</a>
                   </li>
                   <li>
-                    <a href={`#${servicePath(id, 'versions', '?view=yaml')}`}>
+                    <a href={`#${servicePath(id, 'developer', '/definition')}`}>
                       {t('service.advancedYaml')}
                     </a>
                   </li>
@@ -1254,6 +1257,72 @@ export const Builder = ({
             )}
           </div>
         </div>
+      );
+    }
+    if (section === 'developer') {
+      const afterPublish = <Paragraph>{t('devTools.afterPublish')}</Paragraph>;
+      return (
+        <DeveloperSection
+          id={isNew ? 'new' : id}
+          model={serviceId}
+          isNew={isNew}
+          current={isDeveloperTool(detail) ? detail : 'call'}
+          pages={{
+            keys: isNew ? (
+              afterPublish
+            ) : (
+              <a href={`#${servicePath(id, 'channels')}`}>{t('devTools.openChannels')}</a>
+            ),
+            triggers: isNew ? (
+              afterPublish
+            ) : (
+              <IntegrationService.Provider value={{ id, name }}>
+                <IntegrationTab.Provider value="triggers">
+                  <Integrations {...screenProps} />
+                </IntegrationTab.Provider>
+              </IntegrationService.Provider>
+            ),
+            runs: isNew ? (
+              afterPublish
+            ) : (
+              <LogSection
+                api={api}
+                tenant={tenant}
+                tenantName={tenantName}
+                id={id}
+                runId={undefined}
+                live={live}
+              />
+            ),
+            definition:
+              live && !isNew ? (
+                <DefinitionEditor
+                  api={api}
+                  tenant={tenant}
+                  serviceId={id}
+                  {...(onPublished ? { onPublished } : {})}
+                />
+              ) : (
+                <YamlTab
+                  api={api}
+                  generated={yaml}
+                  onApply={(d) => replaceWith(asServiceDefinition(d))}
+                />
+              ),
+            versions: isNew ? (
+              afterPublish
+            ) : live ? (
+              <Versions
+                api={api}
+                tenant={tenant}
+                serviceId={id}
+                {...(onPublished ? { onPublished } : {})}
+              />
+            ) : (
+              <VersionsTab versions={versions} changes={changes} onRollback={rollback} />
+            ),
+          }}
+        />
       );
     }
     if (section === 'versions')
@@ -1416,7 +1485,7 @@ export const Builder = ({
               </>
             }
           />
-          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
+          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={tabFor(section)} />
           {readOnly ? (
             <Alert data-color="info" data-size="sm">
               <Heading level={2} data-size="2xs">

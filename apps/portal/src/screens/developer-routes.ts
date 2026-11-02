@@ -28,3 +28,8 @@ export const developerHashFor = ({ segments, query }: Route) => {
   const search = rest.toString();
   return `#/developer/${developerPageFor(query.get('tab'))}${search ? `?${search}` : ''}`;
 };
+
+/** The service whose Utviklerverktøy tab shows the integrations, when it is one service's tab. */
+export const IntegrationService = createContext<{ id: string; name: string } | undefined>(
+  undefined,
+);
