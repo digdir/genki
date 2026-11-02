@@ -9,7 +9,7 @@ import { runContract } from '@genai/plugins';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
-import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import { InMemoryDefinitionStore, SettingsRegistry, type Definition } from '@genai/definitions';
 import { defaultMessages } from '@genai/guardrails';
 import { systemPrincipal } from '@genai/jobs';
 import { apiKeyDigest } from '@genai/identity';
@@ -18,6 +18,7 @@ import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
 import { resolveCatalog } from './catalogs.js';
+import { confirmedAs } from './risk-confirmation.js';
 import { createPlatform, definitionSubject } from './composition.js';
 
 const tenant = '991825827';
@@ -574,6 +575,74 @@ describe('the integrated platform', () => {
     expect(unevaluated.ok).toBe(false);
     expect(worse).toMatchObject({ ok: false, errors: [{ path: 'spec.evaluation' }] });
     expect(better.ok).toBe(true);
+  });
+
+  it('lets a portal test run of the draft unlock a gated publish once publishing stamps the risk confirmation', async () => {
+    const { platform, app, state } = await boot();
+    const evaluation = { testSets: ['referanse'], gates: ['nynorsk-chrf'] };
+    expect(
+      (await platform.definitions.publish(singleCall('omset', { evaluation }), 'test', 'test')).ok,
+    ).toBe(true);
+    await platform.evalStores.testSets.put({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant, id: 'referanse', name: 'Referanse', version: 1 },
+      spec: {
+        service: 'omset',
+        cases: [
+          {
+            id: 'klage',
+            split: 'validation',
+            input: 'Hvis du er uenig i vedtaket, kan du klage.',
+            expected: { referenceAnswer: 'Viss du er usamd i vedtaket, kan du klage.' },
+            grounding: 'answer-only',
+          },
+        ],
+      },
+    } as Parameters<typeof platform.evalStores.testSets.put>[0]);
+    const draft = singleCall('omset', {
+      evaluation,
+      strategy: { id: 'single-call', version: 1, config: { instructions: 'Omset til nynorsk.' } },
+      riskConfirmation: { reasons: ['Ansatte får omsetjinga'], riskClass: 'limited' },
+    });
+    const publish = async () =>
+      platform.definitions.publish(
+        confirmedAs(draft as Definition, 'kari', new Date()),
+        'kari',
+        'ny instruks for nynorsk',
+      );
+    const beforeRun = await publish();
+    await app.request(`/tenants/${tenant}/services/omset/draft`, {
+      method: 'PUT',
+      headers: as('kari', { 'change-reason': 'ny instruks' }),
+      body: JSON.stringify({ definition: draft, files: {} }),
+    });
+    const testRun = async (answer: string) => {
+      state.answer = answer;
+      const started = await app.request(`/tenants/${tenant}/services/omset/eval-runs`, {
+        method: 'POST',
+        headers: as('kari'),
+        body: JSON.stringify({ testSet: 'referanse', version: 'draft' }),
+      });
+      const { id } = (await started.json()) as { id: string };
+      for (let i = 0; i < 200; i += 1) {
+        const run = (await (
+          await app.request(`/tenants/${tenant}/eval-runs/${id}`, { headers: as('kari') })
+        ).json()) as { status: string };
+        if (run.status !== 'queued' && run.status !== 'running') return run;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('the test run did not finish');
+    };
+
+    expect((await testRun('Noe helt annet.')).status).toBe('completed');
+    const poorRun = await publish();
+    await testRun('Viss du er usamd i vedtaket, kan du klage.');
+    const goodRun = await publish();
+
+    expect(beforeRun).toMatchObject({ ok: false, errors: [{ path: 'spec.evaluation' }] });
+    expect(poorRun).toMatchObject({ ok: false, errors: [{ path: 'spec.evaluation' }] });
+    expect(goodRun.ok).toBe(true);
   });
 
   it('serves the portal pages: overview, usage and an API key stored by digest until revoked', async () => {

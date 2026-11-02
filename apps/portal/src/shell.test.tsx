@@ -39,6 +39,25 @@ describe('the organisation in the header', () => {
 
     expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
   });
+
+  it('keeps the switcher open when it is clicked as soon as the header appears', async () => {
+    const name = 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet';
+    const clicked = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        const button = document.querySelector(`[aria-label="${name}"]`);
+        if (!button) return;
+        observer.disconnect();
+        fireEvent.click(button);
+        resolve();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    await clicked;
+
+    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+  });
 });
 
 describe('login from the start page', () => {
