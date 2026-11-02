@@ -1,0 +1,25 @@
+{
+  "name": "@genai/providers-pgboss",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@genai/jobs": "0.0.0",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0"
+  },
+  "devDependencies": {
+    "zod": "^4.6.5"
+  }
+}

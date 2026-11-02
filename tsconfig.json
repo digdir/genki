@@ -23,6 +23,9 @@
       "path": "packages/providers-postgres"
     },
     {
+      "path": "packages/providers-pgboss"
+    },
+    {
       "path": "packages/providers-pgvector"
     },
     {
