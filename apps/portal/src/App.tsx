@@ -6,6 +6,7 @@ import { createApiClient } from './api';
 import type { AuthClient } from './auth';
 import { navigate, parseRoute, useRoute } from './hooks';
 import type { ScreenProps } from './screen';
+import { developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
 import { Startside } from './screens/Startside';
 import { tenantNotRegistered } from './screens/Unregistered';
@@ -34,11 +35,15 @@ const Contact = lazy(() => import('./screens/FooterPages').then((m) => ({ defaul
 const Guide = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Guide })));
 const Status = lazy(() => import('./screens/FooterPages').then((m) => ({ default: m.Status })));
 const Datasets = lazy(() => import('./screens/Datasets').then((m) => ({ default: m.Datasets })));
+const DeveloperTools = lazy(() =>
+  import('./screens/DeveloperTools').then((m) => ({ default: m.DeveloperTools })),
+);
 const Integrations = lazy(() =>
   import('./screens/Integrations').then((m) => ({ default: m.Integrations })),
 );
 const Log = lazy(() => import('./screens/Log').then((m) => ({ default: m.Log })));
 const NoAccess = lazy(() => import('./screens/NoAccess').then((m) => ({ default: m.NoAccess })));
+const Profile = lazy(() => import('./screens/Profile').then((m) => ({ default: m.Profile })));
 const Playground = lazy(() =>
   import('./screens/Playground').then((m) => ({ default: m.Playground })),
 );
@@ -70,8 +75,15 @@ const inputStore = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> => {
 const chosen = (session: Session, org: string | null) =>
   session.organisations.find((o) => o.orgNumber === org) ?? session.organisations[0];
 
+/** Sends an old address on to where the page lives now, keeping the rest of the route. */
+const MovedTo = ({ hash }: { hash: string }) => {
+  useEffect(() => {
+    window.location.replace(hash);
+  }, [hash]);
+  return null;
+};
+
 const footerPages = {
-  help: 'shell.guide',
   status: 'shell.status',
   contact: 'shell.contact',
 } as const;
@@ -98,20 +110,39 @@ const Page = ({
   if (area === 'skills') return <Skills {...props} />;
   if (area === 'playground') return <Playground {...props} />;
   if (area === 'access') return <Access {...props} />;
-  if (area === 'usage') return <Usage {...props} />;
-  if (area === 'integrations') return <Integrations {...props} />;
+  if (area === 'usage')
+    return <MovedTo hash={window.location.hash.replace(/^#\/usage/, '#/statistics')} />;
+  if (area === 'statistics') return <Usage {...props} />;
+  if (area === 'developer')
+    return (id === 'api' && sub === 'code') || (id === 'hooks' && sub) ? (
+      <Integrations {...props} />
+    ) : (
+      <DeveloperTools {...props} integrations={(p) => <Integrations {...p} />} />
+    );
+  if (area === 'integrations') return <MovedTo hash={developerHashFor(props.route)} />;
+  if (area === 'profile') return <Profile />;
+  if (area === 'help') return <MovedTo hash="#/onboarding" />;
+  if (area === 'onboarding')
+    return (
+      <>
+        <Heading level={1} data-size="lg">
+          {t('shell.menuOnboarding')}
+        </Heading>
+        <Guide />
+      </>
+    );
   if (area === 'api-reference') return <ApiReference {...props} />;
   if (area === 'log') return <Log {...props} />;
   if (area === 'settings') return <Settings {...props} context={{ kind: 'tenant' }} />;
   if (area === 'data-handling') return <DataHandling api={props.api} />;
   const item = navigation.find((n) => n.path === `/${area}`);
-  if (area in footerPages)
+  if (Object.hasOwn(footerPages, area))
     return (
       <>
         <Heading level={1} data-size="lg">
           {t(footerPages[area as keyof typeof footerPages])}
         </Heading>
-        {area === 'help' ? <Guide /> : area === 'status' ? <Status api={props.api} /> : <Contact />}
+        {area === 'status' ? <Status api={props.api} /> : <Contact />}
       </>
     );
   return (
@@ -119,7 +150,7 @@ const Page = ({
       <Heading level={1} data-size="lg">
         {item
           ? t(item.label)
-          : area in footerPages
+          : Object.hasOwn(footerPages, area)
             ? t(footerPages[area as keyof typeof footerPages])
             : t('app.notFound')}
       </Heading>

@@ -1,46 +1,37 @@
-# 0037 Simple and developer view in the portal
+# 0037 Owner pages and developer tools in the portal
 
-Status: proposed, 2026-10-20
+Status: proposed, 2026-10-20 (rewritten to a developer tools area, 2026-10-30)
 
 ## Context
 
-The portal's first users are administrators in an agency who set up services, datasets and access without a technical background. Today the same screens also carry what a developer needs: the API call behind an action, the definition as YAML, strategy parameters, model ids, tokens, task ids, hooks, building blocks, step flows and the API reference. A non-technical owner meets all of it at once, and it makes simple work look hard. Developers still need every part of it, and ADR 0032 keeps the API the whole truth: the portal is one client.
+The portal's first users are administrators in an agency who set up services, datasets and access without a technical background. The same menus also carried what a developer needs: keys, systems, triggers, hooks, tracing, step flows and the API reference. A non-technical owner met all of it at once. Developers still need every part of it, and ADR 0032 keeps the API the whole truth: the portal is one client.
+
+The first version of this record proposed a switch that added the technical parts to every screen. That needs a simple and a developer variant of each screen, and it was never built.
 
 ## Decision
 
-- **The portal has two views: simple (default) and developer.** Simple is what a non-technical owner needs to set up, test, publish and follow a service. Developer adds everything technical on top, on the same screens. Nothing exists only in the developer view that cannot be reached through the API.
-- **The developer view is a personal preference, not a right.** It is stored in the person's own preferences for the organisation (`PUT /tenants/{tenant}/me/preferences`, `view: simple | developer`), so it follows the person across devices. It grants nothing: rights still come from Altinn (ADR 0027), and hiding something in the simple view never stands in for checking a right in the API.
-- **One switch, always in the same place.** "Utviklervisning" in the user menu, plus a small marker in the header while it is on. Turning it on or off keeps the person on the page they are on.
-- **The simple view speaks the owner's language.**
-  - Cost in kroner, not tokens; tokens are shown in the developer view.
-  - Models by their display name, not their id.
-  - "Slik svarer tjenesten" instead of strategy names and parameters.
-  - Errors say what to do next; a task id appears only in the developer view.
-- **What the simple view leaves out, by default:**
-  - API calls behind actions ("Vis API-kall"), the API reference and code snippets.
-  - The definition as YAML or JSON and raw schema editors.
-  - Strategy parameters, budgets and step-flow editing (step flows can be chosen, not edited).
-  - Hooks, building-block registration, client registration (Brukerflater) and keys beyond creating one for a named use.
-  - Task timelines beyond the summary, trace ids and raw events.
-- **What both views have:** the builder assistant and the forms it fills, datasets and their status, testing a service, quality results in plain words, access, usage, publishing, and the service log as a readable list.
-- **Deep links still work.** A link into a developer-only part (for example `?view=yaml`) opens it and offers to switch to the developer view, instead of a dead end.
-- **The console has no simple view.** Its users are operators.
+- **The main menu holds the owner's work, in three groups.** Bygg (Tjenester, Fellestjenester, Datasett, Byggeklosser, Prøveområde, Utviklerverktøy), Analyse (Statistikk, Logg) and Administrasjon (Tilgang, Innstillinger).
+- **Technical parts live in one place, Utviklerverktøy.** For the organisation it is `/developer`, with Driftsstatus, Nøkler, Brukerflater, Systemer, Utløsere, Stegflyter, Kroker, Sporing og evaluering, Felles sikkerhetsfiltre and API-referanse og dokumentasjon. Each service gets its own Utviklerverktøy tab with what is technical about that service: calling it from code, strategy parameters and step flows, model fallback and roles, variants, hooks, the definition and tracing.
+- **The owner keeps what the owner decides.** On a service: the model in plain words (its name, where data is processed, cost in kroner), risk level and confirmation, privacy and safety filters, topics to refuse, whether the service may be improved automatically, testing, the log and versions with rollback. For the organisation: statistics, access and settings.
+- **Where a setting lives is decided once.** One map from a part of the definition to its page is used by the publish dialog's fix buttons, the builder assistant's cards, error messages and old addresses, so they never point to a page that no longer holds the setting.
+- **Utviklerverktøy is visible to everyone signed in, until a personal preference hides it.** The preference is `view: simple | developer` in `PUT /tenants/{tenant}/me/preferences`. It grants nothing: rights still come from Altinn (ADR 0027), and hiding something never stands in for checking a right in the API.
+- **Old addresses keep working.** `/integrations` and its tabs, `/usage` and `/help` forward to where the page lives now, keeping the open row and the query.
+- **The console has no owner view.** Its users are operators.
 
 ## Why
 
-The platform should be usable by the people who own the services, not only by developers, and "config-first" means the forms and the assistant must be enough on their own for the common work. Two views on the same screens keep one portal and one set of routes, instead of a second "easy" portal that drifts. A preference instead of a right keeps Altinn as the only source of access, and avoids people asking for a right just to see a YAML file.
-
-Rejected:
-
-- **A separate simple portal:** two apps to keep in step.
-- **Per-feature toggles:** too many choices for the people the simple view is for.
-- **Showing technical parts to people with `manage-services` only:** mixes a right with a preference, and non-technical owners often have that right.
-- **Hiding the switch behind an organisation setting:** developers in any agency must be able to turn it on themselves.
+- **One place is cheaper and clearer than two variants of every screen.** A developer knows where to look, an owner is not shown what they do not need, and no screen has to be built twice.
+- **Owner decisions stay with the owner.** The risk class is set by a person (ADR 0020), and where data is processed is chosen per service (ADR 0021). The model decides both cost and residency. These cannot sit behind a technical switch.
+- **A preference instead of a right** keeps Altinn as the only source of access, and avoids people asking for a right to see a YAML file.
+- Turned down:
+  - **A switch that adds technical parts to every screen:** every screen in two variants, and the same page looks different to two people talking about it.
+  - **Treating a new service as simple and a published one as technical:** a developer creating a service needs the technical parts, and an owner editing a published one does not.
+  - **Showing technical parts only with `manage-services`:** mixes a right with a preference, and non-technical owners often have that right.
 
 ## Consequences
 
-- Every portal screen gets a simple and a developer variant of the same page. Tests check, per screen, what the simple view shows and leaves out, and that the developer view still shows everything it does today.
-- New technical parts default to the developer view; putting something in the simple view is a deliberate choice, reviewed against the design handoff.
-- The simple view needs plain-language texts for things that today only have a technical label (strategies, budgets, errors), in bokmål and English.
-- Kroner in the simple view uses the price list the usage screens already use; where no price exists, the simple view says "ukjent kostnad" instead of falling back to tokens.
-- The workspace is unaffected. External frontends see no difference, since nothing changes in the API.
+- Not built:
+  - The `view` preference and its switch in the user menu. Until then Utviklerverktøy is in the menu for everyone.
+  - The Utviklerverktøy tab on each service and the map from setting to page. The service builder is unchanged until they land, together with the new builder for new services.
+- New technical parts go into Utviklerverktøy. Putting something in an owner page is a deliberate choice.
+- A page with no content yet is not shown in a menu.
