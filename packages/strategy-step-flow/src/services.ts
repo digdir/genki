@@ -49,6 +49,11 @@ export interface FlowRetrieval {
   rerank(query: string, chunks: FlowChunk[], signal: AbortSignal): Promise<FlowChunk[]>;
   documents?(query: FlowDocumentQuery, signal: AbortSignal): Promise<FlowDocument[]>;
   readDocument?(document: string, maxChunks: number, signal: AbortSignal): Promise<FlowChunk[]>;
+  facets?(
+    fields: string[],
+    maxValues: number,
+    signal: AbortSignal,
+  ): Promise<Record<string, { value: string; count: number }[]>>;
 }
 
 export type FlowRetrievalFactory = (

@@ -518,3 +518,70 @@ describe('documents for step flows', () => {
     expect(p.ranges).toEqual(['lang:0-49', 'lang:50-99', 'lang:100-149']);
   });
 });
+
+describe('flow facet retrieval', () => {
+  it('facets only use declared fields from the supplied knowledge port and enforce the value cap', async () => {
+    const s = stub();
+    const retrieval = createRagRetrieval({ knowledge: s.knowledge });
+
+    expect(await retrieval.facets(['orgs_short'], 2, signal)).toEqual({
+      orgs_short: [
+        { value: 'orgs_short-1', count: 9 },
+        { value: 'orgs_short-2', count: 8 },
+      ],
+    });
+    await expect(retrieval.facets(['secret'], 2, signal)).rejects.toThrow(/no filter field secret/);
+    await expect(retrieval.facets(['toString'], 2, signal)).rejects.toThrow(/no filter field/);
+    expect(s.calls).toEqual(['facets:orgs_short']);
+  });
+
+  it('facet queries preserve caller filters and return only requested fields', async () => {
+    const s = stub();
+    const calls: unknown[] = [];
+    const knowledge: KnowledgePort = {
+      ...s.knowledge,
+      facets: async (fields, filters) => {
+        calls.push({ fields, filters });
+        return {
+          orgs_short: [{ value: 'DIGDIR', count: 2 }],
+          secret: [{ value: 'hidden', count: 1 }],
+        };
+      },
+    };
+    const retrieval = createRagRetrieval({ knowledge, filters: { concerned_years: [2024] } });
+
+    expect(await retrieval.facets(['orgs_short', 'orgs_short'], 1, signal)).toEqual({
+      orgs_short: [{ value: 'DIGDIR', count: 2 }],
+    });
+    expect(calls).toEqual([{ fields: ['orgs_short'], filters: { concerned_years: [2024] } }]);
+  });
+
+  it.each([0, -1, 1.5, 1001, Infinity, NaN])(
+    'the facet backend refuses an invalid cap before querying: %s',
+    async (cap) => {
+      const s = stub();
+      await expect(
+        createRagRetrieval({ knowledge: s.knowledge }).facets(['orgs_short'], cap, signal),
+      ).rejects.toThrow(/maxValues/);
+      expect(s.calls).toEqual([]);
+    },
+  );
+
+  it('facet reads honor cancellation and propagate backend failures', async () => {
+    const s = stub();
+    const aborted = AbortSignal.abort();
+    await expect(
+      createRagRetrieval({ knowledge: s.knowledge }).facets(['orgs_short'], 1, aborted),
+    ).rejects.toBeDefined();
+    expect(s.calls).toEqual([]);
+    const knowledge: KnowledgePort = {
+      ...s.knowledge,
+      facets: async () => {
+        throw new Error('facets unavailable');
+      },
+    };
+    await expect(
+      createRagRetrieval({ knowledge }).facets(['orgs_short'], 1, signal),
+    ).rejects.toThrow('facets unavailable');
+  });
+});

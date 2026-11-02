@@ -65,6 +65,9 @@ export const platformBlocks = defineNamespace({
   blockApprovalDescription: 'Stopper flyten til en person har svart, og fortsetter med svaret.',
   blockAgentName: 'La modellen søke selv',
   blockAgentDescription: 'Lar modellen søke, lese og svare selv, som ett steg i flyten.',
+  blockFacetsName: 'Hent fasettverdier',
+  blockFacetsDescription:
+    'Henter avgrensede fasettverdier og antall fra tjenestens datasett til senere steg.',
   blockDocumentsName: 'Finn dokumenter',
   blockDocumentsDescription:
     'Lister dokumenter fra datasettene til tjenesten etter type, virksomhet, år eller id. Lager ingen tekst.',

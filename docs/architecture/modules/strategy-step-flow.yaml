@@ -9,7 +9,7 @@ packages:
   - '@genai/strategy-step-flow'
 summary: 'Runs StepFlow definitions: blocks, repeat, forEach, switchOn and subflows.'
 description: A step has exactly one action and an onError policy (ADR 0007). Built-in blocks call
-  models, classify, extract with cited sources, retrieve, list and read documents, build tables with a
+  models, classify, extract with cited sources, read facet values, retrieve, list and read documents, build tables with a
   source per cell, route, ask for approval, run the agent loop or call a tool from a registered tool
   source.
 responsibilities:
@@ -21,6 +21,7 @@ files:
   - packages/strategy-step-flow/src/blocks.ts
   - packages/strategy-step-flow/src/builtins.ts
   - packages/strategy-step-flow/src/validate.ts
+  - packages/strategy-step-flow/src/blocks/facets.ts
   - packages/strategy-step-flow/src/blocks/documents.ts
   - packages/strategy-step-flow/src/blocks/table.ts
   - packages/strategy-step-flow/src/blocks/tools.ts
