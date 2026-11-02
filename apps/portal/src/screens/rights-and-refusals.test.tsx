@@ -93,7 +93,9 @@ describe('refusals from the API', () => {
       ),
     );
     expect(await screen.findByText('Månedskvoten for tokens er brukt opp')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe('#/usage');
+    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe(
+      '#/statistics',
+    );
     cleanup();
 
     await renderAs(

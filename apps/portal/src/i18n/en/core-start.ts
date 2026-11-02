@@ -20,7 +20,7 @@ export const dataHandling = {
   residencyEu: 'in the EU/EEA',
   residencyGlobal: 'globally, including outside the EU/EEA',
   stored1:
-    'Questions, answers, the sources the answer is based on and feedback are stored in the platform.',
+    'Questions, answers, the sources the answer is based on and feedback are stored in the platform, in the EU/EEA.',
   stored2: 'The content is encrypted when it is stored.',
   stored3: 'The content is deleted when the content key is deleted.',
   access1: 'Administrators at the organisation see feedback in aggregate and without names.',
