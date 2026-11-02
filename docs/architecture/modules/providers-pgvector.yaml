@@ -15,6 +15,7 @@ responsibilities:
   - Text, vector and hybrid search
   - Filters, facets, fetch and range
   - Index writer with generations
+  - Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)
 files:
   - packages/providers-pgvector/src/engine.ts
   - packages/providers-pgvector/src/schema.ts
