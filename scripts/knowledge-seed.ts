@@ -62,13 +62,14 @@ try {
   await writer.promote(dataset, values.generation);
   // The shipped catalog has no knowledge endpoint, since a deployed API without a knowledge server would refuse to start.
   console.log(`${values.dataset}: generation ${values.generation} with ${documents.length} documents.
-Add this to apps/api/config/local/knowledge.yaml (do not commit it) and restart the API:
+In apps/api/config/local/knowledge.yaml (do not commit it), then restart the API:
 
-endpoints:
+Add under \`endpoints:\`
   knowledge-pg:
     engine: pgvector
     options: { connection: knowledge }
-datasets:
+
+Add under \`datasets:\`
   - id: ${values.dataset}
     endpoint: knowledge-pg
     residency: norway

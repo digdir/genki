@@ -352,6 +352,21 @@ describe('read functions on the knowledge server', () => {
     }
   });
 
+  it('a range filter on the knowledge server matches only a scalar value, never a list', async () => {
+    const dated = dataset('digdir/datoer', 0, { filters: { dates: 'range', year: 'range' } });
+    const generation = 'g-20261102-datoer';
+    await fill(dated, generation, [
+      doc('enkel', 0, { dates: '2002-01-10', year: 2002 }),
+      doc('liste', 0, { dates: ['2002-01-05', '1990-01-01'], year: [2002, 1990] }),
+    ]);
+    const config = routed(dated, generation);
+    const connection = connectionOf();
+    for (const filters of [{ dates: { gte: '2002-01-01' } }, { year: { gte: 2000 } }]) {
+      const page = await connection.documents?.(config, { filters }, signal);
+      expect(page?.documents.map((d) => d.id)).toEqual(['enkel']);
+    }
+  });
+
   it('a document listing past its last page still counts every document', async () => {
     const page = await connectionOf().documents?.(
       routed(kudos, kudosGeneration),
