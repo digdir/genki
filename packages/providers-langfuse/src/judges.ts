@@ -9,6 +9,15 @@ import {
   type Score,
   type TestCase,
 } from '@genai/eval';
+import {
+  isItemRoot,
+  reachOf,
+  unknownBeforeRun,
+  unreadFilter,
+  type RawFilter,
+  type Reach,
+  type RunShape,
+} from './filters.js';
 import { judgeTraceIdOf } from './sink.js';
 import { traceIdFor } from './spans.js';
 
@@ -60,6 +69,8 @@ export interface LangfuseJudge {
     model?: { provider: string; model: string };
   };
   refused?: JudgeRefusal;
+  /** The run it was read for, so a filter changed during the run shows. */
+  run?: RunShape;
 }
 
 /**
@@ -73,12 +84,6 @@ const sentSources = new Set<string>([...contentSources, 'experiment_item_metadat
 /** The content fields the judges read, so a run sends no field that no judge maps (ADR 0040). */
 export const mappedContent = (judges: Pick<LangfuseJudge, 'rule'>[]): ContentSource[] =>
   contentSources.filter((f) => judges.some((j) => j.rule.mapping.some((m) => m.source === f)));
-
-interface RawFilter {
-  column?: string;
-  operator?: string;
-  value?: unknown;
-}
 
 /** An evaluation rule as Langfuse 4.72.0's v2 API has it: every rule is an observation rule. */
 interface RawRule {
@@ -101,12 +106,6 @@ interface RawEvaluator {
   outputDefinition?: { dataType?: string };
   modelConfig?: { provider?: string; model?: string } | null;
 }
-
-/** The filter that makes a rule judge each experiment item once, on its root span. */
-const isItemRoot = (f: RawFilter) =>
-  f.column === 'isExperimentItemRootSpan' && f.operator === '=' && f.value === true;
-
-const isActive = (e: RawEvaluator | undefined) => e !== undefined && e.status !== 'paused';
 
 interface RawScore {
   name: string;
@@ -136,6 +135,9 @@ const pathKeys = (path: string | undefined) => {
 
 /** Input and output go as genki's parts, so only the whole of them is what a judge expects. */
 const wholeOnly = new Set(['input', 'output']);
+
+/** What genki knows of every run, for what a rule's filters do on any of them. */
+const noRun: RunShape = { tenant: '', environment: '', experimentName: '' };
 
 const refusalOf = (
   rule: RawRule,
@@ -172,11 +174,18 @@ const refusalOf = (
       reason: 'sampled',
       message: `${rule.name} judges only part of the items it gets, so some cases would never be scored`,
     };
-  if ((rule.filter ?? []).some((f) => !isItemRoot(f)))
+  // A filter outside Langfuse's list, or on a value no run shows before it starts, is read for no run.
+  const filters = rule.filter ?? [];
+  const unread = unreadFilter(filters);
+  const unknown = unknownBeforeRun(filters, noRun);
+  if (unread || unknown !== undefined) {
+    const column = unread ? (unread.column ?? '') : (unknown ?? '');
     return {
       reason: 'filtered',
-      message: `${rule.name} judges only the items its filter lets through, so some cases would never be scored`,
+      field: column,
+      message: `${rule.name} has a filter on ${column || 'a column'} that genki cannot read before the run`,
     };
+  }
   for (const m of mapping) {
     if (!sentSources.has(m.source))
       return {
@@ -203,11 +212,13 @@ const modelText = (model: LangfuseJudge['evaluator']['model']) =>
 /** What differs between the judge at the run's start and now; empty when nothing does. */
 const changes = (
   before: LangfuseJudge,
-  now: { judge: LangfuseJudge | undefined; active: boolean } | undefined,
+  now: { judge: LangfuseJudge | undefined; active: boolean; filter: RawFilter[] } | undefined,
 ): string[] => {
   if (!now?.judge) return ['the rule is gone'];
   if (now.judge.refused?.reason === 'paused') return ["the rule's evaluator is paused"];
   if (!now.active) return ['the rule is no longer active'];
+  if (before.run && reachOf(now.filter, before.run).kind !== 'judge')
+    return ["the rule's filter no longer reaches the run"];
   return changesOf(before, now.judge);
 };
 
@@ -246,6 +257,15 @@ const fieldOf = (m: JudgeMapping, c: TestCase, o: Observation): unknown => {
   if (m.source === 'output') return at(answerText(o), keys);
   if (m.source === 'expected_output') return at(judgedExpectation(c), keys);
   return 'metadata';
+};
+
+/** Why a rule that reaches a run refuses it, in words a person can act on in Langfuse. */
+const refusalText = (name: string, reach: Extract<Reach, { kind: 'refuse' }>) => {
+  if (reach.why === 'every-span')
+    return `${name} would judge every span of the run's cases; add the filter isExperimentItemRootSpan = true, or leave genki's test runs out with environment none of genki-test-runs`;
+  if (reach.why === 'root-only')
+    return `${name} judges the run's root spans without isExperimentItemRootSpan = true, which genki needs to read a judge`;
+  return `${name} has a filter on ${reach.column ?? 'a column'} that genki cannot read before the run`;
 };
 
 /** Langfuse's v3 score as a genki score: boolean 1 or 0, a number scaled by its config's bounds. */
@@ -356,8 +376,14 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
    * Each enabled rule of the project with the item-root filter, refused with a reason when genki
    * cannot use it: one whose evaluator is paused is refused as paused, since Langfuse does not run it.
    */
-  const list = async (connection: string): Promise<LangfuseJudge[]> => {
-    const judges = (await project())
+  const list = async (connection: string): Promise<LangfuseJudge[]> =>
+    judgesIn(connection, await project());
+
+  const judgesIn = (
+    connection: string,
+    rules: Awaited<ReturnType<typeof project>>,
+  ): LangfuseJudge[] => {
+    const judges = rules
       .filter(({ rule }) => isJudge(rule))
       .map(({ rule, evaluators }) => judgeOf(connection, rule, evaluators))
       .filter((j): j is LangfuseJudge => j !== undefined);
@@ -376,20 +402,6 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
         : j,
     );
   };
-
-  /**
-   * The project's other enabled rules that Langfuse runs on what genki sends but genki cannot
-   * read: one without the item-root filter and an active evaluator, which judges every span, and
-   * one whose evaluator the listing does not have, which genki cannot tell is paused.
-   */
-  const others = async (): Promise<string[]> =>
-    (await project())
-      .filter(({ rule, evaluators }) =>
-        isJudge(rule)
-          ? evaluators[0] === undefined
-          : evaluators.some((e) => e === undefined || isActive(e)),
-      )
-      .map(({ rule }) => rule.name);
 
   /**
    * Each score name two or more enabled rules write: their evaluators' name, which Langfuse does
@@ -425,6 +437,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     return {
       judge: judgeOf(judge.connection, rule, evaluators),
       active: rule.enabled !== false && isJudge(rule),
+      filter: rule.filter ?? [],
     };
   };
 
@@ -746,7 +759,63 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     return out;
   };
 
-  return { list, others, shared, evaluator, experimentUrl, expectJudges, annotations };
+  /**
+   * The project's enabled rules as they meet one run (ADR 0040): the judges that judge each of its
+   * cases once, the judges whose filters leave it out (judges of other test sets), and the rules
+   * that refuse it, because they would judge every span or genki cannot tell what they judge. A
+   * rule whose evaluators are all paused is none of these: Langfuse does not run it.
+   */
+  const forRun = async (
+    connection: string,
+    run: RunShape,
+  ): Promise<{
+    judges: LangfuseJudge[];
+    elsewhere: LangfuseJudge[];
+    refusing: { name: string; message: string }[];
+  }> => {
+    const rules = await project();
+    const listed = new Map(judgesIn(connection, rules).map((j) => [j.rule.id, j]));
+    const out = {
+      judges: [] as LangfuseJudge[],
+      elsewhere: [] as LangfuseJudge[],
+      refusing: [] as { name: string; message: string }[],
+    };
+    for (const { rule, evaluators } of rules) {
+      if (evaluators.length === 0) continue;
+      const reach = reachOf(rule.filter ?? [], run);
+      if (evaluators.every((e) => e?.status === 'paused')) {
+        // Langfuse runs nothing of it, so it is no rule's refusal: a judge of the run is listed
+        // refused as paused (which refuses the run when it is in use), and a judge of another test
+        // set under elsewhere.
+        const judge = listed.get(rule.id);
+        if (judge && reach.kind === 'judge') out.judges.push({ ...judge, run });
+        if (judge && reach.kind === 'skip') out.elsewhere.push(judge);
+        continue;
+      }
+      if (reach.kind === 'skip') {
+        const judge = listed.get(rule.id);
+        if (judge) out.elsewhere.push(judge);
+        continue;
+      }
+      const judge = listed.get(rule.id);
+      if (reach.kind === 'judge' && judge) {
+        out.judges.push({ ...judge, run });
+        continue;
+      }
+      if (reach.kind === 'judge') {
+        // An evaluator the listing does not have: genki cannot tell whether Langfuse runs it.
+        out.refusing.push({
+          name: rule.name,
+          message: `${rule.name} runs an evaluator genki cannot read`,
+        });
+        continue;
+      }
+      out.refusing.push({ name: rule.name, message: refusalText(rule.name, reach) });
+    }
+    return out;
+  };
+
+  return { list, forRun, shared, evaluator, experimentUrl, expectJudges, annotations };
 };
 
 /** A person's annotation in Langfuse, read for genki's calibration labels (ADR 0040). */

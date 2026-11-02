@@ -259,7 +259,15 @@ export const qualityArea = {
     delete: 'Slett',
     setsLoading: 'Henter testsett',
     langfuseDataset:
-      'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen {connection}:',
+      'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen {connection}. Velg datasettet i filteret til en dommer i Langfuse for å la den vurdere testsettet:',
+    reachingJudges: 'Dommere i Langfuse som når testsettet',
+    judgeInUse: '{name} – i bruk',
+    judgeNotInUse: '{name} – ikke tatt i bruk under Byggeklosser',
+    judgeStopsRuns: '{name} – stopper sendte kjøringer',
+    noReachingJudges: 'Ingen dommere i Langfuse når testsettet.',
+    judgesNotReadForSet:
+      'Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}, så genki vet ikke hvilke som når testsettet.',
+    judgesElsewhere: 'Dommere for andre testsett ({count})',
     newSetReason: 'Nytt testsett for {service}',
     setCreated: 'Testsettet {name} er laget.',
     noSets: 'Tjenesten har ikke testsett ennå',

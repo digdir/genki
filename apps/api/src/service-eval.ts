@@ -36,7 +36,7 @@ import { definitionSubject } from './definition-subject.js';
 import {
   connectionsCovering,
   deliveryGate,
-  type SinkJudge,
+  type SinkRun,
   type TraceConnection,
 } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
@@ -140,16 +140,14 @@ export class RunRefused extends Error {
 
 /** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
 export class TraceRefused extends Error {
-  constructor(message: string) {
+  /** Every reason the run is refused, the first being the message. */
+  readonly messages: string[];
+  constructor(message: string, more: string[] = []) {
     super(message);
     this.name = 'TraceRefused';
+    this.messages = [message, ...more];
   }
 }
-
-/** The project's active judges that genki does not read: not taken in use, or refused. A paused
- * one does not run, so it does not count. */
-const unreadOf = (listed: SinkJudge[], adopted: string[]) =>
-  listed.filter((j) => !adopted.includes(j.id) && j.refused?.reason !== 'paused');
 
 const residencyOf = (definition: Record<string, unknown>): Residency => {
   const residency = (
@@ -582,36 +580,70 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
   };
 
   /**
-   * The adopted judges as the connection's project has them now; any refused one refuses the run,
-   * and so does any other active judge or rule, which Langfuse would run on the run all the same.
+   * The rules of the connection's project as they meet a run of the test set (ADR 0040): the
+   * adopted judges that reach it, and what refuses it. A judge whose filters leave the test set
+   * out is no part of the run; a refused judge that reaches it, one not taken in use, and a rule
+   * that would judge every span or that genki cannot read, refuse it.
    */
-  const snapshotJudges = async (tenant: string, connection: TraceConnection, adopted: string[]) => {
+  const reachOf = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
     const sinks = deps.traceSinks;
-    if (!sinks?.judges) return [];
-    const [listed, others] = await Promise.all([
-      sinks.judges(tenant, connection),
-      sinks.otherRules?.(tenant, connection) ?? [],
-    ]).catch((error: unknown) => {
+    if (!sinks?.forRun) return undefined;
+    const found = await sinks.forRun(tenant, connection, run);
+    const reaching = found.judges.filter((j) => j.refused?.reason !== 'paused');
+    return {
+      ...found,
+      used: found.judges.filter((j) => adopted.includes(j.id)),
+      notInUse: reaching.filter((j) => !adopted.includes(j.id) && !j.refused),
+      refused: reaching.filter((j) => !adopted.includes(j.id) && j.refused),
+      unreadable: [
+        ...reaching.filter((j) => !adopted.includes(j.id) && j.refused).map((j) => j.name),
+        ...found.refusing.map((r) => r.name),
+      ],
+      gone: adopted.filter(
+        (id) => !found.judges.some((j) => j.id === id) && !found.elsewhere.some((j) => j.id === id),
+      ),
+    };
+  };
+
+  /** The adopted judges that reach the run, as the project has them now; throws when it is refused. */
+  const snapshotJudges = async (
+    tenant: string,
+    connection: TraceConnection,
+    adopted: string[],
+    run: SinkRun,
+  ) => {
+    const found = await reachOf(tenant, connection, adopted, run).catch((error: unknown) => {
       throw new TraceRefused(
         `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
       );
     });
-    const judges = adopted.map((id): SinkJudge => {
-      const judge = listed.find((j) => j.id === id);
-      if (!judge)
-        throw new TraceRefused(
-          `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
-        );
-      // The refusal names the judge's rule, and reads in the person's language.
-      if (judge.refused) throw new TraceRefused(judge.refused.message);
-      return judge;
-    });
-    const unread = [...unreadOf(listed, adopted).map((j) => j.name), ...others];
-    if (unread.length > 0)
-      throw new TraceRefused(
-        `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
-      );
-    return judges;
+    if (!found) return [];
+    // Each refusal names its judge or rule, and reads in the person's language on its own.
+    const unread = [...found.notInUse, ...found.refused].map((j) => j.name);
+    const messages = [
+      ...found.used.flatMap((j) => (j.refused ? [j.refused.message] : [])),
+      ...(unread.length > 0
+        ? [
+            `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
+          ]
+        : []),
+      // A judge taken in use that now judges every span is refused for that, not as gone.
+      ...found.refusing.map((r) => r.message),
+      ...found.gone
+        .filter((id) => !found.refusing.some((r) => id.endsWith(`/${r.name}`)))
+        .map(
+          (id) =>
+            `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
+        ),
+    ];
+    const [first, ...more] = messages;
+    if (first) throw new TraceRefused(first, more);
+    return found.used;
   };
 
   /** The sink judges' reasons, kept only on each case's task for as long as its retention keeps them. */
@@ -646,38 +678,44 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     return primary ? choice.residencyOf(primary) : 'global';
   };
 
-  /** Where a run of the subject would be sent and which sink judges would score it, before it starts. */
-  const sendingOf = async (tenant: string, service: string, subject: Subject) => {
+  /**
+   * Where a run of the subject on the test set would be sent and which sink judges would score
+   * it, before it starts, with the judges of other test sets apart.
+   */
+  const sendingOf = async (tenant: string, service: string, subject: Subject, set: TestSet) => {
     const covering = await connectionsCovering(deps.configEntries, tenant, service);
     const sink = covering[0];
     if (!sink) return { judges: [] };
     const adopted = await adoptedJudges(tenant, sink.id);
     const residency = runResidency(subject.definition);
-    const unread = async () => {
-      const sinks = deps.traceSinks;
-      if (!sinks?.judges) return undefined;
-      // Judges that cannot be read refuse the run when it starts: say so before.
-      const read = await Promise.all([
-        sinks.judges(tenant, sink),
-        sinks.otherRules?.(tenant, sink) ?? [],
-      ]).catch((error: unknown) => ({ error: messageOf(error) }));
+    const dataset = await datasets.recorded(tenant, sink, service, set.metadata.id);
+    const run: SinkRun = {
+      testSet: set.metadata.id,
+      version: set.metadata.version,
+      ...(dataset ? { dataset: dataset.id } : {}),
+    };
+    // Judges that cannot be read refuse the run when it starts: say so before.
+    const read = await reachOf(tenant, sink, adopted, run).catch((error: unknown) => ({
+      error: messageOf(error),
+    }));
+    const unread = () => {
+      if (!read) return undefined;
       if ('error' in read)
         return {
           reason: 'judges-unreadable' as const,
           connection: sink.id,
           message: read.error,
         };
-      const [listed, others] = read;
-      const found = unreadOf(listed, adopted);
-      return found.length + others.length > 0
+      return read.notInUse.length + read.unreadable.length > 0
         ? {
             reason: 'judges-differ' as const,
             connection: sink.id,
-            notInUse: found.filter((j) => !j.refused).map((j) => j.name),
-            unreadable: [...found.filter((j) => j.refused).map((j) => j.name), ...others],
+            notInUse: read.notInUse.map((j) => j.name),
+            unreadable: read.unreadable,
           }
         : undefined;
     };
+    const reached = read && !('error' in read) ? read : undefined;
     const refused =
       covering.length > 1
         ? { reason: 'covered-twice' as const, connections: covering.map((c) => c.id) }
@@ -685,10 +723,18 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           ? { reason: 'residency' as const, service: residency, connection: sink.residency }
           : adopted.length > 0 && !sink.content
             ? { reason: 'no-content' as const, connection: sink.id }
-            : await unread();
+            : unread();
+    const named = (id: string) => ({ id, name: id.slice(id.indexOf('/') + 1) });
     return {
       connection: { id: sink.id, residency: sink.residency },
-      judges: adopted.map((id) => ({ id, name: id.slice(id.indexOf('/') + 1) })),
+      // What reaches the test set, whatever else refuses the run.
+      ...(reached
+        ? { notInUse: reached.notInUse.map((j) => j.name), unreadable: reached.unreadable }
+        : {}),
+      judges: reached ? reached.used.map((j) => named(j.id)) : adopted.map(named),
+      ...(reached && reached.elsewhere.length > 0
+        ? { elsewhere: reached.elsewhere.map((j) => named(j.id)) }
+        : {}),
       ...(refused ? { refused } : {}),
     };
   };
@@ -723,7 +769,6 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           `two trace connections cover the service ${service}: ${covering.map((c) => c.id).join(', ')}`,
         );
     }
-    const sinkJudges = sink ? await snapshotJudges(tenant, sink, adopted.get(sink.id) ?? []) : [];
     const prepared = await deps.drafts.prepare({
       principal,
       tenant,
@@ -754,6 +799,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           );
         })
       : undefined;
+    const sinkJudges = sink
+      ? await snapshotJudges(tenant, sink, adopted.get(sink.id) ?? [], {
+          testSet: set.metadata.id,
+          version: set.metadata.version,
+          ...(dataset ? { dataset: dataset.id } : {}),
+        }).catch((error: unknown) => {
+          prepared.release();
+          throw error;
+        })
+      : [];
     const cases = casesIn(set, split);
     const runId = randomUUID();
     // Where the sink shows the run's experiment; a run is no less valid without the link.

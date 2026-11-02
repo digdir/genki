@@ -39,7 +39,7 @@ export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refus
     case 'sampled':
       return t('blocks.judgeRefusedSampled');
     case 'filtered':
-      return t('blocks.judgeRefusedFiltered');
+      return t('blocks.judgeRefusedFiltered', { field: refused.field ?? '' });
     case 'unread-path':
       return t('blocks.judgeRefusedPath', { field: refused.field ?? '' });
     case 'no-content':

@@ -261,7 +261,15 @@ export const qualityArea = {
     delete: 'Delete',
     setsLoading: 'Loading test sets',
     langfuseDataset:
-      'Test runs sent to Langfuse are linked to the dataset in the connection {connection}:',
+      "Test runs sent to Langfuse are linked to the dataset in the connection {connection}. Pick the dataset in a judge's filter in Langfuse to have it judge the test set:",
+    reachingJudges: 'Judges in Langfuse that reach the test set',
+    judgeInUse: '{name} – in use',
+    judgeNotInUse: '{name} – not taken in use under Building blocks',
+    judgeStopsRuns: '{name} – stops sent runs',
+    noReachingJudges: 'No judge in Langfuse reaches the test set.',
+    judgesNotReadForSet:
+      "The judges in the project of the connection {connection} could not be read{status}, so genki can't tell which reach the test set.",
+    judgesElsewhere: 'Judges for other test sets ({count})',
     newSetReason: 'New test set for {service}',
     setCreated: 'The test set {name} has been created.',
     noSets: 'The service has no test set yet',

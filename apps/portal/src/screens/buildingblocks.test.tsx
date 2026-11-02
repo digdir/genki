@@ -1220,6 +1220,27 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     expectAccessible();
   });
 
+  it('says in Byggeklosser which filter genki cannot read', async () => {
+    const message = `${rule} has a filter on level that genki cannot read`;
+    const filtered = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'filtered', field: 'level', message },
+      },
+    });
+
+    await open(detailOf(filtered), { items: [filtered] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Dommeren har et filter på level, som genki ikke kan lese før kjøringen. Fjern det filteret i Langfuse, eller hold testkjøringene utenfor med et annet filter.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('shows that a Langfuse judge on a connection without answer text cannot be taken in use', async () => {
     const message = `${rule} has nothing to judge: the connection kudos gets no answer text`;
     const silent = judgeBlock({

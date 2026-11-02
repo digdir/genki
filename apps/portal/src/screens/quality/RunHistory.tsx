@@ -494,9 +494,9 @@ export const RunHistory = ({
   const [sending] = useAsync(
     (signal) =>
       confirming && sink
-        ? api.quality.sending(tenant, serviceId, version, signal).catch(() => undefined)
+        ? api.quality.sending(tenant, serviceId, version, testSet.id, signal).catch(() => undefined)
         : Promise.resolve(undefined),
-    [api, tenant, serviceId, version, confirming, sink?.id],
+    [api, tenant, serviceId, version, testSet.id, confirming, sink?.id],
   );
   const plan = sending.status === 'ready' ? sending.data : undefined;
   const judgeNames = (plan?.judges ?? []).map((j) => j.name).join(', ');
