@@ -12,6 +12,7 @@ export const problems = defineNamespace({
   notAllowedForTenant: 'Ikke tillatt for denne virksomheten',
   forbiddenEn: 'Ingen tilgang',
   conflict: 'Konflikt',
+  badGateway: 'Feil fra tjenesten bak',
   changedElsewhere: 'Endret et annet sted',
   notAccessDataset: 'Du har ikke tilgang til datasettet',
   needsRight: 'Du trenger rettigheten «{right}»',

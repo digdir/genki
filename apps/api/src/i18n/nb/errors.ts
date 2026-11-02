@@ -263,6 +263,8 @@ export const blockErrors = defineNamespace({
   sharedWith: 'må være "*", organisasjonsnumre eller null',
   onlyOperatorsLabel: 'bare operatører merker resultater fra dommere',
   onlyOperatorsDecideLabels: 'bare operatører avgjør hvilke etiketter som teller',
+  sinkLabelsOff: 'koblingen {id} henter ikke etiketter; slå på etiketter først',
+  labelsNotAList: 'labels må være en liste over etikettene som ble vist, med id og revisjon',
   noPendingLabels: 'det finnes ingen slik bunke med ventende etiketter',
   tenantAndConnectionRequired: 'virksomhet og kobling må oppgis',
   onlyOperatorsEndSessions: 'bare operatører avslutter støtteøkter',

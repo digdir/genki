@@ -263,6 +263,8 @@ export const blockErrors = {
   sharedWith: 'must be "*", org numbers or null',
   onlyOperatorsLabel: 'only operators label judge results',
   onlyOperatorsDecideLabels: 'only operators decide which labels count',
+  sinkLabelsOff: 'the connection {id} does not bring labels back; switch labels on first',
+  labelsNotAList: 'labels must be a list of the labels shown, by id and revision',
   noPendingLabels: 'no such batch of pending labels',
   tenantAndConnectionRequired: 'tenant and connection are required',
   onlyOperatorsEndSessions: 'only operators end support sessions',

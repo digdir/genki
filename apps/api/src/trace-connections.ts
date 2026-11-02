@@ -447,8 +447,11 @@ export interface SinkAnnotation {
   /** The judge it is for, by the judge's name and data type. */
   name: string;
   dataType: string;
-  /** good or bad for a boolean, or a number split at 0.5; a category as it came. */
-  label: string;
+  /**
+   * good or bad for a boolean, or a number split at 0.5; a category as it came. Absent when it is
+   * no label: it still shows the annotation is there.
+   */
+  label?: string;
   /** A number label's range, to split the judge's own number when it came without one. */
   bounds?: { min: number; max: number };
   /** The sink's own id for the person, never stored as it is. */

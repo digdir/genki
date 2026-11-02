@@ -95,8 +95,13 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
     for (const stored of await deps.runs.list({ tenant })) {
       if (stored.run.tested?.sink !== connection) continue;
       for (const result of stored.run.results)
-        // Sent: a sink judge could read it. Holdout cases and ones none can read never go out.
-        if (result.scores.some((s) => isSinkJudge(s.evaluator) && s.applicable))
+        // Sent: a sink judge could read it, or it went out with an empty answer. Holdout cases and
+        // ones none can read never go out.
+        if (
+          result.scores.some(
+            (s) => isSinkJudge(s.evaluator) && (s.applicable || s.details?.sent === true),
+          )
+        )
           traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result });
     }
     return traces;
@@ -147,9 +152,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       const traces = await sentThrough(tenant, id);
       const known = await deps.store.list(tenant, { connection: id });
       const key = await deps.store.pseudonymKey(tenant);
-      const pseudonymOf = (author: string | undefined) =>
+      // A label without an author is someone the platform cannot tell apart: one pseudonym each.
+      const pseudonymOf = (author: string | undefined, annotation: string) =>
         `pseudonym:${createHmac('sha256', key)
-          .update(author ?? '')
+          .update(author ?? `annotation:${annotation}`)
           .digest('hex')
           .slice(0, 12)}`;
       const at = now();
@@ -157,6 +163,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       const seen = new Set<string>();
       let pending = 0;
       for (const a of annotations) {
+        const label = a.label;
+        if (label === undefined) continue;
+        // Still in the sink: a label whose case is not found here is not taken for deleted.
+        seen.add(a.id);
         const sent = traces.get(a.trace);
         if (!sent) continue;
         // The judge of that name on this connection, with the label's type.
@@ -167,7 +177,6 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
             s.details?.dataType === a.dataType,
         );
         if (!score) continue;
-        seen.add(a.id);
         // Another revision still waiting is replaced; an accepted one counts until this is accepted.
         for (const older of known)
           if (older.id === a.id && older.revision !== a.revision && older.state === 'pending')
@@ -186,9 +195,9 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
           run: sent.run.id,
           case: sent.result.case,
           repeat: sent.result.repeat,
-          humanLabel: a.label,
+          humanLabel: label,
           ...(judgeLabel ? { judgeLabel } : {}),
-          labeller: pseudonymOf(a.author),
+          labeller: pseudonymOf(a.author, a.id),
           state: 'pending',
           fetchedAt: at,
         });

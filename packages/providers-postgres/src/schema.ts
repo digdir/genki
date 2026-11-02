@@ -596,6 +596,8 @@ const migrations: string[] = [
      tenant text primary key,
      key text not null
    )`,
+  `create or replace trigger sink_label_keys_append_only before update or delete on sink_label_keys
+     for each row execute function refuse_change()`,
   ...tenantIsolation('sink_label_keys'),
   `create or replace function pending_trace_deletes(p_limit integer) returns setof trace_deliveries
      language plpgsql stable security definer set search_path = public

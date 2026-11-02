@@ -278,7 +278,7 @@ const jsonSchemaOf = (schema: unknown) => {
 
 const problem = (
   c: Context,
-  status: 400 | 401 | 403 | 404 | 409,
+  status: 400 | 401 | 403 | 404 | 409 | 502,
   title: string,
   errors: unknown[] = [],
 ) =>
@@ -527,7 +527,10 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
         return problem(c, error.missing ? 404 : 409, error.missing ? 'Not found' : 'Conflict', [
           { path: 'connection', message: error.message },
         ]);
-      throw error;
+      // Langfuse refused or failed: nothing was changed, and the operator sees what it answered.
+      return problem(c, 502, 'Bad gateway', [
+        { path: 'connection', message: error instanceof Error ? error.message : String(error) },
+      ]);
     }
   });
 
@@ -538,6 +541,13 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
       const body = (await c.req.json().catch(() => undefined)) as
         Record<string, unknown> | undefined;
       if (!body) return problem(c, 400, 'Invalid request', [{ path: 'body', message: 'required' }]);
+      if (body.labels !== undefined && !Array.isArray(body.labels))
+        return problem(c, 400, 'Invalid request', [
+          {
+            path: 'labels',
+            message: 'labels must be a list of the labels shown, by id and revision',
+          },
+        ]);
       return applied(c, who.principal, `platform.judge.label.${decision}`, {
         agency: body.tenant,
         connection: body.connection,

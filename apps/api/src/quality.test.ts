@@ -1081,13 +1081,14 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     span.attributes.find((a) => a.key === key)?.value.stringValue;
   const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
   // Runs once as the first item arrives, as when someone switches a rule on during a run.
-  const hooks: { firstItem?: () => void } = {};
+  const hooks: { firstItem?: () => void; annotationsDown?: boolean } = {};
   const annotations: FakeAnnotation[] = [];
   const configs: FakeScoreConfig[] = [
     { id: 'oppsett-1', name: judgeRule, dataType: 'BOOLEAN' },
     { id: 'oppsett-2', name: judgeRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
     { id: 'oppsett-3', name: 'hjelpsomhet', dataType: 'BOOLEAN' },
     { id: 'oppsett-4', name: numericRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
+    { id: 'oppsett-5', name: numericRule, dataType: 'NUMERIC' },
   ];
   /** A person's annotation on a case's trace, as Langfuse's UI writes it with a score config. */
   const annotate = (
@@ -1166,7 +1167,9 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       });
     // What people annotate in Langfuse's UI, apart from what the judges score.
     if (url.pathname === '/api/public/v3/scores' && url.searchParams.get('source') === 'ANNOTATION')
-      return ok({ data: annotations, meta: {} });
+      return hooks.annotationsDown
+        ? { status: 404, json: {} }
+        : ok({ data: annotations, meta: {} });
     if (url.pathname === '/api/public/v3/scores')
       return ok({ data: scores.get(url.searchParams.get('traceId') ?? '') ?? [], meta: {} });
     const configId = /score-configs\/(.+)$/.exec(url.pathname)?.[1];
@@ -1852,6 +1855,8 @@ describe('Langfuse judges on a run', () => {
     langfuse.annotate(o1, { value: false });
     // 1 of 0 to 4 is bad; the judge's 3, which came without a range, is split with the same one.
     langfuse.annotate(o1, { configId: 'oppsett-4', value: 1 });
+    // A number whose config has no range cannot be split into good and bad: no label.
+    langfuse.annotate(o1, { configId: 'oppsett-5', value: 2 });
     // The judge's name with another type, and another name: not the judge's labels.
     langfuse.annotate(o1, { configId: 'oppsett-2', value: 3 });
     langfuse.annotate(o1, { configId: 'oppsett-3', value: true });
@@ -2023,6 +2028,12 @@ describe('Langfuse judges on a run', () => {
     expect(await agreement()).toMatchObject({ n: 1, observed: 0 });
     await decide('accept', 'Rettingen er kontrollert');
     expect(await agreement()).toMatchObject({ n: 1, observed: 1 });
+
+    // A Langfuse that cannot be read changes nothing: no accepted label is taken for deleted.
+    langfuse.hooks.annotationsDown = true;
+    expect((await fetchLabels()).status).toBe(502);
+    expect(await agreement()).toMatchObject({ n: 1, observed: 1 });
+    langfuse.hooks.annotationsDown = false;
 
     langfuse.annotations.splice(0);
     await fetchLabels();

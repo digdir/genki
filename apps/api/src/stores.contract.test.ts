@@ -730,12 +730,16 @@ describe('postgres admin stores at rest', () => {
   it('refuses to change or delete audit entries, feedback, labels and default versions', async () => {
     const raw = postgresBackend.raw as NonNullable<Backend['raw']>;
     await postgresBackend.stores().sinkLabels.save(ORG_A, [sinkLabelOf('merknad-1')]);
+    await postgresBackend.stores().sinkLabels.pseudonymKey(ORG_A);
     for (const sql of [
       `update admin_audit set reason = 'endret'`,
       `delete from admin_audit`,
       `delete from eval_feedback`,
       `update judge_labels set judge = 'x'`,
       `update sink_labels set judge = 'x'`,
+      `delete from sink_labels`,
+      `update sink_label_keys set key = 'x'`,
+      `delete from sink_label_keys`,
       `delete from setting_default_versions`,
       `delete from eval_test_sets`,
       `delete from config_entries`,

@@ -2070,6 +2070,9 @@ const qualityRoutes: RouteConfig[] = [
       400: problem('Tenant or connection missing'),
       404: problem('No such tenant or connection'),
       409: problem('The connection does not bring labels back'),
+      502: problem(
+        'Langfuse refused or failed; nothing changed, and the error says what it answered',
+      ),
       ...operatorOnly,
     },
   }),
@@ -2103,7 +2106,7 @@ const qualityRoutes: RouteConfig[] = [
             : z.object({ rejected: z.number().int() }),
           decision === 'accept' ? 'Accepted' : 'Rejected',
         ),
-        400: problem('Missing change reason'),
+        400: problem('Missing change reason, or labels that are not a list'),
         404: problem('No pending labels for that connection and judge'),
         ...operatorOnly,
       },
