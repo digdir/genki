@@ -14,7 +14,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      static: ${{ steps.scope.outputs.static }}
+      tests: ${{ steps.scope.outputs.tests }}
+      size: ${{ steps.scope.outputs.size }}
+      image: ${{ steps.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+      - id: scope
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+        run: node scripts/ci-scope.ts $BASE
+
   static:
+    needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -26,11 +45,16 @@ jobs:
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
       - run: npm run format:check
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run boundaries
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run lint
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run typecheck
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run boundaries
 
   test:
+    needs: scope
+    if: needs.scope.outputs.tests != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -39,17 +63,23 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: ${{ needs.scope.outputs.tests == 'changed' && 0 || 1 }}
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
-      - run: npx vitest run --shard=${{ matrix.shard }}/4
+      - run: npx vitest run --shard=${{ matrix.shard }}/4 --passWithNoTests ${CHANGED:+--changed "$CHANGED"}
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'false'
+          DEBUG_PRINT_LIMIT: '200000'
+          CHANGED: ${{ needs.scope.outputs.tests == 'changed' && github.event.pull_request.base.sha || '' }}
 
   size:
+    needs: scope
+    if: needs.scope.outputs.size == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -63,12 +93,21 @@ jobs:
       - run: npm run size
 
   check:
-    needs: [static, test, size]
+    needs: [scope, static, test, size]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: test "${{ needs.static.result }}" = success && test "${{ needs.test.result }}" = success && test "${{ needs.size.result }}" = success
+      - env:
+          SCOPE: ${{ needs.scope.result }}
+          STATIC: ${{ needs.static.result }}
+          TEST: ${{ needs.test.result }}
+          TESTS_IN_SCOPE: ${{ needs.scope.outputs.tests != 'none' }}
+          SIZE: ${{ needs.size.result }}
+          SIZE_IN_SCOPE: ${{ needs.scope.outputs.size }}
+        run: |
+          passed() { [ "$1" = success ] || { [ "$1" = skipped ] && [ "$2" = false ]; }; }
+          test "$SCOPE" = success && test "$STATIC" = success && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE"
 
   secrets:
     runs-on: ubuntu-latest
@@ -83,6 +122,8 @@ jobs:
           git /repo --redact --no-banner --exit-code 1
 
   image:
+    needs: scope
+    if: needs.scope.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
