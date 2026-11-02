@@ -37,4 +37,13 @@ describe('booting the worker', () => {
     ]);
     expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, catalog)).toEqual([]);
   });
+
+  it('the worker refuses a MARKER_TIMEOUT_MS that is not a positive number', () => {
+    const env = { DATABASE_URL: 'postgres://db/genai' };
+    expect(workerBootProblems({ ...env, MARKER_TIMEOUT_MS: '600000' })).toEqual([]);
+    for (const value of ['ten minutes', '0', '-5'])
+      expect(workerBootProblems({ ...env, MARKER_TIMEOUT_MS: value })).toEqual([
+        expect.stringContaining('MARKER_TIMEOUT_MS'),
+      ]);
+  });
 });

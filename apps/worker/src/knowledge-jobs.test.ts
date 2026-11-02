@@ -39,7 +39,11 @@ import {
   openWorkerJobs,
   type WorkerJobs,
 } from './knowledge-jobs.js';
-import { listingFailedMessage, reconcileKnowledgeRuns } from './reconciler.js';
+import {
+  listingFailedMessage,
+  nothingToSendBackMessage,
+  reconcileKnowledgeRuns,
+} from './reconciler.js';
 
 const ORG = '991825827';
 const OTHER_ORG = '889640782';
@@ -86,10 +90,9 @@ beforeAll(async () => {
     open: openJobQueue,
     runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
   });
+  // Only retries change here: the API's right to send comes from openWorkerJobs alone.
   await installJobQueue(worker.pool, withoutRetries(knowledgePlatformQueues), {
     worker: workerRole,
-    readers: [runtimeRole],
-    senders: [runtimeRole],
   });
   await installJobQueue(knowledgeOwner(), withoutRetries(knowledgeServerQueues(markerTimeoutMs)), {
     worker: knowledgeWriterRole,
@@ -374,7 +377,7 @@ describe('the worker and the knowledge queues', () => {
     expect(await knowledgeStates(gone)).toEqual(['cancelled']);
   });
 
-  it('cancelling a run cancels its queued jobs and leaves a conversion another run waits on', async () => {
+  it('cancelling a run cancels its queued jobs', async () => {
     const at = pipeline();
     const started = await start(at);
     await sendIndex(started.id, 'r-1');
@@ -421,6 +424,7 @@ describe('the worker and the knowledge queues', () => {
     await reconcile();
     const sent = await apiRuns.redrive({
       dataset: failed.dataset,
+      pipeline: failed.pipeline,
       execution: failed.id,
       by: 'employee:test:kari',
       reason: 'the embedding host is back',
@@ -447,6 +451,7 @@ describe('the worker and the knowledge queues', () => {
     expect(await run(started.id)).toMatchObject({ status: 'failed' });
     const sent = await apiRuns.redrive({
       dataset: started.dataset,
+      pipeline: started.pipeline,
       execution: started.id,
       by: 'employee:test:kari',
       reason: 'Kudos answers again',
@@ -506,6 +511,7 @@ describe('the worker and the knowledge queues', () => {
     ]);
     const sent = await apiRuns.redrive({
       dataset: started.dataset,
+      pipeline: started.pipeline,
       execution: started.id,
       by: 'employee:test:kari',
       reason: 'Kudos answers again',
@@ -561,6 +567,61 @@ describe('the worker and the knowledge queues', () => {
     await stop();
     expect(actedFor).toEqual([ORG]);
   }, 90_000);
+  it("the API sends a run's ingest job to the platform queues the worker installed", async () => {
+    const { rows } = await api.pool.query<{ insert: boolean }>(
+      `select has_table_privilege('${runtimeRole}', 'pgboss.job', 'insert') as insert`,
+    );
+    expect(rows[0]?.insert).toBe(true);
+    const started = await start(pipeline());
+    expect(await platformStates(started.id)).toEqual(['created']);
+  });
+
+  it("a queued run stays queued while its pipeline's last ingest job still runs", async () => {
+    const at = pipeline();
+    const refused = await start(at, new Date(Date.now() - 25 * hour).toISOString());
+    const waiting = await start(at);
+    const stop = await work(jobs.platform, knowledgeIngestQueue, async () => undefined, true);
+    await expect.poll(() => platformStates(refused.id), { timeout: 20_000 }).toEqual(['completed']);
+    await stop();
+    expect(await run(refused.id)).toMatchObject({ status: 'failed' });
+    expect((await run(waiting.id))?.status).toMatch(/queued|running/);
+    if ((await run(waiting.id))?.status === 'running')
+      expect(await platformStates(waiting.id)).toEqual(['created']);
+    await reconcile({ lockdown: true });
+    expect(await run(waiting.id)).toMatchObject({ status: 'running' });
+    expect(await platformStates(waiting.id)).toEqual(['created']);
+  }, 90_000);
+
+  it('a send-back with no dead letters ends the run as failed and says to start it again', async () => {
+    const at = pipeline();
+    const id = await insertRun(at, { status: 'failed', admittedAt: new Date().toISOString() });
+    const sent = await apiRuns.redrive({
+      dataset: at.dataset,
+      pipeline: at.pipeline,
+      execution: id,
+      by: 'employee:test:kari',
+      reason: 'try again',
+      at: new Date().toISOString(),
+    });
+    expect(sent.ok).toBe(true);
+    await reconcile();
+    expect(await run(id)).toMatchObject({ status: 'failed', error: nothingToSendBackMessage });
+  });
+
+  it('sending back refuses a run of another pipeline', async () => {
+    const at = pipeline();
+    const id = await insertRun(at, { status: 'failed', admittedAt: new Date().toISOString() });
+    const sent = await apiRuns.redrive({
+      dataset: at.dataset,
+      pipeline: 'another',
+      execution: id,
+      by: 'employee:test:kari',
+      reason: 'try again',
+      at: new Date().toISOString(),
+    });
+    expect(sent.ok).toBe(false);
+    expect(await run(id)).toMatchObject({ status: 'failed' });
+  });
 });
 
 const jobIds = async (id: string) =>

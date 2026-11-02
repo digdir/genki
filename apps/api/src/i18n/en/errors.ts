@@ -189,6 +189,13 @@ export const knowledgeErrors = {
   enrichmentWriteFailed: 'The questions could not be stored',
   enrichmentModelRefused: 'The model cannot be used',
   enrichmentUncounted: 'Model use cannot be counted, so no questions are proposed',
+  jobRunQueuedExists:
+    'a run of {dataset}/{pipeline} already waits for the open one; wait for it or cancel it',
+  jobRunNotSentBack: 'only an ended run that runs as jobs can be sent back',
+  jobRunOpen:
+    '{dataset}/{pipeline} has an open run; wait for it or cancel it before sending this one back',
+  ingestStillEnding:
+    'the last ingest job of {dataset}/{pipeline} is still ending; start the run again in a minute',
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',

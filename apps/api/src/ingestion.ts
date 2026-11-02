@@ -341,6 +341,7 @@ export interface JobRunStore {
   }): Promise<Execution | undefined>;
   redrive(input: {
     dataset: string;
+    pipeline: string;
     execution: string;
     by: string;
     reason: string;
@@ -779,6 +780,7 @@ export class IngestionService {
   /** Reopens a run that runs as jobs and has the worker send its dead letters back (ADR 0042). */
   async redrive(input: {
     dataset: string;
+    pipeline: string;
     execution: string;
     by: string;
     reason: string;
@@ -801,6 +803,7 @@ export class IngestionService {
       };
     const sent = await jobs.runs.redrive({
       dataset: input.dataset,
+      pipeline: input.pipeline,
       execution: input.execution,
       by: input.by,
       reason: input.reason,

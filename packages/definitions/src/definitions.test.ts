@@ -1226,6 +1226,12 @@ describe('platform settings', () => {
     ]);
   });
 
+  it('the night window setting refuses a window that starts when it ends', () => {
+    const schema = platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.schema;
+    expect(schema?.safeParse('22:00-04:00').success).toBe(true);
+    expect(schema?.safeParse('01:00-01:00').success).toBe(false);
+  });
+
   it('lets a tenant change the new settings within their ranges, and nothing below the tenant', () => {
     const resolved = resolveSettings(platformSettings, {
       values: {

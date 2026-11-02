@@ -122,6 +122,7 @@ export {
 } from './executions.js';
 export {
   ingestSender,
+  ingestStillEndingMessage,
   PostgresJobRunRecords,
   PostgresJobRuns,
   queuedRunExistsMessage,

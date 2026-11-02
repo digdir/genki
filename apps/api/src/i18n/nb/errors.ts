@@ -188,6 +188,13 @@ export const knowledgeErrors = defineNamespace({
   enrichmentWriteFailed: 'Spørsmålene kunne ikke lagres',
   enrichmentModelRefused: 'Modellen kan ikke brukes',
   enrichmentUncounted: 'Bruken av modellen kan ikke telles, så det blir ikke foreslått spørsmål',
+  jobRunQueuedExists:
+    'en kjøring av {dataset}/{pipeline} venter allerede på den åpne; vent på den eller avbryt den',
+  jobRunNotSentBack: 'bare en avsluttet kjøring som går som jobber, kan sendes tilbake',
+  jobRunOpen:
+    '{dataset}/{pipeline} har en åpen kjøring; vent på den eller avbryt den før du sender denne tilbake',
+  ingestStillEnding:
+    'den siste innlesingsjobben for {dataset}/{pipeline} avslutter fortsatt; start kjøringen igjen om et minutt',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',

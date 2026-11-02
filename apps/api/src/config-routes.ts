@@ -403,6 +403,7 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to send this run back');
     const sent = await deps.ingestion.redrive({
       dataset,
+      pipeline: String(input.id),
       execution: String(input.execution),
       by: actor(principal),
       reason: String(input.reason ?? ''),

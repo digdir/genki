@@ -388,10 +388,11 @@ export const openJobQueue = async (
   queues: QueueDefinition[],
   options: PgBossJobQueueOptions & Omit<InstallOptions, 'schema'>,
 ) => {
-  const { worker, readers, ...start } = options;
+  const { worker, readers, senders, ...start } = options;
   await installJobQueue(pools.owner, queues, {
     worker,
     ...(readers === undefined ? {} : { readers }),
+    ...(senders === undefined ? {} : { senders }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
   });
   return PgBossJobQueue.start(pools.runtime, start);

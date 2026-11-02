@@ -34,8 +34,14 @@ export const queuedRunExistsMessage = (dataset: string, pipeline: string) =>
 
 export const sentBackMessage = 'only an ended run that runs as jobs can be sent back';
 
+export const ingestStillEndingMessage = (dataset: string, pipeline: string) =>
+  `the last ingest job of ${dataset}/${pipeline} is still ending; start the run again in a minute`;
+
 const openRunMessage = (dataset: string, pipeline: string) =>
   `${dataset}/${pipeline} has an open run; wait for it or cancel it before sending this one back`;
+
+/** pg-boss answers a send with null when the queue's key is taken: `knowledge.ingest` per pipeline. */
+class IngestKeyTaken extends Error {}
 
 const uniqueViolation = (error: unknown) =>
   typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505';
@@ -98,10 +104,17 @@ export class PostgresJobRuns {
           ],
         );
         const run = toExecution(rows[0] as Row);
-        if (status === 'running') await this.sender.send(run, client);
+        if (status === 'running' && (await this.sender.send(run, client)) === null)
+          throw new IngestKeyTaken();
         return { ok: true as const, value: run };
       });
     } catch (error) {
+      if (error instanceof IngestKeyTaken)
+        return {
+          ok: false,
+          conflict: true,
+          message: ingestStillEndingMessage(input.dataset, input.pipeline),
+        };
       if (!uniqueViolation(error)) throw error;
       return {
         ok: false,
@@ -136,6 +149,7 @@ export class PostgresJobRuns {
   /** Reopens an ended run, admits it from now and asks the worker to send its dead letters back. */
   async redrive(input: {
     dataset: string;
+    pipeline: string;
     execution: string;
     by: string;
     reason: string;
@@ -144,8 +158,9 @@ export class PostgresJobRuns {
     try {
       return await withTenant(this.pool, executionScope(input.dataset), async (client) => {
         const { rows: found } = await client.query<Row>(
-          `select * from ingestion_executions where id = $1 and dataset = $2 for update`,
-          [input.execution, input.dataset],
+          `select * from ingestion_executions
+            where id = $1 and dataset = $2 and pipeline = $3 for update`,
+          [input.execution, input.dataset, input.pipeline],
         );
         const run = found[0];
         if (!run || !run.runs_as_jobs || !['succeeded', 'failed'].includes(run.status))
@@ -169,7 +184,7 @@ export class PostgresJobRuns {
       return {
         ok: false,
         conflict: true,
-        message: openRunMessage(input.dataset, input.execution),
+        message: openRunMessage(input.dataset, input.pipeline),
       };
     }
   }
@@ -241,12 +256,19 @@ export class PostgresJobRunRecords {
     at: string,
     rules: QueuedRunRules,
   ) {
+    await client.query('savepoint start_queued');
     const { rows } = await client.query<Row>(
       'select * from start_queued_job_ingestion_execution($1, $2, $3, $4, $5)',
       [run.dataset, run.pipeline, rules.admittedAfter ?? null, at, rules.expiredError],
     );
     const started = rows[0] && toExecution(rows[0]);
-    if (started) await this.sender.send(started, client);
+    // The pipeline's last ingest job may still be ending (a refused run ends from inside it);
+    // the queued run then stays queued, and the reconciler starts it on a later pass.
+    if (started && (await this.sender.send(started, client)) === null) {
+      await client.query('rollback to savepoint start_queued');
+      return undefined;
+    }
+    await client.query('release savepoint start_queued');
     return started;
   }
 

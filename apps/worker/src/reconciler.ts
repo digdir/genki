@@ -7,11 +7,15 @@ import type {
 } from '@genai/providers-postgres';
 import { queuedRunRules } from './knowledge-jobs.js';
 
+export const nothingToSendBackMessage =
+  'the run had no failed jobs to send back, so nothing was run again; start the run again';
+
 export const listingFailedMessage =
   'listing the source failed after its retries; send the run back once the source answers';
 
 export interface ReconcilerRecords {
   open(): Promise<IngestionExecution[]>;
+  find(id: string): Promise<IngestionExecution | undefined>;
   requests(): Promise<JobRunRequest[]>;
   applied(id: string, at: string): Promise<void>;
   end(
@@ -68,8 +72,20 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
   const result: Reconciled = { sentBack: 0, ended: [], started: [], dropped: 0 };
 
   for (const request of await deps.records.requests()) {
-    for (const server of deps.servers) result.sentBack += await server.redrive(request.run);
+    let sent = 0;
+    for (const server of deps.servers) sent += await server.redrive(request.run);
+    result.sentBack += sent;
     await deps.records.applied(request.id, at);
+    const reopened = sent === 0 ? await deps.records.find(request.run) : undefined;
+    if (reopened?.status === 'running') {
+      const { ended } = await deps.records.end(
+        reopened,
+        { status: 'failed', error: nothingToSendBackMessage },
+        at,
+        rules,
+      );
+      if (ended) result.ended.push(ended);
+    }
   }
 
   // Read the jobs before the runs: a run commits with its first job, so every job seen here has
@@ -85,7 +101,10 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     }
     if (run.cancelRequestedAt)
       for (const server of deps.servers) result.dropped += await server.cancel(run.id);
-    const open = sum(await Promise.all(deps.servers.map((server) => server.open(run.id))));
+    // One server after the other, the platform server first: an ingest job sends its last
+    // document jobs before it completes, so a count taken in this order cannot miss both.
+    let open = 0;
+    for (const server of deps.servers) open += await server.open(run.id);
     if (open > 0) continue;
     const dead: Record<string, number> = {};
     for (const server of deps.servers)

@@ -120,6 +120,9 @@
       "path": "../../packages/port-embedding"
     },
     {
+      "path": "../../packages/providers-pgboss"
+    },
+    {
       "path": "../../packages/providers-pgvector"
     },
     {

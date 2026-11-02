@@ -90,7 +90,7 @@ export const admissionHours = 24;
 export const notAdmittedMessage =
   'the run was not admitted, so its jobs fetch, convert and embed nothing';
 
-export const admissionRanOutMessage = `the run was admitted more than ${admissionHours} hours ago, and in lockdown its jobs then fetch, convert and embed nothing; send it back or start it again`;
+export const admissionRanOutMessage = `the run was admitted more than ${admissionHours} hours ago, and in lockdown its jobs then fetch, convert and embed nothing; start it again`;
 
 export const expiredQueuedRunMessage = `the run waited more than ${admissionHours} hours after it was admitted, and in lockdown it then fails without starting; start it again`;
 

@@ -50,7 +50,10 @@ export const nativeSettings: PlatformSetting[] = [
   {
     ...setting(
       'knowledge.nightWindow',
-      z.string().regex(nightWindowPattern, 'written as 01:00-06:00'),
+      z
+        .string()
+        .regex(nightWindowPattern, 'written as 01:00-06:00')
+        .refine((window) => window.slice(0, 5) !== window.slice(6), 'starts when it ends'),
       defaultNightWindow,
       'knowledge',
       'Hours (Europe/Oslo) in which heavy knowledge work runs: index builds, large fills and VACUUM.',
