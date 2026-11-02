@@ -7,6 +7,7 @@ import {
 } from './failures';
 import { translator } from './i18n';
 import { detectLang } from './language';
+import type { StreamStep } from './procedure';
 import { tableFrom, type ResultTable } from './ResultTable';
 import { withPlausibleYears } from './years';
 import type {
@@ -108,6 +109,7 @@ interface Chunk {
   error?: RunError;
   table?: unknown;
   csv?: string;
+  genai_step?: StreamStep;
 }
 
 const linkable = (url: string | undefined) =>
@@ -391,6 +393,7 @@ export const createWorkspaceApi = ({
       input,
       conversation,
       documents,
+      onStep,
     ): Promise<ChatReply> => {
       let response: Response;
       try {
@@ -402,6 +405,7 @@ export const createWorkspaceApi = ({
             messages: history,
             stream: true,
             genai_stream: 'live',
+            ...(onStep ? { genai_steps: true } : {}),
             ...(input ? { input } : {}),
             ...(documents?.length
               ? {
@@ -454,6 +458,7 @@ export const createWorkspaceApi = ({
           text = '';
           onDelta(text);
         }
+        if (chunk.genai_step) onStep?.(chunk.genai_step);
         if (chunk.no_answer) noAnswer = true;
         if (chunk.error) runError = chunk.error;
         if (chunk.table) {

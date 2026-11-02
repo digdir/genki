@@ -1,0 +1,62 @@
+.uib-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.uib-procedure-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.uib-procedure-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-size-2);
+}
+
+.uib-procedure-steps {
+  margin: 0;
+}
+
+.uib-procedure-steps > li[data-status='waiting'] .uib-step-title {
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.uib-step-title {
+  font-weight: 500;
+}
+
+.uib-procedure-steps > li[data-status='waiting'] .uib-step-title,
+.uib-step-status {
+  font-weight: 400;
+}
+
+.uib-step-status,
+.uib-step-description,
+.uib-procedure-footer {
+  color: var(--ds-color-neutral-text-subtle);
+  font-size: var(--ds-font-size-2);
+}
+
+.uib-step-description {
+  margin: var(--ds-size-1) 0 0;
+}
+
+.uib-step-documents {
+  margin-top: var(--ds-size-1);
+  font-size: var(--ds-font-size-2);
+}
+
+.uib-step-link {
+  display: inline-block;
+  margin-top: var(--ds-size-1);
+  font-size: var(--ds-font-size-2);
+}
+
+.uib-procedure-footer {
+  margin: var(--ds-size-3) 0 0;
+}
