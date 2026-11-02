@@ -7,7 +7,14 @@ import {
   type JudgePrompt,
 } from './evaluators.js';
 import type { TestCaseCandidate } from './feedback.js';
-import { caseTypes, type CaseType, type Split, type TestCase } from './schema.js';
+import {
+  caseTypes,
+  expectedFor,
+  type CaseExpectation,
+  type CaseType,
+  type Split,
+  type TestCase,
+} from './schema.js';
 
 export const caseSplits = ['locked', 'open'] as const;
 export type CaseSplit = (typeof caseSplits)[number];
@@ -31,10 +38,17 @@ export const caseTypeOf = (c: TestCase): CaseType =>
 const textOf = (input: TestCase['input']) =>
   typeof input === 'string' ? input : JSON.stringify(input);
 
+/** What a criteria judge reads: the case's criteria, or its reference answer when it has none. */
+export const criteriaOf = (c: TestCase) =>
+  c.expected.criteria?.criteria ?? c.expected.referenceAnswer;
+
 export const caseView = (c: TestCase): CaseView => ({
   id: c.id,
   input: textOf(c.input),
-  expected: c.expected.referenceAnswer ?? c.expected.answerPattern ?? '',
+  expected:
+    (caseTypeOf(c) === 'criteria' ? criteriaOf(c) : c.expected.referenceAnswer) ??
+    c.expected.answerPattern ??
+    '',
   type: caseTypeOf(c),
   split: caseSplitOf(c.split),
 });
@@ -42,7 +56,8 @@ export const caseView = (c: TestCase): CaseView => ({
 export interface NewCase {
   id: string;
   input: string;
-  expected?: string;
+  /** A text, read by the case type, or a reference answer and named criteria as they are. */
+  expected?: string | CaseExpectation;
   type?: CaseType;
   split?: CaseSplit;
 }
@@ -60,7 +75,8 @@ export const caseFrom = (input: NewCase) => {
     id: input.id,
     split,
     input: input.input,
-    expected: input.expected ? { referenceAnswer: input.expected } : {},
+    expected:
+      typeof input.expected === 'object' ? input.expected : expectedFor(type, input.expected),
     grounding: type === 'must_reject' ? 'refusal-expected' : 'answer-only',
     type,
   };
@@ -138,14 +154,15 @@ export const gradeAnswer = async (
       ? { pass: true, score: 1 }
       : { pass: false, score: 0, reason: 'Svaret avviste ikke forespørselen.' };
   }
-  const expected = caseView(c).expected;
   if (type === 'exact') {
+    const expected = c.expected.referenceAnswer ?? c.expected.answerPattern ?? '';
     const pass = expected !== '' && normalized(answer.text).includes(normalized(expected));
     return pass
       ? { pass, score: 1 }
       : { pass, score: 0, reason: 'Svaret inneholder ikke den forventede teksten.' };
   }
-  if (!expected) return { pass: false, score: null, reason: 'Testtilfellet mangler kriterier.' };
+  const criteria = criteriaOf(c);
+  if (!criteria) return { pass: false, score: null, reason: 'Testtilfellet mangler kriterier.' };
   if (!options.judge)
     return {
       pass: false,
@@ -153,7 +170,7 @@ export const gradeAnswer = async (
       reason: 'Ingen dommermodell fra en annen modellfamilie er tilgjengelig.',
     };
   try {
-    const scores = await rubricJudge(options.judge, criteriaJudgePrompt(expected)).evaluate(
+    const scores = await rubricJudge(options.judge, criteriaJudgePrompt(criteria)).evaluate(
       c,
       observation,
       options.context,

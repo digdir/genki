@@ -3,6 +3,7 @@ import type { Kernel } from '@genai/kernel';
 import { splitFor } from './drafting.js';
 import { EvalError } from './evaluators.js';
 import {
+  expectedFor,
   feedback as feedbackSchema,
   parseTestSet,
   type CaseType,
@@ -325,7 +326,11 @@ const withCase = (
           input: candidate.question,
           expected: {
             sources: candidate.sources,
-            ...(referenceAnswer ? { referenceAnswer } : {}),
+            ...(type
+              ? expectedFor(type, referenceAnswer)
+              : referenceAnswer
+                ? { referenceAnswer }
+                : {}),
           },
           grounding:
             type === 'must_reject'

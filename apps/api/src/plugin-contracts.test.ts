@@ -224,6 +224,36 @@ describe('an HTTP judge', () => {
     expect(seen).toEqual([signal, signal]);
   });
 
+  it("sends a case's reference answer and named criteria to the judge, and leaves out what the case lacks", async () => {
+    const asked: Record<string, unknown>[] = [];
+    const evaluator = httpJudge(
+      plugin,
+      answering((body) => {
+        asked.push(body);
+        return { status: 200, body: { scores: [{ metric: 'korrekthet', value: 1 }] } };
+      }),
+    );
+    const criteria = { criteria: 'Nevner fristen', supporting_quotes: 'Fristen er 1. mai' };
+
+    await evaluator.evaluate(
+      {
+        ...testCase,
+        expected: { sources: [], referenceAnswer: 'Fristen er 1. mai.', criteria },
+      } as never,
+      observation as never,
+      ctx,
+    );
+    await evaluator.evaluate(testCase as never, observation as never, ctx);
+
+    expect(asked[0]?.case).toEqual({
+      id: 'frist',
+      input: 'Hva er fristen?',
+      referenceAnswer: 'Fristen er 1. mai.',
+      criteria,
+    });
+    expect(asked[1]?.case).toEqual({ id: 'frist', input: 'Hva er fristen?' });
+  });
+
   it('asks for at most 50 tickets per collect call', async () => {
     const sizes: number[] = [];
     const evaluator = httpJudge(plugin, async (body) => {

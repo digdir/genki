@@ -75,6 +75,8 @@ export const config = defineNamespace({
   caseIdLabel: 'Id for tilfellet',
   caseInputLabel: 'Spørsmål eller tekst',
   caseExpectedLabel: 'Forventet svar',
+  caseCriteriaLabel: 'Kriterier',
+  caseCriteriaMissing: 'Skriv kriteriene svaret skal oppfylle.',
   caseSplitLabel: 'Brukes til',
   cancel: 'Avbryt',
   caseSaved: 'Tilfellet {id} er lagret i {set}.',

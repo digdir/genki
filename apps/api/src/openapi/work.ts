@@ -1186,7 +1186,18 @@ const evalRoutes: RouteConfig[] = [
         z.object({
           id: z.string().optional().describe('Lowercase letters, digits and dashes'),
           input: z.string(),
-          expected: z.string().optional().describe('Required unless type is must_reject'),
+          expected: z
+            .union([
+              z.string(),
+              z.object({
+                referenceAnswer: z.string().optional(),
+                criteria: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), z.string()).optional(),
+              }),
+            ])
+            .optional()
+            .describe(
+              'Required unless type is must_reject: a text, read as the criteria of a criteria case and the reference answer otherwise, or a reference answer and named criteria such as criteria and supporting_quotes',
+            ),
           type: z.enum(caseTypes).optional(),
           split: z.enum(caseSplits).optional(),
           reason: z.string().optional(),

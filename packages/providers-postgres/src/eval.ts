@@ -1,5 +1,6 @@
 import {
   labelFile,
+  parseTestSet,
   type CandidateStatus,
   type CandidateStore,
   type EvalRunStore,
@@ -45,7 +46,8 @@ export class PostgresTestSetStore implements TestSetStore {
           : 'select body from eval_test_sets where tenant = $1 and id = $2 and version = $3',
         version === undefined ? [tenant, id] : [tenant, id, version],
       );
-      return found.rows[0]?.body;
+      const body = found.rows[0]?.body;
+      return body && parseTestSet(body);
     });
   }
 
@@ -57,7 +59,7 @@ export class PostgresTestSetStore implements TestSetStore {
          where $2::text is null or service = $2 order by id collate "C"`,
         [tenant, service ?? null],
       );
-      return found.rows.map((r) => r.body);
+      return found.rows.map((r) => parseTestSet(r.body));
     });
   }
 }
