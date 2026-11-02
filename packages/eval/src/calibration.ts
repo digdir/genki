@@ -115,9 +115,13 @@ export interface SinkLabelStore {
   save(tenant: string, labels: SinkLabel[]): Promise<void>;
   /** The tenant's own key for labeller pseudonyms, made on first use and never shown. */
   pseudonymKey(tenant: string): Promise<string>;
+  /** Runs work on one connection's labels alone, across replicas, as fetching and deciding read then save. */
+  exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T>;
 }
 
-const sinkLabelKey = (l: Pick<SinkLabel, 'id' | 'revision'>) => `${l.id}\u0000${l.revision}`;
+/** Labels are kept per connection: two connections to one project see the same annotation ids. */
+const sinkLabelKey = (l: Pick<SinkLabel, 'connection' | 'id' | 'revision'>) =>
+  `${l.connection}\u0000${l.id}\u0000${l.revision}`;
 
 export class InMemorySinkLabelStore implements SinkLabelStore {
   readonly #labels = new Map<string, Map<string, SinkLabel>>();
@@ -143,6 +147,18 @@ export class InMemorySinkLabelStore implements SinkLabelStore {
     const key = this.#keys.get(tenant) ?? randomBytes(32).toString('hex');
     this.#keys.set(tenant, key);
     return key;
+  }
+
+  readonly #queues = new Map<string, Promise<unknown>>();
+
+  async exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T> {
+    const key = `${tenant}\u0000${connection}`;
+    const turn = (this.#queues.get(key) ?? Promise.resolve()).then(work, work);
+    this.#queues.set(
+      key,
+      turn.catch(() => undefined),
+    );
+    return turn;
   }
 }
 

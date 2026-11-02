@@ -587,7 +587,8 @@ const migrations: string[] = [
      judge text not null,
      label jsonb not null
    )`,
-  `create index if not exists sink_labels_latest on sink_labels (tenant, id, revision, seq desc)`,
+  `create index if not exists sink_labels_latest_per_connection
+     on sink_labels (tenant, connection, id, revision, seq desc)`,
   `create or replace trigger sink_labels_append_only before update or delete on sink_labels
      for each row execute function refuse_change()`,
   ...tenantIsolation('sink_labels'),

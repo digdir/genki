@@ -60,6 +60,8 @@ export interface SinkLabelDeps {
 interface SentCase {
   run: EvalRun;
   result: EvalRun['results'][number];
+  /** Each sink judge's data type in the run, for a score that lost it, such as one timed out. */
+  dataTypes: Map<string, string>;
 }
 
 /**
@@ -94,6 +96,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
     const traces = new Map<string, SentCase>();
     for (const stored of await deps.runs.list({ tenant })) {
       if (stored.run.tested?.sink !== connection) continue;
+      const dataTypes = new Map<string, string>();
+      for (const s of stored.run.results.flatMap((r) => r.scores))
+        if (isSinkJudge(s.evaluator) && typeof s.details?.dataType === 'string')
+          dataTypes.set(s.evaluator, s.details.dataType);
       for (const result of stored.run.results)
         // Sent: a sink judge could read it, or it went out with an empty answer. Holdout cases and
         // ones none can read never go out.
@@ -102,7 +108,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
             (s) => isSinkJudge(s.evaluator) && (s.applicable || s.details?.sent === true),
           )
         )
-          traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result });
+          traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result, dataTypes });
     }
     return traces;
   };
@@ -126,6 +132,85 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
     return out;
   };
 
+  /** Reads the connection's annotations and saves what changed; callers hold its lock. */
+  const fetchNow = async (tenant: string, id: string): Promise<{ pending: number }> => {
+    const connection = await deps.connection(tenant, id);
+    if (!connection) throw new SinkLabelsRefused(`no connection ${id}`, true);
+    if (!connection.labels)
+      throw new SinkLabelsRefused(
+        `the connection ${id} does not bring labels back; switch labels on first`,
+      );
+    const annotations = (await deps.sinks.annotations?.(tenant, connection)) ?? [];
+    const traces = await sentThrough(tenant, id);
+    const known = await deps.store.list(tenant, { connection: id });
+    const key = await deps.store.pseudonymKey(tenant);
+    // A label without an author is someone the platform cannot tell apart: one pseudonym each.
+    const pseudonymOf = (author: string | undefined, annotation: string) =>
+      `pseudonym:${createHmac('sha256', key)
+        .update(author ?? `annotation:${annotation}`)
+        .digest('hex')
+        .slice(0, 12)}`;
+    const at = now();
+    const changed: SinkLabel[] = [];
+    const seen = new Set<string>();
+    let pending = 0;
+    for (const a of annotations) {
+      const label = a.label;
+      if (label === undefined) continue;
+      // Still in the sink: a label whose case is not found here is not taken for deleted.
+      seen.add(a.id);
+      const sent = traces.get(a.trace);
+      if (!sent) continue;
+      // The judge of that name on this connection, with the label's type.
+      const score = sent.result.scores.find(
+        (s) =>
+          isSinkJudge(s.evaluator) &&
+          keyOf(tenant, s.evaluator).endsWith(`/${id}/${a.name}`) &&
+          (s.details?.dataType ?? sent.dataTypes.get(s.evaluator)) === a.dataType,
+      );
+      if (!score) continue;
+      // Another revision still waiting is replaced; an accepted one counts until this is accepted.
+      for (const older of known)
+        if (older.id === a.id && older.revision !== a.revision && older.state === 'pending')
+          changed.push({ ...older, state: 'replaced' });
+      // Compared with the label as it stands, not its history: Langfuse keeps updatedAt on an
+      // edit, so editing back to an earlier value gives a revision seen before.
+      const live = (l: SinkLabel) =>
+        l.id === a.id && (l.state === 'pending' || l.state === 'accepted');
+      if (known.some((l) => live(l) && l.revision === a.revision)) continue;
+      // A rejected label stays rejected until it is edited to something else.
+      const counting = known.some((l) => l.id === a.id && l.state === 'accepted');
+      if (
+        !counting &&
+        known.some((l) => l.id === a.id && l.revision === a.revision && l.state === 'rejected')
+      )
+        continue;
+      const judge = keyOf(tenant, score.evaluator);
+      const judgeLabel = verdictOf(score, a.bounds);
+      changed.push({
+        id: a.id,
+        revision: a.revision,
+        connection: id,
+        judge,
+        identity: identityOf(sent.run, judge, score.evaluator),
+        run: sent.run.id,
+        case: sent.result.case,
+        repeat: sent.result.repeat,
+        humanLabel: label,
+        ...(judgeLabel ? { judgeLabel } : {}),
+        labeller: pseudonymOf(a.author, a.id),
+        state: 'pending',
+        fetchedAt: at,
+      });
+      pending += 1;
+    }
+    for (const l of known)
+      if (!seen.has(l.id) && (l.state === 'pending' || l.state === 'accepted'))
+        changed.push({ ...l, state: 'gone' });
+    if (changed.length > 0) await deps.store.save(tenant, changed);
+    return { pending };
+  };
+
   const accepted = async (tenant: string) =>
     (await deps.store.list(tenant)).filter((l) => l.state === 'accepted');
 
@@ -142,72 +227,8 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
      * a run sent becomes pending; one no longer there is gone. Labels on other traces are ignored.
      */
     async fetch(tenant: string, id: string): Promise<{ pending: number }> {
-      const connection = await deps.connection(tenant, id);
-      if (!connection) throw new SinkLabelsRefused(`no connection ${id}`, true);
-      if (!connection.labels)
-        throw new SinkLabelsRefused(
-          `the connection ${id} does not bring labels back; switch labels on first`,
-        );
-      const annotations = (await deps.sinks.annotations?.(tenant, connection)) ?? [];
-      const traces = await sentThrough(tenant, id);
-      const known = await deps.store.list(tenant, { connection: id });
-      const key = await deps.store.pseudonymKey(tenant);
-      // A label without an author is someone the platform cannot tell apart: one pseudonym each.
-      const pseudonymOf = (author: string | undefined, annotation: string) =>
-        `pseudonym:${createHmac('sha256', key)
-          .update(author ?? `annotation:${annotation}`)
-          .digest('hex')
-          .slice(0, 12)}`;
-      const at = now();
-      const changed: SinkLabel[] = [];
-      const seen = new Set<string>();
-      let pending = 0;
-      for (const a of annotations) {
-        const label = a.label;
-        if (label === undefined) continue;
-        // Still in the sink: a label whose case is not found here is not taken for deleted.
-        seen.add(a.id);
-        const sent = traces.get(a.trace);
-        if (!sent) continue;
-        // The judge of that name on this connection, with the label's type.
-        const score = sent.result.scores.find(
-          (s) =>
-            isSinkJudge(s.evaluator) &&
-            keyOf(tenant, s.evaluator).endsWith(`/${id}/${a.name}`) &&
-            s.details?.dataType === a.dataType,
-        );
-        if (!score) continue;
-        // Another revision still waiting is replaced; an accepted one counts until this is accepted.
-        for (const older of known)
-          if (older.id === a.id && older.revision !== a.revision && older.state === 'pending')
-            changed.push({ ...older, state: 'replaced' });
-        // A revision seen before keeps its state, unless it had been replaced and is back.
-        const same = known.find((l) => l.id === a.id && l.revision === a.revision);
-        if (same && same.state !== 'replaced' && same.state !== 'gone') continue;
-        const judge = keyOf(tenant, score.evaluator);
-        const judgeLabel = verdictOf(score, a.bounds);
-        changed.push({
-          id: a.id,
-          revision: a.revision,
-          connection: id,
-          judge,
-          identity: identityOf(sent.run, judge, score.evaluator),
-          run: sent.run.id,
-          case: sent.result.case,
-          repeat: sent.result.repeat,
-          humanLabel: label,
-          ...(judgeLabel ? { judgeLabel } : {}),
-          labeller: pseudonymOf(a.author, a.id),
-          state: 'pending',
-          fetchedAt: at,
-        });
-        pending += 1;
-      }
-      for (const l of known)
-        if (!seen.has(l.id) && (l.state === 'pending' || l.state === 'accepted'))
-          changed.push({ ...l, state: 'gone' });
-      if (changed.length > 0) await deps.store.save(tenant, changed);
-      return { pending };
+      // One fetch or decision per connection at a time, across replicas: each reads then saves.
+      return deps.store.exclusive(tenant, id, () => fetchNow(tenant, id));
     },
 
     async batches(tenant: string): Promise<SinkLabelBatch[]> {
@@ -258,25 +279,27 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       reason: string,
       shown?: { id: string; revision: string }[],
     ): Promise<{ accepted?: number; rejected?: number }> {
-      const labels = await deps.store.list(tenant, { connection, judge });
-      const seen = shown && new Set(shown.map((l) => `${l.id}\u0000${l.revision}`));
-      const pending = labels.filter(
-        (l) => l.state === 'pending' && (!seen || seen.has(`${l.id}\u0000${l.revision}`)),
-      );
-      if (pending.length === 0) return {};
-      const decided = { by, reason, at: now() };
-      const ids = new Set(pending.map((l) => l.id));
-      const changed: SinkLabel[] = pending.map((l) => ({
-        ...l,
-        state: decision === 'accept' ? 'accepted' : 'rejected',
-        decided,
-      }));
-      // An accepted edit replaces the revision that counted before it.
-      if (decision === 'accept')
-        for (const l of labels)
-          if (ids.has(l.id) && l.state === 'accepted') changed.push({ ...l, state: 'replaced' });
-      await deps.store.save(tenant, changed);
-      return decision === 'accept' ? { accepted: pending.length } : { rejected: pending.length };
+      return deps.store.exclusive(tenant, connection, async () => {
+        const labels = await deps.store.list(tenant, { connection, judge });
+        const seen = shown && new Set(shown.map((l) => `${l.id}\u0000${l.revision}`));
+        const pending = labels.filter(
+          (l) => l.state === 'pending' && (!seen || seen.has(`${l.id}\u0000${l.revision}`)),
+        );
+        if (pending.length === 0) return {};
+        const decided = { by, reason, at: now() };
+        const ids = new Set(pending.map((l) => l.id));
+        const changed: SinkLabel[] = pending.map((l) => ({
+          ...l,
+          state: decision === 'accept' ? 'accepted' : 'rejected',
+          decided,
+        }));
+        // An accepted edit replaces the revision that counted before it.
+        if (decision === 'accept')
+          for (const l of labels)
+            if (ids.has(l.id) && l.state === 'accepted') changed.push({ ...l, state: 'replaced' });
+        await deps.store.save(tenant, changed);
+        return decision === 'accept' ? { accepted: pending.length } : { rejected: pending.length };
+      });
     },
 
     /** Each sink judge of the run, by evaluator: its agreement with its accepted labels. */

@@ -301,11 +301,11 @@ export class PostgresSinkLabelStore implements SinkLabelStore {
       (
         await client.query<{ label: SinkLabel }>(
           `select label from (
-             select distinct on (id, revision) label, connection, judge, id, revision
-             from sink_labels where tenant = $1 order by id, revision, seq desc
+             select distinct on (connection, id, revision) label, connection, judge, id, revision
+             from sink_labels where tenant = $1 order by connection, id, revision, seq desc
            ) latest
            where ($2::text is null or connection = $2) and ($3::text is null or judge = $3)
-           order by id, revision`,
+           order by connection, id, revision`,
           [tenant, filter.connection ?? null, filter.judge ?? null],
         )
       ).rows.map((r) => r.label),
@@ -321,6 +321,22 @@ export class PostgresSinkLabelStore implements SinkLabelStore {
           [tenant, label.id, label.revision, label.connection, label.judge, JSON.stringify(label)],
         );
     });
+  }
+
+  /** A transaction-free advisory lock, held on its own connection while the work runs. */
+  async exclusive<T>(tenant: string, connection: string, work: () => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    const key = `sink_labels:${tenant}:${connection}`;
+    try {
+      await client.query('select pg_advisory_lock(hashtext($1))', [key]);
+      try {
+        return await work();
+      } finally {
+        await client.query('select pg_advisory_unlock(hashtext($1))', [key]);
+      }
+    } finally {
+      client.release();
+    }
   }
 
   async pseudonymKey(tenant: string): Promise<string> {

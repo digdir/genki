@@ -2008,6 +2008,14 @@ describe('Langfuse judges on a run', () => {
     expect((await batches())[0]?.labels).toEqual([
       expect.objectContaining({ case: 'o1', humanLabel: 'good' }),
     ]);
+
+    // Accepted, then edited back to the rejected value: that is an edit too, and comes back.
+    await decide('accept', 'Rettingen er kontrollert');
+    annotation.value = false;
+    await fetchLabels();
+    expect((await batches())[0]?.labels).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'bad' }),
+    ]);
   });
 
   it('brings an annotation edited in Langfuse back as pending, and stops counting one deleted there', async () => {

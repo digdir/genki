@@ -537,7 +537,12 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
   it('keeps each state a sink label goes through, lists the latest per tenant, and keeps one pseudonym key per tenant', async () => {
     const { sinkLabels } = backend().stores();
     const other = { connection: 'annen', judge: `langfuse:${ORG_A}/annen/svar_er_kort` };
-    await sinkLabels.save(ORG_A, [sinkLabelOf('m1'), sinkLabelOf('m2', other)]);
+    // The same annotation seen through a second connection to the same project is its own label.
+    await sinkLabels.save(ORG_A, [
+      sinkLabelOf('m1'),
+      sinkLabelOf('m2', other),
+      sinkLabelOf('m1', { ...other, state: 'rejected' }),
+    ]);
     await sinkLabels.save(ORG_A, [
       sinkLabelOf('m1', { state: 'accepted' }),
       sinkLabelOf('m1', { revision: '2026-11-02T11:00:00.000Z', humanLabel: 'bad' }),
@@ -550,7 +555,11 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
       sinkLabelOf('m1', { state: 'accepted' }),
       sinkLabelOf('m1', { revision: '2026-11-02T11:00:00.000Z', humanLabel: 'bad' }),
     ]);
-    expect(await reopened.list(ORG_A, { judge: other.judge })).toEqual([sinkLabelOf('m2', other)]);
+    const byId = (labels: SinkLabel[]) => labels.sort((x, y) => x.id.localeCompare(y.id));
+    expect(byId(await reopened.list(ORG_A, { judge: other.judge }))).toEqual([
+      sinkLabelOf('m1', { ...other, state: 'rejected' }),
+      sinkLabelOf('m2', other),
+    ]);
     expect(await reopened.list(ORG_B)).toEqual([]);
     expect(key).toMatch(/^[0-9a-f]{64}$/);
     expect(await reopened.pseudonymKey(ORG_A)).toBe(key);
