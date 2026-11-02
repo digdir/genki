@@ -9,6 +9,7 @@ import {
   localDatabaseUrl,
   localModelUrl,
   nodeProblem,
+  npmCommand,
   repoRoot,
 } from './setup.ts';
 
@@ -126,5 +127,23 @@ describe('setup node check', () => {
     expect(nodeProblem('22.23.2', '24.21.0')).toMatch(/too old/);
     expect(nodeProblem('24.1.0', '24.21.0')).toMatch(/pins 24.21.0/);
     expect(nodeProblem('24.21.0', '24.21.0')).toBeUndefined();
+  });
+});
+
+describe('setup npm command', () => {
+  it('runs npm through the npm CLI that started it, on Windows and elsewhere', () => {
+    for (const cli of [
+      'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+      '/usr/local/lib/node_modules/npm/bin/npm-cli.js',
+    ])
+      expect(npmCommand(['run', 'dev'], cli)).toEqual({
+        command: process.execPath,
+        args: [cli, 'run', 'dev'],
+      });
+  });
+
+  it('falls back to plain npm outside npm or under another package manager', () => {
+    for (const cli of ['', '/usr/local/lib/node_modules/pnpm/bin/pnpm.cjs', '/x/not-npm-cli.js'])
+      expect(npmCommand(['run', 'dev'], cli)).toEqual({ command: 'npm', args: ['run', 'dev'] });
   });
 });
