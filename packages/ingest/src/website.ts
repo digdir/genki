@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Agent, Dispatcher1Wrapper } from 'undici';
 import { parse as parseYaml } from 'yaml';
+import { z } from 'zod';
 import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
 import { capitalize, javaSplit } from './text.js';
@@ -34,6 +35,69 @@ export const makeRelativeUrl = (baseUrl: string | undefined, url: string) =>
 
 export const makeAbsoluteUrl = (baseUrl: string | undefined, url: string) =>
   baseUrl && !url.startsWith('http') ? `${baseUrl}${url}` : url;
+
+const citationDirectoryError =
+  'Use an HTTPS directory URL ending in /, without credentials, query or fragment';
+
+const httpsDirectory = z.url({ protocol: /^https$/, error: citationDirectoryError }).refine(
+  (value) => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return false;
+    }
+    return (
+      value.endsWith('/') &&
+      url.pathname.endsWith('/') &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      !value.includes('?') &&
+      !value.includes('#')
+    );
+  },
+  { message: citationDirectoryError },
+);
+
+export const websiteCitation = z.strictObject({
+  baseUrl: httpsDirectory.describe('Public citation root; never fetched or added to allowed hosts'),
+  fetchBaseUrl: httpsDirectory.optional().describe('Fetch root; defaults to the sitemap directory'),
+  dropIndexMd: z
+    .boolean()
+    .default(false)
+    .describe('Map index.md to / and other .md pages to trailing-slash URLs'),
+  pageSuffix: z
+    .enum(['/', '.html'])
+    .optional()
+    .describe("With dropIndexMd: what other .md pages map to, '/' (default) or '.html'"),
+});
+
+export type WebsiteCitation = z.infer<typeof websiteCitation>;
+export type ResolvedWebsiteCitation = WebsiteCitation & { fetchBaseUrl: string };
+
+/** Keep the fetch path independent of the public citation path and host. */
+export const websiteFetchPath = (loc: string, fetchBaseUrl: string) => {
+  const url = new URL(loc);
+  const root = new URL(fetchBaseUrl);
+  if (url.origin !== root.origin || !url.pathname.startsWith(root.pathname))
+    throw new Error(`Website URL is outside the citation fetch root: ${loc}`);
+  return url.pathname.slice(root.pathname.length);
+};
+
+export const citedWebsiteUrl = (loc: string, cite: ResolvedWebsiteCitation) => {
+  let path = websiteFetchPath(loc, cite.fetchBaseUrl);
+  if (cite.dropIndexMd)
+    path = path.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, cite.pageSuffix ?? '/');
+  // Assign pathname so paths beginning with / cannot change the citation authority.
+  const url = new URL(cite.baseUrl);
+  url.pathname += path;
+  const fetched = new URL(loc);
+  url.search = fetched.search;
+  url.hash = fetched.hash;
+  return url.href;
+};
 
 const hostOf = (value: string) => {
   try {

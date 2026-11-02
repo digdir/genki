@@ -6,6 +6,7 @@ import {
   parquetMapping,
   readableTextExtensions,
   rowMapping,
+  websiteCitation,
   type SkipReason,
   type SkippedDocument,
 } from '@genai/ingest';
@@ -42,6 +43,7 @@ export const pipelineSpec = z.strictObject({
     z.strictObject({
       kind: z.literal('website'),
       sitemap: z.url({ protocol: /^https$/ }),
+      cite: websiteCitation.optional(),
       include: z.array(glob).default([]),
       exclude: z.array(glob).default([]),
       baseUrl: z.url().optional(),

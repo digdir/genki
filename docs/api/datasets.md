@@ -22,6 +22,27 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.
 
+## Website citations from a mirror
+
+Set `source.cite` when fetching a mirror whose pages should cite the original site:
+
+```yaml
+source:
+  kind: website
+  sitemap: https://owner.github.io/altinn-studio-docs/sitemap-markdown.xml
+  include: [en/**, nb/**]
+  exclude: [en/internal/**]
+  cite:
+    baseUrl: https://docs.altinn.studio/
+    dropIndexMd: true
+```
+
+The fetch root defaults to the sitemap's directory (`https://owner.github.io/altinn-studio-docs/` here). Set `cite.fetchBaseUrl` explicitly when the sitemap is elsewhere, such as in a nested `sitemaps/` directory. Both citation and explicit fetch roots must be HTTPS directory URLs ending in `/`, without credentials, query or fragment. A listed page outside the fetch root fails the run instead of producing an unrelated citation. The fetch root does not grant access to another host.
+
+In cite mode, include/exclude globs match the fetch-root-relative path without a leading slash, such as `en/authorization/index.md`. Language is derived from that path's `en/` or `nb/` prefix. Citation URLs do not affect filtering or language. With `dropIndexMd: true`, `en/authorization/index.md` becomes `https://docs.altinn.studio/en/authorization/`, and `en/guide.md` becomes `https://docs.altinn.studio/en/guide/`. Other extensions stay as they are. The option defaults to false; query strings and fragments are preserved. For a site that serves its pages as `.html` files, such as a Jekyll site, add `pageSuffix: .html`: `docs/guide.md` then becomes `https://docs.example.no/docs/guide.html`, while `index.md` still maps to its directory.
+
+Documents and chunks store the absolute citation URL. Document ids hash that URL, so changing the sitemap to `https://docs.altinn.studio/sitemap-markdown.xml` keeps the ids when it lists equivalent paths and uses the same `cite` settings. The citation host is never fetched or added to the fetch allowlist; only existing sitemap and `source.baseUrl` access applies. Without `cite`, existing relative URL storage, fetch-URL ids and full-path glob matching stay unchanged.
+
 ## Parquet pipelines
 
 A pipeline source can read one public https Parquet file with `url`, or a Hugging Face file with `huggingface: { dataset, file, revision }` (`revision` defaults to `main`). Sharded tables use `urls: [...]` plus a stable `table` name, or `huggingface: { dataset, table, files }`, where `files` is an explicit path list or a glob such as `data/train-*.parquet`. Give each config/split its own table name. Keep that name when updating shard layouts so document ids stay stable.

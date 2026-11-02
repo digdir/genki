@@ -45,6 +45,9 @@ export const catalogErrors = {
   indexRequired: 'an index is required',
   datasetExists: 'dataset {datasetId} exists',
   pipelineExists: 'pipeline {pipelineId} exists',
+  websiteCitationDirectory:
+    'Use an HTTPS directory URL ending in /, without credentials, query or fragment',
+  websiteCitationOutsideRoot: 'Website URL is outside the citation fetch root: {loc}',
   cannotEstimate: 'The number of documents cannot be estimated for this source',
   ingestionUnavailable: 'Ingestion is not available',
   modelOtherTenant: 'model {model} belongs to another tenant',
