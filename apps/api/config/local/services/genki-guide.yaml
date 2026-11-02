@@ -26,5 +26,5 @@ spec:
     datasets:
       - dataset: digdir/genki-docs
     retrieval: { maxPerDocument: 10 }
-  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { chat: true, openai: true }
