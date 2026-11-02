@@ -247,7 +247,7 @@ spec:
   knowledge:
     datasets: [{ dataset: digdir/kudos }]
     reranker: colbert
-  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { chat: true, mcp: true, openai: true, rest: true, a2a: true }
 ```
 
