@@ -11,8 +11,18 @@ const stable = (value: unknown): string =>
           .join(',')}}`
       : JSON.stringify(value);
 
+const behaviourOf = (spec: unknown) => {
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return spec;
+  const rest: Record<string, unknown> = { ...spec };
+  delete rest.riskConfirmation;
+  return rest;
+};
+
 export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256').update(stable(spec)).digest('hex').slice(0, 16)}`;
+  `spec:${createHash('sha256')
+    .update(stable(behaviourOf(spec)))
+    .digest('hex')
+    .slice(0, 16)}`;
 
 export const publishedSubject = (definition: unknown, plugins: PluginSchemas) => {
   const validated = validateDefinition(definition, plugins);
