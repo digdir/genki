@@ -20,10 +20,16 @@ export interface GateInput {
   evaluation: { testSets: string[]; gates: string[] };
   registry: Map<string, Gate>;
   candidate: Map<string, EvalRun>;
+  fallback?: GateFallback;
   baseline?: Map<string, EvalRun>;
   judgeAgreement?: Map<string, number>;
   allowDifferent?: ComparableField[];
   bootstrap?: BootstrapOptions;
+}
+
+export interface GateFallback {
+  runs: Map<string, EvalRun>;
+  metrics: string[];
 }
 
 export interface GateOutcome {
@@ -59,7 +65,11 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
     );
     for (const { set, language } of scopes) {
       const testSet = language ? `${set} (${language})` : set;
-      const run = inLanguage(input.candidate.get(set), language);
+      const fallback =
+        gate.kind === 'threshold' && input.fallback?.metrics.includes(gate.metric)
+          ? input.fallback.runs.get(set)
+          : undefined;
+      const run = inLanguage(input.candidate.get(set) ?? fallback, language);
       const base = { gate: name, testSet };
       if (!run) {
         results.push({
@@ -188,6 +198,7 @@ export interface PublishGateInput {
   baseline?: string;
   evaluation: { testSets: string[]; gates: string[] };
   runs: EvalRunStore;
+  candidateFallback?: GateFallback;
   registry: Map<string, Gate>;
   judgeAgreement?: Map<string, number>;
   bootstrap?: BootstrapOptions;
@@ -238,6 +249,7 @@ export const publishGate = async (input: PublishGateInput): Promise<PublishDecis
     evaluation: input.evaluation,
     registry: input.registry,
     candidate,
+    ...(input.candidateFallback ? { fallback: input.candidateFallback } : {}),
     ...(baseline ? { baseline } : {}),
     ...(input.judgeAgreement ? { judgeAgreement: input.judgeAgreement } : {}),
     ...(input.bootstrap ? { bootstrap: input.bootstrap } : {}),
