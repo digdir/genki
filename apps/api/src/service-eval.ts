@@ -494,10 +494,23 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     return summarize(results);
   };
 
-  const evaluatorsFor = (cases: TestCase[]) => [
+  /** The deterministic evaluators that compute a publishing gate's metric from the answers alone. */
+  const gateEvaluators: Record<string, string> = {
+    'klarsprak-overall': 'klarsprak-checklist',
+    'nynorsk-chrf': 'nynorsk-reference',
+  };
+
+  /** The gates a definition lists, so a run of it scores what those gates read. */
+  const gatesOf = (spec: unknown): string[] => {
+    const gates = (spec as { evaluation?: { gates?: unknown } } | undefined)?.evaluation?.gates;
+    return Array.isArray(gates) ? gates.filter((g): g is string => typeof g === 'string') : [];
+  };
+
+  const evaluatorsFor = (cases: TestCase[], gates: string[] = []) => [
     'contract',
     ...(cases.some((c) => c.expected.sources.length > 0) ? ['retrieval'] : []),
     ...(cases.some((c) => caseTypeOf(c) === 'criteria') ? [criteriaJudgeId] : []),
+    ...new Set(gates.flatMap((g) => (gateEvaluators[g] ? [gateEvaluators[g]] : []))),
   ];
 
   const save = (stored: StoredRun) => deps.evalStores.runs.save(stored);
@@ -874,7 +887,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             id: first.id,
             capability: prepared.capability,
             testSet: set,
-            evaluators: [...evaluatorsFor(cases), ...sinkJudges.map((j) => j.id)],
+            evaluators: [...evaluatorsFor(cases, gatesOf(spec)), ...sinkJudges.map((j) => j.id)],
             provenance: { commit: first.provenance.commit, data: first.provenance.data },
             splits: first.splits,
             ...(sink ? { sink: sink.id } : {}),

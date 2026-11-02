@@ -32,6 +32,11 @@
       "matchDatasources": ["docker"],
       "matchPackageNames": ["node"],
       "allowedVersions": "/^24\\./"
+    },
+    {
+      "description": "The local Langfuse moves with production's, by hand",
+      "matchFileNames": ["compose.langfuse.yaml"],
+      "enabled": false
     }
   ]
 }

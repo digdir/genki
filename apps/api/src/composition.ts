@@ -66,6 +66,8 @@ import {
 } from '@genai/eval';
 import {
   InMemoryTraceDeliveries,
+  klarsprakChecklist,
+  nynorskReference,
   type TraceDeliveryStore,
   type TriggerRunStore,
 } from '@genai/jobs';
@@ -1108,6 +1110,8 @@ export const createPlatform = async (input: PlatformInput) => {
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
