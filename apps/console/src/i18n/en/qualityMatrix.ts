@@ -158,6 +158,8 @@ export const qualityMatrix = {
     other: '{count} new labels from {connection}.',
   },
   sinkFetchFailed: 'Could not fetch labels from {connection}.',
+  sinkShared:
+    'No labels for {name}: the rules {rules} write scores under the same name, so the labels cannot be told apart.',
   sinkNoneTitle: 'No labels waiting',
   sinkNoneText: 'New labels show here once fetched.',
   sinkBatchTitle: '{name} · {tenant} / {connection}',

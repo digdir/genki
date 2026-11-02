@@ -146,8 +146,9 @@ export class TraceRefused extends Error {
 }
 
 /** The project's active judges that genki does not read: not taken in use, or refused. */
+/** Listed judges not taken in use; a paused one does not run, so it does not count. */
 const unreadOf = (listed: SinkJudge[], adopted: string[]) =>
-  listed.filter((j) => !adopted.includes(j.id));
+  listed.filter((j) => !adopted.includes(j.id) && j.refused?.reason !== 'paused');
 
 const residencyOf = (definition: Record<string, unknown>): Residency => {
   const residency = (
@@ -636,11 +637,18 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const unread = async () => {
       const sinks = deps.traceSinks;
       if (!sinks?.judges) return undefined;
-      // Judges that cannot be read refuse the run when it starts, with the reason.
-      const [listed, others] = await Promise.all([
+      // Judges that cannot be read refuse the run when it starts: say so before.
+      const read = await Promise.all([
         sinks.judges(tenant, sink),
         sinks.otherRules?.(tenant, sink) ?? [],
-      ]).catch(() => [[], []]);
+      ]).catch((error: unknown) => ({ error: messageOf(error) }));
+      if ('error' in read)
+        return {
+          reason: 'judges-unreadable' as const,
+          connection: sink.id,
+          message: read.error,
+        };
+      const [listed, others] = read;
       const found = unreadOf(listed, adopted);
       return found.length + others.length > 0
         ? {

@@ -847,4 +847,35 @@ describe('live Testsett: Langfuse-dommere', () => {
     await waitFor(() => expect(runs()).toHaveLength(1));
     expect(runs()[0]?.body).not.toHaveProperty('trace');
   });
+  it("says in the start dialog that a connection's Langfuse judges cannot be read", async () => {
+    const unreadable = (path: string) =>
+      /\/eval-runs\/sending/.test(path)
+        ? Response.json({
+            connection: { id: 'lokal', residency: 'global' },
+            judges: [],
+            refused: {
+              reason: 'judges-unreadable',
+              connection: 'lokal',
+              message: 'Langfuse answered HTTP 404 for /api/public/v2/evaluation-rules',
+            },
+          })
+        : connections(path);
+    const { writes } = await openLive('', {}, {}, unreadable);
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const send = await screen.findByRole('checkbox', {
+      name: /Send kjøringen til Langfuse \(lokal\)/,
+    });
+    const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
+
+    fireEvent.click(send);
+    const refusal = await screen.findByText(
+      'Kjøringen kan ikke starte. Dommerne i prosjektet til koblingen lokal kunne ikke leses (HTTP 404), så genki vet ikke hvilke dommere Langfuse ville kjørt på kjøringen.',
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+    expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(runs()).toEqual([]);
+  });
 });

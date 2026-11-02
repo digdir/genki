@@ -172,6 +172,11 @@ export const blocks = defineNamespace({
   judgeRefusedFiltered:
     'Dommeren vurderer bare svarene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering. Fjern filteret i Langfuse for å ta den i bruk.',
   judgeRefusedPath: 'Dommeren leser {field}, en JSON-sti genki ikke kan lese.',
+  judgeRefusedSeveral:
+    'Regelen kjører mer enn én evaluator. Gi regelen én evaluator i Langfuse for å ta den i bruk.',
+  judgeRefusedPaused: 'Evaluatoren er satt på pause i Langfuse.',
+  judgesUnreadable:
+    'Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}. Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
   pendingNotice:
     'Forespørselen er sendt til {approver}. Du får beskjed på Oversikt når den er behandlet.',
   updateHeading: 'Versjon {version}, tilgjengelig fra {date}',

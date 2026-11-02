@@ -660,10 +660,35 @@ export const createBuildingBlocksModule =
       return read.length > 0 ? read.join(', ') : t('blocks.none');
     };
 
-    /** Each judge in the projects of the tenant's trace connections; one that cannot be read is left out. */
+    /**
+     * Each judge in the projects of the tenant's trace connections, but none Langfuse does not run
+     * (paused). A connection whose judges cannot be read shows as one refused block saying why.
+     */
     const sinkJudges = async (tenant: string) => {
-      const list = deps.traceSinks?.judges;
+      const sinks = deps.traceSinks;
+      const list = sinks?.judges;
       if (!list) return [];
+      const unreadable = (c: TraceConnection, error: unknown): SinkJudge[] => {
+        const source = sinks.sourceOf?.(c) ?? c.id;
+        return [
+          {
+            id: `sink-judges:${c.id}`,
+            name: t('blocks.sinkJudgesUnreadable', { source }),
+            source,
+            version: '',
+            dataType: '',
+            fields: [],
+            refused: {
+              reason: 'unreadable',
+              connection: c.id,
+              message: `the judges of the connection ${c.id} could not be read: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            },
+            snapshot: undefined,
+          },
+        ];
+      };
       const connections = (
         await deps.configEntries.latest({ kind: traceConnectionKind, scope: tenant })
       )
@@ -672,7 +697,12 @@ export const createBuildingBlocksModule =
         .filter((c) => !c.removing);
       const found = await Promise.all(
         connections.map(async (c) =>
-          (await list(tenant, c).catch(() => [])).map((j) => ({
+          (
+            await list(tenant, c).then(
+              (found) => found.filter((j) => j.refused?.reason !== 'paused'),
+              (error: unknown) => unreadable(c, error),
+            )
+          ).map((j) => ({
             ...j,
             connection: c.id,
             residency: c.residency,

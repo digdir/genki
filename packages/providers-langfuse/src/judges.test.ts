@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   agreementMap,
   evaluatorOfJudge,
@@ -15,13 +16,13 @@ import { traceIdFor } from './spans.js';
 interface FakeRule {
   id: string;
   name: string;
-  target: string;
-  status: string;
   enabled: boolean;
   sampling?: number;
   filter?: unknown[];
-  mapping: { variable: string; source: string; jsonPath?: string }[];
-  evaluator: { id: string; name: string };
+  evaluatorAssignments: {
+    evaluatorId: string;
+    variableMapping: { variable: string; source: string; jsonPath?: string }[] | null;
+  }[];
 }
 
 interface FakeEvaluator {
@@ -29,6 +30,9 @@ interface FakeEvaluator {
   name: string;
   version: number;
   type?: string;
+  status?: 'active' | 'paused';
+  pausedMessage?: string | null;
+  variableMapping?: { variable: string; source: string; jsonPath?: string }[];
   outputDefinition: { dataType: string };
   modelConfig: { provider: string; model: string } | null;
 }
@@ -50,31 +54,60 @@ interface FakeGeneration {
   costDetails: Record<string, number>;
 }
 
-const rule = (over: Partial<FakeRule> = {}): FakeRule => ({
-  id: 'regel-1',
-  name: 'svar_oppfyller_kriteriene-eksperimenter',
-  target: 'experiment',
-  status: 'active',
-  enabled: true,
-  mapping: [
-    { variable: 'input', source: 'input' },
-    { variable: 'output', source: 'output' },
-    { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
-  ],
-  evaluator: { id: 'dommer-1', name: 'svar_oppfyller_kriteriene' },
-  ...over,
-});
+/** Langfuse 4.72.0's filter for a rule that judges each experiment item once, on its root span. */
+const itemRoot = {
+  type: 'boolean',
+  column: 'isExperimentItemRootSpan',
+  operator: '=',
+  value: true,
+};
+
+const kriterieMapping = [
+  { variable: 'input', source: 'input' },
+  { variable: 'output', source: 'output' },
+  { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+];
+
+/** A rule with one evaluator; mapping overrides the evaluator's, and filter goes beside item-root. */
+const rule = (
+  over: Partial<Omit<FakeRule, 'filter'>> & {
+    mapping?: FakeEvaluator['variableMapping'] | null;
+    evaluatorId?: string;
+    filter?: unknown[];
+    itemRoot?: boolean;
+  } = {},
+): FakeRule => {
+  const { mapping, evaluatorId, filter, itemRoot: root, ...rest } = over;
+  return {
+    id: 'regel-1',
+    name: 'svar_oppfyller_kriteriene-eksperimenter',
+    enabled: true,
+    sampling: 1,
+    filter: [...(root === false ? [] : [itemRoot]), ...(filter ?? [])],
+    evaluatorAssignments: [
+      {
+        evaluatorId: evaluatorId ?? 'dommer-1',
+        variableMapping: mapping === undefined ? kriterieMapping : mapping,
+      },
+    ],
+    ...rest,
+  };
+};
 
 const evaluator = (over: Partial<FakeEvaluator> = {}): FakeEvaluator => ({
   id: 'dommer-1',
   name: 'svar_oppfyller_kriteriene',
   version: 1,
+  type: 'llm_as_judge',
+  status: 'active',
+  pausedMessage: null,
+  variableMapping: kriterieMapping,
   outputDefinition: { dataType: 'BOOLEAN' },
   modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
   ...over,
 });
 
-/** A Langfuse 4.4.0 project, answering as the local one did on 2026-10-30. */
+/** A Langfuse 4.72.0 project, answering as the local one did on 2026-11-02. */
 const fakeLangfuse = (project: {
   rules: FakeRule[];
   evaluators: FakeEvaluator[];
@@ -83,29 +116,33 @@ const fakeLangfuse = (project: {
   /** The observations of each judge execution trace. */
   judgeTraces?: Record<string, FakeGeneration[]>;
   observationsDown?: () => boolean;
+  /** The HTTP status the v2 evaluation routes answer with instead, such as 4.4.0's 404. */
+  evaluationDown?: number;
+  /** Items per page of the v2 listings. */
+  pageSize?: number;
 }): typeof fetch => {
+  const page = <T>(items: T[], url: URL) => {
+    const size = Math.min(project.pageSize ?? 100, Number(url.searchParams.get('limit') ?? '50'));
+    const from = Number(url.searchParams.get('cursor') ?? '0');
+    const next = from + size;
+    return Response.json({
+      data: items.slice(from, next),
+      meta: next < items.length ? { cursor: String(next) } : {},
+    });
+  };
   return async (input) => {
     const url = new URL(String(input));
     const path = url.pathname;
-    if (path === '/api/public/unstable/evaluation-rules') {
-      const page = Number(url.searchParams.get('page') ?? '1');
-      const limit = Number(url.searchParams.get('limit') ?? '50');
-      return Response.json({
-        data: project.rules.slice((page - 1) * limit, page * limit),
-        meta: {
-          page,
-          limit,
-          totalItems: project.rules.length,
-          totalPages: Math.ceil(project.rules.length / limit),
-        },
-      });
-    }
-    const ruleId = /^\/api\/public\/unstable\/evaluation-rules\/(.+)$/.exec(path)?.[1];
+    if (/^\/api\/public\/v2\/(evaluation-rules|evaluators)/.test(path) && project.evaluationDown)
+      return new Response('{}', { status: project.evaluationDown });
+    if (path === '/api/public/v2/evaluation-rules') return page(project.rules, url);
+    if (path === '/api/public/v2/evaluators') return page(project.evaluators, url);
+    const ruleId = /^\/api\/public\/v2\/evaluation-rules\/(.+)$/.exec(path)?.[1];
     if (ruleId) {
       const found = project.rules.find((r) => r.id === ruleId);
       return found ? Response.json(found) : new Response('{}', { status: 404 });
     }
-    const evaluatorId = /^\/api\/public\/unstable\/evaluators\/(.+)$/.exec(path)?.[1];
+    const evaluatorId = /^\/api\/public\/v2\/evaluators\/(.+)$/.exec(path)?.[1];
     if (evaluatorId) {
       const found = project.evaluators.find((e) => e.id === evaluatorId);
       return found ? Response.json(found) : new Response('{}', { status: 404 });
@@ -245,7 +282,7 @@ describe('Langfuse judges', () => {
     ).toEqual(["the rule's mapping"]);
     expect(
       await collectedAfter({
-        rules: [rule({ evaluator: { id: 'dommer-2', name: 'svar_oppfyller_kriteriene' } })],
+        rules: [rule({ evaluatorId: 'dommer-2' })],
         evaluators: [evaluator({ id: 'dommer-2', version: 2 })],
       }),
     ).toEqual(["the rule's evaluator", "the evaluator's version 1 → 2"]);
@@ -263,7 +300,7 @@ describe('Langfuse judges', () => {
       'the rule is gone',
     ]);
     expect(
-      await collectedAfter({ rules: [rule({ status: 'inactive' })], evaluators: [evaluator()] }),
+      await collectedAfter({ rules: [rule({ enabled: false })], evaluators: [evaluator()] }),
     ).toEqual(['the rule is no longer active']);
   });
 
@@ -353,7 +390,7 @@ describe('Langfuse judges', () => {
     expect(await refusedOf(rule(), evaluator({ type: 'code', modelConfig: null }))).toBe(
       'not-a-model',
     );
-    expect(await refusedOf(rule({ sampling: 1, filter: [] }))).toBeUndefined();
+    expect(await refusedOf(rule({ sampling: 1 }))).toBeUndefined();
   });
 
   it('is not applicable on a case without the fields its mapping reads, on a connection without content, and on a holdout case', async () => {
@@ -685,5 +722,221 @@ describe('Langfuse judges', () => {
       value: null,
       asItCame: 'delvis',
     });
+  });
+  it('reads every page of rules and evaluators through the v2 API, and lists an enabled rule with one active LLM judge and the item-root filter as a judge', async () => {
+    const others = Array.from({ length: 4 }, (_, i) =>
+      evaluator({ id: `annen-${i}`, name: `annen_${i}` }),
+    );
+    const judges = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          // The judge's rule and evaluator sit on the last pages.
+          rules: [
+            rule({ id: 'av', name: 'avslått', enabled: false }),
+            rule({ id: 'av-2', name: 'avslått_2', enabled: false }),
+            rule(),
+          ],
+          evaluators: [...others, evaluator()],
+          pageSize: 2,
+        }),
+      ),
+    ).list('kudos');
+
+    expect(judges).toEqual([
+      {
+        id: 'langfuse:kudos/svar_oppfyller_kriteriene-eksperimenter',
+        connection: 'kudos',
+        rule: {
+          id: 'regel-1',
+          name: 'svar_oppfyller_kriteriene-eksperimenter',
+          mapping: [
+            { variable: 'input', source: 'input' },
+            { variable: 'output', source: 'output' },
+            { variable: 'criteria', source: 'expected_output', jsonPath: '$.criteria' },
+          ],
+        },
+        evaluator: {
+          id: 'dommer-1',
+          name: 'svar_oppfyller_kriteriene',
+          version: 1,
+          dataType: 'BOOLEAN',
+          model: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
+        },
+      },
+    ]);
+  });
+
+  it("takes the rule's own variable mapping over its evaluator's, and the evaluator's when the rule has none", async () => {
+    const own = [{ variable: 'output', source: 'output' }];
+    const mappingOf = async (mapping: typeof own | null) =>
+      (await listed(fakeLangfuse({ rules: [rule({ mapping })], evaluators: [evaluator()] }))).rule
+        .mapping;
+
+    expect(await mappingOf(own)).toEqual(own);
+    expect(await mappingOf(null)).toEqual(evaluator().variableMapping);
+  });
+
+  it('counts an enabled rule without the item-root filter, or with a non-LLM evaluator, as a rule genki cannot read', async () => {
+    const judges = langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [
+            rule(),
+            // Judges every span of a case: three times on a trace with a retrieval and a generation.
+            rule({ id: 'regel-2', name: 'alle_spenn', itemRoot: false }),
+            rule({ id: 'regel-3', name: 'kode', evaluatorId: 'kode-1' }),
+            rule({ id: 'regel-4', name: 'av', itemRoot: false, enabled: false }),
+          ],
+          evaluators: [evaluator(), evaluator({ id: 'kode-1', type: 'code', modelConfig: null })],
+        }),
+      ),
+    );
+
+    expect(await judges.others()).toEqual(['alle_spenn']);
+    expect((await judges.list('kudos')).map((j) => [j.rule.name, j.refused?.reason])).toEqual([
+      ['svar_oppfyller_kriteriene-eksperimenter', undefined],
+      ['kode', 'not-a-model'],
+    ]);
+  });
+
+  it("neither lists nor counts a rule whose evaluator is paused, and refuses it by Langfuse's message when read for a run", async () => {
+    const pausedMessage =
+      'Evaluator paused: no default evaluation model is configured. Set a default evaluation model or update the evaluator template, then reactivate it.';
+    const judges = langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [rule(), rule({ id: 'regel-2', name: 'alle_spenn', itemRoot: false })],
+          evaluators: [evaluator({ status: 'paused', pausedMessage })],
+        }),
+      ),
+    );
+    const listedJudges = await judges.list('kudos');
+
+    expect(await judges.others()).toEqual([]);
+    // Langfuse does not run it, so no screen lists it; a run that uses it reads why.
+    expect(listedJudges.map((j) => j.refused)).toEqual([
+      { reason: 'paused', message: pausedMessage },
+    ]);
+  });
+
+  it('refuses a rule with more than one evaluator, or with a filter beside the item-root filter', async () => {
+    const several = rule();
+    several.evaluatorAssignments.push({ evaluatorId: 'dommer-2', variableMapping: null });
+    const refusedOf = async (r: FakeRule) =>
+      (
+        await listed(
+          fakeLangfuse({ rules: [r], evaluators: [evaluator(), evaluator({ id: 'dommer-2' })] }),
+        )
+      ).refused?.reason;
+
+    expect(await refusedOf(several)).toBe('several-evaluators');
+    // What the upgrade from 4.4.0 leaves beside the item-root filter of a rule on a dataset.
+    expect(
+      await refusedOf(
+        rule({
+          filter: [
+            { type: 'stringOptions', column: 'datasetId', operator: 'any of', value: ['d'] },
+          ],
+        }),
+      ),
+    ).toBe('filtered');
+  });
+
+  it('throws when the rules or evaluators cannot be read (404, 401 or 5xx), never reading them as no rules', async () => {
+    for (const status of [404, 401, 503]) {
+      const judges = langfuseJudges(
+        api(fakeLangfuse({ rules: [rule()], evaluators: [evaluator()], evaluationDown: status })),
+      );
+      await expect(judges.list('kudos')).rejects.toThrow(`HTTP ${status}`);
+      await expect(judges.others()).rejects.toThrow(`HTTP ${status}`);
+    }
+  });
+
+  it("names each score after the judge's evaluator, as Langfuse names it", async () => {
+    const project = {
+      rules: [rule({ name: 'regel_98c_navnesjekk' })],
+      evaluators: [evaluator()],
+      scores: {
+        [traceIdFor('sak-1')]: [
+          {
+            name: 'svar_oppfyller_kriteriene',
+            value: true,
+            dataType: 'BOOLEAN',
+            metadata: { job_configuration_id: 'regel-1' },
+          },
+        ],
+      },
+    };
+    const judge = langfuseJudges(api(fakeLangfuse(project))).evaluator(
+      await listed(fakeLangfuse(project)),
+      { tenant: 'dfo', content: true },
+    );
+    const [pending] = await judge.evaluate(kriteriesak, svar, ctx);
+    const [collected] = (await judge.collect?.([pendingOf(pending as Score)])) ?? [];
+
+    expect(pending?.details?.scoreName).toBe('svar_oppfyller_kriteriene');
+    expect(collected?.score.details?.scoreName).toBe('svar_oppfyller_kriteriene');
+  });
+});
+
+const liveHost = process.env.LANGFUSE_LOCAL_URL;
+
+describe.skipIf(!liveHost)('judges on a local Langfuse 4.72.0', () => {
+  it('lists an item-root rule of a live Langfuse 4.72.0 as a judge, and counts a rule without the filter as unreadable', async () => {
+    const live = {
+      host: liveHost as string,
+      publicKey: process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472',
+      secretKey: process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472',
+    };
+    const authorization = `Basic ${Buffer.from(`${live.publicKey}:${live.secretKey}`).toString('base64')}`;
+    const call = async (method: string, path: string, body?: unknown) => {
+      const response = await fetch(new URL(path, live.host), {
+        method,
+        headers: { authorization, 'content-type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      if (!response.ok) throw new Error(`${method} ${path}: HTTP ${response.status}`);
+      return (await response.json()) as Record<string, unknown>;
+    };
+    const evaluators = (await call('GET', '/api/public/v2/evaluators?limit=100')).data as {
+      id: string;
+      name: string;
+      status: string;
+      type: string;
+      modelConfig: unknown;
+    }[];
+    const judge = evaluators.find(
+      (e) => e.status === 'active' && e.type === 'llm_as_judge' && e.modelConfig,
+    );
+    if (!judge) throw new Error('the local Langfuse needs an active LLM evaluator with a model');
+    const suffix = randomUUID().slice(0, 8);
+    const created: string[] = [];
+    const ruleOf = async (name: string, filter: unknown[]) => {
+      const rule = await call('POST', '/api/public/v2/evaluation-rules', {
+        name,
+        enabled: true,
+        sampling: 1,
+        filter,
+        evaluatorAssignments: [{ evaluatorId: judge.id, variableMapping: null }],
+      });
+      created.push(String(rule.id));
+    };
+    try {
+      await ruleOf(`genki_live_item_${suffix}`, [itemRoot]);
+      await ruleOf(`genki_live_spans_${suffix}`, []);
+      const judges = langfuseJudges(live);
+
+      const listedJudges = await judges.list('lokal');
+      const others = await judges.others();
+
+      expect(listedJudges.find((j) => j.rule.name === `genki_live_item_${suffix}`)).toMatchObject({
+        id: `langfuse:lokal/genki_live_item_${suffix}`,
+        evaluator: { id: judge.id, name: judge.name },
+      });
+      expect(listedJudges.map((j) => j.rule.name)).not.toContain(`genki_live_spans_${suffix}`);
+      expect(others).toContain(`genki_live_spans_${suffix}`);
+    } finally {
+      for (const id of created) await call('DELETE', `/api/public/v2/evaluation-rules/${id}`);
+    }
   });
 });

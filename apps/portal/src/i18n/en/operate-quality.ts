@@ -162,6 +162,8 @@ export const qualityArea = {
       'The run cannot start. Langfuse runs every active judge in the project of the connection {connection} on the run, also the ones genki does not read.',
     judgesNotInUse: 'Take in use under Building blocks, or switch off in Langfuse: {judges}.',
     judgesUnreadable: 'Switch off in Langfuse, as genki cannot read them: {judges}.',
+    judgesNotRead:
+      'The run cannot start. The judges in the project of the connection {connection} could not be read{status}, so genki does not know which judges Langfuse would run on it.',
     sinkJudgesTitle: 'Langfuse judges',
     sinkJudgesAdvisory: 'Advisory. These scores never stop a publish.',
     sinkJudgeYes: 'Yes: {mean} ({low} – {high}, n = {n})',

@@ -970,6 +970,8 @@ export const createPlatform = async (input: PlatformInput) => {
         snapshot: j,
       })),
     otherRules: async (tenant, connection) => (await langfuseOf(tenant, connection)).others(),
+    sourceOf: (connection) => `Langfuse (${connection.id})`,
+    sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
     isSinkJudge: (judge) => judge.startsWith('langfuse:'),
     annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),

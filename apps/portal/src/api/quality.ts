@@ -137,7 +137,8 @@ export interface RunSending {
     | { reason: 'residency'; service: RunResidency; connection: RunResidency }
     | { reason: 'covered-twice'; connections: string[] }
     | { reason: 'no-content'; connection: string }
-    | { reason: 'judges-differ'; connection: string; notInUse: string[]; unreadable: string[] };
+    | { reason: 'judges-differ'; connection: string; notInUse: string[]; unreadable: string[] }
+    | { reason: 'judges-unreadable'; connection: string; message: string };
 }
 
 export interface EvalRunDetail extends EvalRun {

@@ -841,7 +841,10 @@ describe('eval runs for a service', () => {
 const otlpCollector = async () => {
   const spans: { name: string; attributes: { key: string; value: { stringValue?: string } }[] }[] =
     [];
-  const sink = await fakeHttp((body: Record<string, unknown>) => {
+  const sink = await fakeHttp((body: Record<string, unknown>, _attempt, path) => {
+    // A Langfuse project without evaluation rules.
+    if (/^\/api\/public\/v2\/(evaluation-rules|evaluators)(\?|$)/.test(path))
+      return { status: 200, json: { data: [], meta: {} } };
     const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
     spans.push(...resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans)));
     return { status: 200, json: {} };
@@ -1019,6 +1022,9 @@ describe('eval runs sent to a trace connection', () => {
 const judgeRule = 'svar_oppfyller_kriteriene-eksperimenter';
 const numericRule = 'svar_poeng-eksperimenter';
 const numericJudge = 'dommer-tall';
+/** The evaluators' names: Langfuse 4.72.0 names a judge's scores after its evaluator. */
+const judgeScore = 'svar_oppfyller_kriteriene';
+const numericScore = 'svar_poeng';
 
 interface FakeRule {
   id: string;
@@ -1067,8 +1073,10 @@ const experimentRule = (over: Partial<FakeRule> = {}): FakeRule => ({
 });
 
 /**
- * A Langfuse 4.4.0 project whose active experiment rules judge each item as its root span arrives,
- * as Langfuse does a few seconds after a trace comes in.
+ * A Langfuse 4.72.0 project whose active experiment rules judge each item as its root span arrives,
+ * as Langfuse does a few seconds after a trace comes in. A rule here is written as 4.4.0 had it; the
+ * v2 API answers it as the upgrade turns it: an experiment rule is an observation rule with the
+ * item-root filter, and its evaluator writes scores under its own name.
  */
 const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
   const spans: {
@@ -1079,16 +1087,50 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
   const scores = new Map<string, Record<string, unknown>[]>();
   const attr = (span: (typeof spans)[number], key: string) =>
     span.attributes.find((a) => a.key === key)?.value.stringValue;
-  const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
   // Runs once as the first item arrives, as when someone switches a rule on during a run.
-  const hooks: { firstItem?: () => void; annotationsDown?: boolean } = {};
+  const hooks: {
+    firstItem?: () => void;
+    annotationsDown?: boolean;
+    /** The evaluators paused in Langfuse, with its message. */
+    paused?: Record<string, string>;
+    /** The HTTP status the v2 evaluation routes answer with instead. */
+    evaluationDown?: number;
+  } = {};
+  const judging = () =>
+    rules.filter(
+      (r) => r.target === 'experiment' && r.status === 'active' && !hooks.paused?.[r.evaluator.id],
+    );
+  const v2Rule = (r: FakeRule) => ({
+    id: r.id,
+    name: r.name,
+    enabled: r.enabled && r.status === 'active',
+    sampling: 1,
+    filter:
+      r.target === 'experiment'
+        ? [{ type: 'boolean', column: 'isExperimentItemRootSpan', operator: '=', value: true }]
+        : [],
+    evaluatorAssignments: [{ evaluatorId: r.evaluator.id, variableMapping: r.mapping }],
+  });
+  const v2Evaluator = (id: string) => ({
+    id,
+    name: rules.find((r) => r.evaluator.id === id)?.evaluator.name ?? 'svar_oppfyller_kriteriene',
+    version: 1,
+    type: 'llm_as_judge',
+    status: hooks.paused?.[id] ? 'paused' : 'active',
+    pausedMessage: hooks.paused?.[id] ?? null,
+    variableMapping: [],
+    outputDefinition: { dataType: id === numericJudge ? 'NUMERIC' : 'BOOLEAN' },
+    modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
+  });
   const annotations: FakeAnnotation[] = [];
   const configs: FakeScoreConfig[] = [
-    { id: 'oppsett-1', name: judgeRule, dataType: 'BOOLEAN' },
-    { id: 'oppsett-2', name: judgeRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
+    { id: 'oppsett-1', name: judgeScore, dataType: 'BOOLEAN' },
+    { id: 'oppsett-2', name: judgeScore, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
     { id: 'oppsett-3', name: 'hjelpsomhet', dataType: 'BOOLEAN' },
-    { id: 'oppsett-4', name: numericRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
-    { id: 'oppsett-5', name: numericRule, dataType: 'NUMERIC' },
+    { id: 'oppsett-4', name: numericScore, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
+    { id: 'oppsett-5', name: numericScore, dataType: 'NUMERIC' },
+    // Named after the rule, as 4.4.0 named its scores.
+    { id: 'oppsett-6', name: judgeRule, dataType: 'BOOLEAN' },
   ];
   /** A person's annotation on a case's trace, as Langfuse's UI writes it with a score config. */
   const annotate = (
@@ -1098,7 +1140,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     const config = configs.find((c) => c.id === (over.configId ?? 'oppsett-1'));
     const annotation: FakeAnnotation = {
       id: `merknad-${annotations.length + 1}`,
-      name: config?.name ?? judgeRule,
+      name: config?.name ?? judgeScore,
       source: 'ANNOTATION',
       dataType: config?.dataType ?? 'BOOLEAN',
       configId: 'oppsett-1',
@@ -1128,7 +1170,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
             ...(scores.get(span.traceId) ?? []),
             {
               id: `${r.id}-${span.traceId}`,
-              name: r.name,
+              name: r.evaluator.name,
               // A numeric judge's score has no config, so it comes without a range.
               ...(r.evaluator.id === numericJudge
                 ? { value: 3, dataType: 'NUMERIC' }
@@ -1144,27 +1186,25 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       }
       return ok({});
     }
-    if (url.pathname === '/api/public/unstable/evaluation-rules')
+    if (
+      /^\/api\/public\/v2\/(evaluation-rules|evaluators)/.test(url.pathname) &&
+      hooks.evaluationDown
+    )
+      return { status: hooks.evaluationDown, json: {} };
+    if (url.pathname === '/api/public/v2/evaluation-rules')
+      return ok({ data: rules.map(v2Rule), meta: {} });
+    if (url.pathname === '/api/public/v2/evaluators')
       return ok({
-        data: rules,
-        meta: { page: 1, limit: 50, totalItems: rules.length, totalPages: 1 },
+        data: [...new Set(rules.map((r) => r.evaluator.id))].map(v2Evaluator),
+        meta: {},
       });
-    const ruleId = /evaluation-rules\/(.+)$/.exec(url.pathname)?.[1];
+    const ruleId = /v2\/evaluation-rules\/(.+)$/.exec(url.pathname)?.[1];
     if (ruleId) {
       const found = rules.find((r) => r.id === decodeURIComponent(ruleId));
-      return found ? ok(found) : { status: 404, json: {} };
+      return found ? ok(v2Rule(found)) : { status: 404, json: {} };
     }
-    const evaluatorId = /unstable\/evaluators\/(.+)$/.exec(url.pathname)?.[1];
-    if (evaluatorId)
-      return ok({
-        id: decodeURIComponent(evaluatorId),
-        name: 'svar_oppfyller_kriteriene',
-        version: 1,
-        outputDefinition: {
-          dataType: decodeURIComponent(evaluatorId) === numericJudge ? 'NUMERIC' : 'BOOLEAN',
-        },
-        modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
-      });
+    const evaluatorId = /v2\/evaluators\/(.+)$/.exec(url.pathname)?.[1];
+    if (evaluatorId) return ok(v2Evaluator(decodeURIComponent(evaluatorId)));
     // What people annotate in Langfuse's UI, apart from what the judges score.
     if (url.pathname === '/api/public/v3/scores' && url.searchParams.get('source') === 'ANNOTATION')
       return hooks.annotationsDown
@@ -1480,6 +1520,81 @@ describe('Langfuse judges on a run', () => {
     expect(JSON.stringify(started.body)).toContain(
       'the judges of the connection lokal could not be read',
     );
+  });
+
+  it('shows a connection whose Langfuse judges cannot be read as one refused judge block, which cannot be taken in use', async () => {
+    const { env, langfuse } = await judged();
+    // Langfuse 4.4.0 has no v2 evaluation API.
+    langfuse.hooks.evaluationDown = 404;
+
+    const listed = await env.send('GET', `/tenants/${tenant}/building-blocks?kind=judge`);
+    const sinkBlocks = (listed.body.data as { id: string; judge?: unknown }[]).filter(
+      (b) => b.judge,
+    );
+    const adopted = await env.send(
+      'POST',
+      `/tenants/${tenant}/building-blocks/judge/${encodeURIComponent('sink-judges:lokal')}/adopt`,
+      'kari',
+      undefined,
+      why,
+    );
+
+    expect(sinkBlocks).toEqual([
+      expect.objectContaining({
+        id: 'sink-judges:lokal',
+        kind: 'judge',
+        status: 'not_allowed',
+        publisher: { type: 'own', name: 'Langfuse (lokal)' },
+        judge: expect.objectContaining({
+          connection: 'lokal',
+          refused: expect.objectContaining({ reason: 'unreadable', connection: 'lokal' }),
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(sinkBlocks)).toContain('HTTP 404');
+    expect(adopted.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("says before a run starts that a connection's Langfuse judges cannot be read, and refuses the run saying so", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.evaluationDown = 401;
+
+    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+
+    expect(sending.body).toMatchObject({
+      refused: { reason: 'judges-unreadable', connection: 'lokal' },
+    });
+    expect(JSON.stringify(sending.body)).toContain('HTTP 401');
+    expect(started.status).toBe(409);
+    expect(JSON.stringify(started.body)).toContain(
+      'the judges of the connection lokal could not be read',
+    );
+  });
+
+  it("refuses a sent run whose judge in use has a paused evaluator, with Langfuse's message", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const message =
+      'Evaluator paused: no default evaluation model is configured. Set a default evaluation model or update the evaluator template, then reactivate it.';
+    langfuse.hooks.paused = { 'dommer-1': message };
+
+    const listed = await env.send('GET', `/tenants/${tenant}/building-blocks?kind=judge`);
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+
+    // Langfuse does not run it, so Byggeklosser does not list it.
+    expect((listed.body.data as { id: string }[]).map((b) => b.id)).not.toContain(
+      `langfuse:lokal/${judgeRule}`,
+    );
+    expect(started.status).toBe(409);
+    expect(JSON.stringify(started.body)).toContain(message);
   });
 
   it('refuses a Langfuse judge on a connection that gets no answer text, when it is taken in use and when a run starts', async () => {
@@ -1896,6 +2011,38 @@ describe('Langfuse judges on a run', () => {
     expect((await batches()).flatMap((b) => b.labels)).toHaveLength(2);
   });
 
+  it("matches an annotation to a judge by its evaluator's name and type, not the rule's name", async () => {
+    const { langfuse, fetchLabels, batches } = await labelled();
+    const o1 = langfuse.traceOf('o1');
+    // A score config named after the rule, as 4.4.0 named the scores: no label.
+    langfuse.annotate(o1, { configId: 'oppsett-6', value: true });
+    // Named after the evaluator, as 4.72.0 names them: the judge's label.
+    langfuse.annotate(o1, { configId: 'oppsett-1', value: false });
+
+    expect((await fetchLabels()).status).toBe(200);
+
+    expect((await batches()).flatMap((b) => b.labels)).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'bad' }),
+    ]);
+  });
+
+  it('makes no label for rules that share an evaluator, and names them in the fetch result', async () => {
+    const { langfuse, fetchLabels, batches } = await labelled([
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: 'svar_oppfyller_kriteriene-kopi' }),
+    ]);
+    langfuse.annotate(langfuse.traceOf('o1'), { value: true });
+
+    const fetched = await fetchLabels();
+
+    expect(fetched.status).toBe(200);
+    expect(fetched.body).toEqual({
+      pending: 0,
+      shared: [{ name: judgeScore, rules: [judgeRule, 'svar_oppfyller_kriteriene-kopi'] }],
+    });
+    expect(await batches()).toEqual([]);
+  });
+
   it('counts a label only after its batch is accepted with a reason, in the audit log', async () => {
     const { env, langfuse, fetchLabels, batches, decide, agreement } = await labelled();
     langfuse.annotate(langfuse.traceOf('o1'), { value: true });
@@ -1944,6 +2091,7 @@ describe('Langfuse judges on a run', () => {
       id: 'regel-2',
       name: 'svar_er_kort-eksperimenter',
       mapping: [{ variable: 'output', source: 'output' }],
+      evaluator: { id: 'dommer-kort', name: 'svar_er_kort' },
     });
     const { langfuse, fetchLabels, batches, decide, agreement } = await labelled([
       experimentRule(),
@@ -2069,11 +2217,11 @@ describe('Langfuse judges on a run', () => {
 
 const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
 
-describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => {
+describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.72.0', () => {
   it('lands as one experiment with a trace per case and repeat, no holdout case, and is gone after the purge', async () => {
     const host = localLangfuse as string;
-    const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test';
-    const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test';
+    const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472';
+    const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472';
     const deliveries = new InMemoryTraceDeliveries();
     const env = await boot(undefined, { devMode: true }, deliveries);
     const why = { 'change-reason': 'Kobler tjenesten til sporing' };

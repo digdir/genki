@@ -17,9 +17,24 @@ import { useT, type Format, type T } from '../../i18n';
 import { rightLabel, useRights } from '../../Shell';
 import type { PortalRight } from '../../types';
 
+/** " (HTTP 404)" from what a sink answered, or nothing when it gave no status. */
+export const httpStatusOf = (message: string) => {
+  const status = /HTTP \d{3}/.exec(message)?.[0];
+  return status ? ` (${status})` : '';
+};
+
 /** Why a Langfuse judge cannot be taken in use, in the reader's language. */
 export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) => {
   switch (refused.reason) {
+    case 'unreadable':
+      return t('blocks.judgesUnreadable', {
+        connection: refused.connection ?? '',
+        status: httpStatusOf(refused.message),
+      });
+    case 'several-evaluators':
+      return t('blocks.judgeRefusedSeveral');
+    case 'paused':
+      return t('blocks.judgeRefusedPaused');
     case 'not-a-model':
       return t('blocks.judgeRefusedNotAModel');
     case 'default-model':
@@ -38,7 +53,11 @@ export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refus
 };
 
 /** A judge's facts: what it runs on, which version, what it answers and what it reads. */
-export const judgeFacts = (t: T, judge: SinkJudgeInfo) => [
+export const judgeFacts = (t: T, judge: SinkJudgeInfo) =>
+  // A connection whose judges could not be read is no judge: it has no facts to show.
+  judge.refused?.reason === 'unreadable' ? [] : judgeFactsOf(t, judge);
+
+const judgeFactsOf = (t: T, judge: SinkJudgeInfo) => [
   { label: t('blocks.judgeModel'), value: judge.model ?? t('blocks.judgeDefaultModel') },
   { label: t('blocks.judgeVersion'), value: judge.version },
   {

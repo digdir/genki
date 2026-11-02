@@ -1241,4 +1241,37 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
   });
+  it('shows a connection whose Langfuse judges cannot be read as a refused block saying why', async () => {
+    const message =
+      'the judges of the connection kudos could not be read: Langfuse answered HTTP 404 for /api/public/v2/evaluation-rules';
+    const unreadable = judgeBlock({
+      id: 'sink-judges:kudos',
+      name: 'Dommerne i Langfuse (kudos)',
+      version: '',
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        connection: 'kudos',
+        version: '',
+        dataType: '',
+        fields: [],
+        refused: { reason: 'unreadable', connection: 'kudos', message },
+      },
+    });
+
+    await open(detailOf(unreadable), { items: [unreadable] });
+    await screen.findByRole('heading', { level: 1, name: 'Dommerne i Langfuse (kudos)' });
+
+    const refusal = screen
+      .getByText(
+        'Dommerne i prosjektet til koblingen kudos kunne ikke leses (HTTP 404). Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
+      )
+      .closest('.ds-alert');
+    expect(refusal?.getAttribute('data-color')).toBe('danger');
+    // It is no judge: nothing to say about a model, version or fields.
+    expect(screen.queryByText('Modell')).toBeNull();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+    expectAccessible();
+  });
 });

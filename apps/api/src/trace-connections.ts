@@ -475,6 +475,16 @@ export interface TraceSinks {
   judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
   /** The names of the project's other active rules, which judge what is sent but no run reads. */
   otherRules?(tenant: string, connection: TraceConnection): Promise<string[]>;
+  /** Where the connection's judges come from, as a person names it, such as "Langfuse (kudos)". */
+  sourceOf?(connection: TraceConnection): string;
+  /**
+   * Each score name that two or more of the project's rules write, so a label of that name cannot
+   * be told apart; throws when the rules cannot be read.
+   */
+  sharedScores?(
+    tenant: string,
+    connection: TraceConnection,
+  ): Promise<{ name: string; rules: string[] }[]>;
   /** Whether a judge building block is one of the connection's judges. */
   judgeOf?(connection: string, block: string): boolean;
   /** Whether a run's judge identity, or an evaluator, is a sink's judge. */

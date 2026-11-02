@@ -287,6 +287,12 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
   );
 };
 
+/** " (HTTP 404)" from what Langfuse answered, or nothing when it gave no status. */
+const httpStatusOf = (message: string) => {
+  const status = /HTTP \d{3}/.exec(message)?.[0];
+  return status ? ` (${status})` : '';
+};
+
 /** Why a run sent to Langfuse cannot start, before it is started. */
 const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
   const refused = plan?.refused;
@@ -301,6 +307,11 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
         ? [t('quality.judgesUnreadable', { judges: refused.unreadable.join(', ') })]
         : []),
     ].join(' ');
+  if (refused.reason === 'judges-unreadable')
+    return t('quality.judgesNotRead', {
+      connection: refused.connection,
+      status: httpStatusOf(refused.message),
+    });
   if (refused.reason === 'covered-twice')
     return t('quality.sendCoveredTwice', { connections: refused.connections.join(', ') });
   if (refused.reason === 'no-content')

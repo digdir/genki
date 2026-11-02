@@ -2066,7 +2066,17 @@ const qualityRoutes: RouteConfig[] = [
     description: described(operator, notAudited),
     request: { body: body(z.object({ tenant: z.string(), connection: z.string() })) },
     responses: {
-      200: json(z.object({ pending: z.number().int() }), 'Fetched'),
+      200: json(
+        z.object({
+          pending: z.number().int(),
+          shared: z
+            .array(z.object({ name: z.string(), rules: z.array(z.string()) }))
+            .describe(
+              'Scores that two or more rules write under one name, so their labels cannot be told apart and none is made',
+            ),
+        }),
+        'Fetched',
+      ),
       400: problem('Tenant or connection missing'),
       404: problem('No such tenant or connection'),
       409: problem('The connection does not bring labels back'),

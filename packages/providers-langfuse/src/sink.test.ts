@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { judgeTraceIdOf, langfuseTraceSink } from './sink.js';
 
 const host = process.env.LANGFUSE_LOCAL_URL;
-const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test';
-const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test';
+const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-472';
+const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-472';
 
 const hex = () => randomBytes(16).toString('hex');
 
@@ -70,7 +70,7 @@ describe('finding the judges of a trace', () => {
   });
 });
 
-describe.skipIf(!host)('deleting from a local Langfuse 4.4.0 (dual write mode)', () => {
+describe.skipIf(!host)('deleting from a local Langfuse 4.72.0 (dual write mode)', () => {
   it("finds the judges' traces by score and by target, deletes them and the case's trace, and leaves nothing", async () => {
     const sink = langfuseTraceSink({ host: host as string, publicKey, secretKey });
     const now = new Date().toISOString();
