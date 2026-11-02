@@ -23,6 +23,7 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
@@ -321,8 +322,14 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 const knowledgeSource = knowledgeSourceFromEnv(process.env, 'api');
-const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'api') : undefined;
-log('knowledge server', { configured: Boolean(knowledgeServer) });
+const knowledgeReadSource = knowledgeReadSourceFromEnv(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools(knowledgeSource, 'api', knowledgeReadSource)
+  : undefined;
+log('knowledge server', {
+  configured: Boolean(knowledgeServer),
+  readHost: knowledgeReadSource?.host ?? 'primary',
+});
 
 const dataDir = process.env.DATA_DIR ?? join(import.meta.dirname, '..', '.data');
 

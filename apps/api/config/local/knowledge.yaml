@@ -7,6 +7,9 @@ endpoints:
     engine: pgvector
     options: { connection: platform }
     sharing: { tenants: '*' }
+  knowledge-pg:
+    engine: pgvector
+    options: { connection: knowledge }
 datasets:
   - id: digdir/kudos
     name: Kudos
@@ -109,3 +112,11 @@ datasets:
     residency: global
     embedding: { model: foundry/text-embedding-3-small, dimensions: 1536 }
     options: { textSearchConfig: english }
+  # Filled by `npm run knowledge:seed`; the catalog names the generation searches read.
+  - id: digdir/knowledge-demo
+    name: Kunnskapsdatabasen (demo)
+    endpoint: knowledge-pg
+    residency: norway
+    filters: { type: multiselect }
+    generation: g-local-demo
+    options: { textSearchConfig: norwegian }

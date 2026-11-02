@@ -179,18 +179,26 @@ const loginRoles = {
   worker: { writer: knowledgeRoles.writer, owner: knowledgeRoles.owner },
 } as const;
 
-export const openKnowledgePools = (source: KnowledgePoolSource, login: 'api' | 'worker') => {
+const poolAs = (source: KnowledgePoolSource, role: string) => {
+  const pool = new pg.Pool({
+    ...source,
+    options: `-c role=${role}`,
+    connectionTimeoutMillis: 10_000,
+  });
+  pool.on('connect', (client) => client.on('error', () => undefined));
+  return pool;
+};
+
+/** The API's `readSource` is `KNOWLEDGE_READ_PGHOST` when it names another server than the primary. */
+export const openKnowledgePools = (
+  source: KnowledgePoolSource,
+  login: 'api' | 'worker',
+  readSource?: KnowledgePoolSource,
+) => {
   const pools = Object.fromEntries(
-    Object.entries(loginRoles[login]).map(([name, role]) => {
-      const pool = new pg.Pool({
-        ...source,
-        options: `-c role=${role}`,
-        connectionTimeoutMillis: 10_000,
-      });
-      pool.on('connect', (client) => client.on('error', () => undefined));
-      return [name, pool];
-    }),
-  ) as { reader?: pg.Pool; writer?: pg.Pool; owner?: pg.Pool };
+    Object.entries(loginRoles[login]).map(([name, role]) => [name, poolAs(source, role)]),
+  ) as { read?: pg.Pool; reader?: pg.Pool; writer?: pg.Pool; owner?: pg.Pool };
+  if (login === 'api' && readSource) pools.read = poolAs(readSource, knowledgeRoles.reader);
   return {
     pools,
     close: async () => {

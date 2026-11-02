@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { KnowledgeError, kindsOf, type DatasetConfig } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { knowledgeRoles } from './knowledge-setup.js';
+import { readFunctionMigrations } from './read-functions.js';
 
 export interface PartitionOptions {
   lockTimeoutMs?: number;
@@ -87,6 +88,7 @@ const migrations: string[] = [
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
   `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,
+  ...readFunctionMigrations(knowledgeRoles.reader),
 ];
 
 /** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */

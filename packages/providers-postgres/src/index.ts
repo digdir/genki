@@ -44,6 +44,7 @@ export {
   cachedEntraPassword,
   knowledgeIdentityTokenSource,
   knowledgeLocalLogins,
+  knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   managedIdentityTokenSource,
   postgresSourceFromEnv,
