@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
+import type { Evaluator, Score } from '@genai/eval';
 import { envSecrets, type PortContext } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { openAiChatFixture } from '@genai/providers-openai/contract';
@@ -502,7 +503,7 @@ describe('plug-in kinds that call out', () => {
         kind: 'evaluator',
         id: 'evaluator.dommer',
         version: '1',
-        contract: 'evaluator@1',
+        contract: 'evaluator@2',
         title: 'Ekstern dommer',
         capabilities: ['korrekthet'],
         hosts: ['127.0.0.1'],
@@ -510,7 +511,7 @@ describe('plug-in kinds that call out', () => {
       endpoint: { baseURL: url, protocol: 'http-judge' },
     });
     expect(saved.status).toBe(201);
-    expect(judged[0]).toMatchObject({ contract: 'evaluator@1', answer: expect.any(String) });
+    expect(judged[0]).toMatchObject({ contract: 'evaluator@2', answer: expect.any(String) });
     const evaluator = platform.evaluators.get('evaluator.dommer');
     expect(evaluator).toBeDefined();
     await send('/operator/plugins/evaluator.dommer', {
@@ -518,6 +519,102 @@ describe('plug-in kinds that call out', () => {
       reason: 'Dommeren er byttet ut',
     });
     expect(platform.evaluators.has('evaluator.dommer')).toBe(false);
+  });
+  it('collects what an evaluator plug-in answered pending, by its ticket', async () => {
+    const { platform, register } = await boot();
+    const asked: Record<string, unknown>[] = [];
+    let ready = false;
+    const url = await jsonServer((body) => {
+      asked.push(body);
+      if (!body.collect)
+        return { scores: [{ metric: 'korrekthet', state: 'pending' }], ticket: 'sak-1' };
+      const tickets = (body.collect as { tickets: string[] }).tickets;
+      const results = tickets.map((ticket) => ({
+        ticket,
+        scores: [
+          ready
+            ? { metric: 'korrekthet', value: 0.7, reason: 'Stemmer' }
+            : { metric: 'korrekthet', state: 'pending' },
+        ],
+      }));
+      ready = true;
+      return { results };
+    });
+    const saved = await register({
+      manifest: {
+        kind: 'evaluator',
+        id: 'evaluator.senere',
+        version: '1',
+        contract: 'evaluator@2',
+        title: 'Dommer som svarer senere',
+        capabilities: ['korrekthet'],
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: { baseURL: url, protocol: 'http-judge' },
+    });
+    expect(saved.status).toBe(201);
+    const judge = platform.evaluators.get('evaluator.senere') as Evaluator;
+
+    const [answer] = await judge.evaluate(
+      {
+        id: 'sak',
+        split: 'validation',
+        input: 'Hvem utsteder tildelingsbrevet?',
+        expected: { sources: [] },
+        grounding: 'sources-and-answer',
+        tags: [],
+        needsReview: false,
+      },
+      { answer: 'Departementet.', retrieved: [], citations: [] },
+      { servedModels: [], modelFamily: () => undefined },
+    );
+    const item = { case: 'sak', repeat: 0, task: 't-sak', score: answer as Score };
+    ready = false;
+    const notYet = await judge.collect?.([item]);
+    const collected = await judge.collect?.([item]);
+
+    expect(answer).toMatchObject({ state: 'pending', value: null, details: { ticket: 'sak-1' } });
+    expect(asked.at(-1)).toEqual({ contract: 'evaluator@2', collect: { tickets: ['sak-1'] } });
+    expect(notYet).toEqual([]);
+    expect(collected).toEqual([
+      {
+        case: 'sak',
+        repeat: 0,
+        score: {
+          evaluator: 'evaluator.senere',
+          version: '1',
+          metric: 'korrekthet',
+          value: 0.7,
+          applicable: true,
+          state: 'scored',
+          reason: 'Stemmer',
+        },
+      },
+    ]);
+  });
+
+  it('refuses an evaluator plug-in that claims evaluator@1', async () => {
+    const { platform, register } = await boot();
+    const url = await jsonServer(() => ({ scores: [{ metric: 'korrekthet', value: 0.9 }] }));
+
+    const refused = await register({
+      manifest: {
+        kind: 'evaluator',
+        id: 'evaluator.gammel',
+        version: '1',
+        contract: 'evaluator@1',
+        title: 'Gammel dommer',
+        capabilities: ['korrekthet'],
+        hosts: ['127.0.0.1'],
+      },
+      endpoint: { baseURL: url, protocol: 'http-judge' },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(await refused.json())).toContain(
+      'evaluator plug-ins meet evaluator@2; register evaluator.gammel again under evaluator@2',
+    );
+    expect(platform.evaluators.has('evaluator.gammel')).toBe(false);
   });
 });
 

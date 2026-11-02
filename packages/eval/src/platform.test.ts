@@ -37,6 +37,7 @@ import {
   reviewCandidate,
   withoutExpiredCases,
   type EvalRun,
+  type Evaluator,
   type FeedbackRecord,
   type JudgeLabel,
   type RunStatus,
@@ -115,9 +116,9 @@ const setOf = (version = 1): TestSet =>
     },
   });
 
-const boot = async () => {
+const boot = async (extra: Evaluator[] = []) => {
   const holder: { kernel?: Kernel } = {};
-  const evaluators = [contractAssertions(), retrievalRecall(3)];
+  const evaluators = [contractAssertions(), retrievalRecall(3), ...extra];
   const evalCapability: Capability = {
     descriptor: descriptor('platform-eval'),
     strategy: { id: 'platform.eval.run', version: '1' },
@@ -130,6 +131,7 @@ const boot = async () => {
       evalRunStrategy({
         kernel: () => holder.kernel as Kernel,
         evaluators: new Map(evaluators.map((e) => [e.id, e])),
+        wait: { everyMs: 1 },
       }) as Strategy,
     ],
     capabilities: [
@@ -154,18 +156,22 @@ const boot = async () => {
 const settle = async (status: () => Promise<RunStatus>): Promise<RunStatus> => {
   for (let i = 0; i < 200; i += 1) {
     const current = await status();
-    if (current.state !== 'running') return current;
+    if (current.state !== 'running' && current.state !== 'waiting-for-scores') return current;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error('eval run did not finish');
 };
 
-const start = (service: Awaited<ReturnType<typeof boot>>['service'], subject: string) =>
+const start = (
+  service: Awaited<ReturnType<typeof boot>>['service'],
+  subject: string,
+  evaluators = ['contract', 'retrieval'],
+) =>
   service.startRun(kari, {
     tenant,
     capability: 'answer',
     testSet: { id: 'mini' },
-    evaluators: ['contract', 'retrieval'],
+    evaluators,
     provenance: { commit: 'abc', data: 'kudos@1' },
     service: 'kunnskapsassistenten',
     subject,
@@ -236,6 +242,56 @@ describe('eval service', () => {
     await expect(elsewhere.status(kari, 'finnes-ikke')).rejects.toBeInstanceOf(EvalAccessError);
   });
 
+  it('answers that a run is waiting for scores, and for how many, while its judge has not delivered', async () => {
+    let release = () => {};
+    const delivered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const self: Evaluator = {
+      id: 'judge:later',
+      version: '1',
+      kind: 'model',
+      evaluate: async () => [
+        {
+          evaluator: self.id,
+          version: self.version,
+          metric: 'judge.later',
+          value: null,
+          applicable: true,
+          state: 'pending',
+        },
+      ],
+      collect: async (pending) => {
+        await delivered;
+        return pending.map((item) => ({
+          case: item.case,
+          repeat: item.repeat,
+          score: { ...item.score, value: 1, state: 'scored' },
+        }));
+      },
+    };
+    const { service } = await boot([self]);
+
+    const started = await start(service, 'v4', ['contract', 'judge:later']);
+    let waiting: RunStatus = { state: 'running', task: started.task };
+    for (let i = 0; i < 200 && waiting.state === 'running'; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      waiting = await service.status(kari, started.task);
+    }
+    release();
+    const done = await settle(() => service.status(kari, started.task));
+
+    expect(waiting).toMatchObject({
+      state: 'waiting-for-scores',
+      task: started.task,
+      pending: 2,
+      until: expect.any(String),
+    });
+    expect(done.state).toBe('completed');
+    const runId = done.state === 'completed' ? done.run : '';
+    expect((await service.getRun(kari, runId)).metrics['judge.later']?.mean).toBe(1);
+  });
+
   it("compares two runs of the same test set and refuses another tenant's run", async () => {
     const { service } = await boot();
     const one = await start(service, 'v1');
@@ -285,12 +341,27 @@ const fakeRun = (id: string, subject: string, value: number, judges: string[] = 
     task: `t-${c}`,
     tags: [],
     scores: [
-      { evaluator: 'contract', version: '1', metric: 'answer-pattern', value, applicable: true },
-      { evaluator: 'judge', version: '1', metric: 'judge.correct', value, applicable: true },
+      {
+        evaluator: 'contract',
+        version: '1',
+        metric: 'answer-pattern',
+        value,
+        applicable: true,
+        state: 'scored' as const,
+      },
+      {
+        evaluator: 'judge',
+        version: '1',
+        metric: 'judge.correct',
+        value,
+        applicable: true,
+        state: 'scored' as const,
+      },
     ],
   })),
   metrics: {},
   byTag: {},
+  incomplete: [],
 });
 
 describe('publish gate', () => {

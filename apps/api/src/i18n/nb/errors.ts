@@ -97,6 +97,8 @@ export const catalogErrors = defineNamespace({
   idStartsWith: 'id-en begynner med {id}/',
   noPluginRegistry: 'ingen register for tillegg',
   builtInPlugin: '{id} er et innebygd tillegg',
+  pluginContractOutdated:
+    'tillegg av typen {kind} følger {expected}; registrer {id} på nytt under {expected}',
   noExternalPlugin: 'ingen eksternt tillegg {id}',
   invalidManifest: 'Ugyldig manifest',
   pluginEndpointNeedsAuth: 'et endepunkt av typen {kind} trenger autentisering',

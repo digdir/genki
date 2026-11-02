@@ -48,6 +48,7 @@ import {
 import {
   agentContract,
   evaluatorContract,
+  evaluatorContractVersion,
   httpJudge,
   searchEndpointContract,
   type AgentSubject,
@@ -243,7 +244,7 @@ export const judgeSender =
   async (body: string, signal?: AbortSignal) => {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
-      'x-genai-contract': 'evaluator@1',
+      'x-genai-contract': evaluatorContractVersion,
     };
     if (endpoint.auth) {
       const value = await secrets.resolve(endpoint.auth.secret);
@@ -477,6 +478,9 @@ const suiteFor = (kind: string) =>
     evaluator: evaluatorContract,
   })[kind];
 
+/** The contract the platform runs for a kind, when it runs one. */
+export const contractFor = (kind: string) => suiteFor(kind)?.contract;
+
 const latestPlugins = (entries: ConfigEntry<unknown>[]) =>
   entries
     .filter((e) => e.kind === externalPluginKind && e.scope === platformScope && !e.deleted)
@@ -640,6 +644,7 @@ export const externalPlugins = (
     for (const plugin of plugins) {
       if (plugin.manifest.kind !== 'evaluator' || runtime.evaluators.has(plugin.manifest.id))
         continue;
+      if (plugin.manifest.contract !== evaluatorContractVersion) continue;
       const judge = runtime.judge(plugin);
       if (!judge) continue;
       runtime.evaluators.set(plugin.manifest.id, judge);
@@ -649,7 +654,7 @@ export const externalPlugins = (
   const registrationOf = (plugin: ExternalPlugin): PluginRegistration => {
     const setup = target(plugin);
     const suite = suiteFor(plugin.manifest.kind);
-    return setup && suite
+    return setup && suite && suite.contract === plugin.manifest.contract
       ? {
           manifest: plugin.manifest,
           suite: suite as NonNullable<PluginRegistration['suite']>,

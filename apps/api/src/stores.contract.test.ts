@@ -151,6 +151,7 @@ const run = (id: string, testSetId: string, endedAt: string): EvalRun => ({
   results: [],
   metrics: {},
   byTag: {},
+  incomplete: [],
 });
 
 const candidate = (id: string, tenant: string, proposedAt: string): TestCaseCandidate => ({
