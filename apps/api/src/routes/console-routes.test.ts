@@ -289,8 +289,14 @@ describe('console routes', () => {
     expect(body.blocks.map((b) => b.ref)).toEqual(['retrieve@1']);
   });
 
-  it('shows the latest run per service with regressions, and judges with calibration marked advisory', async () => {
-    const { send, labels } = await setup();
+  it('shows the latest completed run per service with regressions, and judges with calibration marked advisory', async () => {
+    const { send, labels, runs } = await setup();
+    await runs.save({
+      run: { ...run('r9', '2026-10-09T00:00:00Z', 0, [0, 0]), status: 'failed' },
+      tenant: digdir,
+      task: 'e9',
+      service: 'klarsprak',
+    });
     await labels.add([
       { item: 'a', judge: 'rubric-v1', judgeLabel: 'good', humanLabel: 'bad', labeller: 'x' },
       { item: 'b', judge: 'rubric-v1', judgeLabel: 'good', humanLabel: 'good', labeller: 'x' },

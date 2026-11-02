@@ -131,7 +131,68 @@ describe('live Testsett', () => {
     expect(within(detail).getByText('Ikke bestått')).toBeTruthy();
     expect(within(detail).getByText('Svaret oppgir ikke riktig år.')).toBeTruthy();
     expect(within(detail).getByText('Svaret bruker tall fra et eldre år.')).toBeTruthy();
+    const metrics = within(detail).getByRole('table');
+    expect(within(metrics).getByText('Oppfyller kriteriene')).toBeTruthy();
+    expect(within(metrics).getByText('47 % – 77 %')).toBeTruthy();
+    expect(
+      within(detail).getByText('Dommer: judge:criteria@1+foundry-openai/gpt-41-dommer'),
+    ).toBeTruthy();
     expectAccessible();
+  });
+
+  it('says in bokmål why a run stopped and which judge left cases unscored', async () => {
+    const at = '2026-10-30T08:00:00.000Z';
+    const base = {
+      service: 'rapportassistenten',
+      testSet: 'rapport-kjerne',
+      version: 'published' as const,
+      startedAt: at,
+      endedAt: at,
+    };
+    await openLive('', {
+      runs: [
+        {
+          ...base,
+          id: 'stoppet',
+          status: 'failed',
+          error: 'case o1 failed: the model answered HTTP 429',
+          cases: [],
+        },
+        {
+          ...base,
+          id: 'ufullstendig',
+          status: 'completed',
+          metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 1 } },
+          incomplete: [
+            { evaluator: 'judge:criteria', reason: 'no score', missing: 2, failed: 0, of: 3 },
+          ],
+          cases: [
+            {
+              caseId: 'o1',
+              input: 'Hei',
+              expected: 'Hilser',
+              output: 'Hei!',
+              pass: true,
+            },
+          ],
+        },
+      ],
+    });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const rows = (await within(history).findAllByRole('row')).slice(1) as HTMLElement[];
+
+    fireEvent.click(
+      within(rows[0] as HTMLElement).getByRole('button', { name: /^Vis resultatet fra/ }),
+    );
+    expect(
+      await screen.findByText('Kjøringen stoppet: case o1 failed: the model answered HTTP 429'),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(rows[1] as HTMLElement).getByRole('button', { name: /^Vis resultatet fra/ }),
+    );
+    expect(
+      await screen.findByText('Ingen vurdering fra judge:criteria for 2 av 3 tilfeller.'),
+    ).toBeTruthy();
   });
 
   it('shows a running run and blocks a second start', async () => {
@@ -346,7 +407,7 @@ describe('live Forbedringsforslag', () => {
 describe('latestRunFact', () => {
   const run = (over: Partial<EvalRun>): EvalRun => ({
     id: 'r',
-    status: 'succeeded',
+    status: 'completed',
     testSet: 's',
     version: 'draft',
     startedAt: '2026-10-01T10:00:00Z',

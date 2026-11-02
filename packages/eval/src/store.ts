@@ -15,8 +15,16 @@ export interface RunFilter {
   testSet?: string;
 }
 
+/** The state a run was read in: a replace lands only while the stored run still has it. */
+export interface RunReadAs {
+  status?: string | undefined;
+  heartbeatAt?: string | undefined;
+}
+
 export interface EvalRunStore {
   save(stored: StoredRun): Promise<void>;
+  /** Saves the run only if the stored one still has the status and heartbeat it was read with. */
+  replace(stored: StoredRun, readAs: RunReadAs): Promise<boolean>;
   get(id: string): Promise<StoredRun | undefined>;
   list(filter: RunFilter): Promise<StoredRun[]>;
 }
@@ -34,6 +42,14 @@ export class InMemoryEvalRunStore implements EvalRunStore {
 
   async save(stored: StoredRun) {
     this.#runs.set(stored.run.id, structuredClone(stored));
+  }
+
+  async replace(stored: StoredRun, readAs: RunReadAs) {
+    const current = this.#runs.get(stored.run.id)?.run;
+    if (current?.status !== readAs.status || current?.heartbeatAt !== readAs.heartbeatAt)
+      return false;
+    await this.save(stored);
+    return true;
   }
 
   async get(id: string) {

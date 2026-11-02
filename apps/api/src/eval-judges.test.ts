@@ -16,6 +16,7 @@ const choiceWith = (calls: unknown[][]) =>
       calls.push(['pickJudge', tenant, served]);
       return served.includes('foundry/claude-sonnet') ? undefined : 'foundry/claude-sonnet';
     },
+    meter: () => ({ inputTokens: 12, outputTokens: 3, costMicroNok: () => 40 }),
     judgeModel: (principal: Principal, tenant: string, model: string, origin: string) => {
       calls.push(['judgeModel', principal.subject, tenant, model, origin]);
       return {
@@ -54,6 +55,7 @@ describe('judges an eval run gets for itself', () => {
     ]);
     expect(criteria?.judge).toBe('judge:criteria@1+foundry/claude-sonnet');
     expect(scores).toMatchObject([{ state: 'scored', value: 1, reason: 'Fristen er nevnt.' }]);
+    expect(criteria?.usage?.()).toEqual({ inputTokens: 12, outputTokens: 3, costMicroNok: 40 });
   });
 
   it('gives a principal without a tenant no criteria judge', () => {

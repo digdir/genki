@@ -60,6 +60,10 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
     options?: { fresh?: boolean },
   ): Promise<{ usedTokens: number; monthlyTokens: number; exhausted: boolean }>;
   drafts: DraftRunner;
+  /** The capability that runs an eval as a kernel task (`platform.eval.run`). */
+  evalCapability?: string;
+  /** The platform's own version, recorded as the commit of the eval runs it starts. */
+  appVersion?: string;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
   enrichmentTask?: TrackedWork;

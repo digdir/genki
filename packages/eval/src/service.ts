@@ -2,7 +2,7 @@ import type { Principal } from '@genai/contracts';
 import type { Kernel } from '@genai/kernel';
 import { EvalError } from './evaluators.js';
 import { compareRuns, type CompareOptions } from './runner.js';
-import { evalRun, splits, type EvalRun, type Split, type TestSet } from './schema.js';
+import { evalRun, runState, splits, type EvalRun, type Split, type TestSet } from './schema.js';
 import type { EvalRunStore, StoredRun, TestSetStore } from './store.js';
 
 export class EvalAccessError extends Error {
@@ -225,6 +225,11 @@ export const createEvalService = (options: EvalServiceOptions) => {
     ) => {
       const a = await readable(principal, baseline);
       const b = await readable(principal, candidate);
+      for (const stored of [a, b])
+        if (runState(stored.run) !== 'completed')
+          throw new EvalError(
+            `eval run ${stored.run.id} is ${runState(stored.run)}, not completed`,
+          );
       return compareRuns(a.run, b.run, metric, compare);
     },
   };

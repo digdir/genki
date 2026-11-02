@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { validateDefinition, type PluginSchemas } from '@genai/definitions';
 
 const stable = (value: unknown): string =>
   Array.isArray(value)
@@ -11,22 +10,14 @@ const stable = (value: unknown): string =>
           .join(',')}}`
       : JSON.stringify(value);
 
-const behaviourOf = (spec: unknown) => {
-  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return spec;
-  const rest: Record<string, unknown> = { ...spec };
-  delete rest.riskConfirmation;
-  return rest;
-};
+/** What a run's result does not depend on: publish stamps the risk confirmation with its time. */
+const untested = new Set(['riskConfirmation']);
 
-export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256')
-    .update(stable(behaviourOf(spec)))
-    .digest('hex')
-    .slice(0, 16)}`;
-
-export const publishedSubject = (definition: unknown, plugins: PluginSchemas) => {
-  const validated = validateDefinition(definition, plugins);
-  return definitionSubject(
-    validated.ok ? validated.definition.spec : (definition as { spec?: unknown }).spec,
-  );
+/** What a publishing gate looks a service's eval runs up by: the spec they tested. */
+export const definitionSubject = (spec: unknown) => {
+  const tested =
+    spec && typeof spec === 'object' && !Array.isArray(spec)
+      ? Object.fromEntries(Object.entries(spec).filter(([k]) => !untested.has(k)))
+      : spec;
+  return `spec:${createHash('sha256').update(stable(tested)).digest('hex').slice(0, 16)}`;
 };

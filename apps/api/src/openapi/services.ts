@@ -1,5 +1,6 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { definitionKinds } from '@genai/definitions';
+import { evalRunStates, metricSummary } from '@genai/eval';
 import { serviceIntents, skillIntents, unavailableReasons } from '@genai/strategy-builder';
 import { turnBody } from '../assistant.js';
 import { InputField } from '../frontend-openapi.js';
@@ -184,22 +185,37 @@ const TestSetSummary = z
 const EvalRunSummary = z
   .object({
     id: z.string(),
-    service: z.string(),
-    status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+    status: z.enum(evalRunStates),
     testSet: z.string(),
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
+    variant: z.string().optional(),
     split: z.enum(['locked', 'open']).optional(),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
-    score: z.number().nullable(),
+    score: z
+      .number()
+      .nullable()
+      .describe(
+        'Share of cases that pass on their type: the criteria judge, the exact text or the refusal',
+      ),
     passed: z.number().int(),
     total: z.number().int(),
+    progress: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+    metrics: z.record(z.string(), metricSummary),
+    incomplete: z.array(
+      z.object({
+        evaluator: z.string(),
+        missing: z.number().int(),
+        failed: z.number().int(),
+        of: z.number().int(),
+        reason: z.string(),
+      }),
+    ),
+    judges: z.array(z.string()).describe('Each judge as <id>@<version>+<model>'),
     cost: z.number().nullable().optional(),
     tokens: tokens.optional(),
     error: z.string().optional(),
-    owner: z.string().optional(),
-    heartbeatAt: z.string().optional(),
   })
   .openapi('ServiceEvalRunSummary');
 

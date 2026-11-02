@@ -31,9 +31,15 @@ export type NewServiceCase = Omit<ServiceCase, 'id' | 'expected'> & {
   expected: string | CaseExpectation;
 };
 
+export interface MetricSummary {
+  mean: number;
+  ci: [number, number];
+  n: number;
+}
+
 export interface EvalRun {
   id: string;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | (string & {});
+  status: 'running' | 'waiting-for-scores' | 'completed' | 'failed' | 'interrupted' | (string & {});
   testSet: string;
   version: RunVersion;
   startedAt: string;
@@ -42,6 +48,17 @@ export interface EvalRun {
   passed?: number | null;
   total?: number | null;
   cost?: number | null;
+  metrics?: Record<string, MetricSummary>;
+  incomplete?: {
+    evaluator: string;
+    reason: string;
+    missing?: number;
+    failed?: number;
+    of?: number;
+  }[];
+  judges?: string[];
+  /** Why a failed or interrupted run stopped. */
+  error?: string;
 }
 
 export interface EvalCaseResult {
@@ -132,7 +149,7 @@ export interface DraftRebase {
   applied: boolean;
 }
 
-const isFinished = (r: EvalRun) => r.status === 'succeeded' && typeof r.total === 'number';
+const isFinished = (r: EvalRun) => r.status === 'completed' && typeof r.total === 'number';
 
 export const latestRunFact = (runs: EvalRun[], t: T = translator('nb')) => {
   const done = runs.filter(isFinished).sort((a, b) => b.startedAt.localeCompare(a.startedAt));

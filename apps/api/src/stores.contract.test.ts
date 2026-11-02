@@ -373,6 +373,36 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(await reopened.list({ tenant: ORG_B })).toEqual([]);
   });
 
+  it('replaces a run only while it is still as it was read, so a late recovery never overwrites a finished run', async () => {
+    const { runs } = backend().stores();
+    const running = {
+      ...run('r4', 'klarsprak', '2026-10-07T08:00:00.000Z'),
+      status: 'running' as const,
+      owner: 'instans-a',
+      heartbeatAt: '2026-10-07T08:00:00.000Z',
+    };
+    await runs.save({ run: running, tenant: ORG_A, task: 't4' });
+    const read = { status: running.status, heartbeatAt: running.heartbeatAt };
+    await runs.save({
+      run: { ...running, status: 'completed', heartbeatAt: '2026-10-07T08:05:00.000Z' },
+      tenant: ORG_A,
+      task: 't4',
+    });
+
+    const replaced = await runs.replace(
+      { run: { ...running, status: 'interrupted' }, tenant: ORG_A, task: 't4' },
+      read,
+    );
+    const current = await runs.replace(
+      { run: { ...running, status: 'interrupted' }, tenant: ORG_A, task: 't4' },
+      { status: 'completed', heartbeatAt: '2026-10-07T08:05:00.000Z' },
+    );
+
+    expect(replaced).toBe(false);
+    expect(current).toBe(true);
+    expect((await (await backend().reopen()).runs.get('r4'))?.run.status).toBe('interrupted');
+  });
+
   it('appends feedback and filters it by task and rating', async () => {
     const { feedback } = backend().stores();
     const entry = (task: string, rating: 'up' | 'down', at: string) => ({

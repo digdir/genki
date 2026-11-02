@@ -17,7 +17,7 @@ import {
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { bundledJudge, type StoredRun } from '@genai/eval';
+import { bundledJudge, runState, type StoredRun } from '@genai/eval';
 import { type SecretResolver, type Strategy } from '@genai/kernel';
 import { residencies, type Residency } from '@genai/port-model';
 import {
@@ -498,9 +498,11 @@ const scoreOf = (stored: StoredRun) => {
     : Math.round((means.reduce((a, b) => a + b, 0) / means.length) * 100);
 };
 
+/** The latest completed run per service and test set: one still running or failed scores nothing. */
 const latestRuns = (runs: StoredRun[]) => {
   const latest = new Map<string, StoredRun>();
   for (const stored of runs) {
+    if (runState(stored.run) !== 'completed') continue;
     const key = `${stored.service ?? stored.run.capability}|${stored.run.testSet.id}`;
     const known = latest.get(key);
     if (!known || known.run.endedAt < stored.run.endedAt) latest.set(key, stored);

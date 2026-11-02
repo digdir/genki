@@ -4,6 +4,7 @@ import {
   type CandidateStatus,
   type CandidateStore,
   type EvalRunStore,
+  type RunReadAs,
   type Feedback,
   type FeedbackRecord,
   type FeedbackStore,
@@ -104,6 +105,28 @@ export class PostgresEvalRunStore implements EvalRunStore {
         ],
       ),
     );
+  }
+
+  async replace(stored: StoredRun, readAs: RunReadAs): Promise<boolean> {
+    const { run } = stored;
+    const updated = await withTenant(this.pool, stored.tenant, (client) =>
+      client.query(
+        `update eval_runs set task = $3, ended_at = $4, body = $5
+         where id = $1 and tenant = $2
+           and body->>'status' is not distinct from $6
+           and body->>'heartbeatAt' is not distinct from $7`,
+        [
+          run.id,
+          stored.tenant,
+          stored.task,
+          run.endedAt,
+          JSON.stringify(run),
+          readAs.status ?? null,
+          readAs.heartbeatAt ?? null,
+        ],
+      ),
+    );
+    return (updated.rowCount ?? 0) > 0;
   }
 
   async get(id: string): Promise<StoredRun | undefined> {

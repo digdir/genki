@@ -20,11 +20,12 @@ import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import {
+  runDetail,
   runSummary,
-  runView,
+  RunRefused,
   serviceEval,
+  shownRun,
   type ServiceDraft,
-  type ServiceRun,
 } from './service-eval.js';
 
 type Status = 400 | 401 | 403 | 404 | 409 | 422;
@@ -75,14 +76,12 @@ const setSummary = (set: TestSet) => {
   };
 };
 
-const costless =
-  <T extends { cost?: unknown; tokens?: unknown }>(view: (run: ServiceRun) => T) =>
-  (run: ServiceRun) => {
-    const shown: Partial<T> = { ...view(run) };
-    delete shown.cost;
-    delete shown.tokens;
-    return shown;
-  };
+const costless = <T extends { cost?: unknown; tokens?: unknown }>(view: T) => {
+  const shown: Partial<T> = { ...view };
+  delete shown.cost;
+  delete shown.tokens;
+  return shown;
+};
 
 export const serviceDraftActions = [
   'platform.service.draft.save',
@@ -101,7 +100,6 @@ export const createQualityModule =
       work.catch(() => undefined);
       options.onBackground?.(work);
     };
-    background(evals.recoverRuns());
     background(improving.recover());
 
     return {
@@ -493,33 +491,45 @@ export const createQualityModule =
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);
-          const started = await evals.startRun(principal, tenant, service, set, subject, split);
-          background(started.done);
-          return c.json({ id: started.run.id }, 202);
+          try {
+            const started = await evals.startRun(principal, tenant, service, set, subject, split);
+            background(started.done);
+            return c.json({ id: started.run.id }, 202);
+          } catch (error) {
+            if (error instanceof RunRefused)
+              return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
+            throw error;
+          }
         });
 
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
-          const shown = seesUsage(guard.principal, guard.tenant)
-            ? runSummary
-            : costless(runSummary);
-          return c.json({ data: runs.map(shown) });
+          const usage = seesUsage(guard.principal, guard.tenant);
+          return c.json({
+            data: runs.map((s) => (usage ? runSummary(s.run) : costless(runSummary(s.run)))),
+          });
         });
 
         app.get('/tenants/:tenant/eval-runs/:runId', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
-          const id = param(c, 'runId');
-          const run = await evals.runOf(guard.tenant, id);
-          const shown = seesUsage(guard.principal, guard.tenant) ? runView : costless(runView);
-          if (run) return c.json({ kind: 'service' as const, ...shown(run) });
-          const stored = await deps.evalStores.runs.get(id);
-          if (stored?.tenant !== guard.tenant) return problem(c, 404, 'Fant ikke');
+          const stored = await evals.runOf(guard.tenant, param(c, 'runId'));
+          if (!stored) return problem(c, 404, 'Fant ikke');
+          if (stored.run.tested) {
+            const set = await deps.evalStores.testSets.get(
+              guard.tenant,
+              stored.run.testSet.id,
+              stored.run.testSet.version,
+            );
+            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run));
+            const shown = seesUsage(guard.principal, guard.tenant) ? detail : costless(detail);
+            return c.json({ kind: 'service' as const, ...shown });
+          }
           return c.json({
             kind: 'kernel' as const,
-            run: stored.run,
+            run: shownRun(stored.run, seesUsage(guard.principal, guard.tenant)),
             provenance: stored.run.provenance,
             metrics: stored.run.metrics,
             byTag: stored.run.byTag,

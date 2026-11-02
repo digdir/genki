@@ -251,7 +251,7 @@ describe('the live builder', () => {
       [
         {
           id: 'r1',
-          status: 'succeeded',
+          status: 'completed',
           testSet: 'ts',
           version: 'draft',
           startedAt: '2026-10-07T10:00:00Z',

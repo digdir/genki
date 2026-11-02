@@ -57,7 +57,7 @@ import {
   type LabelStore,
   type TestSetStore,
 } from '@genai/eval';
-import { type TriggerRunStore } from '@genai/jobs';
+import { klarsprakChecklist, nynorskReference, type TriggerRunStore } from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
 import {
   deleteConversationDocuments,
@@ -97,8 +97,6 @@ import {
 } from './frontends.js';
 import { createWebhooks, egressSender, type WebhookSender } from './webhooks.js';
 import { createConfigurables, type ConfigurablesInput } from './configurables.js';
-import { definitionSubject } from './definition-subject.js';
-import { portalGateMetrics, portalGateRuns } from './gate-runs.js';
 import { checkOverrides, serviceOverridesOf } from './settings-runtime.js';
 import { requestLocale, t } from './i18n/index.js';
 import {
@@ -201,9 +199,14 @@ import {
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
-import { originOf } from './draft-runner.js';
+import { evalCapabilityId, originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
-import { createDraftRunner, type FieldOptionsLookup, type ModelPrice } from './draft-runner.js';
+import {
+  createDraftRunner,
+  usageSummaryOf,
+  type FieldOptionsLookup,
+  type ModelPrice,
+} from './draft-runner.js';
 import { withFieldOptions, type FacetCount } from './input-options.js';
 import {
   decorateWith,
@@ -220,6 +223,7 @@ import {
   withBlockSettings,
 } from './building-blocks.js';
 import { engineSwitchesModule } from './engine-switches.js';
+import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
@@ -392,6 +396,8 @@ export interface PlatformInput {
   evaluators?: Map<string, Evaluator>;
   gates?: Map<string, Gate>;
   platformTenant?: string;
+  /** The platform's version (APP_VERSION), recorded as the commit of eval runs it starts. */
+  appVersion?: string;
   tenantDirectory?: TenantDirectoryStore;
   taskIndex?: TaskIndex;
   ingestionExecutions?: ExecutionStore;
@@ -495,7 +501,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-export { definitionSubject };
+export { definitionSubject } from './definition-subject.js';
 
 const retrievalInput = {
   type: 'object',
@@ -936,10 +942,12 @@ export const createPlatform = async (input: PlatformInput) => {
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
-      id: 'platform/eval',
+      id: evalCapabilityId,
       version: '1',
       tenant: platformTenant,
       availableTo: '*',
@@ -991,6 +999,7 @@ export const createPlatform = async (input: PlatformInput) => {
         evaluators,
         forRun: runJudges(() => modelChoice(moduleDeps)),
         modelFamily: (model) => modelChoice(moduleDeps).familyOf(model),
+        meterAnswers: (events) => usageSummaryOf(events, prices),
         admit: async (tenant) => !(await quota(tenant, { fresh: true })).exhausted,
       }) as Strategy,
       createBuilderAssistant({ plugins, knowledge }) as Strategy,
@@ -1176,22 +1185,10 @@ export const createPlatform = async (input: PlatformInput) => {
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
-    const testSets = evaluation?.testSets ?? [];
     const decision = await publishGate({
       tenant: d.metadata.tenant,
       service: d.metadata.id,
       candidate,
-      candidateFallback: {
-        runs: await portalGateRuns(
-          configEntries,
-          evalStores.testSets,
-          d.metadata.tenant,
-          d.metadata.id,
-          candidate,
-          testSets,
-        ),
-        metrics: portalGateMetrics,
-      },
       ...(current
         ? { baseline: definitionSubject((current.definition as { spec: unknown }).spec) }
         : {}),
@@ -1603,6 +1600,8 @@ export const createPlatform = async (input: PlatformInput) => {
     ingestion: config.ingestion,
     ...(input.lockdown ? { modelAdmission: mayUseModels, readOnly: readOnlyInLockdown } : {}),
     evalStores,
+    evalCapability: evalCapability.descriptor.id,
+    ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     connections,
     blobs: blobStore,
     prices,
