@@ -92,10 +92,23 @@ describe('postgres retention', () => {
     ]);
   });
 
-  it('drops payloads after the retention period, erases the task key and keeps the envelope', async () => {
+  it('drops payloads after the retention period, erases the task key and keeps the envelope, and queues its traces for deletion in the same transaction', async () => {
+    await stores.traceDeliveries.record(
+      [
+        { tenant, sink: 'etaten', task: 'old', trace: 'case-old' },
+        { tenant, sink: 'etaten', task: 'fresh', trace: 'case-fresh' },
+      ],
+      now.toISOString(),
+    );
     const count = await stores.retention.purge(cutoff());
 
-    expect(count).toEqual({ payloads: 1, envelopes: 1 });
+    expect(count).toEqual({
+      payloads: 1,
+      envelopes: 1,
+      tasks: ['old', 'ancient'],
+      traceDeletes: 1,
+    });
+    expect((await stores.traceDeliveries.pending(10)).map((d) => d.trace)).toEqual(['case-old']);
     expect((await collect('old')).map((e) => e.data)).toEqual([{ status: 'done' }, erased]);
     const raw = await pool.query<{ payload: Buffer | null; envelope: unknown }>(
       'select payload, envelope from events where task = $1 order by seq',
@@ -136,9 +149,24 @@ describe('postgres retention', () => {
   });
 
   it('purging twice changes nothing the second time', async () => {
-    expect(await stores.retention.purge(cutoff())).toEqual({ payloads: 0, envelopes: 0 });
-    expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 1, envelopes: 0 });
-    expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 0, envelopes: 0 });
+    expect(await stores.retention.purge(cutoff())).toEqual({
+      payloads: 0,
+      envelopes: 0,
+      tasks: [],
+      traceDeletes: 0,
+    });
+    expect(await stores.retention.purge(cutoff(other))).toEqual({
+      payloads: 1,
+      envelopes: 0,
+      tasks: ['elsewhere'],
+      traceDeletes: 0,
+    });
+    expect(await stores.retention.purge(cutoff(other))).toEqual({
+      payloads: 0,
+      envelopes: 0,
+      tasks: [],
+      traceDeletes: 0,
+    });
   });
 });
 

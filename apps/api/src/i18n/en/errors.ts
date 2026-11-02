@@ -101,6 +101,8 @@ export const catalogErrors = {
   tracingSecretNotForHost: 'the secret is not set for {outside}',
   tracingServiceCovered: '{service} is already covered by the connection {id}',
   tracingResidencyByOperator: "an operator sets the residency of a connection to Digdir's Langfuse",
+  tracingBeingRemoved: 'the connection {id} is being removed',
+  tracingDeletesOwed: 'the connection {id} still has traces to delete where it points now',
   tracingNoConnection: 'no connection {id}',
   tracingNotCovered: 'no trace connection covers the service {service}',
   tracingCoveredTwice: 'two trace connections cover the service {service}: {ids}',

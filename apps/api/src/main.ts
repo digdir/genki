@@ -379,6 +379,7 @@ const platform = await createPlatform({
   clients,
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
+  ...(db ? { traceDeliveries: db.traceDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
   webhookEgress: mock
     ? { testOverride: { allowHttp: true, allowLoopback: true } }
