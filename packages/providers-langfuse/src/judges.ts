@@ -139,21 +139,22 @@ const wholeOnly = new Set(['input', 'output']);
 
 const refusalOf = (
   rule: RawRule,
-  evaluator: RawEvaluator,
+  evaluators: (RawEvaluator | undefined)[],
   mapping: JudgeMapping[],
 ): JudgeRefusal | undefined => {
-  // Several evaluators come first: Langfuse runs the rule while any one of them is active.
-  if ((rule.evaluatorAssignments ?? []).length > 1)
-    return {
-      reason: 'several-evaluators',
-      message: `${rule.name} runs more than one evaluator; genki reads a rule with one`,
-    };
-  if (evaluator.status === 'paused')
+  const evaluator = evaluators[0] as RawEvaluator;
+  // Langfuse runs a rule while any one of its evaluators is active, and nothing when all are paused.
+  if (evaluators.every((e) => e?.status === 'paused'))
     return {
       reason: 'paused',
       message:
         evaluator.pausedMessage ??
         `${rule.name}'s evaluator ${evaluator.name} is paused in Langfuse`,
+    };
+  if (evaluators.length > 1)
+    return {
+      reason: 'several-evaluators',
+      message: `${rule.name} runs more than one evaluator; genki reads a rule with one`,
     };
   if (evaluator.type !== undefined && evaluator.type !== 'llm_as_judge')
     return {
@@ -325,13 +326,14 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
   const judgeOf = (
     connection: string,
     rule: RawRule,
-    evaluator: RawEvaluator | undefined,
+    evaluators: (RawEvaluator | undefined)[],
   ): LangfuseJudge | undefined => {
     const assigned = rule.evaluatorAssignments?.[0];
+    const evaluator = evaluators[0];
     if (!assigned || !evaluator) return undefined;
     const mapping = assigned.variableMapping ?? evaluator.variableMapping ?? [];
     const dataType = evaluator.outputDefinition?.dataType ?? '';
-    const refused = refusalOf(rule, evaluator, mapping);
+    const refused = refusalOf(rule, evaluators, mapping);
     const model = evaluator.modelConfig;
     return {
       id: `langfuse:${connection}/${rule.name}`,
@@ -357,7 +359,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
   const list = async (connection: string): Promise<LangfuseJudge[]> => {
     const judges = (await project())
       .filter(({ rule }) => isJudge(rule))
-      .map(({ rule, evaluators }) => judgeOf(connection, rule, evaluators[0]))
+      .map(({ rule, evaluators }) => judgeOf(connection, rule, evaluators))
       .filter((j): j is LangfuseJudge => j !== undefined);
     // A judge is known by its rule's name, which Langfuse does not keep unique.
     const named = new Map<string, number>();
@@ -412,15 +414,16 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       signal,
     );
     if (!rule) return undefined;
-    const assigned = rule.evaluatorAssignments?.[0];
-    const evaluator = assigned
-      ? await read<RawEvaluator>(
-          `/api/public/v2/evaluators/${encodeURIComponent(assigned.evaluatorId)}`,
+    const evaluators = await Promise.all(
+      (rule.evaluatorAssignments ?? []).map((a) =>
+        read<RawEvaluator>(
+          `/api/public/v2/evaluators/${encodeURIComponent(a.evaluatorId)}`,
           signal,
-        )
-      : undefined;
+        ),
+      ),
+    );
     return {
-      judge: judgeOf(judge.connection, rule, evaluator),
+      judge: judgeOf(judge.connection, rule, evaluators),
       active: rule.enabled !== false && isJudge(rule),
     };
   };

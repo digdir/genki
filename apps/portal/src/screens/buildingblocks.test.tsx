@@ -1241,6 +1241,28 @@ describe('Byggeklosser: Langfuse-dommere', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
   });
+  it('shows that a Langfuse judge whose rule shares its name with another cannot be taken in use', async () => {
+    const message = `${rule} is the name of more than one rule in the project, so genki cannot tell them apart`;
+    const twin = judgeBlock({
+      status: 'not_allowed',
+      policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
+      judge: {
+        ...(judgeBlock().judge as NonNullable<CatalogItem['judge']>),
+        refused: { reason: 'same-name', message },
+      },
+    });
+
+    await open(detailOf(twin), { items: [twin] });
+    await screen.findByRole('heading', { level: 1, name: rule });
+
+    expect(
+      screen.getByText(
+        'Flere regler i prosjektet har dette navnet, så genki kan ikke skille dem fra hverandre. Gi reglene ulike navn i Langfuse for å ta dem i bruk.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ta i bruk hos oss' })).toBeNull();
+  });
+
   it('shows a connection whose Langfuse judges cannot be read as a refused block saying why', async () => {
     const message =
       'the judges of the connection kudos could not be read: Langfuse answered HTTP 404 for /api/public/v2/evaluation-rules';

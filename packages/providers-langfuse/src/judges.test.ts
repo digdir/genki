@@ -877,6 +877,25 @@ describe('Langfuse judges', () => {
       ['to_evaluatorer', 'several-evaluators'],
     ]);
     expect(await judges.others()).toEqual(['ukjent_evaluator', 'ukjent_alle_spenn']);
+    // With every one of them paused, Langfuse runs nothing: the rule is paused.
+    const allPaused = rule({ id: 'regel-5', name: 'alle_pauset' });
+    allPaused.evaluatorAssignments = [
+      { evaluatorId: 'pause-1', variableMapping: null },
+      { evaluatorId: 'pause-2', variableMapping: null },
+    ];
+    const paused = langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [allPaused],
+          evaluators: [
+            evaluator({ id: 'pause-1', status: 'paused' }),
+            evaluator({ id: 'pause-2', status: 'paused' }),
+          ],
+        }),
+      ),
+    );
+    expect((await paused.list('kudos')).map((j) => j.refused?.reason)).toEqual(['paused']);
+    expect(await paused.others()).toEqual([]);
   });
 
   it('refuses judges whose rules share a name, which genki cannot tell apart', async () => {
