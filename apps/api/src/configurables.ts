@@ -36,6 +36,8 @@ export interface ConfigurablesInput {
   scheduleIntervalMs?: number;
   admitsIngestion?: (principal: Principal | undefined) => boolean;
   onWarning?: (message: string) => void;
+  /** Why a gate on this metric cannot be saved, when it cannot. */
+  gateProblem?: (gate: string, metric: string) => string | undefined;
 }
 
 const countTtlMs = 5 * 60_000;
@@ -120,6 +122,7 @@ export const createConfigurables = (
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
+      ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
     const publishProblems = async (definition: Definition) => {

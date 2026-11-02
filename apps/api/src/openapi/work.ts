@@ -9,6 +9,7 @@ import {
   gate,
   judgeLabel,
   metricSummary,
+  scoreStates,
   splits,
   testCase,
 } from '@genai/eval';
@@ -16,6 +17,7 @@ import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
 import { Problem, problemContent } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
+import { sinkJudgeFields } from './services.js';
 
 /** A run as readers get it: its lease (owner, heartbeatAt) is never shown. */
 const shownEvalRun = evalRun.omit({ owner: true, heartbeatAt: true });
@@ -1060,6 +1062,7 @@ const ServiceEvalRun = z
       .describe('Micro-NOK for the answers and the judges; only with view-usage'),
     tokens: z.object({ input: z.number(), output: z.number() }).optional(),
     error: z.string().optional(),
+    ...sinkJudgeFields,
     byTag: z.record(z.string(), z.record(z.string(), metricSummary)),
     cases: z.array(
       z.object({
@@ -1071,6 +1074,22 @@ const ServiceEvalRun = z
         output: z.string(),
         pass: z.boolean(),
         reason: z.string().optional(),
+        judges: z
+          .array(
+            z.object({
+              judge: z.string(),
+              state: z.enum(scoreStates),
+              value: z.number().nullable(),
+              dataType: z.string().optional(),
+              asItCame: z.unknown().optional(),
+              reason: z
+                .string()
+                .optional()
+                .describe("The judge's reason, while the case's task keeps it"),
+            }),
+          )
+          .optional()
+          .describe("Each Langfuse judge's verdict on the case"),
       }),
     ),
   })

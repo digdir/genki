@@ -24,6 +24,8 @@ export interface GateInput {
   judgeAgreement?: Map<string, number>;
   allowDifferent?: ComparableField[];
   bootstrap?: BootstrapOptions;
+  /** Judges whose scores never gate: left out of comparisons and calibration. */
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface GateOutcome {
@@ -82,12 +84,22 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
       let blocking = true;
       let note = '';
       if (usesJudge(gate.metric)) {
-        const uncalibrated = run.provenance.judges.filter(
+        // Only the judges that scored the gate's metric; a run whose judges cannot be told apart keeps them all.
+        const scoredBy = new Set(
+          run.results.flatMap((r) =>
+            r.scores.filter((s) => s.metric === gate.metric).map((s) => s.evaluator),
+          ),
+        );
+        const own = run.provenance.judges.filter((j) => scoredBy.has(evaluatorOfJudge(j)));
+        const judges = (own.length > 0 ? own : run.provenance.judges).filter(
+          (j) => !input.advisoryJudge?.(j),
+        );
+        const uncalibrated = judges.filter(
           (j) =>
             (input.judgeAgreement?.get(j) ?? input.judgeAgreement?.get(evaluatorOfJudge(j)) ?? 0) <
             minimumJudgeAgreement,
         );
-        if (run.provenance.judges.length === 0 || uncalibrated.length > 0) {
+        if (judges.length === 0 || uncalibrated.length > 0) {
           blocking = false;
           note = ` (advisory: judge ${uncalibrated.join(', ') || 'unknown'} is not calibrated to ${minimumJudgeAgreement})`;
         }
@@ -156,6 +168,7 @@ export const evaluateGates = (input: GateInput): GateOutcome => {
             ...input.bootstrap,
             split: gate.split,
             allowDifferent: input.allowDifferent ?? ['commit', 'services', 'servedModels'],
+            ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
             ...(tag === undefined ? {} : { tag }),
           });
           if (tag === undefined) overall = { difference: c.difference, ci: c.ci };
@@ -193,6 +206,7 @@ export interface PublishGateInput {
   registry: Map<string, Gate>;
   judgeAgreement?: Map<string, number>;
   bootstrap?: BootstrapOptions;
+  advisoryJudge?: (judge: string) => boolean;
 }
 
 export interface PublishDecision {
@@ -245,6 +259,7 @@ export const publishGate = async (input: PublishGateInput): Promise<PublishDecis
     ...(baseline ? { baseline } : {}),
     ...(input.judgeAgreement ? { judgeAgreement: input.judgeAgreement } : {}),
     ...(input.bootstrap ? { bootstrap: input.bootstrap } : {}),
+    ...(input.advisoryJudge ? { advisoryJudge: input.advisoryJudge } : {}),
   });
   const label = (r: GateResult) => `${r.gate} on ${r.testSet}: ${r.reason}`;
   return {

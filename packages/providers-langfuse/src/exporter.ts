@@ -138,6 +138,7 @@ export const createTraceExporter = (
         firstTs: state.firstTs,
         terminal,
         content: config.content,
+        ...(config.fields ? { fields: config.fields } : {}),
         ...(config.environment ? { environment: config.environment } : {}),
         ...(userId ? { userId } : {}),
         ...(experiment ? { experiment } : {}),

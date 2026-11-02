@@ -53,5 +53,13 @@ export const blocks = defineNamespace({
   dataExtensionPoint: 'Det punktet gir tilgang til: {point}',
   dataCall: 'Det tjenesten sender i kallet',
   none: 'Ingen',
+  sinkJudgeCapability:
+    'Vurderer testkjøringer som sendes til koblingen {connection}. Rådgivende: stopper aldri en publisering.',
+  sinkJudgeNetwork: 'Hit sendes testkjøringene',
+  sinkJudgeModel: 'Kjøres av Langfuse, ikke av plattformen',
+  sinkJudgeDefaultModel: 'Prosjektets standardmodell',
+  sinkFieldInput: 'spørsmålet',
+  sinkFieldOutput: 'svaret',
+  sinkFieldExpected: 'kriteriene',
   skillRequirementsUnmet: 'Ferdigheten oppfyller ikke kravene for publisering',
 });

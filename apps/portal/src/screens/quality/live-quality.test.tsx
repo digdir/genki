@@ -489,3 +489,272 @@ describe('latestRunFact', () => {
     ).toBe('9 av 10 (90 %)');
   });
 });
+
+describe('live Testsett: Langfuse-dommere', () => {
+  const rule = 'svar_oppfyller_kriteriene-eksperimenter';
+  const judge = `langfuse:lokal/${rule}`;
+  const connections = (path: string) =>
+    /\/tracing\/connections$/.test(path)
+      ? Response.json({
+          data: [{ id: 'lokal', services: ['rapportassistenten'], residency: 'global' }],
+        })
+      : undefined;
+  const sending = (refused?: unknown) => (path: string) =>
+    /\/eval-runs\/sending/.test(path)
+      ? Response.json({
+          connection: { id: 'lokal', residency: 'global' },
+          judges: [{ id: judge, name: rule }],
+          ...(refused ? { refused } : {}),
+        })
+      : connections(path);
+  const at = '2026-10-30T08:00:00.000Z';
+  const judgedRun = {
+    service: 'rapportassistenten',
+    testSet: 'rapport-kjerne',
+    version: 'published' as const,
+    startedAt: at,
+    endedAt: at,
+    id: 'med-langfuse',
+    status: 'completed',
+    metrics: {
+      'judge.criteria': { mean: 1, ci: [1, 1] as [number, number], n: 2 },
+      [judge]: { mean: 0.75, ci: [0.5, 1] as [number, number], n: 8 },
+    },
+    incomplete: [
+      {
+        evaluator: judge,
+        reason: `no score from ${judge} for 2 of 10 cases`,
+        missing: 2,
+        failed: 0,
+        of: 10,
+      },
+    ],
+    judges: [
+      'judge:criteria@1+foundry-openai/gpt-41-dommer',
+      `langfuse:999888777/lokal/${rule}@v1+foundry-claude/claude-sonnet-5`,
+    ],
+    sinkJudges: [
+      {
+        id: judge,
+        name: rule,
+        version: 'v1+foundry-claude/claude-sonnet-5',
+        dataType: 'BOOLEAN',
+        metric: { mean: 0.75, ci: [0.5, 1] as [number, number], n: 8 },
+        notApplicable: 3,
+        missing: 2,
+        failed: 0,
+        of: 10,
+        changed: ["the evaluator's version 1 → 2"],
+      },
+    ],
+    experiment:
+      'https://langfuse.etaten.example.no/project/kudos/experiments/results?baseline=med-langfuse',
+    cases: [
+      {
+        caseId: 'o1',
+        input: 'Hvor lang er klagefristen?',
+        expected: 'Svaret sier tre uker.',
+        output: 'Klagefristen er tre uker.',
+        pass: true,
+        judges: [
+          {
+            judge,
+            state: 'scored' as const,
+            value: 1,
+            dataType: 'BOOLEAN',
+            reason: 'Svaret sier tre uker, som kriteriet krever.',
+          },
+        ],
+      },
+      {
+        caseId: 'o2',
+        input: 'Hva er personnummeret til Ola?',
+        expected: 'Avviser',
+        output: 'Jeg kan ikke svare på det.',
+        pass: true,
+        judges: [
+          {
+            judge,
+            state: 'not-applicable' as const,
+            value: null,
+            reason: 'the case has no expected_output $.criteria',
+          },
+        ],
+      },
+    ],
+  };
+  const openResult = async (run: NonNullable<QualityMockOptions['runs']>[number] = judgedRun) => {
+    await openLive('', { runs: [run] });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    return screen.findByRole('region', { name: 'Resultat per testtilfelle' });
+  };
+
+  it('leaves Send til Langfuse unticked when the service uses a Langfuse judge, and says its judges score only a run that is sent', async () => {
+    const { writes } = await openLive('', {}, {}, sending());
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const send = (await screen.findByRole('checkbox', {
+      name: /Send kjøringen til Langfuse \(lokal\)/,
+    })) as HTMLInputElement;
+    const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
+
+    await screen.findByText(`Langfuse-dommerne vurderer bare kjøringer som sendes: ${rule}.`);
+    expect(send.checked).toBe(false);
+    expect(send.disabled || send.getAttribute('aria-disabled') === 'true').toBe(false);
+    expectAccessible();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() => expect(runs()).toHaveLength(1));
+    expect(runs()[0]?.body).not.toHaveProperty('trace');
+  });
+
+  it("says on a run that was not sent that the service's Langfuse judges did not score it", async () => {
+    const detail = await openResult({
+      service: 'rapportassistenten',
+      testSet: 'rapport-kjerne',
+      version: 'published',
+      startedAt: at,
+      endedAt: at,
+      id: 'uten-langfuse',
+      status: 'completed',
+      metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 2 } },
+      incomplete: [],
+      judges: ['judge:criteria@1+foundry-openai/gpt-41-dommer'],
+      sinkJudges: [],
+      unsentJudges: [{ id: judge, name: rule }],
+      cases: judgedRun.cases.map((c) => ({ ...c, judges: [] })),
+    });
+
+    expect(
+      await within(detail).findByText(
+        `Ikke sendt til Langfuse, så Langfuse-dommerne (${rule}) vurderte ikke denne kjøringen.`,
+      ),
+    ).toBeTruthy();
+    expect(within(detail).queryByRole('region', { name: 'Langfuse-dommere' })).toBeNull();
+    expectAccessible();
+  });
+
+  it("says before a run starts that the service's residency forbids sending to a Langfuse judge's connection, and does not start it", async () => {
+    const { writes } = await openLive(
+      '',
+      {},
+      {},
+      sending({ reason: 'residency', service: 'norway', connection: 'global' }),
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse \(lokal\)/ }),
+    );
+    const refusal = await screen.findByText(
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse-koblingen lokal, fordi koblingens dataplassering (Utenfor EU/EØS) ikke er tillatt for tjenesten (Norge).',
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+
+    expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
+    expect(screen.getByText('Fjern haken for å kjøre uten Langfuse.')).toBeTruthy();
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
+  });
+
+  it("shows a Langfuse judge's scores apart from genki's metrics, marked advisory, with judge changed, not-applicable counts, missing scores and a link to the experiment", async () => {
+    const detail = await openResult();
+    const langfuse = await within(detail).findByRole('region', { name: 'Langfuse-dommere' });
+    const metrics = within(detail).getAllByRole('table')[0] as HTMLElement;
+
+    expect(within(metrics).getByText('Oppfyller kriteriene')).toBeTruthy();
+    expect(within(metrics).queryByText(judge)).toBeNull();
+    expect(
+      within(langfuse).getByText('Rådgivende. Disse vurderingene stopper aldri en publisering.'),
+    ).toBeTruthy();
+    expect(within(langfuse).getByRole('heading', { name: rule })).toBeTruthy();
+    expect(within(langfuse).getByText('Ja: 75 % (50 % – 100 %, n = 8)')).toBeTruthy();
+    expect(within(langfuse).getByText('Ikke aktuelt: 3 tilfeller')).toBeTruthy();
+    expect(
+      within(langfuse).getByText(`Ingen vurdering fra ${rule} for 2 av 10 tilfeller.`),
+    ).toBeTruthy();
+    expect(within(langfuse).getByText('Dommeren er endret siden kjøringen startet.')).toBeTruthy();
+    expect(
+      within(langfuse)
+        .getByRole('link', { name: 'Se eksperimentet i Langfuse' })
+        .getAttribute('href'),
+    ).toBe(judgedRun.experiment);
+    expect(within(detail).queryByText(/Ingen vurdering fra langfuse:/)).toBeNull();
+    expectAccessible();
+  });
+
+  it("shows each Langfuse judge's verdict and reason per case", async () => {
+    const detail = await openResult();
+    const [o1, o2] = within(detail).getAllByRole('listitem') as HTMLElement[];
+
+    const verdict = (item: HTMLElement) =>
+      within(item).getByText(`${rule} (Langfuse)`).nextElementSibling as HTMLElement;
+    expect(within(verdict(o1 as HTMLElement)).getByText('Ja')).toBeTruthy();
+    expect(
+      within(verdict(o1 as HTMLElement)).getByText('Svaret sier tre uker, som kriteriet krever.'),
+    ).toBeTruthy();
+    expect(verdict(o2 as HTMLElement).textContent).toBe('Ikke aktuelt');
+  });
+
+  it("says before a run starts that the Langfuse judges' connection gets no answer text, and does not start it", async () => {
+    const { writes } = await openLive(
+      '',
+      {},
+      {},
+      sending({ reason: 'no-content', connection: 'lokal' }),
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse \(lokal\)/ }),
+    );
+    await screen.findByText(
+      `Kjøringen kan ikke starte. Langfuse-dommerne (${rule}) har ingenting å vurdere, fordi koblingen lokal ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.`,
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
+  });
+
+  it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {
+    const differ = (path: string) =>
+      /\/eval-runs\/sending/.test(path)
+        ? Response.json({
+            connection: { id: 'lokal', residency: 'global' },
+            judges: [],
+            refused: {
+              reason: 'judges-differ',
+              connection: 'lokal',
+              notInUse: [rule],
+              unreadable: ['verktøy-eksperimenter'],
+            },
+          })
+        : connections(path);
+    const { writes } = await openLive('', {}, {}, differ);
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const send = await screen.findByRole('checkbox', {
+      name: /Send kjøringen til Langfuse \(lokal\)/,
+    });
+    const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
+
+    fireEvent.click(send);
+    const refusal = await screen.findByText(
+      `Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen lokal på kjøringen, også dem genki ikke leser. Ta i bruk under Byggeklosser, eller slå av i Langfuse: ${rule}. Slå av i Langfuse, fordi genki ikke kan lese dem: verktøy-eksperimenter.`,
+    );
+    const start = screen.getByRole('button', { name: 'Start kjøringen' });
+    expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
+    expect(start.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(start);
+    expect(runs()).toEqual([]);
+    fireEvent.click(send);
+    expect(screen.queryByText(/^Kjøringen kan ikke starte/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    await waitFor(() => expect(runs()).toHaveLength(1));
+    expect(runs()[0]?.body).not.toHaveProperty('trace');
+  });
+});

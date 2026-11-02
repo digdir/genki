@@ -22,7 +22,7 @@ These rules extend the decision above once they are built. All are built except 
   - For a sink a tenant runs itself, the tenant's declaration that both hold is enough.
   - In development mode (`GENAI_DEV_MODE=true`), a Langfuse on the developer's own machine may receive content without the 7-day rule, as long as only made-up test sets are sent to it.
 - **Platform-wide exporter.** It carries metadata only. `TRACES_CONTENT` is honoured only in development mode.
-- **Text sent for evaluation.** It is only what the judges read, as their variable mappings name it: the question and the answer, and the cited sources, the retrieved documents, the case's `expected.criteria` or other fields only when a judge maps them. A field no judge maps is not sent. Holdout cases are never sent.
+- **Text sent for evaluation.** It is only what the judges read, as their variable mappings name it: the question and the answer, and the cited sources, the retrieved documents, the case's `expected.criteria` (or, for a criteria case without named criteria, its reference answer as `criteria`) or other fields only when a judge maps them. A field no judge maps is not sent. Holdout cases are never sent.
 - **Deleting in a sink.** The platform records the id of every trace it sends to a sink, and of the traces the sink made from them, until each delete is confirmed.
   - When the nightly purge or any other erasure removes a task, the platform records the deletion of those traces as pending, and the nightly purge works through the pending deletes.
   - A failed delete stays pending and is tried again the next night, without holding back the purge in the platform.

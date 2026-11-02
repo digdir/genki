@@ -46,6 +46,16 @@ const textOf = (input: TestCase['input']) =>
 export const criteriaOf = (c: TestCase) =>
   c.expected.criteria?.criteria ?? c.expected.referenceAnswer;
 
+/**
+ * What a case expects, as a judge outside the platform reads it: its named criteria, with the
+ * reference answer as `criteria` when a criteria case names none, as criteriaOf reads it.
+ */
+export const judgedExpectation = (c: TestCase): Record<string, string> | undefined => {
+  const criteria = caseTypeOf(c) === 'criteria' ? criteriaOf(c) : c.expected.criteria?.criteria;
+  const expected = { ...c.expected.criteria, ...(criteria ? { criteria } : {}) };
+  return Object.keys(expected).length > 0 ? expected : undefined;
+};
+
 export const caseView = (c: TestCase): CaseView => ({
   id: c.id,
   input: textOf(c.input),

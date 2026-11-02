@@ -52,5 +52,13 @@ export const blocks = {
   dataExtensionPoint: 'What that point gives access to: {point}',
   dataCall: 'What the service sends in the call',
   none: 'None',
+  sinkJudgeCapability:
+    'Judges test runs sent to the connection {connection}. Advisory: never stops a publish.',
+  sinkJudgeNetwork: 'Where the test runs are sent',
+  sinkJudgeModel: 'Run by Langfuse, not by the platform',
+  sinkJudgeDefaultModel: "The project's default model",
+  sinkFieldInput: 'the question',
+  sinkFieldOutput: 'the answer',
+  sinkFieldExpected: 'the criteria',
   skillRequirementsUnmet: 'The skill does not meet the requirements for publishing',
 } satisfies Translation<typeof source>;

@@ -96,6 +96,7 @@ export const createQualityModule =
   ): PlatformModuleFactory =>
   (deps) => {
     const evals = serviceEval(deps, options.leases);
+    const isSinkJudge = (evaluator: string) => deps.traceSinks?.isSinkJudge?.(evaluator) ?? false;
     const improving = improvements(deps, evals);
     const background = (work: Promise<void>) => {
       work.catch(() => undefined);
@@ -508,13 +509,33 @@ export const createQualityModule =
           }
         });
 
+        app.get('/tenants/:tenant/services/:id/eval-runs/sending', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const service = param(c, 'id');
+          const version = c.req.query('version');
+          const found = await evals.subjectOf(
+            guard.tenant,
+            service,
+            version === 'draft' ? 'draft' : version ? Number(version) : undefined,
+          );
+          if (!found)
+            return problem(c, 404, 'Fant ikke', [
+              { path: 'version', message: `no ${version ?? 'published'} version` },
+            ]);
+          return c.json(await evals.sendingOf(guard.tenant, service, found));
+        });
+
         app.get('/tenants/:tenant/services/:id/eval-runs', async (c) => {
           const guard = await member(c);
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
           const usage = seesUsage(guard.principal, guard.tenant);
           return c.json({
-            data: runs.map((s) => (usage ? runSummary(s.run) : costless(runSummary(s.run)))),
+            data: runs.map((s) => {
+              const summary = runSummary(s.run, isSinkJudge);
+              return usage ? summary : costless(summary);
+            }),
           });
         });
 
@@ -529,7 +550,10 @@ export const createQualityModule =
               stored.run.testSet.id,
               stored.run.testSet.version,
             );
-            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run));
+            const detail = runDetail(stored.run, set, await evals.answersOf(stored.run), {
+              isSinkJudge,
+              reasons: await evals.judgeReasonsOf(stored.run, isSinkJudge),
+            });
             const shown = seesUsage(guard.principal, guard.tenant) ? detail : costless(detail);
             return c.json({ kind: 'service' as const, ...shown });
           }
