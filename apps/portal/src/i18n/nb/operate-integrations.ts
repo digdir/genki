@@ -2,8 +2,6 @@ import { defineNamespace } from '@genai/i18n';
 
 export const integrationsArea = {
   integrations: defineNamespace({
-    heading: 'Integrasjoner',
-    lead: 'Systemer og brukerflater som kaller plattformen, og kilder som starter tjenester automatisk.',
     callFromCode: 'Kall en tjeneste fra kode',
     tabSystems: 'Systemer',
     tabFrontends: 'Brukerflater',
@@ -17,7 +15,6 @@ export const integrationsArea = {
       one: '{count} integrasjon trenger oppfølging',
       other: '{count} integrasjoner trenger oppfølging',
     },
-    badgeFailing: '{count} med feil',
     systemRejected: '{name}: kallene blir avvist',
     systemSub: '{env} · Ansvarlig: {owner}',
     triggerSub: '{kind} · starter {service}',
