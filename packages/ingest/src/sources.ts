@@ -26,6 +26,7 @@ import {
 } from './kudos.js';
 import type { IngestSource, SkipReason, SourceDocument } from './pipeline.js';
 import {
+  HttpStatusError,
   mergeFrontmatter,
   prepareWebsiteChunks,
   prepareWebsiteDoc,
@@ -145,20 +146,38 @@ export const websiteSource = (options: WebsiteSourceOptions): IngestSource => ({
   phraseRows: 'pipeline',
   documents: async function* () {
     for (const entry of options.entries) {
-      const read = await readWebsiteEntry(options, entry);
-      const markdown = 'text' in read ? read.text : '';
-      const merged = mergeFrontmatter(urlToDoc(entry), markdown);
-      const doc = 'title' in read && read.title ? { ...merged, title: read.title } : merged;
-      yield {
-        key: doc.id,
-        docNum: doc.doc_num,
+      const identity = urlToDoc(entry);
+      const listed: SourceDocument = {
+        key: identity.id,
+        docNum: identity.doc_num,
         name: entry.loc,
-        ...('skip' in read ? { skip: read.skip } : {}),
-        texts: [markdown],
+        texts: [],
         location: { key: 'url', value: entry.loc },
-        stored: (chunks: Chunk[]) =>
-          prepareWebsiteDoc(options.baseUrl, { ...doc, total_chunks: chunks.length }),
+        stored: () => prepareWebsiteDoc(options.baseUrl, identity),
         storedChunks: (chunks: Chunk[]) => prepareWebsiteChunks(options.baseUrl, chunks),
+      };
+      yield {
+        ...listed,
+        prepare: async () => {
+          let read: ReadDocument;
+          try {
+            read = await readWebsiteEntry(options, entry);
+          } catch (error) {
+            if (error instanceof HttpStatusError && [404, 410].includes(error.status))
+              return { ...listed, skip: 'not_found' };
+            throw error;
+          }
+          const markdown = 'text' in read ? read.text : '';
+          const merged = mergeFrontmatter(identity, markdown);
+          const doc = 'title' in read && read.title ? { ...merged, title: read.title } : merged;
+          return {
+            ...listed,
+            ...('skip' in read ? { skip: read.skip } : {}),
+            texts: [markdown],
+            stored: (chunks: Chunk[]) =>
+              prepareWebsiteDoc(options.baseUrl, { ...doc, total_chunks: chunks.length }),
+          };
+        },
       };
     }
   },

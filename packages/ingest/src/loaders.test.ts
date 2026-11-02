@@ -561,7 +561,12 @@ describe('ingest run', () => {
       source: source(['a', 'b', 'c'], new Set(['b'])),
       sink: sink(),
     });
-    expect(tolerant).toEqual({ stored: 2, skipped: 0, failed: ['b'] });
+    expect(tolerant).toEqual({
+      stored: 2,
+      skipped: 0,
+      failed: ['b'],
+      failedDocuments: [{ document: 'b', reason: 'broken' }],
+    });
 
     await expect(
       runIngest({

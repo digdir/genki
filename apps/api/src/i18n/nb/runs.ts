@@ -22,6 +22,7 @@ export const runs = defineNamespace({
   skipOutsideAccess: 'Utenfor tilgangen til tjenesten',
   skipConversionFailed: 'Kunne ikke lese dokumentet',
   skipScannedPdf: 'Skannet PDF uten tekst',
+  skipNotFound: 'Siden finnes ikke (HTTP 404 eller 410)',
   skipNoText: 'Dokumentet har ingen tekst',
   searchNote: 'Søkemerknad',
   documentsSkipped: {

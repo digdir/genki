@@ -128,28 +128,36 @@ export type HostResolver = (host: string) => Promise<string[]>;
 const dnsResolver: HostResolver = async (host) =>
   (await lookup(host, { all: true })).map((a) => a.address);
 
+/** A URL or destination refusal must stop ingestion, even inside document preparation. */
+export class WebsiteFetchGuardError extends Error {
+  override readonly name = 'WebsiteFetchGuardError';
+}
+
 const validatedFetchTarget = async (url: string, policy: FetchPolicy, resolve: HostResolver) => {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`Invalid website fetch URL: ${url}`);
+    throw new WebsiteFetchGuardError(`Invalid website fetch URL: ${url}`);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
-    throw new Error(`Website fetch URL must use HTTP or HTTPS: ${url}`);
+    throw new WebsiteFetchGuardError(`Website fetch URL must use HTTP or HTTPS: ${url}`);
   const host = parsed.hostname
     .toLowerCase()
     .replace(/\.$/, '')
     .replace(/^\[|\]$/g, '');
   if (!host || parsed.username || parsed.password)
-    throw new Error(`Website fetch URL has an invalid authority: ${url}`);
+    throw new WebsiteFetchGuardError(`Website fetch URL has an invalid authority: ${url}`);
   if (policy.allowedHosts.size > 0 && !policy.allowedHosts.has(host))
-    throw new Error(`Website fetch host is not allowed: ${host}`);
+    throw new WebsiteFetchGuardError(`Website fetch host is not allowed: ${host}`);
   const addresses = isIP(host) ? [host] : await resolve(host);
   if (addresses.length === 0)
-    throw new Error(`Website fetch host resolved to no addresses: ${host}`);
+    throw new WebsiteFetchGuardError(`Website fetch host resolved to no addresses: ${host}`);
   const blocked = addresses.find(blockedAddress);
-  if (blocked) throw new Error(`Website fetch resolved to a private or reserved address: ${host}`);
+  if (blocked)
+    throw new WebsiteFetchGuardError(
+      `Website fetch resolved to a private or reserved address: ${host}`,
+    );
   return { parsed, addresses: [...addresses] };
 };
 

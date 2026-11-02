@@ -40,6 +40,7 @@ import {
   type PhraseCache,
   type RowReader,
   type SkippedDocument,
+  type SourceDocument,
 } from '@genai/ingest';
 import { parquetSourceOf } from './parquet-files.js';
 export { parquetLocation, parquetReadTimeoutMs } from './parquet-files.js';
@@ -198,17 +199,29 @@ const matches = (globs: string[], value: string) => globs.some((g) => globPatter
 const selected = (value: string, include: string[], exclude: string[] = []) =>
   (include.length === 0 || matches(include, value)) && !matches(exclude, value);
 
+// Apply decorations again after lazy preparation, which returns a fresh document.
+const mapDocument = (
+  document: SourceDocument,
+  map: (document: SourceDocument) => SourceDocument,
+): SourceDocument => {
+  const prepare = document.prepare;
+  return {
+    ...map(document),
+    ...(prepare ? { prepare: async () => mapDocument(await prepare.call(document), map) } : {}),
+  };
+};
+
 const withoutMetadata = (source: IngestSource): IngestSource => ({
   ...source,
   documents: async function* () {
     for await (const document of source.documents())
-      yield {
-        ...document,
+      yield mapDocument(document, (doc) => ({
+        ...doc,
         storedChunks: (chunks) =>
-          document
+          doc
             .storedChunks(chunks)
             .map((c) => Object.fromEntries(Object.entries(c).filter(([k]) => k !== 'metadata'))),
-      };
+      }));
   },
 });
 
@@ -216,7 +229,10 @@ const withIngestedAt = (source: IngestSource, at: string): IngestSource => ({
   ...source,
   documents: async function* () {
     for await (const document of source.documents())
-      yield { ...document, stored: (chunks) => ({ ...document.stored(chunks), ingested_at: at }) };
+      yield mapDocument(document, (doc) => ({
+        ...doc,
+        stored: (chunks) => ({ ...doc.stored(chunks), ingested_at: at }),
+      }));
   },
 });
 
@@ -594,6 +610,7 @@ export const indexIngestionBackend = (options: IndexIngestionOptions): Ingestion
         skipped: result.skipped,
         ...(result.skippedDocuments ? { skippedDocuments: result.skippedDocuments } : {}),
         failed: result.failed,
+        ...(result.failedDocuments ? { failedDocuments: result.failedDocuments } : {}),
         generation: result.generation,
         promoted: result.promoted,
         ...(result.previous === undefined ? {} : { previous: result.previous }),

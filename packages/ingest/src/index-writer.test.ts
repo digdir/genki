@@ -303,6 +303,7 @@ describe('ingest through an index writer', () => {
       stored: 0,
       skipped: 0,
       failed: ['a'],
+      failedDocuments: [{ document: 'a', reason: 'broken' }],
       generation: 'g1',
       promoted: false,
     });

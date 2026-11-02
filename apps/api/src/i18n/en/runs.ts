@@ -23,6 +23,7 @@ export const runs = {
   skipOutsideAccess: 'Outside what the service has access to',
   skipConversionFailed: 'Could not read the document',
   skipScannedPdf: 'Scanned PDF without text',
+  skipNotFound: 'The page does not exist (HTTP 404 or 410)',
   skipNoText: 'The document has no text',
   searchNote: 'Search note',
   documentsSkipped: { one: '{count} document skipped', other: '{count} documents skipped' },

@@ -23,6 +23,7 @@ export const skipReasonText: Record<string, PlainKey> = {
   unsupported_type: 'datasets.skipUnsupported',
   conversion_failed: 'datasets.skipConversion',
   outside_access: 'datasets.skipOutsideAccess',
+  not_found: 'datasets.skipNotFound',
   too_large: 'datasets.skipTooLarge',
 };
 
