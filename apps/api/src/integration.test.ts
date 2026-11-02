@@ -91,7 +91,12 @@ const boot = async () => {
     if (!body.messages)
       return {
         status: 200,
-        json: { data: [{ id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' }] },
+        json: {
+          data: [
+            { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
+          ],
+        },
       };
     const format = body.response_format as { json_schema?: { schema: Schema } } | undefined;
     if (body.stream)
