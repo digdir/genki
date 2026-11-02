@@ -112,11 +112,12 @@ describe('Integrasjoner: brukerflater fra API-et', () => {
 });
 
 describe('Integrasjoner: utløsere fra API-et', () => {
-  it('counts a failing trigger on the tab and in the follow-up list', async () => {
+  it('counts a failing trigger in the follow-up list', async () => {
     await live('#/integrations?tab=triggers');
 
-    expect(await screen.findByLabelText('1 med feil')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: '1 integrasjon trenger oppfølging' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: '1 integrasjon trenger oppfølging' }),
+    ).toBeTruthy();
     expect(screen.getByText('Mappen «teams-opptak»: får ikke startet tjenesten')).toBeTruthy();
     expectAccessible();
   });

@@ -32,8 +32,8 @@ afterEach(cleanup);
 
 describe('footer pages', () => {
   it('links the user guide to the real portal screens', async () => {
-    await open('#/help');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Brukerveiledning' })).toBeTruthy();
+    await open('#/onboarding');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Kom i gang' })).toBeTruthy();
     const targets = Object.fromEntries(
       [
         'Oversikt',
@@ -44,7 +44,7 @@ describe('footer pages', () => {
         'Prøveområdet',
         'Kall en tjeneste fra kode',
         'API-referansen',
-        'Forbruk',
+        'Statistikk',
         'Logg',
         'Tilgang',
         'Innstillinger',
@@ -63,9 +63,9 @@ describe('footer pages', () => {
       Byggeklosser: '#/building-blocks',
       Fellestjenester: '#/shared-services',
       Prøveområdet: '#/playground',
-      'Kall en tjeneste fra kode': '#/integrations/code',
+      'Kall en tjeneste fra kode': '#/developer/api/code',
       'API-referansen': '#/api-reference',
-      Forbruk: '#/usage',
+      Statistikk: '#/statistics',
       Logg: '#/log',
       Tilgang: '#/access',
       Innstillinger: '#/settings',
