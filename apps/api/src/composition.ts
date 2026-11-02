@@ -57,7 +57,7 @@ import {
   type LabelStore,
   type TestSetStore,
 } from '@genai/eval';
-import { type TriggerRunStore } from '@genai/jobs';
+import { klarsprakChecklist, nynorskReference, type TriggerRunStore } from '@genai/jobs';
 import { type BlobStore } from '@genai/port-blob';
 import {
   deleteConversationDocuments,
@@ -946,6 +946,8 @@ export const createPlatform = async (input: PlatformInput) => {
     new Map<string, Evaluator>([
       ['contract', contractAssertions()],
       ['retrieval', retrievalRecall(10)],
+      ['klarsprak-checklist', klarsprakChecklist()],
+      ['nynorsk-reference', nynorskReference()],
     ]);
   const evalCapability: KernelCapability = {
     descriptor: {
