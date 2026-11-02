@@ -583,32 +583,55 @@ describe('live Testsett: Langfuse-dommere', () => {
       },
     ],
   };
-  const openResult = async () => {
-    await openLive('', { runs: [judgedRun] });
+  const openResult = async (run: NonNullable<QualityMockOptions['runs']>[number] = judgedRun) => {
+    await openLive('', { runs: [run] });
     const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
     return screen.findByRole('region', { name: 'Resultat per testtilfelle' });
   };
 
-  it('ticks and locks Send til Langfuse when the service uses a Langfuse judge, naming the judges', async () => {
+  it('leaves Send til Langfuse unticked when the service uses a Langfuse judge, and says its judges score only a run that is sent', async () => {
     const { writes } = await openLive('', {}, {}, sending());
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     const send = (await screen.findByRole('checkbox', {
       name: /Send kjøringen til Langfuse \(lokal\)/,
     })) as HTMLInputElement;
+    const runs = () => writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path));
 
-    await waitFor(() => expect(send.checked).toBe(true));
-    expect(send.disabled || send.getAttribute('aria-disabled') === 'true').toBe(true);
-    expect(
-      screen.getByText(`Sendes fordi tjenesten bruker Langfuse-dommere: ${rule}.`),
-    ).toBeTruthy();
-    fireEvent.click(send);
-    expect(send.checked).toBe(true);
+    await screen.findByText(`Langfuse-dommerne vurderer bare kjøringer som sendes: ${rule}.`);
+    expect(send.checked).toBe(false);
+    expect(send.disabled || send.getAttribute('aria-disabled') === 'true').toBe(false);
+    expectAccessible();
     fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
-    await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
-    await waitFor(() => expect(writes().at(-1)?.body).toMatchObject({ trace: true }));
+    await waitFor(() => expect(runs()).toHaveLength(1));
+    expect(runs()[0]?.body).not.toHaveProperty('trace');
+  });
+
+  it("says on a run that was not sent that the service's Langfuse judges did not score it", async () => {
+    const detail = await openResult({
+      service: 'rapportassistenten',
+      testSet: 'rapport-kjerne',
+      version: 'published',
+      startedAt: at,
+      endedAt: at,
+      id: 'uten-langfuse',
+      status: 'completed',
+      metrics: { 'judge.criteria': { mean: 1, ci: [1, 1], n: 2 } },
+      incomplete: [],
+      judges: ['judge:criteria@1+foundry-openai/gpt-41-dommer'],
+      sinkJudges: [],
+      unsentJudges: [{ id: judge, name: rule }],
+      cases: judgedRun.cases.map((c) => ({ ...c, judges: [] })),
+    });
+
+    expect(
+      await within(detail).findByText(
+        `Ikke sendt til Langfuse, så Langfuse-dommerne (${rule}) vurderte ikke denne kjøringen.`,
+      ),
+    ).toBeTruthy();
+    expect(within(detail).queryByRole('region', { name: 'Langfuse-dommere' })).toBeNull();
     expectAccessible();
   });
 
@@ -621,12 +644,16 @@ describe('live Testsett: Langfuse-dommere', () => {
     );
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse \(lokal\)/ }),
+    );
     const refusal = await screen.findByText(
-      `Kjøringen kan ikke starte. Den må sendes til Langfuse-koblingen lokal fordi tjenesten bruker Langfuse-dommere (${rule}), men koblingens dataplassering (Utenfor EU/EØS) er ikke tillatt for tjenesten (Norge).`,
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse-koblingen lokal, fordi koblingens dataplassering (Utenfor EU/EØS) ikke er tillatt for tjenesten (Norge).',
     );
     const start = screen.getByRole('button', { name: 'Start kjøringen' });
 
     expect(refusal.closest('.ds-alert')?.getAttribute('data-color')).toBe('danger');
+    expect(screen.getByText('Fjern haken for å kjøre uten Langfuse.')).toBeTruthy();
     expect(start.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(start);
     expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
@@ -680,6 +707,9 @@ describe('live Testsett: Langfuse-dommere', () => {
     );
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse \(lokal\)/ }),
+    );
     await screen.findByText(
       `Kjøringen kan ikke starte. Langfuse-dommerne (${rule}) har ingenting å vurdere, fordi koblingen lokal ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.`,
     );

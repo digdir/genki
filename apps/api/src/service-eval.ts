@@ -229,6 +229,14 @@ export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge)
     ...(run.error ? { error: run.error } : {}),
     sinkJudges: sinkJudgesOf(run, isSinkJudge),
     ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
+    ...(run.tested?.unsentJudges
+      ? {
+          unsentJudges: run.tested.unsentJudges.map((id) => ({
+            id,
+            name: id.slice(id.indexOf('/') + 1),
+          })),
+        }
+      : {}),
   };
 };
 
@@ -639,9 +647,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         covering.map(async (c) => [c.id, await adoptedJudges(tenant, c.id)] as const),
       ),
     );
-    // A run that a sink's judge scores goes to that sink without being asked (ADR 0040).
-    const judged = [...adopted.values()].some((ids) => ids.length > 0);
-    const traced = sendable && (options.trace === true || judged);
+    // A run goes to a sink only when it asks, and the sink's judges score only a run sent there.
+    const traced = sendable && options.trace === true;
+    const unsentJudges = traced ? [] : [...adopted.values()].flat();
     const sink = traced ? covering[0] : undefined;
     if (traced) {
       if (!sink || !deps.traceSinks)
@@ -707,6 +715,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),
         ...(experiment ? { experiment } : {}),
+        ...(unsentJudges.length > 0 ? { unsentJudges } : {}),
       },
       ...leases.stamp(),
     };

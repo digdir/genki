@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; a run goes to Langfuse only in step with its project's judges, 2026-10-30; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; a run goes to Langfuse only in step with its project's judges, 2026-10-30; a run goes to Langfuse only when it asks, also with a Langfuse judge in use, 2026-11-02; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -21,7 +21,7 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - A tenant has one or more Langfuse connections. Each has an id, a host, a public key, a secret key as a `secret://` reference (ADR 0015), the services it covers, a residency and whether it receives content, and points to one Langfuse project. A service is covered by at most one connection.
 - **Residency.** A connection's residency (`norway`, `eu` or `global`, as for models in ADR 0021) covers both where its host stores what it receives and where its judges' models run, since a judge reads the question, the answer and the sources.
   - A new connection to Digdir's instance starts as `global`, and an operator sets its residency once both places are known. For a Langfuse the tenant runs itself, the tenant's declaration is enough, as for erasure (ADR 0011).
-  - A run sends to a connection, and may use its judges, only when the service's residency allows the connection's. Otherwise a Langfuse judge is refused when it is added to the run, and so is `trace: true`.
+  - A run sends to a connection, and may use its judges, only when the service's residency allows the connection's. Otherwise a run that asks to be sent (`trace: true`) is refused before it starts.
   - When measured, the judges on Digdir's instance answered from Sweden Central, so a `norway` service cannot use them.
 - **Access on Digdir's instance.** The default host is Digdir's instance. There each tenant has its own Langfuse organisation, which is the only access boundary Langfuse enforces without an enterprise licence.
   - A Digdir operator creates the organisation when the tenant asks, and invites the owner the tenant names.
@@ -38,14 +38,14 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 - A Langfuse judge must name its model. A judge that falls back to the project's or the organisation's default model is refused, because a default cannot be read through Langfuse's API.
 - A judge whose mapping reads a field the platform does not send, such as `tool_calls` or `metadata`, is refused, and so is one that reads into the question or the answer, which go as the platform's parts, or reads at a JSON path other than `$` or a dotted path of plain keys.
 - A judge that would leave cases unscored is refused: a rule with sampling below 1 or with a filter, since Langfuse judges only the items they let through, and an evaluator that is not an LLM-as-a-judge.
-- A judge on a connection that does not receive content is refused, since each case would cost a judge call for a judge that has nothing to judge. When a connection stops receiving content after its judge was taken in use, the portal says so before a run starts, and the run does not start.
+- A judge on a connection that does not receive content is refused, since each case would cost a judge call for a judge that has nothing to judge. When a connection stops receiving content after its judge was taken in use, the portal says so before a run is sent, and the run is not sent.
 - A refused judge's building block says why and cannot be taken in use. A judge taken in use that is refused, inactive or gone when a run starts stops the run before it starts, with the reason.
-- **In step with Langfuse.** Langfuse runs every active experiment judge in a project on every item it receives, and cannot be asked to run only some of them. So a run goes to a connection only when the platform reads every active experiment judge in its project: each is taken in use and not refused. Otherwise the run is refused before it starts, also with `trace: true` and nothing taken in use, naming the judges to take in use or switch off in Langfuse. `GET /tenants/{tenant}/services/{id}/eval-runs/sending` answers `judges-differ` with both lists, and the portal shows them before the run starts. A run cannot pick some of a connection's judges: the API has no way to name a Langfuse judge for one run.
+- **In step with Langfuse.** Langfuse runs every active experiment judge in a project on every item it receives, and cannot be asked to run only some of them. So a run goes to a connection only when the platform reads every active experiment judge in its project: each is taken in use and not refused. Otherwise a run that asks to be sent is refused before it starts, also with nothing taken in use, naming the judges to take in use or switch off in Langfuse. `GET /tenants/{tenant}/services/{id}/eval-runs/sending` answers `judges-differ` with both lists, and the portal shows them before the run starts. A run cannot pick some of a connection's judges: the API has no way to name a Langfuse judge for one run.
 - At the start of a run the platform takes a snapshot of the Langfuse evaluation rule, its variable mapping, the evaluator version it points to and the named model (`GET /api/public/unstable/evaluation-rules/{id}`, `GET /api/public/unstable/evaluators/{id}`). If any of them differs when the scores are collected, or the rule is gone or no longer active, those scores are marked `judge changed`.
 
 **What an eval run sends.**
 
-- A run goes to the tenant's Langfuse when it uses a Langfuse judge. Otherwise it goes only when the run asks for it with `trace: true`, which the portal shows as a checkbox, unticked by default. When the service uses a Langfuse judge, the portal shows the checkbox ticked and locked, naming the judges, and says before the run starts when the service's residency does not allow the connection's (`GET /tenants/{tenant}/services/{id}/eval-runs/sending`).
+- A run goes to the tenant's Langfuse only when it asks for it with `trace: true`, which the portal shows as a checkbox, unticked by default, also when the service uses a Langfuse judge. Nothing is sent to a tenant's Langfuse without a person asking for that run. A Langfuse judge scores only a run that is sent: a run that is not sent names the judges in use that did not score it (`unsentJudges`), and the portal shows that on the run. Under the checkbox the portal names the judges in use, and when it is ticked, it says before the run starts why a sent run would be refused, such as a residency that does not allow the connection's (`GET /tenants/{tenant}/services/{id}/eval-runs/sending`).
 - A run is one Langfuse experiment (Langfuse's word for a single run), with no Langfuse dataset. Each case of each repeat is its own Langfuse trace and experiment item, with the item id `<case>#<repeat>`: the exporter starts a new trace at a case's task, although that task is a sub-task of the run's task.
 - The evaluation context (run, case, repeat, split and what the case expects) is recorded beside the case task's input, not in it. The kernel keeps it as its own audit field. The strategy never receives it, and the trace input, the timeline and every other reader of the task's input leave it out. The exporter sends from it only what the judges map.
 - Only train and validation cases are sent. A Langfuse judge's score on a holdout case is not applicable, never pending, so a run never waits for it.
@@ -116,6 +116,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - **Mapping Altinn rights onto Langfuse membership.** Langfuse has its own accounts and roles. The platform's rights decide what counts in the platform, such as accepting labels and publishing.
   - **Live answers on a tenant's connection.** It would widen the pending deletes from eval cases to every live answer.
   - **Picking Langfuse judges per run.** Langfuse would still run and bill the others on every case sent, so the platform would show fewer scores than Langfuse made.
+  - **Sending every run of a service whose Langfuse judge is in use.** Cases would leave the platform, and judge calls be billed, without a person asking for that run. A judge's results can then have gaps between runs, and each run that is not sent says so.
 
 ## Consequences
 
@@ -138,7 +139,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - the Tracing screen manages a tenant's connections, shows each one's residency and brings labels back as pending calibration labels, not feedback
   - the Quality screen shows Langfuse scores as advisory, apart from the platform's metrics, with not-applicable counts, missing scores, `judge changed`, each case's verdict and reason, and a link to the experiment (`/project/<project>/experiments/results?baseline=<run>` in 4.4.0); each judge's agreement with its labels and its reported cost are not built yet
   - Byggeklosser lists each experiment judge with its model, evaluator version, data type and mapped fields, and says why a refused one cannot be taken in use
-  - a run started in the portal can be sent to Langfuse with a checkbox
+  - a run started in the portal is sent to Langfuse only when its checkbox is ticked, and a run not sent says which judges in use did not score it
 - The operator of a Langfuse that receives content must meet ADR 0011's conditions.
 - Langfuse hides deleted rows in ClickHouse at once and removes them from disk later. The platform cannot speed that up.
 - Every rule gets a test that names it when it is built.

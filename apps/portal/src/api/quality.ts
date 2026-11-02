@@ -63,6 +63,8 @@ export interface EvalRun {
   sinkJudges?: SinkJudgeSummary[];
   /** Where Langfuse shows the run as an experiment. */
   experiment?: string;
+  /** The Langfuse judges in use that did not score the run, because it was not sent. */
+  unsentJudges?: { id: string; name: string }[];
 }
 
 export interface SinkJudgeSummary {

@@ -146,13 +146,16 @@ export const qualityArea = {
     runRunning: 'Kjører',
     runWaiting: 'Venter på vurderinger',
     sendToTrace: 'Send kjøringen til Langfuse ({connection}). Låste testtilfeller sendes aldri.',
-    sendBecauseJudges: 'Sendes fordi tjenesten bruker Langfuse-dommere: {judges}.',
-    judgeResidencyRefused:
-      'Kjøringen kan ikke starte. Den må sendes til Langfuse-koblingen {connection} fordi tjenesten bruker Langfuse-dommere ({judges}), men koblingens dataplassering ({where}) er ikke tillatt for tjenesten ({service}).',
+    judgesOnlyWhenSent: 'Langfuse-dommerne vurderer bare kjøringer som sendes: {judges}.',
+    sendResidencyRefused:
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse-koblingen {connection}, fordi koblingens dataplassering ({where}) ikke er tillatt for tjenesten ({service}).',
     judgeNoContent:
       'Kjøringen kan ikke starte. Langfuse-dommerne ({judges}) har ingenting å vurdere, fordi koblingen {connection} ikke får svartekst. Slå på «Send tekst» for koblingen, eller slutt å bruke dommerne.',
-    judgeCoveredTwice:
-      'Kjøringen kan ikke starte. Tjenesten bruker Langfuse-dommere ({judges}), men flere Langfuse-koblinger dekker den: {connections}.',
+    sendCoveredTwice:
+      'Kjøringen kan ikke starte. Den kan ikke sendes til Langfuse, fordi flere Langfuse-koblinger dekker tjenesten: {connections}.',
+    untickToRun: 'Fjern haken for å kjøre uten Langfuse.',
+    runNotSent:
+      'Ikke sendt til Langfuse, så Langfuse-dommerne ({judges}) vurderte ikke denne kjøringen.',
     judgesDiffer:
       'Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen {connection} på kjøringen, også dem genki ikke leser.',
     judgesNotInUse: 'Ta i bruk under Byggeklosser, eller slå av i Langfuse: {judges}.',

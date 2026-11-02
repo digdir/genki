@@ -1159,6 +1159,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1245,6 +1246,7 @@ describe('Langfuse judges on a run', () => {
     notAdded.status = 'inactive';
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1307,6 +1309,7 @@ describe('Langfuse judges on a run', () => {
     const draft = await env.send('GET', `${services}/eval-runs/sending?version=draft`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
       version: 'draft',
     });
 
@@ -1333,7 +1336,7 @@ describe('Langfuse judges on a run', () => {
     rules[1]?.mapping.push(toolCalls);
     const { env, adopt } = await judged(rules);
     const start = () =>
-      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister' });
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', trace: true });
 
     const refusedBlock = await adopt('verktøy-eksperimenter');
     expect((await adopt(judgeRule)).status).toBe(200);
@@ -1363,6 +1366,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
 
     expect(started.status).toBe(409);
@@ -1383,6 +1387,7 @@ describe('Langfuse judges on a run', () => {
     const sending = await env.send('GET', `${services}/eval-runs/sending`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
 
     expect(
@@ -1421,7 +1426,7 @@ describe('Langfuse judges on a run', () => {
       }),
     );
 
-    await env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-gull' });
+    await env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-gull', trace: true });
     await env.settled();
     const root = langfuse.spans.find(
       (s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case') === 'g1',
@@ -1430,6 +1435,36 @@ describe('Langfuse judges on a run', () => {
     expect(
       JSON.parse((root && langfuse.attr(root, 'langfuse.experiment.item.expected_output')) ?? '{}'),
     ).toEqual({ criteria: 'Klagefristen er tre uker.' });
+  });
+
+  it('sends a run to Langfuse only when it asks for it, also when the service uses a Langfuse judge, and names the judges that did not score it', async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const start = (body: Record<string, unknown> = {}) =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', ...body });
+
+    const unsent = await start();
+    await env.settled();
+    const spansOfUnsent = langfuse.spans.length;
+    const sent = await start({ trace: true });
+    await env.settled();
+    const runs = await env.send('GET', `${services}/eval-runs`);
+    const summaryOf = (id: unknown) =>
+      (runs.body.data as { id: string }[]).find((r) => r.id === id);
+    const stored = await env.platform.evalStores.runs.get(String(unsent.body.id));
+
+    expect(unsent.status).toBe(202);
+    expect(spansOfUnsent).toBe(0);
+    expect(stored?.run.tested).not.toHaveProperty('sink');
+    expect(stored?.run.provenance.judges.filter((j) => j.startsWith('langfuse:'))).toEqual([]);
+    expect(summaryOf(unsent.body.id)).toMatchObject({
+      sinkJudges: [],
+      unsentJudges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+    });
+    expect(sent.status).toBe(202);
+    expect(langfuse.spans.length).toBeGreaterThan(0);
+    expect(summaryOf(sent.body.id)).toMatchObject({ sinkJudges: [{ name: judgeRule }] });
+    expect(summaryOf(sent.body.id)).not.toHaveProperty('unsentJudges');
   });
 
   it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {

@@ -149,13 +149,15 @@ export const qualityArea = {
     runRunning: 'Running',
     runWaiting: 'Waiting for scores',
     sendToTrace: 'Send the run to Langfuse ({connection}). Holdout cases are never sent.',
-    sendBecauseJudges: 'Sent because the service uses Langfuse judges: {judges}.',
-    judgeResidencyRefused:
-      "The run cannot start. It must go to the Langfuse connection {connection} because the service uses Langfuse judges ({judges}), but the connection's data location ({where}) is not allowed for the service ({service}).",
+    judgesOnlyWhenSent: 'The Langfuse judges score only runs that are sent: {judges}.',
+    sendResidencyRefused:
+      "The run cannot start. It cannot be sent to the Langfuse connection {connection}, because the connection's data location ({where}) is not allowed for the service ({service}).",
     judgeNoContent:
       'The run cannot start. The Langfuse judges ({judges}) have nothing to judge, because the connection {connection} gets no answer text. Turn on "Send text" for the connection, or stop using the judges.',
-    judgeCoveredTwice:
-      'The run cannot start. The service uses Langfuse judges ({judges}), but more than one Langfuse connection covers it: {connections}.',
+    sendCoveredTwice:
+      'The run cannot start. It cannot be sent to Langfuse, because more than one Langfuse connection covers the service: {connections}.',
+    untickToRun: 'Untick the box to run without Langfuse.',
+    runNotSent: 'Not sent to Langfuse, so the Langfuse judges ({judges}) did not score this run.',
     judgesDiffer:
       'The run cannot start. Langfuse runs every active judge in the project of the connection {connection} on the run, also the ones genki does not read.',
     judgesNotInUse: 'Take in use under Building blocks, or switch off in Langfuse: {judges}.',

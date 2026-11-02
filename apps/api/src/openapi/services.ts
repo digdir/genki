@@ -208,6 +208,10 @@ export const SinkJudgeSummary = z
 export const sinkJudgeFields = {
   sinkJudges: z.array(SinkJudgeSummary),
   experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
+  unsentJudges: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .optional()
+    .describe('The Langfuse judges in use that did not score the run, because it was not sent'),
 };
 
 const RunSending = z
