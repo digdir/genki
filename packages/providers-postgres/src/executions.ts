@@ -1,12 +1,15 @@
 import type { Pool } from 'pg';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
-export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type IngestionExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface IngestionExecutionReport {
   stored: number;
   skipped: number;
   failed: string[];
+  /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
+  failedDocuments?: number;
 }
 
 export interface IngestionExecution {
@@ -21,9 +24,15 @@ export interface IngestionExecution {
   endedAt?: string;
   report?: IngestionExecutionReport;
   error?: string;
+  /** Runs as knowledge jobs, ends with them, and is left alone by the check for stopped runs. */
+  runsAsJobs?: boolean;
+  /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
+  admittedAt?: string;
+  cancelRequestedAt?: string;
+  cancelledBy?: string;
 }
 
-interface Row {
+export interface Row {
   id: string;
   scope: string;
   dataset: string;
@@ -36,11 +45,15 @@ interface Row {
   ended_at: string | null;
   report: IngestionExecutionReport | null;
   error: string | null;
+  runs_as_jobs?: boolean;
+  admitted_at?: string | null;
+  cancel_requested_at?: string | null;
+  cancelled_by?: string | null;
 }
 
 export const executionScope = (dataset: string) => /^(\d{9})\//.exec(dataset)?.[1] ?? 'platform';
 
-const toExecution = (row: Row): IngestionExecution => ({
+export const toExecution = (row: Row): IngestionExecution => ({
   id: row.id,
   dataset: row.dataset,
   pipeline: row.pipeline,
@@ -52,6 +65,10 @@ const toExecution = (row: Row): IngestionExecution => ({
   ...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
   ...(row.report === null ? {} : { report: row.report }),
   ...(row.error === null ? {} : { error: row.error }),
+  ...(row.runs_as_jobs ? { runsAsJobs: true } : {}),
+  ...(row.admitted_at ? { admittedAt: row.admitted_at } : {}),
+  ...(row.cancel_requested_at ? { cancelRequestedAt: row.cancel_requested_at } : {}),
+  ...(row.cancelled_by ? { cancelledBy: row.cancelled_by } : {}),
 });
 
 export class PostgresIngestionExecutions {

@@ -146,6 +146,7 @@ export const changes = defineNamespace({
   onboardingDecide: 'avgjorde oppstartsforespørselen',
   onboardingRequest: 'sendte en oppstartsforespørsel',
   pipelineCancel: 'avbrøt innlesingen',
+  jobsRedrive: 'sendte innlesingens feilede jobber tilbake',
   pipelineDelete: 'slettet innlesingen',
   pipelineExecute: 'startet innlesingen',
   pipelineSave: 'lagret innlesingen',

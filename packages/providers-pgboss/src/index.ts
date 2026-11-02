@@ -12,6 +12,7 @@ import {
   type QueueCounts,
   type QueueDefinition,
   type ReadOptions,
+  type RunJobs,
   type ScheduleOptions,
   type SendOptions,
 } from '@genai/jobs';
@@ -123,6 +124,8 @@ export interface InstallOptions {
   worker: string;
   /** Read jobs only through the read functions and have no right on the tables: genai_runtime. */
   readers?: string[];
+  /** May send jobs and nothing more: genai_runtime on the platform server, for the queues the API sends to. */
+  senders?: string[];
   schema?: string;
 }
 
@@ -133,7 +136,8 @@ export const installJobQueue = async (
 ) => {
   const schema = options.schema ?? jobSchema;
   const readers = options.readers ?? [];
-  if (![options.worker, ...readers, schema].every((name) => identifier.test(name)))
+  const senders = options.senders ?? [];
+  if (![options.worker, ...readers, ...senders, schema].every((name) => identifier.test(name)))
     throw new JobQueueError('invalid role or schema name');
   const boss = new PgBoss({
     db: adapter(owner),
@@ -167,6 +171,15 @@ export const installJobQueue = async (
       `revoke all on all functions in schema ${schema} from ${reader}`,
       `grant usage on schema ${schema} to ${reader}`,
       `grant execute on function ${reads.join(', ')} to ${reader}`,
+    ]),
+    // What pg-boss 12's send touches, and nothing more: it reads the schema version and the queue,
+    // calls job_now(), inserts into the job table and returns the new job's id.
+    ...senders.flatMap((sender) => [
+      `grant usage on schema ${schema} to ${sender}`,
+      `grant select on ${schema}.version, ${schema}.queue to ${sender}`,
+      `grant execute on function ${schema}.job_now() to ${sender}`,
+      `grant insert on ${schema}.job, ${schema}.job_common to ${sender}`,
+      `grant select (id, start_after) on ${schema}.job, ${schema}.job_common to ${sender}`,
     ]),
   ];
   // Workers that start together would otherwise fail on each other's grants and functions.
@@ -274,6 +287,8 @@ export class PgBossJobQueue implements JobQueue {
       createSchema: false,
       supervise: options.works,
       schedule: options.works,
+      // A queue that only sends, as the API's does, keeps no row in pg-boss's instance registry.
+      registerInstance: options.works,
       reindex: false,
       ...(options.superviseIntervalSeconds === undefined
         ? {}
@@ -381,3 +396,83 @@ export const openJobQueue = async (
   });
   return PgBossJobQueue.start(pools.runtime, start);
 };
+
+/** A run's jobs on one server, for the worker's role. */
+export class PgBossRunJobs implements RunJobs {
+  constructor(
+    private readonly pool: Pool,
+    private readonly jobs: JobQueue,
+    private readonly queues: QueueDefinition[],
+    private readonly schema: string = jobSchema,
+  ) {}
+
+  #names(options: { except?: string[] } = {}) {
+    return this.queues.map((q) => q.name).filter((name) => !options.except?.includes(name));
+  }
+
+  #deadNames() {
+    return this.queues.filter((q) => q.deadLetter).map((q) => deadLetterQueue(q.name));
+  }
+
+  #queue(name: string) {
+    const queue = this.queues.find((q) => q.name === name);
+    if (!queue) throw new JobQueueError(`no queue ${name}`);
+    return queue;
+  }
+
+  async open(run: string): Promise<number> {
+    const { rows } = await this.pool.query<{ open: string }>(
+      `select count(*) as open from ${this.schema}.job
+        where name = any($1) and state in ('created', 'retry', 'active') and data ->> 'run' = $2`,
+      [this.#names(), run],
+    );
+    return Number(rows[0]?.open ?? 0);
+  }
+
+  async deadLetters(run: string): Promise<Record<string, number>> {
+    const { rows } = await this.pool.query<{ name: string; dead: string }>(
+      `select name, count(*) as dead from ${this.schema}.job
+        where name = any($1) and state in ('created', 'retry') and data ->> 'run' = $2
+        group by name order by name`,
+      [this.#deadNames(), run],
+    );
+    return Object.fromEntries(
+      rows.map((row) => [row.name.slice(0, -'.dead'.length), Number(row.dead)]),
+    );
+  }
+
+  async cancel(run: string, options: { except?: string[] } = {}): Promise<number> {
+    const { rows } = await this.pool.query<{ id: string; name: string }>(
+      `select id, name from ${this.schema}.job
+        where name = any($1) and state in ('created', 'retry') and data ->> 'run' = $2`,
+      [this.#names(options), run],
+    );
+    for (const row of rows) await this.jobs.cancel(this.#queue(row.name), row.id);
+    return rows.length;
+  }
+
+  async redrive(run: string): Promise<number> {
+    const { rows } = await this.pool.query<{ id: string; name: string }>(
+      `select id, name from ${this.schema}.job
+        where name = any($1) and state in ('created', 'retry') and data ->> 'run' = $2`,
+      [this.#deadNames(), run],
+    );
+    let sent = 0;
+    for (const queue of this.queues) {
+      const ids = rows
+        .filter((row) => row.name === deadLetterQueue(queue.name))
+        .map((row) => row.id);
+      sent += await this.jobs.redrive(queue, ids);
+    }
+    return sent;
+  }
+
+  async runs(): Promise<string[]> {
+    const { rows } = await this.pool.query<{ run: string }>(
+      `select distinct data ->> 'run' as run from ${this.schema}.job
+        where name = any($1) and state in ('created', 'retry', 'active') and data ? 'run'`,
+      [this.#names()],
+    );
+    return rows.map((row) => row.run);
+  }
+}

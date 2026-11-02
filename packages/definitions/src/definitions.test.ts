@@ -1217,6 +1217,15 @@ describe('platform settings', () => {
     expect(new Set(platformSettings.map((s) => s.key)).size).toBe(platformSettings.length);
   });
 
+  it('the night window is set only for the platform and is 01:00-06:00 by default', () => {
+    expect(resolveSettings(platformSettings, { values: {} })['knowledge.nightWindow']?.value).toBe(
+      '01:00-06:00',
+    );
+    expect(platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.settableAt).toEqual([
+      'platform',
+    ]);
+  });
+
   it('lets a tenant change the new settings within their ranges, and nothing below the tenant', () => {
     const resolved = resolveSettings(platformSettings, {
       values: {

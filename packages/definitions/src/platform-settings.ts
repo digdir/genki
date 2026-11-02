@@ -13,6 +13,10 @@ export interface PlatformSetting<T = unknown> extends SettingDefinition<T> {
 }
 
 const platformAndTenant: Layer[] = ['platform', 'tenant'];
+
+/** Heavy knowledge work runs only inside this window, Europe/Oslo time (ADR 0042, "Heavy work"). */
+export const defaultNightWindow = '01:00-06:00';
+export const nightWindowPattern = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
 export const maxLanguageInstructionChars = 4000;
 export const languageInstructionsSetting = (language: string) =>
   `answers.languageInstructions.${language}`;
@@ -43,6 +47,16 @@ export const nativeSettings: PlatformSetting[] = [
     'knowledge',
     'Days the previous search engine copy is kept after a dataset switches engine.',
   ),
+  {
+    ...setting(
+      'knowledge.nightWindow',
+      z.string().regex(nightWindowPattern, 'written as 01:00-06:00'),
+      defaultNightWindow,
+      'knowledge',
+      'Hours (Europe/Oslo) in which heavy knowledge work runs: index builds, large fills and VACUUM.',
+    ),
+    settableAt: ['platform'],
+  },
   setting(
     'assistant.enabled',
     z.boolean(),

@@ -151,6 +151,7 @@ export const changes = {
   onboardingDecide: 'decided on the onboarding request',
   onboardingRequest: 'sent an onboarding request',
   pipelineCancel: 'cancelled the ingestion',
+  jobsRedrive: "sent the ingestion run's failed jobs back",
   pipelineDelete: 'deleted the ingestion',
   pipelineExecute: 'started the ingestion',
   pipelineSave: 'saved the ingestion',

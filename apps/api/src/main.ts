@@ -23,11 +23,14 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  ingestSender,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
+  PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
@@ -79,6 +82,22 @@ import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+
+/**
+ * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
+ * genai_runtime; pg-boss starts for sending on the first send, since the worker installs it.
+ */
+const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0]) => {
+  let queue: Promise<PgBossJobQueue> | undefined;
+  const started = () =>
+    (queue ??= PgBossJobQueue.start(runtimePool, { works: false }).catch((error: unknown) => {
+      queue = undefined;
+      throw error;
+    }));
+  return new PostgresJobRuns(runtimePool, {
+    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+  });
+};
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -410,6 +429,8 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
+    // No dataset runs as jobs yet: #139 names the datasets on `connection: knowledge`.
+    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT

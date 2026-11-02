@@ -157,6 +157,8 @@ export const knowledgeErrors = defineNamespace({
   datasetChangedEngine: 'Datasettet er endret siden søkemotoren ble tatt i bruk.',
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
+  notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
+  onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
   datasetGone: 'datasettet finnes ikke lenger',
   parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
   parquetGlob: 'må være et .parquet-filmønster',

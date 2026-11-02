@@ -37,6 +37,7 @@ import {
   triggerPauseKind,
   type TokenPrice,
   type TriggerBinding,
+  defaultMarkerTimeoutMs,
   InMemoryJobQueue,
   workQueues,
 } from '@genai/jobs';
@@ -49,16 +50,17 @@ import {
 } from '@genai/kernel';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
-import { openJobQueue } from '@genai/providers-pgboss';
+import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
   createPostgresStores,
+  ingestSender,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
   platformId,
   PostgresDefinitionStore,
+  PostgresJobRunRecords,
   PostgresLeaderLease,
   postgresSourceFromEnv,
-  runtimeRole,
   workerRole,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
@@ -74,7 +76,9 @@ import {
   startHealthServer,
   watchKnowledgeBinding,
 } from './knowledge-binding.js';
+import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
+import { reconcileKnowledgeRuns } from './reconciler.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -162,23 +166,32 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 // The queues are worked only once the worker has passed every refusal above.
-const jobs = db
-  ? await openJobQueue(
-      { owner: db.pool, runtime: db.runtimePool },
-      platformWork.map((work) => work.queue),
-      {
-        worker: workerRole,
-        readers: [runtimeRole],
-        works: true,
-        onError: (error) =>
-          log('job queue error', {
-            error: error instanceof Error ? error.message : JSON.stringify(error),
-          }),
-      },
-    )
-  : new InMemoryJobQueue();
-await workQueues(jobs, platformWork);
-log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformWork.length });
+const jobError = (error: unknown) =>
+  log('job queue error', {
+    error: error instanceof Error ? error.message : JSON.stringify(error),
+  });
+const workerJobs = db
+  ? await openWorkerJobs({
+      platform: { owner: db.pool, worker: db.runtimePool },
+      ...(knowledgeServer?.pools.owner && knowledgeServer.pools.writer
+        ? {
+            knowledge: { owner: knowledgeServer.pools.owner, writer: knowledgeServer.pools.writer },
+          }
+        : {}),
+      markerTimeoutMs: Number(process.env.MARKER_TIMEOUT_MS ?? defaultMarkerTimeoutMs),
+      work: platformWork,
+      open: openJobQueue,
+      runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+      onError: jobError,
+    })
+  : undefined;
+const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
+if (!workerJobs) await workQueues(jobs, platformWork);
+log('jobs', {
+  kind: db ? 'pg-boss' : 'memory',
+  queues: platformWork.length,
+  knowledgeServer: Boolean(workerJobs?.knowledge),
+});
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
@@ -437,19 +450,55 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+// Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
+const knowledgeRunsLease = db
+  ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
+  : undefined;
+const knowledgeRunRecords =
+  db && workerJobs
+    ? new PostgresJobRunRecords(db.runtimePool, ingestSender(workerJobs.platform))
+    : undefined;
+const reconcileKnowledge = async () => {
+  if (!knowledgeRunRecords || !workerJobs || !(await knowledgeRunsLease?.tryAcquire())) return;
+  const pass = await reconcileKnowledgeRuns({
+    records: knowledgeRunRecords,
+    servers: workerJobs.runJobs,
+    lockdown,
+  });
+  if (pass.sentBack + pass.ended.length + pass.started.length + pass.dropped > 0)
+    log('knowledge runs reconciled', {
+      sentBack: pass.sentBack,
+      ended: pass.ended.map((run) => run.id),
+      started: pass.started.map((run) => run.id),
+      dropped: pass.dropped,
+    });
+};
+const knowledgeReconciler = knowledgeRunRecords
+  ? setInterval(
+      () =>
+        void reconcileKnowledge().catch((error: unknown) =>
+          log('knowledge reconciler failed', { error: String(error) }),
+        ),
+      60_000,
+    )
+  : undefined;
+
 const stop = () => {
   retention?.stop();
+  if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   stopFollowingChanges?.();
   following.stop();
   worker.stop();
   void (async () => {
     await jobs.stop();
+    await workerJobs?.knowledge?.stop();
     knowledgeBinding.stop();
     await health.close();
     await knowledgeServer?.close();
     await db?.close();
     await lease?.release();
     await retentionLease?.release();
+    await knowledgeRunsLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();
   })().finally(() => process.exit(0));

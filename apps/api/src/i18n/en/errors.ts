@@ -158,6 +158,8 @@ export const knowledgeErrors = {
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
+  notSendRunBack: 'not allowed to send this run back',
+  onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
   datasetGone: 'the dataset is gone',
   parquetOneLocation: 'a Parquet source needs exactly one of url, urls and huggingface',
   parquetGlob: 'must be a .parquet glob',
