@@ -7533,6 +7533,7 @@
               "Delete what genki sent, and the judges' traces made from it",
               "Read a project's experiment judges and score an eval run with the ones a tenant adopted",
               'Find or make the empty dataset of a test set, which every span of its sent runs names',
+              "Read each rule's filters to tell whether it skips, judges or refuses a run of a test set",
             ],
             files: [
               'packages/providers-langfuse/src/exporter.ts',
@@ -7541,6 +7542,7 @@
               'packages/providers-langfuse/src/sink.ts',
               'packages/providers-langfuse/src/judges.ts',
               'packages/providers-langfuse/src/datasets.ts',
+              'packages/providers-langfuse/src/filters.ts',
             ],
             input: 'Kernel events',
             output: 'OTLP spans',
