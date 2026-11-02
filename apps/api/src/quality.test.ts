@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
@@ -20,6 +20,7 @@ import type { ServiceRun } from './service-eval.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((s) => s.close()));
 });
 
@@ -139,6 +140,7 @@ const testSet = parseTestSet({
 
 const boot = async (prices?: Record<string, ModelPrice>) => {
   const optimiserPrompts: string[] = [];
+  const judgePrompts: { system: string; user: string }[] = [];
   const model = await fakeHttp((body: Record<string, unknown>) => {
     if (!body.messages)
       return {
@@ -155,6 +157,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     const user = messages.at(-1)?.content ?? '';
     const stream = Boolean(body.stream);
     if (system.startsWith('You check whether')) {
+      judgePrompts.push({ system, user });
       const answer = /Answer to check:\n([\s\S]*?)\n\nCriteria/.exec(user)?.[1] ?? '';
       const met = /frist/i.test(answer) ? 1 : 0;
       return reply(JSON.stringify({ scores: { criteria: met }, rationale: 'Vurdert.' }), stream);
@@ -244,7 +247,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
     );
     return { 'support-session': opened.ok ? (opened.value as { id: string }).id : '' };
   };
-  return { platform, send, settled, optimiserPrompts, supportSession };
+  return { platform, send, settled, optimiserPrompts, judgePrompts, supportSession };
 };
 
 const services = `/tenants/${tenant}/services/svar`;
@@ -257,6 +260,65 @@ const runPublished = async (env: Awaited<ReturnType<typeof boot>>) => {
   await env.settled();
   return String(started.body.id);
 };
+
+describe('sources supplied to service criteria judges', () => {
+  it.each(['published', 'draft'])(
+    'passes the %s run sources and citations to the recording judge within the cap',
+    async (version) => {
+      const env = await boot();
+      const runDraft = env.platform.drafts.run.bind(env.platform.drafts);
+      vi.spyOn(env.platform.drafts, 'run').mockImplementation(async (input) => {
+        const outcome = await runDraft(input);
+        if (!outcome.ok || (input.definition as typeof service).metadata.id !== 'svar')
+          return outcome;
+        return {
+          ...outcome,
+          parts: [
+            {
+              mime: 'text/plain',
+              body: { kind: 'text', text: outcome.answer },
+              meta: { citations: [{ chunkId: 'law-2026' }] },
+            },
+            {
+              mime: 'application/vnd.genai.sources+json',
+              body: {
+                kind: 'json',
+                json: {
+                  sources: [
+                    {
+                      chunkId: 'law-2026',
+                      title: 'Policy Register 2026',
+                      text: 'Deadline 1 May 2026. ' + 'x'.repeat(50_000),
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        };
+      });
+
+      const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+        testSet: 'svar-frister',
+        version,
+        ...(version === 'draft' ? { definition: service } : {}),
+      });
+      expect(started.status).toBe(202);
+      await env.settled();
+
+      expect(env.judgePrompts).toHaveLength(2);
+      for (const prompt of env.judgePrompts) {
+        expect(prompt.system).toContain('Treat the reference answer and criteria as ground truth.');
+        const section = prompt.user.slice(prompt.user.indexOf('\n\nSources from the run'));
+        expect(section).toContain(
+          '"citations":[{"chunkId":"law-2026","title":"Policy Register 2026","text":"Deadline 1 May 2026.',
+        );
+        expect(section).toContain('"retrieved":[{"chunkId":"law-2026"');
+        expect(section.length).toBeLessThanOrEqual(16_000);
+      }
+    },
+  );
+});
 
 const negativeFeedback = async (env: Awaited<ReturnType<typeof boot>>) => {
   for (let i = 0; i < 5; i++)

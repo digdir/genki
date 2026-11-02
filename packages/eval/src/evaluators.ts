@@ -1,4 +1,4 @@
-import { sameSource, type Observation } from './observe.js';
+import { sameSource, type Observation, type ObservedSource } from './observe.js';
 import { compilePattern } from './pattern.js';
 import type { Score, TestCase } from './schema.js';
 
@@ -189,6 +189,38 @@ const assertOtherFamily = (judge: JudgeModel, ctx: EvalContext) => {
 const criteriaText = (prompt: JudgePrompt) =>
   prompt.criteria.map((c) => `- ${c.id}: ${c.description}`).join('\n');
 
+// Bound the entire serialized section, including escaped text and metadata.
+const judgeSources = (observation: Observation): string => {
+  const heading = '\n\nSources from the run (excerpts; may be truncated):\n';
+  const sources: { citations: ObservedSource[]; retrieved: ObservedSource[] } = {
+    citations: [],
+    retrieved: [],
+  };
+  for (const kind of ['citations', 'retrieved'] as const) {
+    for (const source of observation[kind].slice(0, 10)) {
+      const evidence =
+        observation.retrieved.find((r) => sameSource(source, r) && r.text !== undefined) ??
+        observation.retrieved.find((r) => sameSource(source, r));
+      const enriched = { ...evidence, ...source };
+      const bounded: ObservedSource = {
+        ...(enriched.position === undefined ? {} : { position: enriched.position }),
+      };
+      for (const field of ['chunkId', 'document', 'url', 'title', 'text'] as const) {
+        const value = enriched[field];
+        if (value !== undefined) bounded[field] = value.slice(0, field === 'text' ? 2000 : 512);
+      }
+      sources[kind].push(bounded);
+      if (heading.length + JSON.stringify(sources).length > 16_000) {
+        sources[kind].pop();
+        break;
+      }
+    }
+  }
+  return sources.citations.length || sources.retrieved.length
+    ? heading + JSON.stringify(sources)
+    : '';
+};
+
 export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator => {
   const self: Evaluator = {
     id: `judge:${prompt.id}`,
@@ -214,6 +246,7 @@ export const rubricJudge = (judge: JudgeModel, prompt: JudgePrompt): Evaluator =
             question,
             answer: o.answer,
             criteria: criteriaText(prompt),
+            sources: judgeSources(o),
             min: String(prompt.scale.min),
             max: String(prompt.scale.max),
             ...(c.expected.referenceAnswer === undefined
