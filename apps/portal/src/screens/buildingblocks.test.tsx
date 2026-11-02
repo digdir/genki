@@ -55,7 +55,7 @@ const connectorProposal: CatalogProposal = {
 };
 
 const groupHeadings = () =>
-  screen
+  within(screen.getByRole('main'))
     .getAllByRole('heading', { level: 2 })
     .map((h) => h.textContent)
     .filter((t) => t !== 'Kunne ikke hente dataene');

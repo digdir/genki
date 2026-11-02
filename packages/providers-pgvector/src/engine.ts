@@ -18,7 +18,13 @@ import {
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { ensureVectorIndexes, migrateKnowledge, transaction } from './schema.js';
+import {
+  ensureVectorIndexes,
+  holdWriteLock,
+  migrateKnowledge,
+  transaction,
+  vacuumKnowledge,
+} from './schema.js';
 import { facetSql, hitColumns, searchSql, type Profile } from './sql.js';
 
 const profile = z
@@ -65,6 +71,8 @@ export interface PgvectorEngineOptions {
   pool: Pool;
   embedder?: (dataset: DatasetConfig) => QueryEmbedder;
   maxQueryLength?: number;
+  /** A VACUUM after a run's end failed; the run has already committed, so it does not fail. */
+  onVacuumError?: (error: unknown) => void;
 }
 
 export interface PgvectorEngine {
@@ -164,6 +172,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     });
     return ready;
   };
+  const vacuum = () =>
+    vacuumKnowledge(pool).catch((error: unknown) => options.onVacuumError?.(error));
 
   const capabilities = (dataset: Dataset): KnowledgeCapability[] => [
     'search.text',
@@ -488,6 +498,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
         }));
         const config = configOf(dataset);
         await transaction(pool, async (client) => {
+          await holdWriteLock(client);
           await prepared(client, dataset, generation);
           const key = [dataset.id, generation, doc.id];
           await client.query(
@@ -529,7 +540,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
       },
       promote: async (dataset, generation) => {
         await begin();
-        return transaction(pool, async (client) => {
+        const previous = await transaction(pool, async (client) => {
           await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
             dataset.id,
           ]);
@@ -545,10 +556,13 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
           );
           return rows[0]?.generation;
         });
+        await vacuum();
+        return previous;
       },
       drop: async (dataset, generation, options = {}) => {
         await begin();
         await transaction(pool, async (client) => {
+          await holdWriteLock(client);
           await client.query(`select pg_advisory_xact_lock(hashtext('kn_active:' || $1))`, [
             dataset.id,
           ]);
@@ -564,6 +578,7 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
               generation,
             ]);
         });
+        await vacuum();
       },
       active: async (dataset) => {
         await begin();

@@ -191,7 +191,11 @@ describe('operator shell', () => {
 });
 
 describe('virksomheter', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('lists tenants with KPIs, status as text and a quota warning', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await signedIn();
 
     const table = await screen.findByRole('table');

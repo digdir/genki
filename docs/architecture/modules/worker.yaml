@@ -26,6 +26,7 @@ files:
   - apps/worker/src/worker.ts
   - apps/worker/src/follow.ts
   - apps/worker/src/boot-guard.ts
+  - apps/worker/src/platform-work.ts
 input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
@@ -79,4 +80,11 @@ edges:
     witness:
       file: apps/worker/src/main.ts
       imports: '@genai/providers-postgres'
+  - to: providers-pgboss
+    label: Opens the durable job queue (works jobs)
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-pgboss'
 keywords: worker triggers batch schedule folder jobs

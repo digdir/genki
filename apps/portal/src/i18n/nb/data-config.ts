@@ -163,7 +163,7 @@ export const sharedServices = defineNamespace({
   runFailed: 'Kjøringen feilet. Ingenting er lagret. Prøv igjen om litt.',
   callTitle: 'Kall fra et system',
   tokenNote: 'Token fra Maskinporten med tillatelsen digdir:ki.tjenester.kall.',
-  moreOnIntegrations: 'Mer om integrasjoner',
+  moreOnIntegrations: 'Mer om Maskinporten-klienter',
   language: 'Språk',
   request: 'Forespørsel',
   requestExample: 'Eksempel på forespørsel',

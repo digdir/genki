@@ -14,6 +14,8 @@
     "dev": "npm run dev --workspace apps/api",
     "dev:all": "node scripts/dev-all.ts",
     "dev:model": "node scripts/local-model.ts",
+    "langfuse": "docker compose -p langfuse-genki -f compose.langfuse.yaml up -d --wait",
+    "langfuse:seed": "node scripts/langfuse-seed.ts",
     "build": "tsc -b",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run",
