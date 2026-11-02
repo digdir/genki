@@ -102,7 +102,7 @@ const api = async <T>(keys: Keys, method: string, path: string, body?: unknown):
 
 const old = org.projects.find((p) => p.name === name);
 if (old) {
-  // A deleted project keeps its LLM connections, and with them the Foundry key.
+  // A deleted project keeps its LLM connections, and the Foundry key, until Langfuse's worker purges it.
   const oldKeys = await keysFor(old.id);
   const connections = await api<{ data: { id: string }[] }>(
     oldKeys,
