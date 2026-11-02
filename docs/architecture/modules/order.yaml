@@ -5,6 +5,7 @@
 - portal
 - console
 - schema-forms
+- ui-blocks
 - adapter-mcp
 - adapter-a2a
 - adapter-openai

@@ -140,6 +140,9 @@
       "path": "packages/providers-documents"
     },
     {
+      "path": "packages/ui-blocks"
+    },
+    {
       "path": "apps/api"
     },
     {
