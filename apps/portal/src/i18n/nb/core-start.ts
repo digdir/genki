@@ -18,7 +18,8 @@ export const dataHandling = defineNamespace({
   residencyNorway: 'i Norge',
   residencyEu: 'i EU/EØS',
   residencyGlobal: 'globalt, også utenfor EU/EØS',
-  stored1: 'Spørsmål, svar, kildene svaret bygger på og tilbakemeldinger lagres i plattformen.',
+  stored1:
+    'Spørsmål, svar, kildene svaret bygger på og tilbakemeldinger lagres i plattformen, i EU/EØS.',
   stored2: 'Innholdet er kryptert når det er lagret.',
   stored3: 'Innholdet slettes når innholdsnøkkelen slettes.',
   access1: 'Administratorer i virksomheten ser tilbakemeldinger samlet og uten navn.',
