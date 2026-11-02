@@ -425,9 +425,9 @@ describe('Datasett: nytt datasett', () => {
     const group = screen.getByRole('group', { name: 'Hvor kommer dokumentene fra?' });
     expect(within(group).getAllByRole('radio')).toHaveLength(3);
     expect((screen.getByRole('radio', { name: /Kudos/ }) as HTMLInputElement).checked).toBe(true);
-    expect(within(group).getByRole('link', { name: 'Integrasjoner' }).getAttribute('href')).toBe(
-      '#/integrations',
-    );
+    expect(
+      within(group).getByRole('link', { name: 'Systemer i Utviklerverktøy' }).getAttribute('href'),
+    ).toBe('#/developer/systems');
     expect(screen.queryByRole('button', { name: 'Forrige' })).toBeNull();
     expectAccessible();
   });
