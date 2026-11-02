@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProjectsApi } from './projects-api';
 import { saneYears } from './screens/projects/shared';
 import { ApiError } from './api';
@@ -17,6 +17,8 @@ afterEach(cleanup);
 const project = `#/projects/${exampleProject().id}`;
 
 describe('projects in the workspace', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('explains what a project is when there are none', async () => {
     const { container } = await renderApp('#/projects', {
       projects: mockProjectsApi({ projects: [] }),
@@ -153,6 +155,8 @@ describe('projects in the workspace', () => {
   });
 
   it('says when the monthly limit is reached, the subscription is paused or access is gone', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-08T12:00:00+02:00'));
     const capped = exampleProject();
     capped.subscriptions = capped.subscriptions.map((s) => ({
       ...s,

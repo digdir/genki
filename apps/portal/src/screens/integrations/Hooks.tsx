@@ -65,10 +65,9 @@ const failureKeys: Record<HookSpec['failure'], PlainKey> = {
 
 const refusable = (point: HookPoint) => point !== 'task_completed' && point !== 'on_feedback';
 
-export const hooksHref = '#/integrations?tab=hooks';
+export const hooksHref = '#/developer/hooks';
 
-export const hookHref = (id?: string) =>
-  `#/integrations/hooks/${id ? encodeURIComponent(id) : 'new'}`;
+export const hookHref = (id?: string) => `#/developer/hooks/${id ? encodeURIComponent(id) : 'new'}`;
 
 const nbFormat = createFormat('nb');
 
@@ -279,15 +278,10 @@ export const Hooks = ({
   };
 
   return (
-    <section aria-labelledby="hooks-h" className="stack-md">
-      <div className="stack-xs int-intro-text">
-        <Heading level={2} data-size="xs" id="hooks-h">
-          {t('integHooks.heading')}
-        </Heading>
-        <Paragraph data-size="sm" className="meta">
-          {t('integHooks.intro')}
-        </Paragraph>
-      </div>
+    <div className="stack-md">
+      <Paragraph data-size="sm" className="meta int-intro-text">
+        {t('integHooks.intro')}
+      </Paragraph>
       <section aria-labelledby="hooks-platform-h" className="stack-xs">
         <Heading level={3} data-size="2xs" id="hooks-platform-h">
           {t('integHooks.fromPlatform')}
@@ -393,7 +387,7 @@ export const Hooks = ({
           {t.rich('integHooks.logNote', { link: (c) => <a href="#/log">{c}</a> })}
         </Paragraph>
       </section>
-    </section>
+    </div>
   );
 };
 
@@ -541,7 +535,7 @@ export const HookEditor = ({
   const crumbs = (
     <Crumbs
       items={[
-        { label: t('integrations.heading'), href: '#/integrations' },
+        { label: t('devTools.title'), href: '#/developer' },
         { label: t('integHooks.heading'), href: hooksHref },
         { label: id ? t('integHooks.editHook') : t('integHooks.addHook') },
       ]}
@@ -613,7 +607,7 @@ export const HookEditor = ({
     setSaving(true);
     try {
       await api.hooks.save(tenant, hookId, specOf(f), f.reason.trim());
-      navigate(`${hooksHref}&saved=${encodeURIComponent(f.name.trim())}`);
+      navigate(`${hooksHref}?saved=${encodeURIComponent(f.name.trim())}`);
     } catch (error) {
       setSaveError(problemText(error, t));
     } finally {
