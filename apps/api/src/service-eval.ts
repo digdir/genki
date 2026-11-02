@@ -611,10 +611,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     });
     if (!found) return [];
     // Each refusal names its judge or rule, and reads in the person's language on its own.
-    const refused = found.used.find((j) => j.refused);
-    if (refused?.refused) throw new TraceRefused(refused.refused.message);
     const unread = [...found.notInUse, ...found.refused].map((j) => j.name);
     const messages = [
+      ...found.used.flatMap((j) => (j.refused ? [j.refused.message] : [])),
       ...(unread.length > 0
         ? [
             `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,

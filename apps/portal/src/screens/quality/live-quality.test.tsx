@@ -726,6 +726,28 @@ describe('live Testsett: Langfuse-dommere', () => {
     expect(screen.queryByText(/kunne ikke leses/)).toBeNull();
   });
 
+  it('shows the judges not in use on the test set while the run is refused for another reason', async () => {
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset(
+        reaching({
+          notInUse: ['tone-eksperimenter'],
+          unreadable: [],
+          refused: { reason: 'residency', service: 'norway', connection: 'global' },
+        }),
+      ),
+    );
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(
+      within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
+    ).toBeTruthy();
+  });
+
   it('lists judges for other test sets collapsed on the test set', async () => {
     await openLive(
       '',

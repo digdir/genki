@@ -784,8 +784,9 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       if (evaluators.length === 0) continue;
       const reach = reachOf(rule.filter ?? [], run);
       if (evaluators.every((e) => e?.status === 'paused')) {
-        // Langfuse runs nothing of it, so it refuses no run: a judge of the run is listed refused
-        // as paused, and a judge of another test set as elsewhere.
+        // Langfuse runs nothing of it, so it is no rule's refusal: a judge of the run is listed
+        // refused as paused (which refuses the run when it is in use), and a judge of another test
+        // set under elsewhere.
         const judge = listed.get(rule.id);
         if (judge && reach.kind === 'judge') out.judges.push({ ...judge, run });
         if (judge && reach.kind === 'skip') out.elsewhere.push(judge);

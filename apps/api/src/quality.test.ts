@@ -2332,6 +2332,29 @@ describe('Langfuse judges on a run', () => {
       });
     });
 
+    it('names every reason a run is refused, a paused judge in use beside a rule on every span', async () => {
+      const { env, langfuse, adopt } = await judged([
+        experimentRule(),
+        experimentRule({
+          id: 'regel-3',
+          name: 'alle_spenn',
+          target: 'observation',
+          evaluator: { id: 'dommer-3', name: 'alle_spenn' },
+        }),
+      ]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+      langfuse.hooks.paused = { 'dommer-1': 'Evaluator paused.' };
+
+      const started = await start(env);
+      const messages = ((started.body.errors ?? []) as { message: string }[]).map((e) => e.message);
+
+      expect(started.status).toBe(409);
+      expect(messages).toEqual([
+        'Evaluator paused.',
+        expect.stringContaining('alle_spenn would judge every span') as string,
+      ]);
+    });
+
     it('expects scores only from the judges that reach the run', async () => {
       const { env, adopt } = await judged([experimentRule(), vedtak()]);
       expect((await adopt(judgeRule)).status).toBe(200);
