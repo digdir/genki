@@ -63,6 +63,12 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-10-30: case types judged as evaluators
+
+- The `contract` evaluator is version 2: it scores an exact case's text (`exact-text`, 0 when the case has no text) and counts an empty answer as a refusal on a must_reject case.
+- `judge:criteria` scores criteria cases. A run's provenance names it with its version and model, `judge:criteria@1+<model>`; labels and calibration are kept under `judge:criteria`.
+- The eval capability (`platform.eval.run`) takes `avoidAsJudge`, models the run's judges must not share a family with; a portal test run passes the service's own models.
+
 ### 2026-10-30: judges that answer later (evaluator@2)
 
 - Registering an evaluator plug-in under `evaluator@1` answers `400`; one stored under it judges nothing until it is registered again under `evaluator@2`.
