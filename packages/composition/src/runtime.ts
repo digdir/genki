@@ -352,6 +352,10 @@ export const createRuntime = async (input: RuntimeInput) => {
         ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
         ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+        onVacuumError: (error) =>
+          input.logger?.('knowledge vacuum failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [

@@ -37,6 +37,8 @@ import {
   triggerPauseKind,
   type TokenPrice,
   type TriggerBinding,
+  InMemoryJobQueue,
+  workQueues,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -47,6 +49,7 @@ import {
 } from '@genai/kernel';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import { openJobQueue } from '@genai/providers-pgboss';
 import {
   createPostgresStores,
   knowledgeSourceFromEnv,
@@ -55,6 +58,8 @@ import {
   PostgresDefinitionStore,
   PostgresLeaderLease,
   postgresSourceFromEnv,
+  runtimeRole,
+  workerRole,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
 import {
@@ -69,6 +74,7 @@ import {
   startHealthServer,
   watchKnowledgeBinding,
 } from './knowledge-binding.js';
+import { platformWork } from './platform-work.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -100,6 +106,7 @@ const db = databaseSource
       LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
       {
         onError: (error) => log('postgres connection error', { error: String(error) }),
+        role: workerRole,
         ...(process.env.DATABASE_RUNTIME_URL
           ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
           : {}),
@@ -122,6 +129,23 @@ const health = await startHealthServer({
   ready: () => knowledgeBinding.ready(),
 });
 log('health', { url: health.url, knowledgeServer: Boolean(knowledgeServer) });
+const jobs = db
+  ? await openJobQueue(
+      { owner: db.pool, runtime: db.runtimePool },
+      platformWork.map((work) => work.queue),
+      {
+        worker: workerRole,
+        readers: [runtimeRole],
+        works: true,
+        onError: (error) =>
+          log('job queue error', {
+            error: error instanceof Error ? error.message : JSON.stringify(error),
+          }),
+      },
+    )
+  : new InMemoryJobQueue();
+await workQueues(jobs, platformWork);
+log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformWork.length });
 
 const secrets = envSecrets();
 const catalogs = {
@@ -414,6 +438,7 @@ const stop = () => {
   following.stop();
   worker.stop();
   void (async () => {
+    await jobs.stop();
     await db?.close();
     await lease?.release();
     await retentionLease?.release();

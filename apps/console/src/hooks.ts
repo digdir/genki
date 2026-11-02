@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type AsyncState<T> =
   { status: 'loading' } | { status: 'error'; error: unknown } | { status: 'ready'; data: T };
@@ -6,9 +6,15 @@ export type AsyncState<T> =
 export const useAsync = <T>(load: (signal: AbortSignal) => Promise<T>, deps: unknown[]) => {
   const [state, setState] = useState<AsyncState<T>>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const loadedFor = useRef<unknown[] | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: 'loading' });
+    const retrying =
+      loadedFor.current?.length === deps.length &&
+      deps.every((d, i) => Object.is(d, loadedFor.current?.[i]));
+    loadedFor.current = deps;
+    // A retry keeps loaded data on screen, so the components showing it are not unmounted.
+    setState((s) => (retrying && s.status === 'ready' ? s : { status: 'loading' }));
     load(controller.signal).then(
       (data) => !controller.signal.aborted && setState({ status: 'ready', data }),
       (error: unknown) => !controller.signal.aborted && setState({ status: 'error', error }),

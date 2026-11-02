@@ -181,7 +181,7 @@
 }
 
 .ingest-card {
-  scroll-margin-top: 80px;
+  scroll-margin-top: calc(var(--header-offset) + 13px);
   outline: none;
 }
 
