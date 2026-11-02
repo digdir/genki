@@ -248,4 +248,20 @@ describe('knowledge server setup', () => {
       await admin.query(`alter role ${knowledgeRoles.writer} nobypassrls`);
     }
   });
+
+  it.each(['login', 'createrole', 'createdb'])(
+    'setup refuses a knowledge role that can %s',
+    async (right) => {
+      await admin.query(`alter role ${knowledgeRoles.writer} ${right}`);
+      try {
+        await expect(
+          setUpKnowledgeServer(admin, { ...logins, platformId: otherPlatform }),
+        ).rejects.toThrow(
+          `${knowledgeRoles.writer} must not log in, create roles or create databases`,
+        );
+      } finally {
+        await admin.query(`alter role ${knowledgeRoles.writer} no${right}`);
+      }
+    },
+  );
 });

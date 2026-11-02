@@ -35,6 +35,10 @@ const refuseStrongRole = (role: string) => `do $$ begin
     if exists (select from pg_roles where rolname = '${role}' and (rolsuper or rolbypassrls)) then
       raise exception '${role} must not be a superuser or bypass row-level security';
     end if;
+    if exists (select from pg_roles where rolname = '${role}'
+                 and (rolcanlogin or rolcreaterole or rolcreatedb)) then
+      raise exception '${role} must not log in, create roles or create databases';
+    end if;
   end $$`;
 
 const memberships = async (client: PoolClient, login: string, allowed: string[]) => {
