@@ -459,6 +459,21 @@ export interface SinkAnnotation {
   author?: string;
 }
 
+/** What a sink knows of a run before it starts: its test set, at a version, and its dataset. */
+export interface SinkRun {
+  testSet: string;
+  version: number;
+  /** The test set's dataset in the connection's project; absent while none is made. */
+  dataset?: string;
+}
+
+export interface SinkReach {
+  judges: SinkJudge[];
+  /** Judges whose filters leave the run out, such as another test set's. */
+  elsewhere: SinkJudge[];
+  refusing: { name: string; message: string }[];
+}
+
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
   /**
@@ -486,8 +501,12 @@ export interface TraceSinks {
   ): Promise<{ id: string; name: string }>;
   /** The judges of the connection's project that can score an eval run. */
   judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
-  /** The names of the project's other active rules, which judge what is sent but no run reads. */
-  otherRules?(tenant: string, connection: TraceConnection): Promise<string[]>;
+  /**
+   * The project's rules as they meet a run of one test set (ADR 0040): the judges that judge each
+   * of its cases once, the judges whose filters leave it out, and the rules that refuse it, each
+   * named with why. Throws when the rules cannot be read.
+   */
+  forRun?(tenant: string, connection: TraceConnection, run: SinkRun): Promise<SinkReach>;
   /** Where the connection's judges come from, as a person names it, such as "Langfuse (kudos)". */
   sourceOf?(connection: TraceConnection): string;
   /**

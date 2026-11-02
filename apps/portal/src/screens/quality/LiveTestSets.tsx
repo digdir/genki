@@ -16,6 +16,7 @@ import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
 import type { CaseSplit, CaseType, ServiceCase, ServiceTestSet } from '../../api/quality';
 import { useAsync } from '../../hooks';
+import { httpStatusOf } from '../../format';
 import { useT, type PlainKey } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
 import { ErrorState, Loading } from '../../states';
@@ -44,6 +45,73 @@ const blank = (): CaseForm => ({
   split: 'open',
   tried: false,
 });
+
+/**
+ * The Langfuse judges whose filters reach the test set, read when the test set is shown, and the
+ * judges for other test sets apart, collapsed (ADR 0040).
+ */
+const ReachingJudges = ({
+  api,
+  tenant,
+  serviceId,
+  testSet,
+  connection,
+}: {
+  api: ApiClient;
+  tenant: string;
+  serviceId: string;
+  testSet: string;
+  connection: string;
+}) => {
+  const t = useT();
+  const listId = useId();
+  const [state] = useAsync(
+    (signal) =>
+      api.quality
+        .sending(tenant, serviceId, 'draft', testSet, signal)
+        .catch((error: unknown) => ({ failed: error instanceof Error ? error.message : '' })),
+    [api, tenant, serviceId, testSet],
+  );
+  if (state.status !== 'ready') return null;
+  const notRead = (message: string) => (
+    <p>{t('quality.judgesNotReadForSet', { connection, status: httpStatusOf(message) })}</p>
+  );
+  if ('failed' in state.data) return notRead(state.data.failed);
+  const plan = state.data;
+  const refused = plan.refused;
+  if (refused?.reason === 'judges-unreadable') return notRead(refused.message);
+  const differ = refused?.reason === 'judges-differ' ? refused : undefined;
+  const lines = [
+    ...plan.judges.map((j) => t('quality.judgeInUse', { name: j.name })),
+    ...(differ?.notInUse ?? []).map((name) => t('quality.judgeNotInUse', { name })),
+    ...(differ?.unreadable ?? []).map((name) => t('quality.judgeStopsRuns', { name })),
+  ];
+  const elsewhere = plan.elsewhere ?? [];
+  return (
+    <div className="stack-sm">
+      <p id={listId}>{t('quality.reachingJudges')}</p>
+      {lines.length > 0 ? (
+        <ul aria-labelledby={listId}>
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{t('quality.noReachingJudges')}</p>
+      )}
+      {elsewhere.length > 0 ? (
+        <details>
+          <summary>{t('quality.judgesElsewhere', { count: elsewhere.length })}</summary>
+          <ul>
+            {elsewhere.map((j) => (
+              <li key={j.id}>{j.name}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
+};
 
 const NewTestSet = ({ onCreate, busy }: { onCreate: (name: string) => void; busy: boolean }) => {
   const t = useT();
@@ -358,10 +426,19 @@ export const LiveTestSets = ({
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
       {current.dataset ? (
-        <p>
-          {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
-          <code>{current.dataset.name}</code>
-        </p>
+        <>
+          <p>
+            {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
+            <code>{current.dataset.name}</code>
+          </p>
+          <ReachingJudges
+            api={api}
+            tenant={tenant}
+            serviceId={serviceId}
+            testSet={current.id}
+            connection={current.dataset.connection}
+          />
+        </>
       ) : null}
 
       {form ? (

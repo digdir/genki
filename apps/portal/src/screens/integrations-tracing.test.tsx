@@ -102,10 +102,21 @@ describe('Integrasjoner: Langfuse', () => {
     expect(within(list).getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
       within(section).getByText(
-        'Ett datasett per testsett i tjenestene koblingen dekker. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett.',
+        /^Ett datasett per testsett i tjenestene koblingen dekker\. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett\./,
       ),
     ).toBeTruthy();
     await expectAccessible(section);
+  });
+
+  it("tells agencies to pick the test set's dataset in a judge's filter in Langfuse", async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    expect(
+      within(section).getByText(
+        /For å la en dommer vurdere ett testsett, velg datasettet i filteret til dommeren i Langfuse, sammen med isExperimentItemRootSpan = true\./,
+      ),
+    ).toBeTruthy();
   });
 
   it('says the check shows the secret key opens the project, and that Langfuse does not check the public key', async () => {

@@ -670,7 +670,7 @@ export const integrationsArea = {
     labelsOn: 'Brings labels back',
     datasets: 'Datasets in Langfuse',
     datasetsHelp:
-      "One dataset per test set in the services the connection covers. Each test run sent to Langfuse is linked to its test set's dataset.",
+      "One dataset per test set in the services the connection covers. Each test run sent to Langfuse is linked to its test set's dataset. To have a judge judge one test set, pick the dataset in the judge's filter in Langfuse, together with isExperimentItemRootSpan = true.",
     check: 'Check the connection',
     checkedOk:
       'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',

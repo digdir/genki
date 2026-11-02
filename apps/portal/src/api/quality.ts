@@ -135,6 +135,8 @@ export type RunResidency = 'norway' | 'eu' | 'global';
 export interface RunSending {
   connection?: { id: string; residency: RunResidency };
   judges: { id: string; name: string }[];
+  /** Judges in the project whose filters leave the test set out, such as another test set's. */
+  elsewhere?: { id: string; name: string }[];
   refused?:
     | { reason: 'residency'; service: RunResidency; connection: RunResidency }
     | { reason: 'covered-twice'; connections: string[] }
@@ -346,11 +348,18 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>
       (await get<{ data: EvalRun[] }>(`${service(tenant, id)}/eval-runs`, signal)).data,
-    sending: (tenant: string, id: string, version: RunVersion, signal?: AbortSignal) =>
+    /** What a run of the test set sent to Langfuse would meet there, before it starts. */
+    sending: (
+      tenant: string,
+      id: string,
+      version: RunVersion,
+      testSet: string,
+      signal?: AbortSignal,
+    ) =>
       get<RunSending>(
-        `${service(tenant, id)}/eval-runs/sending${
-          version === 'published' ? '' : `?version=${encodeURIComponent(String(version))}`
-        }`,
+        `${service(tenant, id)}/eval-runs/sending?${
+          version === 'published' ? '' : `version=${encodeURIComponent(String(version))}&`
+        }testSet=${encodeURIComponent(testSet)}`,
         signal,
       ),
     run: (tenant: string, runId: string, signal?: AbortSignal) =>

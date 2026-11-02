@@ -1064,6 +1064,8 @@ interface FakeRule {
   enabled: boolean;
   mapping: { variable: string; source: string; jsonPath?: string }[];
   evaluator: { id: string; name: string };
+  /** Filters beside the item-root filter an experiment rule has, as Langfuse 4.72.0 writes them. */
+  filter?: { type: string; column: string; operator: string; value: unknown }[];
 }
 
 interface FakeAnnotation {
@@ -1137,10 +1139,12 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     name: r.name,
     enabled: r.enabled && r.status === 'active',
     sampling: 1,
-    filter:
-      r.target === 'experiment'
+    filter: [
+      ...(r.target === 'experiment'
         ? [{ type: 'boolean', column: 'isExperimentItemRootSpan', operator: '=', value: true }]
-        : [],
+        : []),
+      ...(r.filter ?? []),
+    ],
     evaluatorAssignments: [{ evaluatorId: r.evaluator.id, variableMapping: r.mapping }],
   });
   const v2Evaluator = (id: string) => ({
@@ -1197,7 +1201,15 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
         if (attr(span, 'langfuse.experiment.item.root_observation_id') !== span.spanId) continue;
         if (!seen) hooks.firstItem?.();
         seen = true;
-        for (const r of judging())
+        // A rule filtered on datasets judges only the items of a run linked to one of them.
+        const dataset = attr(span, 'langfuse.experiment.dataset.id');
+        const onDataset = (r: FakeRule) =>
+          (r.filter ?? [])
+            .filter((f) => f.column === 'datasetId')
+            .every(
+              (f) => (f.value as string[]).includes(dataset ?? '') === (f.operator === 'any of'),
+            );
+        for (const r of judging().filter(onDataset))
           scores.set(span.traceId, [
             ...(scores.get(span.traceId) ?? []),
             {
@@ -1751,8 +1763,11 @@ describe('Langfuse judges on a run', () => {
     });
     expect(savedDraft.status).toBe(200);
 
-    const published = await env.send('GET', `${services}/eval-runs/sending`);
-    const draft = await env.send('GET', `${services}/eval-runs/sending?version=draft`);
+    const published = await env.send('GET', `${services}/eval-runs/sending?testSet=svar-frister`);
+    const draft = await env.send(
+      'GET',
+      `${services}/eval-runs/sending?version=draft&testSet=svar-frister`,
+    );
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
       trace: true,
@@ -1808,7 +1823,8 @@ describe('Langfuse judges on a run', () => {
   it("refuses a run with a reason when the connection's Langfuse cannot be read as it starts", async () => {
     const { env, langfuse, adopt } = await judged();
     expect((await adopt(judgeRule)).status).toBe(200);
-    await langfuse.close();
+    // The dataset is found; the evaluation rules are not.
+    langfuse.hooks.evaluationDown = 503;
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
@@ -1864,7 +1880,7 @@ describe('Langfuse judges on a run', () => {
     expect((await adopt(judgeRule)).status).toBe(200);
     langfuse.hooks.evaluationDown = 401;
 
-    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const sending = await env.send('GET', `${services}/eval-runs/sending?testSet=svar-frister`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
       trace: true,
@@ -1934,7 +1950,7 @@ describe('Langfuse judges on a run', () => {
     expect((await saveConnection(true)).status).toBe(200);
     expect((await adopt(judgeRule)).status).toBe(200);
     expect((await saveConnection(false)).status).toBe(200);
-    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const sending = await env.send('GET', `${services}/eval-runs/sending?testSet=svar-frister`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
       trace: true,
@@ -2115,7 +2131,7 @@ describe('Langfuse judges on a run', () => {
 
     const noneInUse = await start();
     expect((await adopt(judgeRule)).status).toBe(200);
-    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const sending = await env.send('GET', `${services}/eval-runs/sending?testSet=svar-frister`);
     const oneInUse = await start();
     for (const r of rules.slice(1)) r.status = 'inactive';
     const inStep = await start();
@@ -2123,8 +2139,9 @@ describe('Langfuse judges on a run', () => {
 
     expect(noneInUse.status).toBe(409);
     expect(JSON.stringify(noneInUse.body)).toContain(
-      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter, toksisitet`),
+      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter`),
     );
+    expect(JSON.stringify(noneInUse.body)).toContain('toksisitet would judge every span');
     expect(sending.body).toMatchObject({
       refused: {
         reason: 'judges-differ',
@@ -2135,9 +2152,137 @@ describe('Langfuse judges on a run', () => {
     });
     expect(oneInUse.status).toBe(409);
     expect(JSON.stringify(oneInUse.body)).toContain(
-      differ('tone-eksperimenter, verktøy-eksperimenter, toksisitet'),
+      differ('tone-eksperimenter, verktøy-eksperimenter'),
     );
     expect(inStep.status).toBe(202);
+  });
+
+  describe("judges' filters, read for the test set", () => {
+    const onDataset = (id: string) => ({
+      type: 'stringOptions',
+      column: 'datasetId',
+      operator: 'any of',
+      value: [id],
+    });
+    /** A judge the agency pointed at another test set's dataset. */
+    const vedtak = () =>
+      experimentRule({
+        id: 'regel-2',
+        name: 'vedtak-eksperimenter',
+        evaluator: { id: 'dommer-2', name: 'vedtak_korrekt' },
+        filter: [onDataset('datasett-vedtak')],
+      });
+    const sendingCheck = '/eval-runs/sending?testSet=svar-frister';
+    const start = (env: Awaited<ReturnType<typeof judged>>['env']) =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', trace: true });
+
+    it("sends a run while another test set's judge is active in the project", async () => {
+      const { env, adopt } = await judged([experimentRule(), vedtak()]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+
+      const started = await start(env);
+      await env.settled();
+      const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+      expect(started.status).toBe(202);
+      expect(stored?.run.provenance.judges.filter((j) => j.startsWith('langfuse:'))).toEqual([
+        `langfuse:${tenant}/lokal/${judgeRule}@v1+foundry-claude/claude-sonnet-5`,
+      ]);
+    });
+
+    it('lists in the sending check only the judges that reach the test set', async () => {
+      const { env, adopt } = await judged([
+        experimentRule({ filter: [onDataset('datasett-1')] }),
+        vedtak(),
+      ]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+      expect((await adopt('vedtak-eksperimenter')).status).toBe(200);
+
+      const sending = await env.send('GET', `${services}${sendingCheck}`);
+
+      expect(sending.status).toBe(200);
+      expect(sending.body).toMatchObject({
+        judges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+      });
+      expect(sending.body).not.toHaveProperty('refused');
+    });
+
+    it('refuses a run in the sending check for a rule that would judge every span, naming it', async () => {
+      const { env, adopt } = await judged([
+        experimentRule(),
+        experimentRule({
+          id: 'regel-3',
+          name: 'alle_spenn',
+          target: 'observation',
+          evaluator: { id: 'dommer-3', name: 'alle_spenn' },
+          filter: [onDataset('datasett-1')],
+        }),
+      ]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+
+      const sending = await env.send('GET', `${services}${sendingCheck}`);
+      const started = await start(env);
+
+      expect(sending.body).toMatchObject({
+        refused: { reason: 'judges-differ', notInUse: [], unreadable: ['alle_spenn'] },
+      });
+      expect(started.status).toBe(409);
+      expect(JSON.stringify(started.body)).toContain('alle_spenn would judge every span');
+    });
+
+    it('does not ask to take in use a judge that leaves the test set out', async () => {
+      const { env, adopt } = await judged([experimentRule(), vedtak()]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+
+      const sending = await env.send('GET', `${services}${sendingCheck}`);
+
+      expect(sending.body).not.toHaveProperty('refused');
+      expect((await start(env)).status).toBe(202);
+    });
+
+    it('decides the judges with the dataset id it ensured at run start', async () => {
+      const { env, langfuse, adopt } = await judged([
+        experimentRule({ filter: [onDataset('datasett-ny')] }),
+      ]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+      // The dataset was deleted in Langfuse and made again there, with a new id.
+      langfuse.datasets.set('genki/svar/svar-frister', 'datasett-ny');
+
+      const started = await start(env);
+      await env.settled();
+      const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+      expect(started.status).toBe(202);
+      expect(stored?.run.provenance.judges.filter((j) => j.startsWith('langfuse:'))).toHaveLength(
+        1,
+      );
+    });
+
+    it('lists the judges for other test sets apart from those that reach the test set', async () => {
+      const { env, adopt } = await judged([experimentRule(), vedtak()]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+
+      const sending = await env.send('GET', `${services}${sendingCheck}`);
+
+      expect(sending.body).toMatchObject({
+        judges: [{ name: judgeRule }],
+        elsewhere: [{ id: 'langfuse:lokal/vedtak-eksperimenter', name: 'vedtak-eksperimenter' }],
+      });
+    });
+
+    it('expects scores only from the judges that reach the run', async () => {
+      const { env, adopt } = await judged([experimentRule(), vedtak()]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+
+      const started = await start(env);
+      await env.settled();
+      const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+      // The judge of another test set never scores this run, so none of it is counted as unread.
+      expect(Object.keys(stored?.run.usage?.reported ?? {})).toEqual([
+        `langfuse:lokal/${judgeRule}`,
+      ]);
+    });
   });
 
   it('counts what a judge switched on in Langfuse during a run costs apart from the judges in use, shown only to those who see usage', async () => {

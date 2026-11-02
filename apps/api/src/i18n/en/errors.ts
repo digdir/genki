@@ -408,6 +408,7 @@ export const qualityErrors = {
   testSetRequired: 'the test set is required',
   noTestSetFor: 'no test set {setId} for {service}',
   noVersion: 'no {version} version',
+  noTestSetInService: 'no test set {testSet} in the service',
   noCases: 'The test set has no test cases',
   serviceCannotRun: 'The service cannot run',
   runNotTraced: 'The test run cannot be sent for tracing',

@@ -945,34 +945,51 @@ export const createPlatform = async (input: PlatformInput) => {
       secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
       fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
     });
+  const sinkJudgeOf = (j: LangfuseJudge, connection: TraceConnection) => ({
+    id: j.id,
+    name: j.rule.name,
+    source: `Langfuse (${connection.id})`,
+    ...(j.evaluator.model
+      ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
+      : {}),
+    version: String(j.evaluator.version),
+    dataType: j.evaluator.dataType,
+    fields: j.rule.mapping,
+    // A judge on a connection without answer text would be paid for and judge nothing.
+    ...(j.refused
+      ? { refused: j.refused }
+      : connection.content
+        ? {}
+        : {
+            refused: {
+              reason: 'no-content' as const,
+              connection: connection.id,
+              message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
+            },
+          }),
+    snapshot: j,
+  });
   const traceSinks: TraceSinks = {
     traceIdOf: (task) => traceIdFor(task),
     judges: async (tenant, connection) =>
-      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) => ({
-        id: j.id,
-        name: j.rule.name,
-        source: `Langfuse (${connection.id})`,
-        ...(j.evaluator.model
-          ? { model: `${j.evaluator.model.provider}/${j.evaluator.model.model}` }
-          : {}),
-        version: String(j.evaluator.version),
-        dataType: j.evaluator.dataType,
-        fields: j.rule.mapping,
-        // A judge on a connection without answer text would be paid for and judge nothing.
-        ...(j.refused
-          ? { refused: j.refused }
-          : connection.content
-            ? {}
-            : {
-                refused: {
-                  reason: 'no-content',
-                  connection: connection.id,
-                  message: `${j.rule.name} has nothing to judge: the connection ${connection.id} gets no answer text`,
-                },
-              }),
-        snapshot: j,
-      })),
-    otherRules: async (tenant, connection) => (await langfuseOf(tenant, connection)).others(),
+      (await (await langfuseOf(tenant, connection)).list(connection.id)).map((j) =>
+        sinkJudgeOf(j, connection),
+      ),
+    forRun: async (tenant, connection, run) => {
+      const found = await (
+        await langfuseOf(tenant, connection)
+      ).forRun(connection.id, {
+        tenant,
+        environment: testRunEnvironment,
+        experimentName: `${run.testSet} v${run.version}`,
+        ...(run.dataset ? { dataset: run.dataset } : {}),
+      });
+      return {
+        judges: found.judges.map((j) => sinkJudgeOf(j, connection)),
+        elsewhere: found.elsewhere.map((j) => sinkJudgeOf(j, connection)),
+        refusing: found.refusing,
+      };
+    },
     sourceOf: (connection) => `Langfuse (${connection.id})`,
     sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
@@ -1151,12 +1168,9 @@ export const createPlatform = async (input: PlatformInput) => {
           const connection = await connectionOf(configEntries, tenant, run.sink);
           if (!connection) return own;
           const judges = await langfuseOf(tenant, connection);
-          // Every active judge in the project judges, and bills, each case the run sends; a
-          // paused one does not run.
-          const active = await judges.list(connection.id).catch(() => []);
-          judges.expectJudges(
-            active.filter((j) => j.refused?.reason !== 'paused').map((j) => j.rule.id),
-          );
+          // A run starts only when every judge that reaches it is in use, so those are the ones
+          // that judge, and bill, each case it sends.
+          judges.expectJudges((run.sinkJudges as LangfuseJudge[]).map((j) => j.rule.id));
           for (const snapshot of run.sinkJudges as LangfuseJudge[])
             own.set(
               snapshot.id,
