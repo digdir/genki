@@ -504,13 +504,13 @@ describe('eval runs for a service', () => {
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
 
-    expect(stored?.run.provenance.judges).not.toContain(`judge:criteria@1+${judgeId}`);
-    expect(
-      stored?.run.results
-        .flatMap((r) => r.scores)
-        .filter((s) => s.metric === 'judge.criteria' && s.applicable)
-        .every((s) => s.state === 'failed'),
-    ).toBe(true);
+    const served = [withFallback.spec.model.primary, judgeId];
+    const judgedBy = (stored?.run.provenance.judges ?? []).filter((j) =>
+      j.startsWith('judge:criteria@'),
+    );
+    expect(judgedBy.length).toBeGreaterThan(0);
+    // Another model the platform serves judges, never one the service may answer with.
+    for (const j of judgedBy) for (const m of served) expect(j).not.toContain(String(m));
   });
 
   it('feeds a publishing gate: the run is found under the spec it tested, as the gate looks it up', async () => {
