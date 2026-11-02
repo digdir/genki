@@ -145,8 +145,8 @@ export class TraceRefused extends Error {
   }
 }
 
-/** The project's active judges that genki does not read: not taken in use, or refused. */
-/** Listed judges not taken in use; a paused one does not run, so it does not count. */
+/** The project's active judges that genki does not read: not taken in use, or refused. A paused
+ * one does not run, so it does not count. */
 const unreadOf = (listed: SinkJudge[], adopted: string[]) =>
   listed.filter((j) => !adopted.includes(j.id) && j.refused?.reason !== 'paused');
 

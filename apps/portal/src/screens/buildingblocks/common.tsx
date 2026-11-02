@@ -10,18 +10,13 @@ import type {
   SinkJudgeInfo,
 } from '../../api/building-blocks';
 import { ApiCallPanel, type ApiCallPreview } from '../../components/ApiCall';
+import { httpStatusOf } from '../../format';
 import { ChangeLogged } from '../../components/ChangeLogged';
 import { Icon, icons } from '../../components/Icon';
 import { permissionLabels } from '../../data/building-blocks';
 import { useT, type Format, type T } from '../../i18n';
 import { rightLabel, useRights } from '../../Shell';
 import type { PortalRight } from '../../types';
-
-/** " (HTTP 404)" from what a sink answered, or nothing when it gave no status. */
-export const httpStatusOf = (message: string) => {
-  const status = /HTTP \d{3}/.exec(message)?.[0];
-  return status ? ` (${status})` : '';
-};
 
 /** Why a Langfuse judge cannot be taken in use, in the reader's language. */
 export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) => {
@@ -35,6 +30,8 @@ export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refus
       return t('blocks.judgeRefusedSeveral');
     case 'paused':
       return t('blocks.judgeRefusedPaused');
+    case 'same-name':
+      return t('blocks.judgeRefusedSameName');
     case 'not-a-model':
       return t('blocks.judgeRefusedNotAModel');
     case 'default-model':

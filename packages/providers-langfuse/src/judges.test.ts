@@ -302,6 +302,12 @@ describe('Langfuse judges', () => {
     expect(
       await collectedAfter({ rules: [rule({ enabled: false })], evaluators: [evaluator()] }),
     ).toEqual(['the rule is no longer active']);
+    expect(
+      await collectedAfter({ rules: [rule({ itemRoot: false })], evaluators: [evaluator()] }),
+    ).toEqual(['the rule is no longer active']);
+    expect(
+      await collectedAfter({ rules: [rule()], evaluators: [evaluator({ status: 'paused' })] }),
+    ).toEqual(["the rule's evaluator is paused"]);
   });
 
   it("keeps two agencies', or two connections', judges of the same name apart, scores and labels alike", async () => {
@@ -840,6 +846,75 @@ describe('Langfuse judges', () => {
         }),
       ),
     ).toBe('filtered');
+  });
+
+  it('counts a rule as unreadable when one of its several evaluators is still active, or its evaluator is not listed', async () => {
+    const several = rule({ id: 'regel-2', name: 'to_evaluatorer' });
+    several.evaluatorAssignments = [
+      { evaluatorId: 'pause-1', variableMapping: null },
+      { evaluatorId: 'dommer-1', variableMapping: null },
+    ];
+    const judges = langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [
+            several,
+            rule({ id: 'regel-3', name: 'ukjent_evaluator', evaluatorId: 'borte-1' }),
+            rule({
+              id: 'regel-4',
+              name: 'ukjent_alle_spenn',
+              evaluatorId: 'borte-1',
+              itemRoot: false,
+            }),
+          ],
+          evaluators: [evaluator(), evaluator({ id: 'pause-1', status: 'paused' })],
+        }),
+      ),
+    );
+
+    // Langfuse still runs the active one, so the rule is refused, never dropped as paused.
+    expect((await judges.list('kudos')).map((j) => [j.rule.name, j.refused?.reason])).toEqual([
+      ['to_evaluatorer', 'several-evaluators'],
+    ]);
+    expect(await judges.others()).toEqual(['ukjent_evaluator', 'ukjent_alle_spenn']);
+  });
+
+  it('refuses judges whose rules share a name, which genki cannot tell apart', async () => {
+    const judges = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [rule(), rule({ id: 'regel-2' })],
+          evaluators: [evaluator()],
+        }),
+      ),
+    ).list('kudos');
+
+    expect(judges.map((j) => [j.rule.id, j.refused?.reason])).toEqual([
+      ['regel-1', 'same-name'],
+      ['regel-2', 'same-name'],
+    ]);
+  });
+
+  it('names a score name that two rules write as shared, also when their evaluators differ', async () => {
+    const shared = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [
+            rule(),
+            rule({ id: 'regel-2', name: 'kopi', evaluatorId: 'dommer-2' }),
+            rule({ id: 'regel-3', name: 'av', enabled: false }),
+          ],
+          evaluators: [evaluator(), evaluator({ id: 'dommer-2' })],
+        }),
+      ),
+    ).shared();
+
+    expect(shared).toEqual([
+      {
+        name: 'svar_oppfyller_kriteriene',
+        rules: ['svar_oppfyller_kriteriene-eksperimenter', 'kopi'],
+      },
+    ]);
   });
 
   it('throws when the rules or evaluators cannot be read (404, 401 or 5xx), never reading them as no rules', async () => {

@@ -112,6 +112,8 @@ export const SinkLabels = ({ api }: { api: ApiClient }) => {
             t('qualityMatrix.sinkShared', { name: s.name, rules: s.rules.join(', ') }),
           ),
         ].join(' '),
+        // Some labels were left out, which the operator should see.
+        shared.length > 0 ? 'warning' : 'success',
       );
       retry();
     } catch {

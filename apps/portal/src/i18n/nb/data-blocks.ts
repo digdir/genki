@@ -175,6 +175,8 @@ export const blocks = defineNamespace({
   judgeRefusedSeveral:
     'Regelen kjører mer enn én evaluator. Gi regelen én evaluator i Langfuse for å ta den i bruk.',
   judgeRefusedPaused: 'Evaluatoren er satt på pause i Langfuse.',
+  judgeRefusedSameName:
+    'Flere regler i prosjektet har dette navnet, så genki kan ikke skille dem fra hverandre. Gi reglene ulike navn i Langfuse for å ta dem i bruk.',
   judgesUnreadable:
     'Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}. Langfuse må ha versjon 4.23.0 eller nyere, og koblingens nøkler må gjelde.',
   pendingNotice:

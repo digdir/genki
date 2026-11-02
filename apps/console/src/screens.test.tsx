@@ -565,11 +565,11 @@ describe('etiketter fra Langfuse', () => {
     const fetchButton = (await screen.findAllByRole('button', { name: 'Hent nye etiketter' }))[0];
     fireEvent.click(fetchButton as HTMLElement);
 
-    expect(
-      await screen.findByText(
-        '2 nye etiketter fra kudos. Ingen etiketter for svar_oppfyller_kriteriene: reglene regel_a, regel_b skriver vurderinger med samme navn, så merkingene kan ikke skilles fra hverandre.',
-      ),
-    ).toBeTruthy();
+    const notice = await screen.findByText(
+      '2 nye etiketter fra kudos. Ingen etiketter for svar_oppfyller_kriteriene: reglene regel_a, regel_b skriver vurderinger med samme navn, så merkingene kan ikke skilles fra hverandre.',
+    );
+    // Some labels were left out: a warning, not a plain success.
+    expect(notice.closest('.ds-alert')?.getAttribute('data-color')).toBe('warning');
   });
 });
 

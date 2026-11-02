@@ -1552,6 +1552,11 @@ describe('Langfuse judges on a run', () => {
       }),
     ]);
     expect(JSON.stringify(sinkBlocks)).toContain('HTTP 404');
+    // It is no judge: it judges nothing, reads no field and runs on no model.
+    expect(sinkBlocks[0]).toMatchObject({
+      capabilities: [],
+      permissions: [{ type: 'network', value: langfuse.url, note: 'Hit sendes testkjøringene' }],
+    });
     expect(adopted.status).toBeGreaterThanOrEqual(400);
   });
 
@@ -1595,6 +1600,30 @@ describe('Langfuse judges on a run', () => {
     );
     expect(started.status).toBe(409);
     expect(JSON.stringify(started.body)).toContain(message);
+  });
+
+  it('sends a run beside a judge whose evaluator is paused and not taken in use, and counts no cost for it', async () => {
+    const { env, langfuse, adopt } = await judged([
+      experimentRule(),
+      experimentRule({
+        id: 'regel-pause',
+        name: 'pausert-eksperimenter',
+        evaluator: { id: 'dommer-pause', name: 'pausert' },
+      }),
+    ]);
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.paused = { 'dommer-pause': 'Evaluator paused.' };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+
+    expect(started.status).toBe(202);
+    // Langfuse does not run it, so nothing of it is waited for or counted as unread.
+    expect(Object.keys(stored?.run.usage?.reported ?? {})).toEqual([`langfuse:lokal/${judgeRule}`]);
   });
 
   it('refuses a Langfuse judge on a connection that gets no answer text, when it is taken in use and when a run starts', async () => {
@@ -2018,6 +2047,25 @@ describe('Langfuse judges on a run', () => {
     langfuse.annotate(o1, { configId: 'oppsett-6', value: true });
     // Named after the evaluator, as 4.72.0 names them: the judge's label.
     langfuse.annotate(o1, { configId: 'oppsett-1', value: false });
+
+    expect((await fetchLabels()).status).toBe(200);
+
+    expect((await batches()).flatMap((b) => b.labels)).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'bad' }),
+    ]);
+  });
+
+  it("matches a label by the judge's rule name on a run whose scores did not record their name, as 4.4.0 named them", async () => {
+    const { env, langfuse, run, fetchLabels, batches } = await labelled();
+    const stored = await env.platform.evalStores.runs.get(run);
+    if (!stored) throw new Error('the run was not stored');
+    // A run scored before scores recorded the name Langfuse gave them.
+    for (const r of stored.run.results)
+      for (const sc of r.scores) if (sc.details) delete sc.details.scoreName;
+    await env.platform.evalStores.runs.save(stored);
+    const o1 = langfuse.traceOf('o1');
+    langfuse.annotate(o1, { configId: 'oppsett-6', value: false });
+    langfuse.annotate(o1, { configId: 'oppsett-1', value: true });
 
     expect((await fetchLabels()).status).toBe(200);
 

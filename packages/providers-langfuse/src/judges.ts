@@ -38,6 +38,8 @@ export interface JudgeRefusal {
     | 'unsent-field'
     | 'unread-path'
     | 'several-evaluators'
+    /** Another judge in the project has the rule's name, so the two cannot be told apart. */
+    | 'same-name'
     /** Langfuse does not run it: no screen lists it, and a run that uses it is refused. */
     | 'paused';
   field?: string;
@@ -140,17 +142,18 @@ const refusalOf = (
   evaluator: RawEvaluator,
   mapping: JudgeMapping[],
 ): JudgeRefusal | undefined => {
+  // Several evaluators come first: Langfuse runs the rule while any one of them is active.
+  if ((rule.evaluatorAssignments ?? []).length > 1)
+    return {
+      reason: 'several-evaluators',
+      message: `${rule.name} runs more than one evaluator; genki reads a rule with one`,
+    };
   if (evaluator.status === 'paused')
     return {
       reason: 'paused',
       message:
         evaluator.pausedMessage ??
         `${rule.name}'s evaluator ${evaluator.name} is paused in Langfuse`,
-    };
-  if ((rule.evaluatorAssignments ?? []).length > 1)
-    return {
-      reason: 'several-evaluators',
-      message: `${rule.name} runs more than one evaluator; genki reads a rule with one`,
     };
   if (evaluator.type !== undefined && evaluator.type !== 'llm_as_judge')
     return {
@@ -351,32 +354,55 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
    * Each enabled rule of the project with the item-root filter, refused with a reason when genki
    * cannot use it: one whose evaluator is paused is refused as paused, since Langfuse does not run it.
    */
-  const list = async (connection: string): Promise<LangfuseJudge[]> =>
-    (await project())
+  const list = async (connection: string): Promise<LangfuseJudge[]> => {
+    const judges = (await project())
       .filter(({ rule }) => isJudge(rule))
       .map(({ rule, evaluators }) => judgeOf(connection, rule, evaluators[0]))
       .filter((j): j is LangfuseJudge => j !== undefined);
+    // A judge is known by its rule's name, which Langfuse does not keep unique.
+    const named = new Map<string, number>();
+    for (const j of judges) named.set(j.rule.name, (named.get(j.rule.name) ?? 0) + 1);
+    return judges.map((j) =>
+      (named.get(j.rule.name) ?? 0) > 1 && j.refused?.reason !== 'paused'
+        ? {
+            ...j,
+            refused: {
+              reason: 'same-name',
+              message: `${j.rule.name} is the name of more than one rule in the project, so genki cannot tell them apart`,
+            },
+          }
+        : j,
+    );
+  };
 
   /**
-   * The project's other enabled rules with an active evaluator: Langfuse runs them on every span
-   * genki sends, but they are no judges genki can read.
+   * The project's other enabled rules that Langfuse runs on what genki sends but genki cannot
+   * read: one without the item-root filter and an active evaluator, which judges every span, and
+   * one whose evaluator the listing does not have, which genki cannot tell is paused.
    */
   const others = async (): Promise<string[]> =>
     (await project())
-      .filter(({ rule, evaluators }) => !isJudge(rule) && evaluators.some(isActive))
+      .filter(({ rule, evaluators }) =>
+        isJudge(rule)
+          ? evaluators[0] === undefined
+          : evaluators.some((e) => e === undefined || isActive(e)),
+      )
       .map(({ rule }) => rule.name);
 
-  /** Each evaluator that two or more enabled rules run: their scores share its name. */
+  /**
+   * Each score name two or more enabled rules write: their evaluators' name, which Langfuse does
+   * not keep unique either.
+   */
   const shared = async (): Promise<{ name: string; rules: string[] }[]> => {
-    const byEvaluator = new Map<string, { name: string; rules: string[] }>();
+    const byName = new Map<string, string[]>();
     for (const { rule, evaluators } of await project())
-      for (const e of evaluators) {
-        if (!e) continue;
-        const entry = byEvaluator.get(e.id) ?? { name: e.name, rules: [] };
-        entry.rules.push(rule.name);
-        byEvaluator.set(e.id, entry);
+      for (const e of new Set(evaluators.map((x) => x?.name))) {
+        if (e === undefined) continue;
+        byName.set(e, [...(byName.get(e) ?? []), rule.name]);
       }
-    return [...byEvaluator.values()].filter((e) => e.rules.length > 1);
+    return [...byName]
+      .filter(([, rules]) => rules.length > 1)
+      .map(([name, rules]) => ({ name, rules }));
   };
 
   /** The rule as it is now, read by id, so a rename does not hide a change. */
@@ -545,8 +571,8 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     const readable = (c: TestCase) =>
       judge.rule.mapping.every((m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)));
     const base = { evaluator: judge.id, version, metric: judge.id };
-    // Every score says the judge's type, so a label can be matched to it before it scores.
-    // and the name Langfuse gives its scores: the evaluator's, which labels are matched by.
+    // Every score says the judge's type, and the name Langfuse gives its scores (the
+    // evaluator's), so a label can be matched to it before it scores.
     const named = { dataType: judge.evaluator.dataType, scoreName: judge.evaluator.name };
     const typed = { details: named };
     const notApplicable = (reason: string): Score => ({

@@ -20,9 +20,10 @@ const ingest = async (batch: Record<string, unknown>[]) => {
   expect(response.status).toBeLessThan(300);
 };
 
+/** Langfuse's worker deletes on a cycle of about two minutes, so this waits up to four. */
 const eventually = async <T>(read: () => Promise<T>, done: (value: T) => boolean) => {
   let value = await read();
-  for (let i = 0; i < 60 && !done(value); i += 1) {
+  for (let i = 0; i < 240 && !done(value); i += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     value = await read();
   }
@@ -173,5 +174,5 @@ describe.skipIf(!host)('deleting from a local Langfuse 4.72.0 (dual write mode)'
 
     expect(judges.sort()).toEqual([scoredJudge, targetedJudge].sort());
     expect(left).toEqual([]);
-  }, 150_000);
+  }, 600_000);
 });

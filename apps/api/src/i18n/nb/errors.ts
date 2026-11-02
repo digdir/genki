@@ -127,6 +127,8 @@ export const catalogErrors = defineNamespace({
   sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',
   sinkJudgeUnreadPath: '{rule} leser {field} på {path}, en JSON-sti genki ikke kan lese',
   sinkJudgeSeveral: '{rule} kjører mer enn én evaluator; genki leser en regel med én',
+  sinkJudgeSameName:
+    '{rule} er navnet på mer enn én regel i prosjektet, så genki kan ikke skille dem fra hverandre',
   sinkJudgePaused: 'evaluatoren {evaluator} til {rule} er satt på pause i Langfuse',
   tracingHostOrigin:
     'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',

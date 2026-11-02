@@ -1011,7 +1011,8 @@ export const createBuildingBlocksModule =
           history: async () => [],
         });
       }
-      for (const judge of await sinkJudges(tenant))
+      for (const judge of await sinkJudges(tenant)) {
+        const unread = judge.refused?.reason === 'unreadable';
         out.push({
           block: {
             id: judge.id,
@@ -1021,19 +1022,26 @@ export const createBuildingBlocksModule =
             publisher: { type: 'own', name: judge.source },
             version: judge.version,
             dataLocation: judge.residency,
-            capabilities: [t('blocks.sinkJudgeCapability', { connection: judge.connection })],
+            // A connection whose judges could not be read judges nothing and reads no field.
+            capabilities: unread
+              ? []
+              : [t('blocks.sinkJudgeCapability', { connection: judge.connection })],
             permissions: [
               { type: 'network', value: judge.host, note: t('blocks.sinkJudgeNetwork') },
-              {
-                type: 'data',
-                value: sinkFieldsText(judge.fields),
-                note: '',
-              },
-              {
-                type: 'model',
-                value: judge.model ?? t('blocks.sinkJudgeDefaultModel'),
-                note: t('blocks.sinkJudgeModel'),
-              },
+              ...(unread
+                ? []
+                : [
+                    {
+                      type: 'data' as const,
+                      value: sinkFieldsText(judge.fields),
+                      note: '',
+                    },
+                    {
+                      type: 'model' as const,
+                      value: judge.model ?? t('blocks.sinkJudgeDefaultModel'),
+                      note: t('blocks.sinkJudgeModel'),
+                    },
+                  ]),
             ],
             settingsSchema: noSettings,
             judge: {
@@ -1049,6 +1057,7 @@ export const createBuildingBlocksModule =
           uses: () => false,
           history: async () => [],
         });
+      }
       const shared = new Map<
         string,
         {

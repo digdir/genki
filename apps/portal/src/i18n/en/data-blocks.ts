@@ -177,6 +177,8 @@ export const blocksLane = {
     judgeRefusedSeveral:
       'The rule runs more than one evaluator. Give the rule one evaluator in Langfuse to use it.',
     judgeRefusedPaused: 'The evaluator is paused in Langfuse.',
+    judgeRefusedSameName:
+      'More than one rule in the project has this name, so genki cannot tell them apart. Give the rules different names in Langfuse to use them.',
     judgesUnreadable:
       "The judges in the project of the connection {connection} could not be read{status}. Langfuse must be version 4.23.0 or later, and the connection's keys must be valid.",
     pendingNotice:

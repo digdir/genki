@@ -1248,6 +1248,14 @@ describe('Byggeklosser: Langfuse-dommere', () => {
       id: 'sink-judges:kudos',
       name: 'Dommerne i Langfuse (kudos)',
       version: '',
+      // As the API gives it: where runs go, and no field or model.
+      permissions: [
+        {
+          type: 'network',
+          value: 'https://langfuse.etaten.example.no',
+          note: 'Hit sendes testkjøringene',
+        },
+      ],
       status: 'not_allowed',
       policyBlock: { rule: 'refused', ownedBy: 'Testetaten', text: message },
       judge: {

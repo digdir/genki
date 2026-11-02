@@ -92,3 +92,9 @@ export const usePortalFormat = () => {
     [f, t],
   );
 };
+
+/** " (HTTP 404)" from what a server answered, or nothing when it gave no status. */
+export const httpStatusOf = (message: string) => {
+  const status = /HTTP \d{3}/.exec(message)?.[0];
+  return status ? ` (${status})` : '';
+};

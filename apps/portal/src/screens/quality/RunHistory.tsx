@@ -22,7 +22,7 @@ import type {
   SinkAgreement,
 } from '../../api/quality';
 import { storageLabels } from '../../data/building-blocks';
-import { formatKroner, usePortalFormat } from '../../format';
+import { formatKroner, httpStatusOf, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import type { Format, PlainKey, T } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
@@ -285,12 +285,6 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
       </Table>
     </>
   );
-};
-
-/** " (HTTP 404)" from what Langfuse answered, or nothing when it gave no status. */
-const httpStatusOf = (message: string) => {
-  const status = /HTTP \d{3}/.exec(message)?.[0];
-  return status ? ` (${status})` : '';
 };
 
 /** Why a run sent to Langfuse cannot start, before it is started. */
