@@ -2032,6 +2032,8 @@ const qualityRoutes: RouteConfig[] = [
                 name: z.string(),
                 labels: z.array(
                   z.object({
+                    id: z.string(),
+                    revision: z.string(),
                     run: z.string(),
                     case: z.string(),
                     repeat: z.number().int(),
@@ -2082,7 +2084,17 @@ const qualityRoutes: RouteConfig[] = [
       description: described(operator, audited),
       request: {
         headers: operatorWriteHeaders,
-        body: body(z.object({ tenant: z.string(), connection: z.string(), judge: z.string() })),
+        body: body(
+          z.object({
+            tenant: z.string(),
+            connection: z.string(),
+            judge: z.string(),
+            labels: z
+              .array(z.object({ id: z.string(), revision: z.string() }))
+              .optional()
+              .describe('The labels the operator was shown; without it, every pending one'),
+          }),
+        ),
       },
       responses: {
         200: json(

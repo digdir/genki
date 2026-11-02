@@ -678,6 +678,8 @@ export const exampleSinkLabels: SinkLabels = {
       name: 'kudos_quotes_covered',
       labels: [
         {
+          id: 'merknad-1',
+          revision: '2026-11-02T10:00:00.000Z|good',
           run: 'kjoring-41',
           case: 'tilskudd-frist',
           repeat: 0,
@@ -686,6 +688,8 @@ export const exampleSinkLabels: SinkLabels = {
           labeller: 'pseudonym:3f9a1c27b0d4',
         },
         {
+          id: 'merknad-2',
+          revision: '2026-11-02T10:00:00.000Z|bad',
           run: 'kjoring-41',
           case: 'rapport-mangler',
           repeat: 0,
@@ -694,6 +698,8 @@ export const exampleSinkLabels: SinkLabels = {
           labeller: 'pseudonym:3f9a1c27b0d4',
         },
         {
+          id: 'merknad-3',
+          revision: '2026-11-02T10:00:00.000Z|good',
           run: 'kjoring-41',
           case: 'personvern',
           repeat: 0,

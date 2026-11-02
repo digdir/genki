@@ -160,7 +160,9 @@ describe('Integrasjoner: Langfuse', () => {
     }) as HTMLInputElement;
     expect(labels.checked).toBe(false);
     expect(
-      within(form).getByText(/Etiketter teller først når en operatør godtar dem/),
+      within(form).getByText(
+        /En operatør henter dem i driftskonsollen, og de teller først når operatøren godtar dem/,
+      ),
     ).toBeTruthy();
     fireEvent.click(labels);
     fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {

@@ -119,28 +119,38 @@ export const SinkLabels = ({ api }: { api: ApiClient }) => {
       <Paragraph>{t('qualityMatrix.sinkIntro')}</Paragraph>
       <Flash message={flash.message} />
       {connections.length > 0 ? (
-        <ul className="stack-xs">
-          {connections.map((c) => (
-            <li key={`${c.tenant}/${c.connection}`} className="row-gap">
-              <span>
-                {c.tenant} / {c.connection}
-              </span>
-              {c.labels ? (
-                <Button
-                  data-size="sm"
-                  variant="secondary"
-                  onClick={() => void fetchFrom(c.tenant, c.connection)}
-                >
-                  {t('qualityMatrix.sinkFetch')}
-                </Button>
-              ) : (
-                <Tag data-size="sm" data-color="neutral">
-                  {t('qualityMatrix.sinkSwitchOff')}
-                </Tag>
-              )}
-            </li>
-          ))}
-        </ul>
+        <Table data-size="sm">
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell scope="col">{t('qualityMatrix.sinkTenant')}</TableHeaderCell>
+              <TableHeaderCell scope="col">{t('qualityMatrix.sinkConnection')}</TableHeaderCell>
+              <TableHeaderCell scope="col">{t('qualityMatrix.sinkLabelsColumn')}</TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {connections.map((c) => (
+              <TableRow key={`${c.tenant}/${c.connection}`}>
+                <TableCell>{c.tenant}</TableCell>
+                <TableCell>{c.connection}</TableCell>
+                <TableCell>
+                  {c.labels ? (
+                    <Button
+                      data-size="sm"
+                      variant="secondary"
+                      onClick={() => void fetchFrom(c.tenant, c.connection)}
+                    >
+                      {t('qualityMatrix.sinkFetch')}
+                    </Button>
+                  ) : (
+                    <Tag data-size="sm" data-color="neutral">
+                      {t('qualityMatrix.sinkSwitchOff')}
+                    </Tag>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       ) : null}
       {batches.length === 0 ? (
         <EmptyState title={t('qualityMatrix.sinkNoneTitle')}>

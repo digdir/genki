@@ -698,7 +698,7 @@ export const integrationsArea = {
       'Spørsmål, svar og det dommerne leser. Krever at Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
     labels: 'Hent etiketter fra Langfuse som kalibreringsetiketter',
     labelsHelp:
-      'Det folk merker i prosjektet, kommer tilbake som ventende etiketter for dommerne. Etiketter teller først når en operatør godtar dem. Langfuse godtar ikke navn over 35 tegn på et scoreoppsett, så en dommer med lengre navn får ingen etiketter før den får et kortere.',
+      'Det folk merker i prosjektet, kommer tilbake som ventende etiketter for dommerne. En operatør henter dem i driftskonsollen, og de teller først når operatøren godtar dem. Langfuse godtar ikke navn over 35 tegn på et scoreoppsett, så en dommer med lengre navn får ingen etiketter før den får et kortere.',
     declaration:
       'Vi bekrefter at vår Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
     required: 'Fyll ut feltet',

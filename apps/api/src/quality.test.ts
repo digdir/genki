@@ -1017,6 +1017,8 @@ describe('eval runs sent to a trace connection', () => {
 });
 
 const judgeRule = 'svar_oppfyller_kriteriene-eksperimenter';
+const numericRule = 'svar_poeng-eksperimenter';
+const numericJudge = 'dommer-tall';
 
 interface FakeRule {
   id: string;
@@ -1085,6 +1087,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     { id: 'oppsett-1', name: judgeRule, dataType: 'BOOLEAN' },
     { id: 'oppsett-2', name: judgeRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
     { id: 'oppsett-3', name: 'hjelpsomhet', dataType: 'BOOLEAN' },
+    { id: 'oppsett-4', name: numericRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
   ];
   /** A person's annotation on a case's trace, as Langfuse's UI writes it with a score config. */
   const annotate = (
@@ -1125,8 +1128,10 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
             {
               id: `${r.id}-${span.traceId}`,
               name: r.name,
-              value: true,
-              dataType: 'BOOLEAN',
+              // A numeric judge's score has no config, so it comes without a range.
+              ...(r.evaluator.id === numericJudge
+                ? { value: 3, dataType: 'NUMERIC' }
+                : { value: true, dataType: 'BOOLEAN' }),
               source: 'EVAL',
               comment: 'Svaret oppgir fristen.',
               metadata: {
@@ -1154,7 +1159,9 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
         id: decodeURIComponent(evaluatorId),
         name: 'svar_oppfyller_kriteriene',
         version: 1,
-        outputDefinition: { dataType: 'BOOLEAN' },
+        outputDefinition: {
+          dataType: decodeURIComponent(evaluatorId) === numericJudge ? 'NUMERIC' : 'BOOLEAN',
+        },
         modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
       });
     // What people annotate in Langfuse's UI, apart from what the judges score.
@@ -1803,12 +1810,22 @@ describe('Langfuse judges on a run', () => {
     const batches = async () =>
       (await ctx.env.send('GET', '/operator/quality/sink-labels', 'operator')).body
         .batches as LabelBatch[];
-    const decide = (decision: 'accept' | 'reject', reason?: string, who = 'operator') =>
+    const decide = (
+      decision: 'accept' | 'reject',
+      reason?: string,
+      who = 'operator',
+      shown?: Record<string, unknown>[],
+    ) =>
       ctx.env.send(
         'POST',
         `/operator/quality/sink-labels/${decision}`,
         who,
-        { tenant, connection: 'lokal', judge: labelKey },
+        {
+          tenant,
+          connection: 'lokal',
+          judge: labelKey,
+          ...(shown ? { labels: shown.map((l) => ({ id: l.id, revision: l.revision })) } : {}),
+        },
         reason ? { 'change-reason': reason } : {},
       );
     const agreement = async (judge = `langfuse:lokal/${judgeRule}`) =>
@@ -1822,9 +1839,19 @@ describe('Langfuse judges on a run', () => {
   };
 
   it("turns an ANNOTATION with a judge's exact name and type into a pending label for that judge and case", async () => {
-    const { langfuse, run, fetchLabels, batches, agreement } = await labelled();
+    const numeric = experimentRule({
+      id: 'regel-tall',
+      name: numericRule,
+      evaluator: { id: numericJudge, name: 'svar_poeng' },
+    });
+    const { langfuse, run, fetchLabels, batches, agreement } = await labelled([
+      experimentRule(),
+      numeric,
+    ]);
     const o1 = langfuse.traceOf('o1');
     langfuse.annotate(o1, { value: false });
+    // 1 of 0 to 4 is bad; the judge's 3, which came without a range, is split with the same one.
+    langfuse.annotate(o1, { configId: 'oppsett-4', value: 1 });
     // The judge's name with another type, and another name: not the judge's labels.
     langfuse.annotate(o1, { configId: 'oppsett-2', value: 3 });
     langfuse.annotate(o1, { configId: 'oppsett-3', value: true });
@@ -1832,7 +1859,11 @@ describe('Langfuse judges on a run', () => {
     const fetched = await fetchLabels();
 
     expect(fetched.status).toBe(200);
-    expect(await batches()).toEqual([
+    const all = await batches();
+    expect(all.find((b) => b.name === numericRule)?.labels).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'bad', judgeLabel: 'good' }),
+    ]);
+    expect(all.filter((b) => b.name !== numericRule)).toEqual([
       {
         tenant,
         connection: 'lokal',
@@ -1857,23 +1888,28 @@ describe('Langfuse judges on a run', () => {
     expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
     // Fetching again brings nothing new.
     await fetchLabels();
-    expect((await batches())[0]?.labels).toHaveLength(1);
+    expect((await batches()).flatMap((b) => b.labels)).toHaveLength(2);
   });
 
   it('counts a label only after its batch is accepted with a reason, in the audit log', async () => {
     const { env, langfuse, fetchLabels, batches, decide, agreement } = await labelled();
     langfuse.annotate(langfuse.traceOf('o1'), { value: true });
     await fetchLabels();
+    const shown = (await batches())[0]?.labels ?? [];
+    // Someone labels again after the operator opened the batch.
+    langfuse.annotate(langfuse.traceOf('o1'), { value: false, authorUserId: 'lf-bruker-2' });
+    await fetchLabels();
 
-    expect((await decide('accept')).status).toBe(400);
-    expect((await decide('accept', 'Etikettene er kontrollert', 'kari')).status).toBe(403);
+    expect((await decide('accept', undefined, 'operator', shown)).status).toBe(400);
+    expect((await decide('accept', 'Etikettene er kontrollert', 'kari', shown)).status).toBe(403);
     expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
 
-    const accepted = await decide('accept', 'Etikettene er kontrollert');
+    const accepted = await decide('accept', 'Etikettene er kontrollert', 'operator', shown);
 
     expect(accepted.status).toBe(200);
+    // Only what the operator was shown: the later label still waits.
     expect(accepted.body).toMatchObject({ accepted: 1 });
-    expect(await batches()).toEqual([]);
+    expect((await batches())[0]?.labels).toEqual([expect.objectContaining({ humanLabel: 'bad' })]);
     expect(await agreement()).toEqual({
       n: 1,
       kappa: 1,

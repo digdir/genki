@@ -471,8 +471,11 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     const readable = (c: TestCase) =>
       judge.rule.mapping.every((m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)));
     const base = { evaluator: judge.id, version, metric: judge.id };
+    // Every score says the judge's type, so a label can be matched to it before it scores.
+    const typed = { details: { dataType: judge.evaluator.dataType } };
     const notApplicable = (reason: string): Score => ({
       ...base,
+      ...typed,
       value: null,
       applicable: false,
       state: 'not-applicable',
@@ -501,7 +504,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
               `the case has no ${empty.source}${empty.jsonPath && empty.jsonPath !== '$' ? ` ${empty.jsonPath}` : ''}`,
             ),
           ];
-        return [{ ...base, value: null, applicable: true, state: 'pending' }];
+        return [{ ...base, ...typed, value: null, applicable: true, state: 'pending' }];
       },
       collect: async (pending: PendingScore[], options) => {
         const signal = options?.signal;
@@ -528,7 +531,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           await ledger.count(scores, signal);
           const read = valueOf(raw, raw.configId ? await boundsOf(raw.configId) : undefined);
           const details = {
-            ...(raw.dataType ? { dataType: raw.dataType } : {}),
+            dataType: raw.dataType ?? judge.evaluator.dataType,
             ...('asItCame' in read ? { asItCame: read.asItCame } : {}),
             ...(changed.length > 0 ? { judgeChanged: changed } : {}),
           };
@@ -609,6 +612,11 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
         name: a.name,
         dataType: a.dataType,
         label,
+        ...(typeof config.minValue === 'number' &&
+        typeof config.maxValue === 'number' &&
+        config.maxValue > config.minValue
+          ? { bounds: { min: config.minValue, max: config.maxValue } }
+          : {}),
         ...(a.authorUserId ? { author: a.authorUserId } : {}),
       });
     }
@@ -627,6 +635,8 @@ export interface LangfuseAnnotation {
   name: string;
   dataType: string;
   label: string;
+  /** The score config's range, which splits a number the judge gave without one. */
+  bounds?: { min: number; max: number };
   author?: string;
 }
 

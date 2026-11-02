@@ -148,6 +148,9 @@ export const qualityMatrix = {
   sinkIntro:
     'Fetch new labels from a connection whose agency has switched labels on. Each batch is one connection and one judge; accept or reject it with a reason, which goes to the audit log. Labellers are shown as pseudonyms.',
   sinkLoading: 'Fetching labels from Langfuse',
+  sinkTenant: 'Agency',
+  sinkConnection: 'Connection',
+  sinkLabelsColumn: 'Labels',
   sinkFetch: 'Fetch new labels',
   sinkSwitchOff: 'Labels are switched off for the connection',
   sinkFetched: {

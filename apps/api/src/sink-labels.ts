@@ -9,7 +9,7 @@ import {
   type SinkLabel,
   type SinkLabelStore,
 } from '@genai/eval';
-import type { TraceConnection, TraceSinks } from './trace-connections.js';
+import type { SinkAnnotation, TraceConnection, TraceSinks } from './trace-connections.js';
 
 /** A connection's labels cannot be brought back: missing, or its labels switch is off. */
 export class SinkLabelsRefused extends Error {
@@ -29,6 +29,9 @@ export interface SinkLabelBatch {
   judge: string;
   name: string;
   labels: {
+    /** The sink's id for the label and its revision: what an operator accepts or rejects. */
+    id: string;
+    revision: string;
     run: string;
     case: string;
     repeat: number;
@@ -57,15 +60,18 @@ export interface SinkLabelDeps {
 interface SentCase {
   run: EvalRun;
   result: EvalRun['results'][number];
-  /** Each sink judge's data type, from the scores that carry it. */
-  dataTypes: Map<string, string>;
 }
 
-/** The judge's own verdict on the case, as a label: split at 0.5, or the category as it came. */
-const verdictOf = (score: Score) => {
+/**
+ * The judge's own verdict on the case, as a label: split at 0.5, a number that came without a
+ * range split with the label's range, or the category as it came.
+ */
+const verdictOf = (score: Score, bounds: SinkAnnotation['bounds']) => {
   if (score.state !== 'scored') return undefined;
   if (typeof score.value === 'number') return score.value >= 0.5 ? 'good' : 'bad';
   const asItCame = score.details?.asItCame;
+  if (typeof asItCame === 'number' && bounds)
+    return (asItCame - bounds.min) / (bounds.max - bounds.min) >= 0.5 ? 'good' : 'bad';
   return asItCame === undefined ? undefined : String(asItCame);
 };
 
@@ -88,14 +94,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
     const traces = new Map<string, SentCase>();
     for (const stored of await deps.runs.list({ tenant })) {
       if (stored.run.tested?.sink !== connection) continue;
-      const dataTypes = new Map<string, string>();
-      for (const s of stored.run.results.flatMap((r) => r.scores))
-        if (isSinkJudge(s.evaluator) && typeof s.details?.dataType === 'string')
-          dataTypes.set(s.evaluator, s.details.dataType);
       for (const result of stored.run.results)
         // Sent: a sink judge could read it. Holdout cases and ones none can read never go out.
         if (result.scores.some((s) => isSinkJudge(s.evaluator) && s.applicable))
-          traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result, dataTypes });
+          traces.set(deps.sinks.traceIdOf(result.task), { run: stored.run, result });
     }
     return traces;
   };
@@ -162,7 +164,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
           (s) =>
             isSinkJudge(s.evaluator) &&
             keyOf(tenant, s.evaluator).endsWith(`/${id}/${a.name}`) &&
-            sent.dataTypes.get(s.evaluator) === a.dataType,
+            s.details?.dataType === a.dataType,
         );
         if (!score) continue;
         seen.add(a.id);
@@ -174,7 +176,7 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
         const same = known.find((l) => l.id === a.id && l.revision === a.revision);
         if (same && same.state !== 'replaced' && same.state !== 'gone') continue;
         const judge = keyOf(tenant, score.evaluator);
-        const judgeLabel = verdictOf(score);
+        const judgeLabel = verdictOf(score, a.bounds);
         changed.push({
           id: a.id,
           revision: a.revision,
@@ -216,6 +218,8 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
             judge: first.judge,
             name: nameOf(first.judge),
             labels: labels.map((l) => ({
+              id: l.id,
+              revision: l.revision,
               run: l.run,
               case: l.case,
               repeat: l.repeat,
@@ -232,7 +236,10 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
         .sort((a, b) => `${a.connection}/${a.judge}`.localeCompare(`${b.connection}/${b.judge}`));
     },
 
-    /** Accepts or rejects every pending label of the connection and judge, with the reason. */
+    /**
+     * Accepts or rejects the pending labels of the connection and judge, with the reason: the ones
+     * the operator was shown, when named, so a label fetched since is not decided unseen.
+     */
     async decide(
       tenant: string,
       connection: string,
@@ -240,9 +247,13 @@ export const sinkLabels = (deps: SinkLabelDeps) => {
       decision: 'accept' | 'reject',
       by: string,
       reason: string,
+      shown?: { id: string; revision: string }[],
     ): Promise<{ accepted?: number; rejected?: number }> {
       const labels = await deps.store.list(tenant, { connection, judge });
-      const pending = labels.filter((l) => l.state === 'pending');
+      const seen = shown && new Set(shown.map((l) => `${l.id}\u0000${l.revision}`));
+      const pending = labels.filter(
+        (l) => l.state === 'pending' && (!seen || seen.has(`${l.id}\u0000${l.revision}`)),
+      );
       if (pending.length === 0) return {};
       const decided = { by, reason, at: now() };
       const ids = new Set(pending.map((l) => l.id));

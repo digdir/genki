@@ -148,6 +148,9 @@ export const qualityMatrix = defineNamespace({
   sinkIntro:
     'Hent nye etiketter fra en kobling der virksomheten har slått på etiketter. Hver bunke er én kobling og én dommer; godta eller avvis den med en begrunnelse, som går i revisjonsloggen. Merkerne vises som pseudonymer.',
   sinkLoading: 'Henter etiketter fra Langfuse',
+  sinkTenant: 'Virksomhet',
+  sinkConnection: 'Kobling',
+  sinkLabelsColumn: 'Etiketter',
   sinkFetch: 'Hent nye etiketter',
   sinkSwitchOff: 'Etiketter er slått av for koblingen',
   sinkFetched: {

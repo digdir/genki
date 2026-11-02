@@ -419,7 +419,12 @@ export const createApiClient = ({
         'POST',
         `/operator/quality/sink-labels/${decision}`,
         {
-          body: { tenant: batch.tenant, connection: batch.connection, judge: batch.judge },
+          body: {
+            tenant: batch.tenant,
+            connection: batch.connection,
+            judge: batch.judge,
+            labels: batch.labels.map((l) => ({ id: l.id, revision: l.revision })),
+          },
           headers: { 'change-reason': reason },
         },
       ),

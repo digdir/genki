@@ -118,6 +118,16 @@ const humanLabel = z.strictObject({
   humanLabel: z.enum(['good', 'bad']),
 });
 
+/** The labels an operator was shown in a batch, by the sink's id and revision. */
+const shownOf = (labels: unknown) =>
+  Array.isArray(labels)
+    ? labels.flatMap((l: unknown) =>
+        l && typeof l === 'object' && 'id' in l && 'revision' in l
+          ? [{ id: String(l.id), revision: String(l.revision) }]
+          : [],
+      )
+    : undefined;
+
 export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminHandler> => {
   const now = deps.now ?? (() => new Date());
   /** A batch of a sink's labels (one connection, one judge) accepted or rejected, with its reason. */
@@ -135,6 +145,7 @@ export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminH
         decision,
         actorOf(principal),
         String(input.reason),
+        shownOf(input.labels),
       );
       if (!result || (result.accepted ?? result.rejected ?? 0) === 0)
         return invalid(target, [{ path: 'judge', message: 'no such batch of pending labels' }]);
@@ -531,6 +542,7 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
         agency: body.tenant,
         connection: body.connection,
         judge: body.judge,
+        ...(body.labels === undefined ? {} : { labels: body.labels }),
       });
     });
 

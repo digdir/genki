@@ -389,6 +389,8 @@ export interface SinkLabelBatch {
   judge: string;
   name: string;
   labels: {
+    id: string;
+    revision: string;
     run: string;
     case: string;
     repeat: number;

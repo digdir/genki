@@ -105,7 +105,6 @@ const verdictText = (t: T, f: Format, j: CaseJudgement) => {
   return j.value === null ? '' : f.percent(j.value);
 };
 
-/** What Langfuse reports calls cost: kroner at the run's rate, dollars until one is known. */
 /** A Langfuse judge's agreement with its accepted labels, as one line (ADR 0003's kappa). */
 const agreementText = (t: T, f: Format, labels: SinkAgreement) =>
   [
@@ -126,6 +125,7 @@ const agreementText = (t: T, f: Format, labels: SinkAgreement) =>
       : []),
   ].join(' · ');
 
+/** What Langfuse reports calls cost: kroner at the run's rate, dollars until one is known. */
 const reportedCostText = (t: T, f: Format, reported: ReportedCost, usdNok: EvalRun['usdNok']) => {
   const tokens = f.number(reported.inputTokens + reported.outputTokens);
   const cost =

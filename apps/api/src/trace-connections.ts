@@ -449,6 +449,8 @@ export interface SinkAnnotation {
   dataType: string;
   /** good or bad for a boolean, or a number split at 0.5; a category as it came. */
   label: string;
+  /** A number label's range, to split the judge's own number when it came without one. */
+  bounds?: { min: number; max: number };
   /** The sink's own id for the person, never stored as it is. */
   author?: string;
 }
