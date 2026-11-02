@@ -537,9 +537,12 @@ export const createQualityModule =
             if (error instanceof RunRefused)
               return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
             if (!(error instanceof TraceRefused)) throw error;
-            return problem(c, 409, 'Testkjøringen kan ikke sendes til sporing', [
-              { path: 'trace', message: error.message },
-            ]);
+            return problem(
+              c,
+              409,
+              'Testkjøringen kan ikke sendes til sporing',
+              error.messages.map((message) => ({ path: 'trace', message })),
+            );
           }
         });
 

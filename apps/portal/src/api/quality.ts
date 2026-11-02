@@ -137,6 +137,10 @@ export interface RunSending {
   judges: { id: string; name: string }[];
   /** Judges in the project whose filters leave the test set out, such as another test set's. */
   elsewhere?: { id: string; name: string }[];
+  /** Judges that reach the test set and are not taken in use, whatever else refuses the run. */
+  notInUse?: string[];
+  /** Rules that reach the test set and refuse a sent run, whatever else refuses it. */
+  unreadable?: string[];
   refused?:
     | { reason: 'residency'; service: RunResidency; connection: RunResidency }
     | { reason: 'covered-twice'; connections: string[] }

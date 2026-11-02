@@ -277,6 +277,16 @@ const RunSending = z
       .describe(
         "Judges in the project whose filters leave the test set out, such as another test set's",
       ),
+    notInUse: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Judges that reach the test set and are not taken in use, whatever else refuses the run',
+      ),
+    unreadable: z
+      .array(z.string())
+      .optional()
+      .describe('Rules that reach the test set and refuse a sent run, whatever else refuses it'),
     refused: z
       .union([
         z.object({

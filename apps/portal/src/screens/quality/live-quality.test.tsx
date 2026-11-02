@@ -649,6 +649,8 @@ describe('live Testsett: Langfuse-dommere', () => {
       {},
       withDataset(
         reaching({
+          notInUse: ['tone-eksperimenter'],
+          unreadable: ['alle_spenn'],
           refused: {
             reason: 'judges-differ',
             connection: 'lokal',
@@ -699,6 +701,29 @@ describe('live Testsett: Langfuse-dommere', () => {
     expect(
       screen.queryByRole('list', { name: 'Dommere i Langfuse som når testsettet' }),
     ).toBeNull();
+  });
+
+  it('reads the judges on the test set from the published version when the service has no draft', async () => {
+    const answer = reaching();
+    await openLive(
+      '',
+      {},
+      {},
+      withDataset((path) =>
+        /\/eval-runs\/sending\?version=draft/.test(path)
+          ? Response.json(
+              { title: 'Fant ikke', errors: [{ path: 'version', message: 'no draft version' }] },
+              { status: 404 },
+            )
+          : answer(path),
+      ),
+    );
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(screen.queryByText(/kunne ikke leses/)).toBeNull();
   });
 
   it('lists judges for other test sets collapsed on the test set', async () => {

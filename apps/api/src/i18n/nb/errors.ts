@@ -122,8 +122,12 @@ export const catalogErrors = defineNamespace({
     '{rule} er ikke en LLM-som-dommer-evaluator, så den har ingen modell genki kan navngi',
   sinkJudgeSampled:
     '{rule} vurderer bare en del av elementene den får, så noen testtilfeller ville aldri fått vurdering',
-  sinkJudgeFiltered:
-    '{rule} vurderer bare elementene filteret slipper gjennom, så noen testtilfeller ville aldri fått vurdering',
+  sinkJudgeFiltered: '{rule} har et filter på {column} som genki ikke kan lese før kjøringen',
+  sinkRuleEverySpan:
+    '{rule} ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
+  sinkRuleRootOnly:
+    '{rule} vurderer rotspennene i kjøringen uten isExperimentItemRootSpan = true, som genki trenger for å lese en dommer',
+  sinkRuleUnreadEvaluator: '{rule} kjører en evaluator genki ikke kan lese',
   sinkJudgeDefaultModel:
     '{rule} bruker prosjektets eller organisasjonens standardmodell, som ikke kan leses gjennom Langfuses API',
   sinkJudgeUnsentField: '{rule} leser {field}, som genki ikke sender',

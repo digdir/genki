@@ -140,14 +140,15 @@ export class RunRefused extends Error {
 
 /** Sending a run's traces is refused: no connection covers the service, or residency forbids it. */
 export class TraceRefused extends Error {
-  constructor(message: string) {
+  /** Every reason the run is refused, the first being the message. */
+  readonly messages: string[];
+  constructor(message: string, more: string[] = []) {
     super(message);
     this.name = 'TraceRefused';
+    this.messages = [message, ...more];
   }
 }
 
-/** The project's active judges that genki does not read: not taken in use, or refused. A paused
- * one does not run, so it does not count. */
 const residencyOf = (definition: Record<string, unknown>): Residency => {
   const residency = (
     isRecord(definition.spec) && isRecord(definition.spec.model)
@@ -609,26 +610,27 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       );
     });
     if (!found) return [];
-    const [gone] = found.gone;
-    if (gone)
-      throw new TraceRefused(
-        `the judge ${gone} is no longer an active experiment judge in the project of the connection ${connection.id}`,
-      );
-    // The refusal names the judge's rule, and reads in the person's language.
+    // Each refusal names its judge or rule, and reads in the person's language on its own.
     const refused = found.used.find((j) => j.refused);
     if (refused?.refused) throw new TraceRefused(refused.refused.message);
     const unread = [...found.notInUse, ...found.refused].map((j) => j.name);
-    if (unread.length > 0 || found.refusing.length > 0)
-      throw new TraceRefused(
-        [
-          ...(unread.length > 0
-            ? [
-                `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
-              ]
-            : []),
-          ...found.refusing.map((r) => r.message),
-        ].join('. '),
-      );
+    const messages = [
+      ...(unread.length > 0
+        ? [
+            `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
+          ]
+        : []),
+      // A judge taken in use that now judges every span is refused for that, not as gone.
+      ...found.refusing.map((r) => r.message),
+      ...found.gone
+        .filter((id) => !found.refusing.some((r) => id.endsWith(`/${r.name}`)))
+        .map(
+          (id) =>
+            `the judge ${id} is no longer an active experiment judge in the project of the connection ${connection.id}`,
+        ),
+    ];
+    const [first, ...more] = messages;
+    if (first) throw new TraceRefused(first, more);
     return found.used;
   };
 
@@ -713,6 +715,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const named = (id: string) => ({ id, name: id.slice(id.indexOf('/') + 1) });
     return {
       connection: { id: sink.id, residency: sink.residency },
+      // What reaches the test set, whatever else refuses the run.
+      ...(reached
+        ? { notInUse: reached.notInUse.map((j) => j.name), unreadable: reached.unreadable }
+        : {}),
       judges: reached ? reached.used.map((j) => named(j.id)) : adopted.map(named),
       ...(reached && reached.elsewhere.length > 0
         ? { elsewhere: reached.elsewhere.map((j) => named(j.id)) }

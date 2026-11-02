@@ -103,8 +103,11 @@ const typed = (f: RawFilter, type: string) => {
   return true;
 };
 
-/** The observation types genki sends below a case's root span, which is its agent span. */
-const childTypes = ['SPAN', 'GENERATION', 'RETRIEVER', 'TOOL'];
+/**
+ * The observation types genki sends below a case's root span: its steps and calls, and the agent
+ * span of a service the case calls.
+ */
+const childTypes = ['AGENT', 'SPAN', 'GENERATION', 'RETRIEVER', 'TOOL'];
 
 const textMatch = (operator: string, actual: string, wanted: string) => {
   if (operator === '=') return actual === wanted;
@@ -143,12 +146,9 @@ const answerOn = (f: RawFilter, value: Value, kind: 'root' | 'child'): Answer =>
   if (operator === 'is null') return known === null;
   if (operator === 'is not null') return known !== null;
   if (typeof f.value === 'boolean') return operator === '=' ? known === f.value : known !== f.value;
-  if (typeof known === 'string' && typeof f.value === 'string') {
-    // Whether Langfuse compares text by case is not measured: where it would matter, genki cannot tell.
-    const exact = textMatch(operator, known, f.value);
-    const folded = textMatch(operator, known.toLowerCase(), f.value.toLowerCase());
-    return exact === folded ? exact : 'maybe';
-  }
+  // Langfuse compares text with letter case (InMemoryFilterService, 4.72.0).
+  if (typeof known === 'string' && typeof f.value === 'string')
+    return textMatch(operator, known, f.value);
   return 'maybe';
 };
 
@@ -170,7 +170,8 @@ const valueOn = (column: string, run: RunShape, kind: 'root' | 'child'): Value =
       return root ? { known: 'AGENT' } : { known: 'child' };
     case 'tags':
       // The service's tag holds the draft's id, new for each run, so no filter can name it.
-      return { known: [`tenant:${run.tenant}`] };
+      // Langfuse reads tags per span, and genki tags only the root.
+      return { known: root ? [`tenant:${run.tenant}`] : [] };
     case 'isExperimentItemRootSpan':
     case 'isRootObservation':
       return { known: root };
@@ -204,6 +205,11 @@ export const unreadFilter = (filters: RawFilter[]) =>
     return !column || !column.operators.includes(f.operator ?? '') || !typed(f, column.type);
   });
 
+/** The first column genki cannot know on a case's root span before a run, such as `level`. */
+export const unknownBeforeRun = (filters: RawFilter[], run: RunShape) =>
+  filters.find((f) => f.column !== 'name' && 'unknown' in valueOn(f.column ?? '', run, 'root'))
+    ?.column;
+
 export const reachOf = (filters: RawFilter[], run: RunShape): Reach => {
   const unread = unreadFilter(filters);
   if (unread)
@@ -215,10 +221,7 @@ export const reachOf = (filters: RawFilter[], run: RunShape): Reach => {
   const child = allOn(filters, run, 'child');
   const root = allOn(filters, run, 'root');
   if (child === false && root === false) return { kind: 'skip' };
-  const unknownColumn = () =>
-    filters.find(
-      (f) => 'unknown' in valueOn(f.column as string, run, 'root') && f.column !== 'name',
-    )?.column;
+  const unknownColumn = () => unknownBeforeRun(filters, run);
   if (child !== false) {
     // A span below the root may be judged: on every span, or by a value genki cannot know.
     const column = unknownColumn();

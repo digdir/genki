@@ -14,6 +14,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useId, useState } from 'react';
 import type { ApiClient } from '../../api';
+import { ApiError } from '../../api/error';
 import type { CaseSplit, CaseType, ServiceCase, ServiceTestSet } from '../../api/quality';
 import { useAsync } from '../../hooks';
 import { httpStatusOf } from '../../format';
@@ -65,14 +66,27 @@ const ReachingJudges = ({
 }) => {
   const t = useT();
   const listId = useId();
+  // The judges that reach a test set do not depend on the service's version: the draft's answer,
+  // or the published one's when the service has no draft.
   const [state] = useAsync(
-    (signal) =>
-      api.quality
-        .sending(tenant, serviceId, 'draft', testSet, signal)
-        .catch((error: unknown) => ({ failed: error instanceof Error ? error.message : '' })),
+    async (signal) => {
+      const missing = (error: unknown) => error instanceof ApiError && error.status === 404;
+      try {
+        return await api.quality
+          .sending(tenant, serviceId, 'draft', testSet, signal)
+          .catch((error: unknown) => {
+            if (!missing(error)) throw error;
+            return api.quality.sending(tenant, serviceId, 'published', testSet, signal);
+          });
+      } catch (error) {
+        return missing(error)
+          ? { none: true as const }
+          : { failed: error instanceof Error ? error.message : '' };
+      }
+    },
     [api, tenant, serviceId, testSet],
   );
-  if (state.status !== 'ready') return null;
+  if (state.status !== 'ready' || 'none' in state.data) return null;
   const notRead = (message: string) => (
     <p>{t('quality.judgesNotReadForSet', { connection, status: httpStatusOf(message) })}</p>
   );
@@ -80,11 +94,10 @@ const ReachingJudges = ({
   const plan = state.data;
   const refused = plan.refused;
   if (refused?.reason === 'judges-unreadable') return notRead(refused.message);
-  const differ = refused?.reason === 'judges-differ' ? refused : undefined;
   const lines = [
     ...plan.judges.map((j) => t('quality.judgeInUse', { name: j.name })),
-    ...(differ?.notInUse ?? []).map((name) => t('quality.judgeNotInUse', { name })),
-    ...(differ?.unreadable ?? []).map((name) => t('quality.judgeStopsRuns', { name })),
+    ...(plan.notInUse ?? []).map((name) => t('quality.judgeNotInUse', { name })),
+    ...(plan.unreadable ?? []).map((name) => t('quality.judgeStopsRuns', { name })),
   ];
   const elsewhere = plan.elsewhere ?? [];
   return (

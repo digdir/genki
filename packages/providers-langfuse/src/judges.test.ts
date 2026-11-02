@@ -1311,6 +1311,68 @@ describe("Langfuse rules' filters, read for a run", () => {
     ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'judge' });
   });
 
+  it('puts a paused judge of another test set under elsewhere, so it never stops a run', async () => {
+    const found = await langfuseJudges(
+      api(
+        fakeLangfuse({
+          rules: [rule({ name: 'vedtak', filter: [onDataset('datasett-vedtak')] })],
+          evaluators: [evaluator({ status: 'paused' })],
+        }),
+      ),
+    ).forRun('kudos', brev);
+
+    expect(found.elsewhere.map((j) => j.rule.name)).toEqual(['vedtak']);
+    expect(found.judges).toEqual([]);
+    expect(found.refusing).toEqual([]);
+  });
+
+  it("takes a nested service's agent span below the root for a span a rule may judge", async () => {
+    // A case that calls another service sends that task's agent span below the case's root.
+    const outcome = await outcomeOf([
+      rule({
+        name: 'agenter',
+        itemRoot: false,
+        filter: [
+          filterOf('type', 'any of', ['AGENT']),
+          filterOf('isRootObservation', '=', false, 'boolean'),
+        ],
+      }),
+    ]);
+
+    expect(outcome.agenter).toMatch(/agenter would judge every span/);
+  });
+
+  it('reads no tags on spans below the root, since Langfuse reads tags per span', async () => {
+    const outcome = await outcomeOf([
+      rule({
+        name: 'uten_virksomhet',
+        itemRoot: false,
+        filter: [filterOf('tags', 'none of', ['tenant:991825827'], 'arrayOptions')],
+      }),
+    ]);
+
+    expect(outcome.uten_virksomhet).toMatch(/uten_virksomhet would judge every span/);
+  });
+
+  it('compares filter text with letter case, as Langfuse does', async () => {
+    expect(
+      await outcomeOf([
+        rule({ filter: [filterOf('experimentName', '=', 'KLARSPRAK-BREV v4', 'string')] }),
+      ]),
+    ).toEqual({ 'svar_oppfyller_kriteriene-eksperimenter': 'skip' });
+  });
+
+  it('refuses a judge whose filter needs a value genki cannot know before the run, so it cannot be taken in use', async () => {
+    const judge = await listed(
+      fakeLangfuse({
+        rules: [rule({ filter: [onDataset(), filterOf('level', 'any of', ['ERROR'])] })],
+        evaluators: [evaluator()],
+      }),
+    );
+
+    expect(judge.refused).toMatchObject({ reason: 'filtered', field: 'level' });
+  });
+
   it("says the judge changed when its filter no longer reaches the run's dataset", async () => {
     const project = {
       rules: [rule({ filter: [onDataset()] })],

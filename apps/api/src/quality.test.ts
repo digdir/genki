@@ -1777,6 +1777,8 @@ describe('Langfuse judges on a run', () => {
     expect(published.body).toEqual({
       connection: { id: 'lokal', residency: 'global' },
       judges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+      notInUse: [],
+      unreadable: [],
     });
     expect(draft.body).toMatchObject({
       judges: [{ name: judgeRule }],
@@ -2267,6 +2269,66 @@ describe('Langfuse judges on a run', () => {
       expect(sending.body).toMatchObject({
         judges: [{ name: judgeRule }],
         elsewhere: [{ id: 'langfuse:lokal/vedtak-eksperimenter', name: 'vedtak-eksperimenter' }],
+      });
+    });
+
+    it("refuses a run with the rule's own reason when a judge taken in use now judges every span", async () => {
+      const rules = [experimentRule()];
+      const { env, adopt } = await judged(rules);
+      expect((await adopt(judgeRule)).status).toBe(200);
+      rules[0] = experimentRule({ target: 'observation', filter: [onDataset('datasett-1')] });
+
+      const started = await start(env);
+
+      expect(started.status).toBe(409);
+      expect(JSON.stringify(started.body)).toContain(`${judgeRule} would judge every span`);
+      expect(JSON.stringify(started.body)).not.toContain('no longer an active experiment judge');
+    });
+
+    it('says in bokmål why a rule refuses a sent run, and which judges are not in use, each on its own', async () => {
+      const { env } = await judged([
+        experimentRule(),
+        experimentRule({
+          id: 'regel-3',
+          name: 'alle_spenn',
+          target: 'observation',
+          evaluator: { id: 'dommer-3', name: 'alle_spenn' },
+        }),
+      ]);
+
+      const started = await start(env);
+      const messages = ((started.body.errors ?? []) as { message: string }[]).map((e) =>
+        translateMessage(e.message, 'nb'),
+      );
+
+      expect(started.status).toBe(409);
+      expect(messages).toEqual([
+        `prosjektet til koblingen lokal har aktive dommere som genki ikke leser: ${judgeRule}; ta dem i bruk eller slå dem av i Langfuse`,
+        'alle_spenn ville vurdert hvert spenn i testtilfellene; legg til filteret isExperimentItemRootSpan = true, eller hold genkis testkjøringer utenfor med environment none of genki-test-runs',
+      ]);
+    });
+
+    it('lists the judges that reach the test set beside another refusal in the sending check', async () => {
+      const { env, adopt } = await judged([
+        experimentRule(),
+        experimentRule({ id: 'regel-2', name: 'tone-eksperimenter' }),
+      ]);
+      expect((await adopt(judgeRule)).status).toBe(200);
+      const norwegian = structuredClone(service);
+      norwegian.spec.model = { primary: 'local/echo', residency: 'norway' };
+      expect(
+        (await env.send('PUT', `${services}/draft`, 'kari', { definition: norwegian })).status,
+      ).toBe(200);
+
+      const sending = await env.send(
+        'GET',
+        `${services}/eval-runs/sending?version=draft&testSet=svar-frister`,
+      );
+
+      expect(sending.body).toMatchObject({
+        refused: { reason: 'residency' },
+        notInUse: ['tone-eksperimenter'],
+        unreadable: [],
       });
     });
 

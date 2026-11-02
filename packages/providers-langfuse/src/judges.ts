@@ -12,6 +12,7 @@ import {
 import {
   isItemRoot,
   reachOf,
+  unknownBeforeRun,
   unreadFilter,
   type RawFilter,
   type Reach,
@@ -135,6 +136,9 @@ const pathKeys = (path: string | undefined) => {
 /** Input and output go as genki's parts, so only the whole of them is what a judge expects. */
 const wholeOnly = new Set(['input', 'output']);
 
+/** What genki knows of every run, for what a rule's filters do on any of them. */
+const noRun: RunShape = { tenant: '', environment: '', experimentName: '' };
+
 const refusalOf = (
   rule: RawRule,
   evaluators: (RawEvaluator | undefined)[],
@@ -170,13 +174,18 @@ const refusalOf = (
       reason: 'sampled',
       message: `${rule.name} judges only part of the items it gets, so some cases would never be scored`,
     };
-  const unread = unreadFilter(rule.filter ?? []);
-  if (unread)
+  // A filter outside Langfuse's list, or on a value no run shows before it starts, is read for no run.
+  const filters = rule.filter ?? [];
+  const unread = unreadFilter(filters);
+  const unknown = unknownBeforeRun(filters, noRun);
+  if (unread || unknown !== undefined) {
+    const column = unread ? (unread.column ?? '') : (unknown ?? '');
     return {
       reason: 'filtered',
-      field: unread.column ?? '',
-      message: `${rule.name} has a filter on ${unread.column ?? 'a column'} that genki cannot read`,
+      field: column,
+      message: `${rule.name} has a filter on ${column || 'a column'} that genki cannot read before the run`,
     };
+  }
   for (const m of mapping) {
     if (!sentSources.has(m.source))
       return {
@@ -775,9 +784,11 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       if (evaluators.length === 0) continue;
       const reach = reachOf(rule.filter ?? [], run);
       if (evaluators.every((e) => e?.status === 'paused')) {
-        // Langfuse runs nothing of it; a judge of the run still shows why it would judge nothing.
+        // Langfuse runs nothing of it, so it refuses no run: a judge of the run is listed refused
+        // as paused, and a judge of another test set as elsewhere.
         const judge = listed.get(rule.id);
-        if (reach.kind === 'judge' && judge) out.judges.push({ ...judge, run });
+        if (judge && reach.kind === 'judge') out.judges.push({ ...judge, run });
+        if (judge && reach.kind === 'skip') out.elsewhere.push(judge);
         continue;
       }
       if (reach.kind === 'skip') {
