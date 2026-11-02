@@ -11,7 +11,7 @@ export const readFunctions = [
   'kn_range(text, text, text, integer, integer)',
   'kn_facets(text, text, text[], jsonb)',
   'kn_documents(text, text, text[], jsonb, integer, integer)',
-  'kn_resolve_citation(text, text, text[])',
+  'kn_resolve_citation(text, text, text[], text[])',
 ] as const;
 
 /** Owner-only helpers: the checks, and one function per read that returns the statement it runs. */
@@ -26,7 +26,7 @@ export const readHelpers = [
   'kn_range_sql(text, text, text, integer, integer)',
   'kn_facets_sql(text, text, text, jsonb)',
   'kn_documents_sql(text, text, text[], jsonb, integer, integer)',
-  'kn_resolve_citation_sql(text, text, text[])',
+  'kn_resolve_citation_sql(text, text, text[], text[])',
 ] as const;
 
 const definer = `language plpgsql stable security definer set search_path = pg_catalog, public`;
@@ -84,6 +84,11 @@ const createFunctions = [
            part := concat_ws(' and ',
              case when c ? 'gte' then format('kn_int(%s) >= %s::bigint', json, (c->>'gte')::bigint) end,
              case when c ? 'lte' then format('kn_int(%s) <= %s::bigint', json, (c->>'lte')::bigint) end);
+         elsif c->>'op' = 'str' then
+           -- Matches the partition's index on kn_text(...) collate "C".
+           part := concat_ws(' and ',
+             case when c ? 'gte' then format('kn_text(%s) collate "C" >= %L::text', json, c->>'gte') end,
+             case when c ? 'lte' then format('kn_text(%s) collate "C" <= %L::text', json, c->>'lte') end);
          elsif c->>'op' = 'range' then
            part := format('exists (select 1 from jsonb_array_elements(%s) e where %s)', kn_list_sql(json),
              concat_ws(' and ',
@@ -225,6 +230,7 @@ const createFunctions = [
          p_field, kn_list_sql(format('d.fields -> %L', p_field)), p_dataset, p_generation,
          kn_filter_sql(p_filters, coalesce(cfg, 'norwegian')));
      end $$`,
+  // The count covers every matching document, so a page past the end still reports it (on a row with no id).
   `create or replace function kn_documents_sql(p_dataset text, p_generation text, p_ids text[], p_filters jsonb, p_limit integer, p_offset integer)
      returns text language plpgsql stable set search_path = pg_catalog, public as $$
      declare
@@ -232,18 +238,25 @@ const createFunctions = [
      begin
        select coalesce(k.recipe->>'textSearchConfig', 'norwegian') into cfg
          from kn_generations k where k.generation = p_generation and k.dataset = p_dataset;
-       return format('select d.id, d.title, d.url,
-             d.fields || jsonb_build_object(''total_chunks'', (select count(*) from kn_chunks c
-               where c.dataset = %s and c.generation = %s and c.doc_id = d.id)),
-             count(*) over ()::int
-           from kn_docs d where d.dataset = %s and d.generation = %s and %s and %s
-           order by d.id limit %s offset %s',
-         ds, g, ds, g,
+       return format('with m as (
+             select d.id, d.title, d.url, d.fields from kn_docs d
+             where d.dataset = %s and d.generation = %s and %s and %s),
+           n as (select count(*)::int as total from m)
+           select p.id, p.title, p.url,
+             p.fields || jsonb_build_object(''total_chunks'', (select count(*) from kn_chunks c
+               where c.dataset = %s and c.generation = %s and c.doc_id = p.id)),
+             n.total
+           from n left join lateral (select * from m order by m.id limit %s offset %s) p on true
+           order by p.id',
+         ds, g,
          case when p_ids is null then 'true' else format('d.id = any(%L::text[])', p_ids) end,
-         kn_filter_sql(p_filters, coalesce(cfg, 'norwegian')), p_limit, p_offset);
+         kn_filter_sql(p_filters, coalesce(cfg, 'norwegian')), ds, g, p_limit, p_offset);
      end $$`,
+  // The API passes each cited id with its keyed hash (ADR 0042), which tombstones hold instead of ids.
   // Issue 139 adds earlier ids ('earlier') and tombstones ('withdrawn', with withdrawn_on) to the body only.
-  `create or replace function kn_resolve_citation_sql(p_dataset text, p_generation text, p_ids text[])
+  `drop function if exists kn_resolve_citation(text, text, text[])`,
+  `drop function if exists kn_resolve_citation_sql(text, text, text[])`,
+  `create or replace function kn_resolve_citation_sql(p_dataset text, p_generation text, p_ids text[], p_id_hashes text[])
      returns text language plpgsql stable set search_path = pg_catalog, public as $$
      begin
        return format('select d.id, ''found''::text, d.id, d.title, d.url, null::date from kn_docs d
@@ -299,12 +312,12 @@ const createFunctions = [
        perform kn_attached(p_dataset, p_generation);
        return query execute kn_documents_sql(p_dataset, p_generation, p_ids, p_filters, p_limit, p_offset);
      end $$`,
-  `create or replace function kn_resolve_citation(p_dataset text, p_generation text, p_ids text[])
+  `create or replace function kn_resolve_citation(p_dataset text, p_generation text, p_ids text[], p_id_hashes text[])
      returns table (cited text, status text, document text, title text, url text, withdrawn_on date) ${definer} as $$
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_resolve_citation_sql(p_dataset, p_generation, p_ids);
+       return query execute kn_resolve_citation_sql(p_dataset, p_generation, p_ids, p_id_hashes);
      end $$`,
 ];
 
@@ -319,6 +332,7 @@ export type FilterClauseRow =
   | { field: string; op: 'in' | 'not'; values: unknown[] }
   | { field: string; op: 'text'; terms: string }
   | { field: string; op: 'int'; gte?: number; lte?: number }
+  | { field: string; op: 'str'; gte?: string; lte?: string }
   | { field: string; op: 'range'; gte?: number | string; lte?: number | string };
 
 /** Turns checked port filters into the clause rows `kn_filter_sql` builds SQL from, choosing each clause's kind as the router does. */
@@ -351,6 +365,16 @@ export const filterRows = (
           op: 'int',
           ...(typeof clause.gte === 'number' ? { gte: Math.ceil(clause.gte) } : {}),
           ...(typeof clause.lte === 'number' ? { lte: Math.floor(clause.lte) } : {}),
+        };
+      const text =
+        dataset.valueTypes?.[field] !== 'integer' &&
+        [clause.gte, clause.lte].every((b) => b === undefined || typeof b === 'string');
+      if (text)
+        return {
+          field,
+          op: 'str',
+          ...(typeof clause.gte === 'string' ? { gte: clause.gte } : {}),
+          ...(typeof clause.lte === 'string' ? { lte: clause.lte } : {}),
         };
       return {
         field,

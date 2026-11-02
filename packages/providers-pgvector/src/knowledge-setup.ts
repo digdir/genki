@@ -179,11 +179,11 @@ const loginRoles = {
   worker: { writer: knowledgeRoles.writer, owner: knowledgeRoles.owner },
 } as const;
 
-const poolAs = (source: KnowledgePoolSource, role: string) => {
+const poolAs = (source: KnowledgePoolSource, role: string, connectTimeoutMs = 10_000) => {
   const pool = new pg.Pool({
     ...source,
     options: `-c role=${role}`,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: connectTimeoutMs,
   });
   pool.on('connect', (client) => client.on('error', () => undefined));
   return pool;
@@ -198,7 +198,8 @@ export const openKnowledgePools = (
   const pools = Object.fromEntries(
     Object.entries(loginRoles[login]).map(([name, role]) => [name, poolAs(source, role)]),
   ) as { read?: pg.Pool; reader?: pg.Pool; writer?: pg.Pool; owner?: pg.Pool };
-  if (login === 'api' && readSource) pools.read = poolAs(readSource, knowledgeRoles.reader);
+  // A read host that does not answer costs a search this long before it goes to the primary.
+  if (login === 'api' && readSource) pools.read = poolAs(readSource, knowledgeRoles.reader, 3000);
   return {
     pools,
     close: async () => {

@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
   databaseHosts,
   knowledgeServerProblems,
@@ -26,6 +29,17 @@ describe('the knowledge server at boot', () => {
     });
     expect(warnings).toEqual([expect.stringContaining('knowledge-pg')]);
     expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, catalog)).toEqual([]);
+  });
+
+  it('the shipped catalog starts an API without a knowledge server outside development mode', () => {
+    // A deployed image loads apps/api/config/local unless CONFIG_DIR says otherwise.
+    const shipped: unknown = parse(
+      readFileSync(
+        join(import.meta.dirname, '../../../apps/api/config/local/knowledge.yaml'),
+        'utf8',
+      ),
+    );
+    expect(knowledgeServerProblems({ NODE_ENV: 'production' }, shipped)).toEqual([]);
   });
 
   it('the egress allow-lists include the knowledge hosts', () => {

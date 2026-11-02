@@ -28,7 +28,7 @@ import {
   type QueryEmbedder,
 } from './index.js';
 import { knowledgeRoles } from './knowledge-setup.js';
-import { notReadyCode } from './read-functions.js';
+import { filterRows, notReadyCode } from './read-functions.js';
 
 type Dataset = DatasetConfig<PgvectorDatasetOptions>;
 
@@ -235,7 +235,7 @@ describe('read functions on the knowledge server', () => {
       `select * from kn_range($1, $2, 'a', 0, 1)`,
       `select * from kn_facets($1, $2, array['type'], '[]')`,
       `select * from kn_documents($1, $2, null, '[]', 10, 0)`,
-      `select * from kn_resolve_citation($1, $2, array['a'])`,
+      `select * from kn_resolve_citation($1, $2, array['a'], array['hash-a'])`,
     ];
     for (const sql of calls) {
       const args = [kudos.id, kudosGeneration];
@@ -248,7 +248,7 @@ describe('read functions on the knowledge server', () => {
   });
 
   it('a citation resolves only inside a dataset the caller may read', async () => {
-    const sql = `select * from kn_resolve_citation($1, $2, array['hemmelig'])`;
+    const sql = `select * from kn_resolve_citation($1, $2, array['hemmelig'], array['hash-h'])`;
     expect(await refusal(() => asReader(sql, [annet.id, annetGeneration], [kudos.id]))).toBe(
       '42501',
     );
@@ -261,7 +261,7 @@ describe('read functions on the knowledge server', () => {
   it('a cited id resolves to its document in the generation, and an unknown id to nothing', async () => {
     expect(
       await asReader(
-        `select * from kn_resolve_citation($1, $2, array['a', 'finnes-ikke'])`,
+        `select * from kn_resolve_citation($1, $2, array['a', 'finnes-ikke'], array['hash-a', 'hash-f'])`,
         [kudos.id, kudosGeneration],
         [kudos.id],
       ),
@@ -315,6 +315,50 @@ describe('read functions on the knowledge server', () => {
         1,
       );
     }
+  });
+
+  it('a read host that did not answer is skipped for a while, so each read does not wait for it again', async () => {
+    const silent = new pg.Pool({
+      host: '127.0.0.1',
+      port: 1,
+      user: 'knowledge_api',
+      password: loginPassword,
+      connectionTimeoutMillis: 2000,
+    });
+    extraPools.push(silent);
+    const tried = vi.spyOn(silent, 'connect');
+    const connection = connectionOf(
+      readEngine({ read: silent, reader: api.pools.reader as pg.Pool }),
+    );
+    for (let i = 0; i < 3; i += 1)
+      expect(await connection.fetch(routed(kudos, kudosGeneration), ['a#0'], signal)).toHaveLength(
+        1,
+      );
+    expect(tried).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refusal on the read pool reaches the caller as forbidden, as on the primary', async () => {
+    // Without the reader role the login may execute no read function.
+    const roleless = new pg.Pool({ ...primary.source, user: 'knowledge_api' });
+    extraPools.push(roleless);
+    for (const pools of [
+      { read: roleless, reader: api.pools.reader as pg.Pool },
+      { reader: roleless },
+    ]) {
+      const connection = connectionOf(readEngine(pools));
+      await expect(
+        connection.fetch(routed(kudos, kudosGeneration), ['a#0'], signal),
+      ).rejects.toMatchObject({ code: 'forbidden' });
+    }
+  });
+
+  it('a document listing past its last page still counts every document', async () => {
+    const page = await connectionOf().documents?.(
+      routed(kudos, kudosGeneration),
+      { limit: 10, offset: 50 },
+      signal,
+    );
+    expect(page).toEqual({ documents: [], found: 2 });
   });
 
   it('a generation the catalog names but no partition holds yet reads as empty on the primary', async () => {
@@ -406,7 +450,9 @@ describe('read functions on the knowledge server', () => {
   });
 
   it("vector search uses the partition's HNSW index for two dimension sizes, keyword search its GIN index, and a filter on a declared field its partition's filter index, for the SQL the read functions run", async () => {
-    const small = dataset('digdir/plan-liten', 1536);
+    const small = dataset('digdir/plan-liten', 1536, {
+      filters: { type: 'multiselect', year: 'range', date: 'range' },
+    });
     const large = dataset('digdir/plan-stor', 3072);
     await fill(small, 'g-20261102-plan-1', [doc('p', 1536, { type: ['rapport'], year: 2024 })]);
     await fill(large, 'g-20261102-plan-2', [doc('q', 3072, { type: ['evaluering'], year: 2021 })]);
@@ -462,7 +508,8 @@ describe('read functions on the knowledge server', () => {
     await owner.query(
       `insert into ${docs} (dataset, generation, id, fields, config)
          select 'digdir/plan-liten', 'g-20261102-plan-1', 'bulk-' || n,
-           jsonb_build_object('type', jsonb_build_array('notat'), 'year', 1990 + n % 20), 'norwegian'
+           jsonb_build_object('type', jsonb_build_array('notat'), 'year', 1990 + n % 20,
+             'date', (date '2000-01-01' + n)::text), 'norwegian'
          from generate_series(1, 1000) n`,
     );
     await owner.query(
@@ -488,6 +535,11 @@ describe('read functions on the knowledge server', () => {
           { field: 'year', op: 'int', gte: 2020, lte: 2024 },
         ]),
       ),
+    ).toMatch(new RegExp(`(Index Scan using|Bitmap Index Scan on) ${docs}_r_\\w+`));
+    const dates = filterRows(small, { date: { gte: '2002-01-01', lte: '2002-02-01' } });
+    expect(dates).toEqual([{ field: 'date', op: 'str', gte: '2002-01-01', lte: '2002-02-01' }]);
+    expect(
+      await plan(await statement(small, 'g-20261102-plan-1', 'docs', 'text', '*', dates)),
     ).toMatch(new RegExp(`(Index Scan using|Bitmap Index Scan on) ${docs}_r_\\w+`));
   });
 });

@@ -60,9 +60,21 @@ try {
   await writer.prepare(dataset, values.generation);
   for (const document of documents) await writer.store(dataset, values.generation, document);
   await writer.promote(dataset, values.generation);
-  console.log(
-    `${values.dataset}: generation ${values.generation} with ${documents.length} documents; name it as \`generation\` in the dataset's catalog entry`,
-  );
+  // The shipped catalog has no knowledge endpoint, since a deployed API without a knowledge server would refuse to start.
+  console.log(`${values.dataset}: generation ${values.generation} with ${documents.length} documents.
+Add this to apps/api/config/local/knowledge.yaml (do not commit it) and restart the API:
+
+endpoints:
+  knowledge-pg:
+    engine: pgvector
+    options: { connection: knowledge }
+datasets:
+  - id: ${values.dataset}
+    endpoint: knowledge-pg
+    residency: norway
+    filters: { type: multiselect }
+    generation: ${values.generation}
+    options: { textSearchConfig: norwegian }`);
 } finally {
   await pools.close();
   await platform.end();

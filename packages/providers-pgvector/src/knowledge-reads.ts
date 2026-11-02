@@ -110,6 +110,15 @@ export const knowledgeReads = <D>(
     }
   };
 
+  /** A read host that did not answer is left alone this long, so each read does not wait for it again. */
+  const skipReadMs = 30_000;
+  let readSkippedUntil = 0;
+
+  const refused = (error: unknown, dataset: DatasetConfig<D>) =>
+    (error as { code?: string }).code === '42501'
+      ? new KnowledgeError('forbidden', `dataset ${dataset.id} is not allowed`)
+      : error;
+
   /** Read pool first; a server without the generation or one that does not answer sends the read to the primary, whose answer is final. */
   const reading = async <T>(
     dataset: DatasetConfig<D>,
@@ -128,12 +137,13 @@ export const knowledgeReads = <D>(
     const generation = dataset.generation;
     if (generation === undefined) return empty;
     const go = (client: PoolClient) => run(client, generation);
-    if (read) {
+    if (read && Date.now() >= readSkippedUntil) {
       try {
         return await attempt(read, allowed, vectors, go);
       } catch (error) {
         failIfAborted(signal);
-        if (!isNotReady(error) && !unreachable(error)) throw error;
+        if (unreachable(error)) readSkippedUntil = Date.now() + skipReadMs;
+        else if (!isNotReady(error)) throw refused(error, dataset);
       }
     }
     try {
@@ -141,9 +151,7 @@ export const knowledgeReads = <D>(
     } catch (error) {
       failIfAborted(signal);
       if (isNotReady(error)) return empty;
-      if ((error as { code?: string }).code === '42501')
-        throw new KnowledgeError('forbidden', `dataset ${dataset.id} is not allowed`);
-      throw error;
+      throw refused(error, dataset);
     }
   };
 
@@ -252,7 +260,7 @@ export const knowledgeReads = <D>(
         dataset,
         signal,
         [] as {
-          id: string;
+          id: string | null;
           title: string | null;
           url: string | null;
           fields: Record<string, unknown>;
@@ -270,13 +278,16 @@ export const knowledgeReads = <D>(
             ])
           ).rows,
       );
+      // A page past the end is one row with no id that still carries the count.
       return {
-        documents: rows.map((r) => ({
-          id: r.id,
-          ...(r.title === null ? {} : { title: r.title }),
-          ...(r.url === null ? {} : { url: r.url }),
-          fields: r.fields,
-        })),
+        documents: rows
+          .flatMap((r) => (r.id === null ? [] : [{ ...r, id: r.id }]))
+          .map((r) => ({
+            id: r.id,
+            ...(r.title === null ? {} : { title: r.title }),
+            ...(r.url === null ? {} : { url: r.url }),
+            fields: r.fields,
+          })),
         found: rows[0]?.total ?? 0,
       };
     },

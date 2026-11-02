@@ -258,11 +258,15 @@ const filterIndexesOf = (dataset: DatasetConfig, table: string): WantedIndex[] =
     });
   for (const [field, k] of kinds) {
     if (!k.includes('range')) continue;
-    const cast = dataset.valueTypes?.[field] === 'integer' ? 'kn_int' : 'kn_text';
-    const name = `${table}_r_${hash(`${field}:${cast}`, 10)}`;
+    // Text ranges compare bytewise (collate "C"), as the read functions do, so they can use the index.
+    const expression =
+      dataset.valueTypes?.[field] === 'integer'
+        ? `kn_int(fields -> ${literal(field)})`
+        : `(kn_text(fields -> ${literal(field)}) collate "C")`;
+    const name = `${table}_r_${hash(`${field}:${expression}`, 10)}`;
     wanted.push({
       name,
-      sql: `create index if not exists ${name} on ${table} (${cast}(fields -> ${literal(field)}))`,
+      sql: `create index if not exists ${name} on ${table} (${expression})`,
     });
   }
   return wanted;
