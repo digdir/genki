@@ -288,6 +288,8 @@ export const evalRun = z.strictObject({
       sink: z.string().optional(),
       /** Where the sink shows the run as an experiment. */
       experiment: z.string().optional(),
+      /** The sink judges in use that did not score the run, because it was not sent. */
+      unsentJudges: z.array(z.string()).optional(),
     })
     .optional(),
   owner: z.string().optional(),

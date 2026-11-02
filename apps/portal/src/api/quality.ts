@@ -65,8 +65,10 @@ export interface EvalRun {
   experiment?: string;
   /** The USD/NOK rate the run shows reported costs with, and its day. */
   usdNok?: { rate: number; date: string };
-  /** What the Langfuse project's other judges cost on the run's cases. */
+  /** What Langfuse judges the run did not use cost on its cases, such as one switched on during it. */
   sinkOthers?: ReportedCost;
+  /** The Langfuse judges in use that did not score the run, because it was not sent. */
+  unsentJudges?: { id: string; name: string }[];
 }
 
 export interface SinkJudgeSummary {
@@ -120,12 +122,11 @@ export type RunResidency = 'norway' | 'eu' | 'global';
 export interface RunSending {
   connection?: { id: string; residency: RunResidency };
   judges: { id: string; name: string }[];
-  /** The project's other active judges: Langfuse runs them on every case sent. */
-  otherJudges?: string[];
   refused?:
     | { reason: 'residency'; service: RunResidency; connection: RunResidency }
     | { reason: 'covered-twice'; connections: string[] }
-    | { reason: 'no-content'; connection: string };
+    | { reason: 'no-content'; connection: string }
+    | { reason: 'judges-differ'; connection: string; notInUse: string[]; unreadable: string[] };
 }
 
 export interface EvalRunDetail extends EvalRun {

@@ -81,9 +81,10 @@ export const datasets = defineNamespace({
   residencyEuLabel: 'I EU/EØS',
   residencyGlobalLabel: 'Globalt, også utenfor EU/EØS',
   residencyUnknown: 'Ikke oppgitt',
-  usableNorway: 'Datasettet kan brukes av alle tjenester, også de som krever at data blir i Norge.',
+  usableNorway:
+    'Datasettet kan brukes av alle tjenester, også de som bare tillater behandling i Norge.',
   usableEu:
-    'Datasettet kan brukes av tjenester som tillater behandling i EU/EØS eller globalt, men ikke av tjenester som krever at data blir i Norge.',
+    'Datasettet kan brukes av tjenester som tillater behandling i EU/EØS eller globalt, men ikke av tjenester som bare tillater behandling i Norge.',
   usableGlobal: 'Datasettet kan derfor bare brukes av tjenester som tillater global behandling.',
   usableUnknown:
     'Hvor datasettet behandles, er ikke oppgitt. Det kan derfor bare brukes av tjenester som tillater global behandling.',
@@ -235,7 +236,7 @@ export const datasets = defineNamespace({
   liveChoiceUploadDesc: 'Dokumenter du har selv: PDF, Word, tekst, Markdown eller HTML.',
   choiceUploadExample: 'For eksempel høringssvar eller interne veiledere.',
   integrationsHint:
-    'Publiseringssystemer, arkiv og andre fagsystemer kobles til under <link>Integrasjoner</link>. Da vises de her som kilder.',
+    'Publiseringssystemer, arkiv og andre fagsystemer kobles til under <link>Systemer i Utviklerverktøy</link>. Da vises de her som kilder.',
   nameOfDataset: 'Navn på datasettet',
   reportsFrom: 'Rapporter fra',
   allOrgs: 'Alle virksomheter',

@@ -39,7 +39,7 @@ export const ApiReference = ({ api, tenant, tenantName, route }: ScreenProps) =>
     <div className="stack ar">
       <Crumbs
         items={[
-          { label: t('apiref.crumbIntegrations'), href: '#/integrations' },
+          { label: t('apiref.crumbIntegrations'), href: '#/developer/api' },
           { label: t(titleKeys[view]) },
         ]}
       />

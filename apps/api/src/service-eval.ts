@@ -138,6 +138,10 @@ export class TraceRefused extends Error {
   }
 }
 
+/** The project's active judges that genki does not read: not taken in use, or refused. */
+const unreadOf = (listed: SinkJudge[], adopted: string[]) =>
+  listed.filter((j) => !adopted.includes(j.id));
+
 const residencyOf = (definition: Record<string, unknown>): Residency => {
   const residency = (
     isRecord(definition.spec) && isRecord(definition.spec.model)
@@ -197,7 +201,7 @@ const passes = (scores: Score[]) => {
 export const answerOfParts = (parts: unknown) =>
   Array.isArray(parts) ? answerText(defaultObserve(parts as Part[], [])) : '';
 
-/** What a sink reports its judges the run does not use cost: Langfuse runs every judge in the project. */
+/** What a sink reports judges the run did not use cost, such as one switched on during the run. */
 const sinkOthersOf = (run: EvalRun, isSinkJudge: IsSinkJudge) => {
   const judges = new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)));
   const others = Object.entries(run.usage?.reported ?? {}).filter(
@@ -238,6 +242,14 @@ export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge)
     ...sinkOthersOf(run, isSinkJudge),
     ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
     ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
+    ...(run.tested?.unsentJudges
+      ? {
+          unsentJudges: run.tested.unsentJudges.map((id) => ({
+            id,
+            name: id.slice(id.indexOf('/') + 1),
+          })),
+        }
+      : {}),
   };
 };
 
@@ -534,15 +546,18 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       .sort();
   };
 
-  /** The adopted judges as the connection's project has them now; any refused one refuses the run. */
+  /**
+   * The adopted judges as the connection's project has them now; any refused one refuses the run,
+   * and so does any other active judge, which Langfuse would run on the run all the same.
+   */
   const snapshotJudges = async (tenant: string, connection: TraceConnection, adopted: string[]) => {
-    if (adopted.length === 0 || !deps.traceSinks?.judges) return [];
+    if (!deps.traceSinks?.judges) return [];
     const listed = await deps.traceSinks.judges(tenant, connection).catch((error: unknown) => {
       throw new TraceRefused(
         `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
       );
     });
-    return adopted.map((id): SinkJudge => {
+    const judges = adopted.map((id): SinkJudge => {
       const judge = listed.find((j) => j.id === id);
       if (!judge)
         throw new TraceRefused(
@@ -552,6 +567,12 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       if (judge.refused) throw new TraceRefused(judge.refused.message);
       return judge;
     });
+    const unread = unreadOf(listed, adopted);
+    if (unread.length > 0)
+      throw new TraceRefused(
+        `the project of the connection ${connection.id} has active judges genki does not read: ${unread.map((j) => j.name).join(', ')}; take them in use or switch them off in Langfuse`,
+      );
+    return judges;
   };
 
   /** The sink judges' reasons, kept only on each case's task for as long as its retention keeps them. */
@@ -593,6 +614,19 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     if (!sink) return { judges: [] };
     const adopted = await adoptedJudges(tenant, sink.id);
     const residency = runResidency(subject.definition);
+    const unread = async () => {
+      if (!deps.traceSinks?.judges) return undefined;
+      // Judges that cannot be read refuse the run when it starts, with the reason.
+      const found = unreadOf(await deps.traceSinks.judges(tenant, sink).catch(() => []), adopted);
+      return found.length > 0
+        ? {
+            reason: 'judges-differ' as const,
+            connection: sink.id,
+            notInUse: found.filter((j) => !j.refused).map((j) => j.name),
+            unreadable: found.filter((j) => j.refused).map((j) => j.name),
+          }
+        : undefined;
+    };
     const refused =
       covering.length > 1
         ? { reason: 'covered-twice' as const, connections: covering.map((c) => c.id) }
@@ -600,17 +634,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
           ? { reason: 'residency' as const, service: residency, connection: sink.residency }
           : adopted.length > 0 && !sink.content
             ? { reason: 'no-content' as const, connection: sink.id }
-            : undefined;
-    // Every active judge in the project judges, and bills, each case sent, also those not in use.
-    const otherJudges = deps.traceSinks?.judges
-      ? (await deps.traceSinks.judges(tenant, sink).catch(() => []))
-          .filter((j) => !adopted.includes(j.id))
-          .map((j) => j.name)
-      : [];
+            : await unread();
     return {
       connection: { id: sink.id, residency: sink.residency },
       judges: adopted.map((id) => ({ id, name: id.slice(id.indexOf('/') + 1) })),
-      otherJudges,
       ...(refused ? { refused } : {}),
     };
   };
@@ -633,9 +660,9 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         covering.map(async (c) => [c.id, await adoptedJudges(tenant, c.id)] as const),
       ),
     );
-    // A run that a sink's judge scores goes to that sink without being asked (ADR 0040).
-    const judged = [...adopted.values()].some((ids) => ids.length > 0);
-    const traced = sendable && (options.trace === true || judged);
+    // A run goes to a sink only when it asks, and the sink's judges score only a run sent there.
+    const traced = sendable && options.trace === true;
+    const unsentJudges = traced ? [] : [...adopted.values()].flat();
     const sink = traced ? covering[0] : undefined;
     if (traced) {
       if (!sink || !deps.traceSinks)
@@ -701,6 +728,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(split ? { split } : {}),
         ...(sink ? { sink: sink.id } : {}),
         ...(experiment ? { experiment } : {}),
+        ...(unsentJudges.length > 0 ? { unsentJudges } : {}),
       },
       ...leases.stamp(),
     };

@@ -228,12 +228,16 @@ export const sinkJudgeFields = {
     })
     .optional()
     .describe(
-      "What the Langfuse project's other judges cost on the run's cases; only with view-usage",
+      'What Langfuse judges the run did not use cost on its cases, such as one switched on during the run; only with view-usage',
     ),
   usdNok: z
     .object({ rate: z.number(), date: z.string() })
     .optional()
     .describe("Norges Bank's USD/NOK rate the run shows reported costs with; only with view-usage"),
+  unsentJudges: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .optional()
+    .describe('The Langfuse judges in use that did not score the run, because it was not sent'),
 };
 
 const RunSending = z
@@ -244,12 +248,6 @@ const RunSending = z
     judges: z
       .array(z.object({ id: z.string(), name: z.string() }))
       .describe('The Langfuse judges the tenant has taken in use from the connection'),
-    otherJudges: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "The project's other active experiment judges: Langfuse runs them on every case sent",
-      ),
     refused: z
       .union([
         z.object({
@@ -259,6 +257,16 @@ const RunSending = z
         }),
         z.object({ reason: z.literal('covered-twice'), connections: z.array(z.string()) }),
         z.object({ reason: z.literal('no-content'), connection: z.string() }),
+        z.object({
+          reason: z.literal('judges-differ'),
+          connection: z.string(),
+          notInUse: z
+            .array(z.string())
+            .describe('Active judges in the project that the tenant has not taken in use'),
+          unreadable: z
+            .array(z.string())
+            .describe('Active judges in the project that genki cannot read'),
+        }),
       ])
       .optional()
       .describe('Why a run that is sent to the connection would be refused'),

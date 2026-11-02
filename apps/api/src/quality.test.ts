@@ -1176,6 +1176,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1245,9 +1246,10 @@ describe('Langfuse judges on a run', () => {
 
   it("lists each experiment rule of a connection's project as a judge building block, and scores a run only with the ones the agency added", async () => {
     const short = 'svar_er_kort-eksperimenter';
+    const notAdded = experimentRule({ id: 'regel-2', name: short });
     const { env, adopt, langfuse } = await judged([
       experimentRule(),
-      experimentRule({ id: 'regel-2', name: short }),
+      notAdded,
       experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' }),
       experimentRule({ id: 'regel-4', name: 'pause-eksperimenter', status: 'inactive' }),
     ]);
@@ -1257,8 +1259,11 @@ describe('Langfuse judges on a run', () => {
       b.id.startsWith('langfuse:'),
     );
     expect((await adopt(judgeRule)).status).toBe(200);
+    // Langfuse would run the judge not added as well, so it is switched off before the run.
+    notAdded.status = 'inactive';
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1321,13 +1326,13 @@ describe('Langfuse judges on a run', () => {
     const draft = await env.send('GET', `${services}/eval-runs/sending?version=draft`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
       version: 'draft',
     });
 
     expect(published.body).toEqual({
       connection: { id: 'lokal', residency: 'global' },
       judges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
-      otherJudges: [],
     });
     expect(draft.body).toMatchObject({
       judges: [{ name: judgeRule }],
@@ -1348,7 +1353,7 @@ describe('Langfuse judges on a run', () => {
     rules[1]?.mapping.push(toolCalls);
     const { env, adopt } = await judged(rules);
     const start = () =>
-      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister' });
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', trace: true });
 
     const refusedBlock = await adopt('verktøy-eksperimenter');
     expect((await adopt(judgeRule)).status).toBe(200);
@@ -1378,6 +1383,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
 
     expect(started.status).toBe(409);
@@ -1398,6 +1404,7 @@ describe('Langfuse judges on a run', () => {
     const sending = await env.send('GET', `${services}/eval-runs/sending`);
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
 
     expect(
@@ -1420,6 +1427,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1470,6 +1478,7 @@ describe('Langfuse judges on a run', () => {
 
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
+      trace: true,
     });
     await env.settled();
     const stored = await env.platform.evalStores.runs.get(String(started.body.id));
@@ -1487,28 +1496,6 @@ describe('Langfuse judges on a run', () => {
     expect(sent.has('l1')).toBe(false);
     expect(scoreOf('o2')).toMatchObject({ state: 'not-applicable' });
     expect(stored?.run.status).toBe('completed');
-  });
-
-  it("names the project's other active judges before a run starts and counts what they cost apart, since Langfuse runs them on every case it gets", async () => {
-    const { env, adopt } = await judged([
-      experimentRule(),
-      experimentRule({ id: 'regel-2', name: 'tone-eksperimenter' }),
-    ]);
-    expect((await adopt(judgeRule)).status).toBe(200);
-
-    const sending = await env.send('GET', `${services}/eval-runs/sending`);
-    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
-      testSet: 'svar-frister',
-    });
-    await env.settled();
-    const listed = await env.send('GET', `${services}/eval-runs`);
-    const summary = (listed.body.data as { id: string }[]).find((r) => r.id === started.body.id);
-
-    expect(sending.body).toMatchObject({ otherJudges: ['tone-eksperimenter'] });
-    expect(summary).toMatchObject({
-      sinkJudges: [{ name: judgeRule, reported: { inputTokens: 4321, costUsd: 0.0123 } }],
-      sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
-    });
   });
 
   it("sends a criteria case's reference answer as its criteria when it names none, as genki's criteria judge reads it", async () => {
@@ -1534,7 +1521,7 @@ describe('Langfuse judges on a run', () => {
       }),
     );
 
-    await env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-gull' });
+    await env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-gull', trace: true });
     await env.settled();
     const root = langfuse.spans.find(
       (s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case') === 'g1',
@@ -1543,6 +1530,79 @@ describe('Langfuse judges on a run', () => {
     expect(
       JSON.parse((root && langfuse.attr(root, 'langfuse.experiment.item.expected_output')) ?? '{}'),
     ).toEqual({ criteria: 'Klagefristen er tre uker.' });
+  });
+
+  it('sends a run to Langfuse only when it asks for it, also when the service uses a Langfuse judge, and names the judges that did not score it', async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const start = (body: Record<string, unknown> = {}) =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', ...body });
+
+    const unsent = await start();
+    await env.settled();
+    const spansOfUnsent = langfuse.spans.length;
+    const sent = await start({ trace: true });
+    await env.settled();
+    const runs = await env.send('GET', `${services}/eval-runs`);
+    const summaryOf = (id: unknown) =>
+      (runs.body.data as { id: string }[]).find((r) => r.id === id);
+    const stored = await env.platform.evalStores.runs.get(String(unsent.body.id));
+
+    expect(unsent.status).toBe(202);
+    expect(spansOfUnsent).toBe(0);
+    expect(stored?.run.tested).not.toHaveProperty('sink');
+    expect(stored?.run.provenance.judges.filter((j) => j.startsWith('langfuse:'))).toEqual([]);
+    expect(summaryOf(unsent.body.id)).toMatchObject({
+      sinkJudges: [],
+      unsentJudges: [{ id: `langfuse:lokal/${judgeRule}`, name: judgeRule }],
+    });
+    expect(sent.status).toBe(202);
+    expect(langfuse.spans.length).toBeGreaterThan(0);
+    expect(summaryOf(sent.body.id)).toMatchObject({ sinkJudges: [{ name: judgeRule }] });
+    expect(summaryOf(sent.body.id)).not.toHaveProperty('unsentJudges');
+  });
+
+  it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {
+    const rules = [
+      experimentRule(),
+      experimentRule({ id: 'regel-2', name: 'tone-eksperimenter' }),
+      experimentRule({
+        id: 'regel-3',
+        name: 'verktøy-eksperimenter',
+        mapping: [{ variable: 'verktøy', source: 'tool_calls' }],
+      }),
+    ];
+    const { env, adopt } = await judged(rules);
+    const start = () =>
+      env.send('POST', `${services}/eval-runs`, 'kari', { testSet: 'svar-frister', trace: true });
+    const differ = (names: string) =>
+      `the project of the connection lokal has active judges genki does not read: ${names}; take them in use or switch them off in Langfuse`;
+
+    const noneInUse = await start();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    const sending = await env.send('GET', `${services}/eval-runs/sending`);
+    const oneInUse = await start();
+    for (const r of rules.slice(1)) r.status = 'inactive';
+    const inStep = await start();
+    await env.settled();
+
+    expect(noneInUse.status).toBe(409);
+    expect(JSON.stringify(noneInUse.body)).toContain(
+      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter`),
+    );
+    expect(sending.body).toMatchObject({
+      refused: {
+        reason: 'judges-differ',
+        connection: 'lokal',
+        notInUse: ['tone-eksperimenter'],
+        unreadable: ['verktøy-eksperimenter'],
+      },
+    });
+    expect(oneInUse.status).toBe(409);
+    expect(JSON.stringify(oneInUse.body)).toContain(
+      differ('tone-eksperimenter, verktøy-eksperimenter'),
+    );
+    expect(inStep.status).toBe(202);
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
@@ -1631,6 +1691,11 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       testSet: 'svar-frister',
       trace: true,
     });
+    // ADR 0040: a run goes only to a project whose active experiment judges genki reads.
+    expect(
+      started.status,
+      'use a Langfuse project without active experiment judges for this test',
+    ).toBe(202);
     await env.settled();
     const run = String(started.body.id);
     const auth = `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString('base64')}`;

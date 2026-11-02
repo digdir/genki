@@ -128,11 +128,19 @@ const reportedCostText = (t: T, f: Format, reported: ReportedCost, usdNok: EvalR
   ].join(' ');
 };
 
-/** Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. */
+/**
+ * Langfuse judges are advisory: shown apart from genki's metrics and never in a gate. A run not
+ * sent to Langfuse names the judges in use that did not score it.
+ */
 const SinkJudges = ({ run }: { run: EvalRun }) => {
   const { t, f } = usePortalFormat();
   const judges = run.sinkJudges ?? [];
-  if (judges.length === 0) return null;
+  if (judges.length === 0)
+    return run.unsentJudges?.length ? (
+      <Paragraph data-size="sm">
+        {t('quality.runNotSent', { judges: run.unsentJudges.map((j) => j.name).join(', ') })}
+      </Paragraph>
+    ) : null;
   return (
     <section aria-labelledby="sink-judges-h" className="stack-sm">
       <Heading level={4} data-size="2xs" id="sink-judges-h">
@@ -257,17 +265,26 @@ const RunMetrics = ({ run }: { run: EvalRun }) => {
   );
 };
 
-/** Why a run that a Langfuse judge scores cannot start, before it is started. */
+/** Why a run sent to Langfuse cannot start, before it is started. */
 const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
   const refused = plan?.refused;
   if (!refused) return undefined;
+  if (refused.reason === 'judges-differ')
+    return [
+      t('quality.judgesDiffer', { connection: refused.connection }),
+      ...(refused.notInUse.length > 0
+        ? [t('quality.judgesNotInUse', { judges: refused.notInUse.join(', ') })]
+        : []),
+      ...(refused.unreadable.length > 0
+        ? [t('quality.judgesUnreadable', { judges: refused.unreadable.join(', ') })]
+        : []),
+    ].join(' ');
   if (refused.reason === 'covered-twice')
-    return t('quality.judgeCoveredTwice', { judges, connections: refused.connections.join(', ') });
+    return t('quality.sendCoveredTwice', { connections: refused.connections.join(', ') });
   if (refused.reason === 'no-content')
     return t('quality.judgeNoContent', { judges, connection: refused.connection });
-  return t('quality.judgeResidencyRefused', {
+  return t('quality.sendResidencyRefused', {
     connection: plan.connection?.id ?? '',
-    judges,
     where: t(storageLabels[refused.connection]),
     service: t(storageLabels[refused.service]),
   });
@@ -446,7 +463,7 @@ export const RunHistory = ({
     sinks.status === 'ready'
       ? sinks.data.find((c) => !c.removing && c.services.includes(serviceId))
       : undefined;
-  // A service that uses a Langfuse judge is always sent: the dialog says so before the run starts.
+  // What a run sent to Langfuse would meet there: the judges in use, or why it would be refused.
   const [sending] = useAsync(
     (signal) =>
       confirming && sink
@@ -457,7 +474,7 @@ export const RunHistory = ({
   const plan = sending.status === 'ready' ? sending.data : undefined;
   const judgeNames = (plan?.judges ?? []).map((j) => j.name).join(', ');
   const judged = (plan?.judges.length ?? 0) > 0;
-  const refusedText = judged ? sendingRefusal(t, plan, judgeNames) : undefined;
+  const refusedText = trace ? sendingRefusal(t, plan, judgeNames) : undefined;
   const [startedId, setStartedId] = useState<string>();
   const [open, setOpen] = useState<string>();
   const [state, retry] = useAsync(
@@ -491,7 +508,7 @@ export const RunHistory = ({
       const started = await api.quality.startRun(
         tenant,
         serviceId,
-        { testSet: testSet.id, version, ...((trace || judged) && sink ? { trace: true } : {}) },
+        { testSet: testSet.id, version, ...(trace && sink ? { trace: true } : {}) },
         t('quality.runReason', {
           name: testSet.name,
           version: versionText(t, version).toLowerCase(),
@@ -560,29 +577,17 @@ export const RunHistory = ({
             <Checkbox
               data-size="sm"
               label={t('quality.sendToTrace', { connection: sink.id })}
-              checked={trace || judged}
-              aria-disabled={judged || undefined}
+              checked={trace}
               {...(judged
-                ? { description: t('quality.sendBecauseJudges', { judges: judgeNames }) }
+                ? { description: t('quality.judgesOnlyWhenSent', { judges: judgeNames }) }
                 : {})}
-              onChange={(e) => {
-                if (!judged) setTrace(e.target.checked);
-              }}
+              onChange={(e) => setTrace(e.target.checked)}
             />
           ) : null}
           {refusedText ? (
             <Alert data-color="danger" data-size="sm">
               <Paragraph data-size="sm">{refusedText}</Paragraph>
-            </Alert>
-          ) : null}
-          {sink && (plan?.otherJudges?.length ?? 0) > 0 ? (
-            <Alert data-color="warning" data-size="sm">
-              <Paragraph data-size="sm">
-                {t('quality.judgeOthersWarning', {
-                  connection: sink.id,
-                  judges: (plan?.otherJudges ?? []).join(', '),
-                })}
-              </Paragraph>
+              <Paragraph data-size="sm">{t('quality.untickToRun')}</Paragraph>
             </Alert>
           ) : null}
           <div className="actions">
