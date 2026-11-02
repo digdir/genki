@@ -80,6 +80,19 @@ describe('byggeklosser', () => {
     expect(screen.queryByRole('button', { name: /Borealis-27B/ })).toBeNull();
   });
 
+  it('closes an open preview when the availability choice changes, and keeps it open until then', async () => {
+    await open('#/building-blocks?block=borealis');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gjør 2.2 tilgjengelig' }));
+    expect(await screen.findByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
+    // Nothing else closes it: the preview stays while the person reads it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Ingen (bare Digdir kan teste den)' }));
+
+    expect(screen.queryByText(/Ingen tjeneste bytter versjon av seg selv/)).toBeNull();
+  });
+
   it('makes a new version available with a preview that says no service switches', async () => {
     const { calls, fetch } = recording();
     await open('#/building-blocks?block=borealis', fetch);
