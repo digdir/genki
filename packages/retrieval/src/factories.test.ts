@@ -198,7 +198,7 @@ describe('agent retrieval factory', () => {
     expect(s.calls).toEqual(['fetch:c3,c1', 'range:d1:0-1']);
   });
 
-  it('carries the Kudos publish date, an ingestion date and the document version into the chunks', async () => {
+  it('carries document publication dates and versions without treating ingestion as publication', async () => {
     const s = stub([], { ...dated, c2: { ingested_at: '2026-10-01T08:00:00.000Z' } });
     const agent = createAgentRetrieval({ knowledge: s.knowledge });
 
@@ -206,7 +206,7 @@ describe('agent retrieval factory', () => {
 
     expect(read.map((c) => [c.chunkId, c.publishedAt, c.version])).toEqual([
       ['c1', '2023-01-15', undefined],
-      ['c2', '2026-10-01T08:00:00.000Z', undefined],
+      ['c2', undefined, undefined],
       ['c3', '2025-01-01T00:00:00.000Z', 'v2'],
     ]);
   });

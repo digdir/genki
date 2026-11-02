@@ -117,7 +117,7 @@ const isoDate = (value: unknown): string | undefined => {
 };
 
 const publishedAtOf = (fields: Record<string, unknown>) =>
-  ['publish_date', 'published_at', 'publishedAt', 'ingested_at']
+  ['publish_date', 'published_at', 'publishedAt']
     .map((name) => isoDate(joined(fields, name)))
     .find((v) => v !== undefined);
 

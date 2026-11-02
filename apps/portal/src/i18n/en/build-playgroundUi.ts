@@ -105,6 +105,7 @@ export const playgroundUi = {
       'Here you see searches, sources, model calls and tokens when you send a question.',
     sourceCite: 'Source {n}: {title}',
     detailChunk: 'Text chunk',
+    detailVersion: 'Version',
     detailHeaders: 'Headings',
     detailDocument: 'Document',
     detailPosition: 'Position',
@@ -122,6 +123,9 @@ export const playgroundUi = {
     sources: 'Sources',
     sourceDetails: 'Details about {title}',
     excerpt: 'Excerpt',
+    sourceExcerpt: 'Excerpt from {title}',
+    sourcePublished: 'Published {date}',
+    untitledSource: 'Untitled source',
     sourceVersion: 'version {version}',
     searchNote: 'Search note:',
     searchNoteText: {

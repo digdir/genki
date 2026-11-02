@@ -83,7 +83,7 @@ export const inline = (text: string, cite: CiteRenderer, key = 'i'): ReactNode[]
       const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
       if (link)
         return (
-          <a key={k} href={link[2]} target="_blank" rel="noreferrer">
+          <a key={k} href={link[2]} target="_blank" rel="noopener noreferrer">
             {inline(link[1] ?? '', cite, k)}
           </a>
         );
@@ -103,7 +103,15 @@ export const inline = (text: string, cite: CiteRenderer, key = 'i'): ReactNode[]
       return part;
     });
 
-export const AnswerMarkdown = ({ text, cite }: { text: string; cite: CiteRenderer }) => {
+const noCitation: CiteRenderer = () => undefined;
+
+export const AnswerMarkdown = ({
+  text,
+  cite = noCitation,
+}: {
+  text: string;
+  cite?: CiteRenderer;
+}) => {
   return (
     <div className="playground-markdown">
       {blocksOf(text).map((block, i) => {
