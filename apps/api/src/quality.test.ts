@@ -1057,6 +1057,9 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
   const attr = (span: (typeof spans)[number], key: string) =>
     span.attributes.find((a) => a.key === key)?.value.stringValue;
   const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
+  // Runs once as the first item arrives, as when someone switches a rule on during a run.
+  const hooks: { firstItem?: () => void } = {};
+  let seen = false;
   const server = await fakeHttp((body, _attempt, path) => {
     const url = new URL(path, 'http://langfuse.test');
     const ok = (json: unknown) => ({ status: 200, json });
@@ -1064,24 +1067,27 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
       const got = resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans));
       spans.push(...got);
-      for (const span of got)
-        if (attr(span, 'langfuse.experiment.item.root_observation_id') === span.spanId)
-          for (const r of judging())
-            scores.set(span.traceId, [
-              ...(scores.get(span.traceId) ?? []),
-              {
-                id: `${r.id}-${span.traceId}`,
-                name: r.name,
-                value: true,
-                dataType: 'BOOLEAN',
-                source: 'EVAL',
-                comment: 'Svaret oppgir fristen.',
-                metadata: {
-                  job_configuration_id: r.id,
-                  job_execution_id: `jobb-${r.id}-${span.traceId}`,
-                },
+      for (const span of got) {
+        if (attr(span, 'langfuse.experiment.item.root_observation_id') !== span.spanId) continue;
+        if (!seen) hooks.firstItem?.();
+        seen = true;
+        for (const r of judging())
+          scores.set(span.traceId, [
+            ...(scores.get(span.traceId) ?? []),
+            {
+              id: `${r.id}-${span.traceId}`,
+              name: r.name,
+              value: true,
+              dataType: 'BOOLEAN',
+              source: 'EVAL',
+              comment: 'Svaret oppgir fristen.',
+              metadata: {
+                job_configuration_id: r.id,
+                job_execution_id: `jobb-${r.id}-${span.traceId}`,
               },
-            ]);
+            },
+          ]);
+      }
       return ok({});
     }
     if (url.pathname === '/api/public/unstable/evaluation-rules')
@@ -1123,7 +1129,7 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     return { status: 404, json: {} };
   });
   servers.push(server);
-  return { url: server.url, spans, attr, close: () => server.close() };
+  return { url: server.url, spans, attr, hooks, close: () => server.close() };
 };
 
 describe('Langfuse judges on a run', () => {
@@ -1607,6 +1613,32 @@ describe('Langfuse judges on a run', () => {
       differ('tone-eksperimenter, verktøy-eksperimenter, toksisitet'),
     );
     expect(inStep.status).toBe(202);
+  });
+
+  it('counts what a judge switched on in Langfuse during a run costs apart from the judges in use, shown only to those who see usage', async () => {
+    const later = experimentRule({ id: 'regel-2', name: 'tone-eksperimenter', status: 'inactive' });
+    const { env, langfuse, adopt } = await judged([experimentRule(), later]);
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.firstItem = () => {
+      later.status = 'active';
+    };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const summaryFor = async (who: string) =>
+      ((await env.send('GET', `${services}/eval-runs`, who)).body.data as { id: string }[]).find(
+        (r) => r.id === started.body.id,
+      );
+
+    expect(started.status).toBe(202);
+    expect(await summaryFor('kari')).toMatchObject({
+      sinkJudges: [{ name: judgeRule, reported: { inputTokens: 4321, costUsd: 0.0123 } }],
+      sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
+    });
+    expect(await summaryFor('erik')).not.toHaveProperty('sinkOthers');
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {
