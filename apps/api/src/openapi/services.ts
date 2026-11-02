@@ -288,6 +288,11 @@ const RunSending = z
             .array(z.string())
             .describe('Active judges in the project that genki cannot read'),
         }),
+        z.object({
+          reason: z.literal('judges-unreadable'),
+          connection: z.string(),
+          message: z.string().describe('What the sink answered, such as its HTTP status'),
+        }),
       ])
       .optional()
       .describe('Why a run that is sent to the connection would be refused'),

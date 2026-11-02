@@ -57,6 +57,7 @@ export const blocks = {
   sinkJudgeNetwork: 'Where the test runs are sent',
   sinkJudgeModel: 'Run by Langfuse, not by the platform',
   sinkJudgeDefaultModel: "The project's default model",
+  sinkJudgesUnreadable: 'The judges in {source}',
   sinkFieldInput: 'the question',
   sinkFieldOutput: 'the answer',
   sinkFieldExpected: 'the criteria',

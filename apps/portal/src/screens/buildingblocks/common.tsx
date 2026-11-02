@@ -10,6 +10,7 @@ import type {
   SinkJudgeInfo,
 } from '../../api/building-blocks';
 import { ApiCallPanel, type ApiCallPreview } from '../../components/ApiCall';
+import { httpStatusOf } from '../../format';
 import { ChangeLogged } from '../../components/ChangeLogged';
 import { Icon, icons } from '../../components/Icon';
 import { permissionLabels } from '../../data/building-blocks';
@@ -20,6 +21,17 @@ import type { PortalRight } from '../../types';
 /** Why a Langfuse judge cannot be taken in use, in the reader's language. */
 export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refused']>) => {
   switch (refused.reason) {
+    case 'unreadable':
+      return t('blocks.judgesUnreadable', {
+        connection: refused.connection ?? '',
+        status: httpStatusOf(refused.message),
+      });
+    case 'several-evaluators':
+      return t('blocks.judgeRefusedSeveral');
+    case 'paused':
+      return t('blocks.judgeRefusedPaused');
+    case 'same-name':
+      return t('blocks.judgeRefusedSameName');
     case 'not-a-model':
       return t('blocks.judgeRefusedNotAModel');
     case 'default-model':
@@ -38,7 +50,11 @@ export const judgeRefusalText = (t: T, refused: NonNullable<SinkJudgeInfo['refus
 };
 
 /** A judge's facts: what it runs on, which version, what it answers and what it reads. */
-export const judgeFacts = (t: T, judge: SinkJudgeInfo) => [
+export const judgeFacts = (t: T, judge: SinkJudgeInfo) =>
+  // A connection whose judges could not be read is no judge: it has no facts to show.
+  judge.refused?.reason === 'unreadable' ? [] : judgeFactsOf(t, judge);
+
+const judgeFactsOf = (t: T, judge: SinkJudgeInfo) => [
   { label: t('blocks.judgeModel'), value: judge.model ?? t('blocks.judgeDefaultModel') },
   { label: t('blocks.judgeVersion'), value: judge.version },
   {

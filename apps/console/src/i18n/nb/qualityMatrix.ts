@@ -158,6 +158,8 @@ export const qualityMatrix = defineNamespace({
     other: '{count} nye etiketter fra {connection}.',
   },
   sinkFetchFailed: 'Kunne ikke hente etiketter fra {connection}.',
+  sinkShared:
+    'Ingen etiketter for {name}: reglene {rules} skriver vurderinger med samme navn, så merkingene kan ikke skilles fra hverandre.',
   sinkNoneTitle: 'Ingen etiketter venter',
   sinkNoneText: 'Nye etiketter vises her når de er hentet.',
   sinkBatchTitle: '{name} · {tenant} / {connection}',

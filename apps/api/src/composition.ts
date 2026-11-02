@@ -973,6 +973,8 @@ export const createPlatform = async (input: PlatformInput) => {
         snapshot: j,
       })),
     otherRules: async (tenant, connection) => (await langfuseOf(tenant, connection)).others(),
+    sourceOf: (connection) => `Langfuse (${connection.id})`,
+    sharedScores: async (tenant, connection) => (await langfuseOf(tenant, connection)).shared(),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
     isSinkJudge: (judge) => judge.startsWith('langfuse:'),
     annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),
@@ -1149,9 +1151,12 @@ export const createPlatform = async (input: PlatformInput) => {
           const connection = await connectionOf(configEntries, tenant, run.sink);
           if (!connection) return own;
           const judges = await langfuseOf(tenant, connection);
-          // Every active judge in the project judges, and bills, each case the run sends.
+          // Every active judge in the project judges, and bills, each case the run sends; a
+          // paused one does not run.
           const active = await judges.list(connection.id).catch(() => []);
-          judges.expectJudges(active.map((j) => j.rule.id));
+          judges.expectJudges(
+            active.filter((j) => j.refused?.reason !== 'paused').map((j) => j.rule.id),
+          );
           for (const snapshot of run.sinkJudges as LangfuseJudge[])
             own.set(
               snapshot.id,

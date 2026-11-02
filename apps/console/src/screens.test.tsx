@@ -551,6 +551,26 @@ describe('etiketter fra Langfuse', () => {
       },
     });
   });
+  it('says after a fetch which evaluators got no labels because rules share them', async () => {
+    const base = mockFetch();
+    const shared: typeof globalThis.fetch = async (input, init) =>
+      new URL(String(input), 'http://mock').pathname === '/api/operator/quality/sink-labels/fetch'
+        ? Response.json({
+            pending: 2,
+            shared: [{ name: 'svar_oppfyller_kriteriene', rules: ['regel_a', 'regel_b'] }],
+          })
+        : base(input, init);
+    await open('#/quality-matrix?tab=sink', shared);
+
+    const fetchButton = (await screen.findAllByRole('button', { name: 'Hent nye etiketter' }))[0];
+    fireEvent.click(fetchButton as HTMLElement);
+
+    const notice = await screen.findByText(
+      '2 nye etiketter fra kudos. Ingen etiketter for svar_oppfyller_kriteriene: reglene regel_a, regel_b skriver vurderinger med samme navn, så merkingene kan ikke skilles fra hverandre.',
+    );
+    // Some labels were left out: a warning, not a plain success.
+    expect(notice.closest('.ds-alert')?.getAttribute('data-color')).toBe('warning');
+  });
 });
 
 describe('sporing og evaluering', () => {

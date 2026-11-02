@@ -160,6 +160,8 @@ export const qualityArea = {
       'Kjøringen kan ikke starte. Langfuse kjører alle aktive dommere i prosjektet til koblingen {connection} på kjøringen, også dem genki ikke leser.',
     judgesNotInUse: 'Ta i bruk under Byggeklosser, eller slå av i Langfuse: {judges}.',
     judgesUnreadable: 'Slå av i Langfuse, fordi genki ikke kan lese dem: {judges}.',
+    judgesNotRead:
+      'Kjøringen kan ikke starte. Dommerne i prosjektet til koblingen {connection} kunne ikke leses{status}, så genki vet ikke hvilke dommere Langfuse ville kjørt på kjøringen.',
     sinkJudgesTitle: 'Langfuse-dommere',
     sinkJudgesAdvisory: 'Rådgivende. Disse vurderingene stopper aldri en publisering.',
     sinkJudgeYes: 'Ja: {mean} ({low} – {high}, n = {n})',

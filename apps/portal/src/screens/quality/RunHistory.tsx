@@ -22,7 +22,7 @@ import type {
   SinkAgreement,
 } from '../../api/quality';
 import { storageLabels } from '../../data/building-blocks';
-import { formatKroner, usePortalFormat } from '../../format';
+import { formatKroner, httpStatusOf, usePortalFormat } from '../../format';
 import { useAsync } from '../../hooks';
 import type { Format, PlainKey, T } from '../../i18n';
 import { needsRight, useRights } from '../../Shell';
@@ -301,6 +301,11 @@ const sendingRefusal = (t: T, plan: RunSending | undefined, judges: string) => {
         ? [t('quality.judgesUnreadable', { judges: refused.unreadable.join(', ') })]
         : []),
     ].join(' ');
+  if (refused.reason === 'judges-unreadable')
+    return t('quality.judgesNotRead', {
+      connection: refused.connection,
+      status: httpStatusOf(refused.message),
+    });
   if (refused.reason === 'covered-twice')
     return t('quality.sendCoveredTwice', { connections: refused.connections.join(', ') });
   if (refused.reason === 'no-content')
