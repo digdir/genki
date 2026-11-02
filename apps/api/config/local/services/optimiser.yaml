@@ -11,5 +11,5 @@ spec:
     id: optimiser
     version: 1
     config: { instructions: prompts/optimiser.nb.md }
-  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   evaluation: { testSets: [optimiser] }
