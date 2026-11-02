@@ -536,6 +536,7 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
     configEntries: deps.configEntries,
     ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
     testSets: deps.evalStores.testSets,
+    ...(deps.logger ? { log: deps.logger } : {}),
   });
   /** Each test set of the services it covers gets its dataset, so judges can be set up first. */
   const save: AdminHandler = async (input, principal) => {
@@ -588,7 +589,7 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
       app.get('/tenants/:tenant/tracing/connections', async (c) => {
         const guard = await member(c);
         if ('response' in guard) return guard.response;
-        const made = await datasetsOf(deps.configEntries, guard.tenant);
+        const made = await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant);
         return c.json({
           data: (await connections.list(guard.tenant)).map((connection) => ({
             ...shown(connection),

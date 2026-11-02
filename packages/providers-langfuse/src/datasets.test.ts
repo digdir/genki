@@ -25,7 +25,10 @@ const fakeLangfuse = (names: Record<string, string> = {}, down = false) => {
       const id = datasets.get(name);
       return id
         ? Response.json({ id, name, description: 'Etatens egen beskrivelse' })
-        : Response.json({ message: 'Dataset not found' }, { status: 404 });
+        : Response.json(
+            { message: 'Dataset not found', error: 'LangfuseNotFoundError' },
+            { status: 404 },
+          );
     }
     if (method === 'POST' && url.pathname === '/api/public/v2/datasets') {
       const name = String(body?.name);
@@ -74,6 +77,27 @@ describe('Langfuse datasets', () => {
     // No items go with it: the cases stay in genki.
     expect(Object.keys(fake.calls[1]?.body as object).sort()).toEqual(['description', 'name']);
     expect(fake.calls.some((c) => c.path.includes('dataset-items'))).toBe(false);
+  });
+
+  it("takes only Langfuse's own not-found answer as no dataset, never a 404 from something in between", async () => {
+    const calls: string[] = [];
+    const proxy = (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push(init?.method ?? 'GET');
+      return new Response('<html>Not Found</html>', {
+        status: 404,
+        headers: { 'content-type': 'text/html' },
+      });
+    }) as typeof globalThis.fetch;
+
+    await expect(
+      langfuseDatasets({
+        host: 'https://l.example.no',
+        publicKey: 'pk',
+        secretKey: 'sk',
+        fetch: proxy,
+      }).ensure('genki/klarsprak/klarsprak-brev'),
+    ).rejects.toThrow('Langfuse answered HTTP 404');
+    expect(calls).toEqual(['GET']);
   });
 
   it("fails when Langfuse can't be read, rather than creating a dataset it may already have", async () => {

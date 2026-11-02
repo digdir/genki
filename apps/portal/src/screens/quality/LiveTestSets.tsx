@@ -358,9 +358,9 @@ export const LiveTestSets = ({
         {t.rich('quality.liveSplits', { strong: (c) => <strong>{c}</strong> })}
       </p>
       {current.dataset ? (
-        <p className="meta">
-          <code>{current.dataset.name}</code>{' '}
-          {t('quality.langfuseDataset', { connection: current.dataset.connection })}
+        <p>
+          {t('quality.langfuseDataset', { connection: current.dataset.connection })}{' '}
+          <code>{current.dataset.name}</code>
         </p>
       ) : null}
 

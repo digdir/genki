@@ -379,7 +379,9 @@ export const createQualityModule =
           const sets = await deps.evalStores.testSets.list(guard.tenant, service);
           // The Langfuse dataset an agency points its judges at, in the covering connection.
           const covering = await connectionsCovering(deps.configEntries, guard.tenant, service);
-          const made = (await datasetsOf(deps.configEntries, guard.tenant)).filter(
+          const made = (
+            await datasetsOf(deps.configEntries, deps.evalStores.testSets, guard.tenant)
+          ).filter(
             (d) =>
               covering.length === 1 && d.connection === covering[0]?.id && d.service === service,
           );

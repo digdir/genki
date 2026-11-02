@@ -64,7 +64,7 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
-  it("shows the test set's Langfuse dataset, the name a judge's filter picks", async () => {
+  it("shows the Langfuse dataset the test set's sent runs are linked to", async () => {
     await openLive('', {}, {}, (path) =>
       path === '/tenants/999888777/services/rapportassistenten/test-sets'
         ? Response.json({
@@ -84,7 +84,7 @@ describe('live Testsett', () => {
     expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
       screen.getByText(
-        'Langfuse-datasett i koblingen digdir. Velg det i filteret til en dommer i Langfuse, så vurderer den testkjøringene av dette testsettet.',
+        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir:',
       ),
     ).toBeTruthy();
     expectAccessible();

@@ -1,5 +1,6 @@
 import type { TestSetStore } from '@genai/eval';
 import { appendVersion, type ConfigEntryStore } from './config-store.js';
+import type { ApiLog } from './failure-log.js';
 
 /** What a dataset needs of a trace connection; trace-connections.ts owns the full shape. */
 interface Connection {
@@ -51,15 +52,30 @@ const keyOf = (connection: string, service: string, testSet: string) =>
 const inProject = (d: TraceDataset, connection: Pick<Connection, 'host' | 'publicKey'>) =>
   d.host === connection.host && d.publicKey === connection.publicKey;
 
-/** The datasets genki has made, in the project each connection points to now. */
-export const datasetsOf = async (configEntries: ConfigEntryStore, tenant: string) => {
+/**
+ * The datasets genki has made that a connection uses now: in the project it points to, for a
+ * service it covers and a test set that is still in that service.
+ */
+export const datasetsOf = async (
+  configEntries: ConfigEntryStore,
+  testSets: Pick<TestSetStore, 'list'>,
+  tenant: string,
+) => {
   const connections = new Map((await connectionsOf(configEntries, tenant)).map((c) => [c.id, c]));
+  const inService = new Set(
+    (await testSets.list(tenant)).map((s) => `${s.spec.service ?? ''}/${s.metadata.id}`),
+  );
   return (await configEntries.latest({ kind: traceDatasetKind, scope: tenant }))
     .filter((e) => !e.deleted)
     .map((e) => e.spec as TraceDataset)
     .filter((d) => {
       const connection = connections.get(d.connection);
-      return connection !== undefined && inProject(d, connection);
+      return (
+        connection !== undefined &&
+        inProject(d, connection) &&
+        connection.services.includes(d.service) &&
+        inService.has(`${d.service}/${d.testSet}`)
+      );
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 };
@@ -68,7 +84,20 @@ export const traceDatasets = (deps: {
   configEntries: ConfigEntryStore;
   traceSinks?: DatasetSink;
   testSets: Pick<TestSetStore, 'list'>;
+  log?: ApiLog;
 }) => {
+  /** Langfuse not answering never stops a save, so what it could not make is logged instead. */
+  const logged =
+    (tenant: string, connection: string, testSet: string) =>
+    (error: unknown): undefined => {
+      deps.log?.('langfuse dataset not made', {
+        tenant,
+        connection,
+        testSet,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    };
   const recorded = async (
     tenant: string,
     connection: Connection,
@@ -145,8 +174,12 @@ export const traceDatasets = (deps: {
           ),
         )
       ).flat();
-      return Promise.allSettled(
-        sets.map((set) => ensureMissing(tenant, connection, set.service, set.id)),
+      return Promise.all(
+        sets.map((set) =>
+          ensureMissing(tenant, connection, set.service, set.id).catch(
+            logged(tenant, connection.id, set.id),
+          ),
+        ),
       );
     },
     /** A test set saved for a service a connection covers, such as one just added to it. */
@@ -156,7 +189,11 @@ export const traceDatasets = (deps: {
       );
       // A service covered twice is sent nowhere, so neither connection gets its datasets.
       const connection = covering.length === 1 ? covering[0] : undefined;
-      return connection ? ensureMissing(tenant, connection, service, testSet) : undefined;
+      return connection
+        ? ensureMissing(tenant, connection, service, testSet).catch(
+            logged(tenant, connection.id, testSet),
+          )
+        : undefined;
     },
   };
 };
@@ -173,6 +210,7 @@ export const withTraceDatasets = (store: TestSetStore, datasets: TraceDatasets):
     if (set.spec.service)
       await datasets
         .forTestSet(set.metadata.tenant, set.spec.service, set.metadata.id)
+        // Logged by forTestSet; the save stands.
         .catch(() => undefined);
   },
   get: (tenant, id, version) => store.get(tenant, id, version),

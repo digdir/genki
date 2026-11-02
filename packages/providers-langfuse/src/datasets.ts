@@ -19,10 +19,17 @@ export const langfuseDatasets = (api: LangfuseApiOptions) => {
   const failed = (status: number, path: string) =>
     new Error(`Langfuse answered HTTP ${status} for ${path}`);
 
+  const notFound = async (response: Response) => {
+    const body = (await response.json().catch(() => undefined)) as { error?: unknown } | undefined;
+    return body?.error === 'LangfuseNotFoundError';
+  };
+
   const named = async (name: string) => {
     const path = `/api/public/v2/datasets/${encodeURIComponent(name)}`;
     const response = await send(new URL(path, api.host), { headers: { authorization } });
-    if (response.status === 404) return undefined;
+    // Only Langfuse's own answer means there is none: a 404 from a proxy in between would make
+    // genki create the dataset again, replacing what the agency wrote in its description.
+    if (response.status === 404 && (await notFound(response))) return undefined;
     if (!response.ok) throw failed(response.status, '/api/public/v2/datasets/{name}');
     const found = (await response.json()) as LangfuseDataset;
     return { id: found.id, name: found.name };

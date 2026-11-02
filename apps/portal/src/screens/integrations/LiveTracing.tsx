@@ -266,9 +266,9 @@ export const LiveTracing = ({
               ) : null}
               {c.datasets?.length ? (
                 <>
-                  <Paragraph data-size="sm" id={`datasets-${c.id}`}>
+                  <Heading level={5} data-size="2xs" id={`datasets-${c.id}`}>
                     {t('integLangfuse.datasets')}
-                  </Paragraph>
+                  </Heading>
                   <Paragraph data-size="sm">{t('integLangfuse.datasetsHelp')}</Paragraph>
                   <ul className="plain-list" aria-labelledby={`datasets-${c.id}`}>
                     {c.datasets.map((d) => (

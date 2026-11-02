@@ -1070,7 +1070,12 @@ export const createPlatform = async (input: PlatformInput) => {
     ...baseEvalStores,
     testSets: withTraceDatasets(
       baseEvalStores.testSets,
-      traceDatasets({ configEntries, traceSinks, testSets: baseEvalStores.testSets }),
+      traceDatasets({
+        configEntries,
+        traceSinks,
+        testSets: baseEvalStores.testSets,
+        ...(input.logger ? { log: input.logger } : {}),
+      }),
     ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),

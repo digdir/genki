@@ -93,15 +93,16 @@ describe('Integrasjoner: Langfuse', () => {
     await expectAccessible(section);
   });
 
-  it("lists the connection's Langfuse datasets, one per test set, by the name a judge's filter picks", async () => {
+  it("lists the connection's Langfuse datasets under their own heading, one per test set", async () => {
     const { section } = await renderTracing();
     await within(section).findByText('https://langfuse.digdir.cloud');
 
+    expect(within(section).getByRole('heading', { name: 'Datasett i Langfuse' })).toBeTruthy();
     const list = within(section).getByRole('list', { name: 'Datasett i Langfuse' });
     expect(within(list).getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
     expect(
       within(section).getByText(
-        'Ett datasett per testsett. Velg datasettet i filteret til en dommer i Langfuse, så vurderer den testkjøringene av det testsettet.',
+        'Ett datasett per testsett i tjenestene koblingen dekker. Hver testkjøring som sendes til Langfuse, knyttes til datasettet til sitt testsett.',
       ),
     ).toBeTruthy();
     await expectAccessible(section);
