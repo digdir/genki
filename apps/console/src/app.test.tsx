@@ -25,7 +25,10 @@ const signedIn = async (path = '#/tenants', roles = [operatorRole], fetch = mock
 beforeEach(() => {
   window.location.hash = '';
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('a locked environment', () => {
   const health = (lockdown: boolean): typeof fetch => {
@@ -192,6 +195,8 @@ describe('operator shell', () => {
 
 describe('virksomheter', () => {
   it('lists tenants with KPIs, status as text and a quota warning', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-07T12:00:00+02:00'));
     await signedIn();
 
     const table = await screen.findByRole('table');
