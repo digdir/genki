@@ -5,7 +5,7 @@ metadata:
 spec:
   purpose: Finn kilder i Digdirs offentlige dokumentasjon uten å lage et svar
   audience: [employees]
-  riskClass: minimal
+  riskClass: limited
   variants:
     - id: default
   input: { accepts: [text/plain] }

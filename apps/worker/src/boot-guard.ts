@@ -4,7 +4,7 @@ import {
   unmetOutsideDevMode,
 } from '@genai/composition';
 
-export { isDevMode } from '@genai/composition';
+export { isDevMode, knowledgeServerProblems } from '@genai/composition';
 
 export const workerBootProblems = (env: Record<string, string | undefined>): string[] => [
   ...platformTenantProblems(env),

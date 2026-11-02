@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workerBootProblems } from './boot-guard.js';
+import { knowledgeServerProblems, workerBootProblems } from './boot-guard.js';
 
 describe('booting the worker', () => {
   it('the worker refuses to start without a database unless dev mode is on', () => {
@@ -25,5 +25,16 @@ describe('booting the worker', () => {
     expect(workerBootProblems({ GENAI_DEV_MODE: 'true', GENAI_ENV: 'production' })).toEqual([
       expect.stringContaining('production'),
     ]);
+  });
+
+  it('an endpoint set to `knowledge` without a knowledge server stops the worker outside development mode', () => {
+    const catalog = {
+      endpoints: { 'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } } },
+      datasets: [],
+    };
+    expect(knowledgeServerProblems({ DATABASE_URL: 'postgres://db/genai' }, catalog)).toEqual([
+      expect.stringContaining('KNOWLEDGE_PGHOST'),
+    ]);
+    expect(knowledgeServerProblems({ GENAI_DEV_MODE: 'true' }, catalog)).toEqual([]);
   });
 });

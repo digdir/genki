@@ -11,6 +11,7 @@
   "scripts": {
     "start": "node scripts/setup.ts && node scripts/dev-all.ts",
     "setup": "node scripts/setup.ts",
+    "knowledge:setup": "tsx --conditions=source scripts/knowledge-server-setup.ts",
     "dev": "npm run dev --workspace apps/api",
     "dev:all": "node scripts/dev-all.ts",
     "dev:model": "node scripts/local-model.ts",

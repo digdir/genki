@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cachedEntraPassword, postgresSourceFromEnv, type TokenSource } from './entra.js';
+import {
+  cachedEntraPassword,
+  knowledgeSourceFromEnv,
+  postgresSourceFromEnv,
+  type TokenSource,
+} from './entra.js';
 import { entraPostgresScope } from './pool.js';
 
 const minutes = (n: number) => n * 60_000;
@@ -67,5 +72,61 @@ describe('Postgres with Entra ID', () => {
     });
     expect(typeof source?.password).toBe('function');
     expect(await (source?.password as () => Promise<string>)()).toBe('entra');
+  });
+});
+
+describe('knowledge server settings', () => {
+  const tokens: TokenSource = async () => ({
+    token: 'entra',
+    expiresOnTimestamp: Date.now() + minutes(60),
+  });
+  const azure = {
+    KNOWLEDGE_PGHOST: 'knowledge.example',
+    KNOWLEDGE_PGUSER: 'genki-test-worker-id',
+    KNOWLEDGE_AZURE_CLIENT_ID: 'worker-client',
+    AZURE_CLIENT_ID: 'shared-client',
+  };
+
+  it("the knowledge settings log in with the process's own identity, never the shared one", async () => {
+    const identities: string[] = [];
+    const source = knowledgeSourceFromEnv(azure, 'worker', (clientId) => {
+      identities.push(clientId);
+      return tokens;
+    });
+    expect(source).toMatchObject({
+      host: 'knowledge.example',
+      user: 'genki-test-worker-id',
+      database: 'genai_knowledge',
+      ssl: { rejectUnauthorized: true },
+    });
+    expect(await (source?.password as () => Promise<string>)()).toBe('entra');
+    expect(identities).toEqual(['worker-client']);
+
+    const shared = { ...azure, KNOWLEDGE_AZURE_CLIENT_ID: undefined };
+    expect(() => knowledgeSourceFromEnv(shared, 'worker', () => tokens)).toThrow(
+      'KNOWLEDGE_AZURE_CLIENT_ID',
+    );
+    expect(knowledgeSourceFromEnv({ PGHOST: 'pg.example', AZURE_CLIENT_ID: 'x' }, 'api')).toBe(
+      undefined,
+    );
+  });
+
+  it('the API and the worker each log in locally with their own login', () => {
+    const env = {
+      KNOWLEDGE_DATABASE_URL: 'postgres://127.0.0.1:55433/genai_knowledge',
+      KNOWLEDGE_API_PASSWORD: 'api-pw',
+      KNOWLEDGE_WORKER_PASSWORD: 'worker/pw',
+    };
+    const api = new URL(knowledgeSourceFromEnv(env, 'api')?.connectionString ?? '');
+    const worker = new URL(knowledgeSourceFromEnv(env, 'worker')?.connectionString ?? '');
+    expect([api.username, decodeURIComponent(api.password)]).toEqual([
+      'genai_knowledge_api',
+      'api-pw',
+    ]);
+    expect([worker.username, decodeURIComponent(worker.password)]).toEqual([
+      'genai_knowledge_worker',
+      'worker/pw',
+    ]);
+    expect(api.host).toBe('127.0.0.1:55433');
   });
 });

@@ -148,7 +148,7 @@ import {
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
 import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
@@ -419,6 +419,7 @@ export interface PlatformInput {
   labels?: LabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
@@ -1006,6 +1007,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
+    ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy

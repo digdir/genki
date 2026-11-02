@@ -10,6 +10,13 @@ export const catalogErrors = {
   facetsList: 'facets are a list of field names',
   facetsFilter: 'facets must be filter fields too: {missing}',
   runsInside: '{engine} runs inside the platform and takes no {key}',
+  moveWithEngineSwitch:
+    'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+  generationOfAnother: '{generation} is the generation of another dataset',
+  knowledgeWrittenByWorker: 'knowledge data is written by the worker',
+  knowledgeNotReady: 'the knowledge server is not ready: its read functions are not built yet',
+  knowledgeBusy: 'the knowledge server is busy, try again',
+  noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',
   tenantEndpointsModels: 'tenant endpoints list their models explicitly',
   tenantEndpointsAuth: 'tenant endpoints use api-key or bearer',

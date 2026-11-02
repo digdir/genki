@@ -34,6 +34,8 @@ export const datasetConfig = (dataset: CatalogDataset, options: unknown): Datase
   filters: dataset.filters,
   options,
   ...(dataset.embedding ? { embedding: dataset.embedding } : {}),
+  ...(dataset.valueTypes ? { valueTypes: dataset.valueTypes } : {}),
+  ...(dataset.generation ? { generation: dataset.generation } : {}),
 });
 
 export const aliasesOf = (catalog: KnowledgeCatalog) => {
