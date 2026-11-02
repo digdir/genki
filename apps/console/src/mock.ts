@@ -5,6 +5,7 @@ import {
   exampleHistory,
   exampleJudges,
   exampleLabelQueue,
+  exampleSinkLabels,
   exampleMatrix,
   exampleModelUsage,
   exampleOnboarding,
@@ -251,6 +252,7 @@ export const mockFetch = (
   const sessions = new Map<string, SupportSession>();
   let shared = structuredClone(exampleShared);
   let queue = structuredClone(exampleLabelQueue);
+  const sinkLabels = structuredClone(exampleSinkLabels);
   let support = structuredClone(exampleSupport);
   let running = structuredClone(exampleRunning);
   let current = structuredClone(models);
@@ -1291,6 +1293,30 @@ export const mockFetch = (
       return json({ ok: true });
     }
     if (path === '/operator/quality/label-queue') return json({ data: queue, total: queue.length });
+    if (path === '/operator/quality/sink-labels' && method === 'GET') return json(sinkLabels);
+    if (path === '/operator/quality/sink-labels/fetch' && method === 'POST')
+      return json({ pending: 0 });
+    const sinkDecision = /^\/operator\/quality\/sink-labels\/(accept|reject)$/.exec(path);
+    if (sinkDecision && method === 'POST') {
+      if (!reason) return needReason();
+      const b = body() as { tenant: string; connection: string; judge: string };
+      const found = sinkLabels.batches.find(
+        (x) => x.tenant === b.tenant && x.connection === b.connection && x.judge === b.judge,
+      );
+      if (!found) return notFound();
+      sinkLabels.batches = sinkLabels.batches.filter((x) => x !== found);
+      record(
+        b.tenant,
+        sinkDecision[1] === 'accept' ? 'Godtok etiketter' : 'Avviste etiketter',
+        `judge:${b.judge}`,
+        reason,
+      );
+      return json(
+        sinkDecision[1] === 'accept'
+          ? { accepted: found.labels.length }
+          : { rejected: found.labels.length },
+      );
+    }
     if (path === '/operator/quality/labels' && method === 'POST') {
       if (!reason) return needReason();
       const b = body() as { item: string };

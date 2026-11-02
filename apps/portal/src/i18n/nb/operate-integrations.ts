@@ -664,6 +664,7 @@ export const integrationsArea = {
     global: 'ikke avklart (global)',
     contentOn: 'Får tekst',
     contentOff: 'Får bare metadata',
+    labelsOn: 'Henter etiketter',
     check: 'Sjekk koblingen',
     checkedOk:
       'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',
@@ -695,6 +696,9 @@ export const integrationsArea = {
     content: 'Send tekst',
     contentHelp:
       'Spørsmål, svar og det dommerne leser. Krever at Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
+    labels: 'Hent etiketter fra Langfuse som kalibreringsetiketter',
+    labelsHelp:
+      'Det folk merker i prosjektet, kommer tilbake som ventende etiketter for dommerne. En operatør henter dem i driftskonsollen, og de teller først når operatøren godtar dem. Langfuse godtar ikke navn over 35 tegn på et scoreoppsett, så en dommer med lengre navn får ingen etiketter før den får et kortere.',
     declaration:
       'Vi bekrefter at vår Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
     required: 'Fyll ut feltet',

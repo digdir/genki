@@ -22,6 +22,7 @@ import {
   PostgresEvalRunStore,
   PostgresFeedbackStore,
   PostgresLabelStore,
+  PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
 import { PostgresTenantSecrets } from './secrets.js';
@@ -72,6 +73,7 @@ export {
   PostgresEvalRunStore,
   PostgresFeedbackStore,
   PostgresLabelStore,
+  PostgresSinkLabelStore,
   PostgresTestSetStore,
 } from './eval.js';
 export { PostgresTenantSecrets } from './secrets.js';
@@ -183,6 +185,7 @@ export const createPostgresStores = async (
       candidates: new PostgresCandidateStore(pool, keys),
     },
     labels: new PostgresLabelStore(pool),
+    sinkLabels: new PostgresSinkLabelStore(pool),
     clients: new PostgresClients(pool),
     webhookDeliveries: new PostgresWebhookDeliveries(pool),
     traceDeliveries: new PostgresTraceDeliveries(pool),

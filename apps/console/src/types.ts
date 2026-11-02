@@ -382,6 +382,33 @@ export interface QualityOverview {
 
 export type Verdict = 'Ja' | 'Delvis' | 'Nei';
 
+/** The pending labels of one trace connection and judge, brought back from Langfuse. */
+export interface SinkLabelBatch {
+  tenant: string;
+  connection: string;
+  judge: string;
+  name: string;
+  labels: {
+    id: string;
+    revision: string;
+    run: string;
+    case: string;
+    repeat: number;
+    humanLabel: string;
+    judgeLabel?: string;
+    labeller: string;
+  }[];
+  paired: number;
+  alike: number;
+  unpaired: number;
+  labellers: number;
+}
+
+export interface SinkLabels {
+  connections: { tenant: string; connection: string; labels: boolean }[];
+  batches: SinkLabelBatch[];
+}
+
 export interface LabelItem {
   item: string;
   judge: string;

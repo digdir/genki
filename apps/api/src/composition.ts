@@ -6,6 +6,7 @@ import {
   strategyModelNeeds,
   allowOf,
   pinnedFetch,
+  traceConnectionKind,
   tracingEgress,
 } from '@genai/composition';
 import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
@@ -49,6 +50,7 @@ import {
   InMemoryEvalRunStore,
   InMemoryFeedbackStore,
   InMemoryLabelStore,
+  InMemorySinkLabelStore,
   InMemoryTestSetStore,
   publishGate,
   retrievalRecall,
@@ -58,6 +60,7 @@ import {
   type FeedbackStore,
   type Gate,
   type LabelStore,
+  type SinkLabelStore,
   type TestSetStore,
   type WaitOptions,
 } from '@genai/eval';
@@ -244,6 +247,7 @@ import {
 import { engineSwitchesModule } from './engine-switches.js';
 import { definitionSubject } from './definition-subject.js';
 import { runJudges } from './eval-judges.js';
+import { sinkLabels } from './sink-labels.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 import { playgroundModule } from './playground.js';
 import { proposalsModule } from './proposals.js';
@@ -458,6 +462,8 @@ export interface PlatformInput {
     candidates: CandidateStore;
   };
   labels?: LabelStore;
+  /** Labels brought back from tenants' trace sinks, pending until an operator accepts them. */
+  sinkLabels?: SinkLabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
   embeddingAdapters?: EmbeddingAdapter[];
@@ -968,6 +974,9 @@ export const createPlatform = async (input: PlatformInput) => {
     otherRules: async (tenant, connection) => (await langfuseOf(tenant, connection)).others(),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
     isSinkJudge: (judge) => judge.startsWith('langfuse:'),
+    annotations: async (tenant, connection) => (await langfuseOf(tenant, connection)).annotations(),
+    // langfuse:<connection>/<rule> calibrates langfuse:<tenant>/<connection>/<rule> (ADR 0040).
+    calibrationKey: (tenant, evaluator) => evaluator.replace(/^langfuse:/, `langfuse:${tenant}/`),
     experimentUrl: async (tenant, connection, run) =>
       (await langfuseOf(tenant, connection)).experimentUrl(run),
     fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
@@ -1631,6 +1640,16 @@ export const createPlatform = async (input: PlatformInput) => {
     registered,
   });
   const labels = input.labels ?? new InMemoryLabelStore();
+  const sinkLabelService = sinkLabels({
+    store: input.sinkLabels ?? new InMemorySinkLabelStore(),
+    runs: evalStores.runs,
+    connection: (tenant, id) => connectionOf(configEntries, tenant, id),
+    connections: async (tenant) =>
+      (await configEntries.latest({ kind: traceConnectionKind, scope: tenant }))
+        .filter((e) => !e.deleted)
+        .map((e) => e.spec as TraceConnection),
+    sinks: traceSinks,
+  });
   const apiKeys = input.apiKeys ?? new InMemoryTenantApiKeys();
   let adminRef: Admin | undefined;
   const consoleOperator: Principal = { kind: 'operator', issuer: 'platform', subject: 'console' };
@@ -1653,6 +1672,7 @@ export const createPlatform = async (input: PlatformInput) => {
     tenants: async () => (await directory.list()).map((t) => t.orgNumber),
     runs: evalStores.runs,
     labels,
+    sinkLabels: sinkLabelService,
     traces: () => input.traces?.(),
     support: {
       list: () => adminRef?.supportSessions() ?? [],
@@ -1747,6 +1767,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.appVersion ? { appVersion: input.appVersion } : {}),
     tenantSecrets,
     traceSinks,
+    sinkLabels: sinkLabelService,
     traceDeliveries,
     egressOptions: input.egress ?? {},
     ...(input.tracing ? { tracing: input.tracing } : {}),

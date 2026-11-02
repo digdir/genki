@@ -667,6 +667,7 @@ export const integrationsArea = {
     global: 'not settled (global)',
     contentOn: 'Receives text',
     contentOff: 'Receives metadata only',
+    labelsOn: 'Brings labels back',
     check: 'Check the connection',
     checkedOk:
       'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',
@@ -697,6 +698,9 @@ export const integrationsArea = {
     content: 'Send text',
     contentHelp:
       'Questions, answers and what the judges read. Needs a Langfuse that deletes what genki deletes and keeps raw files at most 7 days.',
+    labels: 'Bring labels back from Langfuse as calibration labels',
+    labelsHelp:
+      'What people label in the project comes back as pending labels for its judges. An operator fetches them in the operations console, and they count only once the operator accepts them. Langfuse takes no score config name over 35 characters, so a judge with a longer name gets no labels until it is renamed.',
     declaration:
       'We confirm that our Langfuse deletes what genki deletes and keeps raw files at most 7 days.',
     required: 'Fill in the field',

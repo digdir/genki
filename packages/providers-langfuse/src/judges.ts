@@ -471,8 +471,11 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     const readable = (c: TestCase) =>
       judge.rule.mapping.every((m) => m.source === 'output' || !isEmpty(fieldOf(m, c, unanswered)));
     const base = { evaluator: judge.id, version, metric: judge.id };
+    // Every score says the judge's type, so a label can be matched to it before it scores.
+    const typed = { details: { dataType: judge.evaluator.dataType } };
     const notApplicable = (reason: string): Score => ({
       ...base,
+      ...typed,
       value: null,
       applicable: false,
       state: 'not-applicable',
@@ -495,13 +498,19 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
         if (c.split === 'holdout') return [notApplicable('holdout cases are never sent')];
         if (!run.content) return [notApplicable('the connection does not receive content')];
         const empty = judge.rule.mapping.find((m) => isEmpty(fieldOf(m, c, o)));
-        if (empty)
+        if (empty) {
+          const reason = `the case has no ${empty.source}${empty.jsonPath && empty.jsonPath !== '$' ? ` ${empty.jsonPath}` : ''}`;
+          // An empty answer still goes out, so a person can label the case in Langfuse.
           return [
-            notApplicable(
-              `the case has no ${empty.source}${empty.jsonPath && empty.jsonPath !== '$' ? ` ${empty.jsonPath}` : ''}`,
-            ),
+            ctx.task && ledger.sent.has(ctx.task)
+              ? {
+                  ...notApplicable(reason),
+                  details: { dataType: judge.evaluator.dataType, sent: true },
+                }
+              : notApplicable(reason),
           ];
-        return [{ ...base, value: null, applicable: true, state: 'pending' }];
+        }
+        return [{ ...base, ...typed, value: null, applicable: true, state: 'pending' }];
       },
       collect: async (pending: PendingScore[], options) => {
         const signal = options?.signal;
@@ -528,7 +537,7 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
           await ledger.count(scores, signal);
           const read = valueOf(raw, raw.configId ? await boundsOf(raw.configId) : undefined);
           const details = {
-            ...(raw.dataType ? { dataType: raw.dataType } : {}),
+            dataType: raw.dataType ?? judge.evaluator.dataType,
             ...('asItCame' in read ? { asItCame: read.asItCame } : {}),
             ...(changed.length > 0 ? { judgeChanged: changed } : {}),
           };
@@ -566,5 +575,124 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     ledger.expected = new Set(rules);
   };
 
-  return { list, others, evaluator, experimentUrl, expectJudges };
+  /**
+   * Every label people made in the project's UI: ANNOTATION scores whose score config has the
+   * score's own name and type, read as good or bad (a number scaled by the config's bounds and split
+   * at 0.5), or the category as it came. The Langfuse user id comes along for a pseudonym.
+   */
+  const annotations = async (): Promise<LangfuseAnnotation[]> => {
+    // A page that cannot be read is an error, never "no labels": that would undo accepted ones.
+    const need = async <T>(path: string): Promise<T> => {
+      const found = await read<T>(path);
+      if (found === undefined)
+        throw new Error(`Langfuse answered HTTP 404 for ${path.split('?')[0]}`);
+      return found;
+    };
+    const all: RawAnnotation[] = [];
+    let cursor: string | undefined;
+    do {
+      const found = await need<{ data: RawAnnotation[]; meta?: { cursor?: string } }>(
+        `/api/public/v3/scores?source=ANNOTATION&fields=core,details,subject,annotation&limit=100${
+          cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+        }`,
+      );
+      all.push(...found.data);
+      cursor = found.data.length > 0 ? found.meta?.cursor : undefined;
+    } while (cursor);
+    const configs = new Map<string, Promise<RawScoreConfig>>();
+    const configOf = (id: string) => {
+      if (!configs.has(id))
+        configs.set(
+          id,
+          need<RawScoreConfig>(`/api/public/score-configs/${encodeURIComponent(id)}`),
+        );
+      return configs.get(id) as Promise<RawScoreConfig>;
+    };
+    const out: LangfuseAnnotation[] = [];
+    for (const a of all) {
+      const trace =
+        a.subject?.traceId ?? (a.subject?.kind === 'trace' ? a.subject.id : undefined) ?? a.traceId;
+      if (!trace) continue;
+      // Every annotation still in Langfuse comes back, a label or not, so none is taken for deleted.
+      const config = a.configId ? await configOf(a.configId) : undefined;
+      const label =
+        config && a.dataType && config.name === a.name && config.dataType === a.dataType
+          ? labelOf(a, config)
+          : undefined;
+      out.push({
+        id: a.id,
+        // 4.4.0 keeps updatedAt when someone edits an annotation in the UI, so the label is in it.
+        revision: `${a.updatedAt ?? a.timestamp ?? ''}|${label ?? ''}`,
+        trace,
+        name: a.name,
+        dataType: a.dataType ?? '',
+        ...(label === undefined ? {} : { label }),
+        ...(config &&
+        typeof config.minValue === 'number' &&
+        typeof config.maxValue === 'number' &&
+        config.maxValue > config.minValue
+          ? { bounds: { min: config.minValue, max: config.maxValue } }
+          : {}),
+        ...(a.authorUserId ? { author: a.authorUserId } : {}),
+      });
+    }
+    return out;
+  };
+
+  return { list, others, evaluator, experimentUrl, expectJudges, annotations };
+};
+
+/** A person's annotation in Langfuse, read for genki's calibration labels (ADR 0040). */
+export interface LangfuseAnnotation {
+  id: string;
+  /** Changes when the annotation is edited. */
+  revision: string;
+  trace: string;
+  name: string;
+  dataType: string;
+  /** Absent when it is no label: no score config of its name and type, or a number without range. */
+  label?: string;
+  /** The score config's range, which splits a number the judge gave without one. */
+  bounds?: { min: number; max: number };
+  author?: string;
+}
+
+interface RawAnnotation {
+  id: string;
+  name: string;
+  value: unknown;
+  stringValue?: string;
+  dataType?: string;
+  configId?: string | null;
+  authorUserId?: string | null;
+  traceId?: string | null;
+  timestamp?: string;
+  updatedAt?: string;
+  subject?: { kind?: string; id?: string; traceId?: string };
+}
+
+interface RawScoreConfig {
+  name: string;
+  dataType: string;
+  minValue?: number | null;
+  maxValue?: number | null;
+}
+
+/** good or bad for a boolean, or a number within its config's bounds; a category as it came. */
+const labelOf = (a: RawAnnotation, config: RawScoreConfig): string | undefined => {
+  if (a.dataType === 'BOOLEAN') {
+    if (a.value === true || a.value === 1) return 'good';
+    if (a.value === false || a.value === 0) return 'bad';
+    return undefined;
+  }
+  if (a.dataType === 'NUMERIC') {
+    if (typeof a.value !== 'number') return undefined;
+    const { minValue: min, maxValue: max } = config;
+    if (typeof min === 'number' && typeof max === 'number' && max > min)
+      return (a.value - min) / (max - min) >= 0.5 ? 'good' : 'bad';
+    // A number without a range cannot be split into good and bad: it is no label.
+    return undefined;
+  }
+  const category = a.stringValue ?? (typeof a.value === 'string' ? a.value : undefined);
+  return category === undefined || category === '' ? undefined : category;
 };

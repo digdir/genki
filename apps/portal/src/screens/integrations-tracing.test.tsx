@@ -146,6 +146,38 @@ describe('Integrasjoner: Langfuse', () => {
     });
   });
 
+  it('brings labels back from a tracing connection only while its labels switch is on', async () => {
+    const { calls, section } = await renderTracing();
+    const card = (await within(section).findByText('https://langfuse.digdir.cloud')).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(card).queryByText('Henter etiketter')).toBeNull();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Endre' }));
+    const form = within(section).getByRole('form');
+    const labels = within(form).getByRole('switch', {
+      name: /Hent etiketter fra Langfuse som kalibreringsetiketter/,
+    }) as HTMLInputElement;
+    expect(labels.checked).toBe(false);
+    expect(
+      within(form).getByText(
+        /En operatør henter dem i driftskonsollen, og de teller først når operatøren godtar dem/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(labels);
+    fireEvent.change(within(form).getByLabelText(/Begrunnelse/), {
+      target: { value: 'Teamet merker svar i Langfuse' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
+
+    expect(await within(section).findByText('Henter etiketter')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: expect.stringMatching(/\/tracing\/connections\/digdir$/),
+      reason: 'Teamet merker svar i Langfuse',
+      body: { labels: true },
+    });
+  });
+
   it('asks for another name rather than replacing a connection that has it', async () => {
     const { calls, section } = await renderTracing();
     await within(section).findByText('https://langfuse.digdir.cloud');

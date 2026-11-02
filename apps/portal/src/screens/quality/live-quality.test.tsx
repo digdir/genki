@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
-import { latestRunFact, type EvalRun } from '../../api/quality';
+import { latestRunFact, type EvalRun, type SinkAgreement } from '../../api/quality';
 import { mockAnsattporten } from '../../auth';
 import { mockFetch, type MockExtras } from '../../mock';
 import type { QualityMockOptions } from '../../mock/quality';
@@ -747,6 +747,41 @@ describe('live Testsett: Langfuse-dommere', () => {
   it('shows the cost in dollars until a rate is known', async () => {
     expect(await costLine(costedRun())).toMatch(
       /^Kostnad rapportert av Langfuse: 0,0123 USD, 5\s308 tokens\. Kronebeløpet vises når kursen fra Norges Bank er hentet\.$/,
+    );
+  });
+
+  it("shows a Langfuse judge's agreement with its accepted labels", async () => {
+    const agreementOf = async (labels: SinkAgreement) => {
+      cleanup();
+      await openLive('', {
+        runs: [
+          {
+            ...judgedRun,
+            id: `etiketter-${String(labels.n)}`,
+            sinkJudges: judgedRun.sinkJudges.map((j) => ({ ...j, labels })),
+          },
+        ],
+      });
+      const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+      const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+      fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+      const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+      return within(langfuse).getByText(/etiketter/).textContent;
+    };
+
+    expect(
+      await agreementOf({ n: 34, kappa: 0.72, observed: 0.85, otherVersions: 20, unpaired: 3 }),
+    ).toMatch(
+      /^Samsvar med godkjente etiketter: κ 0,72 · 85\s% like · 34 etiketter \(20 fra andre versjoner av dommeren\) · 3 uten dommerscore$/,
+    );
+    expect(
+      await agreementOf({ n: 12, kappa: 0.5, observed: 0.75, otherVersions: 0, unpaired: 0 }),
+    ).toMatch(/^Samsvar med godkjente etiketter: κ 0,50 · 75\s% like · 12 etiketter$/);
+    expect(await agreementOf({ n: 0, otherVersions: 0, unpaired: 0 })).toBe(
+      'Ingen godkjente etiketter ennå',
+    );
+    expect(await agreementOf({ n: 0, otherVersions: 0, unpaired: 2 })).toBe(
+      'Ingen godkjente etiketter ennå · 2 uten dommerscore',
     );
   });
 

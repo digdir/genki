@@ -481,6 +481,7 @@ const platform = await createPlatform({
         connections: db.connections,
         evalStores: db.eval,
         labels: db.labels,
+        sinkLabels: db.sinkLabels,
       }
     : {}),
   policy: allowWorker(

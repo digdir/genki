@@ -743,6 +743,11 @@ const TraceConnection = z
       .describe(
         "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
       ),
+    labels: z
+      .boolean()
+      .describe(
+        "Whether people's annotations in the project come back as pending calibration labels for its judges",
+      ),
     instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
     removing: z
       .boolean()
@@ -785,6 +790,7 @@ const tracingRoutes: RouteConfig[] = [
           residency: true,
           content: true,
           erasureDeclared: true,
+          labels: true,
         }),
       ),
     },

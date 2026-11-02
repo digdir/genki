@@ -19,6 +19,7 @@ import type {
   RunSending,
   RunVersion,
   ServiceTestSet,
+  SinkAgreement,
 } from '../../api/quality';
 import { storageLabels } from '../../data/building-blocks';
 import { formatKroner, usePortalFormat } from '../../format';
@@ -103,6 +104,26 @@ const verdictText = (t: T, f: Format, j: CaseJudgement) => {
     return t(j.value === 1 ? 'quality.verdictYes' : 'quality.verdictNo');
   return j.value === null ? '' : f.percent(j.value);
 };
+
+/** A Langfuse judge's agreement with its accepted labels, as one line (ADR 0003's kappa). */
+const agreementText = (t: T, f: Format, labels: SinkAgreement) =>
+  [
+    labels.n === 0 || labels.kappa === undefined || labels.observed === undefined
+      ? t('quality.sinkAgreementNone')
+      : [
+          t('quality.sinkAgreement', {
+            kappa: f.decimal(labels.kappa, 2),
+            alike: f.percent(labels.observed),
+            n: labels.n,
+          }),
+          ...(labels.otherVersions > 0
+            ? [t('quality.sinkAgreementOther', { count: labels.otherVersions })]
+            : []),
+        ].join(' '),
+    ...(labels.unpaired > 0
+      ? [t('quality.sinkAgreementUnpaired', { count: labels.unpaired })]
+      : []),
+  ].join(' · ');
 
 /** What Langfuse reports calls cost: kroner at the run's rate, dollars until one is known. */
 const reportedCostText = (t: T, f: Format, reported: ReportedCost, usdNok: EvalRun['usdNok']) => {
@@ -189,6 +210,7 @@ const SinkJudges = ({ run }: { run: EvalRun }) => {
           {j.changed.length > 0 ? (
             <Paragraph data-size="sm">{t('quality.sinkJudgeChanged')}</Paragraph>
           ) : null}
+          {j.labels ? <Paragraph data-size="sm">{agreementText(t, f, j.labels)}</Paragraph> : null}
           {j.reported ? (
             <Paragraph data-size="sm">
               {t('quality.sinkCostLabel', {

@@ -34,6 +34,7 @@ interface Draft {
   residency: Residency;
   content: boolean;
   erasureDeclared: boolean;
+  labels: boolean;
 }
 
 const blank: Draft = {
@@ -47,6 +48,7 @@ const blank: Draft = {
   residency: 'global',
   content: false,
   erasureDeclared: false,
+  labels: false,
 };
 
 const secretPrefix = (tenant: string) => `secret://tenant/${tenant}/`;
@@ -77,6 +79,7 @@ const draftOf = (c: TraceConnection): Draft => ({
   residency: c.residency,
   content: c.content,
   erasureDeclared: c.erasureDeclared,
+  labels: c.labels === true,
 });
 
 const residencyText = (t: T, r: Residency) =>
@@ -172,6 +175,7 @@ export const LiveTracing = ({
           residency: draft.residency,
           content: draft.content,
           erasureDeclared: draft.erasureDeclared,
+          labels: draft.labels,
         },
         reason,
       );
@@ -255,6 +259,11 @@ export const LiveTracing = ({
               <Tag data-size="sm" data-color={c.content ? 'warning' : 'neutral'}>
                 {t(c.content ? 'integLangfuse.contentOn' : 'integLangfuse.contentOff')}
               </Tag>
+              {c.labels ? (
+                <Tag data-size="sm" data-color="info">
+                  {t('integLangfuse.labelsOn')}
+                </Tag>
+              ) : null}
               {checked[c.id] ? <Paragraph data-size="sm">{checked[c.id]}</Paragraph> : null}
               <div className="row-gap">
                 <Button variant="secondary" data-size="sm" onClick={() => void check(c.id)}>
@@ -378,6 +387,12 @@ export const LiveTracing = ({
             description={t('integLangfuse.contentHelp')}
             checked={draft.content}
             onChange={(e) => setDraft({ ...draft, content: e.target.checked })}
+          />
+          <Switch
+            label={t('integLangfuse.labels')}
+            description={t('integLangfuse.labelsHelp')}
+            checked={draft.labels}
+            onChange={(e) => setDraft({ ...draft, labels: e.target.checked })}
           />
           <Checkbox
             label={t('integLangfuse.declaration')}

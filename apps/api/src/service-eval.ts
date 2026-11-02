@@ -24,6 +24,7 @@ import {
   type StoredRun,
   type TestCase,
   type TestSet,
+  type SinkAgreement,
 } from '@genai/eval';
 import {
   backgroundLeases,
@@ -77,7 +78,11 @@ export type IsSinkJudge = (evaluator: string) => boolean;
 const noSinkJudge: IsSinkJudge = () => false;
 
 /** Each sink judge of a run: its score, what it could not judge, and whether it changed. */
-export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
+export const sinkJudgesOf = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) =>
   [...new Set(run.results.flatMap((r) => r.scores.map((s) => s.evaluator)).filter(isSinkJudge))]
     .sort()
     .map((id) => {
@@ -104,6 +109,7 @@ export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
           ? { mean: mean(values), ci: bootstrapMean(values), n: values.length }
           : undefined;
       const reported = run.usage?.reported?.[id];
+      const labels = agreements?.get(id);
       const dataType = scores.find((s) => typeof s.details?.dataType === 'string')?.details
         ?.dataType as string | undefined;
       return {
@@ -113,6 +119,7 @@ export const sinkJudgesOf = (run: EvalRun, isSinkJudge: IsSinkJudge) =>
         ...(dataType ? { dataType } : {}),
         ...(metric ? { metric } : {}),
         ...(reported ? { reported } : {}),
+        ...(labels ? { labels } : {}),
         ...(Object.keys(categories).length > 0 ? { categories } : {}),
         notApplicable: scores.length - applicable.length,
         missing: gap?.missing ?? applicable.filter((s) => s.state === 'pending').length,
@@ -211,7 +218,11 @@ const sinkOthersOf = (run: EvalRun, isSinkJudge: IsSinkJudge) => {
 };
 
 /** A test run as the portal lists it, read from the eval run. */
-export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge) => {
+export const runSummary = (
+  run: EvalRun,
+  isSinkJudge: IsSinkJudge = noSinkJudge,
+  agreements?: Map<string, SinkAgreement>,
+) => {
   const state = runState(run);
   // Every case counts, as the case list shows it: one without a verdict did not pass.
   const counted = run.results;
@@ -238,7 +249,7 @@ export const runSummary = (run: EvalRun, isSinkJudge: IsSinkJudge = noSinkJudge)
     cost: usage ? usage.costMicroNok : null,
     tokens: { input: usage?.inputTokens ?? 0, output: usage?.outputTokens ?? 0 },
     ...(run.error ? { error: run.error } : {}),
-    sinkJudges: sinkJudgesOf(run, isSinkJudge),
+    sinkJudges: sinkJudgesOf(run, isSinkJudge, agreements),
     ...sinkOthersOf(run, isSinkJudge),
     ...(run.usage?.usdNok ? { usdNok: run.usage.usdNok } : {}),
     ...(run.tested?.experiment ? { experiment: run.tested.experiment } : {}),
@@ -258,11 +269,15 @@ export const runDetail = (
   run: EvalRun,
   set: TestSet | undefined,
   answers: Map<string, string>,
-  sink: { isSinkJudge: IsSinkJudge; reasons?: Map<string, Map<string, string>> } = {
+  sink: {
+    isSinkJudge: IsSinkJudge;
+    reasons?: Map<string, Map<string, string>>;
+    agreements?: Map<string, SinkAgreement>;
+  } = {
     isSinkJudge: noSinkJudge,
   },
 ) => ({
-  ...runSummary(run, sink.isSinkJudge),
+  ...runSummary(run, sink.isSinkJudge, sink.agreements),
   byTag: run.byTag,
   cases: run.results.map((r): CaseResult => {
     const found = set?.spec.cases.find((c) => c.id === r.case);
