@@ -20,6 +20,7 @@ import {
 import {
   createPostgresStores,
   ingestSender,
+  ingestStillEndingMessage,
   LocalKeyWrapper,
   PostgresJobRunRecords,
   PostgresJobRuns,
@@ -39,11 +40,7 @@ import {
   openWorkerJobs,
   type WorkerJobs,
 } from './knowledge-jobs.js';
-import {
-  listingFailedMessage,
-  nothingToSendBackMessage,
-  reconcileKnowledgeRuns,
-} from './reconciler.js';
+import { listingFailedMessage, reconcileKnowledgeRuns } from './reconciler.js';
 
 const ORG = '991825827';
 const OTHER_ORG = '889640782';
@@ -592,20 +589,65 @@ describe('the worker and the knowledge queues', () => {
     expect(await platformStates(waiting.id)).toEqual(['created']);
   }, 90_000);
 
-  it('a send-back with no dead letters ends the run as failed and says to start it again', async () => {
-    const at = pipeline();
-    const id = await insertRun(at, { status: 'failed', admittedAt: new Date().toISOString() });
-    const sent = await apiRuns.redrive({
-      dataset: at.dataset,
-      pipeline: at.pipeline,
-      execution: id,
-      by: 'employee:test:kari',
-      reason: 'try again',
-      at: new Date().toISOString(),
+  it('a send-back with no dead letters leaves the run as it ended', async () => {
+    const succeeded = await insertRun(pipeline(), {
+      status: 'succeeded',
+      admittedAt: new Date().toISOString(),
     });
-    expect(sent.ok).toBe(true);
+    const failed = await insertRun(pipeline(), {
+      status: 'failed',
+      admittedAt: new Date().toISOString(),
+    });
+    await api.pool.query(`update ingestion_executions set error = $2 where id = $1`, [
+      failed,
+      admissionRanOutMessage,
+    ]);
+    for (const id of [succeeded, failed]) {
+      const { rows } = await api.pool.query<{ dataset: string; pipeline: string }>(
+        `select dataset, pipeline from ingestion_executions where id = $1`,
+        [id],
+      );
+      const sent = await apiRuns.redrive({
+        dataset: rows[0]?.dataset ?? '',
+        pipeline: rows[0]?.pipeline ?? '',
+        execution: id,
+        by: 'employee:test:kari',
+        reason: 'try again',
+        at: new Date().toISOString(),
+      });
+      expect(sent.ok).toBe(true);
+    }
     await reconcile();
-    expect(await run(id)).toMatchObject({ status: 'failed', error: nothingToSendBackMessage });
+    expect(await run(succeeded)).toMatchObject({ status: 'succeeded', error: null });
+    expect(await run(failed)).toMatchObject({ status: 'failed', error: admissionRanOutMessage });
+  });
+
+  it("a start while the pipeline's last ingest job still holds its key is refused", async () => {
+    const at = pipeline();
+    await jobs.platform.send(
+      knowledgeIngestQueue,
+      { run: crypto.randomUUID(), tenant: ORG },
+      { key: knowledgeKeys.ingest({ dataset: at.dataset, id: at.pipeline }) },
+    );
+    const started = await apiRuns.start({
+      id: crypto.randomUUID(),
+      ...at,
+      pipelineVersion: 1,
+      backend: 'index-writer',
+      startedBy: 'employee:test:kari',
+      startedAt: new Date().toISOString(),
+      admittedAt: new Date().toISOString(),
+    });
+    expect(started).toEqual({
+      ok: false,
+      conflict: true,
+      message: ingestStillEndingMessage(at.dataset, at.pipeline),
+    });
+    const { rows } = await api.pool.query(
+      `select id from ingestion_executions where dataset = $1`,
+      [at.dataset],
+    );
+    expect(rows).toEqual([]);
   });
 
   it('sending back refuses a run of another pipeline', async () => {

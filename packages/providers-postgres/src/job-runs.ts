@@ -173,9 +173,19 @@ export class PostgresJobRuns {
           [run.id, input.at],
         );
         await client.query(
-          `insert into knowledge_job_requests (id, scope, run, kind, requested_by, reason, requested_at)
-           values ($1, $2, $3, 'redrive', $4, $5, $6)`,
-          [randomUUID(), run.scope, run.id, input.by, input.reason, input.at],
+          `insert into knowledge_job_requests (id, scope, run, kind, requested_by, reason,
+             requested_at, previous_status, previous_error)
+           values ($1, $2, $3, 'redrive', $4, $5, $6, $7, $8)`,
+          [
+            randomUUID(),
+            run.scope,
+            run.id,
+            input.by,
+            input.reason,
+            input.at,
+            run.status,
+            run.error,
+          ],
         );
         return { ok: true as const, value: toExecution(reopened[0] as Row) };
       });
@@ -194,6 +204,9 @@ export interface JobRunRequest {
   id: string;
   run: string;
   kind: 'redrive';
+  /** How the run had ended before it was sent back, to end it so again when nothing went back. */
+  previousStatus: 'succeeded' | 'failed';
+  previousError?: string;
 }
 
 export interface RunOutcome {
@@ -239,9 +252,23 @@ export class PostgresJobRunRecords {
 
   async requests(): Promise<JobRunRequest[]> {
     const { rows } = await this.#platform('knowledge-run-requests', (client) =>
-      client.query<JobRunRequest>('select id, run, kind from pending_knowledge_job_requests()'),
+      client.query<{
+        id: string;
+        run: string;
+        kind: 'redrive';
+        previous_status: 'succeeded' | 'failed' | null;
+        previous_error: string | null;
+      }>(
+        'select id, run, kind, previous_status, previous_error from pending_knowledge_job_requests()',
+      ),
     );
-    return rows;
+    return rows.map((row) => ({
+      id: row.id,
+      run: row.run,
+      kind: row.kind,
+      previousStatus: row.previous_status ?? 'failed',
+      ...(row.previous_error === null ? {} : { previousError: row.previous_error }),
+    }));
   }
 
   async applied(id: string, at: string): Promise<void> {

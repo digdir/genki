@@ -757,6 +757,9 @@ const migrations: string[] = [
      requested_at text collate "C" not null,
      applied_at text collate "C"
    )`,
+  `alter table knowledge_job_requests
+     add column if not exists previous_status text,
+     add column if not exists previous_error text`,
   `create index if not exists knowledge_job_requests_pending
      on knowledge_job_requests (requested_at) where applied_at is null`,
   ...tenantIsolation('knowledge_job_requests', 'scope'),

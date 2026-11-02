@@ -7,9 +7,6 @@ import type {
 } from '@genai/providers-postgres';
 import { queuedRunRules } from './knowledge-jobs.js';
 
-export const nothingToSendBackMessage =
-  'the run had no failed jobs to send back, so nothing was run again; start the run again';
-
 export const listingFailedMessage =
   'listing the source failed after its retries; send the run back once the source answers';
 
@@ -76,11 +73,15 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     for (const server of deps.servers) sent += await server.redrive(request.run);
     result.sentBack += sent;
     await deps.records.applied(request.id, at);
+    // Nothing went back, so nothing will end the reopened run: end it as it had ended.
     const reopened = sent === 0 ? await deps.records.find(request.run) : undefined;
     if (reopened?.status === 'running') {
       const { ended } = await deps.records.end(
         reopened,
-        { status: 'failed', error: nothingToSendBackMessage },
+        {
+          status: request.previousStatus,
+          ...(request.previousError ? { error: request.previousError } : {}),
+        },
         at,
         rules,
       );

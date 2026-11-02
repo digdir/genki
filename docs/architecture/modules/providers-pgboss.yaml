@@ -13,7 +13,7 @@ description:
   and works as genai_worker with migrate and createSchema off. Of the roles the apps run as, only
   the worker's (genai_worker, or genai_knowledge_writer on the knowledge server) can read or
   change the job tables; genai_runtime may send jobs on the platform server, for the knowledge
-  queues, but not read, change or delete one. Jobs are sent in the caller's transaction. Counts and dead letters can be read
+  queues, reading only a job's id and start time, never its data, and changing or deleting none. Jobs are sent in the caller's transaction. Counts and dead letters can be read
   only through functions that need platform access, with PgBossJobReads, for the console screen
   still to come (ADR 0041). PgBossRunJobs finds, cancels and sends back a run's jobs for the
   knowledge reconciler (ADR 0042).
