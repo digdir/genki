@@ -669,9 +669,9 @@ describe('live Testsett: Langfuse-dommere', () => {
       within(judges).getByText('tone-eksperimenter – ikke tatt i bruk under Byggeklosser'),
     ).toBeTruthy();
     expect(within(judges).getByText('alle_spenn – stopper sendte kjøringer')).toBeTruthy();
-    expect(
-      calls.some((c) => /\/eval-runs\/sending\?version=draft&testSet=rapport-kjerne$/.test(c.path)),
-    ).toBe(true);
+    expect(calls.some((c) => /\/eval-runs\/sending\?testSet=rapport-kjerne$/.test(c.path))).toBe(
+      true,
+    );
     expectAccessible();
   });
 
@@ -703,16 +703,29 @@ describe('live Testsett: Langfuse-dommere', () => {
     ).toBeNull();
   });
 
-  it('reads the judges on the test set from the published version when the service has no draft', async () => {
+  it('reads the judges on the test set from the published version, so a service without a draft makes no failed call', async () => {
+    const { calls } = await openLive('', {}, {}, withDataset(reaching()));
+
+    const judges = await screen.findByRole('list', {
+      name: 'Dommere i Langfuse som når testsettet',
+    });
+    expect(within(judges).getByText(`${rule} – i bruk`)).toBeTruthy();
+    expect(calls.some((c) => /\/eval-runs\/sending\?version=draft/.test(c.path))).toBe(false);
+  });
+
+  it('reads the judges on the test set from the draft when the service has no published version', async () => {
     const answer = reaching();
     await openLive(
       '',
       {},
       {},
       withDataset((path) =>
-        /\/eval-runs\/sending\?version=draft/.test(path)
+        /\/eval-runs\/sending\?testSet=/.test(path)
           ? Response.json(
-              { title: 'Fant ikke', errors: [{ path: 'version', message: 'no draft version' }] },
+              {
+                title: 'Fant ikke',
+                errors: [{ path: 'version', message: 'no published version' }],
+              },
               { status: 404 },
             )
           : answer(path),

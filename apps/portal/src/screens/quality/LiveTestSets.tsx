@@ -66,17 +66,18 @@ const ReachingJudges = ({
 }) => {
   const t = useT();
   const listId = useId();
-  // The judges that reach a test set do not depend on the service's version: the draft's answer,
-  // or the published one's when the service has no draft.
+  // The judges that reach a test set do not depend on the service's version: the published one's
+  // answer, which every live service has, so one without a draft makes no failed call; the
+  // draft's when nothing is published.
   const [state] = useAsync(
     async (signal) => {
       const missing = (error: unknown) => error instanceof ApiError && error.status === 404;
       try {
         return await api.quality
-          .sending(tenant, serviceId, 'draft', testSet, signal)
+          .sending(tenant, serviceId, 'published', testSet, signal)
           .catch((error: unknown) => {
             if (!missing(error)) throw error;
-            return api.quality.sending(tenant, serviceId, 'published', testSet, signal);
+            return api.quality.sending(tenant, serviceId, 'draft', testSet, signal);
           });
       } catch (error) {
         return missing(error)
