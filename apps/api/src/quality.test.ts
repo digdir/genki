@@ -167,6 +167,7 @@ const boot = async (
         json: {
           data: [
             { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
             { id: 'gpt-41-dommer', model: 'gpt-4.1', status: 'succeeded' },
           ],
         },
