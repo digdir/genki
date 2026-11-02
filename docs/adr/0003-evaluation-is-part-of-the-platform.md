@@ -15,7 +15,7 @@ Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-2
 
 These rules replace or extend the decision above once they are built. The ones marked built are:
 
-- **One kind of run** (built). A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it.
+- **One kind of run** (built). A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it. The run also scores the metric of each threshold gate the definition lists that a deterministic evaluator computes, `nynorsk.chrf` (`nynorskReference`) and `klarsprak.overall` (`klarsprakChecklist`) today, without model calls, so the portal's "Kjør testsettet" on the draft can satisfy those gates (tested in `integration.test.ts`). The subject a run records leaves out `spec.riskConfirmation`, which publishing stamps with who confirmed and when.
 - **Evaluators may answer later** (built). An evaluator returns its scores at once or later (`evaluator@2`, ADR 0040).
 - **Holdout stays in the platform** (built). Holdout cases never leave the platform for a trace sink.
 - **`expected.criteria`.** A test case carries the named fields judges read in `expected.criteria`, such as `criteria` or `supporting_quotes`. A `criteria` case's criteria move there from `referenceAnswer`, which then holds only a reference answer. Existing test sets are upgraded when they are read, so stored versions keep their numbers (built).

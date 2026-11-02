@@ -268,8 +268,16 @@ export const DatasetDetail = ({
     pii: true,
     share: 'egen' as 'egen' | 'alle',
   });
-  useEffect(() => setTab(initialTab), [initialTab]);
-  useEffect(() => setOpenRun(initialRun), [initialRun]);
+  const [linkedTab, setLinkedTab] = useState(initialTab);
+  if (linkedTab !== initialTab) {
+    setLinkedTab(initialTab);
+    setTab(initialTab);
+  }
+  const [linkedRun, setLinkedRun] = useState(initialRun);
+  if (linkedRun !== initialRun) {
+    setLinkedRun(initialRun);
+    setOpenRun(initialRun);
+  }
   useEffect(() => {
     if (ocrSetting) setSettings((s) => ({ ...s, ocr: ocrSetting[1] === 'På' }));
   }, [ocrSetting?.[1]]);
