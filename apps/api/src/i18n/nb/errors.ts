@@ -12,6 +12,10 @@ export const catalogErrors = defineNamespace({
   moveWithEngineSwitch:
     'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
   generationOfAnother: '{generation} er generasjonen til et annet datasett',
+  knowledgeWrittenByWorker: 'kunnskapsdata skrives av bakgrunnstjenesten',
+  knowledgeNotReady: 'kunnskapsserveren er ikke klar: lesefunksjonene er ikke bygget ennå',
+  knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
+  noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',
   tenantEndpointsModels: 'virksomhetens endepunkter lister modellene sine eksplisitt',
   tenantEndpointsAuth: 'virksomhetens endepunkter bruker api-key eller bearer',

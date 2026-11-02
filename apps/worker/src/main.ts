@@ -118,10 +118,13 @@ log('storage', { kind: db ? 'postgres' : 'memory' });
 const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
 const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'worker') : undefined;
 const knowledgeWriter = knowledgeServer?.pools.writer;
+// Set once the runtime exists: filter indexes skipped while unbound are followed when the binding is fixed.
+let followKnowledge = () => {};
 const knowledgeBinding = watchKnowledgeBinding({
   platformId: () => (db ? platformId(db.pool) : Promise.resolve('')),
   ...(knowledgeWriter ? { boundTo: () => boundPlatformId(knowledgeWriter) } : {}),
   log,
+  onBound: () => followKnowledge(),
 });
 await knowledgeBinding.start();
 const health = await startHealthServer({
@@ -295,6 +298,7 @@ const runtime = await createRuntime({
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
 });
+followKnowledge = runtime.followKnowledge;
 
 if (!db) {
   const promptsDir = join(servicesDir, 'prompts');

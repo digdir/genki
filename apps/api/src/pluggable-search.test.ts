@@ -14,6 +14,7 @@ import { createPool } from '@genai/providers-postgres';
 import { createAdmin } from './admin.js';
 import { loadCatalog } from './catalogs.js';
 import { createPlatform, type PlatformInput } from './composition.js';
+import { translateMessage } from './i18n/index.js';
 import { toTimeline } from './timeline.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 
@@ -151,6 +152,43 @@ describe('pluggable search engines over the API', () => {
       return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
     };
 
+    it('a switch from the platform database to the knowledge database is refused in bokmål as written by the worker, not as shared storage', async () => {
+      const { call } = await boot({
+        embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+        catalogs: {
+          ...knowledgeCatalogs,
+          embeddings: {
+            endpoints: {
+              fake: {
+                protocol: 'fake-embeddings',
+                baseURL: 'https://embed.invalid',
+                auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
+              },
+            },
+            models: [
+              {
+                id: 'fake/embed',
+                endpoint: 'fake',
+                deployment: 'e',
+                residency: 'norway',
+                dimensions: 8,
+              },
+            ],
+          },
+        },
+        knowledgeServer: { reader: pool },
+      });
+      expect((await publish(call, 'digdir/notes', dataset('platform-pg'))).status).toBe(200);
+      const started = await call('/operator/datasets/digdir%2Fnotes/engine-switches', 'drift', {
+        body: { to: 'knowledge-pg', method: 'copy', embedding },
+      });
+      expect(started.status).toBe(409);
+      const { title } = await json<{ title: string }>(started);
+      expect(title).not.toContain('deler lagring');
+      // The app's locale middleware puts the refusal into bokmål through the catalogue.
+      expect(translateMessage(title, 'nb')).toBe('kunnskapsdata skrives av bakgrunnstjenesten');
+    });
+
     it('a dataset published onto the knowledge database names a new generation', async () => {
       const { call } = await boot({
         catalogs: knowledgeCatalogs,
@@ -211,7 +249,7 @@ describe('pluggable search engines over the API', () => {
       expect(JSON.stringify(taken.body)).toContain('generation of another dataset');
     });
 
-    it('a plain publish that moves a dataset from another endpoint onto the knowledge database is refused', async () => {
+    it('a publish that moves a dataset from another endpoint onto the knowledge database is refused, even naming a generation', async () => {
       const { call } = await boot({
         catalogs: knowledgeCatalogs,
         knowledgeServer: { reader: pool },
@@ -220,12 +258,14 @@ describe('pluggable search engines over the API', () => {
       const moved = await publish(call, 'digdir/notes', dataset('knowledge-pg'));
       expect(moved.status).toBe(400);
       expect(JSON.stringify(moved.body)).toContain('engine switch');
-      const switched = await publish(
+      // A named generation may not exist or be filled; only an engine switch fills one (#142).
+      const named = await publish(
         call,
         'digdir/notes',
         dataset('knowledge-pg', { generation: 'g-20261101-c3d4' }),
       );
-      expect(switched.status).toBe(200);
+      expect(named.status).toBe(400);
+      expect(JSON.stringify(named.body)).toContain('engine switch');
     });
   });
 

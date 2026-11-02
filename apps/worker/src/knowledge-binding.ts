@@ -20,6 +20,8 @@ export const watchKnowledgeBinding = (options: {
   boundTo?: () => Promise<string | undefined>;
   log: (msg: string, extra?: Record<string, unknown>) => void;
   intervalMs?: number;
+  /** Called when a binding that was wrong or unreachable becomes right. */
+  onBound?: () => void;
 }): KnowledgeBindingWatch => {
   const { boundTo, log } = options;
   let state: State = boundTo ? { kind: 'checking' } : { kind: 'none' };
@@ -40,8 +42,11 @@ export const watchKnowledgeBinding = (options: {
       return;
     }
     state = next;
-    if (next.kind === 'bound' && before !== 'bound')
+    if (next.kind === 'bound' && before !== 'bound') {
       log('knowledge server bound to this platform server');
+      // Knowledge work refused while unbound or unreachable is picked up again.
+      if (before !== 'checking') options.onBound?.();
+    }
     if (next.kind === 'unbound' && before !== 'unbound')
       log(
         next.boundTo === undefined

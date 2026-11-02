@@ -564,6 +564,13 @@ export class CatalogRegistry {
     previous: Record<string, unknown> | undefined,
   ): CatalogProblem | undefined {
     if (!this.#onKnowledgeServer(spec.endpoint)) return undefined;
+    // A moved dataset would go live on a generation nothing has filled, named or not.
+    if (previous && previous.endpoint !== spec.endpoint)
+      return {
+        path: 'spec.endpoint',
+        message:
+          'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+      };
     if (spec.generation !== undefined) {
       const taken = [...this.#slots.values()].some(
         (slot) =>
@@ -578,16 +585,10 @@ export class CatalogRegistry {
           }
         : undefined;
     }
-    if (previous && previous.endpoint === spec.endpoint && previous.generation !== undefined) {
+    if (previous && previous.generation !== undefined) {
       spec.generation = previous.generation;
       return undefined;
     }
-    if (previous && previous.endpoint !== spec.endpoint)
-      return {
-        path: 'spec.endpoint',
-        message:
-          'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
-      };
     const day = (this.#options.now?.() ?? new Date())
       .toISOString()
       .slice(0, 10)

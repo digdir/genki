@@ -642,13 +642,13 @@ export const createRuntime = async (input: RuntimeInput) => {
   late.store = store;
 
   const prices: Record<string, unknown> = input.prices ?? {};
-  const apply = (catalogs: EffectiveCatalogs) => {
-    models.reload(catalogs.models);
-    knowledge.reload(catalogs.knowledge);
-    writers.reload(catalogs.knowledge);
-    const onKnowledgeServer = new Set(knowledgeServerEndpoints(catalogs.knowledge));
+  let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
+  /** Brings the knowledge server's filter indexes in line with the current catalog. */
+  const followKnowledge = () => {
+    if (!pgvector || !knowledgeCatalog) return;
+    const onKnowledgeServer = new Set(knowledgeServerEndpoints(knowledgeCatalog));
     pgvector
-      ?.followCatalog(
+      .followCatalog(
         knowledge
           .datasetConfigs()
           .filter((d) => onKnowledgeServer.has(d.endpoint))
@@ -657,6 +657,13 @@ export const createRuntime = async (input: RuntimeInput) => {
       .catch((error: unknown) =>
         input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
       );
+  };
+  const apply = (catalogs: EffectiveCatalogs) => {
+    models.reload(catalogs.models);
+    knowledge.reload(catalogs.knowledge);
+    writers.reload(catalogs.knowledge);
+    knowledgeCatalog = catalogs.knowledge;
+    followKnowledge();
     rerank.reload(catalogs.rerank);
     replaceSet(plugins.datasets, knowledge.datasets().keys());
     replaceSet(plugins.rerankers, rerank.rerankers());
@@ -815,6 +822,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     decorate,
     refreshTools,
     sync,
+    followKnowledge,
     quarantined: () => [...quarantine.values()],
   };
 };

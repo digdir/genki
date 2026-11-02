@@ -80,6 +80,25 @@ describe('the knowledge server binding', () => {
     expect(boundTo).toHaveBeenCalledTimes(3);
   });
 
+  it('a worker follows the catalog again once its binding is fixed, so filter indexes skipped while unbound are built', async () => {
+    vi.useFakeTimers();
+    const answers = [production, platform];
+    const onBound = vi.fn();
+    watch = watchKnowledgeBinding({
+      platformId: async () => platform,
+      boundTo: async () => answers.shift() ?? platform,
+      log: vi.fn(),
+      onBound,
+    });
+
+    await watch.start();
+    expect(onBound).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(onBound).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(onBound).toHaveBeenCalledTimes(1);
+  });
+
   it('fails to start the health server with the port it could not take', async () => {
     server = await startHealthServer({ port: 0, ready: () => true });
     const port = Number(new URL(server.url).port);

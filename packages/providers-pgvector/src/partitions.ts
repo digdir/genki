@@ -84,18 +84,25 @@ const migrations: string[] = [
      as $$ select case when jsonb_typeof(v) = 'string' then v #>> '{}' end $$`,
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
+  // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
+  `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
+  `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,
 ];
 
-export const migrateKnowledgeServer = async (owner: Pool) => {
+/** Runs at a worker's first knowledge use; like partition DDL it gives up after `lockTimeoutMs` rather than queue writes behind it. */
+export const migrateKnowledgeServer = async (owner: Pool, options: PartitionOptions = {}) => {
   const client = await owner.connect();
   try {
     await client.query('begin');
+    await client.query(`select set_config('lock_timeout', $1, true)`, [
+      `${options.lockTimeoutMs ?? defaultLockTimeoutMs}ms`,
+    ]);
     await client.query(`select pg_advisory_xact_lock(hashtext('genai-knowledge-server-migrate'))`);
     for (const sql of migrations) await client.query(sql);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
-    throw error;
+    throw busy(error);
   } finally {
     client.release();
   }
@@ -149,8 +156,14 @@ const partitionDdl = <T>(
            where i.inhdetachpending and p.relname = any($1)`,
         [[...knowledgeTables]],
       );
-      for (const row of rows)
-        await client.query(`alter table ${row.parent} detach partition ${row.child} finalize`);
+      for (const row of rows) {
+        try {
+          await client.query(`alter table ${row.parent} detach partition ${row.child} finalize`);
+        } catch (error) {
+          // A detach a long read still holds back is finished by a later call; it never stops this one.
+          if ((error as { code?: string }).code !== '55P03') throw error;
+        }
+      }
       return await run(client);
     } catch (error) {
       throw busy(error);
@@ -286,12 +299,19 @@ export const syncFilterIndexes = (
   options: PartitionOptions = {},
 ) =>
   partitionDdl(owner, options, async (client) => {
-    const { rows } = await client.query<{ generation: string }>(
-      `select generation from kn_generations where dataset = $1 and state <> 'detaching'`,
-      [dataset.id],
-    );
-    for (const { generation } of rows)
-      await syncTableFilters(client, dataset, partitionOf('kn_docs', generation));
+    // One sync per dataset across worker processes, so two never build the same index at once.
+    const key = `genai-knowledge-filters:${dataset.id}`;
+    await client.query(`select pg_advisory_lock(hashtext($1))`, [key]);
+    try {
+      const { rows } = await client.query<{ generation: string }>(
+        `select generation from kn_generations where dataset = $1 and state <> 'detaching'`,
+        [dataset.id],
+      );
+      for (const { generation } of rows)
+        await syncTableFilters(client, dataset, partitionOf('kn_docs', generation));
+    } finally {
+      await client.query(`select pg_advisory_unlock(hashtext($1))`, [key]);
+    }
   });
 
 /** Indexes a loaded generation like its parents, then attaches it without a scan; activating it is a catalog change. */

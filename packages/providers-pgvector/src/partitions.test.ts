@@ -19,6 +19,7 @@ import {
   setUpKnowledgeServer,
   type PgvectorDatasetOptions,
 } from './index.js';
+import { knowledgeRoles } from './knowledge-setup.js';
 
 let container: StartedPostgreSqlContainer;
 let admin: pg.Pool;
@@ -218,6 +219,48 @@ describe('generations as partitions on the knowledge server', () => {
     expect((await indexesOf(table)).filter((n) => n.includes('_r_'))).toHaveLength(1);
   });
 
+  it('a worker whose knowledge server is bound to another platform server changes no filter index', async () => {
+    const d = dataset('digdir/unbound', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
+    await fill(d, 'g-20261102-0201', [doc('a', 8, { type: ['rapport'], year: 2023 })]);
+    const table = partitionOf('kn_docs', 'g-20261102-0201');
+    let bound = false;
+    const engine = pgvectorEngine({
+      pool: admin,
+      knowledge: { owner, writer: owner },
+      knowledgeGuard: () => {
+        if (!bound) throw new Error('the knowledge server is bound to another platform server');
+      },
+    });
+    const changed: Dataset = {
+      ...d,
+      filters: { type: 'multiselect', year: 'range' },
+      valueTypes: { year: 'integer' },
+    };
+
+    await expect(engine.followCatalog([changed])).rejects.toThrow(
+      'bound to another platform server',
+    );
+    expect((await indexesOf(table)).filter((n) => n.includes('_r_'))).toEqual([]);
+    bound = true;
+    await engine.followCatalog([changed]);
+    expect((await indexesOf(table)).filter((n) => n.includes('_r_'))).toHaveLength(1);
+  });
+
+  it('the server migration gives up after lock_timeout instead of queueing writes behind it', async () => {
+    const holder = await owner.connect();
+    try {
+      await holder.query('begin');
+      await holder.query('lock table kn_docs in row exclusive mode');
+      await expect(migrateKnowledgeServer(owner, { lockTimeoutMs: 200 })).rejects.toThrow(
+        'the knowledge server is busy, try again',
+      );
+    } finally {
+      await holder.query('rollback');
+      holder.release();
+    }
+    await migrateKnowledgeServer(owner);
+  });
+
   it('attaching a generation does not scan it', async () => {
     const d = dataset('digdir/attach', 8);
     const writer = writerFor();
@@ -269,6 +312,60 @@ describe('generations as partitions on the knowledge server', () => {
 
     await prepareGeneration(owner, dataset('digdir/detach-next', 8), 'g-20261030-0402');
     expect(await pending()).toBeUndefined();
+  });
+
+  it("a detach that cannot finish yet does not stop another generation's partition DDL", async () => {
+    const d = dataset('digdir/stuck', 8);
+    await fill(d, 'g-20261102-0401', [doc('a', 8, {})]);
+    const table = partitionOf('kn_chunks', 'g-20261102-0401');
+    const reader = await owner.connect();
+    const detacher = await owner.connect();
+    try {
+      await reader.query('begin isolation level repeatable read');
+      await reader.query(`select count(*) from kn_chunks`);
+      await detacher.query(`set statement_timeout = '500ms'`);
+      await expect(
+        detacher.query(`alter table kn_chunks detach partition ${table} concurrently`),
+      ).rejects.toThrow(/statement timeout/);
+      // The reader's snapshot still holds the detach back.
+      await prepareGeneration(owner, dataset('digdir/stuck-other', 8), 'g-20261102-0402', {
+        lockTimeoutMs: 300,
+      });
+    } finally {
+      await reader.query('commit');
+      await detacher.query('reset statement_timeout');
+      reader.release();
+      detacher.release();
+    }
+  });
+
+  it("only one process changes a dataset's filter indexes at a time", async () => {
+    const d = dataset('digdir/one-sync', 8, { filters: { type: 'multiselect' }, valueTypes: {} });
+    await fill(d, 'g-20261102-0403', [doc('a', 8, { type: ['rapport'] })]);
+    const other = await owner.connect();
+    try {
+      await other.query(
+        `select pg_advisory_lock(hashtext('genai-knowledge-filters:digdir/one-sync'))`,
+      );
+      await expect(syncFilterIndexes(owner, d, { lockTimeoutMs: 300 })).rejects.toThrow(
+        'the knowledge server is busy, try again',
+      );
+    } finally {
+      await other.query(`select pg_advisory_unlock_all()`);
+      other.release();
+    }
+    await syncFilterIndexes(owner, d);
+  });
+
+  it('only the owner and the writer can run the helper functions the filter indexes use', async () => {
+    for (const fn of ['kn_int(jsonb)', 'kn_text(jsonb)']) {
+      const { rows } = await admin.query<{ reader: boolean; writer: boolean }>(
+        `select has_function_privilege($1, $3, 'execute') as reader,
+                has_function_privilege($2, $3, 'execute') as writer`,
+        [knowledgeRoles.reader, knowledgeRoles.writer, fn],
+      );
+      expect(rows[0]).toEqual({ reader: false, writer: true });
+    }
   });
 
   it('partition DDL gives up after `lock_timeout`', async () => {

@@ -409,6 +409,8 @@ export const pgvectorEngine = (options: PgvectorEngineOptions): PgvectorEngine =
     following = following
       .catch(() => undefined)
       .then(async () => {
+        // A worker bound to another platform server changes nothing on the knowledge server.
+        options.knowledgeGuard?.();
         await knowledgeServerReady();
         for (const dataset of datasets) {
           const filters = JSON.stringify([dataset.filters, dataset.valueTypes ?? {}]);
