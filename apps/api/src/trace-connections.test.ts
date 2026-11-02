@@ -148,6 +148,7 @@ describe("an agency's Langfuse connections", () => {
         labels: false,
         instance: false,
         residencySetBy: 'tenant',
+        datasets: [],
       },
     ]);
     expect(JSON.stringify(listed.body)).not.toContain('sk-lf-hemmelig');

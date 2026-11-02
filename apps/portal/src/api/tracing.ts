@@ -19,6 +19,8 @@ export interface TraceConnection extends TraceConnectionInput {
   instance: boolean;
   residencySetBy: 'operator' | 'tenant';
   removing?: boolean;
+  /** One Langfuse dataset per test set of the services it covers, which judges are pointed at. */
+  datasets?: { service: string; testSet: string; name: string; id: string }[];
 }
 
 export const tracingApi = ({ get, request, tenantPath }: ApiContext) => {

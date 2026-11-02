@@ -115,6 +115,8 @@ export const catalogErrors = {
   sinkJudgeNoContent:
     '{rule} has nothing to judge: the connection {connection} gets no answer text',
   sinkJudgesUnreadable: 'the judges of the connection {connection} could not be read: {error}',
+  sinkDatasetUnavailable:
+    'the dataset of the test set {testSet} could not be found or made in the project of the connection {connection}: {error}',
   sinkJudgesDiffer:
     'the project of the connection {connection} has active judges genki does not read: {judges}; take them in use or switch them off in Langfuse',
   sinkJudgeNotAModel:

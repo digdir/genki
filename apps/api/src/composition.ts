@@ -75,6 +75,8 @@ import { type BlobStore } from '@genai/port-blob';
 import {
   createExperimentRouter,
   createTraceExporter,
+  datasetName,
+  langfuseDatasets,
   langfuseJudges,
   mappedContent,
   observedEventLog,
@@ -268,6 +270,7 @@ import {
   type TraceSinks,
   type TracingOptions,
 } from './trace-connections.js';
+import { testRunEnvironment, traceDatasets, withTraceDatasets } from './trace-datasets.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
@@ -982,7 +985,14 @@ export const createPlatform = async (input: PlatformInput) => {
     experimentUrl: async (tenant, connection, run) =>
       (await langfuseOf(tenant, connection)).experimentUrl(run),
     fieldsOf: (judges) => mappedContent(judges.map((j) => j.snapshot as LangfuseJudge)),
-    open: (run, tenant, connection, beforeSend, fields = []) =>
+    dataset: async (tenant, connection, service, testSet) =>
+      langfuseDatasets({
+        host: connection.host,
+        publicKey: connection.publicKey,
+        secretKey: await tenantSecrets.resolveFor(tenant, connection.secretKey, [connection.host]),
+        fetch: pinnedFetch(sinkEgress, allowOf(connection.host)),
+      }).ensure(datasetName(service, testSet)),
+    open: (run, tenant, connection, beforeSend, fields = [], dataset) =>
       experiments.open(
         run,
         createTraceExporter(
@@ -998,6 +1008,8 @@ export const createPlatform = async (input: PlatformInput) => {
             fields: fields.filter(
               (f) => f === 'input' || f === 'output' || f === 'expected_output',
             ),
+            // Every agency's test runs land apart from its live traffic (ADR 0040).
+            environment: testRunEnvironment,
           },
           {
             secrets: {
@@ -1009,6 +1021,7 @@ export const createPlatform = async (input: PlatformInput) => {
             serviceName: 'genai-eval',
             ...(beforeSend ? { beforeSend } : {}),
             experiments: true,
+            ...(dataset ? { dataset } : {}),
           },
         ),
         tenant,
@@ -1059,6 +1072,15 @@ export const createPlatform = async (input: PlatformInput) => {
   };
   const evalStores = {
     ...baseEvalStores,
+    testSets: withTraceDatasets(
+      baseEvalStores.testSets,
+      traceDatasets({
+        configEntries,
+        traceSinks,
+        testSets: baseEvalStores.testSets,
+        ...(input.logger ? { log: input.logger } : {}),
+      }),
+    ),
     feedback: feedbackToModules(
       webhooks.feedback(baseEvalStores.feedback, taskStore),
       taskStore,

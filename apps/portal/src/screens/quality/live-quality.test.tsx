@@ -64,6 +64,32 @@ describe('live Testsett', () => {
     expectAccessible();
   });
 
+  it("shows the Langfuse dataset the test set's sent runs are linked to", async () => {
+    await openLive('', {}, {}, (path) =>
+      path === '/tenants/999888777/services/rapportassistenten/test-sets'
+        ? Response.json({
+            data: [
+              {
+                id: 'rapport-kjerne',
+                name: 'Kjernespørsmål',
+                cases: 2,
+                dataset: { connection: 'digdir', name: 'genki/rapportassistenten/rapport-kjerne' },
+              },
+            ],
+          })
+        : undefined,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Kjernespørsmål' })).toBeTruthy();
+    expect(screen.getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Testkjøringer som sendes til Langfuse, knyttes til datasettet i koblingen digdir:',
+      ),
+    ).toBeTruthy();
+    expectAccessible();
+  });
+
   it('adds a locked case with a reason and deletes a case after confirming', async () => {
     const { writes } = await openLive();
     await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');

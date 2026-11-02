@@ -40,6 +40,7 @@ import {
   type TraceConnection,
 } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
+import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
@@ -365,6 +366,11 @@ const modelsOf = (definition: Record<string, unknown>) => {
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
   const choice = modelChoice(deps);
   const leases = backgroundLeases(leaseOptions);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+  });
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
   const draftOf = drafts.draftOf;
@@ -738,6 +744,16 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
       }
     }
+    // Every sent run names its test set's dataset, made again if it was deleted in Langfuse. Asked
+    // only once the run's own checks pass, so a refused run writes nothing to the project.
+    const dataset = sink
+      ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
+          prepared.release();
+          throw new TraceRefused(
+            `the dataset of the test set ${set.metadata.id} could not be found or made in the project of the connection ${sink.id}: ${messageOf(error)}`,
+          );
+        })
+      : undefined;
     const cases = casesIn(set, split);
     const runId = randomUUID();
     // Where the sink shows the run's experiment; a run is no less valid without the link.
@@ -807,6 +823,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             })
           : undefined,
         deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
+        dataset?.id,
       );
     const done = (async () => {
       try {
