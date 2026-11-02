@@ -700,7 +700,115 @@ const definitionKind = z
   .enum(['services', 'step-flows', 'skills'])
   .openapi({ param: { name: 'kind', in: 'path' }, example: 'services' });
 
+const TraceConnection = z
+  .object({
+    id: z.string(),
+    host: z
+      .string()
+      .describe("The Langfuse's base URL; HTTPS, never a private or link-local address"),
+    publicKey: z.string(),
+    secretKey: z.string().describe('A secret://tenant/<tenant>/<name> reference, set for the host'),
+    services: z
+      .array(z.string())
+      .describe('The services whose eval runs it receives; one connection per service'),
+    residency: z
+      .enum(['norway', 'eu', 'global'])
+      .describe(
+        "Where the host stores data and its judges' models run. Set by an operator on Digdir's Langfuse",
+      ),
+    content: z.boolean().describe('Whether it receives the text its judges map'),
+    erasureDeclared: z
+      .boolean()
+      .describe(
+        "The tenant's declaration that its own Langfuse deletes what genki deletes and keeps raw files at most 7 days",
+      ),
+    instance: z.boolean().describe("Whether the host is Digdir's Langfuse"),
+    residencySetBy: z.enum(['operator', 'tenant']),
+  })
+  .openapi('TraceConnection');
+
+const connectionId = pathParam('id', 'etaten');
+
+const tracingRoutes: RouteConfig[] = [
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/tracing/connections',
+    summary: "The tenant's Langfuse connections, with secret references only. Any member",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(z.object({ data: z.array(TraceConnection) }), 'Connections'),
+      404: problem('Not a member of the tenant'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/tenants/{tenant}/tracing/connections/{id}',
+    summary: 'Create or change a Langfuse connection. Needs manage-services',
+    request: {
+      params: z.object({ tenant, id: connectionId }),
+      headers: reason,
+      body: body(
+        TraceConnection.omit({ id: true, instance: true, residencySetBy: true }).partial({
+          services: true,
+          residency: true,
+          content: true,
+          erasureDeclared: true,
+        }),
+      ),
+    },
+    responses: {
+      200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
+      400: problem(
+        'A host that is not HTTPS or is private, a secret of another tenant or not set for the host, a service already covered, or content where erasure is not shown',
+      ),
+      403: problem('Missing manage-services'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/tenants/{tenant}/tracing/connections/{id}',
+    summary: 'Remove a Langfuse connection. Needs manage-services',
+    request: { params: z.object({ tenant, id: connectionId }), headers: reason },
+    responses: {
+      200: json(z.object({ removed: z.string() }), 'Removed'),
+      400: problem('No such connection'),
+      403: problem('Missing manage-services'),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/tenants/{tenant}/tracing/connections/{id}/check',
+    summary:
+      "Check a connection's keys against its Langfuse project, through the egress path. Any member",
+    request: { params: z.object({ tenant, id: connectionId }) },
+    responses: {
+      200: json(
+        z.object({ ok: z.literal(true), project: z.object({ id: z.string(), name: z.string() }) }),
+        'The project the keys open',
+      ),
+      404: problem('No such connection'),
+      422: problem('Langfuse refused the keys or could not be reached'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/tracing/connections/{tenant}/{id}/residency',
+    summary: "Set the residency of a tenant's connection to Digdir's Langfuse. Operators only",
+    request: {
+      params: z.object({ tenant, id: connectionId }),
+      headers: reason,
+      body: body(z.object({ residency: z.enum(['norway', 'eu', 'global']) })),
+    },
+    responses: {
+      200: json(TraceConnection.omit({ instance: true, residencySetBy: true }), 'Saved'),
+      400: problem("Not a connection to Digdir's Langfuse"),
+      403: problem('Not an operator'),
+    },
+  }),
+];
+
 export const accessRoutes: RouteConfig[] = [
+  ...tracingRoutes,
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/access',

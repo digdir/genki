@@ -6,6 +6,7 @@ import { datasetsApi } from './api/datasets';
 import { keyPoliciesApi } from './api/key-policies';
 import { maskinportenApi } from './api/maskinporten';
 import { hooksApi } from './api/hooks';
+import { tracingApi } from './api/tracing';
 import { triggersApi } from './api/triggers';
 import { preferencesApi } from './api/preferences';
 import { onboardingApi } from './api/onboarding';
@@ -157,6 +158,7 @@ const featureClients = (ctx: ApiContext) => ({
   maskinporten: maskinportenApi(ctx),
   keyPolicies: keyPoliciesApi(ctx),
   hooks: hooksApi(ctx),
+  tracing: tracingApi(ctx),
   triggers: triggersApi(ctx),
   preferences: preferencesApi(ctx),
   recipes: recipesApi(ctx),

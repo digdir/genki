@@ -29,7 +29,12 @@ import type { createWebhooks } from './webhooks.js';
 import type { HookRuntime } from './hooks.js';
 import type { ContractSetup, PluginRegistry } from '@genai/plugins';
 import type { ExternalPlugin, PluginRuntime } from './external-plugins.js';
-import type { ConnectionToolSource } from '@genai/providers-mcp-client';
+import type {
+  ConnectionToolSource,
+  EgressOptions,
+  TenantSecrets,
+} from '@genai/providers-mcp-client';
+import type { TracingOptions } from './trace-connections.js';
 import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
@@ -64,6 +69,11 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   evalCapability?: string;
   /** The platform's own version, recorded as the commit of the eval runs it starts. */
   appVersion?: string;
+  /** Resolves a tenant's secret references, only for the hosts each secret is set for. */
+  tenantSecrets?: TenantSecrets;
+  /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
+  egressOptions?: EgressOptions;
+  tracing?: TracingOptions;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
   enrichmentTask?: TrackedWork;
