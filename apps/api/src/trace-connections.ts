@@ -451,6 +451,8 @@ export interface TraceSinks {
   ): void;
   /** The judges of the connection's project that can score an eval run. */
   judges?(tenant: string, connection: TraceConnection): Promise<SinkJudge[]>;
+  /** The names of the project's other active rules, which judge what is sent but no run reads. */
+  otherRules?(tenant: string, connection: TraceConnection): Promise<string[]>;
   /** Whether a judge building block is one of the connection's judges. */
   judgeOf?(connection: string, block: string): boolean;
   /** Whether a run's judge identity, or an evaluator, is a sink's judge. */

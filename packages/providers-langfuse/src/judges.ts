@@ -291,6 +291,15 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     return found.filter((j): j is LangfuseJudge => j !== undefined);
   };
 
+  /**
+   * The project's other active rules, such as observation and trace rules: Langfuse runs them on
+   * what genki sends, but they are no judges genki can read.
+   */
+  const others = async (): Promise<string[]> =>
+    (await rules())
+      .filter((r) => r.target !== 'experiment' && r.status === 'active' && r.enabled !== false)
+      .map((r) => r.name);
+
   /** The rule as it is now, read by id, so a rename does not hide a change. */
   const current = async (judge: LangfuseJudge, signal?: AbortSignal) => {
     const rule = await read<RawRule>(
@@ -411,5 +420,5 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
       : undefined;
   };
 
-  return { list, evaluator, experimentUrl };
+  return { list, others, evaluator, experimentUrl };
 };

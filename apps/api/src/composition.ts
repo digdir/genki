@@ -963,6 +963,7 @@ export const createPlatform = async (input: PlatformInput) => {
               }),
         snapshot: j,
       })),
+    otherRules: async (tenant, connection) => (await langfuseOf(tenant, connection)).others(),
     judgeOf: (connection, block) => block.startsWith(`langfuse:${connection}/`),
     isSinkJudge: (judge) => judge.startsWith('langfuse:'),
     experimentUrl: async (tenant, connection, run) =>
