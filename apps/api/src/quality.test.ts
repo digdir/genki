@@ -1596,6 +1596,11 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       testSet: 'svar-frister',
       trace: true,
     });
+    // ADR 0040: a run goes only to a project whose active experiment judges genki reads.
+    expect(
+      started.status,
+      'use a Langfuse project without active experiment judges for this test',
+    ).toBe(202);
     await env.settled();
     const run = String(started.body.id);
     const auth = `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString('base64')}`;
