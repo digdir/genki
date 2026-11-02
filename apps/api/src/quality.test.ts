@@ -1247,10 +1247,11 @@ describe('Langfuse judges on a run', () => {
   it("lists each experiment rule of a connection's project as a judge building block, and scores a run only with the ones the agency added", async () => {
     const short = 'svar_er_kort-eksperimenter';
     const notAdded = experimentRule({ id: 'regel-2', name: short });
+    const traceRule = experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' });
     const { env, adopt, langfuse } = await judged([
       experimentRule(),
       notAdded,
-      experimentRule({ id: 'regel-3', name: 'svar-sporinger', target: 'trace' }),
+      traceRule,
       experimentRule({ id: 'regel-4', name: 'pause-eksperimenter', status: 'inactive' }),
     ]);
 
@@ -1259,8 +1260,9 @@ describe('Langfuse judges on a run', () => {
       b.id.startsWith('langfuse:'),
     );
     expect((await adopt(judgeRule)).status).toBe(200);
-    // Langfuse would run the judge not added as well, so it is switched off before the run.
+    // Langfuse would run the judge not added and the trace rule as well, so both are switched off.
     notAdded.status = 'inactive';
+    traceRule.status = 'inactive';
     const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
       testSet: 'svar-frister',
       trace: true,
@@ -1571,6 +1573,8 @@ describe('Langfuse judges on a run', () => {
         name: 'verktøy-eksperimenter',
         mapping: [{ variable: 'verktøy', source: 'tool_calls' }],
       }),
+      // Langfuse runs an observation rule on every span its filter lets through.
+      experimentRule({ id: 'regel-4', name: 'toksisitet', target: 'observation' }),
     ];
     const { env, adopt } = await judged(rules);
     const start = () =>
@@ -1588,19 +1592,19 @@ describe('Langfuse judges on a run', () => {
 
     expect(noneInUse.status).toBe(409);
     expect(JSON.stringify(noneInUse.body)).toContain(
-      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter`),
+      differ(`${judgeRule}, tone-eksperimenter, verktøy-eksperimenter, toksisitet`),
     );
     expect(sending.body).toMatchObject({
       refused: {
         reason: 'judges-differ',
         connection: 'lokal',
         notInUse: ['tone-eksperimenter'],
-        unreadable: ['verktøy-eksperimenter'],
+        unreadable: ['verktøy-eksperimenter', 'toksisitet'],
       },
     });
     expect(oneInUse.status).toBe(409);
     expect(JSON.stringify(oneInUse.body)).toContain(
-      differ('tone-eksperimenter, verktøy-eksperimenter'),
+      differ('tone-eksperimenter, verktøy-eksperimenter, toksisitet'),
     );
     expect(inStep.status).toBe(202);
   });

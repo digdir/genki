@@ -548,11 +548,15 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
 
   /**
    * The adopted judges as the connection's project has them now; any refused one refuses the run,
-   * and so does any other active judge, which Langfuse would run on the run all the same.
+   * and so does any other active judge or rule, which Langfuse would run on the run all the same.
    */
   const snapshotJudges = async (tenant: string, connection: TraceConnection, adopted: string[]) => {
-    if (!deps.traceSinks?.judges) return [];
-    const listed = await deps.traceSinks.judges(tenant, connection).catch((error: unknown) => {
+    const sinks = deps.traceSinks;
+    if (!sinks?.judges) return [];
+    const [listed, others] = await Promise.all([
+      sinks.judges(tenant, connection),
+      sinks.otherRules?.(tenant, connection) ?? [],
+    ]).catch((error: unknown) => {
       throw new TraceRefused(
         `the judges of the connection ${connection.id} could not be read: ${messageOf(error)}`,
       );
@@ -567,10 +571,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       if (judge.refused) throw new TraceRefused(judge.refused.message);
       return judge;
     });
-    const unread = unreadOf(listed, adopted);
+    const unread = [...unreadOf(listed, adopted).map((j) => j.name), ...others];
     if (unread.length > 0)
       throw new TraceRefused(
-        `the project of the connection ${connection.id} has active judges genki does not read: ${unread.map((j) => j.name).join(', ')}; take them in use or switch them off in Langfuse`,
+        `the project of the connection ${connection.id} has active judges genki does not read: ${unread.join(', ')}; take them in use or switch them off in Langfuse`,
       );
     return judges;
   };
@@ -615,15 +619,20 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     const adopted = await adoptedJudges(tenant, sink.id);
     const residency = runResidency(subject.definition);
     const unread = async () => {
-      if (!deps.traceSinks?.judges) return undefined;
+      const sinks = deps.traceSinks;
+      if (!sinks?.judges) return undefined;
       // Judges that cannot be read refuse the run when it starts, with the reason.
-      const found = unreadOf(await deps.traceSinks.judges(tenant, sink).catch(() => []), adopted);
-      return found.length > 0
+      const [listed, others] = await Promise.all([
+        sinks.judges(tenant, sink),
+        sinks.otherRules?.(tenant, sink) ?? [],
+      ]).catch(() => [[], []]);
+      const found = unreadOf(listed, adopted);
+      return found.length + others.length > 0
         ? {
             reason: 'judges-differ' as const,
             connection: sink.id,
             notInUse: found.filter((j) => !j.refused).map((j) => j.name),
-            unreadable: found.filter((j) => j.refused).map((j) => j.name),
+            unreadable: [...found.filter((j) => j.refused).map((j) => j.name), ...others],
           }
         : undefined;
     };
