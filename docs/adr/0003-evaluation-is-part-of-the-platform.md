@@ -1,6 +1,6 @@
 # 0003 Evaluation is part of the platform
 
-Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built; portal runs for deterministic gates, 2026-11-02, built). Proposed 2026-10-06
 
 ## Decision
 
@@ -16,6 +16,9 @@ Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-2
 These rules replace or extend the decision above once they are built:
 
 - **One kind of run.** A run started in the portal ("Kjør test") is an eval run (`platform.eval.run`), and `EvalRun` is the only run record. Publishing gates, calibration and run comparisons read it.
+
+  Until it is built, a test run started in the portal (`ServiceRun`) also counts for a threshold gate whose metric a deterministic evaluator computes, `nynorsk.chrf` or `klarsprak.overall` today. It counts only when it succeeded and ran on exactly the validated definition being published: the run records that definition's subject, the same hash publishing computes. The platform scores the stored answers with the gate's evaluator (`nynorskReference`, `klarsprakChecklist`) and calls no model. An `EvalRun` of the candidate wins over a portal run. Gates that need a judge, and no-regression gates, read only `EvalRun`, so a run without a judge can never make them advisory. Without this, the portal's "Kjør testsettet" could never satisfy these gates, and services with them could not be published again (`apps/api/src/gate-runs.ts`, tested in `gate-runs.test.ts`, `packages/eval/src/platform.test.ts` and `integration.test.ts`).
+
 - **Evaluators may answer later.** An evaluator returns its scores at once or later (`evaluator@2`, ADR 0040).
 - **Holdout stays in the platform.** Holdout cases never leave the platform for a trace sink.
 - **`expected.criteria`.** A test case carries the named fields judges read in `expected.criteria`, such as `criteria` or `supporting_quotes`. A `criteria` case's criteria move there from `referenceAnswer`, which then holds only a reference answer. Existing test sets are migrated.
