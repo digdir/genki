@@ -80,34 +80,50 @@ const session = (await (await browser('/api/auth/session')).json()) as {
 const [org] = session.user?.organizations ?? [];
 if (!org) throw new Error(`could not log in to ${host} as ${user.email}`);
 
-const old = org.projects.find((p) => p.name === name);
-if (old) await trpc('projects.delete', { projectId: old.id });
-if (values.delete) {
-  console.log(JSON.stringify({ host, deleted: old ? { id: old.id, name } : null }, null, 2));
-  process.exit(0);
+interface Keys {
+  publicKey: string;
+  secretKey: string;
 }
-
-const project = await trpc<{ id: string }>('projects.create', { name, orgId: org.id });
-const keys = await trpc<{ publicKey: string; secretKey: string }>('projectApiKeys.create', {
-  projectId: project.id,
-  note: 'scripts/langfuse-seed.ts',
-});
-const api = async <T>(method: string, path: string, body: unknown): Promise<T> => {
+const keysFor = (projectId: string) =>
+  trpc<Keys>('projectApiKeys.create', { projectId, name: 'scripts/langfuse-seed.ts' });
+const api = async <T>(keys: Keys, method: string, path: string, body?: unknown): Promise<T> => {
   const response = await fetch(new URL(path, host), {
     method,
     headers: {
       authorization: `Basic ${Buffer.from(`${keys.publicKey}:${keys.secretKey}`).toString('base64')}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) await fail(`${method} ${path}`, response);
-  return (await response.json()) as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 };
+
+const old = org.projects.find((p) => p.name === name);
+if (old) {
+  // A deleted project keeps its LLM connections, and with them the Foundry key.
+  const oldKeys = await keysFor(old.id);
+  const connections = await api<{ data: { id: string }[] }>(
+    oldKeys,
+    'GET',
+    '/api/public/llm-connections',
+  );
+  for (const c of connections.data)
+    await api(oldKeys, 'DELETE', `/api/public/llm-connections/${c.id}`);
+  await trpc('projects.delete', { projectId: old.id });
+}
+if (values.delete) {
+  console.log(JSON.stringify({ host, deleted: old ? { id: old.id, name } : null }, null, 2));
+  process.exit(0);
+}
+
+const project = await trpc<{ id: string }>('projects.create', { name, orgId: org.id });
+const keys = await keysFor(project.id);
 
 let llmConnection: string | undefined;
 if (foundry) {
-  const connection = await api<{ id: string }>('PUT', '/api/public/llm-connections', {
+  const connection = await api<{ id: string }>(keys, 'PUT', '/api/public/llm-connections', {
     provider: llmProvider,
     adapter: 'anthropic',
     secretKey: foundry.key,
@@ -122,6 +138,7 @@ if (foundry) {
 const judges = [];
 for (const judge of values.judge) {
   const evaluator = await api<{ id: string; status: string; pausedMessage?: string | null }>(
+    keys,
     'POST',
     '/api/public/v2/evaluators',
     {
@@ -140,7 +157,7 @@ for (const judge of values.judge) {
       },
     },
   );
-  const rule = await api<{ id: string }>('POST', '/api/public/v2/evaluation-rules', {
+  const rule = await api<{ id: string }>(keys, 'POST', '/api/public/v2/evaluation-rules', {
     name: judge,
     enabled: true,
     sampling: 1,

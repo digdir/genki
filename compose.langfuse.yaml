@@ -1,5 +1,6 @@
-# Langfuse's docker-compose.yml at v4.72.0, production's version, with local-only values for
-# development and walks (docs/development.md). No relative paths: walks read it from origin/main.
+# Langfuse's docker-compose.yml at v4.72.0, the version production is moving to (ADR 0040), with
+# local-only values for development and walks (docs/development.md). No relative paths: walks
+# read it from origin/main. Start it with -p langfuse-genki: COMPOSE_PROJECT_NAME overrides name.
 name: langfuse-genki
 
 x-langfuse-env: &langfuse-env
