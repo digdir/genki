@@ -129,23 +129,6 @@ const health = await startHealthServer({
   ready: () => knowledgeBinding.ready(),
 });
 log('health', { url: health.url, knowledgeServer: Boolean(knowledgeServer) });
-const jobs = db
-  ? await openJobQueue(
-      { owner: db.pool, runtime: db.runtimePool },
-      platformWork.map((work) => work.queue),
-      {
-        worker: workerRole,
-        readers: [runtimeRole],
-        works: true,
-        onError: (error) =>
-          log('job queue error', {
-            error: error instanceof Error ? error.message : JSON.stringify(error),
-          }),
-      },
-    )
-  : new InMemoryJobQueue();
-await workQueues(jobs, platformWork);
-log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformWork.length });
 
 const secrets = envSecrets();
 const catalogs = {
@@ -175,6 +158,24 @@ if (knowledgeRefused.length > 0) {
   log('refusing to start', { problems: knowledgeRefused });
   process.exit(1);
 }
+// The queues are worked only once the worker has passed every refusal above.
+const jobs = db
+  ? await openJobQueue(
+      { owner: db.pool, runtime: db.runtimePool },
+      platformWork.map((work) => work.queue),
+      {
+        worker: workerRole,
+        readers: [runtimeRole],
+        works: true,
+        onError: (error) =>
+          log('job queue error', {
+            error: error instanceof Error ? error.message : JSON.stringify(error),
+          }),
+      },
+    )
+  : new InMemoryJobQueue();
+await workQueues(jobs, platformWork);
+log('jobs', { kind: db ? 'pg-boss' : 'memory', queues: platformWork.length });
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
@@ -439,6 +440,9 @@ const stop = () => {
   worker.stop();
   void (async () => {
     await jobs.stop();
+    knowledgeBinding.stop();
+    await health.close();
+    await knowledgeServer?.close();
     await db?.close();
     await lease?.release();
     await retentionLease?.release();
