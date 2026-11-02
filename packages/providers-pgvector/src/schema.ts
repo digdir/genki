@@ -27,6 +27,9 @@ const migrations: string[] = [
      primary key (dataset, generation, id)
    )`,
   `create index if not exists kn_docs_tsv on kn_docs using gin (tsv)`,
+  // Existing rows remain unattributed; user metadata must never be used to backfill ownership.
+  `alter table kn_docs add column if not exists pipeline text`,
+  `alter table kn_docs add column if not exists embedding_model text`,
   `create index if not exists kn_docs_title_tsv on kn_docs using gin (title_tsv)`,
   `create table if not exists kn_chunks (
      dataset text not null,

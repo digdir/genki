@@ -308,6 +308,8 @@ const comparable = (docs: IndexDocument[]) =>
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((doc) => ({
       id: doc.id,
+      pipeline: doc.pipeline,
+      embeddingModel: doc.embeddingModel,
       title: doc.title,
       url: doc.url,
       fields: doc.fields,
@@ -418,6 +420,39 @@ export const indexWriterContract = (
       expect(await target.writer.promote(target.dataset, 'g2')).toBe('g1');
     });
 
+    it('conditional promotion refuses stale generations, including an initially empty dataset', async (ctx) => {
+      const promote = target.writer.promoteIfActive?.bind(target.writer);
+      if (!promote) return ctx.skip();
+      await store('g1', first);
+      await store('g2', second);
+      expect(await promote(target.dataset, 'g1', undefined)).toBeUndefined();
+      await expect(promote(target.dataset, 'g2', undefined)).rejects.toMatchObject({
+        code: 'bad_request',
+      });
+      expect(await target.writer.active(target.dataset)).toBe('g1');
+      expect(await promote(target.dataset, 'g2', 'g1')).toBe('g1');
+      await expect(promote(target.dataset, 'g1', 'g1')).rejects.toMatchObject({
+        code: 'bad_request',
+      });
+      expect(await target.writer.active(target.dataset)).toBe('g2');
+    });
+
+    it('only one of two concurrent conditional promotions can replace the same snapshot', async (ctx) => {
+      const promote = target.writer.promoteIfActive?.bind(target.writer);
+      if (!promote) return ctx.skip();
+      await store('g1', first);
+      await store('g2', second);
+      await store('g3', first, second);
+      await target.writer.promote(target.dataset, 'g1');
+      const results = await Promise.allSettled([
+        promote(target.dataset, 'g2', 'g1'),
+        promote(target.dataset, 'g3', 'g1'),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+      const winner = results[0]?.status === 'fulfilled' ? 'g2' : 'g3';
+      expect(await target.writer.active(target.dataset)).toBe(winner);
+    });
+
     it('read streams stored documents with vectors', async (ctx) => {
       const read = target.writer.read?.bind(target.writer);
       if (!read) return ctx.skip();
@@ -435,6 +470,47 @@ export const indexWriterContract = (
         got.forEach((value, i) => expect(value).toBeCloseTo(vector[i] ?? 0, 5));
       }
       expect((await collect(read(target.dataset, 'g2'))).map((d) => d.id)).toEqual([second.id]);
+    });
+
+    it('round-trips pipeline provenance separately from source metadata and clears it on unattributed replacement', async (ctx) => {
+      if (!target.writer.preservesPipeline) return ctx.skip();
+      const read = target.writer.read?.bind(target.writer);
+      if (!read) return ctx.skip();
+      const attributed = {
+        ...first,
+        pipeline: 'actual-owner',
+        embeddingModel: 'actual-model',
+        fields: {
+          ...first.fields,
+          ingestion_pipeline: 'user-owner',
+          pipeline: 'user-column',
+          embeddingModel: 'user-model',
+        },
+      };
+      await store('g1', attributed);
+      await target.writer.promote(target.dataset, 'g1');
+      const [doc] = await collect(read(target.dataset));
+      expect(doc?.pipeline).toBe('actual-owner');
+      expect(doc?.embeddingModel).toBe('actual-model');
+      expect(doc?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+        embeddingModel: 'user-model',
+      });
+      await store('g2', doc as IndexDocument);
+      expect((await collect(read(target.dataset, 'g2')))[0]?.embeddingModel).toBe('actual-model');
+      const legacy: IndexDocument = { ...attributed };
+      delete legacy.pipeline;
+      delete legacy.embeddingModel;
+      await target.writer.store(target.dataset, 'g1', docs(legacy)[0] as IndexDocument);
+      const [replaced] = await collect(read(target.dataset));
+      expect(replaced?.pipeline).toBeUndefined();
+      expect(replaced?.embeddingModel).toBeUndefined();
+      expect(replaced?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+        embeddingModel: 'user-model',
+      });
     });
 
     const elsewhere = memoryEngine({ engine: 'contract-elsewhere' });

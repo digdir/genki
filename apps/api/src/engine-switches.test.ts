@@ -3,12 +3,12 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
-import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing';
+import { fakeEmbeddingAdapter, fakeVector, testContext } from '@genai/port-embedding/testing';
 import type { IndexDocument, KnowledgeAdapter } from '@genai/port-knowledge';
 import { typesense } from '@genai/providers-typesense';
 import { createPool } from '@genai/providers-postgres';
@@ -51,6 +51,23 @@ const principals: Record<string, Principal> = {
 };
 
 const kudosPages: Record<string, unknown> = {
+  'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Arsrapport': {
+    data: [
+      {
+        id: 9,
+        title: 'Rapport 2025',
+        type: 'Arsrapport',
+        files: [
+          {
+            url: 'https://93.184.216.34/filer/9.pdf',
+            mimetype: 'application/pdf',
+            sha256: createHash('sha256').update('%PDF-1.7').digest('hex'),
+          },
+        ],
+      },
+    ],
+    meta: { current_page: 1, last_page: 1 },
+  },
   'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Tildelingsbrev': {
     data: [
       {
@@ -74,12 +91,18 @@ const kudosPages: Record<string, unknown> = {
 const kudosFetch = (async (input: string | URL | Request) => {
   const url = String(input);
   if (url in kudosPages) return Response.json(kudosPages[url]);
-  if (url === 'https://93.184.216.34/filer/7.pdf') return new Response('%PDF-1.7');
+  if (/^https:\/\/93\.184\.216\.34\/filer\/(7|9)\.pdf$/.test(url)) return new Response('%PDF-1.7');
   return new Response('', { status: 404 });
 }) as typeof fetch;
 
 const docs = [
-  { id: '1', doc_num: 'tilskudd', title: 'Tilskudd', url: 'https://ka.example/tilskudd' },
+  {
+    id: '1',
+    doc_num: 'tilskudd',
+    title: 'Tilskudd',
+    url: 'https://ka.example/tilskudd',
+    ingestion_pipeline: 'user-column',
+  },
   { id: '2', doc_num: 'sky', title: 'Skyplattform', url: 'https://ka.example/sky' },
 ];
 const chunks = [
@@ -106,8 +129,8 @@ let typesenseUrl: string;
 const writes: string[] = [];
 
 const exported = (collection: string, filter: string | null) => {
-  const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
   const ids = filter ? [...filter.matchAll(/`([^`]+)`/g)].map((m) => m[1]) : undefined;
+  const rows = collection.endsWith('docs') ? docs : collection.endsWith('chunks') ? chunks : [];
   return rows.filter((r) => !ids || ids.includes(r.doc_num));
 };
 
@@ -535,6 +558,62 @@ describe('switching the search engine of a dataset', () => {
     expect(engineOf(platform, 'ka-kopi')).toBe('typesense');
   });
 
+  it.each(['fake/embed', 'fake/other', undefined])(
+    'copy switches preserve provenance and reuse only vectors from the target model (stored model: %s)',
+    async (embeddingModel) => {
+      const booted = await boot();
+      const { platform } = booted;
+      const id = `ka-model-copy-${embeddingModel?.split('/')[1] ?? 'unknown'}`;
+      await createDataset(booted, id, undefined, {
+        embedding: { model: 'fake/embed', dimensions: 8 },
+      });
+      const text = 'Kommunen gir tilskudd til foreninger.';
+      const vector = [1, 0, 0, 0, 0, 0, 0, 0];
+      const original: IndexDocument = {
+        id: 'tilskudd',
+        pipeline: 'pipeline-a',
+        ...(embeddingModel ? { embeddingModel } : {}),
+        fields: { embeddingModel: 'user-model' },
+        chunks: [{ id: 'tilskudd-0', position: 0, text, vector }],
+        phrases: [],
+      };
+      const open = platform.knowledge.open.bind(platform.knowledge);
+      const watched = vi.spyOn(platform.knowledge, 'open').mockImplementation((...args) => {
+        const port = open(...args);
+        return args[0].id === `${digdir}/${id}`
+          ? {
+              ...port,
+              export: {
+                vectors: true,
+                count: async () => 1,
+                documents: async function* () {
+                  yield structuredClone(original);
+                },
+              },
+            }
+          : port;
+      });
+      try {
+        expect(await switchTo(booted, id)).toMatchObject({ state: 'ready' });
+        const route = pgRoute(platform, id);
+        const copied: IndexDocument[] = [];
+        for await (const doc of route.writer.read?.(route.dataset) ?? []) copied.push(doc);
+        expect(copied).toHaveLength(1);
+        expect(copied[0]).toMatchObject({
+          pipeline: 'pipeline-a',
+          embeddingModel: 'fake/embed',
+          fields: { embeddingModel: 'user-model' },
+        });
+        const expected = embeddingModel === 'fake/embed' ? vector : fakeVector(text, 8);
+        expected.forEach((value, index) =>
+          expect(copied[0]?.chunks[0]?.vector?.[index]).toBeCloseTo(value, 5),
+        );
+      } finally {
+        watched.mockRestore();
+      }
+    },
+  );
+
   it('activating a worse engine needs a 20-character reason', async () => {
     const booted = await boot();
     await createDataset(booted, 'ka-svakere', { docs: 'ghost_docs', chunks: 'ghost_chunks' });
@@ -840,6 +919,18 @@ describe('operators switching the engine of a platform dataset', () => {
     const ready = await settledAt(booted, id, view.sid);
     expect(ready).toMatchObject({ state: 'ready', progress: { percent: 100, documents: 2 } });
     expect(platformEngineOf(platform, id)).toBe('typesense');
+    const copied = platform.writers.openAt(
+      id,
+      'platform-pg',
+      { signal: new AbortController().signal },
+      { embedding: { model: 'fake/embed', dimensions: 8 } },
+    );
+    const copiedDocs: IndexDocument[] = [];
+    for await (const doc of copied.writer.read?.(copied.dataset) ?? []) copiedDocs.push(doc);
+    expect(copiedDocs.map((d) => d.pipeline)).toEqual([undefined, undefined]);
+    expect(copiedDocs.find((d) => d.id === 'tilskudd')?.fields.ingestion_pipeline).toBe(
+      'user-column',
+    );
 
     const activated = await call(`${operatorBase(id)}/engine-switches/${ready.sid}/activate`, {
       as: 'drift',
@@ -888,7 +979,7 @@ describe('operators switching the engine of a platform dataset', () => {
     });
   });
 
-  it('re-ingests Kudos into platform-pg through the converter', async () => {
+  it('re-ingests all enabled pipelines into one generation without carrying old target documents', async () => {
     const booted = await boot();
     const { call, platform } = booted;
     const id = 'digdir/kudos-ny';
@@ -904,9 +995,37 @@ describe('operators switching the engine of a platform dataset', () => {
     });
     expect(saved.status).toBe(201);
     expect(
+      (
+        await call(`${operatorBase(id)}/pipelines`, {
+          as: 'drift',
+          body: {
+            id: 'arsrapport',
+            name: 'Rapporter',
+            source: { kind: 'kudos', types: ['Arsrapport'] },
+            chunking: { minimumLength: 1 },
+          },
+        })
+      ).status,
+    ).toBe(201);
+    expect(
       await json(await call(`${operatorBase(id)}/pipelines/kudos/estimate`, { as: 'drift' })),
     ).toMatchObject({ source: 'kudos', documents: 1, exact: true });
 
+    const route = platform.writers.openAt(
+      id,
+      'platform-pg',
+      { signal: new AbortController().signal },
+      { embedding: { model: 'fake/embed', dimensions: 8 } },
+    );
+    await route.writer.prepare(route.dataset, 'old-target');
+    await route.writer.store(route.dataset, 'old-target', {
+      id: 'stale',
+      pipeline: 'kudos',
+      fields: {},
+      chunks: [{ id: 'stale-0', position: 0, text: 'Gammelt dokument som skal bort.' }],
+      phrases: [],
+    });
+    await route.writer.promote(route.dataset, 'old-target');
     const started = await call(`${operatorBase(id)}/engine-switches`, {
       as: 'drift',
       body: {
@@ -919,19 +1038,14 @@ describe('operators switching the engine of a platform dataset', () => {
     const ready = await settledAt(booted, id, (await json<EngineSwitchView>(started)).sid);
     expect(ready).toMatchObject({ state: 'ready', progress: { percent: 100 } });
 
-    const route = platform.writers.openAt(
-      id,
-      'platform-pg',
-      {
-        signal: new AbortController().signal,
-      },
-      { embedding: { model: 'fake/embed', dimensions: 8 } },
-    );
     const generation = await route.writer.active(route.dataset);
     expect(generation).toBeDefined();
     expect(await route.writer.stats(route.dataset, generation as string)).toMatchObject({
-      documents: 1,
+      documents: 2,
     });
+    const owners: unknown[] = [];
+    for await (const doc of route.writer.read?.(route.dataset) ?? []) owners.push(doc.pipeline);
+    expect(owners.sort()).toEqual(['arsrapport', 'kudos']);
     expect(writes).toEqual([]);
   });
 });

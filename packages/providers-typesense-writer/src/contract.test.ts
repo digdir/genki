@@ -1,12 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { envSecrets } from '@genai/kernel';
-import {
-  knowledgeProfiles,
-  probeKnowledgeEndpoint,
-  type DatasetConfig,
-} from '@genai/port-knowledge';
+import { knowledgeProfiles, probeKnowledgeEndpoint } from '@genai/port-knowledge';
 import {
   indexWriterContract,
   fixtureFilters,
@@ -86,7 +82,7 @@ const datasetOptions = () => {
 const connect = async (dataset: ContractDataset) => {
   const { baseURL } = await throwaway();
   const options = datasetOptions();
-  const config: DatasetConfig = {
+  const config = {
     ...dataset,
     options: typesenseDatasetOptions.parse(options),
   };
@@ -207,6 +203,71 @@ describe('typesense index writer', () => {
       title: 'Årsrapport for tilskudd 2021',
       url: 'https://example.no/dok-2',
     });
+  });
+
+  it('Typesense round trips and exports omit pipeline provenance while preserving user metadata without extra collection access', async () => {
+    const dataset = { id: 'contract/no-provenance', filters: fixtureFilters };
+    const originalFetch = globalThis.fetch;
+    const requests: { method: string; path: string }[] = [];
+    const watched = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      requests.push({ method: init?.method ?? 'GET', path: new URL(String(input)).pathname });
+      return originalFetch(input, init);
+    });
+    try {
+      const { target, writer, config } = await connect(dataset);
+      expect(writer.preservesPipeline).toBe(false);
+      await writer.prepare(config, 'g1');
+      const beforeStore = requests.length;
+      await writer.store(config, 'g1', {
+        id: 'a',
+        pipeline: 'actual-owner',
+        embeddingModel: 'actual-model',
+        fields: {
+          ingestion_pipeline: 'user-owner',
+          pipeline: 'user-column',
+          embeddingModel: 'user-model',
+        },
+        chunks: [{ id: 'a0', position: 0, text: 'Tilskudd til lag.' }],
+        phrases: [],
+      });
+      expect(requests.slice(beforeStore).filter((r) => r.method === 'POST')).toHaveLength(2);
+      await writer.promote(config, 'g1');
+      const read = writer.read?.bind(writer);
+      if (!read) throw new Error('Typesense needs document reads');
+      const roundTrip = [];
+      for await (const doc of read(config)) roundTrip.push(doc);
+      expect(roundTrip).toHaveLength(1);
+      expect(roundTrip[0]?.chunks).toHaveLength(1);
+      expect(roundTrip[0]?.pipeline).toBeUndefined();
+      expect(roundTrip[0]?.embeddingModel).toBeUndefined();
+      expect(roundTrip[0]?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+        embeddingModel: 'user-model',
+      });
+      const exporter = openTarget(target, dataset).export;
+      if (!exporter) throw new Error('Typesense needs document export');
+      const beforeExport = requests.length;
+      const exported = [];
+      for await (const doc of exporter.documents()) exported.push(doc);
+      expect(exported).toHaveLength(1);
+      expect(exported[0]?.pipeline).toBeUndefined();
+      expect(exported[0]?.embeddingModel).toBeUndefined();
+      expect(exported[0]?.fields).toMatchObject({
+        ingestion_pipeline: 'user-owner',
+        pipeline: 'user-column',
+        embeddingModel: 'user-model',
+      });
+      expect(
+        requests
+          .slice(beforeExport)
+          .every((r) => r.method === 'GET' && r.path.includes('/documents/export')),
+      ).toBe(true);
+      await writer.drop(config, 'g1', { force: true });
+      expect(requests.some((r) => r.path.includes('genai_provenance_'))).toBe(false);
+    } finally {
+      watched.mockRestore();
+    }
   });
 
   it('creates the headless-rag KA collections for the kudos preset', async () => {

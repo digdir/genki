@@ -322,6 +322,7 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
   };
 
   const writer: IndexWriter<MemoryDatasetOptions> = {
+    preservesPipeline: true,
     prepare: async (dataset, generation) => {
       const index = indexOf(dataset);
       if (!index.generations.has(generation)) index.generations.set(generation, new Map());
@@ -335,6 +336,17 @@ export const memoryEngine = (options: MemoryEngineOptions = {}) => {
       const previous = index.active;
       index.active = generation;
       return previous;
+    },
+    promoteIfActive: async (dataset, generation, expected) => {
+      generationOf(dataset, generation);
+      const index = indexOf(dataset);
+      if (index.active !== expected)
+        throw new KnowledgeError(
+          'bad_request',
+          `dataset ${dataset.id} changed during ingestion; run the pipeline again`,
+        );
+      index.active = generation;
+      return expected;
     },
     drop: async (dataset, generation, options = {}) => {
       const index = indexOf(dataset);
