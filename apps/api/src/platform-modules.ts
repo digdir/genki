@@ -34,7 +34,7 @@ import type {
   EgressOptions,
   TenantSecrets,
 } from '@genai/providers-mcp-client';
-import type { TracingOptions } from './trace-connections.js';
+import type { TraceSinks, TracingOptions } from './trace-connections.js';
 import type { TrackedWork } from './tracked-work.js';
 
 export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
@@ -74,6 +74,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   /** The egress rules every outbound call to a tenant's own endpoint follows (ADR 0015). */
   egressOptions?: EgressOptions;
   tracing?: TracingOptions;
+  traceSinks?: TraceSinks;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
   enrichmentTask?: TrackedWork;

@@ -102,6 +102,10 @@ export const catalogErrors = defineNamespace({
   tracingResidencyByOperator:
     'en driftsoperatør setter lagringssted for en kobling til Digdirs Langfuse',
   tracingNoConnection: 'ingen kobling {id}',
+  tracingNotCovered: 'ingen sporingskobling dekker tjenesten {service}',
+  tracingCoveredTwice: 'to sporingskoblinger dekker tjenesten {service}: {ids}',
+  tracingResidencyForbids:
+    'tjenestens lagringssted {residency} tillater ikke koblingens {connection}',
   tracingHostOrigin:
     'adressen skrives som https://langfuse.example.no, uten sti eller brukernavn og passord',
   tracingHostDot: 'vertsnavnet slutter med punktum',
@@ -375,6 +379,7 @@ export const qualityErrors = defineNamespace({
   noVersion: 'ingen versjon {version}',
   noCases: 'Testsettet har ingen testtilfeller',
   serviceCannotRun: 'Tjenesten kan ikke kjøres',
+  runNotTraced: 'Testkjøringen kan ikke sendes til sporing',
   noCasesToRun: 'ingen testtilfeller å kjøre',
   approveTrueFalse: 'approve er true eller false',
   skillId: 'må være små bokstaver, sifre og bindestrek, og ikke import eller imports',

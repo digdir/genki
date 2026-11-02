@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import type { Event, Task } from '@genai/contracts';
 import type { ContentScope, EventLog, SecretResolver } from '@genai/kernel';
 import { exporterConfig, tracesUrl, type ExporterConfigInput } from './config.js';
+import { evaluationIn, type Experiment } from './experiment.js';
 import { buildSpans, rootSpanIdFor, sampled, traceIdFor, type OtlpSpan } from './spans.js';
 
 export interface ExporterStats {
@@ -23,6 +24,11 @@ export interface ExporterDeps {
   tasks: (id: string) => Promise<Task | undefined>;
   fetch?: typeof fetch;
   serviceName?: string;
+  /**
+   * Export eval run cases as experiment items. Only a run's own sink does; the platform-wide
+   * exporter leaves them as ordinary traces, so no tenant's run lands in Digdir's project.
+   */
+  experiments?: boolean;
 }
 
 interface Open {
@@ -42,6 +48,7 @@ export const createTraceExporter = (
   const send = deps.fetch ?? fetch;
   const url = tracesUrl(config.endpoint);
   const open = new Map<string, Open>();
+  const experiments = new Map<string, Experiment>();
   const queue: OtlpSpan[] = [];
   const building = new Set<Promise<void>>();
   const stats: ExporterStats = { exported: 0, dropped: 0, failed: 0, sampledOut: 0 };
@@ -92,10 +99,22 @@ export const createTraceExporter = (
     if (queue.length >= config.batch.maxSpans) void flushQueue();
   };
 
+  const track = (event: Event) => {
+    const evaluation = deps.experiments ? evaluationIn(event) : undefined;
+    if (evaluation && experiments.size < config.limits.openTasks)
+      experiments.set(event.task, { ...evaluation, rootTask: event.task });
+    if (event.type !== 'kernel.task.spawned') return;
+    const parent = experiments.get(event.task);
+    const child = (event.data as { child?: unknown } | undefined)?.child;
+    if (parent && typeof child === 'string') experiments.set(child, parent);
+  };
+
   const build = async (taskId: string, state: Open, terminal: Event | undefined) => {
+    const experiment = experiments.get(taskId);
+    if (terminal) experiments.delete(taskId);
     const task = await deps.tasks(taskId);
-    const rootTask = (await rootOf(task)) ?? taskId;
-    if (!sampled(rootTask, config.sampleRate)) {
+    const rootTask = experiment?.rootTask ?? (await rootOf(task)) ?? taskId;
+    if (!experiment && !sampled(rootTask, config.sampleRate)) {
       stats.sampledOut += 1;
       return;
     }
@@ -105,13 +124,16 @@ export const createTraceExporter = (
         task,
         taskId,
         traceId: traceIdFor(rootTask),
-        ...(task?.parent ? { parentSpanId: rootSpanIdFor(task.parent) } : {}),
+        ...(task?.parent && taskId !== rootTask
+          ? { parentSpanId: rootSpanIdFor(task.parent) }
+          : {}),
         events: state.events,
         firstTs: state.firstTs,
         terminal,
         content: config.content,
         ...(config.environment ? { environment: config.environment } : {}),
         ...(userId ? { userId } : {}),
+        ...(experiment ? { experiment } : {}),
       }),
     );
   };
@@ -190,6 +212,7 @@ export const createTraceExporter = (
       }
       if (state.events.length < config.limits.eventsPerTask) state.events.push(event);
       else stats.dropped += 1;
+      track(event);
 
       if (event.type !== 'kernel.task.status') return;
       const status = (event.data as { status?: string } | undefined)?.status ?? '';

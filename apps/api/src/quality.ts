@@ -25,6 +25,7 @@ import {
   RunRefused,
   serviceEval,
   shownRun,
+  TraceRefused,
   type ServiceDraft,
 } from './service-eval.js';
 
@@ -492,13 +493,18 @@ export const createQualityModule =
               { path: 'testSet', message: 'no cases to run' },
             ]);
           try {
-            const started = await evals.startRun(principal, tenant, service, set, subject, split);
+            const started = await evals.startRun(principal, tenant, service, set, subject, split, {
+              trace: data.trace === true,
+            });
             background(started.done);
             return c.json({ id: started.run.id }, 202);
           } catch (error) {
             if (error instanceof RunRefused)
               return problem(c, 422, 'Tjenesten kan ikke kjøres', error.errors);
-            throw error;
+            if (!(error instanceof TraceRefused)) throw error;
+            return problem(c, 409, 'Testkjøringen kan ikke sendes til sporing', [
+              { path: 'trace', message: error.message },
+            ]);
           }
         });
 

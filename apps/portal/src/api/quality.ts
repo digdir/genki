@@ -268,7 +268,7 @@ export const qualityApi = ({ get, request, tenantPath }: ApiContext) => {
     startRun: (
       tenant: string,
       id: string,
-      body: { testSet: string; version?: RunVersion },
+      body: { testSet: string; version?: RunVersion; trace?: boolean },
       reason: string,
     ) => request<{ id: string }>('POST', `${service(tenant, id)}/eval-runs`, body, why(reason)),
     runs: async (tenant: string, id: string, signal?: AbortSignal) =>

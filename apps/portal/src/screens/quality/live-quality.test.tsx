@@ -21,6 +21,7 @@ const openLive = async (
   tab = '',
   quality: QualityMockOptions = {},
   extras: Omit<MockExtras, 'features'> = {},
+  respond: (path: string) => Response | undefined = () => undefined,
 ) => {
   const calls: Call[] = [];
   const inner = mockFetch(undefined, undefined, undefined, undefined, {
@@ -36,7 +37,7 @@ const openLive = async (
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       reason: reason === null ? null : decodeURIComponent(reason),
     });
-    return inner(input, init);
+    return respond(url.replace(/^\/api/, '')) ?? inner(input, init);
   };
   const auth = mockAnsattporten(kari);
   await auth.login();
@@ -138,6 +139,43 @@ describe('live Testsett', () => {
       within(detail).getByText('Dommer: judge:criteria@1+foundry-openai/gpt-41-dommer'),
     ).toBeTruthy();
     expectAccessible();
+  });
+
+  it('offers to send a run to Langfuse only when a connection covers the service, unticked by default', async () => {
+    const { writes } = await openLive('', {}, {});
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    await screen.findByRole('button', { name: 'Start kjøringen' });
+
+    expect(screen.queryByRole('checkbox', { name: /Send kjøringen til Langfuse/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)?.body).not.toHaveProperty('trace');
+  });
+
+  it('sends a run to Langfuse when the person ticks it for that run, for a service a connection covers', async () => {
+    const { writes } = await openLive('', {}, {}, (path) =>
+      /\/tracing\/connections$/.test(path)
+        ? Response.json({
+            data: [{ id: 'lokal', services: ['rapportassistenten'], residency: 'global' }],
+          })
+        : undefined,
+    );
+    await screen.findByText('Hvor mange tilsyn hadde vi i 2025?');
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const send = await screen.findByRole('checkbox', {
+      name: 'Send kjøringen til Langfuse (lokal). Låste testtilfeller sendes aldri.',
+    });
+
+    expect((send as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(send);
+    fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
+    await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    expect(writes().at(-1)?.body).toMatchObject({ trace: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
+    const again = await screen.findByRole('checkbox', { name: /Send kjøringen til Langfuse/ });
+    expect((again as HTMLInputElement).checked).toBe(false);
   });
 
   it('says in bokmål why a run stopped and which judge left cases unscored', async () => {

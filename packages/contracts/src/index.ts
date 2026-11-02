@@ -192,6 +192,13 @@ export interface ServiceProvenance {
   indexes?: IndexProvenance[];
 }
 
+/** Which eval run, case and repeat a task answers, and where its trace goes. Audit only. */
+export interface EvaluationContext {
+  run: { id: string; name: string };
+  case: { id: string; repeat: number; split: 'train' | 'validation' | 'holdout' };
+  sink?: string | undefined;
+}
+
 export interface Task {
   id: string;
   service: ServiceProvenance;
