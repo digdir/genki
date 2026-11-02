@@ -1,6 +1,6 @@
 # 0033 Locked test environment
 
-Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16)
+Status: accepted, 2026-10-14 (built, 2026-10-14; ingestion locked, 2026-10-15; Entra logins, 2026-10-15; keys and clients from Entra logins, 2026-10-15; security review fixes, 2026-10-15; client allowlist, 2026-10-16; user groups proposed, 2026-11-02)
 
 ## Context
 
@@ -41,6 +41,20 @@ An Entra login outside the groups, with an email outside the domain, or from ano
 
 Why groups and not the email alone: the token carries no Entra tenant id, and anyone can create an Entra tenant and give a user any email address, including one at `digdir.no`. A group object id is a GUID that only exists in the tenant that created it, so membership of a Digdir group is evidence of a Digdir account. The email domain is an extra guard, not the gate.
 
+## User groups in lockdown
+
+Proposed 2026-11-02, not built.
+
+`LOCKDOWN_ENTRA_GROUPS` makes every member an operator with every right in `PLATFORM_TENANT`, so it cannot also be the way to let more people in. `LOCKDOWN_USER_GROUPS` (comma-separated Entra group object ids; the API refuses to start if one is not a GUID) admits a wider circle with one ordinary right:
+
+- An Entra login whose `groups` claim holds one of `LOCKDOWN_USER_GROUPS` passes the same checks as a trusted Entra login: a client in `OPERATOR_CLIENT_IDS`, never a client a tenant registered, and an email at `LOCKDOWN_ENTRA_EMAIL_DOMAIN` when it is set.
+- It becomes an employee of `PLATFORM_TENANT` with the right `use-services` (ADR 0027) and nothing else. It is not a trusted Entra login, never gets the operator role, and gets the internal scope `grant:lockdown-user`, set only by the verifier.
+- With that scope it may use models where `use-services` reaches: invoking services in `PLATFORM_TENANT` and its own conversations in the workspace. Everything else stays as for TestID logins: read-only for configuration, no playground or test runs, no ingestion, no keys or clients. Without `manage-services` it cannot create a key, so nothing it makes carries the configured-credential mark.
+- A login in both settings is a trusted Entra login; `LOCKDOWN_ENTRA_GROUPS` wins.
+- Removing someone from a user group takes effect at their next token, as for the trusted groups.
+
+The right is fixed, not configurable. Letting people build services in test would mean changes in the Digdir organisation's configuration by people who are not operators; building for one's own organisation belongs to the normal path, with rights from Altinn. Rejected: adding people to `LOCKDOWN_ENTRA_GROUPS` (they would become operators), a list of persons in configuration (a deploy per change), and opening TestID logins to models (anyone can log in with TestID).
+
 ## Keys and clients from Entra logins
 
 An API key created or rotated by a trusted Entra login, and a Maskinporten client registered by one, gets the same configured-credential mark when it authenticates in lockdown, so a team member can hand the KA test backend a key without a redeploy. The API stores `admittedInLockdown` with the key (column `admitted_in_lockdown` in `legacy_api_keys`) or with the client registration, and sets it from the principal that makes the change, never from the request body. `verifyApiKey` and the Maskinporten client admission turn it into the internal scope `grant:admitted-credential`, which the API turns into the configured-credential mark only in lockdown.
@@ -61,6 +75,8 @@ Test should stay open for the team to look at, and for configuration to be tried
 - An admitted key stays admitted until it is revoked or rotated by someone else. Removing a person from the Entra group does not revoke the keys they made; revoke them in the portal.
 - TestID logins, including test persons who are general manager of `PLATFORM_TENANT` and operators listed in `OPERATOR_SUBJECTS` (`issuer|subject` pairs for Ansattporten logins), can only read in genki-test.
 - Who may work in test is decided by Entra group membership in Digdir, not by the platform. Removing someone from the group takes effect at their next token.
+- Not built, from User groups in lockdown: the setting with its startup check, the verifier branch and `grant:lockdown-user`, and model admission for that scope limited to `use-services`. Tests: a user-group login can invoke a service in `PLATFORM_TENANT` and use its own conversations; it gets the locked problem for ingestion, playground and test runs and configuration changes, and is not an operator; a login in both settings is a trusted Entra login.
+- genki-test needs two security groups in Digdir's Entra tenant, owned by the lab: `genki-test-operators` for `LOCKDOWN_ENTRA_GROUPS` and `genki-test-users` for `LOCKDOWN_USER_GROUPS`. Asked of Digdir IT on 2026-11-02. The operators group replaces today's group as soon as it exists, which needs no code; the users group stays empty until the setting is built.
 - Production does not run in lockdown. It will have a real Kunnskapsassistenten service and a separate test service for KA's test backend.
 - A new check that sends a stored secret somewhere goes in `secretSendingChecks`.
 - A new route that runs a model goes in `modelRunRoutes` in `apps/api/src/lockdown.ts`, and a new route that ingests or writes embeddings goes in `ingestionRoutes`, so it gets the clear problem and not a failed task.

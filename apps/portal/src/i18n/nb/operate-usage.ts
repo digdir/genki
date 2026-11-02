@@ -128,7 +128,7 @@ export const usageArea = {
     cannotEstimate: 'Kostnaden kan ikke anslås fordi modellen ikke er priset.',
     aboutPerMonth: 'Omtrent {value} per måned.',
     save: 'Lagre',
-    title: 'Forbruk',
+    title: 'Statistikk',
     lead: 'Tokens og beregnet kostnad for tjenestene til {tenant}. Kostnaden er et anslag. Endelig beløp står på fakturaen fra Digdir.',
     export: 'Eksporter',
     allProjects: 'Alle tjenester og prosjekter',

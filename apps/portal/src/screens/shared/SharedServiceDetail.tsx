@@ -388,7 +388,7 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
             </Heading>
             <p className="meta">
               {t('sharedServices.tokenNote')}{' '}
-              <a href="#/integrations">{t('sharedServices.moreOnIntegrations')}</a>
+              <a href="#/developer/systems">{t('sharedServices.moreOnIntegrations')}</a>
             </p>
           </div>
           <Fieldset>
