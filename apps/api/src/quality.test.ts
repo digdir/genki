@@ -17,6 +17,7 @@ import { resolveCatalog } from './catalogs.js';
 import { publishPlatformServices } from './platform-services.js';
 import { createPlatform, platformModules } from './composition.js';
 import type { ModelPrice } from './draft-runner.js';
+import { saveUsdNok } from '@genai/composition';
 import { translateMessage } from './i18n/index.js';
 import { createQualityModule, qualityModule } from './quality.js';
 import type { TracingOptions } from './trace-connections.js';
@@ -1057,6 +1058,9 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
   const attr = (span: (typeof spans)[number], key: string) =>
     span.attributes.find((a) => a.key === key)?.value.stringValue;
   const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
+  // Runs once as the first item arrives, as when someone switches a rule on during a run.
+  const hooks: { firstItem?: () => void } = {};
+  let seen = false;
   const server = await fakeHttp((body, _attempt, path) => {
     const url = new URL(path, 'http://langfuse.test');
     const ok = (json: unknown) => ({ status: 200, json });
@@ -1064,21 +1068,27 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
       const got = resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans));
       spans.push(...got);
-      for (const span of got)
-        if (attr(span, 'langfuse.experiment.item.root_observation_id') === span.spanId)
-          for (const r of judging())
-            scores.set(span.traceId, [
-              ...(scores.get(span.traceId) ?? []),
-              {
-                id: `${r.id}-${span.traceId}`,
-                name: r.name,
-                value: true,
-                dataType: 'BOOLEAN',
-                source: 'EVAL',
-                comment: 'Svaret oppgir fristen.',
-                metadata: { job_configuration_id: r.id },
+      for (const span of got) {
+        if (attr(span, 'langfuse.experiment.item.root_observation_id') !== span.spanId) continue;
+        if (!seen) hooks.firstItem?.();
+        seen = true;
+        for (const r of judging())
+          scores.set(span.traceId, [
+            ...(scores.get(span.traceId) ?? []),
+            {
+              id: `${r.id}-${span.traceId}`,
+              name: r.name,
+              value: true,
+              dataType: 'BOOLEAN',
+              source: 'EVAL',
+              comment: 'Svaret oppgir fristen.',
+              metadata: {
+                job_configuration_id: r.id,
+                job_execution_id: `jobb-${r.id}-${span.traceId}`,
               },
-            ]);
+            },
+          ]);
+      }
       return ok({});
     }
     if (url.pathname === '/api/public/unstable/evaluation-rules')
@@ -1102,12 +1112,25 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       });
     if (url.pathname === '/api/public/v3/scores')
       return ok({ data: scores.get(url.searchParams.get('traceId') ?? '') ?? [], meta: {} });
+    // Each judge execution's trace has one call, priced by Langfuse.
+    if (url.pathname === '/api/public/v2/observations')
+      return ok({
+        data: [
+          {
+            type: 'GENERATION',
+            inputUsage: 4321,
+            outputUsage: 987,
+            costDetails: { input: 0.0087, output: 0.0036, total: 0.0123 },
+          },
+        ],
+        meta: {},
+      });
     if (url.pathname === '/api/public/projects')
       return ok({ data: [{ id: 'genki-test', name: 'genki test' }] });
     return { status: 404, json: {} };
   });
   servers.push(server);
-  return { url: server.url, spans, attr, close: () => server.close() };
+  return { url: server.url, spans, attr, hooks, close: () => server.close() };
 };
 
 describe('Langfuse judges on a run', () => {
@@ -1406,6 +1429,84 @@ describe('Langfuse judges on a run', () => {
     expect(JSON.stringify(started.body)).toContain(nothing);
   });
 
+  it("stores each Langfuse judge's tokens and reported cost on the run, outside the quota", async () => {
+    const { env, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+    await saveUsdNok(env.platform.configEntries, { rate: 9.2826, date: '2026-10-29' }, new Date());
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const listed = await env.send('GET', `${services}/eval-runs`);
+    const usage = await env.send('GET', `/tenants/${tenant}/usage?days=1`);
+    const unseen = await env.send(
+      'GET',
+      `/tenants/${tenant}/eval-runs/${String(started.body.id)}`,
+      'erik',
+    );
+
+    // One case is scored, so one judge call; holdout and cases without criteria cost nothing here.
+    expect(stored?.run.usage?.reported).toEqual({
+      [`langfuse:lokal/${judgeRule}`]: {
+        inputTokens: 4321,
+        outputTokens: 987,
+        costUsd: 0.0123,
+        unpriced: 0,
+        unread: 0,
+      },
+    });
+    const summary = (listed.body.data as { id: string; tokens: { input: number } }[]).find(
+      (r) => r.id === started.body.id,
+    );
+    expect(summary?.tokens.input).toBe(
+      (stored?.run.usage?.answers.inputTokens ?? 0) + (stored?.run.usage?.judges?.inputTokens ?? 0),
+    );
+    expect(usage.status).toBe(200);
+    expect(JSON.stringify(usage.body)).not.toContain('4321');
+    // The run keeps the rate it shows the cost with, and only those who see usage see either.
+    expect(stored?.run.usage?.usdNok).toEqual({ rate: 9.2826, date: '2026-10-29' });
+    expect(
+      (
+        listed.body.data as { id: string; usdNok?: unknown; sinkJudges: { reported?: unknown }[] }[]
+      ).find((r) => r.id === started.body.id),
+    ).toMatchObject({
+      usdNok: { rate: 9.2826, date: '2026-10-29' },
+      sinkJudges: [{ reported: { inputTokens: 4321, costUsd: 0.0123 } }],
+    });
+    expect(unseen.status).toBe(200);
+    expect(JSON.stringify(unseen.body)).not.toContain('4321');
+    expect(JSON.stringify(unseen.body)).not.toContain('9.2826');
+  });
+
+  it("leaves a case out of what is sent when none of the run's Langfuse judges can read it, as holdout cases are", async () => {
+    const { env, langfuse, adopt } = await judged();
+    expect((await adopt(judgeRule)).status).toBe(200);
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const stored = await env.platform.evalStores.runs.get(String(started.body.id));
+    const sent = new Set(
+      langfuse.spans.map((s) => langfuse.attr(s, 'langfuse.experiment.item.metadata.case')),
+    );
+    const scoreOf = (id: string) =>
+      stored?.run.results
+        .find((r) => r.case === id)
+        ?.scores.find((s) => s.evaluator === `langfuse:lokal/${judgeRule}`);
+
+    // o2 must refuse and names no criteria, so Langfuse would bill a call genki cannot count.
+    expect(sent.has('o1')).toBe(true);
+    expect(sent.has('o2')).toBe(false);
+    expect(sent.has('l1')).toBe(false);
+    expect(scoreOf('o2')).toMatchObject({ state: 'not-applicable' });
+    expect(stored?.run.status).toBe('completed');
+  });
+
   it("sends a criteria case's reference answer as its criteria when it names none, as genki's criteria judge reads it", async () => {
     const { env, langfuse, adopt } = await judged();
     expect((await adopt(judgeRule)).status).toBe(200);
@@ -1513,6 +1614,32 @@ describe('Langfuse judges on a run', () => {
       differ('tone-eksperimenter, verktøy-eksperimenter, toksisitet'),
     );
     expect(inStep.status).toBe(202);
+  });
+
+  it('counts what a judge switched on in Langfuse during a run costs apart from the judges in use, shown only to those who see usage', async () => {
+    const later = experimentRule({ id: 'regel-2', name: 'tone-eksperimenter', status: 'inactive' });
+    const { env, langfuse, adopt } = await judged([experimentRule(), later]);
+    expect((await adopt(judgeRule)).status).toBe(200);
+    langfuse.hooks.firstItem = () => {
+      later.status = 'active';
+    };
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await env.settled();
+    const summaryFor = async (who: string) =>
+      ((await env.send('GET', `${services}/eval-runs`, who)).body.data as { id: string }[]).find(
+        (r) => r.id === started.body.id,
+      );
+
+    expect(started.status).toBe(202);
+    expect(await summaryFor('kari')).toMatchObject({
+      sinkJudges: [{ name: judgeRule, reported: { inputTokens: 4321, costUsd: 0.0123 } }],
+      sinkOthers: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unread: 0 },
+    });
+    expect(await summaryFor('erik')).not.toHaveProperty('sinkOthers');
   });
 
   it("refuses a Langfuse judge's metric in Kvalitetskrav, naming the rule", async () => {

@@ -720,6 +720,61 @@ describe('live Testsett: Langfuse-dommere', () => {
     expect(writes().filter((w) => w.method === 'POST' && /eval-runs$/.test(w.path))).toEqual([]);
   });
 
+  const costedRun = (usdNok?: { rate: number; date: string }) => ({
+    ...judgedRun,
+    id: 'med-kostnad',
+    ...(usdNok ? { usdNok } : {}),
+    sinkJudges: judgedRun.sinkJudges.map((j) => ({
+      ...j,
+      reported: { inputTokens: 4321, outputTokens: 987, costUsd: 0.0123, unpriced: 0, unread: 0 },
+    })),
+  });
+  const costLine = async (run: ReturnType<typeof costedRun>) => {
+    await openLive('', { runs: [run] });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+    return within(langfuse).getByText(/^Kostnad rapportert av Langfuse/).textContent;
+  };
+
+  it('shows the cost in kroner with the rate the run stored', async () => {
+    expect(await costLine(costedRun({ rate: 9.2826, date: '2026-10-29' }))).toMatch(
+      /^Kostnad rapportert av Langfuse: 0,11\skr \(0,0123 USD med kurs 9,2826 fra 29\.\soktober 2026\), 5\s308 tokens\.$/,
+    );
+  });
+
+  it('shows the cost in dollars until a rate is known', async () => {
+    expect(await costLine(costedRun())).toMatch(
+      /^Kostnad rapportert av Langfuse: 0,0123 USD, 5\s308 tokens\. Kronebeløpet vises når kursen fra Norges Bank er hentet\.$/,
+    );
+  });
+
+  it("shows what the project's other judges cost apart from the judges taken in use, as at least while some costs are not yet reported", async () => {
+    await openLive('', {
+      runs: [
+        {
+          ...costedRun({ rate: 9.2826, date: '2026-10-29' }),
+          sinkOthers: {
+            inputTokens: 900,
+            outputTokens: 100,
+            costUsd: 0.01,
+            unpriced: 0,
+            unread: 2,
+          },
+        },
+      ],
+    });
+    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
+    const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
+
+    expect(within(langfuse).getByText(/^Andre dommere i Langfuse-prosjektet/).textContent).toMatch(
+      /^Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: 0,09\skr \(0,0100 USD med kurs 9,2826 fra 29\.\soktober 2026\), 1\s000 tokens\. Langfuse hadde ikke rapportert kostnaden for 2 kall da kjøringen ble lagret, så beløpet er minst dette\.$/,
+    );
+  });
+
   it('refuses to send a run to Langfuse while the project has active judges genki does not read, and says so before it starts', async () => {
     const differ = (path: string) =>
       /\/eval-runs\/sending/.test(path)

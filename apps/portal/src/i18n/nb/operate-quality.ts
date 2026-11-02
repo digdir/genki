@@ -168,6 +168,16 @@ export const qualityArea = {
     sinkJudgeNotApplicable: 'Ikke aktuelt: {count} tilfeller',
     sinkJudgeChanged: 'Dommeren er endret siden kjøringen startet.',
     sinkJudgeExperiment: 'Se eksperimentet i Langfuse',
+    sinkCostLabel: 'Kostnad rapportert av Langfuse: {cost}',
+    sinkOthersLabel: 'Andre dommere i Langfuse-prosjektet vurderte de samme testtilfellene: {cost}',
+    sinkCostKroner: '{kroner} ({usd} USD med kurs {rate} fra {date}), {tokens} tokens.',
+    sinkCostUsd:
+      '{usd} USD, {tokens} tokens. Kronebeløpet vises når kursen fra Norges Bank er hentet.',
+    sinkCostTokens: 'ingen pris for modellen, {tokens} tokens.',
+    sinkCostUnpriced:
+      'Langfuse hadde ingen pris for {count} av kallene, bare tokenene deres er med.',
+    sinkCostUnread:
+      'Langfuse hadde ikke rapportert kostnaden for {count} kall da kjøringen ble lagret, så beløpet er minst dette.',
     sinkJudgeOnCase: '{name} (Langfuse)',
     verdictYes: 'Ja',
     verdictNo: 'Nei',

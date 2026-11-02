@@ -1106,6 +1106,40 @@ describe('deferred judges (evaluator@2)', () => {
     expect(Object.values(run.byTag).some((m) => 'judge.later' in m)).toBe(false);
   });
 
+  it('gives a sink judge a last read once the wait for scores is over, and stores what it reports then', async () => {
+    const clock = fakeClock();
+    const { evaluator } = later((item) => scoredAs(item, 1));
+    let settled = false;
+    evaluator.settle = async () => {
+      settled = true;
+    };
+    evaluator.reportedUsage = () =>
+      settled
+        ? {
+            'judge.later': {
+              inputTokens: 7,
+              outputTokens: 3,
+              costUsd: 0.01,
+              unpriced: 0,
+              unread: 0,
+            },
+          }
+        : {};
+
+    const run = await runEval({
+      ...base,
+      target: kernelTarget(kernel, kari, 'answer'),
+      evaluators: [evaluator],
+      now: clock.now,
+      wait: { sleep: clock.sleep },
+      meterAnswers: () => ({ inputTokens: 0, outputTokens: 0, costMicroNok: 0 }),
+    });
+
+    expect(run.usage?.reported).toEqual({
+      'judge.later': { inputTokens: 7, outputTokens: 3, costUsd: 0.01, unpriced: 0, unread: 0 },
+    });
+  });
+
   it("purges a judge's reason with the case, as its retention says", async () => {
     const clock = fakeClock();
     const { evaluator } = later((item) => ({

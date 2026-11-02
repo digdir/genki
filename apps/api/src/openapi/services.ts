@@ -201,6 +201,16 @@ export const SinkJudgeSummary = z
     changed: z
       .array(z.string())
       .describe('What changed in the judge since the run started; empty when nothing did'),
+    reported: z
+      .object({
+        inputTokens: z.number().int(),
+        outputTokens: z.number().int(),
+        costUsd: z.number().nullable().describe('null when Langfuse priced none of the calls'),
+        unpriced: z.number().int().describe('Calls Langfuse had no price for'),
+        unread: z.number().int().describe('Calls whose cost was not reported yet'),
+      })
+      .optional()
+      .describe("What Langfuse reports the judge's own calls used; only with view-usage"),
   })
   .openapi('SinkJudgeSummary');
 
@@ -208,6 +218,22 @@ export const SinkJudgeSummary = z
 export const sinkJudgeFields = {
   sinkJudges: z.array(SinkJudgeSummary),
   experiment: z.string().optional().describe('Where Langfuse shows the run as an experiment'),
+  sinkOthers: z
+    .object({
+      inputTokens: z.number().int(),
+      outputTokens: z.number().int(),
+      costUsd: z.number().nullable(),
+      unpriced: z.number().int(),
+      unread: z.number().int(),
+    })
+    .optional()
+    .describe(
+      'What Langfuse judges the run did not use cost on its cases, such as one switched on during the run; only with view-usage',
+    ),
+  usdNok: z
+    .object({ rate: z.number(), date: z.string() })
+    .optional()
+    .describe("Norges Bank's USD/NOK rate the run shows reported costs with; only with view-usage"),
   unsentJudges: z
     .array(z.object({ id: z.string(), name: z.string() }))
     .optional()
