@@ -191,6 +191,8 @@ export const adminActionRights: Readonly<
   'platform.service.share': 'operator',
   'platform.private-networks.save': 'operator',
   'platform.judge.label': 'operator',
+  'platform.judge.label.accept': 'operator',
+  'platform.judge.label.reject': 'operator',
   'platform.task.cancel': 'operator',
   'platform.audit.export': 'operator',
   'platform.task.export': 'manage-services',

@@ -566,5 +566,105 @@ export const langfuseJudges = (api: LangfuseApiOptions) => {
     ledger.expected = new Set(rules);
   };
 
-  return { list, others, evaluator, experimentUrl, expectJudges };
+  /**
+   * Every label people made in the project's UI: ANNOTATION scores whose score config has the
+   * score's own name and type, read as good or bad (a number scaled by the config's bounds and split
+   * at 0.5), or the category as it came. The Langfuse user id comes along for a pseudonym.
+   */
+  const annotations = async (): Promise<LangfuseAnnotation[]> => {
+    const all: RawAnnotation[] = [];
+    let cursor: string | undefined;
+    do {
+      const found = await read<{ data: RawAnnotation[]; meta?: { cursor?: string } }>(
+        `/api/public/v3/scores?source=ANNOTATION&fields=core,details,subject,annotation&limit=100${
+          cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+        }`,
+      );
+      all.push(...(found?.data ?? []));
+      cursor = found && found.data.length > 0 ? found.meta?.cursor : undefined;
+    } while (cursor);
+    const configs = new Map<string, Promise<RawScoreConfig | undefined>>();
+    const configOf = (id: string) => {
+      if (!configs.has(id))
+        configs.set(
+          id,
+          read<RawScoreConfig>(`/api/public/score-configs/${encodeURIComponent(id)}`),
+        );
+      return configs.get(id) as Promise<RawScoreConfig | undefined>;
+    };
+    const out: LangfuseAnnotation[] = [];
+    for (const a of all) {
+      const trace =
+        a.subject?.traceId ?? (a.subject?.kind === 'trace' ? a.subject.id : undefined) ?? a.traceId;
+      if (!trace || !a.configId || !a.dataType) continue;
+      const config = await configOf(a.configId);
+      if (!config || config.name !== a.name || config.dataType !== a.dataType) continue;
+      const label = labelOf(a, config);
+      if (label === undefined) continue;
+      out.push({
+        id: a.id,
+        // 4.4.0 keeps updatedAt when someone edits an annotation in the UI, so the label is in it.
+        revision: `${a.updatedAt ?? a.timestamp ?? ''}|${label}`,
+        trace,
+        name: a.name,
+        dataType: a.dataType,
+        label,
+        ...(a.authorUserId ? { author: a.authorUserId } : {}),
+      });
+    }
+    return out;
+  };
+
+  return { list, others, evaluator, experimentUrl, expectJudges, annotations };
+};
+
+/** A person's label in Langfuse, read for genki's calibration labels (ADR 0040). */
+export interface LangfuseAnnotation {
+  id: string;
+  /** Changes when the annotation is edited. */
+  revision: string;
+  trace: string;
+  name: string;
+  dataType: string;
+  label: string;
+  author?: string;
+}
+
+interface RawAnnotation {
+  id: string;
+  name: string;
+  value: unknown;
+  stringValue?: string;
+  dataType?: string;
+  configId?: string | null;
+  authorUserId?: string | null;
+  traceId?: string | null;
+  timestamp?: string;
+  updatedAt?: string;
+  subject?: { kind?: string; id?: string; traceId?: string };
+}
+
+interface RawScoreConfig {
+  name: string;
+  dataType: string;
+  minValue?: number | null;
+  maxValue?: number | null;
+}
+
+/** good or bad for a boolean, or a number within its config's bounds; otherwise as it came. */
+const labelOf = (a: RawAnnotation, config: RawScoreConfig): string | undefined => {
+  if (a.dataType === 'BOOLEAN') {
+    if (a.value === true || a.value === 1) return 'good';
+    if (a.value === false || a.value === 0) return 'bad';
+    return undefined;
+  }
+  if (a.dataType === 'NUMERIC') {
+    if (typeof a.value !== 'number') return undefined;
+    const { minValue: min, maxValue: max } = config;
+    if (typeof min === 'number' && typeof max === 'number' && max > min)
+      return (a.value - min) / (max - min) >= 0.5 ? 'good' : 'bad';
+    return String(a.value);
+  }
+  const category = a.stringValue ?? (typeof a.value === 'string' ? a.value : undefined);
+  return category === undefined || category === '' ? undefined : category;
 };

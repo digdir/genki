@@ -19,10 +19,13 @@ import { orgNumberValid } from '../extensions.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import type { OperationsOverview } from '../operations.js';
 import type { Organization } from '../organizations.js';
+import { SinkLabelsRefused, type SinkLabels } from '../sink-labels.js';
 
 export const consoleActions = [
   'platform.service.share',
   'platform.judge.label',
+  'platform.judge.label.accept',
+  'platform.judge.label.reject',
   'platform.support.end',
   'platform.support.extend',
   'platform.task.cancel',
@@ -70,6 +73,8 @@ export interface ConsoleDeps {
   tenants(): Promise<string[]> | string[];
   runs: EvalRunStore;
   labels: LabelStore;
+  /** Labels brought back from tenants' trace sinks, which an operator accepts or rejects. */
+  sinkLabels?: SinkLabels;
   traces(): TraceStatus | undefined;
   support: SupportDirectory;
   tasks(): RunningTask[] | Promise<RunningTask[]>;
@@ -115,7 +120,29 @@ const humanLabel = z.strictObject({
 
 export const consoleAdminExtensions = (deps: ConsoleDeps): Record<string, AdminHandler> => {
   const now = deps.now ?? (() => new Date());
+  /** A batch of a sink's labels (one connection, one judge) accepted or rejected, with its reason. */
+  const decided =
+    (decision: 'accept' | 'reject'): AdminHandler =>
+    async (input, principal) => {
+      const target = `judge:${String(input.judge)}`;
+      if (principal.kind !== 'operator' && !principal.actor)
+        return refused(target, 'only operators decide which labels count');
+      const agency = String(input.agency);
+      const result = await deps.sinkLabels?.decide(
+        agency,
+        String(input.connection),
+        String(input.judge),
+        decision,
+        actorOf(principal),
+        String(input.reason),
+      );
+      if (!result || (result.accepted ?? result.rejected ?? 0) === 0)
+        return invalid(target, [{ path: 'judge', message: 'no such batch of pending labels' }]);
+      return { ok: true, value: result, target, audit: { scope: 'platform', tenant: agency } };
+    };
   return {
+    'platform.judge.label.accept': decided('accept'),
+    'platform.judge.label.reject': decided('reject'),
     'platform.service.share': async (input, principal) => {
       const target = `service:${String(input.serviceTenant)}/${String(input.service)}`;
       if (principal.kind !== 'operator' && !principal.actor)
@@ -240,7 +267,7 @@ const jsonSchemaOf = (schema: unknown) => {
 
 const problem = (
   c: Context,
-  status: 400 | 401 | 403 | 404,
+  status: 400 | 401 | 403 | 404 | 409,
   title: string,
   errors: unknown[] = [],
 ) =>
@@ -454,6 +481,58 @@ export const registerConsoleRoutes = <E extends Env, S extends Schema, B extends
     if (!body) return problem(c, 400, 'Invalid request', [{ path: 'body', message: 'required' }]);
     return applied(c, who.principal, 'platform.judge.label', body);
   });
+
+  app.get('/operator/quality/sink-labels', async (c) => {
+    const who = await operatorOf(c);
+    if (who.response) return who.response;
+    const connections = [];
+    const batches = [];
+    for (const tenant of await deps.tenants()) {
+      if (!deps.sinkLabels) break;
+      connections.push(
+        ...(await deps.sinkLabels.connections(tenant)).map((x) => ({ tenant, ...x })),
+      );
+      batches.push(...(await deps.sinkLabels.batches(tenant)));
+    }
+    return c.json({ connections, batches });
+  });
+
+  app.post('/operator/quality/sink-labels/fetch', async (c) => {
+    const who = await operatorOf(c);
+    if (who.response) return who.response;
+    const body = (await c.req.json().catch(() => undefined)) as Record<string, unknown> | undefined;
+    const tenant = typeof body?.tenant === 'string' ? body.tenant : '';
+    const connection = typeof body?.connection === 'string' ? body.connection : '';
+    if (!tenant || !connection)
+      return problem(c, 400, 'Invalid request', [
+        { path: 'body', message: 'tenant and connection are required' },
+      ]);
+    if (!deps.sinkLabels || !(await deps.tenants()).includes(tenant))
+      return problem(c, 404, 'Not found');
+    try {
+      return c.json(await deps.sinkLabels.fetch(tenant, connection));
+    } catch (error) {
+      if (error instanceof SinkLabelsRefused)
+        return problem(c, error.missing ? 404 : 409, error.missing ? 'Not found' : 'Conflict', [
+          { path: 'connection', message: error.message },
+        ]);
+      throw error;
+    }
+  });
+
+  for (const decision of ['accept', 'reject'] as const)
+    app.post(`/operator/quality/sink-labels/${decision}`, async (c) => {
+      const who = await operatorOf(c);
+      if (who.response) return who.response;
+      const body = (await c.req.json().catch(() => undefined)) as
+        Record<string, unknown> | undefined;
+      if (!body) return problem(c, 400, 'Invalid request', [{ path: 'body', message: 'required' }]);
+      return applied(c, who.principal, `platform.judge.label.${decision}`, {
+        agency: body.tenant,
+        connection: body.connection,
+        judge: body.judge,
+      });
+    });
 
   app.get('/operator/tracing', async (c) => {
     const who = await operatorOf(c);

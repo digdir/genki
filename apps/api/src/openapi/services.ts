@@ -211,6 +211,21 @@ export const SinkJudgeSummary = z
       })
       .optional()
       .describe("What Langfuse reports the judge's own calls used; only with view-usage"),
+    labels: z
+      .object({
+        n: z.number().int().describe('Accepted labels paired with a verdict of the judge'),
+        kappa: z.number().optional().describe("Cohen's kappa over them; absent without labels"),
+        observed: z.number().optional().describe('Share where the label and the judge agree'),
+        otherVersions: z
+          .number()
+          .int()
+          .describe('Of n, labels another version or model of the judge scored'),
+        unpaired: z.number().int().describe('Accepted labels on cases the judge did not score'),
+      })
+      .optional()
+      .describe(
+        "The judge's agreement with the accepted labels of the same tenant, connection and name",
+      ),
   })
   .openapi('SinkJudgeSummary');
 

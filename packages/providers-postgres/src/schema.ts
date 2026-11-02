@@ -19,6 +19,8 @@ const tenantTables = [
   'clients',
   'webhook_deliveries',
   'trace_deliveries',
+  'sink_labels',
+  'sink_label_keys',
   'ingestion_executions',
   'trigger_runs',
   'api_key_policies',
@@ -574,6 +576,27 @@ const migrations: string[] = [
   `create index if not exists trace_deliveries_pending on trace_deliveries (updated_at) where state = 'pending'`,
   `alter table trace_deliveries add column if not exists judges text[] not null default '{}'`,
   ...tenantIsolation('trace_deliveries'),
+  // Labels brought back from a tenant's trace sink, every revision and state (ADR 0040).
+  // Append-only like judge_labels: a change of state is a new row, and the latest one holds.
+  `create table if not exists sink_labels (
+     seq bigint generated always as identity primary key,
+     tenant text not null,
+     id text not null,
+     revision text not null,
+     connection text not null,
+     judge text not null,
+     label jsonb not null
+   )`,
+  `create index if not exists sink_labels_latest on sink_labels (tenant, id, revision, seq desc)`,
+  `create or replace trigger sink_labels_append_only before update or delete on sink_labels
+     for each row execute function refuse_change()`,
+  ...tenantIsolation('sink_labels'),
+  // The tenant's own key for labeller pseudonyms: never shown, so a pseudonym is not reversible.
+  `create table if not exists sink_label_keys (
+     tenant text primary key,
+     key text not null
+   )`,
+  ...tenantIsolation('sink_label_keys'),
   `create or replace function pending_trace_deletes(p_limit integer) returns setof trace_deliveries
      language plpgsql stable security definer set search_path = public
      as $$ begin

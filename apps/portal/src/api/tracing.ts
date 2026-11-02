@@ -10,6 +10,8 @@ export interface TraceConnectionInput {
   residency: Residency;
   content: boolean;
   erasureDeclared: boolean;
+  /** People's annotations in the project come back as pending calibration labels. */
+  labels: boolean;
 }
 
 export interface TraceConnection extends TraceConnectionInput {

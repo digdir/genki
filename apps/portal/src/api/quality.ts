@@ -86,6 +86,17 @@ export interface SinkJudgeSummary {
   changed: string[];
   /** What Langfuse reports the judge's own calls used; only for those who see usage. */
   reported?: ReportedCost;
+  /** Agreement with the accepted labels of the same judge (tenant, connection, name). */
+  labels?: SinkAgreement;
+}
+
+/** Cohen's kappa and the share alike over accepted labels; how many another version scored. */
+export interface SinkAgreement {
+  n: number;
+  kappa?: number;
+  observed?: number;
+  otherVersions: number;
+  unpaired: number;
 }
 
 /** What Langfuse reports judge calls cost: tokens, USD where priced, and calls not yet reported. */

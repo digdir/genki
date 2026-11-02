@@ -34,6 +34,8 @@ export const traceConnection = z.strictObject({
   residency: z.enum(residencies).default('global'),
   content: z.boolean().default(false),
   erasureDeclared: z.boolean().default(false),
+  /** Labels people make in the project come back as pending calibration labels (ADR 0040). */
+  labels: z.boolean().default(false),
 });
 export type TraceConnection = z.output<typeof traceConnection> & {
   /** Removal asked for: its traces are being deleted, and it covers no service any more. */
@@ -436,6 +438,21 @@ export interface SinkJudge {
   snapshot: unknown;
 }
 
+/** A person's label on a case trace in a sink, as the sink reads it. */
+export interface SinkAnnotation {
+  /** The sink's id for the label, and its revision: an edit there gives a new one. */
+  id: string;
+  revision: string;
+  trace: string;
+  /** The judge it is for, by the judge's name and data type. */
+  name: string;
+  dataType: string;
+  /** good or bad for a boolean, or a number split at 0.5; a category as it came. */
+  label: string;
+  /** The sink's own id for the person, never stored as it is. */
+  author?: string;
+}
+
 /** Where an eval run's case traces go: opened for a run, closed (flushed) when it ends. */
 export interface TraceSinks {
   /**
@@ -469,6 +486,13 @@ export interface TraceSinks {
   close(run: string): Promise<string[]>;
   /** The id the sink knows a case task's trace by. */
   traceIdOf(task: string): string;
+  /**
+   * What people labelled in the connection's project (Langfuse's annotations), each read as good,
+   * bad or its category, with the sink's id for the person who made it.
+   */
+  annotations?(tenant: string, connection: TraceConnection): Promise<SinkAnnotation[]>;
+  /** The judge a sink judge's evaluator calibrates, with the tenant in it: labels pool by it. */
+  calibrationKey?(tenant: string, evaluator: string): string;
 }
 
 /** A connection as a tenant reads it: the secret's reference, never its value. */

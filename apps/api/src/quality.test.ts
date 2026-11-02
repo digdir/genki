@@ -1028,6 +1028,27 @@ interface FakeRule {
   evaluator: { id: string; name: string };
 }
 
+interface FakeAnnotation {
+  id: string;
+  name: string;
+  source: 'ANNOTATION';
+  dataType: string;
+  value: boolean | number | string;
+  configId: string;
+  authorUserId: string;
+  queueId: string | null;
+  updatedAt: string;
+  subject: { kind: string; id: string; traceId?: string };
+}
+
+interface FakeScoreConfig {
+  id: string;
+  name: string;
+  dataType: string;
+  minValue?: number;
+  maxValue?: number;
+}
+
 const experimentRule = (over: Partial<FakeRule> = {}): FakeRule => ({
   id: 'regel-1',
   name: judgeRule,
@@ -1059,6 +1080,33 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
   const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
   // Runs once as the first item arrives, as when someone switches a rule on during a run.
   const hooks: { firstItem?: () => void } = {};
+  const annotations: FakeAnnotation[] = [];
+  const configs: FakeScoreConfig[] = [
+    { id: 'oppsett-1', name: judgeRule, dataType: 'BOOLEAN' },
+    { id: 'oppsett-2', name: judgeRule, dataType: 'NUMERIC', minValue: 0, maxValue: 4 },
+    { id: 'oppsett-3', name: 'hjelpsomhet', dataType: 'BOOLEAN' },
+  ];
+  /** A person's annotation on a case's trace, as Langfuse's UI writes it with a score config. */
+  const annotate = (
+    trace: string,
+    over: Partial<FakeAnnotation> & { value: boolean | number | string },
+  ) => {
+    const config = configs.find((c) => c.id === (over.configId ?? 'oppsett-1'));
+    const annotation: FakeAnnotation = {
+      id: `merknad-${annotations.length + 1}`,
+      name: config?.name ?? judgeRule,
+      source: 'ANNOTATION',
+      dataType: config?.dataType ?? 'BOOLEAN',
+      configId: 'oppsett-1',
+      authorUserId: 'lf-bruker-1',
+      queueId: null,
+      updatedAt: '2026-11-02T10:00:00.000Z',
+      subject: { kind: 'trace', id: trace },
+      ...over,
+    };
+    annotations.push(annotation);
+    return annotation;
+  };
   let seen = false;
   const server = await fakeHttp((body, _attempt, path) => {
     const url = new URL(path, 'http://langfuse.test');
@@ -1109,8 +1157,16 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
         outputDefinition: { dataType: 'BOOLEAN' },
         modelConfig: { provider: 'foundry-claude', model: 'claude-sonnet-5' },
       });
+    // What people annotate in Langfuse's UI, apart from what the judges score.
+    if (url.pathname === '/api/public/v3/scores' && url.searchParams.get('source') === 'ANNOTATION')
+      return ok({ data: annotations, meta: {} });
     if (url.pathname === '/api/public/v3/scores')
       return ok({ data: scores.get(url.searchParams.get('traceId') ?? '') ?? [], meta: {} });
+    const configId = /score-configs\/(.+)$/.exec(url.pathname)?.[1];
+    if (configId) {
+      const found = configs.find((c) => c.id === decodeURIComponent(configId));
+      return found ? ok(found) : { status: 404, json: {} };
+    }
     // Each judge execution's trace has one call, priced by Langfuse.
     if (url.pathname === '/api/public/v2/observations')
       return ok({
@@ -1129,7 +1185,22 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     return { status: 404, json: {} };
   });
   servers.push(server);
-  return { url: server.url, spans, attr, hooks, close: () => server.close() };
+  const traceOf = (caseId: string) =>
+    spans.find(
+      (s) =>
+        attr(s, 'langfuse.experiment.item.metadata.case') === caseId &&
+        attr(s, 'langfuse.experiment.item.root_observation_id') === s.spanId,
+    )?.traceId ?? '';
+  return {
+    url: server.url,
+    spans,
+    attr,
+    hooks,
+    annotations,
+    annotate,
+    traceOf,
+    close: () => server.close(),
+  };
 };
 
 describe('Langfuse judges on a run', () => {
@@ -1147,7 +1218,7 @@ describe('Langfuse judges on a run', () => {
       { value: 'sk-lf-lokal', allowedHosts: [langfuse.url] },
       why,
     );
-    const saveConnection = (receives: boolean) =>
+    const saveConnection = (receives: boolean, more: Record<string, unknown> = {}) =>
       env.send(
         'PUT',
         `/tenants/${tenant}/tracing/connections/lokal`,
@@ -1160,6 +1231,7 @@ describe('Langfuse judges on a run', () => {
           residency,
           content: receives,
           erasureDeclared: true,
+          ...more,
         },
         why,
       );
@@ -1695,6 +1767,248 @@ describe('Langfuse judges on a run', () => {
     expect(JSON.stringify(published)).toContain(
       `the gate kriterier-langfuse reads the Langfuse judge ${judgeRule} on the connection lokal, which is advisory and never blocks a publish`,
     );
+  });
+
+  const labelKey = `langfuse:${tenant}/lokal/${judgeRule}`;
+
+  interface LabelBatch {
+    tenant: string;
+    connection: string;
+    judge: string;
+    name: string;
+    labels: Record<string, unknown>[];
+    paired: number;
+    alike: number;
+    unpaired: number;
+    labellers: number;
+  }
+
+  /** A run sent to Langfuse and judged there, on a connection whose labels switch is on. */
+  const labelled = async (rules?: FakeRule[], labels = true) => {
+    const ctx = await judged(rules);
+    for (const rule of rules ?? [experimentRule()])
+      expect((await ctx.adopt(rule.name)).status).toBe(200);
+    if (labels) expect((await ctx.saveConnection(true, { labels: true })).status).toBe(200);
+    const started = await ctx.env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      trace: true,
+    });
+    await ctx.env.settled();
+    const run = String(started.body.id);
+    const fetchLabels = (connection = 'lokal') =>
+      ctx.env.send('POST', '/operator/quality/sink-labels/fetch', 'operator', {
+        tenant,
+        connection,
+      });
+    const batches = async () =>
+      (await ctx.env.send('GET', '/operator/quality/sink-labels', 'operator')).body
+        .batches as LabelBatch[];
+    const decide = (decision: 'accept' | 'reject', reason?: string, who = 'operator') =>
+      ctx.env.send(
+        'POST',
+        `/operator/quality/sink-labels/${decision}`,
+        who,
+        { tenant, connection: 'lokal', judge: labelKey },
+        reason ? { 'change-reason': reason } : {},
+      );
+    const agreement = async (judge = `langfuse:lokal/${judgeRule}`) =>
+      (
+        (await ctx.env.send('GET', `/tenants/${tenant}/eval-runs/${run}`)).body.sinkJudges as {
+          id: string;
+          labels?: unknown;
+        }[]
+      ).find((j) => j.id === judge)?.labels;
+    return { ...ctx, run, fetchLabels, batches, decide, agreement };
+  };
+
+  it("turns an ANNOTATION with a judge's exact name and type into a pending label for that judge and case", async () => {
+    const { langfuse, run, fetchLabels, batches, agreement } = await labelled();
+    const o1 = langfuse.traceOf('o1');
+    langfuse.annotate(o1, { value: false });
+    // The judge's name with another type, and another name: not the judge's labels.
+    langfuse.annotate(o1, { configId: 'oppsett-2', value: 3 });
+    langfuse.annotate(o1, { configId: 'oppsett-3', value: true });
+
+    const fetched = await fetchLabels();
+
+    expect(fetched.status).toBe(200);
+    expect(await batches()).toEqual([
+      {
+        tenant,
+        connection: 'lokal',
+        judge: labelKey,
+        name: judgeRule,
+        labels: [
+          expect.objectContaining({
+            run,
+            case: 'o1',
+            repeat: 0,
+            humanLabel: 'bad',
+            judgeLabel: 'good',
+          }),
+        ],
+        paired: 1,
+        alike: 0,
+        unpaired: 0,
+        labellers: 1,
+      },
+    ]);
+    // Pending: nothing counts yet.
+    expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
+    // Fetching again brings nothing new.
+    await fetchLabels();
+    expect((await batches())[0]?.labels).toHaveLength(1);
+  });
+
+  it('counts a label only after its batch is accepted with a reason, in the audit log', async () => {
+    const { env, langfuse, fetchLabels, batches, decide, agreement } = await labelled();
+    langfuse.annotate(langfuse.traceOf('o1'), { value: true });
+    await fetchLabels();
+
+    expect((await decide('accept')).status).toBe(400);
+    expect((await decide('accept', 'Etikettene er kontrollert', 'kari')).status).toBe(403);
+    expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
+
+    const accepted = await decide('accept', 'Etikettene er kontrollert');
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body).toMatchObject({ accepted: 1 });
+    expect(await batches()).toEqual([]);
+    expect(await agreement()).toEqual({
+      n: 1,
+      kappa: 1,
+      observed: 1,
+      otherVersions: 0,
+      unpaired: 0,
+    });
+    const audit = (await env.send('GET', '/operator/audit', 'operator')).body.data as {
+      action: string;
+      target: string;
+      reason: string;
+      outcome: string;
+    }[];
+    expect(audit).toContainEqual(
+      expect.objectContaining({
+        action: 'platform.judge.label.accept',
+        target: `judge:${labelKey}`,
+        reason: 'Etikettene er kontrollert',
+        outcome: 'applied',
+      }),
+    );
+  });
+
+  it('counts a label without a judge score as unpaired', async () => {
+    // A second judge reads cases without criteria, so o2 is sent, but the first does not score it.
+    const short = experimentRule({
+      id: 'regel-2',
+      name: 'svar_er_kort-eksperimenter',
+      mapping: [{ variable: 'output', source: 'output' }],
+    });
+    const { langfuse, fetchLabels, batches, decide, agreement } = await labelled([
+      experimentRule(),
+      short,
+    ]);
+    langfuse.annotate(langfuse.traceOf('o2'), { value: true });
+    langfuse.annotate(langfuse.traceOf('o1'), { value: true });
+
+    await fetchLabels();
+
+    const batch = (await batches()).find((b) => b.judge === labelKey);
+    expect(batch).toMatchObject({ paired: 1, alike: 1, unpaired: 1 });
+    const o2 = batch?.labels.find((l) => l.case === 'o2');
+    expect(o2).toMatchObject({ humanLabel: 'good' });
+    expect(o2).not.toHaveProperty('judgeLabel');
+    await decide('accept', 'Etikettene er kontrollert');
+    expect(await agreement()).toMatchObject({ n: 1, unpaired: 1 });
+  });
+
+  it('ignores annotations on traces genki did not send', async () => {
+    const { env, langfuse, run, fetchLabels, batches } = await labelled();
+    const stored = await env.platform.evalStores.runs.get(run);
+    const unsent = (id: string) => stored?.run.results.find((r) => r.case === id)?.task ?? '';
+    // o2 has no criteria and l1 is a holdout case: neither was sent. The third is someone else's.
+    langfuse.annotate(traceIdFor(unsent('o2')), { value: true });
+    langfuse.annotate(traceIdFor(unsent('l1')), { value: true });
+    langfuse.annotate('0123456789abcdef0123456789abcdef', { value: true });
+
+    const fetched = await fetchLabels();
+
+    expect(fetched.status).toBe(200);
+    expect(await batches()).toEqual([]);
+  });
+
+  it('turns down a batch with a reason, in the audit log, and does not bring its labels back unless they are edited', async () => {
+    const { env, langfuse, fetchLabels, batches, decide, agreement } = await labelled();
+    const annotation = langfuse.annotate(langfuse.traceOf('o1'), { value: false });
+    await fetchLabels();
+
+    expect((await decide('reject')).status).toBe(400);
+    const rejected = await decide('reject', 'Merket av en testbruker');
+
+    expect(rejected.status).toBe(200);
+    expect(rejected.body).toMatchObject({ rejected: 1 });
+    expect(await batches()).toEqual([]);
+    expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
+    const audit = (await env.send('GET', '/operator/audit', 'operator')).body.data;
+    expect(audit).toContainEqual(
+      expect.objectContaining({
+        action: 'platform.judge.label.reject',
+        target: `judge:${labelKey}`,
+        reason: 'Merket av en testbruker',
+      }),
+    );
+    await fetchLabels();
+    expect(await batches()).toEqual([]);
+
+    // Langfuse 4.4.0 keeps updatedAt when an annotation is edited in its UI.
+    annotation.value = true;
+    await fetchLabels();
+
+    expect((await batches())[0]?.labels).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'good' }),
+    ]);
+  });
+
+  it('brings an annotation edited in Langfuse back as pending, and stops counting one deleted there', async () => {
+    const { langfuse, fetchLabels, batches, decide, agreement } = await labelled();
+    const annotation = langfuse.annotate(langfuse.traceOf('o1'), { value: false });
+    await fetchLabels();
+    await decide('accept', 'Etikettene er kontrollert');
+    expect(await agreement()).toMatchObject({ n: 1, observed: 0 });
+
+    // Langfuse 4.4.0 keeps updatedAt when an annotation is edited in its UI.
+    annotation.value = true;
+    await fetchLabels();
+
+    // The accepted Nei counts until the edit is accepted.
+    expect((await batches())[0]?.labels).toEqual([
+      expect.objectContaining({ case: 'o1', humanLabel: 'good' }),
+    ]);
+    expect(await agreement()).toMatchObject({ n: 1, observed: 0 });
+    await decide('accept', 'Rettingen er kontrollert');
+    expect(await agreement()).toMatchObject({ n: 1, observed: 1 });
+
+    langfuse.annotations.splice(0);
+    await fetchLabels();
+
+    expect(await agreement()).toEqual({ n: 0, otherVersions: 0, unpaired: 0 });
+    expect(await batches()).toEqual([]);
+  });
+
+  it('brings labels back from a tracing connection only while its labels switch is on', async () => {
+    const { langfuse, fetchLabels, batches, saveConnection } = await labelled(undefined, false);
+    langfuse.annotate(langfuse.traceOf('o1'), { value: false });
+
+    const off = await fetchLabels();
+
+    expect(off.status).toBe(409);
+    expect(JSON.stringify(off.body)).toContain(
+      'the connection lokal does not bring labels back; switch labels on first',
+    );
+    expect(await batches()).toEqual([]);
+    expect((await saveConnection(true, { labels: true })).status).toBe(200);
+    expect((await fetchLabels()).status).toBe(200);
+    expect(await batches()).toHaveLength(1);
   });
 });
 

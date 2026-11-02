@@ -544,9 +544,10 @@ export const createQualityModule =
           if (guard.response) return guard.response;
           const runs = await evals.runsOf(guard.tenant, param(c, 'id'));
           const usage = seesUsage(guard.principal, guard.tenant);
+          const agreementsOf = await deps.sinkLabels?.agreementsFor(guard.tenant);
           return c.json({
             data: runs.map((s) => {
-              const summary = runSummary(s.run, isSinkJudge);
+              const summary = runSummary(s.run, isSinkJudge, agreementsOf?.(s.run));
               return usage ? summary : costless(summary);
             }),
           });
@@ -566,6 +567,9 @@ export const createQualityModule =
             const detail = runDetail(stored.run, set, await evals.answersOf(stored.run), {
               isSinkJudge,
               reasons: await evals.judgeReasonsOf(stored.run, isSinkJudge),
+              ...(deps.sinkLabels
+                ? { agreements: await deps.sinkLabels.agreements(guard.tenant, stored.run) }
+                : {}),
             });
             const shown = seesUsage(guard.principal, guard.tenant) ? detail : costless(detail);
             return c.json({ kind: 'service' as const, ...shown });

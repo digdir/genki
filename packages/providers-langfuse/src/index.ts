@@ -21,6 +21,7 @@ export {
   mappedContent,
   type ContentSource,
   type JudgeRefusal,
+  type LangfuseAnnotation,
   type LangfuseApiOptions,
   type LangfuseJudge,
 } from './judges.js';

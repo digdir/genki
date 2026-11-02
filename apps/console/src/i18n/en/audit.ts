@@ -36,6 +36,8 @@ export const audit = {
   actionGuardrailRuleDelete: 'Deleted safeguard rule',
   actionImprovementDecide: 'Decided on improvement proposal',
   actionJudgeLabel: 'Labelled judge assessment',
+  actionJudgeLabelAccept: 'Accepted labels from Langfuse',
+  actionJudgeLabelReject: 'Rejected labels from Langfuse',
   actionPipelineSave: 'Saved ingestion',
   actionPipelineDelete: 'Deleted ingestion',
   actionPipelineExecute: 'Started ingestion',

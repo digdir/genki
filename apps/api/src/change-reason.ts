@@ -44,6 +44,8 @@ export const reasonFreeWrites: Record<string, ReasonFreeWrite> = {
   'POST /operator/knowledge/endpoints/test': 'check',
   'POST /operator/plugins/manifest-check': 'check',
   'POST /operator/quality/matrix/estimate': 'check',
+  // Reads what people labelled; nothing counts until a batch is accepted with a reason.
+  'POST /operator/quality/sink-labels/fetch': 'check',
 };
 
 export const bodyReasonWrites = new Set(['POST /support-sessions']);

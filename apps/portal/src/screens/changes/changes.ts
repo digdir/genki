@@ -52,6 +52,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.guardrail-rule.save': 'changes.guardrailRuleSave',
   'platform.improvement.decide': 'changes.improvementDecide',
   'platform.judge.label': 'changes.judgeLabel',
+  'platform.judge.label.accept': 'changes.judgeLabelAccept',
+  'platform.judge.label.reject': 'changes.judgeLabelReject',
   'platform.keypolicy.attach': 'changes.keypolicyAttach',
   'platform.keypolicy.delete': 'changes.keypolicyDelete',
   'platform.keypolicy.save': 'changes.keypolicySave',

@@ -2008,6 +2008,96 @@ const qualityRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/operator/quality/sink-labels',
+    summary:
+      "Every tenant's trace connections and the labels brought back from them that wait for a decision",
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          connections: z.array(
+            z.object({ tenant: z.string(), connection: z.string(), labels: z.boolean() }),
+          ),
+          batches: z.array(
+            z
+              .object({
+                tenant: z.string(),
+                connection: z.string(),
+                judge: z
+                  .string()
+                  .describe(
+                    'The judge the labels calibrate, such as langfuse:<tenant>/<connection>/<rule>',
+                  ),
+                name: z.string(),
+                labels: z.array(
+                  z.object({
+                    run: z.string(),
+                    case: z.string(),
+                    repeat: z.number().int(),
+                    humanLabel: z.string(),
+                    judgeLabel: z
+                      .string()
+                      .optional()
+                      .describe("The judge's own verdict; absent when it did not score the case"),
+                    labeller: z.string().describe('A pseudonym, per agency'),
+                  }),
+                ),
+                paired: z.number().int(),
+                alike: z.number().int(),
+                unpaired: z.number().int(),
+                labellers: z.number().int(),
+              })
+              .describe('The pending labels of one connection and judge'),
+          ),
+        }),
+        'Sink labels',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/quality/sink-labels/fetch',
+    summary:
+      "Read what people labelled in a tenant's trace connection: new labels and edits on cases genki sent wait as pending, deleted ones stop counting",
+    description: described(operator, notAudited),
+    request: { body: body(z.object({ tenant: z.string(), connection: z.string() })) },
+    responses: {
+      200: json(z.object({ pending: z.number().int() }), 'Fetched'),
+      400: problem('Tenant or connection missing'),
+      404: problem('No such tenant or connection'),
+      409: problem('The connection does not bring labels back'),
+      ...operatorOnly,
+    },
+  }),
+  ...(['accept', 'reject'] as const).map((decision) =>
+    createRoute({
+      method: 'post',
+      path: `/operator/quality/sink-labels/${decision}`,
+      summary:
+        decision === 'accept'
+          ? "Accept a connection's pending labels for one judge, so they count in its agreement"
+          : "Reject a connection's pending labels for one judge; they come back only if edited",
+      description: described(operator, audited),
+      request: {
+        headers: operatorWriteHeaders,
+        body: body(z.object({ tenant: z.string(), connection: z.string(), judge: z.string() })),
+      },
+      responses: {
+        200: json(
+          decision === 'accept'
+            ? z.object({ accepted: z.number().int() })
+            : z.object({ rejected: z.number().int() }),
+          decision === 'accept' ? 'Accepted' : 'Rejected',
+        ),
+        400: problem('Missing change reason'),
+        404: problem('No pending labels for that connection and judge'),
+        ...operatorOnly,
+      },
+    }),
+  ),
+  createRoute({
     method: 'post',
     path: '/operator/quality/matrix/estimate',
     summary: 'Estimate the cost of running every affected test set on a new model',

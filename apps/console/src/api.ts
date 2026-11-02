@@ -20,6 +20,8 @@ import type {
   PluginSummary,
   QualityOverview,
   LabelItem,
+  SinkLabelBatch,
+  SinkLabels,
   MatrixEstimate,
   MatrixRun,
   MatrixRunDetail,
@@ -406,6 +408,21 @@ export const createApiClient = ({
         body: { item: item.item, judge: item.judge, judgeLabel: item.judgeLabel, humanLabel },
         headers: { 'change-reason': reason },
       }),
+    sinkLabels: (signal?: AbortSignal) =>
+      call<SinkLabels>('GET', '/operator/quality/sink-labels', { signal }),
+    fetchSinkLabels: (tenant: string, connection: string) =>
+      call<{ pending: number }>('POST', '/operator/quality/sink-labels/fetch', {
+        body: { tenant, connection },
+      }),
+    decideSinkLabels: (batch: SinkLabelBatch, decision: 'accept' | 'reject', reason: string) =>
+      call<{ accepted?: number; rejected?: number }>(
+        'POST',
+        `/operator/quality/sink-labels/${decision}`,
+        {
+          body: { tenant: batch.tenant, connection: batch.connection, judge: batch.judge },
+          headers: { 'change-reason': reason },
+        },
+      ),
     tracing: (signal?: AbortSignal) => call<TracingStatus>('GET', '/operator/tracing', { signal }),
     supportSessions: async (signal?: AbortSignal) =>
       (await call<{ data: SupportSessionRow[] }>('GET', '/operator/support-sessions', { signal }))

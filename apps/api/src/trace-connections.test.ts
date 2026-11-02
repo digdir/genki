@@ -145,6 +145,7 @@ describe("an agency's Langfuse connections", () => {
         residency: 'norway',
         content: false,
         erasureDeclared: false,
+        labels: false,
         instance: false,
         residencySetBy: 'tenant',
       },
