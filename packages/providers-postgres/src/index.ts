@@ -5,7 +5,7 @@ import type { KeyWrapper } from './crypto.js';
 import { PostgresEventLog } from './event-log.js';
 import { PostgresIdentities } from './identities.js';
 import { ContentKeys } from './keys.js';
-import { migrate, runtimeRole } from './schema.js';
+import { migrate, runtimeRole, workerRole } from './schema.js';
 import { PostgresStateStore, PostgresTaskStore } from './stores.js';
 import { PostgresTenants } from './tenancy.js';
 import { PostgresApiKeys } from './api-keys.js';
@@ -90,7 +90,7 @@ export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
 export { PostgresModelClassifications } from './models.js';
 export { ContentKeys } from './keys.js';
-export { grantRuntimeRole, migrate, runtimeRole } from './schema.js';
+export { grantRuntimeRole, migrate, runtimeRole, workerRole } from './schema.js';
 export {
   PostgresStateStore,
   PostgresTaskStore,
@@ -117,13 +117,13 @@ export {
   type IngestionExecutionStatus,
 } from './executions.js';
 
-const runtimePoolFor = (owner: Pool) =>
+const runtimePoolFor = (owner: Pool, role: string) =>
   withClientErrorListener(
     new pg.Pool({
       ...owner.options,
       password: owner.options.password,
       allowExitOnIdle: true,
-      options: [owner.options.options, `-c role=${runtimeRole}`].filter(Boolean).join(' '),
+      options: [owner.options.options, `-c role=${role}`].filter(Boolean).join(' '),
     }),
   );
 
@@ -135,6 +135,8 @@ export const createPostgresStores = async (
     changePollMs?: number;
     onError?: (error: unknown) => void;
     runtime?: Pool | PostgresPoolOptions;
+    /** The role the store pool switches to when no runtime login is given; the worker uses genai_worker. */
+    role?: typeof runtimeRole | typeof workerRole;
   } = {},
 ) => {
   const owner = 'query' in source ? withClientErrorListener(source) : createPool(source);
@@ -145,7 +147,7 @@ export const createPostgresStores = async (
   await migrate(owner);
   const pool =
     options.runtime === undefined
-      ? runtimePoolFor(owner)
+      ? runtimePoolFor(owner, options.role ?? runtimeRole)
       : 'query' in options.runtime
         ? withClientErrorListener(options.runtime)
         : createPool(options.runtime);

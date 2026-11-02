@@ -2,6 +2,36 @@ import type { Pool } from 'pg';
 
 export const runtimeRole = 'genai_runtime';
 
+/** The worker's role: genai_runtime plus DML on the job tables, which the API cannot touch (ADR 0041). */
+export const workerRole = 'genai_worker';
+
+/** Creates an app role, refuses one that is a superuser or bypasses RLS, and lets the owner set it. */
+const appRole = (role: string, memberOf?: string) => [
+  `do $$ begin
+     create role ${role} nologin nosuperuser nobypassrls;
+   exception when duplicate_object then null;
+   end $$`,
+  `do $$ begin
+     if exists (select from pg_roles where rolname = '${role}' and (rolsuper or rolbypassrls)) then
+       raise exception '${role} must not be a superuser or bypass row-level security';
+     end if;${
+       memberOf
+         ? `
+     if not pg_has_role('${role}', '${memberOf}', 'MEMBER') then
+       grant ${memberOf} to ${role};
+     end if;`
+         : ''
+     }
+     if current_setting('server_version_num')::int >= 160000 then
+       if not pg_has_role(current_user, '${role}', 'SET') then
+         execute format('grant ${role} to %I with set true', current_user);
+       end if;
+     elsif not pg_has_role(current_user, '${role}', 'MEMBER') then
+       execute format('grant ${role} to %I', current_user);
+     end if;
+   end $$`,
+];
+
 const tenantTables = [
   'tenants',
   'conversations',
@@ -679,22 +709,8 @@ const migrations: string[] = [
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
-  `do $$ begin
-     create role ${runtimeRole} nologin nosuperuser nobypassrls;
-   exception when duplicate_object then null;
-   end $$`,
-  `do $$ begin
-     if exists (select from pg_roles where rolname = '${runtimeRole}' and (rolsuper or rolbypassrls)) then
-       raise exception '${runtimeRole} must not be a superuser or bypass row-level security';
-     end if;
-     if current_setting('server_version_num')::int >= 160000 then
-       if not pg_has_role(current_user, '${runtimeRole}', 'SET') then
-         execute format('grant ${runtimeRole} to %I with set true', current_user);
-       end if;
-     elsif not pg_has_role(current_user, '${runtimeRole}', 'MEMBER') then
-       execute format('grant ${runtimeRole} to %I', current_user);
-     end if;
-   end $$`,
+  ...appRole(runtimeRole),
+  ...appRole(workerRole, runtimeRole),
   `grant select, insert, update, delete on ${[
     ...tenantTables,
     ...Object.keys(publishedTables),
