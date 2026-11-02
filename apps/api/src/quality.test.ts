@@ -158,6 +158,7 @@ const boot = async (
     localModel?: boolean;
     evalWait?: { everyMs: number; deadlineMs: number };
     gates?: Map<string, ReturnType<typeof gate.parse>>;
+    logger?: (msg: string, fields: Record<string, unknown>) => void;
   } = {},
 ) => {
   const optimiserPrompts: string[] = [];
@@ -224,6 +225,7 @@ const boot = async (
     ...(traceDeliveries ? { traceDeliveries } : {}),
     ...(options.evalWait ? { evalWait: options.evalWait } : {}),
     ...(options.gates ? { gates: options.gates } : {}),
+    ...(options.logger ? { logger: options.logger } : {}),
     modules: [
       ...platformModules.filter((m) => m !== qualityModule),
       createQualityModule({ onBackground: (w) => background.push(w) }),
@@ -1254,9 +1256,11 @@ describe('Langfuse datasets of test sets', () => {
     const langfuse = await fakeLangfuse([]);
     for (const [name, id] of Object.entries(named)) langfuse.datasets.set(name, id);
     langfuse.hooks.datasetsDown = down;
+    const logged: { msg: string; fields: Record<string, unknown> }[] = [];
     const env = await boot(undefined, { devMode: true }, undefined, {
       evalWait: { everyMs: 50, deadlineMs: 20_000 },
       localModel: true,
+      logger: (msg, fields) => logged.push({ msg, fields }),
     });
     await env.send(
       'PUT',
@@ -1302,7 +1306,7 @@ describe('Langfuse datasets of test sets', () => {
       await env.settled();
       return started;
     };
-    return { env, langfuse, saved, save, lookups, datasetsOf, testSets, run };
+    return { env, langfuse, saved, save, lookups, logged, datasetsOf, testSets, run };
   };
 
   it('gives each test set of the services a saved connection covers a dataset named genki/<service>/<test set>, kept with the test set and the connection', async () => {
@@ -1465,6 +1469,27 @@ describe('Langfuse datasets of test sets', () => {
     expect((await save({ labels: true })).status).toBe(200);
 
     expect(lookups()).toBe(before);
+  });
+
+  it('logs each dataset Langfuse could not make, on a connection save and on a test set save', async () => {
+    const { env, logged } = await connected({}, true);
+
+    await env.send(
+      'POST',
+      `/tenants/${tenant}/test-sets`,
+      'kari',
+      { id: 'svar-nye', name: 'Nye spørsmål', service: 'svar' },
+      why,
+    );
+
+    expect(
+      logged
+        .filter((l) => l.msg === 'langfuse dataset not made')
+        .map((l) => [l.fields.connection, l.fields.testSet]),
+    ).toEqual([
+      ['lokal', 'svar-frister'],
+      ['lokal', 'svar-nye'],
+    ]);
   });
 
   it("saves a test set when Langfuse can't make its dataset", async () => {
