@@ -179,6 +179,12 @@ const TestSetSummary = z
     cases: z.number().int(),
     splits: z.object({ locked: z.number().int(), open: z.number().int() }),
     split: z.enum(['locked', 'open']).optional(),
+    dataset: z
+      .object({ connection: z.string(), name: z.string() })
+      .optional()
+      .describe(
+        "The Langfuse dataset genki/<service>/<test set> that the test set's sent runs are linked to, in the connection covering the service (ADR 0040)",
+      ),
   })
   .openapi('ServiceTestSetSummary');
 

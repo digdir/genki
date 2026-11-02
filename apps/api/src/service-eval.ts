@@ -40,6 +40,7 @@ import {
   type TraceConnection,
 } from './trace-connections.js';
 import type { DraftModelUsage } from './draft-runner.js';
+import { traceDatasets } from './trace-datasets.js';
 import { modelChoice, type Meter } from './model-choice.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
@@ -364,6 +365,11 @@ const modelsOf = (definition: Record<string, unknown>) => {
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
   const choice = modelChoice(deps);
   const leases = backgroundLeases(leaseOptions);
+  const datasets = traceDatasets({
+    configEntries: deps.configEntries,
+    ...(deps.traceSinks ? { traceSinks: deps.traceSinks } : {}),
+    testSets: deps.evalStores.testSets,
+  });
 
   const drafts = serviceDrafts(deps.configEntries, deps.definitions);
   const draftOf = drafts.draftOf;
@@ -697,6 +703,14 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         );
     }
     const sinkJudges = sink ? await snapshotJudges(tenant, sink, adopted.get(sink.id) ?? []) : [];
+    // Every sent run names its test set's dataset, made again if it was deleted in Langfuse.
+    const dataset = sink
+      ? await datasets.ensure(tenant, sink, service, set.metadata.id).catch((error: unknown) => {
+          throw new TraceRefused(
+            `the dataset of the test set ${set.metadata.id} could not be found or made in the project of the connection ${sink.id}: ${messageOf(error)}`,
+          );
+        })
+      : undefined;
     const prepared = await deps.drafts.prepare({
       principal,
       tenant,
@@ -786,6 +800,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             })
           : undefined,
         deps.traceSinks.fieldsOf?.(sinkJudges) ?? [],
+        dataset?.id,
       );
     const done = (async () => {
       try {

@@ -838,10 +838,35 @@ describe('eval runs for a service', () => {
   });
 });
 
+/** Langfuse's stable dataset routes: read by name, and created by a POST to the collection. */
+const datasetRoutes = (
+  datasets: Map<string, string>,
+  path: string,
+  body: Record<string, unknown>,
+) => {
+  const url = new URL(path, 'http://langfuse.test');
+  const named = /^\/api\/public\/v2\/datasets\/(.+)$/.exec(url.pathname)?.[1];
+  if (named) {
+    const name = decodeURIComponent(named);
+    const id = datasets.get(name);
+    return id ? { status: 200, json: { id, name } } : { status: 404, json: {} };
+  }
+  if (url.pathname === '/api/public/v2/datasets') {
+    const name = String(body.name);
+    const id = datasets.get(name) ?? `datasett-${datasets.size + 1}`;
+    datasets.set(name, id);
+    return { status: 200, json: { id, name } };
+  }
+  return undefined;
+};
+
 const otlpCollector = async () => {
   const spans: { name: string; attributes: { key: string; value: { stringValue?: string } }[] }[] =
     [];
-  const sink = await fakeHttp((body: Record<string, unknown>) => {
+  const datasets = new Map<string, string>();
+  const sink = await fakeHttp((body: Record<string, unknown>, _attempt, path) => {
+    const dataset = datasetRoutes(datasets, path, body);
+    if (dataset) return dataset;
     const resource = (body.resourceSpans ?? []) as { scopeSpans: { spans: typeof spans }[] }[];
     spans.push(...resource.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans)));
     return { status: 200, json: {} };
@@ -849,7 +874,7 @@ const otlpCollector = async () => {
   servers.push(sink);
   const attr = (span: (typeof spans)[number], key: string) =>
     span.attributes.find((a) => a.key === key)?.value.stringValue;
-  return { url: sink.url, spans, attr };
+  return { url: sink.url, spans, attr, datasets };
 };
 
 describe('eval runs sent to a trace connection', () => {
@@ -1081,7 +1106,8 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     span.attributes.find((a) => a.key === key)?.value.stringValue;
   const judging = () => rules.filter((r) => r.target === 'experiment' && r.status === 'active');
   // Runs once as the first item arrives, as when someone switches a rule on during a run.
-  const hooks: { firstItem?: () => void; annotationsDown?: boolean } = {};
+  const hooks: { firstItem?: () => void; annotationsDown?: boolean; datasetsDown?: boolean } = {};
+  const datasets = new Map<string, string>();
   const annotations: FakeAnnotation[] = [];
   const configs: FakeScoreConfig[] = [
     { id: 'oppsett-1', name: judgeRule, dataType: 'BOOLEAN' },
@@ -1144,6 +1170,10 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
       }
       return ok({});
     }
+    if (url.pathname.startsWith('/api/public/v2/datasets') && hooks.datasetsDown)
+      return { status: 503, json: {} };
+    const dataset = datasetRoutes(datasets, path, body);
+    if (dataset) return dataset;
     if (url.pathname === '/api/public/unstable/evaluation-rules')
       return ok({
         data: rules,
@@ -1209,9 +1239,159 @@ const fakeLangfuse = async (rules: FakeRule[] = [experimentRule()]) => {
     annotations,
     annotate,
     traceOf,
+    datasets,
+    /** The paths genki asked for, in order. */
+    paths: () => server.seen.map((r) => new URL(r.path, 'http://langfuse.test').pathname),
     close: () => server.close(),
   };
 };
+
+describe('Langfuse datasets of test sets', () => {
+  const why = { 'change-reason': 'Kobler tjenesten til Langfuse-datasett' };
+  const connected = async (named: Record<string, string> = {}, down = false) => {
+    const langfuse = await fakeLangfuse([]);
+    for (const [name, id] of Object.entries(named)) langfuse.datasets.set(name, id);
+    langfuse.hooks.datasetsDown = down;
+    const env = await boot(undefined, { devMode: true }, undefined, {
+      evalWait: { everyMs: 50, deadlineMs: 20_000 },
+      localModel: true,
+    });
+    await env.send(
+      'PUT',
+      `/tenants/${tenant}/secrets/sporing`,
+      'kari',
+      { value: 'sk-lf-lokal', allowedHosts: [langfuse.url] },
+      why,
+    );
+    const saved = await env.send(
+      'PUT',
+      `/tenants/${tenant}/tracing/connections/lokal`,
+      'kari',
+      {
+        host: langfuse.url,
+        publicKey: 'pk-lf-lokal',
+        secretKey: `secret://tenant/${tenant}/sporing`,
+        services: ['svar'],
+      },
+      why,
+    );
+    const datasetsOf = async () =>
+      (
+        (await env.send('GET', `/tenants/${tenant}/tracing/connections`)).body.data as {
+          datasets: unknown[];
+        }[]
+      )[0]?.datasets;
+    const testSets = async () =>
+      (await env.send('GET', `${services}/test-sets`)).body.data as {
+        id: string;
+        dataset?: unknown;
+      }[];
+    const run = async () => {
+      const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+        testSet: 'svar-frister',
+        trace: true,
+      });
+      await env.settled();
+      return started;
+    };
+    return { env, langfuse, saved, datasetsOf, testSets, run };
+  };
+
+  it('gives each test set of the services a saved connection covers a dataset named genki/<service>/<test set>, kept with the test set and the connection', async () => {
+    const { langfuse, saved, datasetsOf, testSets } = await connected();
+
+    expect(saved.status).toBe(200);
+    expect([...langfuse.datasets]).toEqual([['genki/svar/svar-frister', 'datasett-1']]);
+    expect(await datasetsOf()).toEqual([
+      {
+        service: 'svar',
+        testSet: 'svar-frister',
+        name: 'genki/svar/svar-frister',
+        id: 'datasett-1',
+      },
+    ]);
+    expect(await testSets()).toEqual([
+      expect.objectContaining({
+        id: 'svar-frister',
+        dataset: { connection: 'lokal', name: 'genki/svar/svar-frister' },
+      }),
+    ]);
+  });
+
+  it('reuses a dataset that already has the name, and never writes to it', async () => {
+    const { langfuse, datasetsOf } = await connected({ 'genki/svar/svar-frister': 'etatens' });
+
+    expect(await datasetsOf()).toEqual([expect.objectContaining({ id: 'etatens' })]);
+    expect(langfuse.paths()).toContain('/api/public/v2/datasets/genki%2Fsvar%2Fsvar-frister');
+    expect(langfuse.paths()).not.toContain('/api/public/v2/datasets');
+  });
+
+  it('gives a test set added later to a covered service a dataset', async () => {
+    const { env, langfuse, datasetsOf } = await connected();
+
+    const created = await env.send(
+      'POST',
+      `/tenants/${tenant}/test-sets`,
+      'kari',
+      { id: 'svar-nye', name: 'Nye spørsmål', service: 'svar' },
+      why,
+    );
+
+    expect(created.status).toBeLessThan(300);
+    expect(langfuse.datasets.get('genki/svar/svar-nye')).toBeDefined();
+    expect(await datasetsOf()).toEqual([
+      expect.objectContaining({ testSet: 'svar-frister' }),
+      expect.objectContaining({ testSet: 'svar-nye', name: 'genki/svar/svar-nye' }),
+    ]);
+  });
+
+  it("saves the connection when Langfuse can't make its datasets, and makes them at the next run", async () => {
+    const { langfuse, saved, datasetsOf, run } = await connected({}, true);
+
+    expect(saved.status).toBe(200);
+    expect(await datasetsOf()).toEqual([]);
+    langfuse.hooks.datasetsDown = false;
+    expect((await run()).status).toBe(202);
+    expect(await datasetsOf()).toEqual([expect.objectContaining({ testSet: 'svar-frister' })]);
+  });
+
+  it("marks every span of a sent run with its test set's dataset and the environment genki-test-runs", async () => {
+    const { langfuse, run } = await connected();
+
+    expect((await run()).status).toBe(202);
+    expect(langfuse.spans.length).toBeGreaterThan(0);
+    for (const span of langfuse.spans) {
+      expect(langfuse.attr(span, 'langfuse.experiment.dataset.id')).toBe('datasett-1');
+      expect(langfuse.attr(span, 'deployment.environment.name')).toBe('genki-test-runs');
+    }
+  });
+
+  it('makes the dataset again at the next run when it was deleted in Langfuse, and keeps the new id', async () => {
+    const { langfuse, run, datasetsOf } = await connected();
+    langfuse.datasets.delete('genki/svar/svar-frister');
+
+    expect((await run()).status).toBe(202);
+    const made = langfuse.datasets.get('genki/svar/svar-frister');
+    expect(made).toBeDefined();
+    expect(await datasetsOf()).toEqual([expect.objectContaining({ id: made })]);
+    expect(
+      new Set(langfuse.spans.map((s) => langfuse.attr(s, 'langfuse.experiment.dataset.id'))),
+    ).toEqual(new Set([made]));
+  });
+
+  it("refuses a sent run when its test set's dataset can be neither found nor made", async () => {
+    const { langfuse, run } = await connected();
+    langfuse.hooks.datasetsDown = true;
+
+    const refused = await run();
+
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain(
+      'the dataset of the test set svar-frister could not be found or made in the project of the connection lokal',
+    );
+    expect(langfuse.spans).toEqual([]);
+  });
+});
 
 describe('Langfuse judges on a run', () => {
   const why = { 'change-reason': 'Kobler tjenesten til Langfuse-dommerne' };
@@ -2069,8 +2249,8 @@ describe('Langfuse judges on a run', () => {
 
 const localLangfuse = process.env.LANGFUSE_LOCAL_URL;
 
-describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => {
-  it('lands as one experiment with a trace per case and repeat, no holdout case, and is gone after the purge', async () => {
+describe.skipIf(!localLangfuse)('a traced run on a local Langfuse (4.4.0 or 4.72.0)', () => {
+  it("lands as one experiment under its test set's dataset, in genki-test-runs, with a trace per case and repeat, no holdout case, and is gone after the purge", async () => {
     const host = localLangfuse as string;
     const publicKey = process.env.LANGFUSE_LOCAL_PUBLIC_KEY ?? 'pk-lf-genki-test';
     const secretKey = process.env.LANGFUSE_LOCAL_SECRET_KEY ?? 'sk-lf-genki-test';
@@ -2106,8 +2286,15 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
     const auth = `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString('base64')}`;
     const since = new Date(Date.now() - 10 * 60_000).toISOString();
     const until = new Date(Date.now() + 10 * 60_000).toISOString();
+    const dataset = (
+      (await env.send('GET', `/tenants/${tenant}/tracing/connections`)).body.data as {
+        datasets: { name: string; id: string }[];
+      }[]
+    )[0]?.datasets[0];
+    expect(dataset?.name).toBe('genki/svar/svar-frister');
     type Observation = {
       isRootObservation: boolean;
+      environment?: string;
       input: unknown;
       output: unknown;
       metadata: Record<string, unknown>;
@@ -2130,6 +2317,11 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
       'o1#0',
       'o2#0',
     ]);
+    expect(roots.map((o) => o.metadata['attributes.langfuse.experiment.dataset.id'])).toEqual([
+      dataset?.id,
+      dataset?.id,
+    ]);
+    expect(roots.map((o) => o.environment)).toEqual(['genki-test-runs', 'genki-test-runs']);
     expect(roots.map((o) => [o.input ?? null, o.output ?? null])).toEqual([
       [null, null],
       [null, null],
@@ -2139,8 +2331,11 @@ describe.skipIf(!localLangfuse)('a traced run on a local Langfuse 4.4.0', () => 
         `${host}/api/public/experiments?fromStartTime=${since}&toStartTime=${until}&limit=100`,
         { headers: { authorization: auth } },
       )
-    ).json()) as { data: { id: string; itemCount?: number }[] };
-    expect(experiments.data.find((e) => e.id === started.body.id)).toMatchObject({ itemCount: 2 });
+    ).json()) as { data: { id: string; itemCount?: number; datasetId?: string }[] };
+    expect(experiments.data.find((e) => e.id === started.body.id)).toMatchObject({
+      itemCount: 2,
+      datasetId: dataset?.id,
+    });
     await deliveries.markPending(tenant, { sink: 'lokal' }, new Date().toISOString());
     const sink = langfuseTraceSink({ host, publicKey, secretKey });
     const night = () =>

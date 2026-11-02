@@ -14,8 +14,11 @@ const evaluationContext = z.object({
   sink: z.string().min(1).optional(),
 });
 
-/** A case of an eval run: its task starts a trace of its own, one item of the run's experiment. */
-export type Experiment = EvaluationContext & { rootTask: string };
+/**
+ * A case of an eval run: its task starts a trace of its own, one item of the run's experiment,
+ * linked to its test set's dataset when the run has one.
+ */
+export type Experiment = EvaluationContext & { rootTask: string; dataset?: string };
 
 /** The evaluation context recorded beside a task's input, when the task answers a case. */
 export const evaluationIn = (event: Event): EvaluationContext | undefined => {
@@ -32,6 +35,8 @@ export const experimentAttributes = (experiment: Experiment, rootObservationId: 
   'langfuse.experiment.name': experiment.run.name,
   'langfuse.experiment.item.id': `${experiment.case.id}#${experiment.case.repeat}`,
   'langfuse.experiment.item.root_observation_id': rootObservationId,
+  // Langfuse lists the run under the dataset, and a judge filtered on datasetId judges it.
+  ...(experiment.dataset ? { 'langfuse.experiment.dataset.id': experiment.dataset } : {}),
 });
 
 /** Only on the item's root span; what the case expects only when a judge maps it. */

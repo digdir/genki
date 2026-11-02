@@ -258,6 +258,8 @@ export const qualityArea = {
     deleteCaseLabel: 'Delete the test case "{input}"',
     delete: 'Delete',
     setsLoading: 'Loading test sets',
+    langfuseDataset:
+      "Langfuse dataset in the connection {connection}. Pick it in a judge's filter in Langfuse, and it judges this test set's runs.",
     newSetReason: 'New test set for {service}',
     setCreated: 'The test set {name} has been created.',
     noSets: 'The service has no test set yet',

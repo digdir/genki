@@ -25,3 +25,4 @@ export {
   type LangfuseApiOptions,
   type LangfuseJudge,
 } from './judges.js';
+export { datasetName, langfuseDatasets, type LangfuseDataset } from './datasets.js';

@@ -768,7 +768,27 @@ const tracingRoutes: RouteConfig[] = [
     summary: "The tenant's Langfuse connections, with secret references only. Any member",
     request: { params: z.object({ tenant }) },
     responses: {
-      200: json(z.object({ data: z.array(TraceConnection) }), 'Connections'),
+      200: json(
+        z.object({
+          data: z.array(
+            TraceConnection.extend({
+              datasets: z
+                .array(
+                  z.object({
+                    service: z.string(),
+                    testSet: z.string(),
+                    name: z.string(),
+                    id: z.string().describe("Langfuse's id for the dataset"),
+                  }),
+                )
+                .describe(
+                  'One Langfuse dataset per test set of the services it covers, which genki made or reused in its project. genki cannot delete them (ADR 0040)',
+                ),
+            }),
+          ),
+        }),
+        'Connections',
+      ),
       404: problem('Not a member of the tenant'),
     },
   }),

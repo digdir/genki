@@ -665,6 +665,9 @@ export const integrationsArea = {
     contentOn: 'Får tekst',
     contentOff: 'Får bare metadata',
     labelsOn: 'Henter etiketter',
+    datasets: 'Datasett i Langfuse',
+    datasetsHelp:
+      'Ett datasett per testsett. Velg datasettet i filteret til en dommer i Langfuse, så vurderer den testkjøringene av det testsettet.',
     check: 'Sjekk koblingen',
     checkedOk:
       'Den hemmelige nøkkelen åpner prosjektet {project}. Langfuse sjekker ikke den offentlige nøkkelen, så se selv at den hører til samme prosjekt.',

@@ -29,6 +29,14 @@ const digdir = {
   erasureDeclared: false,
   instance: true,
   residencySetBy: 'operator',
+  datasets: [
+    {
+      service: 'rapportassistenten',
+      testSet: 'rapport-kjerne',
+      name: 'genki/rapportassistenten/rapport-kjerne',
+      id: 'ds-1',
+    },
+  ],
 };
 
 const renderTracing = async () => {
@@ -82,6 +90,20 @@ describe('Integrasjoner: Langfuse', () => {
       within(section).getByText('Lagringssted: ikke avklart (global), satt av Digdir'),
     ).toBeTruthy();
     expect(within(section).getByText('Får bare metadata')).toBeTruthy();
+    await expectAccessible(section);
+  });
+
+  it("lists the connection's Langfuse datasets, one per test set, by the name a judge's filter picks", async () => {
+    const { section } = await renderTracing();
+    await within(section).findByText('https://langfuse.digdir.cloud');
+
+    const list = within(section).getByRole('list', { name: 'Datasett i Langfuse' });
+    expect(within(list).getByText('genki/rapportassistenten/rapport-kjerne')).toBeTruthy();
+    expect(
+      within(section).getByText(
+        'Ett datasett per testsett. Velg datasettet i filteret til en dommer i Langfuse, så vurderer den testkjøringene av det testsettet.',
+      ),
+    ).toBeTruthy();
     await expectAccessible(section);
   });
 

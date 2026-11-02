@@ -1,6 +1,6 @@
 # 0040 Evaluating with Langfuse
 
-Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; judge cost with the daily USD/NOK rate, 2026-10-30; a run goes to Langfuse only in step with its project's judges, 2026-10-30; a run goes to Langfuse only when it asks, also with a Langfuse judge in use, 2026-11-02; labels from Langfuse with an operator's acceptance, 2026-11-02; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
+Status: accepted, 2026-10-29 (partly built, 2026-10-30; Langfuse judges score runs as adopted building blocks and scores are read per case trace, 2026-10-30; judge cost with the daily USD/NOK rate, 2026-10-30; a run goes to Langfuse only in step with its project's judges, 2026-10-30; a run goes to Langfuse only when it asks, also with a Langfuse judge in use, 2026-11-02; labels from Langfuse with an operator's acceptance, 2026-11-02; a Langfuse dataset per test set and test runs in their own environment, 2026-11-02; the section "Langfuse judges that block" stays proposed). Proposed 2026-10-22
 
 Amends 0003, 0011 and 0024. Touches 0015, 0021, 0022, 0023 and 0027.
 
@@ -28,7 +28,7 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
   - The owner sets up the projects, judges and keys, and invites and removes the tenant's other members.
   - Langfuse accounts are separate from the platform's sign-in and are not tied to Altinn rights. Nothing done in Langfuse decides a publish on its own: Langfuse judges are advisory, and labels made there count only after a person with the labelling right accepts them in the platform.
 - A tenant may instead enter its own Langfuse.
-- Every call to a connection's host (export, score reads, snapshots, dataset reads and deletes) goes through the isolated egress path of ADR 0015, with the host as the tenant's allow list: HTTPS only, no private or link-local addresses, no access to the platform's network, and limits on response size and time.
+- Every call to a connection's host (export, score reads, snapshots, dataset reads, dataset creation and deletes) goes through the isolated egress path of ADR 0015, with the host as the tenant's allow list: HTTPS only, no private or link-local addresses, no access to the platform's network, and limits on response size and time.
 - **Eval runs only.** A tenant's connection carries eval runs and their judging, never live answers. The platform-wide exporter (`TRACES_ENDPOINT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`) carries Digdir's operational traces with metadata only. `TRACES_CONTENT` is honoured only in development mode (`GENAI_DEV_MODE=true`).
 
 **Deferred judges: `evaluator@2`.**
@@ -46,10 +46,23 @@ The platform runs, judges and gates its own evaluations (ADR 0003). Some teams a
 **What an eval run sends.**
 
 - A run goes to the tenant's Langfuse only when it asks for it with `trace: true`, which the portal shows as a checkbox, unticked by default, also when the service uses a Langfuse judge. Nothing is sent to a tenant's Langfuse without a person asking for that run. A Langfuse judge scores only a run that is sent: a run that is not sent names the judges in use that did not score it (`unsentJudges`), and the portal shows that on the run. Under the checkbox the portal names the judges in use, and when it is ticked, it says before the run starts when the service's residency does not allow the connection's, two connections cover the service, the connection gets no answer text, or the project has judges the platform does not read (`GET /tenants/{tenant}/services/{id}/eval-runs/sending`). A judge in use that has become refused or gone is reported when the run starts.
-- A run is one Langfuse experiment (Langfuse's word for a single run), with no Langfuse dataset. Each case of each repeat is its own Langfuse trace and experiment item, with the item id `<case>#<repeat>`: the exporter starts a new trace at a case's task, although that task is a sub-task of the run's task.
+- A run is one Langfuse experiment (Langfuse's word for a single run), linked to its test set's dataset (below). Each case of each repeat is its own Langfuse trace and experiment item, with the item id `<case>#<repeat>`: the exporter starts a new trace at a case's task, although that task is a sub-task of the run's task.
 - The evaluation context (run, case, repeat, split and what the case expects) is recorded beside the case task's input, not in it. The kernel keeps it as its own audit field. The strategy never receives it, and the trace input, the timeline and every other reader of the task's input leave it out. The exporter sends from it only what the judges map.
 - Only train and validation cases are sent and, when the run uses Langfuse judges, only those at least one of them can read. A Langfuse judge's score on a case that is not sent is not applicable, never pending, so a run never waits for it.
 - Text is sent only on a connection that receives content, and only the fields the run's Langfuse judges map, read from the snapshot of their rules: the question (`input`), the answer (`output`) and the case's `expected.criteria` (`expected_output`), or, for a criteria case without named criteria, its reference answer as `criteria`, as the platform's criteria judge reads it. The item's case, repeat and split go as `experiment_item_metadata`, which is not text. A field no judge maps is not sent, and no error text is sent with a run's traces. Cited sources and retrieved documents are not sent yet, so no judge can map them.
+
+**A dataset per test set.**
+
+- The platform writes datasets to the agency's Langfuse: one per test set of each service a connection covers, named `genki/<service>/<test set>`, such as `genki/klarsprak/klarsprak-brev`. It makes them when the connection is saved and when a test set is saved for a service the connection covers, so an agency can point its judges at a test set before the first run. Langfuse not answering then does not stop the save.
+- It finds a dataset by its name (`GET /api/public/v2/datasets/{name}`) and creates one only when there is none (`POST /api/public/v2/datasets`). It never writes to a dataset that exists: that POST replaces a dataset with the same name, description included. The stable v2 routes work on Langfuse 4.4.0 and 4.72.0 (measured on 2026-11-02).
+- The dataset holds no items: the cases stay in the platform, and a run sends only what the judges map, as above. Langfuse links a run to a dataset by its id alone, also with the platform's own item ids (`<case>#<repeat>`), and a judge filtered on `datasetId` judges it (measured on 4.4.0 and 4.72.0).
+- The platform keeps each dataset's name and id with the test set and the connection (configuration entry `trace-dataset`, id `<connection>/<service>/<test set>`, with the project's host and public key). The connection lists its datasets and the test set shows its dataset's name, which an agency puts in a judge's filter in Langfuse. The platform never changes an agency's judges.
+- When a run that asks to be sent starts, the platform looks the dataset up again, and makes it again if it was deleted in Langfuse. A run whose dataset can be neither found nor made is refused before it starts. Every span of a sent run carries the dataset's id (`langfuse.experiment.dataset.id`).
+- The platform cannot delete a dataset: Langfuse answers 405 on both the v1 and v2 routes (measured on 4.4.0 and 4.72.0). So the name holds only service and test set ids, nothing personal, and the dataset stays behind when its test set or connection is removed. The runs' traces are deleted as above.
+
+**Test runs in their own environment.** Every span of a sent run carries the environment `genki-test-runs` (`deployment.environment.name`, which is where Langfuse reads it), the same for every agency. An agency's judges on its live traffic can then leave the platform's test runs out with one filter.
+
+**Digdir's default judges are the platform's judges.** Judges Digdir offers every agency run in the platform, as the platform's own evaluators. A Langfuse judge is one an agency writes itself in its Langfuse project and points at a test set's dataset. Building the default judges is not part of this record's built parts.
 
 **Collecting scores.**
 
@@ -115,7 +128,8 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - Turned down:
   - **Langfuse runs the evaluations on its own model connections.** It would judge a prompt and a model, not the service with its search and steps, and the gate would depend on a second source of truth.
   - **Langfuse's experiment runner calls the platform as the task.** The platform would no longer start, record or gate its own runs.
-  - **Mirroring test sets into Langfuse datasets.** A second copy drifts.
+  - **Mirroring test sets into Langfuse datasets.** A second copy drifts. The dataset per test set holds no items for that reason.
+  - **A dataset per service or per connection.** A judge could then not be pointed at one test set.
   - **One Langfuse project for every tenant.** Without an enterprise licence every member of an organisation sees all its projects, and an experiment judge scores every experiment in its project.
   - **Judges on runs without text.** A Langfuse judge with no input answers `true` on nothing.
   - **A separate plug-in kind for deferred judges.** That makes two contracts for one idea, while the platform is not in production and can change `evaluator@1`.
@@ -142,7 +156,8 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - It depends on Langfuse's `unstable` evaluator API in version 4.4.0, which Langfuse says may change. Version 4.67.0 no longer has it: it has `/api/public/v2/evaluators` and `/api/public/v2/evaluation-rules` instead. The instance's UI already offers 4.67.0, so the judge snapshot moves to the new API before or with an upgrade, and the rest of this record is checked against the new version.
 - Two Langfuse internals were seen in 4.4.0 but are not documented: the judge trace id rule, and `target_trace_id` and `job_configuration_id` in a judge trace's metadata, which the public API returns (seen on Digdir's instance on 2026-10-29). Filtering traces by `target_trace_id` through the public API is not yet verified (see "Before agency data goes to Digdir's instance"). Both are checked against each Langfuse version.
 - Langfuse 4.4.0 refuses a score config name longer than 35 characters, and a judge's scores carry its rule's name. A judge whose rule name is longer, such as `svar_oppfyller_kriteriene-eksperimenter`, can get no labels from Langfuse until its rule is renamed. The platform matches the exact name and does not guess: the labels switch's help text says so.
-- An experiment judge in Langfuse can only be limited to a dataset, so it scores every experiment in its project. A tenant whose services need different judges uses one connection and project per service.
+- An experiment judge in Langfuse can only be limited to a dataset. Each test set has one, but the platform still refuses a judge with a filter, and every other active rule in the project still refuses a run. Reading a rule's filters, so a judge filtered to a test set's dataset can be taken in use and a rule whose filters leave the run out is skipped, is not built yet. Until then a tenant whose services need different judges uses one connection and project per service.
+- Datasets the platform made stay in the agency's Langfuse after their test set or connection is removed, since Langfuse cannot delete them through its API. An agency removes them in Langfuse's UI if it wants them gone.
 - Labelling is an operator right today (ADR 0027). Whether agencies get it is not decided here.
 - The portal changes:
   - the Tracing screen manages a tenant's connections, shows each one's residency and has the switch that brings labels back as pending calibration labels, not feedback; the console's quality screen fetches them and accepts or rejects each batch

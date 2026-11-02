@@ -668,6 +668,9 @@ export const integrationsArea = {
     contentOn: 'Receives text',
     contentOff: 'Receives metadata only',
     labelsOn: 'Brings labels back',
+    datasets: 'Datasets in Langfuse',
+    datasetsHelp:
+      "One dataset per test set. Pick the dataset in a judge's filter in Langfuse, and it judges that test set's runs.",
     check: 'Check the connection',
     checkedOk:
       'The secret key opens the project {project}. Langfuse does not check the public key, so make sure it belongs to the same project.',
