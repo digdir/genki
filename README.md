@@ -8,6 +8,7 @@
 [![Status: under development](https://img.shields.io/badge/status-under%20development-E5AA20)](#status)
 [![CI](https://img.shields.io/github/actions/workflow/status/digdir/genki/ci.yml?branch=main&label=ci)](https://github.com/digdir/genki/actions/workflows/ci.yml?query=branch%3Amain)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/digdir/genki/badge)](https://scorecard.dev/viewer/?uri=github.com/digdir/genki)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16298/badge)](https://www.bestpractices.dev/projects/16298)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-1E2B3C)](LICENSE)
 <br>
 [![Node 24](https://img.shields.io/badge/node-24-0062BA)](mise.toml)
@@ -74,7 +75,11 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 | [`docs/bring-your-own-logic.md`](docs/bring-your-own-logic.md)               | A tool step or a whole engine you run yourself                                                                                                                                       |
 | [`docs/architecture/system-atlas.html`](docs/architecture/system-atlas.html) | Every module, what it does and what it talks to. Open it locally in a browser                                                                                                        |
 | [`docs/adr/`](docs/adr/)                                                     | Architecture decisions. Start with [0001](docs/adr/0001-foundations.md), [0023](docs/adr/0023-extension-model.md) and [0031](docs/adr/0031-services-variants-and-ways-of-working.md) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks and pull requests                                                                                                                                                   |
+| [`docs/security/`](docs/security/README.md)                                  | What genki protects, what operators must configure, key rotation and hardening                                                                                                       |
+| [`docs/security/assurance-case.md`](docs/security/assurance-case.md)         | The threat model, trust boundaries and why the security requirements hold                                                                                                            |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks, coding standards and pull requests                                                                                                                                 |
+| [`ROADMAP.md`](ROADMAP.md)                                                   | What the next year intends, and what genki will not do                                                                                                                               |
+| [`SECURITY.md`](SECURITY.md)                                                 | Reporting a vulnerability, and what happens next                                                                                                                                     |
 
 ## Repository layout
 
