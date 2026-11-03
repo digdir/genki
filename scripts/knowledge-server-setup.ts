@@ -59,12 +59,70 @@ export const setUpKnowledge = async (options: {
   return binding;
 };
 
+/** Azure only: an Entra admin makes each app identity's login by object id, in the `postgres` database. */
+export const createPrincipals = async (
+  admin: Pool,
+  principals: { login: string; objectId: string }[],
+) => {
+  for (const { login, objectId } of principals) {
+    const { rowCount } = await admin.query('select from pg_roles where rolname = $1', [login]);
+    if (rowCount) {
+      console.log(`Login ${login} exists`);
+      continue;
+    }
+    await admin.query(
+      `select * from pgaadauth_create_principal_with_oid($1, $2, 'service', false, false)`,
+      [login, objectId],
+    );
+    console.log(`Login ${login} created for object ${objectId}`);
+  }
+};
+
+/** What an admin checks after setup, printed to the log since the server is private. */
+export const knowledgeServerReport = async (knowledge: Pool, logins: string[]) => {
+  const query = async (sql: string, values: unknown[] = []) =>
+    (await knowledge.query(sql, values)).rows;
+  const [settings] = await query(
+    `select current_database() as database, current_setting('server_version') as server_version,
+            current_setting('azure.extensions', true) as azure_extensions,
+            current_setting('shared_preload_libraries') as shared_preload_libraries,
+            current_setting('max_connections') as max_connections`,
+  );
+  return {
+    settings,
+    extensions: await query(`select extname, extversion from pg_extension order by extname`),
+    logins: (await query(`select rolname from pg_roles where rolcanlogin order by rolname`)).map(
+      (row: { rolname: string }) => row.rolname,
+    ),
+    // Every role the two logins hold, so a role that is not a knowledge role shows too.
+    memberships: await query(
+      `select m.rolname as login, r.rolname as role, a.inherit_option, a.set_option
+         from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
+        where m.rolname = any($1) order by login, role`,
+      [logins],
+    ),
+    connect: (
+      await query(
+        `select coalesce(r.rolname, 'public') as grantee
+           from pg_database d cross join aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
+           left join pg_roles r on r.oid = a.grantee
+          where d.datname = current_database() and a.privilege_type = 'CONNECT' order by grantee`,
+      )
+    ).map((row: { grantee: string }) => row.grantee),
+  };
+};
+
 const usage = `Usage:
   npm run knowledge:setup -- --local
-  npm run knowledge:setup -- --admin-user <name> --api-login <name> --worker-login <name> [--rebind --reason "<why>"]
+  npm run knowledge:setup -- --admin-user <name> --api-login <name> --worker-login <name>
+      [--database <name>] [--rebind --reason "<why>"]
+      [--principals --api-object-id <id> --worker-object-id <id>]
 
 The platform server comes from DATABASE_URL or PGHOST, the knowledge server from KNOWLEDGE_PGHOST and
-KNOWLEDGE_PGDATABASE. In Azure both log in as you, with your Entra ID token (az login).`;
+--database (or KNOWLEDGE_PGDATABASE, genai_knowledge by default). In Azure both log in with an Entra ID
+token: the platform server as AZURE_CLIENT_ID, the knowledge server as KNOWLEDGE_ADMIN_AZURE_CLIENT_ID;
+unset, as you (az login).
+--principals first makes the two logins by object id, as an Entra admin, in the postgres database.`;
 
 /** Outside --local the platform server must be named by PGHOST, so a local DATABASE_URL in .env.local is never bound to. */
 export const platformSourceForSetup = (
@@ -97,14 +155,54 @@ const main = async () => {
       'admin-user': { type: 'string' },
       'api-login': { type: 'string' },
       'worker-login': { type: 'string' },
+      database: { type: 'string' },
+      principals: { type: 'boolean', default: false },
+      'api-object-id': { type: 'string' },
+      'worker-object-id': { type: 'string' },
       rebind: { type: 'boolean', default: false },
       reason: { type: 'string' },
     },
   });
-  const platformSource = platformSourceForSetup(process.env, values.local);
-  if (!platformSource) throw new Error(`no platform server configured\n\n${usage}`);
+  if (values.local && values.principals)
+    throw new Error(`--principals is for Azure; --local makes password logins\n\n${usage}`);
   if (values.rebind && !values.reason?.trim())
     throw new Error(`--rebind needs --reason\n\n${usage}`);
+  const platformSource = platformSourceForSetup(process.env, values.local);
+  if (!platformSource) throw new Error(`no platform server configured\n\n${usage}`);
+
+  const apiLogin = values.local ? knowledgeLocalLogins.api : values['api-login'];
+  const workerLogin = values.local ? knowledgeLocalLogins.worker : values['worker-login'];
+  if (!apiLogin || !workerLogin) throw new Error(`pass --api-login and --worker-login\n\n${usage}`);
+  const adminPassword = cachedEntraPassword(
+    managedIdentityTokenSource(process.env.KNOWLEDGE_ADMIN_AZURE_CLIENT_ID),
+  );
+  const azureAdmin = (database: string) => {
+    if (!process.env.KNOWLEDGE_PGHOST || !values['admin-user'])
+      throw new Error(`set KNOWLEDGE_PGHOST and pass --admin-user\n\n${usage}`);
+    return createPool({
+      host: process.env.KNOWLEDGE_PGHOST,
+      database,
+      user: values['admin-user'],
+      password: adminPassword,
+      ssl: { rejectUnauthorized: true },
+    });
+  };
+
+  if (values.principals) {
+    const apiObjectId = values['api-object-id'];
+    const workerObjectId = values['worker-object-id'];
+    if (!apiObjectId || !workerObjectId)
+      throw new Error(`--principals needs --api-object-id and --worker-object-id\n\n${usage}`);
+    const postgres = azureAdmin('postgres');
+    try {
+      await createPrincipals(postgres, [
+        { login: apiLogin, objectId: apiObjectId },
+        { login: workerLogin, objectId: workerObjectId },
+      ]);
+    } finally {
+      await postgres.end();
+    }
+  }
 
   const knowledge = values.local
     ? createPool({
@@ -113,23 +211,9 @@ const main = async () => {
             localPorts().knowledge,
         ),
       })
-    : (() => {
-        if (!process.env.KNOWLEDGE_PGHOST || !values['admin-user'])
-          throw new Error(`set KNOWLEDGE_PGHOST and pass --admin-user\n\n${usage}`);
-        return createPool({
-          host: process.env.KNOWLEDGE_PGHOST,
-          database: process.env.KNOWLEDGE_PGDATABASE ?? 'genai_knowledge',
-          user: values['admin-user'],
-          password: cachedEntraPassword(managedIdentityTokenSource()),
-          ssl: { rejectUnauthorized: true },
-        });
-      })();
+    : azureAdmin(values.database ?? process.env.KNOWLEDGE_PGDATABASE ?? 'genai_knowledge');
   const platform = createPool(platformSource);
   try {
-    const apiLogin = values.local ? knowledgeLocalLogins.api : values['api-login'];
-    const workerLogin = values.local ? knowledgeLocalLogins.worker : values['worker-login'];
-    if (!apiLogin || !workerLogin)
-      throw new Error(`pass --api-login and --worker-login\n\n${usage}`);
     if (values.local) {
       await migrate(platform);
       await createLocalLogin(knowledge, apiLogin, process.env.KNOWLEDGE_API_PASSWORD ?? '');
@@ -150,6 +234,9 @@ const main = async () => {
       binding.outcome === 'rebound'
         ? `Knowledge server rebound from platform server ${binding.previous} to ${binding.platformId}, and audited`
         : `Knowledge server set up, bound to platform server ${binding.platformId}`,
+    );
+    console.log(
+      JSON.stringify(await knowledgeServerReport(knowledge, [apiLogin, workerLogin]), null, 2),
     );
   } finally {
     await Promise.all([platform.end(), knowledge.end()]);
