@@ -13,7 +13,7 @@ import {
 } from '@genai/eval';
 import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
-import { Problem, problemContent } from '../http.js';
+import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 
 const pathParam = (name: string, example: string) =>
@@ -115,6 +115,7 @@ const TaskRow = TaskBase.extend({
     .string()
     .optional()
     .describe('The start of the input; only for callers with manage-services'),
+  erasure: RunErasure.optional(),
   actor: z.object({
     kind: z.enum(['api-key', 'person', 'system']),
     name: z.string().optional(),

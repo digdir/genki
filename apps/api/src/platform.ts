@@ -29,6 +29,7 @@ import {
   problemContent,
   problems,
   reasonTooShort,
+  RunErasure,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
@@ -264,6 +265,7 @@ const Timeline = z
     costOre: z.number().optional(),
     costMicroNok: z.number().int().nullable().optional(),
     priced: z.boolean().optional(),
+    erasure: RunErasure.optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -804,6 +806,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const lacking =
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
+    const erasure = await options.tasks.erasure?.(tenant, task);
     return c.json(
       toTimeline(
         found,
@@ -813,6 +816,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         {
           details: requireRight(acting, tenant, 'manage-services').ok,
           usage: startedBy(found, principal) || seesUsage(acting, tenant),
+          ...(erasure ? { erasure } : {}),
         },
       ),
       200,

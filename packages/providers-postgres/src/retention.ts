@@ -78,8 +78,8 @@ export class PostgresRetentionStore implements RetentionStore {
     ]);
     if (recordErasure)
       await client.query(
-        `insert into erased_scopes (tenant, scope) select $1, unnest($2::text[])
-         on conflict (tenant, scope) do update set erased_at = now()`,
+        `insert into erased_scopes (tenant, scope, reason) select $1, unnest($2::text[]), 'retention'
+         on conflict (tenant, scope) do update set erased_at = now(), reason = excluded.reason`,
         [tenant, scopes],
       );
     else
@@ -116,7 +116,8 @@ export class PostgresThreadRetention implements ThreadRetentionStore {
         [cutoff.tenant, cutoff.agent, cutoff.before.getTime()],
       ),
     );
-    for (const { id } of removed.rows) await this.keys.erase(cutoff.tenant, threadScope(id));
+    for (const { id } of removed.rows)
+      await this.keys.erase(cutoff.tenant, threadScope(id), 'retention');
     return removed.rows.length;
   }
 }
@@ -133,7 +134,8 @@ export class PostgresThreadErasure implements ThreadErasure {
        where tenant = $1 and envelope->>'thread' = $2 and starts_with(scope, '["thread",')`,
       [tenant, thread],
     );
-    for (const { scope } of found.rows) await this.keys.erase(tenant, scope);
+    for (const { scope } of found.rows)
+      await this.keys.erase(tenant, scope, 'conversation-deleted');
     return found.rows.length;
   }
 }

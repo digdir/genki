@@ -69,6 +69,7 @@ export const steps = {
   toQueue: 'To the queue {queue}',
   unknownEvent: 'Unknown event',
   unnamedEvent: 'The event had no name',
+  answerErased: 'The answer was erased',
   contentUnavailable: 'Content not available',
   unreadableSteps: {
     one: '{count} step cannot be shown because its content was erased or can no longer be read.',

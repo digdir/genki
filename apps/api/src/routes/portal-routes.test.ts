@@ -887,6 +887,32 @@ describe('service summaries and run headers', () => {
     expect(byId(reader.data, 't1')).not.toHaveProperty('excerpt');
   });
 
+  it('the run list marks erased runs instead of showing an empty input', async () => {
+    const asked: [string, string[]][] = [];
+    const { send } = await prepare({
+      erasures: async (tenant, ids) => {
+        asked.push([tenant, ids]);
+        return [{ task: 't1', reason: 'conversation-deleted', at: '2026-11-03T17:41:00.000Z' }];
+      },
+    });
+
+    const list = await json<{ data: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'kari'),
+    );
+    const one = await json<Record<string, unknown>>(
+      await send(`/tenants/${digdir}/tasks/t1`, 'erik'),
+    );
+
+    const t1 = list.data.find((r) => r.id === 't1');
+    expect(t1).toMatchObject({
+      erasure: { reason: 'conversation-deleted', at: '2026-11-03T17:41:00.000Z' },
+    });
+    expect(t1).not.toHaveProperty('excerpt');
+    expect(list.data.find((r) => r.id === 't2')).not.toHaveProperty('erasure');
+    expect(one).toMatchObject({ erasure: { reason: 'conversation-deleted' } });
+    expect(asked.every(([tenant]) => tenant === digdir)).toBe(true);
+  });
+
   it('shows the API key by its name, and the document title of a batch item instead of the whole prompt', async () => {
     const { send, keys } = await prepare({
       events: async function* (id): AsyncIterable<Event> {

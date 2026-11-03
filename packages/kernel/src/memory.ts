@@ -25,10 +25,19 @@ export interface StoredTask {
   checkpoint?: unknown;
 }
 
+export type ErasureReason = 'conversation-deleted' | 'retention' | 'erased';
+
+export interface TaskErasure {
+  task: string;
+  reason: ErasureReason;
+  at?: string;
+}
+
 export interface TaskStore {
   put(stored: StoredTask, scope: ContentScope): Promise<void>;
   get(id: string): Promise<StoredTask | undefined>;
   pendingFor(who: Ref): Promise<Task[]>;
+  erasures?(tenant: string, tasks: string[]): Promise<TaskErasure[]>;
 }
 
 export interface StateStore {
@@ -98,6 +107,7 @@ export class InMemoryEventLog implements EventLog {
 
 export class InMemoryTaskStore implements TaskStore {
   readonly #tasks = new Map<string, StoredTask>();
+  readonly #erased = new Map<string, TaskErasure>();
 
   async put(stored: StoredTask): Promise<void> {
     this.#tasks.set(stored.task.id, structuredClone(stored));
@@ -112,9 +122,10 @@ export class InMemoryTaskStore implements TaskStore {
     return [...this.#tasks.values()].map((s) => structuredClone(s));
   }
 
-  dropContent(id: string): void {
+  dropContent(id: string, reason: ErasureReason, at = new Date()): void {
     const found = this.#tasks.get(id);
     if (!found) return;
+    this.#erased.set(id, { task: id, reason, at: at.toISOString() });
     const task = { ...found.task };
     delete task.result;
     delete task.pendingInterrupt;
@@ -132,6 +143,14 @@ export class InMemoryTaskStore implements TaskStore {
 
   delete(id: string): void {
     this.#tasks.delete(id);
+    this.#erased.delete(id);
+  }
+
+  async erasures(tenant: string, tasks: string[]): Promise<TaskErasure[]> {
+    return tasks.flatMap((id) => {
+      const erasure = this.#erased.get(id);
+      return erasure && this.#tasks.get(id)?.task.tenant === tenant ? [erasure] : [];
+    });
   }
 
   async pendingFor(who: Ref): Promise<Task[]> {

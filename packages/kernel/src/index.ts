@@ -14,9 +14,11 @@ export {
   InMemoryTaskStore,
   sameRef,
   type ContentScope,
+  type ErasureReason,
   type EventLog,
   type StateStore,
   type StoredTask,
+  type TaskErasure,
   type TaskStore,
 } from './memory.js';
 export { envSecrets, secretRefPattern, type SecretResolver } from './secrets.js';

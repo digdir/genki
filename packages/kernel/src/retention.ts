@@ -87,7 +87,7 @@ export class InMemoryThreadErasure implements ThreadErasure {
     for (const { task } of this.tasks.all()) {
       if (task.tenant !== tenant || task.thread !== thread) continue;
       this.log.dropPayloads(task.id);
-      this.tasks.dropContent(task.id);
+      this.tasks.dropContent(task.id, 'conversation-deleted');
       count += 1;
     }
     return count;
@@ -129,7 +129,7 @@ export class InMemoryRetentionStore implements RetentionStore {
         count.envelopes += 1;
       } else if (ended < cutoff.payloadBefore.getTime() && !this.#purged.has(task.id)) {
         this.log.dropPayloads(task.id);
-        this.tasks.dropContent(task.id);
+        this.tasks.dropContent(task.id, 'retention');
         this.#purged.add(task.id);
         count.payloads += 1;
       }

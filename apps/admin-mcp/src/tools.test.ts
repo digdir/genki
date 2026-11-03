@@ -110,6 +110,45 @@ describe('explaining a run', () => {
     expect(findings).toContain('Time: "Planla søket" took 8 s of 10 s (80 %).');
   });
 
+  it('says an erased run had its content erased and when, instead of a missing answer', async () => {
+    const erasure = { reason: 'conversation-deleted', at: '2026-11-03T17:41:00.000Z' };
+    const erased = timeline({
+      erasure,
+      steps: [step({ type: 'result', title: 'Svar', summary: 'Svaret er slettet' })],
+    });
+    const client: GenkiClient = {
+      tenant,
+      request: async <T>(_method: string, path: string) =>
+        (path.endsWith('/timeline')
+          ? erased
+          : path.endsWith('/tasks')
+            ? {
+                data: [
+                  {
+                    id: 'run-1',
+                    status: 'completed',
+                    service: 's',
+                    createdAt: erased.startedAt,
+                    endedAt: null,
+                    erasure,
+                  },
+                ],
+              }
+            : { id: 'run-1', erasure }) as T,
+    };
+    const context = { client, spend: { budgetNok: 5, spentNok: 0 } };
+
+    const findings = diagnose(erased as never);
+    const run = await runTool(adminTools, 'get_run', { id: 'run-1' }, context);
+    const runs = await runTool(adminTools, 'list_runs', {}, context);
+
+    const said = 'Content erased at 2026-11-03T17:41:00.000Z because the conversation was deleted';
+    expect(findings.join('\n')).toContain(said);
+    expect(findings.join('\n')).not.toContain('No answer block');
+    expect(run.text).toContain(said);
+    expect(runs.text).toContain(said);
+  });
+
   it('works without the search attribution, which only some people may see', async () => {
     const client: GenkiClient = {
       tenant,

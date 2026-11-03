@@ -102,6 +102,11 @@ export interface TimelineStep {
   raw?: unknown;
 }
 
+export interface RunErasure {
+  reason: 'conversation-deleted' | 'retention' | 'erased';
+  at?: string;
+}
+
 export interface TaskTimeline {
   id: string;
   service: string;
@@ -115,6 +120,7 @@ export interface TaskTimeline {
   outputTokens?: number;
   costOre?: number | null;
   costMicroNok?: number | null;
+  erasure?: RunErasure;
   steps: TimelineStep[];
 }
 
@@ -277,6 +283,7 @@ export interface TaskRow {
   service: string;
   serviceName?: string;
   excerpt?: string;
+  erasure?: RunErasure;
   actor?: TaskActor;
   capability: string;
   createdAt: string;

@@ -974,6 +974,7 @@ const migrations: string[] = [
   `create index if not exists tasks_recent on tasks (created_at desc)`,
   `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
+  `alter table erased_scopes add column if not exists reason text`,
   `create table if not exists platform_identity (
      singleton boolean primary key default true check (singleton),
      id uuid not null default gen_random_uuid(),

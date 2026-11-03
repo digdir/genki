@@ -109,6 +109,11 @@ interface Usage {
   costMicroNok: number | null;
 }
 
+interface Erasure {
+  reason: 'conversation-deleted' | 'retention' | 'erased';
+  at?: string;
+}
+
 interface TaskRow {
   id: string;
   status: string;
@@ -118,6 +123,7 @@ interface TaskRow {
   endedAt: string | null;
   usage?: Usage;
   excerpt?: string;
+  erasure?: Erasure;
   actor?: { kind: string; name?: string };
 }
 
@@ -152,6 +158,7 @@ interface Timeline {
   outputTokens?: number;
   costMicroNok?: number | null;
   priced?: boolean;
+  erasure?: Erasure;
   steps: TimelineStep[];
 }
 
@@ -812,6 +819,15 @@ const runPlayground = tool({
 const seconds = (from: string, to: string | null) =>
   to ? `${Math.round((Date.parse(to) - Date.parse(from)) / 100) / 10} s` : 'still running';
 
+const erasureReasons: Record<Erasure['reason'], string> = {
+  'conversation-deleted': ' because the conversation was deleted',
+  retention: ' after the retention period',
+  erased: '',
+};
+
+const erasureText = (e: Erasure) =>
+  `Content erased${e.at ? ` at ${e.at}` : ''}${erasureReasons[e.reason]}`;
+
 const listRuns = tool({
   name: 'list_runs',
   title: 'List runs',
@@ -843,7 +859,11 @@ const listRuns = tool({
           ? `, ${t.usage.inputTokens + t.usage.outputTokens} tokens, ${t.usage.costMicroNok === null ? 'not priced' : `${(t.usage.costMicroNok / 1e6).toFixed(3)} kr`}`
           : '';
         const who = t.actor ? `, by ${t.actor.kind}${t.actor.name ? ` ${t.actor.name}` : ''}` : '';
-        const excerpt = t.excerpt ? `, input: ${short(t.excerpt, 80)}` : '';
+        const excerpt = t.erasure
+          ? `, ${erasureText(t.erasure)}`
+          : t.excerpt
+            ? `, input: ${short(t.excerpt, 80)}`
+            : '';
         return `- ${t.id}: ${t.serviceName ?? t.service}, ${t.status}, ${t.createdAt}, ${seconds(t.createdAt, t.endedAt)}${usage}${who}${excerpt}`;
       })
       .join('\n');
@@ -888,7 +908,10 @@ const compactTimeline = (t: Timeline) => {
     const blocks = s.blocks.map(compactBlock).filter(Boolean).join('\n');
     return `${i + 1}. ${s.type}${flags ? ` [${flags}]` : ''}: ${s.title}${detail ? ` (${detail})` : ''}. ${s.summary}${blocks ? `\n${blocks}` : ''}`;
   });
-  return `${head}\n${steps.join('\n')}`;
+  const erased = t.erasure
+    ? `\n${erasureText(t.erasure)}: input, steps and answer are gone; status, time, tokens and cost remain.`
+    : '';
+  return `${head}${erased}\n${steps.join('\n')}`;
 };
 
 const reasonOf = (result: PromiseSettledResult<unknown>) =>
@@ -979,8 +1002,12 @@ export const diagnose = (timeline: Timeline, attribution?: Attribution) => {
         `Time: "${slowest.title}" took ${slowest.durationSeconds} s of ${timeline.durationSeconds} s (${share} %).`,
       );
   }
+  if (timeline.erasure)
+    findings.push(
+      `${erasureText(timeline.erasure)}, so only status, time, tokens and cost can be read.`,
+    );
   const answer = timeline.steps.find((s) => s.blocks.some((b) => b.kind === 'answer'));
-  if (timeline.status === 'completed' && !answer)
+  if (timeline.status === 'completed' && !answer && !timeline.erasure)
     findings.push('No answer block in the timeline: the service may have given no answer.');
   if (timeline.priced === false || timeline.costMicroNok === null)
     findings.push('Cost is incomplete: a model in this run has no price.');

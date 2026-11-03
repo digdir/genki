@@ -106,6 +106,42 @@ describe('the run mapper', () => {
     expect(steps.some((s) => s.title === 'Ukjent hendelse')).toBe(false);
   });
 
+  const erasedRun = () => {
+    seq = 0;
+    return [
+      at(0, 'kernel.task.status', { status: 'queued' }),
+      at(5, 'kernel.task.input', { erased: true }, 'audit'),
+      at(10, 'kernel.task.status', { status: 'running' }),
+      notice(200, { erased: true }),
+      notice(2200, { erased: true }),
+      usage(5800, 900, 40),
+      at(6000, 'kernel.result', { erased: true }),
+      at(6010, 'kernel.task.status', { status: 'completed' }),
+    ];
+  };
+
+  it('an erased run shows no unreadable steps and says the answer was erased', () => {
+    const mapper = mapRun(erasedRun(), { erased: true });
+
+    expect(mapper.steps.map((s) => [s.type, s.title, s.summary])).toEqual([
+      ['trigger', 'Startet', 'Oppgaven ble mottatt'],
+      ['model', 'Modellkall', 'gpt-test · 900 inn, 40 ut'],
+      ['result', 'Svar', 'Svaret er slettet'],
+    ]);
+    expect(mapper.steps.at(-1)?.blocks).toEqual([]);
+    expect(mapper.stats()).toMatchObject({ inputTokens: 900, outputTokens: 40 });
+  });
+
+  it('a run with unreadable content that was not erased still shows as unreadable', () => {
+    const steps = mapRun(erasedRun()).steps;
+
+    expect(
+      steps.filter((s) => s.title === 'Innholdet er ikke tilgjengelig').length,
+    ).toBeGreaterThan(0);
+    expect(steps.some((s) => s.summary === 'Svaret ble levert')).toBe(false);
+    expect(steps.some((s) => s.summary === 'Svaret er slettet')).toBe(false);
+  });
+
   it('fills the answer block with the answer text and source titles, not raw JSON', () => {
     const result = mapRun(ragRun()).steps.at(-1);
 

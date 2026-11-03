@@ -1780,6 +1780,12 @@ export const createPlatform = async (input: PlatformInput) => {
         events: (id) => log.read(id, 0, () => false),
         ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
         ...(taskIndex.eventsOfType ? { eventsOfType: taskIndex.eventsOfType } : {}),
+        ...(taskStore.erasures
+          ? {
+              erasures: (tenant: string, ids: string[]) =>
+                taskStore.erasures?.(tenant, ids) ?? Promise.resolve([]),
+            }
+          : {}),
         apiKeys,
         connections,
         requirementFor:

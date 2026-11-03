@@ -568,11 +568,11 @@ const app = createApp(version, {
     settings,
     models: platform.models,
     admin,
-    tasks: kernelTaskReader(platform.kernel, {
-      kind: 'operator',
-      issuer: 'platform',
-      subject: 'task-reader',
-    }),
+    tasks: kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    ),
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,

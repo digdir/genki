@@ -276,6 +276,7 @@ export interface RunMapperOptions {
   details?: boolean;
   usage?: boolean;
   startedAt?: string;
+  erased?: boolean;
 }
 
 export class RunMapper {
@@ -283,6 +284,7 @@ export class RunMapper {
   readonly hits = new Map<string, HitView>();
   private readonly details: boolean;
   private readonly usageShown: boolean;
+  private readonly erased: boolean;
   private start: number | undefined;
   private prev: number | undefined;
   private out: RunChange[] = [];
@@ -314,6 +316,7 @@ export class RunMapper {
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
     this.usageShown = options.usage ?? true;
+    this.erased = options.erased ?? false;
     if (options.startedAt) this.start = Date.parse(options.startedAt);
   }
 
@@ -357,6 +360,7 @@ export class RunMapper {
         this.usage(e, ts, prev, data);
         break;
       case 'kernel.interrupt':
+        if (this.erased && data.erased === true) break;
         this.add({
           id: `e${e.seq}`,
           type: 'approval',
@@ -521,7 +525,7 @@ export class RunMapper {
   }
 
   private notice(e: Event, ts: number, prev: number, data: Data) {
-    if (data.erased === true) return this.unreadable(e, ts);
+    if (data.erased === true) return this.erased ? undefined : this.unreadable(e, ts);
     const event = str(data.event);
     const stage = str(data.stage);
     const kind = str(data.kind);
@@ -1278,6 +1282,7 @@ export class RunMapper {
   }
 
   private result(e: Event, ts: number, prev: number) {
+    if (record(e.data).erased === true) return this.erasedResult(e, ts);
     const parts = Array.isArray(e.data) ? (e.data as Part[]) : [];
     const retrieval = record(jsonOf(parts, retrievalMime));
     const attribution = record(retrieval.attribution);
@@ -1325,6 +1330,19 @@ export class RunMapper {
           : t('runs.delivered'),
       at: this.offset(ts),
       blocks,
+    });
+  }
+
+  private erasedResult(e: Event, ts: number) {
+    if (!this.erased) return this.unreadable(e, ts);
+    for (const s of this.steps) this.close(s, ts);
+    this.add({
+      id: `e${e.seq}`,
+      type: 'result',
+      title: t('runs.answer'),
+      summary: t('steps.answerErased'),
+      at: this.offset(ts),
+      blocks: [],
     });
   }
 
