@@ -113,3 +113,39 @@ Input from people, systems, tools and documents is checked against what is allow
 | Fails closed at startup     | The API refuses to start with missing identity, database or Altinn settings, without `CONTENT_MASTER_KEY` when a database is set, with `TRACES_CONTENT=true`, or with dev mode in production                                                                                                                                                                                                                                            |
 | TypeScript strict           | `strict`, `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` ([`tsconfig.base.json`](../../tsconfig.base.json)), and ESLint's strict rules                                                                                                                                                                                                                                                                                     |
 | Supply chain                | GitHub Actions pinned by commit SHA, a lockfile, Renovate, Dependabot alerts, CodeQL code scanning (GitHub default setup), gitleaks in CI and the OpenSSF Scorecard workflow                                                                                                                                                                                                                                                            |
+
+## Checking an image against the source
+
+The deploy workflow builds the images reproducibly: with `SOURCE_DATE_EPOCH` set to the commit time, file timestamps rewritten to it, no build cache and a pinned BuildKit. Anyone can rebuild a deployed commit and get the same image digest.
+
+Compare the linux/amd64 image digest, not the digest the container apps run. That one names an index that also holds the provenance and SBOM attestations, which record the workflow run and differ on every build.
+
+**The deployed digest.** The summary of the deploy run lists each image's linux/amd64 digest. With access to Azure, read it from the running app (prod: `rg-genai-prod`, `genai-prod-api`):
+
+```sh
+image=$(az containerapp show -g rg-genai-test -n genai-test-api --query 'properties.template.containers[0].image' -o tsv)
+az acr login --name "${image%%.*}"
+docker buildx imagetools inspect --raw "$image" |
+  jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest'
+```
+
+The API's `/health` reports the commit it was built from.
+
+**The rebuild.** In a fresh clone, so file times and modes come from the checkout, with Docker Buildx and a `docker-container` builder (Docker Desktop's default builder cannot export OCI):
+
+```sh
+umask 022
+git clone https://github.com/digdir/genki.git genki-check && cd genki-check
+git checkout <commit>
+docker buildx create --name repro --driver docker-container \
+  --driver-opt "image=$(grep -o -m1 'moby/buildkit:[^ ]*' .github/workflows/deploy.yml)"
+for target in api worker apps; do
+  docker buildx build --builder repro --no-cache --platform linux/amd64 --target "$target" \
+    --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" --provenance=false --sbom=false \
+    --output "type=oci,dest=$target.tar,oci-mediatypes=true,rewrite-timestamp=true" .
+  echo "$target $(tar -xOf "$target.tar" index.json | jq -r '.manifests[0].digest')"
+done
+docker buildx rm repro
+```
+
+The digests it prints should equal the deployed ones. On an arm64 machine `--platform linux/amd64` runs under emulation and takes a while.
