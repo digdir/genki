@@ -8,6 +8,9 @@ import { navigation } from './Shell';
 import { StrategyCatalogue } from './strategy-catalogue';
 
 const Access = lazy(() => import('./screens/Access').then((m) => ({ default: m.Access })));
+const ArchitectureAssistant = lazy(() =>
+  import('./screens/ArchitectureAssistant').then((m) => ({ default: m.ArchitectureAssistant })),
+);
 const ApiReference = lazy(() =>
   import('./screens/ApiReference').then((m) => ({ default: m.ApiReference })),
 );
@@ -61,6 +64,7 @@ export const Page = ({
   const t = useT();
   const [area = 'overview', id, sub] = props.route.segments;
   if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
+  if (area === 'architecture-assistant') return <ArchitectureAssistant />;
   if (area === 'services')
     return (
       <StrategyCatalogue api={props.api} tenant={props.tenant}>

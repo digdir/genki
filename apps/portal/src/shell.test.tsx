@@ -127,7 +127,7 @@ describe('shell', () => {
       '#hovedinnhold',
     );
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
-    for (const group of ['Bygg', 'Analyse', 'Administrasjon'])
+    for (const group of ['Analysere', 'Bygg', 'Følge med', 'Administrasjon'])
       expect(within(menu).getByRole('list', { name: group })).toBeTruthy();
     expect(within(menu).queryByRole('heading')).toBeNull();
     expect(
@@ -136,6 +136,7 @@ describe('shell', () => {
         .map((li) => li.querySelector('a')?.firstChild?.textContent),
     ).toEqual([
       'Oversikt',
+      'Arkitekturassistent',
       'Tjenester',
       'Fellestjenester',
       'Datasett',
@@ -152,6 +153,20 @@ describe('shell', () => {
     ).toBe('page');
     expect(screen.queryByRole('banner')).toBeNull();
     expect(document.documentElement.lang || 'nb').toBe('nb');
+  });
+
+  it('opens the architecture assistant under Analysere as a draft page', async () => {
+    await renderAt('#/architecture-assistant');
+
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    const group = within(menu).getByRole('list', { name: 'Analysere' });
+    expect(
+      within(group).getByRole('link', { name: 'Arkitekturassistent' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Arkitekturassistent' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Utkast')).toBeTruthy();
   });
 
   it('sends the old usage address on to Statistikk', async () => {
