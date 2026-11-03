@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.10
-ARG NODE_IMAGE=node:24.21.0-bookworm-slim
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.28-alpine
+ARG NODE_IMAGE=node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.28-alpine@sha256:7377697a821c131a924a7105fafbe7414db4e9fcc77a6f08f776f33f141ec3f8
 
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app

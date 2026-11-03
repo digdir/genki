@@ -20,7 +20,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@azure/identity": "^4.13.3",
+    "@azure/identity": "^4.14.1",
     "@genai/contracts": "0.0.0",
     "@genai/conversations": "0.0.0",
     "@genai/definitions": "0.0.0",

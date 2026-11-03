@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import fc from 'fast-check';
 import {
   flowUsesOf,
   InMemoryDefinitionStore,
@@ -99,7 +100,8 @@ const plugins: PluginSchemas = {
   rerankers: new Set(['colbert']),
   strategyResidency: (id, config) =>
     id === strategyKey('remote-agent', 1)
-      ? (config as { endpoint: { residency: 'norway' | 'eu' | 'global' } }).endpoint.residency
+      ? (config as { endpoint?: { residency?: 'norway' | 'eu' | 'global' } } | null)?.endpoint
+          ?.residency
       : undefined,
   models: new Map([
     ['foundry/gpt-4o', { residency: 'norway', capabilities: ['stream', 'tools', 'json-schema'] }],
@@ -1292,5 +1294,51 @@ describe('platform settings', () => {
       value: true,
       rejected: [{ layer: 'service', reason: 'cannot be set at the service layer' }],
     });
+  });
+});
+
+describe('definition validation on arbitrary input', () => {
+  const samples = readdirSync(examples)
+    .filter((f) => f.endsWith('.yaml'))
+    .map(example);
+  const pathsIn = (value: unknown, at: string[] = []): string[][] =>
+    value && typeof value === 'object'
+      ? [at, ...Object.entries(value).flatMap(([k, v]) => pathsIn(v, [...at, k]))]
+      : [at];
+  const placed = (root: unknown, path: string[], value: unknown): unknown => {
+    const [head, ...rest] = path;
+    if (head === undefined) return value;
+    const copy = (Array.isArray(root) ? [...root] : { ...(root as object) }) as Record<
+      string,
+      unknown
+    >;
+    if (value === undefined && rest.length === 0) Reflect.deleteProperty(copy, head);
+    else copy[head] = placed(copy[head], rest, value);
+    return copy;
+  };
+  const mutated = fc
+    .constantFrom(...samples)
+    .chain((sample) =>
+      fc
+        .tuple(
+          fc.constantFrom(...pathsIn(sample)),
+          fc.option(fc.jsonValue({ maxDepth: 3 }), { nil: undefined }),
+        )
+        .map(([path, value]) => placed(sample, path, value)),
+    );
+
+  it('answers with errors instead of throwing when any field of a valid definition is replaced or removed', () => {
+    fc.assert(
+      fc.property(fc.oneof(mutated, fc.jsonValue()), (input) => {
+        const result = validateDefinition(input, plugins);
+        if (!result.ok) {
+          expect(result.errors.length).toBeGreaterThan(0);
+          for (const error of result.errors) {
+            expect(typeof error.path).toBe('string');
+            expect(typeof error.message).toBe('string');
+          }
+        }
+      }),
+    );
   });
 });

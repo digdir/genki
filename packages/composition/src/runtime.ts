@@ -544,8 +544,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
-        ? ((config as { endpoint?: { residency?: Residency } }).endpoint?.residency ??
-          input.agents?.(String((config as { agent?: unknown }).agent ?? ''))?.endpoint.residency)
+        ? ((config as { endpoint?: { residency?: Residency } } | null)?.endpoint?.residency ??
+          input.agents?.(String((config as { agent?: unknown } | null)?.agent ?? ''))?.endpoint
+            .residency)
         : undefined,
   };
   const strategies: Strategy[] = [
