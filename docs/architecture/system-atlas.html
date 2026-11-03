@@ -2171,6 +2171,16 @@
             ],
             edges: [
               {
+                to: 'operations',
+                label: 'Try a descriptor in review (raw tier)',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/api/src/operator-operations.ts',
+                  imports: '@genai/operations',
+                },
+              },
+              {
                 to: 'port-usage',
                 label: 'Sums genki and gateway usage',
                 kind: 'call',
@@ -2725,6 +2735,7 @@
               'Build routers, ports, strategies, registry and kernel from catalogs, secrets and stores',
               'Create the one model gate, with lockdown admission, plug-in egress guards and the log for calls outside a run (outside-run:\u003ctenant>:\u003cday>)',
               'Wrap every service strategy in settings, guardrails, hooks and document scope',
+              "Run the raw tier, an operator's descriptor call as a kernel task of its own, in test only, on synthetic data with every PII category masked (ADR 0047)",
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
@@ -2740,11 +2751,22 @@
               'packages/composition/src/document-scope.ts',
               'packages/composition/src/boot-guard.ts',
               'packages/composition/src/outside-run.ts',
+              'packages/composition/src/operation-try.ts',
             ],
             input: 'Catalogs, secrets, definition and config stores, policy',
             output: 'A kernel with every strategy registered, and the registries behind it',
             replaces: [],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/composition/src/runtime.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'port-model',
                 label: 'Model router and catalog parsing',
@@ -6342,6 +6364,7 @@
               'Model catalog and discovery',
               'Operations on the catalogue (chat, decide) and capability checks',
               'The kernel port decision, the decide operation on the same catalogue (ADR 0047,',
+              'The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide through a typed descriptor when the catalogue opts in (ADR 0047,',
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
               'Credential resolution',
             ],
@@ -6351,12 +6374,23 @@
               'packages/port-model/src/gate.ts',
               'packages/port-model/src/catalog.ts',
               'packages/port-model/src/decision.ts',
+              'packages/port-model/src/operation.ts',
               'packages/port-model/src/instructions.ts',
             ],
             input: 'Generic chat request',
             output: 'Completion, deltas, decision answers, usage',
             replaces: [{ module: 'llm', how: 'Provider abstraction' }],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/port-model/src/router.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'plugins',
                 label: 'Model contract suite',
@@ -6491,6 +6525,16 @@
                             type: 'array',
                             items: { type: 'string', enum: ['chat', 'decide'] },
                           },
+                          descriptors: {
+                            type: 'object',
+                            properties: {
+                              decide: {
+                                type: 'string',
+                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                              },
+                            },
+                            additionalProperties: false,
+                          },
                           contextWindow: {
                             type: 'integer',
                             exclusiveMinimum: 0,
@@ -6613,6 +6657,168 @@
                       additionalProperties: { type: 'string', minLength: 1, maxLength: 65536 },
                     },
                   ],
+                },
+              },
+            ],
+          },
+          {
+            id: 'operations',
+            plane: 'ports',
+            name: 'Operation descriptors',
+            note: 'Descriptors · executor · operation@1',
+            icon: 'llm',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/operations'],
+            summary:
+              'A new kind of model API as a reviewed descriptor file and recorded fixtures, run by one executor through the kernel gate.',
+            description:
+              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
+            responsibilities: [
+              'Load and validate descriptors, refusing URLs, credential headers and kept-out APIs',
+              'Map typed input to the wire request and the wire answer back, without code',
+              "Run a descriptor call through the gate with the endpoint's credential and egress guard",
+              'Prove each descriptor against recorded fixtures (operation@1)',
+            ],
+            files: [
+              'packages/operations/src/descriptor.ts',
+              'packages/operations/src/shape.ts',
+              'packages/operations/src/mapping.ts',
+              'packages/operations/src/executor.ts',
+              'packages/operations/src/registry.ts',
+              'packages/operations/src/contract.ts',
+            ],
+            input: 'A descriptor, a catalogue endpoint and typed input',
+            output: 'The typed result, usage and the count of dropped fields',
+            replaces: [],
+            edges: [
+              {
+                to: 'kernel',
+                label: 'The gate, closed shapes and credentials',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/operations/src/executor.ts', imports: '@genai/kernel' },
+              },
+            ],
+            keywords: 'operation descriptor executor raw tier operation@1 fixtures',
+            schemas: [
+              {
+                name: 'descriptor',
+                file: 'packages/operations/src/descriptor.ts',
+                export: 'descriptorFile',
+                schema: {
+                  $schema: 'https://json-schema.org/draft/2020-12/schema',
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                    },
+                    operation: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                    status: { type: 'string', enum: ['review', 'typed'] },
+                    summary: { type: 'string', minLength: 1, maxLength: 500 },
+                    api: {
+                      type: 'object',
+                      properties: {
+                        protocol: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                        version: { type: 'string', minLength: 1, maxLength: 64 },
+                        query: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9_-]+$' },
+                          additionalProperties: { type: 'string', maxLength: 200 },
+                        },
+                        headers: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                          additionalProperties: { type: 'string', maxLength: 200 },
+                        },
+                      },
+                      required: ['protocol', 'version'],
+                      additionalProperties: false,
+                    },
+                    auth: {
+                      default: { keyHeader: 'authorization' },
+                      type: 'object',
+                      properties: { keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' } },
+                      required: ['keyHeader'],
+                      additionalProperties: false,
+                    },
+                    request: {
+                      type: 'object',
+                      properties: {
+                        method: { type: 'string', enum: ['POST', 'PUT'] },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        body: {},
+                      },
+                      required: ['method', 'path', 'body'],
+                      additionalProperties: false,
+                    },
+                    input: {},
+                    output: {},
+                    wire: {
+                      type: 'object',
+                      properties: { request: {}, response: {} },
+                      required: ['request', 'response'],
+                      additionalProperties: false,
+                    },
+                    result: {},
+                    usage: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                        enum: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
+                      },
+                      additionalProperties: {},
+                      required: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
+                    },
+                    stream: {
+                      anyOf: [
+                        { type: 'string', const: 'none' },
+                        {
+                          type: 'object',
+                          properties: {
+                            events: {
+                              type: 'object',
+                              propertyNames: { type: 'string', pattern: '^[a-z0-9._-]+$' },
+                              additionalProperties: {
+                                type: 'object',
+                                properties: {
+                                  shape: {},
+                                  delta: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$.*',
+                                  },
+                                  done: { type: 'boolean', const: true },
+                                },
+                                required: ['shape'],
+                                additionalProperties: false,
+                              },
+                            },
+                          },
+                          required: ['events'],
+                          additionalProperties: false,
+                        },
+                      ],
+                    },
+                  },
+                  required: [
+                    'id',
+                    'operation',
+                    'status',
+                    'summary',
+                    'api',
+                    'request',
+                    'input',
+                    'output',
+                    'wire',
+                    'result',
+                    'usage',
+                    'stream',
+                  ],
+                  additionalProperties: false,
                 },
               },
             ],
@@ -6984,6 +7190,16 @@
             replaces: [{ module: 'rag', how: 'Embedding inside Typesense' }],
             edges: [
               {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/port-embedding/src/router.ts',
+                  imports: '@genai/operations',
+                },
+              },
+              {
                 to: 'plugins',
                 label: 'Embedding contract suite',
                 kind: 'call',
@@ -7094,6 +7310,16 @@
                           tenants: {
                             type: 'array',
                             items: { type: 'string', pattern: '^\\d{9}$' },
+                          },
+                          descriptors: {
+                            type: 'object',
+                            properties: {
+                              embed: {
+                                type: 'string',
+                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                              },
+                            },
+                            additionalProperties: false,
                           },
                           options: {
                             default: {},

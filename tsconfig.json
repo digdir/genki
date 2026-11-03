@@ -35,6 +35,9 @@
       "path": "packages/providers-postgres-source"
     },
     {
+      "path": "packages/operations"
+    },
+    {
       "path": "packages/port-model"
     },
     {

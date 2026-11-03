@@ -1,4 +1,6 @@
+import type { EnvironmentTier, OperationTry, OperationTryOutcome } from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
+import type { DescriptorRegistry } from '@genai/operations';
 import type {
   DefinitionStore,
   PluginSchemas,
@@ -62,6 +64,11 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   drafts: DraftRunner;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
+  operations?: {
+    tier: EnvironmentTier;
+    descriptors: DescriptorRegistry;
+    try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
+  };
   enrichmentTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;

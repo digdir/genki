@@ -46,7 +46,9 @@ import {
   type IndexWriterAdapter,
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
+import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
 import {
+  catalogDescriptorProblems,
   ModelRouter,
   parseCatalog,
   type Capability,
@@ -101,6 +103,12 @@ import {
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
 import { outsideRun } from './outside-run.js';
+import {
+  operationTryPolicy,
+  operationTryRunner,
+  operationTryStrategy,
+  type EnvironmentTier,
+} from './operation-try.js';
 import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
 import {
   guardedSend,
@@ -186,6 +194,8 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -309,6 +319,8 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const descriptors = input.descriptors ?? loadDescriptors();
+  const environmentTier = input.environmentTier ?? 'production';
   const gate = createGate({
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
@@ -316,6 +328,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   const embedders = new EmbeddingRouter({
     gate,
+    descriptors,
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
@@ -386,6 +399,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   );
   const models = new ModelRouter({
     gate,
+    descriptors,
     catalog: input.catalogs.models,
     adapters: modelAdapters,
     sources: [azureDeployments],
@@ -560,6 +574,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const strategies: Strategy[] = [
     ...serviceStrategies,
     batchStrategy as Strategy,
+    operationTryStrategy(environmentTier) as Strategy,
     ...(input.extraStrategies?.({
       models,
       knowledge,
@@ -577,6 +592,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     tools,
     blob,
     decision: models.decisions(),
+    operation: models.operations(),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);
@@ -622,7 +638,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     strategies,
     capabilities: registry,
     ports,
-    policy,
+    policy: operationTryPolicy(policy),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),
@@ -688,7 +704,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     },
     store: configEntries,
     checks: {
-      models: (c) => problemsOf(parseCatalog(c, modelAdapters, [azureDeployments.kind])),
+      models: (c) => {
+        const parsed = parseCatalog(c, modelAdapters, [azureDeployments.kind]);
+        return parsed.ok
+          ? catalogDescriptorProblems(parsed.catalog, descriptors)
+          : problemsOf(parsed);
+      },
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
       rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),
     },
@@ -834,6 +855,15 @@ export const createRuntime = async (input: RuntimeInput) => {
     sync,
     followKnowledge,
     quarantined: () => [...quarantine.values()],
+    descriptors,
+    environmentTier,
+    tryOperation: operationTryRunner({
+      kernel: () => kernel,
+      registry,
+      platformTenant,
+      tier: environmentTier,
+      ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    }),
   };
 };
 

@@ -64,6 +64,7 @@ export interface GateRecord {
   operation: string;
   model: string;
   endpoint?: string;
+  descriptor?: string;
   residency: Residency;
   outcome: 'ok' | 'refused' | 'failed';
   refusal?: GateRefusal | 'guard';
@@ -76,6 +77,7 @@ export interface GateTarget {
   operation: string;
   model: Ref;
   endpoint?: string;
+  descriptor?: string;
   residency: Residency;
   admission: Admission;
   enabled?: boolean;
@@ -244,6 +246,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
         operation: target.operation,
         model: target.model.id,
         ...(target.endpoint ? { endpoint: target.endpoint } : {}),
+        ...(target.descriptor ? { descriptor: target.descriptor } : {}),
         residency: target.residency,
         outcome,
         ...extra,

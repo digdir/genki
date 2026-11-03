@@ -17,3 +17,5 @@ Operator-only routes, used by the console: tenants and organisations, onboarding
 5. `GET /operator/audit`: what was done, by whom, and why.
 
 Release a new model: `PUT /operator/models/{id}`, `POST /operator/quality/matrix/estimate`, `POST /operator/quality/matrix/runs` (an audited admin task with `change-reason`), then `POST /operator/quality/matrix/release`.
+
+Try a new kind of model API (test only): `POST /operator/operations/{descriptor}/try` with `{ "model": "<catalogue model id>", "input": <the descriptor's typed input>, "synthetic": true }` and `change-reason`. It is an audited admin task and answers `{ task, descriptor, model, result }` with a `genai-task` header for the run. Outside `GENAI_ENV=test` it answers `403` (`errors[0].path: "environment"`); without `synthetic: true`, `400`; a request with image, audio or file content or a field the descriptor does not allow, `400`; in lockdown, for a login that is not admitted, `403`. Every PII category is masked before the call leaves, whatever the tenant has set.

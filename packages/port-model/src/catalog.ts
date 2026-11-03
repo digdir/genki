@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { secretRefPattern } from '@genai/kernel';
+import { descriptorIdPattern } from '@genai/operations';
 import type { ModelAdapter } from './adapter.js';
 import { parameterRules } from './parameters.js';
 import { capabilities, defaultOperations, operations, residencies } from './port.js';
@@ -38,6 +39,9 @@ const model = z.strictObject({
   residency: z.enum(residencies),
   capabilities: z.array(z.enum(capabilities)).default([]),
   operations: z.array(z.enum(operations)).min(1).default(defaultOperations),
+  descriptors: z
+    .strictObject({ decide: z.string().regex(descriptorIdPattern).optional() })
+    .optional(),
   contextWindow: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),

@@ -122,6 +122,7 @@ export const changes = {
   batchRunRetry: 'ran a batch run again',
   clientsWebhookTest: "tested the client's webhook",
   qualityMatrixRun: 'started the quality matrix',
+  operationTry: 'tried an operation descriptor on synthetic data',
   taskReviewApprove: 'approved the table',
   taskReviewEdit: 'corrected the table',
   clientsRemove: 'removed the client',

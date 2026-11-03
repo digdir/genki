@@ -66,6 +66,7 @@ const throughAdminTasks = [
   'POST /operator/quality/labels',
   'POST /operator/quality/matrix/release',
   'POST /operator/quality/matrix/runs',
+  'POST /operator/operations/:id{.+}/try',
   'POST /operator/skills/shares/:id/decision',
   'PUT /operator/recipes/shares/:flow',
   'DELETE /operator/recipes/shares/:flow',

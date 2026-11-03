@@ -28,6 +28,13 @@ replaces:
   - module: rag
     how: Embedding inside Typesense
 edges:
+  - to: operations
+    label: Descriptor executor and registry
+    kind: call
+    target: call
+    witness:
+      file: packages/port-embedding/src/router.ts
+      imports: '@genai/operations'
   - to: plugins
     label: Embedding contract suite
     kind: call

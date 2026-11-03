@@ -1999,6 +1999,43 @@ const qualityRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'post',
+    path: '/operator/operations/{id}/try',
+    summary: 'Try an operation descriptor in review on a catalogue model (test only)',
+    description: described(
+      operator,
+      'Audited as an admin task, and the call is its own run, audited and metered.',
+      'Only where GENAI_ENV=test, on synthetic data. Every PII category is masked and media is refused. The id may contain slashes, such as example/classify@1.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          model: z.string().describe('A model from the model catalogue'),
+          input: z.unknown().describe("The descriptor's typed input"),
+          synthetic: z.literal(true),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        z.object({
+          task: z.string(),
+          descriptor: z.string(),
+          model: z.string(),
+          result: z.unknown(),
+        }),
+        'The typed result',
+      ),
+      400: problem('Invalid request, not synthetic, media, or a field outside the descriptor'),
+      401: problem('Not signed in'),
+      403: problem('Not an operator, not a test environment, or a login that is not admitted'),
+      404: problem('No such descriptor or model'),
+      502: problem('The provider failed'),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/quality/matrix/runs/{id}',
     summary: 'One quality matrix run with scores per test set',

@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { secretRefPattern } from '@genai/kernel';
+import { descriptorIdPattern } from '@genai/operations';
 import type { EmbeddingAdapter } from './adapter.js';
 import { residencies } from './port.js';
 
@@ -28,6 +29,9 @@ const model = z.strictObject({
   dimensions: z.number().int().positive(),
   maxBatch: z.number().int().positive().optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
+  descriptors: z
+    .strictObject({ embed: z.string().regex(descriptorIdPattern).optional() })
+    .optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 

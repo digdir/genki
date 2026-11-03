@@ -47,6 +47,7 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   defaultPlatformTenant,
+  environmentTierOf,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
@@ -418,9 +419,14 @@ if (lockdown)
     configuredKeys: configuredKeys.size,
   });
 
+const environmentTier = environmentTierOf(process.env);
+if (environmentTier === 'test')
+  log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
+  environmentTier,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,

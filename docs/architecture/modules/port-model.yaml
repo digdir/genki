@@ -14,6 +14,8 @@ responsibilities:
   - Model catalog and discovery
   - Operations on the catalogue (chat, decide) and capability checks
   - The kernel port decision, the decide operation on the same catalogue (ADR 0047, #248)
+  - The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide
+    through a typed descriptor when the catalogue opts in (ADR 0047, #291)
   - Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing
     and residency, holds the request and the answer to their closed shapes, runs the payload guard
     and meters (ADR 0047); the router itself only routes
@@ -24,6 +26,7 @@ files:
   - packages/port-model/src/gate.ts
   - packages/port-model/src/catalog.ts
   - packages/port-model/src/decision.ts
+  - packages/port-model/src/operation.ts
   - packages/port-model/src/instructions.ts
 input: Generic chat request
 output: Completion, deltas, decision answers, usage
@@ -31,6 +34,13 @@ replaces:
   - module: llm
     how: Provider abstraction
 edges:
+  - to: operations
+    label: Descriptor executor and registry
+    kind: call
+    target: call
+    witness:
+      file: packages/port-model/src/router.ts
+      imports: '@genai/operations'
   - to: plugins
     label: Model contract suite
     kind: call

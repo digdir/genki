@@ -5,6 +5,7 @@ import { createVault, modelGuard } from '@genai/guardrails';
 import {
   createGate,
   envSecrets,
+  GateError,
   shape,
   type Gate,
   type GatePayload,
@@ -29,6 +30,7 @@ import {
   type DecisionRequest,
   type ModelAdapter,
 } from '@genai/port-model';
+import { descriptorRegistry, parseDescriptor } from '@genai/operations';
 import { RerankRouter, type RerankAdapter } from '@genai/port-rerank';
 
 const tenant = '999888777';
@@ -56,6 +58,61 @@ const without = (value: Record<string, unknown>, key: string) => {
   const copy = { ...value };
   Reflect.deleteProperty(copy, key);
   return copy;
+};
+
+const classifyDescriptor = parseDescriptor(`
+id: example/classify@1
+operation: classify
+status: review
+summary: A made-up classification API for the gate contract.
+api:
+  protocol: openai-chat
+  version: v1
+request:
+  method: POST
+  path: /classifications
+  body:
+    model: $deployment
+    text: $input.text
+    label: $input.label
+input:
+  object:
+    text: text
+    label: ref
+output:
+  object:
+    label: plain
+wire:
+  request:
+    object:
+      model: plain
+      text: text
+      label: ref
+  response:
+    object:
+      label: plain
+      usage: { object: { input_tokens: { number: { integer: true, min: 0 } } } }
+result:
+  label: $response.label
+usage:
+  inputTokens: $response.usage.input_tokens
+  requests: 1
+stream: none
+`);
+
+const fakeChatAdapter: ModelAdapter = {
+  protocol: 'fake',
+  endpointOptions: z.object({}),
+  modelOptions: z.object({}),
+  connect: () => ({
+    chat: async () => {
+      throw new Error('not used');
+    },
+    chatStream: async function* () {
+      yield* [];
+      throw new Error('not used');
+    },
+  }),
 };
 
 type GateMaker = (setup: GateLaneSetup) => Gate;
@@ -418,7 +475,70 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     },
   };
 
-  return [model, decision, embedding, rerank];
+  const operation: GateLane = {
+    port: 'operation',
+    operation: 'classify',
+    admission: 'admitted',
+    tenant,
+    has: { ...has, enabled: true, provenance: true },
+    answersWithText: false,
+    refusalOf: (error) => (error instanceof GateError ? error.refusal : refusalOf(error)),
+    open: (setup) => {
+      const w = watched(setup);
+      const fetcher: typeof fetch = async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as { text: string };
+        w.upstream.push(body.text);
+        if (setup.failUpstream) return new Response('{}', { status: 503 });
+        return Response.json(answering(setup, { label: 'billing', usage: { input_tokens: 1 } }));
+      };
+      const router = new ModelRouter({
+        gate: { ...w.gate, egress: () => fetcher },
+        catalog: {
+          endpoints: { fake: without(endpoint('openai-chat'), 'engine') },
+          models: [
+            {
+              id: 'fake/described',
+              endpoint: 'fake',
+              deployment: 'd',
+              residency: setup.residency ?? 'norway',
+              ...w.shared,
+            },
+          ],
+        },
+        adapters: [{ ...fakeChatAdapter, protocol: 'openai-chat' }],
+        secrets: envSecrets({ K: 'k' }),
+        descriptors: descriptorRegistry([classifyDescriptor]),
+        ...(setup.routerResidency ? { maxResidency: setup.routerResidency } : {}),
+        classifications: {
+          load: async () =>
+            setup.enabled === false ? { 'fake/described': { enabled: false } } : {},
+          save: async () => undefined,
+        },
+      });
+      return {
+        ...w,
+        call: async (text, extra = {}) => {
+          await router.refresh();
+          const port = router
+            .operations()
+            .open({ kind: 'model', id: 'fake/described', tenant }, w.ctx);
+          await port.call(classifyDescriptor.id, {
+            text: extra.media ? image : text,
+            label:
+              extra.smuggle === 'url'
+                ? 'https://evil.example'
+                : extra.smuggle === 'object-id'
+                  ? 'file-abc123'
+                  : 'billing',
+            ...(extra.smuggle === 'field' ? { store: true } : {}),
+          });
+          return undefined;
+        },
+      };
+    },
+  };
+
+  return [model, decision, embedding, rerank, operation];
 };
 
 const subject: GateContractSubject = {
@@ -426,7 +546,7 @@ const subject: GateContractSubject = {
   nationalIdGuard: () => modelGuard({ vault: createVault(['national-id']) }),
 };
 
-describe(`${gateContract.contract} contract: the model, decision, embedding and rerank routers`, () => {
+describe(`${gateContract.contract} contract: the model, decision, embedding and rerank routers and the descriptor executor`, () => {
   for (const check of gateContract.checks)
     it(check.name, async () => {
       await check.run(subject, new AbortController().signal);

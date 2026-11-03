@@ -35,6 +35,13 @@ replaces:
   - module: setup
     how: Bootstrap and wiring
 edges:
+  - to: operations
+    label: Try a descriptor in review (raw tier)
+    kind: call
+    target: call
+    witness:
+      file: apps/api/src/operator-operations.ts
+      imports: '@genai/operations'
   - to: port-usage
     label: Sums genki and gateway usage
     kind: call

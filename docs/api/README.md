@@ -63,6 +63,11 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-03: operation descriptors
+
+- `POST /operator/operations/{descriptor}/try` (operators, test only, audited admin task with `change-reason`): calls a descriptor on a catalogue model with synthetic data, masked and metered. See [operations.md](operations.md).
+- A model in the model catalogue may take `descriptors: { "decide": "<descriptor id>" }`, and an embedder in the embedding catalogue `descriptors: { "embed": "<descriptor id>" }`, to run that operation through the descriptor executor instead of the hand-written adapter. `GET /operator/models` shows `descriptors` when set. A catalogue that names an unknown descriptor, one in review, or one for another operation or protocol is refused.
+
 ### 2026-11-03: decisions on the governed gate
 
 - A service definition takes `spec.decidesAboutPeople` (boolean). With it, publishing and `POST /definitions/validate` answer `422` unless `spec.riskClass` is `high`, the `human-approval` guardrail is set, and `pii-out-of-log` is not set, so the model input is kept for review.

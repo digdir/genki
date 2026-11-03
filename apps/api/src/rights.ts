@@ -197,6 +197,7 @@ export const adminActionRights: Readonly<
   'platform.task.review.approve': 'use-services',
   'platform.clients.webhook-test': 'manage-services',
   'platform.quality.matrix.run': 'operator',
+  'platform.operations.try': 'operator',
   'platform.plugin.verify': 'operator',
   'platform.plugin.register': 'operator',
   'platform.plugin.remove': 'operator',

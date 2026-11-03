@@ -117,6 +117,7 @@ export const changes = defineNamespace({
   batchRunRetry: 'kjørte en satsvis kjøring på nytt',
   clientsWebhookTest: 'testet webhooken til klienten',
   qualityMatrixRun: 'startet kvalitetsmatrisen',
+  operationTry: 'prøvde en operasjonsbeskrivelse på syntetiske data',
   taskReviewApprove: 'godkjente tabellen',
   taskReviewEdit: 'rettet i tabellen',
   clientsRemove: 'fjernet klienten',

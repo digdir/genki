@@ -30,6 +30,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.batch-run.retry': 'changes.batchRunRetry',
   'platform.clients.webhook-test': 'changes.clientsWebhookTest',
   'platform.quality.matrix.run': 'changes.qualityMatrixRun',
+  'platform.operations.try': 'changes.operationTry',
   'platform.task.review.approve': 'changes.taskReviewApprove',
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',

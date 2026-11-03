@@ -1,6 +1,8 @@
 import type { UsageReads } from '@genai/port-usage';
+import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
+  type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
   InMemoryConfigEntryStore,
@@ -249,6 +251,7 @@ import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
+import { operatorOperationsModule } from './operator-operations.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
@@ -310,6 +313,7 @@ export const platformModules: PlatformModuleFactory[] = [
   triggersModule,
   serviceLifecycleModule,
   operatorModelsModule,
+  operatorOperationsModule,
   modelMatrixModule,
   hooksModule,
   pluginsModule,
@@ -441,6 +445,8 @@ export interface PlatformInput {
   kudos?: KudosAccess;
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
 }
 
 interface ServiceRequirementShape {
@@ -989,6 +995,8 @@ export const createPlatform = async (input: PlatformInput) => {
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
     ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    ...(input.descriptors ? { descriptors: input.descriptors } : {}),
     log: tracker.log,
     tasks: taskStore,
     prices,
@@ -1642,6 +1650,11 @@ export const createPlatform = async (input: PlatformInput) => {
       return (await pin(compiled, version))?.capability.descriptor.id;
     },
     kernel,
+    operations: {
+      tier: runtime.environmentTier,
+      descriptors: runtime.descriptors,
+      try: runtime.tryOperation,
+    },
     enrichmentTask: enrichmentWork.run(() => kernel),
     tasks: taskIndex,
     task: async (id) => (await taskStore.get(id))?.task,

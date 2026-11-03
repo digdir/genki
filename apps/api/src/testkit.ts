@@ -20,7 +20,9 @@ import {
   InMemoryIdentities,
   type createTokenVerifier,
 } from '@genai/identity';
+import type { EnvironmentTier } from '@genai/composition';
 import type { TriggerRunStore } from '@genai/jobs';
+import type { DescriptorRegistry } from '@genai/operations';
 import { envSecrets } from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
@@ -231,6 +233,10 @@ export interface BootOptions {
   services?: string[];
   knowledge?: unknown;
   triggerRuns?: TriggerRunStore;
+  models?: unknown;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
+  lockdown?: boolean;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -245,7 +251,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
   const resource = 'urn:altinn:resource:digdir-genai-platform';
   const platform = await createPlatform({
     catalogs: {
-      models: fakeModels,
+      models: options.models ?? fakeModels,
       knowledge: options.knowledge ?? { endpoints: {}, datasets: [] },
       rerank: { endpoints: {}, rerankers: [] },
     },
@@ -255,6 +261,9 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     definitions: (p, skill, flow) => new InMemoryDefinitionStore(p, undefined, skill, flow),
     configurables: { store: configEntries, scheduleIntervalMs: 0 },
     ...(options.triggerRuns ? { triggerRuns: options.triggerRuns } : {}),
+    ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
+    ...(options.descriptors ? { descriptors: options.descriptors } : {}),
+    ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,

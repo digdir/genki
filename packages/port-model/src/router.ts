@@ -10,12 +10,14 @@ import {
   type SecretResolver,
   type Shape,
 } from '@genai/kernel';
-import type {
-  DeploymentConfig,
-  DiscoverySource,
-  ModelAdapter,
-  ModelConnection,
-  ModelTransport,
+import { describedCall, describedSend, type DescriptorRegistry } from '@genai/operations';
+import {
+  errorFromStatus,
+  type DeploymentConfig,
+  type DiscoverySource,
+  type ModelAdapter,
+  type ModelConnection,
+  type ModelTransport,
 } from './adapter.js';
 import {
   parseCatalog,
@@ -24,6 +26,7 @@ import {
   type ModelCatalog,
 } from './catalog.js';
 import type { DecisionPort, DecisionRequest, DecisionResult } from './decision.js';
+import type { OperationPort } from './operation.js';
 import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
@@ -65,6 +68,7 @@ export interface ModelRouterOptions {
   timeoutMs?: number;
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
   gate?: Gate;
+  descriptors?: DescriptorRegistry;
 }
 
 export interface ModelPrice {
@@ -81,6 +85,7 @@ export interface ModelDescription {
   residency: Residency;
   capabilities: Capability[];
   operations: Operation[];
+  descriptors?: { decide?: string | undefined };
   enabled: boolean;
   origin: 'catalog' | 'discovered';
   classified: boolean;
@@ -108,6 +113,29 @@ interface Route {
 }
 
 export const modelOutputCeiling = 16_384;
+
+export const catalogDescriptorProblems = (
+  catalog: ModelCatalog,
+  registry: DescriptorRegistry | undefined,
+): { path: string; message: string }[] =>
+  catalog.models.flatMap((model, index) =>
+    Object.entries(model.descriptors ?? {}).flatMap(([operation, id]) => {
+      if (!id) return [];
+      const path = `models.${index}.descriptors.${operation}`;
+      const descriptor = registry?.get(id);
+      const protocol = catalog.endpoints[model.endpoint]?.protocol;
+      const message = !descriptor
+        ? `no descriptor ${id}`
+        : descriptor.status !== 'typed'
+          ? `${id} is in review and serves no service yet`
+          : descriptor.operation !== operation
+            ? `${id} describes ${descriptor.operation}, not ${operation}`
+            : descriptor.api.protocol !== protocol
+              ? `${id} is for ${descriptor.api.protocol}, not ${protocol}`
+              : undefined;
+      return message ? [{ path, message }] : [];
+    }),
+  );
 
 const needed = (request: ChatRequest): Capability[] => [
   ...(request.tools?.length ? (['tools'] as const) : []),
@@ -152,6 +180,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
         `invalid model catalog: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
       );
     }
+    this.#checkDescriptors(result.catalog);
     const connections = new Map<string, ModelConnection>();
     const credentials = new Map<string, Credential>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
@@ -210,6 +239,25 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   reload(catalog: unknown) {
     this.#load(catalog);
+  }
+
+  #checkDescriptors(catalog: ModelCatalog) {
+    const problems = catalogDescriptorProblems(catalog, this.options.descriptors);
+    if (problems.length > 0)
+      throw new Error(
+        `invalid model catalog: ${problems.map((p) => `${p.path}: ${p.message}`).join('; ')}`,
+      );
+  }
+
+  #described(model: CatalogModel) {
+    const endpoint = this.#catalog.endpoints[model.endpoint] as CatalogEndpoint;
+    return {
+      baseURL: endpoint.baseURL,
+      credential: this.#credentials.get(model.endpoint) as Credential,
+      fetch: this.#gate.egress(model.endpoint),
+      timeoutMs: this.options.timeoutMs ?? 120_000,
+      protocol: endpoint.protocol,
+    };
   }
 
   #modelOptions(endpoint: string, options: unknown) {
@@ -340,6 +388,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       residency: model.residency,
       capabilities: model.capabilities,
       operations: model.operations,
+      ...(model.descriptors ? { descriptors: model.descriptors } : {}),
       enabled: model.enabled,
       origin: route.origin,
       classified: Object.keys(this.#classes[model.id] ?? {}).some(
@@ -439,19 +488,72 @@ export class ModelRouter implements PortProvider<ModelPort> {
       info,
       decide: async (request: DecisionRequest) => {
         offers('decide');
-        const decide = connection.decide?.bind(connection);
+        const described = model.descriptors?.decide
+          ? this.options.descriptors?.get(model.descriptors.decide)
+          : undefined;
+        const decide = described
+          ? async (config: DeploymentConfig, sent: DecisionRequest, signal: AbortSignal) =>
+              (
+                await describedSend<DecisionResult>(
+                  described,
+                  this.#described(model),
+                  config.deployment,
+                  sent,
+                  { signal, fail: errorFromStatus },
+                )
+              ).result
+          : connection.decide?.bind(connection);
         if (!decide)
           throw new ModelError(
             'unsupported',
             `the adapter for ${model.endpoint} does not implement the decide operation`,
           );
-        return this.#gate.call(ctx, target, payload, request, async (sent) => {
+        const gated = described ? { ...target, descriptor: described.id } : target;
+        return this.#gate.call(ctx, gated, payload, request, async (sent) => {
           try {
             return await decide(deployment, sent, ctx.signal);
           } catch (error) {
             throw failure(error);
           }
         });
+      },
+    };
+  }
+
+  /** The kernel port `operation`: a descriptor call on a catalogue model, for the raw tier. */
+  operations(): PortProvider<OperationPort> {
+    return { open: (ref, ctx) => this.#openOperation(ref, ctx) };
+  }
+
+  #openOperation(ref: Ref, ctx: PortContext): OperationPort {
+    const { model, target, served, info } = this.#resolve(ref, ctx, 'chat');
+    const raw: GateTarget = { ...target };
+    Reflect.deleteProperty(raw, 'refuse');
+    return {
+      info,
+      call: async (id, input) => {
+        const descriptor = this.options.descriptors?.get(id);
+        if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
+        const endpoint = this.#described(model);
+        if (endpoint.protocol !== descriptor.api.protocol)
+          throw new ModelError(
+            'unsupported',
+            `${id} is for ${descriptor.api.protocol}, and ${model.id} speaks ${endpoint.protocol}`,
+          );
+        return describedCall(
+          {
+            gate: this.#gate,
+            ctx,
+            target: { ...raw, port: 'operation', operation: descriptor.operation },
+            descriptor,
+            endpoint,
+            deployment: model.deployment,
+            priced: (usage) => withListPrice(usage, this.options.priceOf?.(model.id)),
+            provenance: () => ({ model: served }),
+            fail: errorFromStatus,
+          },
+          input,
+        );
       },
     };
   }
