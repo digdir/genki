@@ -21,7 +21,9 @@ param appsSubnetPrefix = '10.41.0.0/23'
 param postgresSubnetPrefix = '10.41.2.0/24'
 
 // The one knowledge server for test and prod, created here. The size and standby Kudos needs come later, as a change here (ADR 0042).
-param knowledgeServerStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', 'none')
+// The workflows pass an unset variable as an empty value, which the default does not cover.
+var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
+param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
 param createKnowledgeServer = true
 param knowledgeDatabaseName = 'genai_knowledge'
 param knowledgeDatabaseNames = ['genai_knowledge', 'genai_knowledge_test']

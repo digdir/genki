@@ -10,11 +10,14 @@ param minReplicas = 1
 param maxReplicas = 2
 
 // Prod creates the one knowledge server for test and prod; test has its own database on it.
-param knowledgeServerStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', 'none')
+// The workflows pass an unset variable as an empty value, which the default does not cover.
+var knowledgeStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', '')
+param knowledgeServerStage = empty(knowledgeStage) ? 'none' : knowledgeStage
 param knowledgePostgresHost = readEnvironmentVariable('KNOWLEDGE_PGHOST', '')
 param knowledgeDatabaseName = 'genai_knowledge_test'
 // Both from prod's outputs knowledgePostgresHost and knowledgePostgresVCores.
-param knowledgePostgresVCores = int(readEnvironmentVariable('KNOWLEDGE_VCORES', '2'))
+var knowledgeVCores = readEnvironmentVariable('KNOWLEDGE_VCORES', '')
+param knowledgePostgresVCores = int(empty(knowledgeVCores) ? '2' : knowledgeVCores)
 
 param keyVaultSecretNames = [
   'content-master-key'

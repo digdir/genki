@@ -131,7 +131,7 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
   const left = await others();
   if (left.length > 0)
     throw new Error(
-      `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; run setup as the database's owner or an admin who can revoke it`,
+      `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; revoke each as its grantor, or revoke the grantor's own grant with cascade, and run setup again`,
     );
 };
 

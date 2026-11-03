@@ -66,7 +66,7 @@ One Postgres Flexible Server holds the knowledge data of test and prod, to keep 
 - **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). The pools need at most 182: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, when old and new replicas overlap, for prod's 3 API replicas and test's 2, plus 2 for a job.
 - **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
 - **Each database lets only its own environment connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to that environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left.
-- **Night windows:** set `knowledge.nightWindow` to `20:00-00:00` in test's platform settings. A build may run an hour past its window, so test's heavy work then never runs beside prod's (`01:00-06:00`, the default).
+- **Night windows:** set `knowledge.nightWindow` to `20:00-00:00` in test's platform settings. A build is cancelled an hour after its window ends (ADR 0042), so test's builds then never run beside prod's (`01:00-06:00`, the default).
 - **Shared:** a change to the server itself, such as a parameter, a restart, a resize or an Azure upgrade, reaches test and prod at once and cannot be tried on test first. A restore brings back both databases.
 
 ### Stages
@@ -89,7 +89,7 @@ Then, in this order:
 
 A job run is safe to repeat: logins that exist are kept, and the setup changes nothing it already set.
 
-Test's database cannot be rebound: `--rebind` is audited on the platform server it binds to, and prod's job cannot reach test's. If test's platform server is ever replaced, an admin drops `genai_knowledge_test`, prod's infra creates it again, and prod's test job sets it up; its data is ingested again.
+Test's database cannot be rebound: `--rebind` is audited on the platform server it binds to, and prod's job cannot reach test's. If test's platform server is ever replaced, an admin drops `genai_knowledge_test`, test's job prints the new platform id, `KNOWLEDGE_TEST_PLATFORM_ID` in prod is set to it, prod's infra creates the database again, and prod's test job sets it up; its data is ingested again.
 
 ### What the job's log shows
 
@@ -117,7 +117,7 @@ The restored server keeps neither the source's parameters nor its network rules,
 
 ### Open
 
-- Whether test's own infra run, which defines `genai-test-vnet`, keeps the peering prod's template made on it: test's what-if after prod's `server` stage shows it.
+- Whether test's own infra run, which defines `genai-test-vnet` without peerings, keeps the peering prod's template made on it. Microsoft's documentation does not say; reports of other templates say a redeploy without the peering removes it ([arm-template-whatif #278](https://github.com/Azure/arm-template-whatif/issues/278)). Test's what-if after prod's `server` stage shows it as a change to `virtualNetworkPeerings` on `genai-test-vnet`. If it does, test loses the knowledge server on every test deploy until prod deploys again, and test's template must declare the peering itself, which needs a right on the knowledge network for test's deploy identity. Prod's own deploys redeploy `genai-prod-vnet` and `genai-knowledge-vnet` too, and put the peerings back in the same run.
 - Whether Azure's Readiness probe reaches the worker, which has no ingress: the Container Apps documentation does not say.
 - Whether the knowledge admin may revoke `CONNECT` on a database the template created: the setup fails with the grant it could not remove if not.
 - Whether two servers may share one private DNS zone, as the restore drill does: not stated in the documentation.
