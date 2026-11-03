@@ -43,3 +43,4 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0045](0045-data-stays-in-the-eu-eea.md)                 | Data stays in the EU/EEA; the region is an operating detail  | Proposed                                                                                    |
 | [0046](0046-admin-mcp-for-coding-agents.md)              | Coding agents work on genki through a local admin MCP server | Proposed, built                                                                             |
 | [0047](0047-one-governed-path-for-model-operations.md)   | One governed path for model operations                       | Proposed                                                                                    |
+| [0048](0048-a-new-service-is-a-draft-on-the-server.md)   | A new service is a draft on the server                       | Proposed, built                                                                             |

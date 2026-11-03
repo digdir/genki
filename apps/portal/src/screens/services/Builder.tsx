@@ -283,9 +283,10 @@ export const Builder = ({
   const [files, setFiles] = useState(init.files ?? {});
   const filesRef = useRef(files);
   filesRef.current = files;
-  const serverDraft = live && !isNew;
+  const serverDraft = live && (!isNew || id !== 'new');
   const [draftRevision, setDraftRevision] = useState(init.draftRevision ?? 0);
   const revisionRef = useRef(draftRevision);
+  const routeId = isNew && draftRevision === 0 ? 'new' : id;
   const [edits, setEdits] = useState(0);
   const editsRef = useRef(0);
   const unsaved = useRef(false);
@@ -386,8 +387,7 @@ export const Builder = ({
     if (section) fromAi[section] = true;
   });
 
-  const go = (target: ServiceSection, rest = '') =>
-    navigate(servicePath(isNew ? 'new' : id, target, rest));
+  const go = (target: ServiceSection, rest = '') => navigate(servicePath(routeId, target, rest));
   const goTab = (t: ServiceSection) => {
     go(t);
     if (t !== 'setup') showPane('tjeneste');
@@ -537,7 +537,7 @@ export const Builder = ({
 
   const [remote] = useAsync(
     async (signal) => {
-      if (!serverDraft) return undefined;
+      if (!serverDraft || isNew) return undefined;
       const keep = unsaved.current;
       const [draft, opened, definition] = await Promise.all([
         keep ? api.quality.draft(tenant, id, signal) : undefined,
@@ -651,6 +651,7 @@ export const Builder = ({
     if (!serverDraft || !unsaved.current || draftBlocked.current || saving.current) return;
     saving.current = true;
     const tick = editsRef.current;
+    const first = isNew && revisionRef.current === 0;
     try {
       const saved = await api.quality.saveDraft(
         tenant,
@@ -663,6 +664,10 @@ export const Builder = ({
         tRef.current('services.draftSavedReason'),
       );
       keepRevision(saved.revision);
+      if (first)
+        window.location.replace(
+          window.location.hash.replace(/^#\/services\/new\b/, `#${servicePath(id)}`),
+        );
       if (editsRef.current === tick) unsaved.current = false;
     } catch (error) {
       draftBlocked.current = error instanceof ApiError && error.status === 409;
@@ -958,6 +963,7 @@ export const Builder = ({
       actorLabel(result.publishedBy, tRef.current, result.publishedByName),
       reason,
     );
+    if (isNew && serverDraft) window.location.replace(`#${servicePath(result.id)}`);
   };
 
   const doPublishToTest = ({ reason }: PublishInput) => {
@@ -1003,7 +1009,7 @@ export const Builder = ({
             : t('services.metaVersion', { n: shown.n }),
           ...(draftRevision > 0 ? [t('services.metaUnpublishedDraft')] : []),
         ].join(' · ')
-      : t('services.metaNotPublished')
+      : t(serverDraft ? 'services.metaNotPublishedAuto' : 'services.metaNotPublished')
     : latest
       ? t('services.metaDraftBased', { n: latest.n })
       : t('services.metaNotPublishedAuto');
@@ -1243,7 +1249,7 @@ export const Builder = ({
             </>
           }
         />
-        <ServiceNav id={isNew ? 'new' : id} sections={sections} current={section} />
+        <ServiceNav id={routeId} sections={sections} current={section} />
         {readOnly ? (
           <Alert data-color="info" data-size="sm">
             <Heading level={2} data-size="2xs">

@@ -102,6 +102,24 @@ const ServiceDraft = z
   })
   .openapi('ServiceDraft');
 
+const ServiceDraftSummary = z
+  .object({
+    id: z.string(),
+    name: z.string().nullable().openapi({ description: 'null until the draft is named' }),
+    purpose: z.string(),
+    outputKind: z.string(),
+    latestVersion: z
+      .number()
+      .int()
+      .nullable()
+      .openapi({ description: 'The latest published version; null for a service never published' }),
+    revision: z.number().int(),
+    at: z.string(),
+    by: z.string().openapi({ description: 'Who saved the draft last' }),
+    byName: z.string().optional(),
+  })
+  .openapi('ServiceDraftSummary');
+
 const DraftConflict = z
   .object({ path: z.string(), published: z.unknown(), draft: z.unknown() })
   .openapi('DraftConflict');
@@ -960,6 +978,17 @@ export const serviceRoutes: RouteConfig[] = [
     request: { params: z.object({ tenant }) },
     responses: {
       200: json(z.object({ data: z.array(ServiceSummary) }), 'Services'),
+      ...tenantErrors,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/tenants/{tenant}/service-drafts',
+    summary:
+      "The tenant's saved service drafts, newest first, including drafts of services that were never published. Any member",
+    request: { params: z.object({ tenant }) },
+    responses: {
+      200: json(z.object({ data: z.array(ServiceDraftSummary) }), 'Service drafts'),
       ...tenantErrors,
     },
   }),
