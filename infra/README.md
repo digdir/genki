@@ -252,12 +252,12 @@ None of these log in to Azure or deploy anything. Without the Azure CLI, run the
 
 ## Prod
 
-Prod runs the same template from `env/prod.bicepparam` in the resource group `rg-genai-prod` (`norwayeast`), in the same subscription as test, on `api`, `portal`, `workspace` and `console.genki.digdir.cloud`. It differs from test in:
+Prod runs the same template from `env/prod.bicepparam` in the resource group `rg-genki-prod-weu` (`westeurope`), in the same subscription as test, on `api`, `portal`, `workspace` and `console.genki.digdir.cloud`. It differs from test in:
 
 | Setting                     | Prod                                                                                            |
 | --------------------------- | ----------------------------------------------------------------------------------------------- |
 | Replicas                    | 1 to 3                                                                                          |
-| Postgres                    | General Purpose `Standard_D2ds_v5`, 64 GB, backups kept 30 days and copied to Norway West       |
+| Postgres                    | General Purpose `Standard_D2ds_v5`, 64 GB, backups kept 30 days and copied to North Europe      |
 | Address space               | `10.41.0.0/16` (test is `10.40.0.0/16`), so the two networks can be peered later                |
 | Altinn resource             | `urn:altinn:resource:digdir-genai-platform`, fixed in the parameter file                        |
 | Platform tenant             | Digdir, fixed in the parameter file                                                             |
@@ -275,13 +275,13 @@ The deploy workflow builds the images once and pushes them to the test registry.
 
 ### What the owner creates once for prod
 
-`rg-genai-prod` and the DNS zone `genki.digdir.cloud` in it already exist. The template manages the zone's records (`createDnsZone = true`); creating the zone again changes nothing.
+`rg-genki-prod-weu` and the DNS zone `genki.digdir.cloud` in it already exist. The template manages the zone's records (`createDnsZone = true`); creating the zone again changes nothing.
 
 1. **Deploy identity for prod**, separate from test's, with federated credentials for GitHub OIDC (issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`) for both subjects:
    - `repo:digdir/genki:environment:prod`
    - `repo:digdir@51157288/genki@1411915404:environment:prod` (the ID form the organisation uses)
 2. **Roles for the prod deploy identity**:
-   - on `rg-genai-prod`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush and Key Vault Secrets User
+   - on `rg-genki-prod-weu`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush and Key Vault Secrets User
    - on the test registry: `Container Registry Data Importer and Data Reader` (the role Azure documents for `az acr import` between registries in one tenant; `AcrPull` is the older equivalent for registries without repository permissions)
 3. **Entra group** `genai-prod-pg-admins`, with the people who may administer prod's Postgres.
 4. **GitHub environment `prod`** with required reviewers, and these variables:
@@ -290,7 +290,7 @@ The deploy workflow builds the images once and pushes them to the test registry.
    | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
    | `AZURE_CLIENT_ID`, `DEPLOY_PRINCIPAL_ID`                                                 | Client id and service principal object id of the prod deploy identity                                           |
    | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`                                               | Same as test                                                                                                    |
-   | `AZURE_RESOURCE_GROUP`                                                                   | `rg-genai-prod`                                                                                                 |
+   | `AZURE_RESOURCE_GROUP`                                                                   | `rg-genki-prod-weu`                                                                                             |
    | `PG_ADMIN_GROUP_OBJECT_ID`, `PG_ADMIN_GROUP_NAME`                                        | The group from step 3                                                                                           |
    | `ACR_NAME`                                                                               | Set after the first infra run (output `registryName`)                                                           |
    | `ANSATTPORTEN_ISSUER`                                                                    | `https://ansattporten.no`                                                                                       |
