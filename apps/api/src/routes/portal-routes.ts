@@ -159,6 +159,7 @@ export interface PortalRouteDeps {
   taskEnvelopes?(tenant: string, query: { since?: string; limit?: number }): Promise<Task[]>;
   events?(task: string): AsyncIterable<Event>;
   usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
+  eventsOfType?(tasks: string[], type: string): Promise<Event[]>;
   apiKeys: TenantApiKeys;
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
@@ -424,8 +425,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     keep: (row: PortalTaskRow) => boolean,
     fromService: boolean,
   ) => {
-    const rows = (await deps.tasks(tenant)).filter((t) => t.tenant === tenant && keep(t));
-    const tasks = await Promise.all(rows.map((r) => deps.task(r.task)));
+    const tasks = deps.taskEnvelopes
+      ? (await deps.taskEnvelopes(tenant, {})).filter((t) =>
+          keep({ task: t.id, tenant: t.tenant, status: t.status, at: t.endedAt ?? t.createdAt }),
+        )
+      : await Promise.all(
+          (await deps.tasks(tenant))
+            .filter((t) => t.tenant === tenant && keep(t))
+            .map((r) => deps.task(r.task)),
+        );
     return tasks.filter(
       (t): t is Task =>
         t !== undefined &&
@@ -532,8 +540,11 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   };
 
   const serviceSummaries = async (tenant: string, withArchived = false) => {
-    const list = (await deps.definitions.list(tenant)).filter((d) => d.kind === 'Service');
-    const counts = await runsThisWeek(tenant);
+    const [listed, counts] = await Promise.all([
+      deps.definitions.list(tenant),
+      runsThisWeek(tenant),
+    ]);
+    const list = listed.filter((d) => d.kind === 'Service');
     const found = await Promise.all(list.map((d) => deps.definitions.get('Service', tenant, d.id)));
     const people = await deps.names?.namesOf(found.flatMap((f) => (f ? [f.publishedBy] : [])));
     const rows = await Promise.all(
@@ -575,20 +586,34 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     return plain.length > 90 ? `${plain.slice(0, 89)}…` : plain;
   };
 
-  const inputTextOf = async (task: string) => {
-    if (!deps.events) return '';
-    for await (const event of deps.events(task)) {
-      if (event.type !== 'kernel.task.input') continue;
-      const input = ((event.data as { input?: unknown }).input ?? {}) as {
-        data?: { query?: unknown };
-        parts?: { mime: string; body: { kind: string; text?: string } }[];
-      };
-      if (typeof input.data?.query === 'string') return input.data.query;
-      return (input.parts ?? [])
-        .flatMap((p) => (p.body.kind === 'text' && p.body.text ? [p.body.text] : []))
-        .join('');
+  const inputText = (event: Event) => {
+    const input = ((event.data as { input?: unknown }).input ?? {}) as {
+      data?: { query?: unknown };
+      parts?: { mime: string; body: { kind: string; text?: string } }[];
+    };
+    if (typeof input.data?.query === 'string') return input.data.query;
+    return (input.parts ?? [])
+      .flatMap((p) => (p.body.kind === 'text' && p.body.text ? [p.body.text] : []))
+      .join('');
+  };
+
+  const inputTexts = async (tasks: string[]) => {
+    const out = new Map<string, string>();
+    const keep = (event: Event) => {
+      if (!out.has(event.task)) out.set(event.task, inputText(event));
+    };
+    if (deps.eventsOfType) {
+      for (const event of await deps.eventsOfType(tasks, 'kernel.task.input')) keep(event);
+    } else if (deps.events) {
+      const events = deps.events;
+      await Promise.all(
+        tasks.map(async (task) => {
+          for await (const event of events(task))
+            if (event.type === 'kernel.task.input') return keep(event);
+        }),
+      );
     }
-    return '';
+    return out;
   };
 
   const refOf = (id: string): string[] => {
@@ -636,40 +661,46 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     withInput: boolean,
     withUsage: boolean,
   ) => {
-    const [actors, usage] = await Promise.all([
+    const [actors, usage, inputs] = await Promise.all([
       taskActors(tasks, tenant),
       withUsage ? usageByTask(tasks.map((t) => t.id)) : new Map<string, ModelUsage[]>(),
+      withInput ? inputTexts(tasks.map((t) => t.id)) : new Map<string, string>(),
     ]);
-    const names = new Map<string, string>();
-    for (const id of new Set(tasks.map((t) => serviceOf(caps, t.service.capability.id))))
-      names.set(
-        id,
-        (
-          (await deps.definitions.get('Service', tenant, id))?.definition.metadata as
-            { name?: string } | undefined
-        )?.name ?? id,
-      );
-    return Promise.all(
-      tasks.map(async (t) => {
-        const base = taskBase(caps, t);
-        const excerpt = withInput ? excerptOf(await inputTextOf(t.id)) : '';
-        return {
-          ...(withUsage ? taskRow(caps, t, usage.get(t.id)) : base),
-          serviceName: names.get(base.service) ?? base.service,
-          ...(excerpt ? { excerpt } : {}),
-          actor: actors.get(t.id) ?? { kind: 'system' as const },
-        };
-      }),
+    const names = new Map(
+      await Promise.all(
+        [...new Set(tasks.map((t) => serviceOf(caps, t.service.capability.id)))].map(
+          async (id) =>
+            [
+              id,
+              (
+                (await deps.definitions.get('Service', tenant, id))?.definition.metadata as
+                  { name?: string } | undefined
+              )?.name ?? id,
+            ] as const,
+        ),
+      ),
     );
+    return tasks.map((t) => {
+      const base = taskBase(caps, t);
+      const excerpt = withInput ? excerptOf(inputs.get(t.id) ?? '') : '';
+      return {
+        ...(withUsage ? taskRow(caps, t, usage.get(t.id)) : base),
+        serviceName: names.get(base.service) ?? base.service,
+        ...(excerpt ? { excerpt } : {}),
+        actor: actors.get(t.id) ?? { kind: 'system' as const },
+      };
+    });
   };
 
   const usageOver = async (tenant: string, from: Date, to: Date, project?: string) => {
-    const caps = await capabilitiesOf(tenant);
-    const projectOf = new Map(
-      ((await deps.projectTasks?.(tenant)) ?? []).map((p) => [p.task, p] as const),
-    );
+    const [all, projectTasks] = await Promise.all([
+      deps.definitions.capabilities(),
+      deps.projectTasks?.(tenant),
+    ]);
+    const caps = all.filter((c) => c.service.tenant === tenant);
+    const projectOf = new Map((projectTasks ?? []).map((p) => [p.task, p] as const));
     const projectNames = new Map([...projectOf.values()].map((p) => [p.project, p.name]));
-    const everyCap = await deps.definitions.capabilities();
+    const everyCap = new Map(all.map((c) => [c.capability.descriptor.id, c] as const));
     const titles = new Map<string, string>();
     const within = (iso: string) => {
       const at = new Date(iso).getTime();
@@ -723,7 +754,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       count('');
       count(`service|${service}`);
       count(`day|${date}|${service}`);
-      const found = everyCap.find((c) => c.capability.descriptor.id === t.service.capability.id);
+      const found = everyCap.get(t.service.capability.id);
       const title = found?.serviceName ?? found?.capability.descriptor.title;
       if (title && !titles.has(service)) titles.set(service, title);
       bump(byService, service, tally);

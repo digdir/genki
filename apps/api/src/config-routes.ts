@@ -51,6 +51,11 @@ export interface ConfigDeps {
     tenant: string;
     principal: Principal;
   }) => Promise<number | undefined>;
+  connectorSecret?: (
+    tenant: string,
+    dataset: string,
+    pipeline: string,
+  ) => Promise<string | undefined>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -979,10 +984,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]);
       if (id && !(await deps.ingestion.get(guard.scope, dataset, pipelineId)))
         return problem(c, 404, 'Not found');
+      const connectorSecret = await deps.connectorSecret?.(guard.scope, dataset, pipelineId);
       const response = await perform(c, guard.principal, 'platform.pipeline.save', guard.scope, {
         dataset,
         id: pipelineId,
         spec,
+        ...(connectorSecret ? { connectorSecret } : {}),
       });
       return !id && response.status === 200 ? c.json(await response.json(), 201) : response;
     };

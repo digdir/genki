@@ -1,6 +1,6 @@
 # 0039 Parquet sources
 
-Status: proposed, 2026-10-23 (built locally)
+Status: proposed, 2026-10-23 (built, 2026-11-03: single files and shards in #109, lookups in #119)
 
 ## Context
 

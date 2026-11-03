@@ -148,6 +148,10 @@ log('altinn pdp', {
   kind: altinnPdp.kind,
   ...(altinnPdp.kind === 'altinn' ? { baseURL: altinnPdp.baseURL } : {}),
 });
+if (altinnPdp.kind === 'altinn')
+  void altinnPdp
+    .warm()
+    .catch((error: unknown) => log('altinn token not fetched at boot', { error: String(error) }));
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource

@@ -940,7 +940,7 @@ describe('the dashboard on a busy tenant', () => {
         i % 100 === 0 ? 'failed' : 'completed',
       ),
     );
-    const calls = { envelopes: 0, usage: 0 };
+    const calls = { envelopes: 0, usage: 0, inputs: 0 };
     const env = await setup({
       tasks: () => {
         throw new Error('the dashboard must not list task rows one by one');
@@ -968,6 +968,21 @@ describe('the dashboard on a busy tenant', () => {
           },
         }));
       },
+      eventsOfType: async (ids, type) => {
+        calls.inputs++;
+        return ids.map(
+          (id) =>
+            ({
+              task: id,
+              seq: 0,
+              type,
+              v: 1,
+              ts: '2026-10-01T00:00:00Z',
+              actor: { kind: 'kernel', id: 'kernel' },
+              data: { input: { data: { query: `question ${id}` } } },
+            }) as Event,
+        );
+      },
     });
     return { ...env, calls };
   };
@@ -993,6 +1008,7 @@ describe('the dashboard on a busy tenant', () => {
     expect(body.review.failedTasksLastDay).toBe(4);
     expect(calls.envelopes).toBe(5);
     expect(calls.usage).toBe(2);
+    expect(calls.inputs).toBe(0);
   });
 
   it('builds the usage report from one envelope query per origin and one usage query', async () => {
@@ -1003,6 +1019,18 @@ describe('the dashboard on a busy tenant', () => {
 
     expect(body.totals.runs).toBe(3000);
     expect(body.totals.inputTokens).toBe(3_000_000);
-    expect(calls).toEqual({ envelopes: 2, usage: 1 });
+    expect(calls).toEqual({ envelopes: 2, usage: 1, inputs: 0 });
+  });
+
+  it('lists tasks from one envelope query and one input query, without decrypting tasks one by one', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{ data: { id: string; excerpt?: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/tasks?status=completed`, 'kari'),
+    );
+
+    expect(body.total).toBe(990);
+    expect(body.data).toHaveLength(100);
+    expect(body.data[0]).toMatchObject({ id: 'b2999', excerpt: 'question b2999' });
+    expect(calls).toEqual({ envelopes: 1, usage: 1, inputs: 1 });
   });
 });

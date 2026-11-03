@@ -200,6 +200,7 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
@@ -749,33 +750,39 @@ export const capabilityResolver = (
   };
 };
 
-type OptionCache = Map<string, { at: number; options: FacetCount[] }>;
+export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
 
-const facetOptions = async (
+export const facetOptions = (
   knowledge: KnowledgeRouter,
   cache: OptionCache,
   principal: Principal,
   tenant: string,
   from: { dataset: string; facet: string },
-) => {
+): Promise<FacetCount[]> => {
   const key = `${tenant}|${from.dataset}|${from.facet}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < 5 * 60_000) return cached.options;
-  const port = knowledge.open(
-    { kind: 'dataset', id: from.dataset, tenant },
-    {
-      tenant,
-      principal,
-      task: `input-options-${crypto.randomUUID()}`,
-      signal: AbortSignal.timeout(5_000),
-      meter: async () => undefined,
-    },
-  );
-  const options = ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
-    value: String(v.value),
-    count: v.count,
-  }));
-  cache.set(key, { at: Date.now(), options });
+  const options = (async () => {
+    const port = knowledge.open(
+      { kind: 'dataset', id: from.dataset, tenant },
+      {
+        tenant,
+        principal,
+        task: `input-options-${crypto.randomUUID()}`,
+        signal: AbortSignal.timeout(5_000),
+        meter: async () => undefined,
+      },
+    );
+    return ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
+      value: String(v.value),
+      count: v.count,
+    }));
+  })();
+  const entry = { at: Date.now(), options };
+  cache.set(key, entry);
+  options.catch(() => {
+    if (cache.get(key) === entry) cache.delete(key);
+  });
   return options;
 };
 
@@ -1217,17 +1224,22 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
+  const compiled = compiledCapabilityCache(() => store.capabilities());
+  const resync = async () => {
+    compiled.invalidate();
+    await sync();
+  };
   const definitions: DefinitionStore = {
     get: (...args) => store.get(...args),
     versions: (...args) => store.versions(...args),
     list: (...args) => store.list(...args),
     resolve: (...args) => store.resolve(...args),
-    capabilities: () => store.capabilities(),
+    capabilities: () => compiled.get(),
     publish: async (...args) => {
       const problems = await checkBeforePublish(args[0], args[1]);
       if (problems) return { ok: false, errors: problems };
       const result = await store.publish(...args);
-      if (result.ok) await sync();
+      if (result.ok) await resync();
       return result;
     },
   };
@@ -1388,7 +1400,7 @@ export const createPlatform = async (input: PlatformInput) => {
   });
 
   const directory = new TenantDirectory(input.tenantDirectory, async () => [
-    ...new Set((await store.capabilities()).map((c) => c.service.tenant)),
+    ...new Set((await definitions.capabilities()).map((c) => c.service.tenant)),
   ]);
   const toolConnections = {
     reload: async () => {
@@ -1631,7 +1643,7 @@ export const createPlatform = async (input: PlatformInput) => {
     task: async (id) => (await taskStore.get(id))?.task,
     events: (task) => log.read(task, 0, () => false),
     webhooks,
-    sync,
+    sync: resync,
     onChange: (topic, listener) => input.changes?.on(topic, listener) ?? (() => undefined),
     knowledgeAdapters,
     secrets: catalogSecrets,
@@ -1693,7 +1705,7 @@ export const createPlatform = async (input: PlatformInput) => {
   );
   if (input.verifyPluginsOnBoot)
     void pluginRegistry.verifyUnverified('boot').catch(() => undefined);
-  if (modules.some((m) => m.decorateCapability)) await sync();
+  if (modules.some((m) => m.decorateCapability)) await resync();
 
   const extensions = {
     ...adminExtensions({
@@ -1765,6 +1777,7 @@ export const createPlatform = async (input: PlatformInput) => {
         ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
         ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
+        ...(taskIndex.eventsOfType ? { eventsOfType: taskIndex.eventsOfType } : {}),
         apiKeys,
         connections,
         requirementFor:
@@ -2095,7 +2108,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
-    sync,
+    sync: resync,
     mount,
   };
 };

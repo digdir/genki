@@ -27,6 +27,13 @@ const principals: Record<string, Principal> = {
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: ['use-services'] }],
   },
+  ingrid: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'ingrid',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: ['use-services', 'manage-datasets'] }],
+  },
 };
 
 let container: StartedPostgreSqlContainer;
@@ -511,6 +518,52 @@ describe('a connector mapping approved from the builder assistant', () => {
         'Tilbakestilt: Testendring',
       ],
     ]);
+  });
+
+  it("a dataset admin may keep the connector's secret on its own pipeline, and on no other", async () => {
+    const { call, propose } = await boot();
+    const proposal = await propose('Saker for arkivet');
+    expect(
+      (
+        await call(`/tenants/${digdir}/proposals/${proposal.id}/approve`, 'kari', {
+          body: { reason, connection: { ...login, tls: false } },
+        })
+      ).status,
+    ).toBe(200);
+    const id = (
+      await json<{ data: ConnectorView[] }>(await call(`/tenants/${digdir}/connectors`, 'kari'))
+    ).data[0]?.id;
+    const { dataset } = await settled(call, id ?? '');
+    const spec = (password: string) => ({
+      name: 'Saker for arkivet',
+      chunking: { minimumLength: 1 },
+      schedule: 'none',
+      source: {
+        kind: 'database',
+        connection: {
+          engine: 'postgres',
+          host: '127.0.0.1',
+          port: login.port,
+          database: 'fagsystem',
+          user: login.user,
+          password,
+          tls: false,
+        },
+        mapping: { table: 'saker', fields: { id: 'id', title: 'tittel', text: ['sammendrag'] } },
+      },
+    });
+    const own = `secret://tenant/${digdir}/connector-${proposal.id}`;
+    const pipelines = `/tenants/${digdir}/datasets/${dataset}/pipelines`;
+
+    const kept = await call(`${pipelines}/kobling`, 'ingrid', { method: 'PUT', body: spec(own) });
+    expect(kept.status).toBe(200);
+    const copied = await call(pipelines, 'ingrid', { body: { id: 'kopi', ...spec(own) } });
+    expect(copied.status).toBe(403);
+    const another = await call(`${pipelines}/kobling`, 'ingrid', {
+      method: 'PUT',
+      body: spec(`secret://tenant/${digdir}/connector-annen`),
+    });
+    expect(another.status).toBe(403);
   });
 
   it('keeps tenants apart and needs the right to sync', async () => {

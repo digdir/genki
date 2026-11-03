@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -12,7 +13,7 @@ import {
 import type { ApiClient } from './api';
 import { Icon, icons } from './components/Icon';
 import { formatOrgNumber, profileFor } from './data/organisations';
-import { useEscape, useNarrow } from './hooks';
+import { restoringScroll, useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
@@ -331,7 +332,7 @@ export const Shell = ({
     if (shownArea.current === area) return;
     shownArea.current = area;
     document.getElementById('hovedinnhold')?.focus({ preventScroll: true });
-    window.scrollTo(0, 0);
+    if (!restoringScroll()) window.scrollTo(0, 0);
   }, [area]);
   useEffect(() => {
     if (open !== 'org' && open !== 'user') return;
@@ -350,7 +351,9 @@ export const Shell = ({
   const profile = profileFor(organisation.orgNumber, organisation.name);
   const orgNr = formatOrgNumber(organisation.orgNumber);
   const multi = session.organisations.length > 1;
-  const { rights, labels } = rightsFor(organisation.actions ?? profile.rights, t);
+  const actions = organisation.actions ?? profile.rights;
+  const actionsKey = actions.join('\u0000');
+  const { rights, labels } = useMemo(() => rightsFor(actions, t), [actionsKey, t]);
   const gated = unregistered && !readableUnregistered.includes(area);
   const orgMeta = t(unregistered ? 'shell.orgMetaUnregistered' : 'shell.orgMeta', { orgNr });
   const [above, setAbove] = useState<CSSProperties>();

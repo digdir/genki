@@ -5,7 +5,7 @@ Operator-only routes, used by the console: tenants and organisations, onboarding
 ## Rights
 
 - Every route here needs an operator. Other callers get `403`.
-- Operators reach a tenant's own routes only inside a support session with a reason and a time limit. The session shows in the tenant's audit log.
+- Operators reach a tenant's own routes only inside a support session with a reason and a time limit. The session shows in the tenant's audit log. In lockdown an operator also has every right in the platform organisation without a session (ADR 0033).
 - Changes need `change-reason` and are audited; the ones that touch a tenant are also in that tenant's log.
 
 ## Typical sequence: help a tenant

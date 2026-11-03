@@ -1,6 +1,7 @@
 import {
   databaseRequirement,
   platformTenantProblems,
+  traceContentRequirement,
   unmetOutsideDevMode,
 } from '@genai/composition';
 
@@ -14,7 +15,7 @@ const markerTimeoutProblems = (env: Record<string, string | undefined>) => {
 
 export const workerBootProblems = (env: Record<string, string | undefined>): string[] => [
   ...platformTenantProblems(env),
-  ...unmetOutsideDevMode(env, [databaseRequirement(env)]),
+  ...unmetOutsideDevMode(env, [databaseRequirement(env), traceContentRequirement(env)]),
   ...markerTimeoutProblems(env),
 ];
 

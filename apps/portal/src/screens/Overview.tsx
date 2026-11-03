@@ -292,7 +292,9 @@ export const Overview = ({
     onFailingIngests?.(failing);
   }, [onFailingIngests, failing]);
 
-  if (overview.status === 'loading') return <Loading label={t('overview.loading')} />;
+  const alertsKnown = settings.status !== 'loading' && datasets.status !== 'loading';
+  if (overview.status === 'loading' || (overview.status === 'ready' && !alertsKnown))
+    return <Loading label={t('overview.loading')} />;
   if (overview.status === 'error')
     return (
       <>
@@ -322,10 +324,9 @@ export const Overview = ({
   const noDatasets =
     empty || (datasets.status === 'ready' && (live ? datasets.data.length === 0 : !hasDataset));
   const doneSteps: Record<string, boolean> = { dataset: hasDataset };
-  const used =
-    usage.status === 'ready' && !empty
-      ? usage.data.totals.inputTokens + usage.data.totals.outputTokens
-      : 0;
+  const monthTotals =
+    overview.data.usageThisMonth ?? (usage.status === 'ready' ? usage.data.totals : undefined);
+  const used = monthTotals && !empty ? monthTotals.inputTokens + monthTotals.outputTokens : 0;
   const quotaAlert = quota !== null && used / quota > 0.9;
   const counts = (['I bruk', 'Utkast', 'I test', 'Satt på pause'] as const)
     .map((status) => ({ status, n: services.filter((s) => s.status === status).length }))

@@ -90,7 +90,7 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
 - **Calibration.** The judge meets ADR 0003's calibration rule on its own identity's accepted labels, and its model is from another family than every model that wrote the answer.
 - **Complete, comparable scores.** Only boolean scores and numeric scores with both bounds can block, and only from an unchanged judge (`judge changed` never blocks). A score still missing after the wait makes the gate fail with its reason, and the gate never averages over the scores that arrived.
 - **Holdout.** A gate on the holdout split (`split: holdout`) never uses a Langfuse judge's metric, since holdout cases are never sent.
-- **A wait that survives restarts.** The wait for scores is a durable job, so a deploy never loses the scores a gate reads (ADR 0041, durable jobs on pg-boss, proposed in [PR 179](https://github.com/digdir/genki/pull/179)).
+- **A wait that survives restarts.** The wait for scores is a durable job, so a deploy never loses the scores a gate reads (ADR 0041, durable jobs on pg-boss).
 
 ## Why
 
@@ -122,7 +122,6 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - per-case traces under a run
   - the experiment export, the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
   - the pending sink deletes, their pass in the nightly purge, and refusing to remove a connection with pending deletes
-  - limiting `TRACES_CONTENT` to development mode
 - Before agency data goes to Digdir's instance:
   - whose model key an agency's judges use there, and so who pays for their calls, is decided. The cost of each judge call is readable (about USD 0.008 per call on `claude-sonnet-5` at Langfuse's list price, measured on Digdir's instance on 2026-10-29), so Digdir's key with the cost shown per tenant is an option beside each tenant's own key.
   - where the instance stores what it receives is confirmed, so operators can set its connections' residency
