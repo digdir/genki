@@ -206,6 +206,7 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
           </div>
         ))}
       </dl>
+      <p className="meta footnote">{t('sharedServices.footnote')}</p>
       {c.scoreAlert ? (
         <Alert data-color="warning" data-size="sm">
           {c.scoreAlert}

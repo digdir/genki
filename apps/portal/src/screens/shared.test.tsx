@@ -50,19 +50,29 @@ describe('Fellestjenester: liste', () => {
       'Transkribering',
       'Hent ut opplysninger',
     ]);
-    const klar = screen.getByRole('link', { name: 'Klarspråk' }).closest('li') as HTMLElement;
-    expect(within(klar).getByText('81 av 100')).toBeTruthy();
-    expect(within(klar).getByText('Var 89 for to uker siden')).toBeTruthy();
-    expect(within(klar).getByText('7,50 kr')).toBeTruthy();
-    expect(within(klar).getByText('Norge')).toBeTruthy();
     const nyn = screen
       .getByRole('link', { name: 'Bokmål til nynorsk' })
       .closest('li') as HTMLElement;
     expect(within(nyn).getByText('Brukes i 1 av tjenestene deres')).toBeTruthy();
+    expectAccessible();
+  });
+
+  it('shows only the name and short description on a shared service card, and leaves the facts to the detail page', async () => {
+    await renderAt('#/shared-services');
+    const klar = (await screen.findByRole('link', { name: 'Klarspråk' })).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(klar).getByText(/Skriver om tekst så den blir lettere å forstå/)).toBeTruthy();
+    for (const fact of ['Inn', 'Ut', 'Modell', 'Kvalitet', 'Per 1 000 kjøringer', '81 av 100'])
+      expect(within(klar).queryByText(fact)).toBeNull();
+    expect(screen.queryByText(/Kvaliteten er målt på testsettene til Digdir/)).toBeNull();
+  });
+
+  it('explains how quality and price are measured on the detail page', async () => {
+    await openDetail('klarsprak', 'Klarspråk');
     expect(
       screen.getByText(/Kvaliteten er målt på testsettene til Digdir og oppdateres hver uke/),
     ).toBeTruthy();
-    expectAccessible();
   });
 
   it('opens a detail page from the card button', async () => {
@@ -107,7 +117,7 @@ describe('Fellestjenester: liste', () => {
       }),
     );
     expect(await screen.findByRole('link', { name: 'Tolk' })).toBeTruthy();
-    expect(screen.getByText('EU/EØS')).toBeTruthy();
+    expect(screen.getByText('Tolker tekst.')).toBeTruthy();
     expectAccessible();
   });
 });

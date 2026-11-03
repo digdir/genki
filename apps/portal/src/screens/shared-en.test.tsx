@@ -27,8 +27,7 @@ describe('shared services in English', () => {
     const props = { api, live: true, route: { segments: ['shared-services'] } } as ScreenProps;
     render(inEnglish(<SharedServices {...props} />));
     expect(await screen.findByRole('heading', { level: 1, name: 'Shared services' })).toBeTruthy();
-    expect(screen.getByText('Not measured')).toBeTruthy();
-    expect(screen.getByText('Norway')).toBeTruthy();
+    expect(screen.getByText('Summarises documents')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try and see details for Summary' })).toBeTruthy();
   });
 
