@@ -7,7 +7,7 @@ import { bootPlatform, digdir } from './testkit.js';
 
 const classifyYaml = (status: 'review' | 'described') => `
 id: example/classify@1
-operation: classify
+operation: chat
 status: ${status}
 summary: A made-up classification API, used by a service.
 api:
@@ -105,7 +105,7 @@ const boot = async (
   });
   const { send } = booted;
   const setMaturity = (who: string, maturity: 'test' | 'production') =>
-    send('/operator/operation-kinds/classify/maturity', who, { body: { maturity }, reason });
+    send('/operator/operation-kinds/chat/maturity', who, { body: { maturity }, reason });
   const promote = async () => {
     expect((await setMaturity('drift', 'production')).status).toBe(200);
   };
@@ -207,7 +207,7 @@ describe('the described tier', () => {
     const booted = await boot();
     expect((await booted.processorRecord()).status).toBe(200);
     expect(messages(await publish(booted))).toContain(
-      'the classify operation is in test in this environment',
+      'the chat operation is in test in this environment',
     );
   });
 
@@ -250,7 +250,7 @@ describe('the described tier', () => {
     const events = await auditOf(booted, ran.task);
     expect(events.find((e) => e.type === 'kernel.gate.call')?.data).toEqual({
       port: 'described',
-      operation: 'classify',
+      operation: 'chat',
       model: 'lab/small',
       endpoint: 'lab',
       descriptor: 'example/classify@1',
@@ -270,7 +270,7 @@ describe('maturity per operation kind', () => {
     const promoted = await setMaturity('drift', 'production');
     expect(promoted.status).toBe(200);
     expect(await promoted.json()).toMatchObject({
-      kind: 'classify',
+      kind: 'chat',
       environment: 'production',
       maturity: 'production',
       step: 'promoted',
@@ -279,7 +279,7 @@ describe('maturity per operation kind', () => {
     const listed = (await (await send('/operator/operation-kinds', 'drift')).json()) as {
       data: { kind: string; maturity: string; descriptors: { id: string }[] }[];
     };
-    expect(listed.data.find((k) => k.kind === 'classify')).toMatchObject({
+    expect(listed.data.find((k) => k.kind === 'chat')).toMatchObject({
       maturity: 'production',
       descriptors: [{ id: 'example/classify@1', status: 'described' }],
     });
@@ -289,7 +289,7 @@ describe('maturity per operation kind', () => {
     expect(audited).toHaveLength(1);
     expect(audited[0]).toMatchObject({
       actor: 'operator:test:drift',
-      target: 'operation-kind:classify',
+      target: 'operation-kind:chat',
       outcome: 'applied',
       reason,
       at: expect.any(String),
@@ -321,7 +321,7 @@ describe('maturity per operation kind', () => {
 
   it('a maturity change without a change reason is refused', async () => {
     const { send } = await boot();
-    const refused = await send('/operator/operation-kinds/classify/maturity', 'drift', {
+    const refused = await send('/operator/operation-kinds/chat/maturity', 'drift', {
       body: { maturity: 'production' },
     });
     expect(refused.status).toBe(400);

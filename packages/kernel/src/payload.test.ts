@@ -5,9 +5,11 @@ import {
   decideShape,
   embedShape,
   json,
+  longestBase64Run,
   maxDecisionQuestions,
   object,
   oneOf,
+  opaque,
   optional,
   plain,
   ref,
@@ -158,6 +160,43 @@ describe('closed payload shapes', () => {
     const shape = object({ schema: json, kind: optional(oneOf('a')) });
     expect(walk(shape, { schema: { at: new Date() } }, request).problems).toEqual([
       'schema: must be plain JSON',
+    ]);
+  });
+
+  it('a URL in a request plain field is refused', () => {
+    const shape = object({ value: plain() });
+    for (const value of ['https://example.org/cat.png', '  http://10.0.0.1/x', 'blob:abc'])
+      expect(walk(shape, { value }, request).problems).toEqual([
+        'value: a URL or data URL is not allowed here',
+      ]);
+    expect(walk(shape, { value: 'See https://example.org for more' }, request).problems).toEqual(
+      [],
+    );
+    expect(walk(shape, { value: 'https://example.org' }, result).problems).toEqual([]);
+  });
+
+  it('a data URL or base64 blob in a request plain field is refused', () => {
+    const shape = object({ value: plain() });
+    expect(walk(shape, { value: 'data:image/png;base64,iVBORw0K' }, request).problems).toEqual([
+      'value: a URL or data URL is not allowed here',
+    ]);
+    const blob = (length: number) => 'iVBORw0KGgo+/_-'.repeat(10).slice(0, length);
+    expect(walk(shape, { value: blob(longestBase64Run) }, request).problems).toEqual([]);
+    expect(walk(shape, { value: `bilde ${blob(longestBase64Run + 1)}` }, request).problems).toEqual(
+      ['value: encoded data such as base64 is not allowed here'],
+    );
+    expect(walk(shape, { value: blob(200) }, result).problems).toEqual([]);
+  });
+
+  it('replay state an adapter keeps passes unread, even when it is encoded', () => {
+    const shape = object({ signature: opaque });
+    const signature = 'EqQBCkgIARABGAIiQL'.repeat(20);
+    expect(walk(shape, { signature }, request)).toMatchObject({
+      problems: [],
+      value: { signature },
+    });
+    expect(walk(shape, { signature: 3 }, request).problems).toEqual([
+      'signature: must be a string',
     ]);
   });
 });

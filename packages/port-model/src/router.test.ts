@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { textPart, type Principal } from '@genai/contracts';
-import { createKernel, envSecrets } from '@genai/kernel';
+import { createGate, createKernel, envSecrets } from '@genai/kernel';
+import { bundledDescriptorDir, descriptorRegistry, parseDescriptor } from '@genai/operations';
 import {
   ModelError,
   ModelRouter,
@@ -851,6 +852,42 @@ describe('operations on the catalogue', () => {
     await router.classify('a/luna', { operations: ['chat', 'decide'] });
     expect(router.describe()[0]?.operations).toEqual(['chat', 'decide']);
     await expect(decide(router).decide(question)).resolves.toMatchObject({ calibrated: true });
+  });
+
+  it('a descriptor call on a model that does not offer its operation is refused', async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
+    const descriptor = parseDescriptor(yaml.replace('protocol: openai-chat', 'protocol: proto-a'));
+    const sent: unknown[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+        usage: { input_tokens: 5, output_tokens: 0 },
+      });
+    };
+    const { adapter } = recording('proto-a');
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [{ id: 'a/luna', endpoint: 'one', deployment: 'luna', residency: 'eu' }],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const call = (ports: ReturnType<ModelRouter['operations']>) =>
+      ports.open({ kind: 'model', id: 'a/luna' }, testContext().ctx).call(descriptor.id, question);
+    for (const ports of [router.operations(), router.described()])
+      await expect(call(ports)).rejects.toMatchObject({
+        code: 'unsupported',
+        message: 'model a/luna does not offer the decide operation',
+      });
+    expect(sent).toEqual([]);
+
+    await router.classify('a/luna', { operations: ['chat', 'decide'] });
+    await expect(call(router.operations())).resolves.toMatchObject({ calibrated: true });
+    expect(sent).toHaveLength(1);
   });
 
   it('a model without the chat operation refuses chat as unsupported', async () => {

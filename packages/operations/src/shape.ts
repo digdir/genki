@@ -149,3 +149,22 @@ export const fieldNames = (s: Shape): string[] => {
       return [];
   }
 };
+
+export const holdsJson = (s: Shape): boolean => {
+  switch (s.kind) {
+    case 'json':
+      return true;
+    case 'object':
+      return Object.values(s.fields).some(holdsJson);
+    case 'array':
+      return holdsJson(s.item);
+    case 'optional':
+      return holdsJson(s.shape);
+    case 'variant':
+      return Object.values(s.options).some(holdsJson);
+    case 'either':
+      return s.options.some(holdsJson);
+    default:
+      return false;
+  }
+};

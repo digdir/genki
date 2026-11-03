@@ -458,8 +458,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
       ...(model.parameters ? { parameters: model.parameters } : {}),
     });
-    const offers = (needed: Operation) => {
-      if (!model.operations.includes(needed))
+    const offers = (needed: string) => {
+      if (!(model.operations as readonly string[]).includes(needed))
         throw new ModelError(
           'unsupported',
           `model ${model.id} does not offer the ${needed} operation`,
@@ -532,7 +532,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   }
 
   #openOperation(ref: Ref, ctx: PortContext, tier: 'raw' | 'described'): OperationPort {
-    const { model, target, served, info } = this.#resolve(ref, ctx, 'chat');
+    const { model, target, served, info, offers } = this.#resolve(ref, ctx, 'chat');
     const plain: GateTarget = { ...target };
     Reflect.deleteProperty(plain, 'refuse');
     const governance = this.options.governance ?? unrecordedGovernance;
@@ -546,6 +546,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
             'refused',
             `${id} is in review; only an operator tries it, in the raw tier`,
           );
+        offers(descriptor.operation);
         const endpoint = this.#described(model);
         if (endpoint.protocol !== descriptor.api.protocol)
           throw new ModelError(

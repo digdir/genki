@@ -9,7 +9,7 @@ import {
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { rootsOf } from './mapping.js';
-import { DescriptorError, fieldNames, shapeOf } from './shape.js';
+import { DescriptorError, fieldNames, holdsJson, shapeOf } from './shape.js';
 
 export const descriptorIdPattern = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*@[1-9]\d*$/;
 
@@ -194,6 +194,13 @@ export const toDescriptor = (value: unknown): Descriptor => {
     usage: d.usage,
     stream,
   };
+  if (
+    descriptor.status !== 'typed' &&
+    (holdsJson(descriptor.input) || holdsJson(descriptor.wire.request))
+  )
+    throw new DescriptorError(
+      `${at}: a descriptor that is not typed may not declare json in its input or wire.request; name the fields instead`,
+    );
   if (descriptor.status === 'typed') {
     const typed = typedShapes[descriptor.operation];
     if (!typed)

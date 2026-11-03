@@ -47,6 +47,26 @@ describe('operation descriptors', () => {
     ).toMatch(/may not carry store/);
   });
 
+  it('a non-typed descriptor may not declare json in its request', () => {
+    const review = embedYaml.replace('status: typed', 'status: review');
+    expect(refused(review)).toBeUndefined();
+    expect(
+      refused(
+        review.replace('      encoding_format: { enum: [float] }', '      encoding_format: json'),
+      ),
+    ).toMatch(/not typed may not declare json in its input or wire.request/);
+    expect(
+      refused(
+        review
+          .replace('input: [text]\n', 'input:\n  either: [[text], { object: { image: json } }]\n')
+          .replace(
+            '      input: [text]',
+            '      input: { either: [[text], { object: { image: json } }] }',
+          ),
+      ),
+    ).toMatch(/not typed may not declare json/);
+  });
+
   it('a descriptor that sets a credential header is refused', () => {
     expect(
       refused(embedYaml.replace('  version: v1', '  version: v1\n  headers:\n    api-key: abc')),

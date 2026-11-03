@@ -1,6 +1,7 @@
 export type Shape =
   | { kind: 'text' }
   | { kind: 'plain'; min?: number }
+  | { kind: 'opaque' }
   | { kind: 'ref'; pattern?: RegExp }
   | { kind: 'enum'; values: readonly string[] }
   | { kind: 'number'; integer?: boolean; min?: number; max?: number }
@@ -20,8 +21,10 @@ export interface OperationShape {
 
 /** Text that may hold personal data: masked, restored and the only place media can hide. */
 export const text: Shape = { kind: 'text' };
-/** A string written by a service, a tool or the model's own masked output: kept as it is. */
+/** A string written by a service or a tool: kept as it is, but a URL or encoded data is refused in a request. */
 export const plain = (min?: number): Shape => ({ kind: 'plain', ...(min ? { min } : {}) });
+/** State the provider issued and an adapter replays unread, such as an encrypted reasoning blob. */
+export const opaque: Shape = { kind: 'opaque' };
 /** An identifier: refused in a request when it is a URL or a provider-side object id. */
 export const ref = (pattern?: RegExp): Shape => ({ kind: 'ref', ...(pattern ? { pattern } : {}) });
 export const oneOf = (...values: string[]): Shape => ({ kind: 'enum', values });
@@ -49,6 +52,8 @@ export const variant = (key: string, options: Record<string, Record<string, Shap
 export const either = (...options: Shape[]): Shape => ({ kind: 'either', options });
 
 const urlLike = /^(?:[a-z][a-z0-9+.-]*:\/\/|data:|blob:)/i;
+export const longestBase64Run = 64;
+const base64Run = new RegExp(`[A-Za-z0-9+/_-]{${longestBase64Run + 1},}`);
 const providerObjectId =
   /^(?:file|assistant|asst|thread|resp|vs|vsfb|batch|upload|conv|cntr|ftjob|ckpt)[-_][a-z0-9]/i;
 
@@ -101,7 +106,13 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
       case 'plain':
         if (typeof v !== 'string') return problem('must be a string');
         if (s.min && v.length < s.min) return problem(`must have at least ${s.min} characters`);
+        if (request && urlLike.test(v.trimStart()))
+          return problem('a URL or data URL is not allowed here');
+        if (request && base64Run.test(v))
+          return problem('encoded data such as base64 is not allowed here');
         return v;
+      case 'opaque':
+        return typeof v === 'string' ? v : problem('must be a string');
       case 'ref':
         if (typeof v !== 'string') return problem('must be a string');
         if (request && urlLike.test(v)) return problem('a URL is not allowed here');

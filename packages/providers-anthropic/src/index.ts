@@ -152,10 +152,10 @@ const fromContent = (blocks: ContentBlock[]) => ({
 
 const messagesContinuation = shape.array(
   shape.variant('type', {
-    text: { text: shape.plain() },
+    text: { text: shape.opaque },
     tool_use: { id: shape.ref(), name: shape.plain(), input: shape.json },
-    thinking: { thinking: shape.plain(), signature: shape.plain() },
-    redacted_thinking: { data: shape.plain() },
+    thinking: { thinking: shape.opaque, signature: shape.opaque },
+    redacted_thinking: { data: shape.opaque },
   }),
 );
 

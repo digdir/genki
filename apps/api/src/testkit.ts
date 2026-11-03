@@ -22,8 +22,9 @@ import {
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
 import type { TriggerRunStore } from '@genai/jobs';
+import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
-import { envSecrets } from '@genai/kernel';
+import { envSecrets, type EventLog } from '@genai/kernel';
 import { callerFrom, createPlatform, platformModules, serviceRequirement } from './composition.js';
 import { actorNames } from './actor-names.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
@@ -237,6 +238,8 @@ export interface BootOptions {
   environmentTier?: EnvironmentTier;
   descriptors?: DescriptorRegistry;
   lockdown?: boolean;
+  egress?: EgressOptions;
+  log?: EventLog;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -264,6 +267,8 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
     ...(options.descriptors ? { descriptors: options.descriptors } : {}),
     ...(options.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
+    ...(options.egress ? { egress: options.egress } : {}),
+    ...(options.log ? { log: options.log } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,

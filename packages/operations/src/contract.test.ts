@@ -1,8 +1,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contractFailures, fixturesFor, operationContract } from './contract.js';
+import { createGate, GateError, type GateRecord } from '@genai/kernel';
+import {
+  contractFailures,
+  fixturesFor,
+  operationContract,
+  type OperationFixture,
+} from './contract.js';
 import { parseDescriptor } from './descriptor.js';
+import { describedCall } from './executor.js';
 import { bundledDescriptorDir, descriptorFiles, loadDescriptors } from './registry.js';
 
 const fixtureDir = join(import.meta.dirname, '..', 'fixtures');
@@ -75,4 +82,149 @@ describe('the operation@1 suite', () => {
       'predicate: only input text reaches a text field on the wire',
     );
   });
+});
+
+const imageYaml = `
+id: example/image@1
+operation: generate-image
+status: review
+summary: A made-up image API for the operation@1 suite.
+api:
+  protocol: openai-chat
+  version: v1
+request:
+  method: POST
+  path: /images/generations
+  body:
+    model: $deployment
+    prompt: $input.prompt
+    image: $input.image
+input:
+  object:
+    prompt: text
+    image?: { enum: [none] }
+output:
+  object:
+    images: { array: { object: { b64: plain } } }
+    usage: { object: { requests?: { number: { min: 0 } } } }
+wire:
+  request:
+    object:
+      model: plain
+      prompt: text
+      image?: { enum: [none] }
+  response:
+    object:
+      data: { array: { object: { b64_json: plain } } }
+result:
+  images: { $each: $response.data, $map: { b64: $item.b64_json } }
+  usage: $usage
+usage:
+  requests: 1
+stream: none
+`;
+
+const imageFixture: OperationFixture = {
+  name: 'one-image',
+  deployment: 'img',
+  input: { prompt: 'En katt' },
+  request: {
+    method: 'POST',
+    path: '/images/generations',
+    body: { model: 'img', prompt: 'En katt' },
+  },
+  response: { body: { data: [{ b64_json: 'QUJD' }] } },
+  result: { images: [{ b64: 'QUJD' }], usage: { requests: 1 } },
+  usage: { requests: 1 },
+};
+
+const personalDataCheck =
+  'one-image: a national id, an email and a phone number in any input string reach the wire masked';
+
+const failedChecks = async (yaml: string) =>
+  contractFailures(await operationContract(parseDescriptor(yaml), [imageFixture])).map(
+    (f) => f.check,
+  );
+
+const imageField = (kind: string) =>
+  imageYaml.replaceAll('image?: { enum: [none] }', `image?: ${kind}`);
+
+const callImage = async (yaml: string, input: unknown) => {
+  const descriptor = parseDescriptor(yaml);
+  const sent: unknown[] = [];
+  const audit: GateRecord[] = [];
+  const error = await describedCall(
+    {
+      gate: createGate(),
+      ctx: {
+        tenant: '999888777',
+        principal: { kind: 'operator', issuer: 'test', subject: 'ola' },
+        task: 't1',
+        signal: new AbortController().signal,
+        meter: async () => undefined,
+        audit: async (record) => {
+          audit.push(record);
+        },
+      },
+      target: {
+        port: 'operation',
+        operation: descriptor.operation,
+        model: { kind: 'model', id: 'lab/image' },
+        endpoint: 'lab',
+        residency: 'norway',
+        admission: 'open',
+      },
+      descriptor,
+      endpoint: {
+        baseURL: 'https://models.example.test/v1',
+        credential: { kind: 'api-key', key: async () => 'k' },
+        fetch: async (_url, init) => {
+          sent.push(JSON.parse(String(init?.body)));
+          return Response.json(imageFixture.response.body);
+        },
+      },
+      deployment: 'img',
+    },
+    input,
+  ).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  return { error, sent, audit };
+};
+
+const pngBase64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+describe('descriptor fields that would switch off masking or carry media', () => {
+  it('a descriptor that sends its input as text passes operation@1', async () => {
+    expect(await failedChecks(imageYaml)).toEqual([]);
+  });
+
+  it('a descriptor that declares a personal-data field plain fails operation@1', async () => {
+    expect(await failedChecks(imageYaml.replaceAll('prompt: text', 'prompt: plain'))).toContain(
+      personalDataCheck,
+    );
+  });
+
+  it('a descriptor that adds a plain or ref input field fails operation@1', async () => {
+    expect(await failedChecks(imageField('plain'))).toContain(personalDataCheck);
+    expect(await failedChecks(imageField('ref'))).toContain(personalDataCheck);
+  });
+
+  for (const [what, value] of [
+    ['an https URL', 'https://example.org/cat.png'],
+    ['a data URL', `data:image/png;base64,${pngBase64}`],
+    ['a base64 image', pngBase64],
+  ])
+    it(`${what} in a plain input field is refused before anything leaves`, async () => {
+      const { error, sent, audit } = await callImage(imageField('plain'), {
+        prompt: 'Rediger bildet',
+        image: value,
+      });
+      expect(error).toBeInstanceOf(GateError);
+      expect((error as GateError).refusal).toBe('shape');
+      expect(sent).toEqual([]);
+      expect(audit[0]).toMatchObject({ outcome: 'refused', refusal: 'shape' });
+    });
 });

@@ -49,8 +49,8 @@ const continuationSchema = z.union([
 
 const reasoningFields = {
   id: shape.ref(),
-  summary: shape.array(shape.object({ type: shape.oneOf('summary_text'), text: shape.plain() })),
-  encrypted_content: shape.plain(),
+  summary: shape.array(shape.object({ type: shape.oneOf('summary_text'), text: shape.opaque })),
+  encrypted_content: shape.opaque,
 };
 
 export const responsesContinuation = shape.either(
@@ -61,12 +61,12 @@ export const responsesContinuation = shape.either(
         reasoning: reasoningFields,
         message: {
           role: shape.oneOf('assistant'),
-          content: shape.plain(),
+          content: shape.opaque,
           phase: shape.optional(
             shape.either(shape.oneOf('commentary', 'final_answer'), shape.nothing),
           ),
         },
-        function_call: { call_id: shape.ref(), name: shape.plain(), arguments: shape.plain() },
+        function_call: { call_id: shape.ref(), name: shape.plain(), arguments: shape.opaque },
       }),
     ),
   }),

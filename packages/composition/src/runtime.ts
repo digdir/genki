@@ -821,6 +821,7 @@ export const createRuntime = async (input: RuntimeInput) => {
 
   return {
     kernel,
+    gate,
     registry,
     ports,
     strategies,

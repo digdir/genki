@@ -7,7 +7,7 @@ import { bootPlatform, digdir } from './testkit.js';
 
 const classify = parseDescriptor(`
 id: example/classify@1
-operation: classify
+operation: chat
 status: review
 summary: A made-up classification API, to try a new kind.
 api:
@@ -189,7 +189,7 @@ describe('the raw tier', () => {
       events.push(e);
     expect(events.find((e) => e.type === 'kernel.gate.call')?.data).toEqual({
       port: 'operation',
-      operation: 'classify',
+      operation: 'chat',
       model: 'lab/small',
       endpoint: 'lab',
       descriptor: 'example/classify@1',

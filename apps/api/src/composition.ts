@@ -1623,6 +1623,7 @@ export const createPlatform = async (input: PlatformInput) => {
     knowledge: knowledgeAdapters,
     secrets: catalogSecrets,
     tenant: platformTenant,
+    gate: runtime.gate,
     ...(input.egress ? { egress: input.egress } : {}),
   };
   for (const plugin of [

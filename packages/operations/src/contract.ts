@@ -2,7 +2,15 @@ import { isDeepStrictEqual } from 'node:util';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Usage } from '@genai/contracts';
-import { createGate, walk, type GateRecord, type PortContext, type Shape } from '@genai/kernel';
+import {
+  createGate,
+  walk,
+  type GateRecord,
+  type PayloadGuard,
+  type PortContext,
+  type Shape,
+} from '@genai/kernel';
+import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import type { Descriptor } from './descriptor.js';
 import { describedCall } from './executor.js';
 import { evaluate } from './mapping.js';
@@ -94,6 +102,63 @@ const wireTextFromInputText = (descriptor: Descriptor, fixture: OperationFixture
   return leaked.map((t) => `a text field on the wire holds a value that is not input text (${t})`);
 };
 
+const personalData = [syntheticNationalId, 'kari.nordmann@example.no', '+47 912 34 567'];
+
+const masked = '\u00abMASKED\u00bb';
+
+const maskPersonalData: PayloadGuard = {
+  masker: { mask: (t) => personalData.reduce((out, value) => out.replaceAll(value, masked), t) },
+};
+
+const free = (s: Shape, every: boolean): boolean =>
+  s.kind === 'optional'
+    ? free(s.shape, every)
+    : s.kind === 'text' || (every && (s.kind === 'plain' || s.kind === 'ref'));
+
+const seed = (s: Shape, v: unknown, every: boolean): unknown => {
+  if (free(s, every) && typeof v === 'string') {
+    const seeded = `${v} ${personalData.join(' ')}`;
+    return walk(s, seeded, { side: 'request' }).problems.length === 0 ? seeded : v;
+  }
+  switch (s.kind) {
+    case 'optional':
+      return seed(s.shape, v, every);
+    case 'object': {
+      if (!isRecord(v)) return v;
+      const absent = Object.keys(s.fields).filter((k) => v[k] === undefined);
+      return Object.fromEntries([
+        ...Object.entries(v).map(([k, x]) => {
+          const field = s.fields[k];
+          return [k, field ? seed(field, x, every) : x];
+        }),
+        ...absent.flatMap((k) => {
+          const field = s.fields[k] as Shape;
+          const value = personalData.join(' ');
+          return free(field, every) && walk(field, value, { side: 'request' }).problems.length === 0
+            ? [[k, value]]
+            : [];
+        }),
+      ]);
+    }
+    case 'array':
+      return Array.isArray(v) ? v.map((x) => seed(s.item, x, every)) : v;
+    case 'variant': {
+      const tag = isRecord(v) ? v[s.key] : undefined;
+      const option = typeof tag === 'string' ? s.options[tag] : undefined;
+      return option ? seed(option, v, every) : v;
+    }
+    case 'either': {
+      const fit = s.options.find((o) => {
+        const w = walk(o, v, { side: 'request' });
+        return w.problems.length === 0 && w.media.length === 0;
+      });
+      return fit ? seed(fit, v, every) : v;
+    }
+    default:
+      return v;
+  }
+};
+
 interface Recorded {
   method: string;
   path: string;
@@ -102,7 +167,12 @@ interface Recorded {
   body: unknown;
 }
 
-const run = async (descriptor: Descriptor, fixture: OperationFixture, input: unknown) => {
+const run = async (
+  descriptor: Descriptor,
+  fixture: OperationFixture,
+  input: unknown,
+  guards: readonly PayloadGuard[] = [],
+) => {
   const sent: Recorded[] = [];
   const audit: GateRecord[] = [];
   const metered: Usage[] = [];
@@ -131,6 +201,7 @@ const run = async (descriptor: Descriptor, fixture: OperationFixture, input: unk
     audit: async (record) => {
       audit.push(record);
     },
+    ...(guards.length ? { guards } : {}),
   };
   const outcome = await describedCall(
     {
@@ -158,6 +229,21 @@ const run = async (descriptor: Descriptor, fixture: OperationFixture, input: unk
     (error: unknown) => ({ error }),
   );
   return { outcome, sent, audit, metered };
+};
+
+/** A typed descriptor's plain and ref fields are Genki's own; any other descriptor may only send text. */
+const personalDataReachesTheWireMasked = async (
+  descriptor: Descriptor,
+  fixture: OperationFixture,
+): Promise<string[]> => {
+  const input = seed(descriptor.input, fixture.input, descriptor.status !== 'typed');
+  const { sent, outcome } = await run(descriptor, fixture, input, [maskPersonalData]);
+  if ('error' in outcome && sent.length === 0)
+    return [`the call with personal data in its input failed: ${String(outcome.error)}`];
+  const wire = JSON.stringify(sent.map((r) => r.body));
+  return personalData
+    .filter((value) => wire.includes(value))
+    .map((value) => `${value} reached the wire unmasked`);
 };
 
 const same = (label: string, actual: unknown, expected: unknown) =>
@@ -230,6 +316,10 @@ const checks: {
   {
     name: 'only input text reaches a text field on the wire',
     run: wireTextFromInputText,
+  },
+  {
+    name: 'a national id, an email and a phone number in any input string reach the wire masked',
+    run: personalDataReachesTheWireMasked,
   },
 ];
 
