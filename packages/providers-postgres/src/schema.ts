@@ -816,7 +816,10 @@ const migrations: string[] = [
                             then (select coalesce(jsonb_object_agg(e.key,
                                     coalesce((r.report ->> e.key)::bigint, 0) + e.value::bigint), '{}'::jsonb)
                                     from jsonb_each_text(p_report) e)
-                            else p_report end
+                            -- A listing's counts are kept from its first delivery.
+                            else (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                                    from jsonb_each(p_report) e
+                                   where not coalesce(r.report ? e.key, false)) end
         where r.id = p_id and r.runs_as_jobs and r.status = 'running';
      end $$`,
   // A run over its failure budget is cancelled and keeps what it replaced (ADR 0017, ADR 0042).

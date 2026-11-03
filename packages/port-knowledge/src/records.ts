@@ -87,10 +87,13 @@ export interface DocumentRecords {
   ): Promise<void>;
   /** The chunking the generation keeps for a pipeline: recorded by its first run, never changed after. */
   chunking<Chunking>(generation: string, pipeline: string, current: Chunking): Promise<Chunking>;
+  /** The embedding a generation was built with: its index jobs embed with it, not the catalog's. */
+  embedding(generation: string): Promise<{ model: string; dimensions: number } | undefined>;
   find(number: string): Promise<IndexRecord | undefined>;
   /**
    * Replaces one document in the generation in one transaction, or removes it when it was skipped,
-   * records the change it applied and moves the generation's data version.
+   * records the change it applied and moves the generation's data version. A record that has
+   * changed since the job read it is left alone: a later job applies its newer change.
    */
   replace(
     record: IndexRecord,
@@ -99,8 +102,11 @@ export interface DocumentRecords {
   ): Promise<void>;
   /** Deletes a document from the generation and leaves its tombstone, in one transaction. */
   remove(record: IndexRecord, generation: string): Promise<void>;
-  /** Counts a 404 or 410; at the second, the record is marked deleted with the next change number. */
-  gone(record: IndexRecord): Promise<IndexRecord>;
+  /**
+   * Counts a 404 or 410, at most once per run; at the second, the record is marked deleted with
+   * the next change number.
+   */
+  gone(record: IndexRecord, run: string): Promise<IndexRecord>;
   /**
    * Marks a record whose index attempt failed, with a short reason code: never over a stored
    * result, and without applying its change, so the data version stays below it until a later

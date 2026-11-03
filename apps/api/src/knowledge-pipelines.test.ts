@@ -72,13 +72,27 @@ describe('pipelines into a dataset on the knowledge database', () => {
     expect((await save(onKnowledge, 'docs', { chunking: { maximumLength: 4000 } })).ok).toBe(true);
   });
 
+  it('changing chunking after deleting and saving the pipeline again is refused', async () => {
+    const { service, save } = boot();
+    expect((await save(onKnowledge, 'docs', { chunking: { maximumLength: 4000 } })).ok).toBe(true);
+    await service.remove({
+      scope: tenant,
+      dataset: onKnowledge,
+      id: 'docs',
+      by: 'ingrid',
+      reason: 'test',
+    });
+    const again = await save(onKnowledge, 'docs', { chunking: { maximumLength: 2000 } });
+    expect(again.ok).toBe(false);
+  });
+
   it('a database, Episerver or Parquet source into a dataset on the knowledge database is refused', async () => {
     const { save } = boot();
     const episerver = await save(onKnowledge, 'cms', {
       source: { kind: 'episerver', path: 'export.json', language: 'no' },
     });
     expect(messages(episerver)).toEqual([
-      'a episerver source cannot fill a dataset on the knowledge database yet',
+      'a source of kind episerver cannot fill a dataset on the knowledge database yet',
     ]);
     for (const kind of ['upload', 'website', 'kudos']) {
       const { save: fresh } = boot();

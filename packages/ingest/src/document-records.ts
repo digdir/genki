@@ -104,7 +104,8 @@ export const planRun = (
       counts.unchanged++;
     }
   }
-  if (!options.complete) return { writes, process, counts };
+  // An empty listing deletes nothing: an unmounted folder or an emptied store looks the same.
+  if (!options.complete || listedIds.size === 0) return { writes, process, counts };
   for (const record of owned) {
     if (listedIds.has(record.id) || record.state === 'deleted') continue;
     if (record.missing + 1 >= missesBeforeDelete[options.deletes]) {
@@ -120,6 +121,8 @@ export interface IndexRecordOptions {
   records: DocumentRecords;
   /** The dataset of the run that sent the job; a record of another dataset is refused. */
   dataset: string;
+  /** The run that sent the job: a 404 or 410 counts once per run. */
+  run: string;
   listing: Pick<Listing, 'deletes' | 'load'>;
   record: string;
   generation: string;
@@ -164,7 +167,7 @@ const writeRecord = async (
     document = listed.prepare ? await listed.prepare() : listed;
   } catch (error) {
     if (!(error instanceof PageGone) || options.listing.deletes !== 'crawled') throw error;
-    record = await options.records.gone(record);
+    record = await options.records.gone(record, options.run);
     if (record.state === 'deleted') {
       await options.records.remove(record, options.generation);
       return 'deleted';

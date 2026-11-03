@@ -56,18 +56,30 @@ describe('planRun', () => {
     expect(plan.writes.some((w) => w.kind === 'missing')).toBe(false);
   });
 
+  it('an empty listing deletes nothing', () => {
+    const plan = planRun([], [owned('a', { missing: 1 }), owned('b', { missing: 4 })], {
+      complete: true,
+      deletes: 'explicit',
+    });
+    expect(deletes(plan)).toEqual([]);
+    expect(plan.writes).toEqual([]);
+  });
+
   it('an explicit delete removes at once', () => {
-    const plan = planRun([], [owned('upload')], { complete: true, deletes: 'explicit' });
+    const plan = planRun([listed('kept')], [owned('kept'), owned('upload')], {
+      complete: true,
+      deletes: 'explicit',
+    });
     expect(deletes(plan)).toEqual(['upload']);
   });
 
   it('a crawled page is deleted after three complete crawls without it', () => {
-    const missingTwice = planRun([], [owned('page', { missing: 1 })], {
+    const missingTwice = planRun([listed('kept')], [owned('kept'), owned('page', { missing: 1 })], {
       complete: true,
       deletes: 'crawled',
     });
     expect(deletes(missingTwice)).toEqual([]);
-    const third = planRun([], [owned('page', { missing: 2 })], {
+    const third = planRun([listed('kept')], [owned('kept'), owned('page', { missing: 2 })], {
       complete: true,
       deletes: 'crawled',
     });

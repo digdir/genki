@@ -222,6 +222,28 @@ describe('knowledge router', () => {
     expect(served).toEqual([{ index: { dataset: 'digdir/kudos', engine: 'stub' } }]);
   });
 
+  it('the knowledge port refuses more citations than its cap', async () => {
+    const { adapter } = stub();
+    const looked: number[] = [];
+    const citing: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => ({
+        ...adapter.connect(endpoint),
+        resolveCitations: async (_dataset, ids) => {
+          looked.push(ids.length);
+          return ids.map((cited) => ({ cited, status: 'unknown' as const }));
+        },
+      }),
+    };
+    const port = kudos(router(citing, { maxLimit: 5 }));
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `d${i}`);
+    expect(await port.resolveCitations?.(ids(10))).toHaveLength(10);
+    await expect(port.resolveCitations?.(ids(11))).rejects.toThrow(
+      'too many ids in one citation lookup',
+    );
+    expect(looked).toEqual([10]);
+  });
+
   it('provenance records the data version of the server that answered', async () => {
     const { adapter } = stub();
     const served: unknown[] = [];

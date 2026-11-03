@@ -93,7 +93,7 @@ describe('knowledge listings', () => {
     await expect(listing.load(first([doc]).record)).rejects.toBeInstanceOf(PageGone);
   });
 
-  it("the worker's fetches go through the fetch guard and use a tenant secret only for its hosts", async () => {
+  it("the worker's fetches go through the fetch guard, and a source that needs a tenant secret is refused", async () => {
     const fetched: string[] = [];
     const internal = await knowledgeListingOf(
       spec({ kind: 'website', sitemap: 'https://intern.example.no/sitemap.xml' }),
@@ -111,7 +111,43 @@ describe('knowledge listings', () => {
         scope,
         signal,
       ),
-    ).rejects.toThrow('a database source cannot fill a dataset on the knowledge database yet');
+    ).rejects.toThrow(
+      'a source of kind database cannot fill a dataset on the knowledge database yet',
+    );
+  });
+
+  it('a Kudos listing that starts after its first page is incomplete', async () => {
+    const pages: string[] = [];
+    const kudos = {
+      sleep: async () => undefined,
+      fetch: (async (url: string | URL | Request) => {
+        const page = Number(new URL(String(url)).searchParams.get('page') ?? '1');
+        pages.push(String(page));
+        return new Response(
+          JSON.stringify({
+            data: [{ id: page, uuid: `u-${page}`, type: 'Årsrapport', title: `Rapport ${page}` }],
+            meta: { current_page: page, last_page: 4 },
+          }),
+        );
+      }) as typeof fetch,
+    };
+    const converter = { toMarkdown: async () => 'tekst' };
+    const fromThree = await knowledgeListingOf(
+      spec({ kind: 'kudos', types: ['Årsrapport'], startingPage: 3 }),
+      { kudos, converter },
+      scope,
+      signal,
+    );
+    expect(await all(fromThree)).toHaveLength(2);
+    expect(fromThree.complete()).toBe(false);
+    const whole = await knowledgeListingOf(
+      spec({ kind: 'kudos', types: ['Årsrapport'] }),
+      { kudos, converter },
+      scope,
+      signal,
+    );
+    expect(await all(whole)).toHaveLength(4);
+    expect(whole.complete()).toBe(true);
   });
 
   it('a folder listing hashes each file and loads one document from its record', async () => {

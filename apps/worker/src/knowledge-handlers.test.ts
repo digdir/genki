@@ -16,6 +16,7 @@ import {
   type JobData,
   type QueueWork,
 } from '@genai/jobs';
+import type { EmbeddingPort } from '@genai/port-embedding';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import {
   attachGeneration,
@@ -121,6 +122,13 @@ let datasets = 0;
 const scenario = async (
   source: Record<string, unknown> = {},
   sourceOptions?: IngestSourceOptions,
+  extra: {
+    /** The embedding the generation is built with; the catalog's dataset may name another. */
+    builtWith?: DatasetConfig['embedding'];
+    catalogEmbedding?: DatasetConfig['embedding'];
+    embedded?: string[];
+    bound?: () => void;
+  } = {},
 ) => {
   datasets += 1;
   const dataset: DatasetConfig = {
@@ -128,9 +136,11 @@ const scenario = async (
     filters: {},
     options: {},
     generation: `g-handlers-${datasets}`,
+    ...(extra.catalogEmbedding ? { embedding: extra.catalogEmbedding } : {}),
   };
-  await prepareGeneration(owner(), dataset, dataset.generation as string);
-  await attachGeneration(owner(), dataset, dataset.generation as string);
+  const built = { ...dataset, ...(extra.builtWith ? { embedding: extra.builtWith } : {}) };
+  await prepareGeneration(owner(), built, dataset.generation as string);
+  await attachGeneration(owner(), built, dataset.generation as string);
   const folder = `docs-${datasets}`;
   await mkdir(join(folderRoot, folder));
   const spec = pipelineSpec.parse({
@@ -161,7 +171,18 @@ const scenario = async (
             : listing.load(record),
       };
     },
-    embedder: () => undefined,
+    embedder: (d) => {
+      if (!d.embedding) return undefined;
+      const { model, dimensions } = d.embedding;
+      return {
+        info: () => ({ id: model, dimensions }),
+        embed: async (texts: string[]) => {
+          extra.embedded?.push(model);
+          return { vectors: texts.map(() => Array.from({ length: dimensions }, () => 0.5)) };
+        },
+      } as unknown as EmbeddingPort;
+    },
+    ...(extra.bound ? { bound: extra.bound } : {}),
     admission: { records: runRecords, platformTenant: ORG, lockdown: false },
   });
   const file = (name: string, text: string) => writeFile(join(folderRoot, folder, name), text);
@@ -415,5 +436,65 @@ describe('knowledge.ingest and knowledge.index', () => {
     expect((await chunkTexts(s.generation)).join(' ')).toContain('Andre versjon.');
     const v = await versions(s.dataset.id, s.generation);
     expect(v?.data_version).toBe(v?.last_change);
+  }, 60_000);
+  it("a redelivered ingest job keeps the run's first counts", async () => {
+    const s = await scenario();
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    const run = await startRun(s.dataset.id);
+    const ingest = handler(s.work.platform, knowledgeIngestQueue.name);
+    await ingest(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    const data = s.sent.at(-1) as Record<string, string>;
+    await handler(s.work.knowledge, knowledgeIndexQueue.name)(job(knowledgeIndexQueue.name, data));
+    await ingest(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    expect(await reportOf(run)).toMatchObject({ new: 1, unchanged: 0, stored: 1 });
+  }, 60_000);
+
+  it("index jobs embed with the generation's embedding model, not the catalog's", async () => {
+    const embedded: string[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: { model: 'fake/old', dimensions: 3 },
+      catalogEmbedding: { model: 'fake/new', dimensions: 3 },
+      embedded,
+    });
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(s);
+    expect(embedded.length).toBeGreaterThan(0);
+    expect(new Set(embedded)).toEqual(new Set(['fake/old']));
+  }, 60_000);
+
+  it('an index job refuses a record of another dataset', async () => {
+    const mine = await scenario();
+    const other = await scenario();
+    await other.file('b.md', '# B\n\nInnhold i b.');
+    await runOnce(other);
+    const foreign = other.sent.at(-1) as Record<string, string>;
+    const run = await startRun(mine.dataset.id);
+    await expect(
+      handler(
+        mine.work.knowledge,
+        knowledgeIndexQueue.name,
+      )(job(knowledgeIndexQueue.name, { ...foreign, run })),
+    ).rejects.toThrow(`is not a record of ${mine.dataset.id}`);
+  }, 60_000);
+
+  it('a knowledge job does nothing while the knowledge server is bound to another platform server', async () => {
+    const s = await scenario({}, undefined, {
+      bound: () => {
+        throw new Error('the knowledge server is bound to another platform server');
+      },
+    });
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    const run = await startRun(s.dataset.id);
+    await expect(
+      handler(
+        s.work.platform,
+        knowledgeIngestQueue.name,
+      )(job(knowledgeIngestQueue.name, { run, tenant: ORG })),
+    ).rejects.toThrow('bound to another platform server');
+    expect(s.sent).toEqual([]);
+    const { rows } = await admin.query(`select 1 from src_documents where dataset = $1`, [
+      s.dataset.id,
+    ]);
+    expect(rows).toEqual([]);
   }, 60_000);
 });

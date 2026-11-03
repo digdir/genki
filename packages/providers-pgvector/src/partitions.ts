@@ -70,6 +70,7 @@ const recordMigrations: string[] = [
      primary key (generation, id)
    )`,
   `alter table kn_generations add column if not exists data_version bigint not null default 0`,
+  `alter table src_documents add column if not exists gone_run text`,
 ];
 
 const migrations: string[] = [

@@ -20,7 +20,8 @@ export const catalogErrors = {
     'a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has {pipelines}',
   knowledgeChunking:
     "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
-  knowledgeSourceKind: 'a {kind} source cannot fill a dataset on the knowledge database yet',
+  knowledgeSourceKind:
+    'a source of kind {kind} cannot fill a dataset on the knowledge database yet',
   knowledgeBusy: 'the knowledge server is busy, try again',
   noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',

@@ -553,7 +553,7 @@ export const knowledgeSourceKinds = ['folder', 'upload', 'website', 'kudos'] as 
 export const knowledgeSourceRefusal = (kind: PipelineSpec['source']['kind']) =>
   (knowledgeSourceKinds as readonly string[]).includes(kind)
     ? undefined
-    : `a ${kind} source cannot fill a dataset on the knowledge database yet`;
+    : `a source of kind ${kind} cannot fill a dataset on the knowledge database yet`;
 
 /**
  * Lists a pipeline's source for a run on the knowledge database without fetching what it can
@@ -571,6 +571,7 @@ const listingOf = (
   deletes: Listing['deletes'],
   list: () => AsyncIterable<ListedDocument>,
   load: Listing['load'],
+  whole = true,
 ): Listing => {
   let complete = false;
   return {
@@ -578,7 +579,7 @@ const listingOf = (
     documents: async function* () {
       complete = false;
       yield* list();
-      complete = true;
+      complete = whole;
     },
     complete: () => complete,
     load,
@@ -783,5 +784,7 @@ export const knowledgeListingOf = async (
       );
       return doc.prepare ? doc.prepare() : doc;
     },
+    // A listing that starts after page 1 does not see the documents before it.
+    (source.startingPage ?? 1) <= 1,
   );
 };

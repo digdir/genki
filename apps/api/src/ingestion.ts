@@ -488,11 +488,11 @@ export class IngestionService {
           .map((e) => e.id.slice(input.dataset.length + 1))
           .join(', ')}`,
       };
+    // The last version saved, deleted or not: the generation keeps the chunking of the pipeline's first run.
     const previous = (
       await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
     ).at(-1);
-    const before =
-      previous && !previous.deleted ? pipelineSpec.safeParse(previous.spec) : undefined;
+    const before = previous ? pipelineSpec.safeParse(previous.spec) : undefined;
     if (before?.success && JSON.stringify(before.data.chunking) !== JSON.stringify(spec.chunking))
       return {
         path: 'spec.chunking',

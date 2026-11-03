@@ -32,6 +32,7 @@ files:
   - packages/providers-pgvector/src/knowledge-writer.ts
   - packages/providers-pgvector/src/knowledge-reads.ts
   - packages/providers-pgvector/src/read-functions.ts
+  - packages/providers-pgvector/src/knowledge-records.ts
 input: Searches and index documents
 output: SQL
 replaces:

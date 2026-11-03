@@ -266,10 +266,71 @@ describe('document records on the knowledge server', () => {
       { dataset: name, pipeline: 'site', generation, plan: newDocs('p') },
       noSend,
     );
-    const once = await records.gone(await recordOf(name, 'p'));
+    const once = await records.gone(await recordOf(name, 'p'), 'run-1');
     expect(once).toMatchObject({ gone: 1, state: null, change: 1 });
-    const twice = await records.gone(once);
+    const twice = await records.gone(once, 'run-2');
     expect(twice).toMatchObject({ gone: 2, state: 'deleted', change: 2 });
+  });
+
+  it('a 404 delivered twice in one run counts once', async () => {
+    const name = 'digdir/gone-once';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: 'site', generation, plan: newDocs('p') },
+      noSend,
+    );
+    const once = await records.gone(await recordOf(name, 'p'), 'run-1');
+    const again = await records.gone(once, 'run-1');
+    expect(again).toMatchObject({ gone: 1, state: null });
+    expect(await records.gone(again, 'run-2')).toMatchObject({ gone: 2, state: 'deleted' });
+  });
+
+  it('a stale index job changes nothing', async () => {
+    const name = 'digdir/stale';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: newDocs('a') },
+      noSend,
+    );
+    const old = await recordOf(name, 'a');
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'docs',
+        generation,
+        plan: plan([{ kind: 'changed', listed: listed('a', 'a-2'), metadataHash: 'm-a' }]),
+      },
+      noSend,
+    );
+    await records.replace(await recordOf(name, 'a'), generation, { document: doc('a', 'Ny') });
+    await records.replace(old, generation, { document: doc('a', 'Gammel') });
+    const { rows } = await admin.query<{ text: string }>(
+      `select text from ${partitionOf('kn_chunks', generation)} order by position`,
+    );
+    expect(rows.map((r) => r.text)).toEqual(['Ny 0', 'Ny 1']);
+    expect(await dataVersion(generation)).toBe(2);
+  });
+
+  it('a document listed again is no longer withdrawn', async () => {
+    const name = 'digdir/relisted';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: newDocs('a') },
+      noSend,
+    );
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: plan([{ kind: 'delete', id: 'a' }]) },
+      noSend,
+    );
+    await records.remove(await recordOf(name, 'a'), generation);
+    const tombstones = async () =>
+      (await admin.query(`select 1 from src_tombstones where dataset = $1`, [name])).rows.length;
+    expect(await tombstones()).toBe(1);
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: newDocs('a') },
+      noSend,
+    );
+    expect(await tombstones()).toBe(0);
   });
 
   it('a changed chunking setting leaves the active generation unchanged', async () => {

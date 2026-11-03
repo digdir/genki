@@ -19,7 +19,8 @@ export const catalogErrors = defineNamespace({
     'et datasett i kunnskapsdatabasen fylles av én pipeline til medeiere er bygget; det har {pipelines}',
   knowledgeChunking:
     'oppdeling endres gjennom en ny generasjon, som ikke er bygget ennå; datasettets generasjon beholder oppdelingen den ble fylt med',
-  knowledgeSourceKind: 'en {kind}-kilde kan ikke fylle et datasett i kunnskapsdatabasen ennå',
+  knowledgeSourceKind:
+    'en kilde av typen {kind} kan ikke fylle et datasett i kunnskapsdatabasen ennå',
   knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
   noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',

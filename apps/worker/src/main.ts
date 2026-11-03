@@ -105,7 +105,9 @@ if (isDevMode(process.env)) {
 
 const servicesDir = process.env.WORKER_SERVICES_DIR ?? join(root, 'packages', 'jobs', 'examples');
 const configDir = process.env.CONFIG_DIR ?? join(root, 'apps', 'api', 'config', 'local');
-const blobDir = process.env.BLOB_DIR ?? join(root, '.data', 'blobs');
+// The API's default, so locally the worker reads the uploads the API wrote.
+const blobDir =
+  process.env.BLOB_DIR ?? join(process.env.DATA_DIR ?? join(root, 'apps', 'api', '.data'), 'blobs');
 const platformTenant = platformTenantFrom(process.env);
 
 const databaseSource = postgresSourceFromEnv(process.env);

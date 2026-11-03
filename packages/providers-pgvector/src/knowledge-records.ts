@@ -53,7 +53,8 @@ const moveDataVersion = (client: PoolClient, generation: string) =>
     `update kn_generations g set data_version = coalesce(
        (select min(d.change) - 1 from src_documents d
           left join kn_applied a on a.generation = g.generation and a.id = d.id
-         where d.dataset = g.dataset and (a.change is null or a.change < d.change)),
+         where d.dataset = g.dataset and d.change > g.data_version
+           and (a.change is null or a.change < d.change)),
        (select last_change from src_changes c where c.dataset = g.dataset),
        0)
      where g.generation = $1`,
@@ -114,7 +115,8 @@ const writeRecord = async (
      values ($1, $2, array[$3], $4, $5, null, $6)
      on conflict (dataset, id) do update set
        owners = array[$3], record = excluded.record, metadata_hash = excluded.metadata_hash,
-       state = null, reason = null, last_seen = now(), missing = 0, gone = 0, change = excluded.change`,
+       state = null, reason = null, last_seen = now(), missing = 0, gone = 0, gone_run = null,
+       change = excluded.change`,
     [dataset, listed.id, pipeline, JSON.stringify(listed.record), write.metadataHash, change],
   );
   await writeFiles(client, dataset, listed.id, listed.files, change);
@@ -205,6 +207,15 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     return kept;
   },
 
+  embedding: async (generation) => {
+    const { rows } = await writer.query<{
+      embedding: { model: string; dimensions: number } | null;
+    }>(`select recipe -> 'embedding' as embedding from kn_generations where generation = $1`, [
+      generation,
+    ]);
+    return rows[0]?.embedding ?? undefined;
+  },
+
   find: async (number) => {
     const { rows } = await writer.query<RecordRow>(
       `select ${recordColumns} from src_documents where number = $1::bigint`,
@@ -216,6 +227,11 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
   replace: (record, generation, result) =>
     transaction(writer, async (client) => {
       const recipe = await lockGeneration(client, generation, record.dataset);
+      const { rows: current } = await client.query<{ change: string }>(
+        `select change::text from src_documents where number = $1::bigint for update`,
+        [record.number],
+      );
+      if (Number(current[0]?.change) !== record.change) return;
       const embedding = recipe.embedding as { dimensions?: number } | undefined;
       if ('document' in result)
         await replaceDocument(
@@ -276,15 +292,22 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     );
   },
 
-  gone: (record) =>
+  gone: (record, run) =>
     transaction(writer, async (client) => {
       const { rows } = await client.query<RecordRow>(
-        `update src_documents set gone = gone + 1 where number = $1::bigint
+        `update src_documents set gone = gone + 1, gone_run = $2
+          where number = $1::bigint and gone_run is distinct from $2
           returning ${recordColumns}`,
-        [record.number],
+        [record.number, run],
       );
       const counted = rows[0];
-      if (!counted) return record;
+      if (!counted) {
+        const { rows: unchanged } = await client.query<RecordRow>(
+          `select ${recordColumns} from src_documents where number = $1::bigint`,
+          [record.number],
+        );
+        return unchanged[0] ? toRecord(unchanged[0]) : record;
+      }
       if (counted.gone < 2) return toRecord(counted);
       const change = await nextChange(client, counted.dataset);
       const { rows: deleted } = await client.query<RecordRow>(

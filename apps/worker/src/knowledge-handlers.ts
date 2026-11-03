@@ -128,13 +128,16 @@ export const knowledgeWork = (
         run.pipeline,
         chunkingOf(spec.chunking),
       );
-      const embedder = dataset.embedding
-        ? deps.embedder(dataset, contextOf(run, principal, tenant, signal))
+      // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
+      const embedding = await deps.records.embedding(job.data.generation);
+      const embedder = embedding
+        ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
         : undefined;
       const outcome = await indexRecord({
         records: deps.records,
         listing,
         dataset: run.dataset,
+        run: run.id,
         record: job.data.record,
         generation: job.data.generation,
         chunking,
