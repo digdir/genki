@@ -429,6 +429,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   };
   const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
     tasksOf(tenant, keep, true);
+  const playgroundRuns = async (tenant: string, keep: (row: PortalTaskRow) => boolean) =>
+    (await tasksOf(tenant, keep, false)).filter(
+      (t) => originOf(t.service.capability.id) === 'playground',
+    );
   const tenantTestRuns = async (tenant: string) =>
     (await tasksOf(tenant, () => true, false)).filter(
       (t) => originOf(t.service.capability.id) !== 'assistant',
@@ -1023,10 +1027,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const from = c.req.query('from');
     const to = c.req.query('to');
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500);
-    const tasks = await tenantTasks(
-      g.tenant,
-      (row) => (!status || row.status === status) && (!from || row.at >= from),
-    );
+    const keep = (row: PortalTaskRow) =>
+      (!status || row.status === status) && (!from || row.at >= from);
+    const tasks =
+      c.req.query('origin') === 'playground'
+        ? await playgroundRuns(g.tenant, keep)
+        : await tenantTasks(g.tenant, keep);
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const rows = tasks
       .map((t) => taskBase(caps, t))
@@ -1089,7 +1095,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     if (
       !found ||
       (found.tenant !== g.tenant && found.owner !== g.tenant) ||
-      originOf(found.service.capability.id) !== serviceOrigin
+      ![serviceOrigin, 'playground'].includes(originOf(found.service.capability.id))
     )
       return problem(c, 404, 'Not found');
     const [view] = await taskViews(
