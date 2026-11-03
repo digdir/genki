@@ -297,6 +297,8 @@ export class RunMapper {
   private readonly warnings: string[] = [];
   private readonly byModel = new Map<string, ModelTokens>();
   private errorStep: TimelineStep | undefined;
+  private unreadableStep: TimelineStep | undefined;
+  private unreadableCount = 0;
   private readonly errors: Event[] = [];
   private trigger: TimelineStep | undefined;
   private channel: 'answer' | 'reasoning' = 'answer';
@@ -495,11 +497,31 @@ export class RunMapper {
     });
   }
 
+  private unreadable(e: Event, ts: number) {
+    const last = this.steps.at(-1);
+    if (last && last === this.unreadableStep) {
+      this.unreadableCount += 1;
+      last.summary = t('steps.unreadableSteps', { count: this.unreadableCount });
+      last.durationSeconds = round(this.offset(ts) - last.at);
+      return void this.emit(last);
+    }
+    this.unreadableCount = 1;
+    this.unreadableStep = this.add({
+      id: `e${e.seq}`,
+      type: 'note',
+      title: t('steps.contentUnavailable'),
+      summary: t('steps.unreadableSteps', { count: 1 }),
+      at: this.offset(ts),
+      blocks: [],
+    });
+  }
+
   private rawOf(value: unknown) {
     return this.details ? { raw: value } : {};
   }
 
   private notice(e: Event, ts: number, prev: number, data: Data) {
+    if (data.erased === true) return this.unreadable(e, ts);
     const event = str(data.event);
     const stage = str(data.stage);
     const kind = str(data.kind);

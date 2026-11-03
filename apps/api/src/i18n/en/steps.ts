@@ -52,6 +52,12 @@ export const steps = {
   toQueue: 'To the queue {queue}',
   unknownEvent: 'Unknown event',
   unnamedEvent: 'The event had no name',
+  contentUnavailable: 'Content not available',
+  unreadableSteps: {
+    one: '{count} step cannot be shown because its content was erased or can no longer be read.',
+    other:
+      '{count} steps cannot be shown because their content was erased or can no longer be read.',
+  },
   modelRound: 'Model call · round {round}',
   modelCall: 'Model call',
   thinking: 'Thinking',

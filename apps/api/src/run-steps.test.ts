@@ -88,6 +88,24 @@ const ragRun = () => {
 };
 
 describe('the run mapper', () => {
+  it('shows steps whose content was erased as one card that says so, not as unknown steps', () => {
+    seq = 0;
+    const steps = mapRun([
+      at(0, 'kernel.task.status', { status: 'running' }),
+      notice(200, { erased: true }),
+      notice(2200, { erased: true }),
+      notice(5900, { erased: true }),
+      at(6000, 'kernel.result', answerParts),
+      at(6010, 'kernel.task.status', { status: 'completed' }),
+    ]).steps;
+
+    const unreadable = steps.filter((s) => s.title === 'Innholdet er ikke tilgjengelig');
+    expect(unreadable).toHaveLength(1);
+    expect(unreadable[0]).toMatchObject({ type: 'note', at: 0.2, durationSeconds: 5.7 });
+    expect(unreadable[0]?.summary).toContain('3 steg');
+    expect(steps.some((s) => s.title === 'Ukjent hendelse')).toBe(false);
+  });
+
   it('fills the answer block with the answer text and source titles, not raw JSON', () => {
     const result = mapRun(ragRun()).steps.at(-1);
 

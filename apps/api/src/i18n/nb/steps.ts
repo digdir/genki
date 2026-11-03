@@ -51,6 +51,11 @@ export const steps = defineNamespace({
   toQueue: 'Til køen {queue}',
   unknownEvent: 'Ukjent hendelse',
   unnamedEvent: 'Hendelsen kom uten navn',
+  contentUnavailable: 'Innholdet er ikke tilgjengelig',
+  unreadableSteps: {
+    one: '{count} steg kan ikke vises fordi innholdet er slettet eller ikke lenger kan leses.',
+    other: '{count} steg kan ikke vises fordi innholdet er slettet eller ikke lenger kan leses.',
+  },
   modelRound: 'Modellkall · runde {round}',
   modelCall: 'Modellkall',
   thinking: 'Tenker',
