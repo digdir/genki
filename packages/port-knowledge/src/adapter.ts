@@ -1,6 +1,7 @@
 import { secretRefPattern, type Credential } from '@genai/kernel';
 import { z } from 'zod';
 import type {
+  CitationResolution,
   DocumentPage,
   DocumentsRequest,
   FacetValue,
@@ -78,6 +79,11 @@ export interface KnowledgeConnection<D = unknown> {
     request: DocumentsRequest,
     signal: AbortSignal,
   ): Promise<DocumentPage>;
+  resolveCitations?(
+    dataset: DatasetConfig<D>,
+    ids: string[],
+    signal: AbortSignal,
+  ): Promise<CitationResolution[]>;
   export?: KnowledgeExport<D>;
   served?(dataset: DatasetConfig<D>, signal: AbortSignal): Promise<ServedIndex>;
 }
@@ -85,6 +91,8 @@ export interface KnowledgeConnection<D = unknown> {
 export interface ServedIndex {
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the server that answered the last read made with this same dataset config. */
+  dataVersion?: number;
 }
 
 export interface KnowledgeExport<D = unknown> {

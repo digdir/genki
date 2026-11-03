@@ -1,13 +1,11 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
-  databaseConnection,
-  huggingFaceSource,
-  parquetTableName,
-  parquetMapping,
-  readableTextExtensions,
-  rowMapping,
+  knowledgeSourceRefusal,
+  pipelineSpec,
+  type PipelineSpec,
   type SkipReason,
   type SkippedDocument,
+  type SourceEstimate,
 } from '@genai/ingest';
 import { nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
@@ -19,146 +17,17 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 
+export {
+  pipelineSpec,
+  unboundedKudos,
+  unboundedKudosMessage,
+  type PipelineSpec,
+  type SourceEstimate,
+} from '@genai/ingest';
+
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
-const glob = z.string().min(1).max(500);
-
-const chunkStrategy = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('header-based'),
-    splitMaxLength: z.number().int().positive().optional(),
-    overlap: z.number().int().min(0).optional(),
-  }),
-  z.strictObject({
-    kind: z.literal('fixed-width'),
-    width: z.number().int().positive(),
-    overlap: z.number().int().min(0),
-  }),
-]);
-
-export const pipelineSpec = z.strictObject({
-  name: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  source: z.discriminatedUnion('kind', [
-    z.strictObject({
-      kind: z.literal('website'),
-      sitemap: z.url({ protocol: /^https$/ }),
-      include: z.array(glob).default([]),
-      exclude: z.array(glob).default([]),
-      baseUrl: z.url().optional(),
-    }),
-    z.strictObject({
-      kind: z.literal('folder'),
-      path: z.string().min(1),
-      include: z.array(glob).default(['**/*.md']),
-      exclude: z.array(glob).optional(),
-      baseUrl: z.url().optional(),
-      keepExtension: z.boolean().optional(),
-      titleFrom: z
-        .enum(['file-name', 'heading'])
-        .optional()
-        .describe('heading: the first # heading, or the top-level name: of a YAML file'),
-      extensions: z
-        .array(z.enum(readableTextExtensions))
-        .min(1)
-        .optional()
-        .describe('File types read as text; default .md, .txt, .html, .htm'),
-    }),
-    z.strictObject({
-      kind: z.literal('upload'),
-    }),
-    z.strictObject({
-      kind: z.literal('kudos'),
-      profile: z.enum(['prod', 'preprod']).default('prod'),
-      startingPage: z.number().int().positive().default(1),
-      types: z.array(z.string().min(1)).default([]),
-      since: z.iso.date().optional(),
-      orgs: z.array(z.string().min(1)).optional(),
-    }),
-    z.strictObject({
-      kind: z.literal('episerver'),
-      path: z.string().min(1),
-      language: z.string().min(1).default('no'),
-      pageTypes: z.array(z.string().min(1)).default([]),
-      offset: z.number().int().min(0).default(0),
-      limit: z.number().int().positive().optional(),
-      baseUrl: z.url().optional(),
-    }),
-    z
-      .strictObject({
-        kind: z.literal('parquet'),
-        url: z.url({ protocol: /^https$/ }).optional(),
-        huggingface: huggingFaceSource.optional(),
-        urls: z
-          .array(z.url({ protocol: /^https$/ }))
-          .min(1)
-          .max(1000)
-          .optional(),
-        table: parquetTableName.optional(),
-        mapping: parquetMapping,
-        maxBytes: z
-          .number()
-          .int()
-          .min(1024)
-          .max(20 * 1024 * 1024 * 1024)
-          .default(1024 * 1024 * 1024)
-          .describe(
-            'Disk byte cap per shard, up to the platform ceiling; shards download sequentially',
-          ),
-      })
-      .refine((s) => [s.url, s.urls, s.huggingface].filter((v) => v !== undefined).length === 1, {
-        message: 'a Parquet source needs exactly one of url, urls and huggingface',
-        path: ['url'],
-      })
-      .refine((s) => (s.urls ? s.table !== undefined : s.table === undefined), {
-        message: 'table is required exactly when urls is set',
-        path: ['table'],
-      })
-      .refine((s) => s.huggingface !== undefined || s.mapping.lookups.every((l) => !l.file), {
-        message: 'a lookup file needs a huggingface source; use url otherwise',
-        path: ['mapping', 'lookups'],
-      }),
-    z.strictObject({
-      kind: z.literal('database'),
-      connection: databaseConnection,
-      mapping: rowMapping,
-    }),
-  ]),
-  chunking: z
-    .strictObject({
-      strategy: chunkStrategy.default({ kind: 'header-based' }),
-      minimumLength: z.number().int().min(0).default(200),
-      maximumLength: z.number().int().positive().default(4000),
-      metadataStyle: z.enum(['edn', 'json', 'none']).default('json'),
-    })
-    .prefault({}),
-  phrases: z
-    .strictObject({
-      model: z.string().min(1),
-      fallbackModel: z.string().min(1).optional(),
-      perChunk: z.number().int().min(1).max(20).default(5),
-    })
-    .optional(),
-  parallelism: z.number().int().min(1).max(16).default(2),
-  maxDocumentFailures: z.number().int().positive().max(100_000).default(10),
-  enabled: z.boolean().default(true),
-  schedule: z.enum(['none', 'daily', 'weekly']).default('none'),
-});
-
-export type PipelineSpec = z.infer<typeof pipelineSpec>;
 
 export const scheduleCron = { daily: '0 3 * * *', weekly: '0 3 * * 1' } as const;
-
-export const unboundedKudos = (spec: { source?: unknown }) => {
-  const source = (spec.source ?? {}) as { kind?: unknown; types?: unknown; since?: unknown };
-  return (
-    source.kind === 'kudos' &&
-    !(Array.isArray(source.types) && source.types.length > 0) &&
-    !source.since
-  );
-};
-
-export const unboundedKudosMessage =
-  'En innlesing fra Kudos må avgrenses med dokumenttyper eller en startdato, ellers leses hele arkivet inn.';
 
 export interface Pipeline {
   dataset: string;
@@ -193,6 +62,11 @@ export interface IngestionReport {
   failed: string[];
   /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
   failedDocuments?: number;
+  /** For a run on the knowledge database: what its listing found against its pipeline's records. */
+  new?: number;
+  changed?: number;
+  deleted?: number;
+  unchanged?: number;
   generation?: string;
   promoted?: boolean;
   previous?: string;
@@ -209,12 +83,6 @@ export interface IngestionBackend {
   unavailableFor?(target: IngestionTarget, pipeline?: Pipeline): string | undefined;
   run(job: IngestionJob, signal: AbortSignal): Promise<IngestionReport>;
   estimate?(pipeline: Pipeline): Promise<SourceEstimate | undefined>;
-}
-
-export interface SourceEstimate {
-  documents: number;
-  exact: boolean;
-  basis: { listed: number; sampled: number; matching: number };
 }
 
 export interface BackendStatus {
@@ -498,6 +366,9 @@ export class IngestionService {
 
   availability(target: IngestionTarget, pipeline?: Pipeline): BackendStatus {
     const backend = this.options.backend;
+    // The worker writes a dataset on the knowledge database, as jobs: the API only starts the run.
+    if (this.options.jobs?.runsAsJobs(target.dataset))
+      return { name: 'knowledge-jobs', available: true };
     const reason = backend.available
       ? backend.unavailableFor?.(target, pipeline)
       : (backend.unavailableReason ?? 'ingestion is not available');
@@ -558,6 +429,10 @@ export class IngestionService {
             message: i.message,
           })),
         };
+      const refused = this.options.jobs?.runsAsJobs(input.dataset)
+        ? await this.#knowledgeRefusal(input, parsed.data)
+        : undefined;
+      if (refused) return { ok: false, errors: [refused] };
       try {
         const saved = await appendVersion(this.options.store, {
           kind,
@@ -581,6 +456,50 @@ export class IngestionService {
         throw error;
       }
     });
+  }
+
+  /**
+   * What a dataset on the knowledge database does not take yet (issue 139): a second pipeline, until
+   * co-owners are built; search phrases, until recipes hold them; a source kind no dataset there
+   * needs yet; and a changed chunking, which its generation keeps from its first run.
+   */
+  async #knowledgeRefusal(
+    input: { scope: string; dataset: string; id: string },
+    spec: PipelineSpec,
+  ): Promise<{ path: string; message: string } | undefined> {
+    const source = knowledgeSourceRefusal(spec.source.kind);
+    if (source) return { path: 'spec.source.kind', message: source };
+    if (spec.phrases)
+      return {
+        path: 'spec.phrases',
+        message:
+          'search phrases cannot fill a dataset on the knowledge database until recipes hold them',
+      };
+    const others = (await this.options.store.latest({ kind, scope: input.scope })).filter(
+      (e) =>
+        !e.deleted &&
+        e.id.startsWith(`${input.dataset}#`) &&
+        e.id !== `${input.dataset}#${input.id}`,
+    );
+    if (others.length > 0)
+      return {
+        path: 'id',
+        message: `a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has ${others
+          .map((e) => e.id.slice(input.dataset.length + 1))
+          .join(', ')}`,
+      };
+    const previous = (
+      await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
+    ).at(-1);
+    const before =
+      previous && !previous.deleted ? pipelineSpec.safeParse(previous.spec) : undefined;
+    if (before?.success && JSON.stringify(before.data.chunking) !== JSON.stringify(spec.chunking))
+      return {
+        path: 'spec.chunking',
+        message:
+          "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
+      };
+    return undefined;
   }
 
   async remove(input: {

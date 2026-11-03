@@ -180,6 +180,8 @@ export interface IndexProvenance {
   engine?: string;
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the knowledge server that answered (ADR 0042). */
+  dataVersion?: number;
 }
 
 export type ResourceProvenance = { model: ModelProvenance } | { index: IndexProvenance };

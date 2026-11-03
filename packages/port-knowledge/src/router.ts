@@ -316,6 +316,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
             engine,
             ...(served?.generation ? { generation: served.generation } : {}),
             ...(served?.collections?.length ? { collections: [...served.collections] } : {}),
+            ...(served?.dataVersion === undefined ? {} : { dataVersion: served.dataVersion }),
           },
         });
       })());
@@ -344,6 +345,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     const linkHits = (hits: Hit[]) => hits.map((hit) => linked(hit, hit.document));
     const maxBatch = this.options.maxBatch ?? 50;
     const listDocuments = connection.documents?.bind(connection);
+    const resolveCitations = connection.resolveCitations?.bind(connection);
     const exporter = connection.export;
 
     return {
@@ -407,6 +409,18 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
                 listDocuments(config, { ...request, filters, limit, offset }, ctx.signal),
               );
               return { ...page, documents: page.documents.map((d) => linked(d, d.id)) };
+            },
+          }
+        : {}),
+      ...(resolveCitations
+        ? {
+            resolveCitations: async (ids: string[]) => {
+              if (ids.length === 0) return [];
+              if (ids.length > (this.options.maxLimit ?? 100) * 2)
+                throw new KnowledgeError('bad_request', 'too many ids in one citation lookup');
+              return (await guard(() => resolveCitations(config, ids, ctx.signal))).map((c) =>
+                linked(c, c.document),
+              );
             },
           }
         : {}),

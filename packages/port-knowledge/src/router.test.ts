@@ -222,6 +222,36 @@ describe('knowledge router', () => {
     expect(served).toEqual([{ index: { dataset: 'digdir/kudos', engine: 'stub' } }]);
   });
 
+  it('provenance records the data version of the server that answered', async () => {
+    const { adapter } = stub();
+    const served: unknown[] = [];
+    const answered = new WeakMap<object, number>();
+    const versioned: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => {
+        const inner = adapter.connect(endpoint);
+        return {
+          ...inner,
+          search: async (dataset, requests, signal) => {
+            answered.set(dataset, 41);
+            return inner.search(dataset, requests, signal);
+          },
+          served: async (dataset) => {
+            const dataVersion = answered.get(dataset);
+            return { generation: 'g7', ...(dataVersion === undefined ? {} : { dataVersion }) };
+          },
+        };
+      },
+    };
+    const ctx = { ...context(), provenance: async (r: unknown) => void served.push(r) };
+
+    await kudos(router(versioned), ctx).search({ query: 'a' });
+
+    expect(served).toEqual([
+      { index: { dataset: 'digdir/kudos', engine: 'stub', generation: 'g7', dataVersion: 41 } },
+    ]);
+  });
+
   it('accepts filters of the declared kinds and refuses anything else before searching', async () => {
     const { adapter, searches } = stub();
     const port = kudos(router(adapter));

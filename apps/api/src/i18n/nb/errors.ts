@@ -13,6 +13,13 @@ export const catalogErrors = defineNamespace({
     'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
   generationOfAnother: '{generation} er generasjonen til et annet datasett',
   knowledgeWrittenByWorker: 'kunnskapsdata skrives av bakgrunnstjenesten',
+  knowledgePhrases:
+    'søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene har dem',
+  knowledgeOnePipeline:
+    'et datasett i kunnskapsdatabasen fylles av én pipeline til medeiere er bygget; det har {pipelines}',
+  knowledgeChunking:
+    'oppdeling endres gjennom en ny generasjon, som ikke er bygget ennå; datasettets generasjon beholder oppdelingen den ble fylt med',
+  knowledgeSourceKind: 'en {kind}-kilde kan ikke fylle et datasett i kunnskapsdatabasen ennå',
   knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
   noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',

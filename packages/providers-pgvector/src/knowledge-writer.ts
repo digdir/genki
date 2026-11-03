@@ -4,7 +4,7 @@ import {
   type IndexDocument,
   type IndexWriter,
 } from '@genai/port-knowledge';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   attachGeneration,
   dropGeneration,
@@ -31,18 +31,102 @@ const failIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw new KnowledgeError('cancelled', 'the write was cancelled');
 };
 
-const vectorOf = (dataset: DatasetConfig, vector: number[] | undefined, id: string) => {
+const parsedVector = (vec: string | null) =>
+  vec === null ? {} : { vector: JSON.parse(vec) as number[] };
+
+/** Where `replaceDocument` writes: a generation's partitions, its text configuration and vector size. */
+export interface DocumentTarget {
+  dataset: string;
+  generation: string;
+  config: string;
+  dimensions?: number;
+  /**
+   * `partition` for a generation not attached yet, which only the owner writes; `parent` for an
+   * attached one, through the tables the writer role has rights on, pruned to the partition.
+   */
+  via: 'partition' | 'parent';
+}
+
+const tableOf = (target: Pick<DocumentTarget, 'generation' | 'via'>, table: string) =>
+  target.via === 'parent' ? table : partitionOf(table, target.generation);
+
+const checkedVector = (target: DocumentTarget, vector: number[] | undefined, id: string) => {
   if (vector === undefined) return null;
-  if (vector.length !== dataset.embedding?.dimensions || !vector.every(Number.isFinite))
+  if (vector.length !== target.dimensions || !vector.every(Number.isFinite))
     throw new KnowledgeError(
       'bad_request',
-      `${id} needs a vector of ${dataset.embedding?.dimensions ?? 0} finite numbers`,
+      `${id} needs a vector of ${target.dimensions ?? 0} finite numbers`,
     );
   return JSON.stringify(vector);
 };
 
-const parsedVector = (vec: string | null) =>
-  vec === null ? {} : { vector: JSON.parse(vec) as number[] };
+/** Deletes a document's rows from a generation's partitions, inside the caller's transaction. */
+export const deleteDocument = async (
+  client: PoolClient,
+  target: Pick<DocumentTarget, 'generation' | 'via'>,
+  id: string,
+) => {
+  const values = [target.generation, id];
+  await client.query(
+    `delete from ${tableOf(target, 'kn_phrases')} where generation = $1 and doc_id = $2`,
+    values,
+  );
+  await client.query(
+    `delete from ${tableOf(target, 'kn_chunks')} where generation = $1 and doc_id = $2`,
+    values,
+  );
+  await client.query(
+    `delete from ${tableOf(target, 'kn_docs')} where generation = $1 and id = $2`,
+    values,
+  );
+};
+
+/** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
+export const replaceDocument = async (
+  client: PoolClient,
+  target: DocumentTarget,
+  doc: IndexDocument,
+) => {
+  const chunks = doc.chunks.map((c) => ({
+    id: c.id,
+    position: c.position,
+    text: c.text,
+    metadata: c.metadata ?? {},
+    vec: checkedVector(target, c.vector, c.id),
+  }));
+  const phrases = doc.phrases.map((p) => ({
+    id: p.id,
+    chunk_id: p.chunkId,
+    text: p.text,
+    vec: checkedVector(target, p.vector, p.id),
+  }));
+  const key = [target.dataset, target.generation, doc.id];
+  await deleteDocument(client, target, doc.id);
+  await client.query(
+    `insert into ${tableOf(target, 'kn_docs')} (dataset, generation, id, title, url, fields, fields_text, config)
+     values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig)`,
+    [
+      ...key,
+      doc.title ?? null,
+      doc.url ?? null,
+      JSON.stringify(doc.fields),
+      fieldsText(doc.fields),
+      target.config,
+    ],
+  );
+  await client.query(
+    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, config, vec)
+     select $1, $2, x.id, $3, x.position, x.text, x.metadata, $4::regconfig, x.vec::halfvec
+     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, vec text)`,
+    [...key, target.config, JSON.stringify(chunks)],
+  );
+  await client.query(
+    `insert into ${tableOf(target, 'kn_phrases')} (dataset, generation, id, doc_id, chunk_id, text, config, vec)
+     select $1, $2, x.id, $3, x.chunk_id, x.text, $4::regconfig, x.vec::halfvec
+     from jsonb_to_recordset($5::jsonb) as x(id text, chunk_id text, text text, vec text)`,
+    [...key, target.config, JSON.stringify(phrases)],
+  );
+};
 
 /** Writes generations as partitions on the knowledge server, through the owner role only the worker has. */
 export const knowledgeWriterOf = <O extends Options>(
@@ -140,58 +224,14 @@ export const knowledgeWriterOf = <O extends Options>(
     store: async (dataset, generation, doc) => {
       await begin();
       await prepared(dataset, generation);
-      const config = recipeOf(dataset).textSearchConfig;
-      const chunks = doc.chunks.map((c) => ({
-        id: c.id,
-        position: c.position,
-        text: c.text,
-        metadata: c.metadata ?? {},
-        vec: vectorOf(dataset, c.vector, c.id),
-      }));
-      const phrases = doc.phrases.map((p) => ({
-        id: p.id,
-        chunk_id: p.chunkId,
-        text: p.text,
-        vec: vectorOf(dataset, p.vector, p.id),
-      }));
-      const key = [dataset.id, generation, doc.id];
-      await transaction(owner, async (client) => {
-        await client.query(
-          `delete from ${partitionOf('kn_phrases', generation)} where doc_id = $1`,
-          [doc.id],
-        );
-        await client.query(
-          `delete from ${partitionOf('kn_chunks', generation)} where doc_id = $1`,
-          [doc.id],
-        );
-        await client.query(`delete from ${partitionOf('kn_docs', generation)} where id = $1`, [
-          doc.id,
-        ]);
-        await client.query(
-          `insert into ${partitionOf('kn_docs', generation)} (dataset, generation, id, title, url, fields, fields_text, config)
-           values ($1, $2, $3, $4, $5, $6, $7, $8::regconfig)`,
-          [
-            ...key,
-            doc.title ?? null,
-            doc.url ?? null,
-            JSON.stringify(doc.fields),
-            fieldsText(doc.fields),
-            config,
-          ],
-        );
-        await client.query(
-          `insert into ${partitionOf('kn_chunks', generation)} (dataset, generation, id, doc_id, position, text, metadata, config, vec)
-           select $1, $2, x.id, $3, x.position, x.text, x.metadata, $4::regconfig, x.vec::halfvec
-           from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, vec text)`,
-          [...key, config, JSON.stringify(chunks)],
-        );
-        await client.query(
-          `insert into ${partitionOf('kn_phrases', generation)} (dataset, generation, id, doc_id, chunk_id, text, config, vec)
-           select $1, $2, x.id, $3, x.chunk_id, x.text, $4::regconfig, x.vec::halfvec
-           from jsonb_to_recordset($5::jsonb) as x(id text, chunk_id text, text text, vec text)`,
-          [...key, config, JSON.stringify(phrases)],
-        );
-      });
+      const target = {
+        dataset: dataset.id,
+        generation,
+        config: recipeOf(dataset).textSearchConfig,
+        via: 'partition' as const,
+        ...(dataset.embedding ? { dimensions: dataset.embedding.dimensions } : {}),
+      };
+      await transaction(owner, (client) => replaceDocument(client, target, doc));
     },
     promote: async (dataset, generation) => {
       await begin();

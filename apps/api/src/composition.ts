@@ -118,7 +118,7 @@ import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
   indexIngestionBackend,
-  type IngestSourceOptions,
+  type IngestSourceConfig,
   type KudosAccess,
 } from './index-ingestion.js';
 import type { ExecutionStore } from './ingestion.js';
@@ -1060,8 +1060,19 @@ export const createPlatform = async (input: PlatformInput) => {
     sync,
     blobStore,
   } = runtime;
+  const jobRuns = input.configurables?.jobRuns;
   const configurables = createConfigurables({
     ...input.configurables,
+    // Runs of datasets on the knowledge database run as jobs (issue 139); others stay in the API.
+    ...(jobRuns
+      ? {
+          jobRuns: {
+            ...jobRuns,
+            runsAsJobs: (dataset: string) =>
+              runtime.catalog.datasetOnKnowledgeServer(dataset) || jobRuns.runsAsJobs(dataset),
+          },
+        }
+      : {}),
     ...(input.lockdown ? { admitsIngestion: mayUseModels } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
     store: configEntries,
@@ -1071,7 +1082,7 @@ export const createPlatform = async (input: PlatformInput) => {
     platformTenant,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
-  const ingestSources: IngestSourceOptions = {
+  const ingestSources: IngestSourceConfig = {
     uploads: blobStore,
     phrases: {
       ...(blobStore ? { blobs: blobStore } : {}),

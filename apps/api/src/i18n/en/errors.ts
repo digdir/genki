@@ -14,6 +14,13 @@ export const catalogErrors = {
     'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
   generationOfAnother: '{generation} is the generation of another dataset',
   knowledgeWrittenByWorker: 'knowledge data is written by the worker',
+  knowledgePhrases:
+    'search phrases cannot fill a dataset on the knowledge database until recipes hold them',
+  knowledgeOnePipeline:
+    'a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has {pipelines}',
+  knowledgeChunking:
+    "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
+  knowledgeSourceKind: 'a {kind} source cannot fill a dataset on the knowledge database yet',
   knowledgeBusy: 'the knowledge server is busy, try again',
   noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',

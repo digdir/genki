@@ -437,7 +437,7 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
-    // No dataset runs as jobs yet: #139 names the datasets on `connection: knowledge`.
+    // The platform adds every dataset on `connection: knowledge` (createPlatform).
     ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
