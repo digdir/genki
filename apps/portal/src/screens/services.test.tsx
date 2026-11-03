@@ -97,6 +97,33 @@ describe('new service', () => {
     expect(screen.getByRole('complementary', { name: 'Byggeassistent' })).toBeTruthy();
     expectAccessible();
   });
+
+  it('leaves out the comparison with the default instructions', async () => {
+    await renderAt('#/services/new');
+    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
+    expect(screen.queryByText('Sammenlign med standardinstruksjonene')).toBeNull();
+  });
+
+  it('shows the audiences that come later as grey and not selectable', async () => {
+    await renderAt('#/services/new');
+    const later = await screen.findByText(/Andre offentlige virksomheter · Kommer senere/);
+    const chip = later.closest('label') as HTMLElement;
+    expect(chip.getAttribute('data-color')).toBe('neutral');
+    expect(within(chip).getByRole('checkbox').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('publishes on a page of its own, with a way back to the tab the person came from', async () => {
+    await renderAt('#/services/new/blocks');
+    await screen.findByRole('heading', { level: 1, name: 'Ny tjeneste' });
+    fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
+    const page = await screen.findByRole('region', { name: /^Publiser/ });
+    expect(window.location.hash).toBe('#/services/new/publish');
+    expect(screen.queryByRole('navigation', { name: 'Tjenesten' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      within(page).getByRole('link', { name: 'Tilbake til tjenesten' }).getAttribute('href'),
+    ).toBe('#/services/new/blocks');
+  });
 });
 
 describe('builder', () => {
@@ -371,7 +398,7 @@ describe('versions', () => {
 describe('publishing', () => {
   it('blocks publishing until the risk level is confirmed', async () => {
     await openBuilder('#/services?visning=uttrekk-publiser', 'Søknadsuttrekk');
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByRole('heading', { name: 'Publiser Søknadsuttrekk' })).toBeTruthy();
     expect(within(dialog).getByText(/Publiser erstatter versjonen som er i bruk/)).toBeTruthy();
     expect(within(dialog).getByText(/Uten testsett ser du ikke/)).toBeTruthy();
@@ -381,7 +408,7 @@ describe('publishing', () => {
     ).toBe('true');
     expectAccessible();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Gå til risikonivå' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('region', { name: /^Publiser/ })).toBeNull());
     expect(await screen.findByRole('button', { name: 'Bekreft risikonivå' })).toBeTruthy();
   });
 
@@ -391,7 +418,7 @@ describe('publishing', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Risiko og KI-forordningen/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Publiser' })[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     const publish = within(dialog).getByRole('button', { name: 'Publiser' });
     fireEvent.click(publish);
     expect(within(dialog).getByText(/minst 10 tegn/)).toBeTruthy();
@@ -415,7 +442,7 @@ describe('publishing', () => {
   it('publishes to test without changing the live version', async () => {
     await openBuilder('#/services/rapportassistenten', 'Rapportassistenten');
     fireEvent.click(screen.getByRole('button', { name: 'Publiser til test' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByText(/Publiser til test gjør versjonen tilgjengelig/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Publiser til test' }));
     expect(await screen.findByText('Versjon 8 er publisert til test.')).toBeTruthy();

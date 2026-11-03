@@ -189,3 +189,11 @@
     padding: 16px 16px 48px;
   }
 }
+
+/* Publishing is a page of its own, read top to bottom, with a way back to the service. */
+.service-body.service-publish {
+  max-width: 760px;
+}
+.publish-back {
+  align-self: flex-start;
+}

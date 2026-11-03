@@ -160,6 +160,7 @@ export const servicesUi = {
     tabService: 'The service',
     close: 'Close',
     publishTitle: 'Publish {name}',
+    publishBack: 'Back to the service',
     publishFallbackName: 'the service',
     publishTestInfo:
       'Publishing to test makes the version available to those with test access. The version in use does not change.',

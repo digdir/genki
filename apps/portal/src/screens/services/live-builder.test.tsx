@@ -179,7 +179,7 @@ describe('the live builder', () => {
     await confirmRisk();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(await within(dialog).findByText('Modell:')).toBeTruthy();
     expect(within(dialog).getByText(/Modellen behandler data i global region/)).toBeTruthy();
     expect(within(dialog).getByText('Formål og målgruppe:')).toBeTruthy();
@@ -208,7 +208,7 @@ describe('the live builder', () => {
     expect(within(header).getByText('Utkast')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
@@ -250,7 +250,7 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('dialog');
+    return screen.findByRole('region', { name: /^Publiser/ });
   };
 
   it('shows the latest test run from the API in the publish dialog, not an example score', async () => {
@@ -331,7 +331,7 @@ describe('the live builder and the server draft', () => {
     window.location.hash = '#/services/rapportassistenten/setup/risk';
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByText('Endringer i utkastet som ikke er publisert')).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Tar i bruk forbedringsforslaget' },
@@ -451,7 +451,7 @@ describe('the live builder when the draft is outdated', () => {
     window.location.hash = '#/services/rapportassistenten/setup/risk';
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Kortere svar til brukerne' },
     });
@@ -511,6 +511,7 @@ describe('the live builder when the draft is outdated', () => {
     fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater utkastet' }));
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/draft/rebase'))).toBe(true);
+
     await publishIn(dialog);
     await waitFor(() => expect(publishes(calls)).toHaveLength(2));
     expect(publishes(calls)[1]?.body).toMatchObject({
@@ -542,6 +543,7 @@ describe('the live builder when the draft is outdated', () => {
       revision: 2,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Tilbake til tjenesten' }));
     await waitFor(() =>
       expect(
         (screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement).value,

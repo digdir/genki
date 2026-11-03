@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -123,7 +123,7 @@ const publishFromHeader = async (fetch: typeof globalThis.fetch) => {
   await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
   expect(screen.queryByRole('button', { name: 'Publiser til test' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('region', { name: /^Publiser/ });
   expect(within(dialog).queryByRole('button', { name: 'Publiser til test' })).toBeNull();
   fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
     target: { value: 'Strammer inn instruksjonene' },
@@ -152,13 +152,13 @@ describe('publishing the draft in live mode', () => {
     render(<App auth={auth} fetch={fetch} live />);
     await screen.findByRole('heading', { level: 1, name: 'Klarspråk' });
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
 
     expect(
       within(dialog).getByRole('heading', { name: 'Versjon 2, endret siden versjon 1' }),
     ).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Avbryt' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('region', { name: /^Publiser/ })).toBeNull());
     expect(posts.some((p) => p.url.endsWith('/definitions'))).toBe(false);
   });
 

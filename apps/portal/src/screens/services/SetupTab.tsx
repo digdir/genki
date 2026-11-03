@@ -1079,7 +1079,7 @@ export const SetupTab = ({
         </Field>,
       )}
       {instructionsAssist ? <div className="field-action">{instructionsAssist}</div> : null}
-      {flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
+      {continuous || flowOf(s) || s.strategy.id === 'remote-agent' ? null : (
         <BuiltInInstructions
           strategy={s.strategy.id}
           own={!!instructions || typeof s.strategy.config.instructions === 'object'}
@@ -1197,7 +1197,13 @@ export const SetupTab = ({
                   {labelOf(t, audienceKeys, id)}
                 </Chip.Checkbox>
               ) : (
-                <Chip.Checkbox key={id} checked={false} aria-disabled="true" readOnly>
+                <Chip.Checkbox
+                  key={id}
+                  data-color="neutral"
+                  checked={false}
+                  aria-disabled="true"
+                  readOnly
+                >
                   {t('setup.comingLater', { label: labelOf(t, audienceKeys, id) })}
                 </Chip.Checkbox>
               ),

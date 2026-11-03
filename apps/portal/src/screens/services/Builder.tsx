@@ -1,7 +1,7 @@
+import { ArrowLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
-  Dialog,
   Heading,
   Paragraph,
   Tabs,
@@ -406,7 +406,16 @@ export const Builder = ({
   const [versions, setVersions] = useState(init.versions);
   const [published, setPublished] = useState<Record<string, boolean>>({});
   const [flash, setFlash] = useState('');
-  const [publish, setPublish] = useState<'test' | 'prod' | null>(openPublish ? 'prod' : null);
+  /** Where «Tilbake til tjenesten» leads from the publish page: the tab the person came from. */
+  const backFromPublish = useRef<ServiceSection>(section === 'publish' ? 'setup' : section);
+  if (section !== 'publish') backFromPublish.current = section;
+  const publish: 'test' | 'prod' | null =
+    section === 'publish' ? (route.query.get('to') === 'test' ? 'test' : 'prod') : null;
+  const setPublish = (to: 'test' | 'prod' | null) =>
+    to ? go('publish', to === 'test' ? '?to=test' : '') : go(backFromPublish.current);
+  useEffect(() => {
+    if (openPublish) setPublish('prod');
+  }, []);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -629,7 +638,8 @@ export const Builder = ({
         conflicts: opened?.conflicts ?? [],
       };
     },
-    [api, tenant, id, serverDraft, section],
+    // Going to the publish page keeps the draft as it is; publishing says if it is outdated.
+    [api, tenant, id, serverDraft, section === 'publish' ? backFromPublish.current : section],
   );
   const remoteDraft = remote.status === 'ready' ? remote.data?.draft : undefined;
   const remoteLatest = remote.status === 'ready' ? remote.data?.latest : undefined;
@@ -757,7 +767,7 @@ export const Builder = ({
   useEffect(() => {
     if (!remoteDraft || remoteDraft.revision === revisionRef.current || unsaved.current) return;
     keepRevision(remoteDraft.revision);
-    setService(asServiceDefinition(remoteDraft.definition));
+    setService(keepConfirmation(asServiceDefinition(remoteDraft.definition)));
     setFiles(remoteDraft.files);
   }, [remoteDraft]);
 
@@ -1143,7 +1153,170 @@ export const Builder = ({
     />
   );
 
+  const publishPage = (
+    <section aria-labelledby="pub-h" className="publish-page stack">
+      <Button asChild variant="secondary" data-size="sm" className="publish-back">
+        <a href={`#${servicePath(isNew ? 'new' : id, backFromPublish.current)}`}>
+          <ArrowLeftIcon aria-hidden fontSize="1.25em" />
+          {t('services.publishBack')}
+        </a>
+      </Button>
+      {publish && canPublish ? (
+        <div className="stack">
+          <Heading level={2} data-size="sm" id="pub-h">
+            {t('services.publishTitle', {
+              name: service.metadata.name || t('services.publishFallbackName'),
+            })}
+          </Heading>
+          <Paragraph>
+            {publish === 'test' ? t('services.publishTestInfo') : t('services.publishProdInfo')}
+          </Paragraph>
+          {hasTestSet ? null : (
+            <Alert data-color="warning" data-size="sm">
+              {t('services.noTestsetWarning')}
+            </Alert>
+          )}
+          {invalid ? (
+            <Alert data-color="danger" data-size="sm" role="alert">
+              <Heading level={3} data-size="2xs">
+                {t('services.notAccepted')}
+              </Heading>
+              <ul className="bullets">
+                {validationErrors.map((e) => {
+                  const problem = describeProblem(e, t);
+                  return (
+                    <li key={`${e.path}-${e.message}`}>
+                      <strong>{problem.section}:</strong> {problem.message}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Alert>
+          ) : null}
+          {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
+            <Paragraph data-size="sm">
+              {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
+            </Paragraph>
+          ) : null}
+          {problems?.outdated ? (
+            <DraftOutdated
+              paths={problems.errors.map((e) => e.path)}
+              onRebase={rebaseDraft}
+              onResolve={resolveConflicts}
+            />
+          ) : problems ? (
+            <Alert data-color="danger" data-size="sm" role="alert">
+              <Paragraph data-size="sm">
+                {problems.refusedByGates
+                  ? t('services.refusedByGates')
+                  : t('services.notAcceptedShort')}
+              </Paragraph>
+              <ul className="bullets">
+                {problems.errors.map((e) => {
+                  const problem = describeProblem(e, t);
+                  return (
+                    <li key={`${e.path}-${e.message}`}>
+                      <strong>{problem.section}:</strong> {problem.message}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Alert>
+          ) : null}
+          <PublishSummary
+            tenantName={tenantName}
+            currentVersion={current}
+            nextVersion={current + 1}
+            changes={
+              changes.length
+                ? changes
+                : current === 0
+                  ? [t('services.changeFirstVersion')]
+                  : draftRevision > 0
+                    ? [t('services.changeDraft')]
+                    : edited
+                      ? [t('services.changeForm')]
+                      : [t('services.changeNone')]
+            }
+            inTest={publish === 'test'}
+            blockedBy={blockedBy}
+            updates={live ? [] : (exampleUpdates[id] ?? [])}
+            facts={[
+              { label: t('services.factTestset'), value: testsetFact },
+              {
+                label: t('services.factCost'),
+                value: live
+                  ? notPricedLabel(t)
+                  : per1000
+                    ? t('services.factCostPer1000', { cost: per1000 })
+                    : t('services.factNotCalculated'),
+              },
+              {
+                label: t('services.factResidency'),
+                value: fallback
+                  ? t('services.residencyWithReserve', {
+                      where: modelWord(t, model?.where ?? 'Norge'),
+                      reserve: modelWord(t, fallback.where),
+                    })
+                  : modelWord(t, model?.where ?? 'Norge'),
+              },
+              { label: t('services.factRisk'), value: riskNote },
+            ]}
+            gates={[
+              {
+                name: t('services.gateNoForbidden'),
+                value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
+                passed: !forbidden,
+                explanation: t('services.gateForbiddenWhy'),
+              },
+              {
+                name: t('services.gateRiskConfirmed'),
+                value: !riskSet
+                  ? t('services.unset')
+                  : riskConfirmed
+                    ? t('services.gateConfirmed')
+                    : t('services.gateNotConfirmed'),
+                passed: riskPassed,
+                explanation: t('services.gateRiskWhy'),
+              },
+            ]}
+            apiCall={{
+              action: t('services.publishAction'),
+              method: 'POST',
+              path: '/definitions',
+              body: { definition, files },
+              right: rightLabel(t, 'manage-services'),
+            }}
+            {...(riskPassed && !forbidden
+              ? {}
+              : {
+                  fixAction: {
+                    label: t('services.fixRisk'),
+                    onClick: () => {
+                      setPublish(null);
+                      go('setup', '/risk');
+                      showPane('tjeneste');
+                      setOpen((o) => ({ ...o, risk: true }));
+                    },
+                  },
+                })}
+            headingLevel={3}
+            onPublish={doPublish}
+            {...(live ? {} : { onPublishToTest: doPublishToTest })}
+            onCancel={() => {
+              setPublish(null);
+              setProblems(undefined);
+            }}
+          />
+        </div>
+      ) : (
+        <Paragraph>{needsRight('manage-services', t)}</Paragraph>
+      )}
+    </section>
+  );
+
   const body = (() => {
+    if (section === 'publish') return publishPage;
     if (section === 'overview')
       return (
         <OverviewSection
@@ -1443,6 +1616,16 @@ export const Builder = ({
       <ServicePageContext.Provider value>
         <div className="service-page">
           <ServiceHeader
+            {...(section === 'publish'
+              ? {
+                  trail: [
+                    {
+                      label: name,
+                      href: `#${servicePath(isNew ? 'new' : id, backFromPublish.current)}`,
+                    },
+                  ],
+                }
+              : {})}
             name={name}
             status={
               init.status === 'Utkast' && versions.some((v) => v.state === 'I bruk')
@@ -1454,39 +1637,43 @@ export const Builder = ({
             meta={meta}
             flash={flash}
             actions={
-              <>
-                {live && canPublish && !isNew ? (
-                  <ServiceLifecycle
-                    api={api}
-                    tenant={tenant}
-                    id={id}
-                    name={service.metadata.name || id}
-                    {...(onPublished ? { onChanged: onPublished } : {})}
-                  />
-                ) : null}
-                {live || !canPublish ? null : (
-                  <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
-                    {t('services.publishToTest')}
-                  </Button>
-                )}
-                {canPublish &&
-                !isNew &&
-                current > 0 &&
-                !changes.length &&
-                draftRevision === 0 &&
-                !edited ? (
-                  <span className="meta">{t('services.nothingToPublish')}</span>
-                ) : canPublish ? (
-                  <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
-                    {t('services.publish')}
-                  </Button>
-                ) : (
-                  <span className="meta">{needsRight('manage-services', t)}</span>
-                )}
-              </>
+              section === 'publish' ? null : (
+                <>
+                  {live && canPublish && !isNew ? (
+                    <ServiceLifecycle
+                      api={api}
+                      tenant={tenant}
+                      id={id}
+                      name={service.metadata.name || id}
+                      {...(onPublished ? { onChanged: onPublished } : {})}
+                    />
+                  ) : null}
+                  {live || !canPublish ? null : (
+                    <Button variant="secondary" data-size="sm" onClick={() => setPublish('test')}>
+                      {t('services.publishToTest')}
+                    </Button>
+                  )}
+                  {canPublish &&
+                  !isNew &&
+                  current > 0 &&
+                  !changes.length &&
+                  draftRevision === 0 &&
+                  !edited ? (
+                    <span className="meta">{t('services.nothingToPublish')}</span>
+                  ) : canPublish ? (
+                    <Button variant="primary" data-size="sm" onClick={() => setPublish('prod')}>
+                      {t('services.publish')}
+                    </Button>
+                  ) : (
+                    <span className="meta">{needsRight('manage-services', t)}</span>
+                  )}
+                </>
+              )
             }
           />
-          <ServiceNav id={isNew ? 'new' : id} sections={sections} current={tabFor(section)} />
+          {section === 'publish' ? null : (
+            <ServiceNav id={isNew ? 'new' : id} sections={sections} current={tabFor(section)} />
+          )}
           {readOnly ? (
             <Alert data-color="info" data-size="sm">
               <Heading level={2} data-size="2xs">
@@ -1531,169 +1718,6 @@ export const Builder = ({
               <TabsPanel value="tjeneste">{pane === 'tjeneste' ? content : null}</TabsPanel>
             </Tabs>
           )}
-          {publish && canPublish ? (
-            <Dialog
-              open
-              modal
-              closeButton={t('services.close')}
-              onClose={() => {
-                setPublish(null);
-                setProblems(undefined);
-              }}
-              aria-labelledby="pub-h"
-              className="publish-dialog"
-            >
-              <div className="stack">
-                <Heading level={2} data-size="sm" id="pub-h">
-                  {t('services.publishTitle', {
-                    name: service.metadata.name || t('services.publishFallbackName'),
-                  })}
-                </Heading>
-                <Paragraph>
-                  {publish === 'test'
-                    ? t('services.publishTestInfo')
-                    : t('services.publishProdInfo')}
-                </Paragraph>
-                {hasTestSet ? null : (
-                  <Alert data-color="warning" data-size="sm">
-                    {t('services.noTestsetWarning')}
-                  </Alert>
-                )}
-                {invalid ? (
-                  <Alert data-color="danger" data-size="sm" role="alert">
-                    <Heading level={3} data-size="2xs">
-                      {t('services.notAccepted')}
-                    </Heading>
-                    <ul className="bullets">
-                      {validationErrors.map((e) => {
-                        const problem = describeProblem(e, t);
-                        return (
-                          <li key={`${e.path}-${e.message}`}>
-                            <strong>{problem.section}:</strong> {problem.message}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Alert>
-                ) : null}
-                {draftBase !== undefined && draftBase !== remoteLatestVersion && draftBase > 0 ? (
-                  <Paragraph data-size="sm">
-                    {t('services.basedOnVersion', { base: draftBase, latest: remoteLatestVersion })}
-                  </Paragraph>
-                ) : null}
-                {problems?.outdated ? (
-                  <DraftOutdated
-                    paths={problems.errors.map((e) => e.path)}
-                    onRebase={rebaseDraft}
-                    onResolve={resolveConflicts}
-                  />
-                ) : problems ? (
-                  <Alert data-color="danger" data-size="sm" role="alert">
-                    <Paragraph data-size="sm">
-                      {problems.refusedByGates
-                        ? t('services.refusedByGates')
-                        : t('services.notAcceptedShort')}
-                    </Paragraph>
-                    <ul className="bullets">
-                      {problems.errors.map((e) => {
-                        const problem = describeProblem(e, t);
-                        return (
-                          <li key={`${e.path}-${e.message}`}>
-                            <strong>{problem.section}:</strong> {problem.message}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Alert>
-                ) : null}
-                <PublishSummary
-                  tenantName={tenantName}
-                  currentVersion={current}
-                  nextVersion={current + 1}
-                  changes={
-                    changes.length
-                      ? changes
-                      : current === 0
-                        ? [t('services.changeFirstVersion')]
-                        : draftRevision > 0
-                          ? [t('services.changeDraft')]
-                          : edited
-                            ? [t('services.changeForm')]
-                            : [t('services.changeNone')]
-                  }
-                  inTest={publish === 'test'}
-                  blockedBy={blockedBy}
-                  updates={live ? [] : (exampleUpdates[id] ?? [])}
-                  facts={[
-                    { label: t('services.factTestset'), value: testsetFact },
-                    {
-                      label: t('services.factCost'),
-                      value: live
-                        ? notPricedLabel(t)
-                        : per1000
-                          ? t('services.factCostPer1000', { cost: per1000 })
-                          : t('services.factNotCalculated'),
-                    },
-                    {
-                      label: t('services.factResidency'),
-                      value: fallback
-                        ? t('services.residencyWithReserve', {
-                            where: modelWord(t, model?.where ?? 'Norge'),
-                            reserve: modelWord(t, fallback.where),
-                          })
-                        : modelWord(t, model?.where ?? 'Norge'),
-                    },
-                    { label: t('services.factRisk'), value: riskNote },
-                  ]}
-                  gates={[
-                    {
-                      name: t('services.gateNoForbidden'),
-                      value: forbidden ? t('services.gateChecked') : t('services.gateNone'),
-                      passed: !forbidden,
-                      explanation: t('services.gateForbiddenWhy'),
-                    },
-                    {
-                      name: t('services.gateRiskConfirmed'),
-                      value: !riskSet
-                        ? t('services.unset')
-                        : riskConfirmed
-                          ? t('services.gateConfirmed')
-                          : t('services.gateNotConfirmed'),
-                      passed: riskPassed,
-                      explanation: t('services.gateRiskWhy'),
-                    },
-                  ]}
-                  apiCall={{
-                    action: t('services.publishAction'),
-                    method: 'POST',
-                    path: '/definitions',
-                    body: { definition, files },
-                    right: rightLabel(t, 'manage-services'),
-                  }}
-                  {...(riskPassed && !forbidden
-                    ? {}
-                    : {
-                        fixAction: {
-                          label: t('services.fixRisk'),
-                          onClick: () => {
-                            setPublish(null);
-                            go('setup', '/risk');
-                            showPane('tjeneste');
-                            setOpen((o) => ({ ...o, risk: true }));
-                          },
-                        },
-                      })}
-                  headingLevel={3}
-                  onPublish={doPublish}
-                  {...(live ? {} : { onPublishToTest: doPublishToTest })}
-                  onCancel={() => {
-                    setPublish(null);
-                    setProblems(undefined);
-                  }}
-                />
-              </div>
-            </Dialog>
-          ) : null}
         </div>
       </ServicePageContext.Provider>
     </DeveloperView.Provider>

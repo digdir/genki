@@ -2,6 +2,7 @@ import { defineNamespace } from '@genai/i18n';
 
 export const components = defineNamespace({
   breadcrumbs: 'Brødsmuler',
+  backTo: 'Tilbake til {label}',
   notAvailableTitle: 'Ikke tilgjengelig ennå',
   notDecided: 'Ikke bestemt',
   steps: 'Steg',

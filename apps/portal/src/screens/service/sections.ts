@@ -12,7 +12,8 @@ export type ServiceSection =
   | 'batch'
   | 'versions'
   | 'log'
-  | 'developer';
+  | 'developer'
+  | 'publish';
 
 export const sectionLabels: Record<ServiceSection, PlainKey> = {
   overview: 'service.sectionOverview',
@@ -27,6 +28,7 @@ export const sectionLabels: Record<ServiceSection, PlainKey> = {
   versions: 'service.sectionVersions',
   log: 'service.sectionLog',
   developer: 'service.sectionDeveloper',
+  publish: 'services.publish',
 };
 
 const order: ServiceSection[] = [
@@ -42,6 +44,7 @@ const order: ServiceSection[] = [
   'versions',
   'log',
   'developer',
+  'publish',
 ];
 
 export const availableSections = ({ isNew }: { isNew: boolean }) =>
@@ -53,7 +56,8 @@ export const availableSections = ({ isNew }: { isNew: boolean }) =>
           s === 'advanced' ||
           s === 'test' ||
           s === 'versions' ||
-          s === 'developer',
+          s === 'developer' ||
+          s === 'publish',
       )
     : order.filter((s) => s !== 'blocks' && s !== 'advanced');
 
@@ -62,9 +66,15 @@ export const developerSections: ServiceSection[] = ['test', 'versions'];
 /** Sections whose content now sits in the Utviklerverktøy tab; their addresses still work. */
 const insideDeveloperTab: ServiceSection[] = ['versions', 'log'];
 
+/** Pages reached from the header, not from a tab. */
+const withoutTab: ServiceSection[] = ['publish'];
+
 export const tabSections = ({ isNew }: { isNew: boolean }) =>
   availableSections({ isNew }).filter(
-    (s) => !insideDeveloperTab.includes(s) && !(isNew && developerSections.includes(s)),
+    (s) =>
+      !insideDeveloperTab.includes(s) &&
+      !withoutTab.includes(s) &&
+      !(isNew && developerSections.includes(s)),
   );
 
 /** The tab that holds a section, so a moved section still marks its tab. */
