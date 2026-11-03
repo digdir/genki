@@ -12,7 +12,7 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
 import { Icon, icons } from '../../components/Icon';
@@ -178,35 +178,42 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
         </a>
       </div>
       <dl className="facts">
-        {[
-          [t('sharedServices.input'), c.input],
-          [t('sharedServices.output'), c.output],
-          [t('sharedServices.modelAndData'), modelAndData(t, c)],
+        {(
           [
-            t('sharedServices.qualityOnTestSet'),
-            c.score
-              ? t('sharedServices.scoreOf', { score: c.score })
-              : t('sharedServices.notMeasured'),
-          ],
-          ...(c.price === '–'
-            ? []
-            : [
-                [
-                  t('sharedServices.per1000'),
-                  t('sharedServices.priceWithNote', {
-                    price: c.price,
-                    note: c.priceNote.toLowerCase(),
-                  }),
-                ],
-              ]),
-        ].map(([l, v]) => (
+            [t('sharedServices.input'), c.input],
+            [t('sharedServices.output'), c.output],
+            [t('sharedServices.modelAndData'), modelAndData(t, c)],
+            [
+              t('sharedServices.qualityOnTestSet'),
+              <>
+                {c.score
+                  ? t('sharedServices.scoreOf', { score: c.score })
+                  : t('sharedServices.notMeasured')}
+                {c.scoreNote ? <span className="score-note">{c.scoreNote}</span> : null}
+              </>,
+            ],
+            ...(c.price === '–'
+              ? []
+              : [
+                  [
+                    t('sharedServices.per1000'),
+                    t('sharedServices.priceWithNote', {
+                      price: c.price,
+                      note: c.priceNote.toLowerCase(),
+                    }),
+                  ],
+                ]),
+          ] as [string, ReactNode][]
+        ).map(([l, v]) => (
           <div key={l}>
             <dt>{l}</dt>
             <dd className="fact-text">{v}</dd>
           </div>
         ))}
       </dl>
-      <p className="meta footnote">{t('sharedServices.footnote')}</p>
+      {c.score || c.price !== '–' ? (
+        <p className="meta footnote">{t('sharedServices.footnote')}</p>
+      ) : null}
       {c.scoreAlert ? (
         <Alert data-color="warning" data-size="sm">
           {c.scoreAlert}

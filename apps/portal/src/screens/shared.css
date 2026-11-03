@@ -89,6 +89,13 @@
   align-self: flex-start;
 }
 
+.score-note {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ds-color-warning-text-default);
+}
+
 .footnote {
   margin: 0;
   max-width: 760px;

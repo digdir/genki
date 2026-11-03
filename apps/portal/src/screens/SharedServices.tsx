@@ -23,6 +23,13 @@ const residencyLabel = (t: T, r: string | null) =>
         ? t('sharedServices.residencyOutside')
         : t('sharedServices.notGiven');
 
+const residencyColor = (t: T, location: string) =>
+  location === 'Norge' || location === t('sharedServices.residencyNorway')
+    ? 'success'
+    : location === 'EU/EØS' || location === t('sharedServices.residencyEu')
+      ? 'info'
+      : 'warning';
+
 const fromApi = (t: T, s: SharedService): SharedCapability => ({
   id: s.id,
   alias: s.id,
@@ -67,6 +74,11 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
           <h2 className="cap-card-title">
             <a href={href}>{c.name}</a>
           </h2>
+        </div>
+        <div className="tag-row">
+          <Tag data-size="sm" data-color={residencyColor(t, c.location)}>
+            {c.location}
+          </Tag>
           {c.used ? (
             <Tag data-size="sm" data-color="accent">
               {c.used}

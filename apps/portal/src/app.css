@@ -280,7 +280,7 @@ a:not([class^='ds-'], [class*=' ds-']):hover {
 }
 
 /* Keeps the account block apart from the menu when the sidebar is too short to push it down. */
-.nav-groups {
+.sidebar .nav-groups {
   margin-bottom: var(--ds-size-6);
 }
 
