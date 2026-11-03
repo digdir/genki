@@ -7,6 +7,9 @@ import type {
 } from '@genai/providers-postgres';
 import { queuedRunRules } from './knowledge-jobs.js';
 
+export const failureBudgetMessage = (failed: number) =>
+  `${failed} documents failed, which reached the pipeline's failure budget; the run stopped and keeps the documents it replaced`;
+
 export const listingFailedMessage =
   'listing the source failed after its retries; send the run back once the source answers';
 
@@ -26,6 +29,8 @@ export interface ReconcilerRecords {
     at: string,
     rules: QueuedRunRules,
   ): Promise<IngestionExecution | undefined>;
+  /** Cancels a running run whose failed documents reached its failure budget. */
+  stopAtBudget?(id: string, at: string): Promise<void>;
 }
 
 export interface ReconcilerDeps {
@@ -34,6 +39,8 @@ export interface ReconcilerDeps {
   servers: RunJobs[];
   lockdown: boolean;
   now?: () => Date;
+  /** The pipeline's `maxDocumentFailures` for a run: its document dead letters before it stops. */
+  failureBudget?: (run: IngestionExecution) => Promise<number>;
 }
 
 export interface Reconciled {
@@ -45,13 +52,22 @@ export interface Reconciled {
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 
-const outcomeOf = (run: IngestionExecution, dead: Record<string, number>): RunOutcome => {
-  if (run.cancelRequestedAt) return { status: 'cancelled' };
-  const failedDocuments = sum(
+const documentFailures = (dead: Record<string, number>) =>
+  sum(
     Object.entries(dead)
       .filter(([queue]) => queue !== 'knowledge.ingest')
       .map(([, count]) => count),
   );
+
+const outcomeOf = (run: IngestionExecution, dead: Record<string, number>): RunOutcome => {
+  const failedDocuments = documentFailures(dead);
+  if (run.cancelledBy === 'failure-budget')
+    return {
+      status: 'cancelled',
+      error: failureBudgetMessage(failedDocuments),
+      report: { failedDocuments },
+    };
+  if (run.cancelRequestedAt) return { status: 'cancelled' };
   return dead['knowledge.ingest']
     ? { status: 'failed', error: listingFailedMessage, report: { failedDocuments } }
     : { status: 'succeeded', report: { failedDocuments } };
@@ -100,7 +116,17 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
       if (started) result.started.push(started);
       continue;
     }
-    if (run.cancelRequestedAt)
+    let stopping = run;
+    if (!run.cancelRequestedAt && deps.failureBudget && deps.records.stopAtBudget) {
+      let failed = 0;
+      for (const server of deps.servers)
+        failed += documentFailures(await server.deadLetters(run.id));
+      if (failed > 0 && failed >= (await deps.failureBudget(run))) {
+        await deps.records.stopAtBudget(run.id, at);
+        stopping = (await deps.records.find(run.id)) ?? run;
+      }
+    }
+    if (stopping.cancelRequestedAt)
       for (const server of deps.servers) result.dropped += await server.cancel(run.id);
     // One server after the other, the platform server first: an ingest job sends its last
     // document jobs before it completes, so a count taken in this order cannot miss both.
@@ -111,7 +137,12 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     for (const server of deps.servers)
       for (const [queue, count] of Object.entries(await server.deadLetters(run.id)))
         dead[queue] = (dead[queue] ?? 0) + count;
-    const { ended, started } = await deps.records.end(run, outcomeOf(run, dead), at, rules);
+    const { ended, started } = await deps.records.end(
+      stopping,
+      outcomeOf(stopping, dead),
+      at,
+      rules,
+    );
     if (ended) result.ended.push(ended);
     if (started) result.started.push(started);
   }

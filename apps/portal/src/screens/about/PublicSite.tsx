@@ -13,7 +13,12 @@ import {
 } from '@genai/docs-site';
 import docsStyles from '@genai/docs-site/styles.css?inline';
 import { useLocale } from '@genai/i18n/react';
-import { MagnifyingGlassIcon, MenuElipsisHorizontalIcon, XMarkIcon } from '@navikt/aksel-icons';
+import {
+  MagnifyingGlassIcon,
+  MenuElipsisHorizontalIcon,
+  MenuHamburgerIcon,
+  XMarkIcon,
+} from '@navikt/aksel-icons';
 import {
   useEffect,
   useInsertionEffect,
@@ -23,7 +28,7 @@ import {
   type ReactNode,
 } from 'react';
 import { appTitle } from '../../app-title';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import type { Route } from '../../hooks';
 import { useT, type PlainKey } from '../../i18n';
 import { Contact } from '../FooterPages';
@@ -401,7 +406,7 @@ export const PublicSite = ({
                 aria-controls="sidemeny"
                 onClick={() => setMenuOpen((o) => !o)}
               >
-                {menuOpen ? <XMarkIcon aria-hidden /> : <Icon d={icons.menu} />}
+                {menuOpen ? <XMarkIcon aria-hidden /> : <Icon icon={MenuHamburgerIcon} />}
                 {tiny ? null : t('shell.menu')}
               </Button>
             ) : (

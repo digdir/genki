@@ -299,6 +299,24 @@ export class PostgresJobRunRecords {
     return started;
   }
 
+  /** Sets a running run's listing counts, or adds its documents' outcomes to them. */
+  async report(id: string, counts: Record<string, number>, mode: 'set' | 'add'): Promise<void> {
+    await this.#platform('knowledge-run-report', (client) =>
+      client.query('select report_job_ingestion_execution($1, $2, $3)', [
+        id,
+        JSON.stringify(counts),
+        mode === 'add',
+      ]),
+    );
+  }
+
+  /** Cancels a running run whose failed documents reached its pipeline's failure budget. */
+  async stopAtBudget(id: string, at: string): Promise<void> {
+    await this.#platform('knowledge-run-budget', (client) =>
+      client.query('select stop_job_ingestion_execution_at_budget($1, $2)', [id, at]),
+    );
+  }
+
   /** Ends a running run and, in the same transaction, starts its pipeline's queued run. */
   async end(
     run: IngestionExecution,

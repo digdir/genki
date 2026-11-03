@@ -17,3 +17,4 @@ export {
   syncFilterIndexes,
   type PartitionOptions,
 } from './partitions.js';
+export { knowledgeRecordsOf } from './knowledge-records.js';

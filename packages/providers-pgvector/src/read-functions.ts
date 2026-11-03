@@ -21,6 +21,7 @@ export const readHelpers = [
   'kn_list_sql(text)',
   'kn_text_sql(text)',
   'kn_filter_sql(jsonb, text)',
+  'kn_versioned_sql(text, text)',
   'kn_search_sql(text, text, text, text, text, halfvec, text[], jsonb, integer, integer, integer)',
   'kn_fetch_sql(text, text, text[])',
   'kn_range_sql(text, text, text, integer, integer)',
@@ -30,7 +31,7 @@ export const readHelpers = [
 ] as const;
 
 const definer = `language plpgsql stable security definer set search_path = pg_catalog, public`;
-const hitColumns = `id text, text text, doc_id text, "position" integer, metadata jsonb, title text, url text, fields jsonb, score double precision, total integer`;
+const hitColumns = `id text, text text, doc_id text, "position" integer, metadata jsonb, title text, url text, fields jsonb, score double precision, total integer, data_version bigint`;
 const hitSelect = `c.id, c.text, c.doc_id, c.position, c.metadata, d.title, d.url, d.fields`;
 
 /** The generation's partition is named by literals, so the planner reads that partition only. */
@@ -62,6 +63,14 @@ const createFunctions = [
   `create or replace function kn_text_sql(p_json text) returns text
      language sql immutable set search_path = pg_catalog, public as $$
      select format('coalesce((select string_agg(e #>> ''{}'', '' '') from jsonb_array_elements(%s) e), '''')', kn_list_sql(p_json)) $$`,
+  // Adds the generation's data version on this server to every row a read statement returns.
+  `create or replace function kn_versioned_sql(p_generation text, p_sql text) returns text
+     language plpgsql stable set search_path = pg_catalog, public as $$
+     declare v bigint;
+     begin
+       select k.data_version into v from kn_generations k where k.generation = p_generation;
+       return format('select s.*, %s::bigint from (%s) s', coalesce(v, 0), p_sql);
+     end $$`,
   // Clauses come normalised by the engine; select, multiselect and boolean are containment on fields,
   // so the partition's jsonb_path_ops index serves them, and integer ranges use its kn_int index.
   `create or replace function kn_filter_sql(p_filters jsonb, p_config text) returns text
@@ -253,22 +262,42 @@ const createFunctions = [
          kn_filter_sql(p_filters, coalesce(cfg, 'norwegian')), ds, g, p_limit, p_offset);
      end $$`,
   // The API passes each cited id with its keyed hash (ADR 0042), which tombstones hold instead of ids.
-  // Issue 139 adds earlier ids ('earlier') and tombstones ('withdrawn', with withdrawn_on) to the body only.
-  `drop function if exists kn_resolve_citation(text, text, text[])`,
   `drop function if exists kn_resolve_citation_sql(text, text, text[])`,
   `create or replace function kn_resolve_citation_sql(p_dataset text, p_generation text, p_ids text[], p_id_hashes text[])
      returns text language plpgsql stable set search_path = pg_catalog, public as $$
+     declare ds text := quote_literal(p_dataset); g text := quote_literal(p_generation);
      begin
-       return format('select d.id, ''found''::text, d.id, d.title, d.url, null::date from kn_docs d
-           where d.dataset = %L and d.generation = %L and d.id = any(%L::text[]) order by d.id',
-         p_dataset, p_generation, p_ids);
+       return format('select c.cited,
+             case when d.id is not null then ''found'' when e.id is not null then ''earlier''
+                  when t.id_hash is not null then ''withdrawn'' else ''unknown'' end,
+             coalesce(d.id, e.id), coalesce(d.title, e.title), coalesce(d.url, e.url),
+             case when d.id is null and e.id is null then t.deleted_on end
+           from unnest(%L::text[], %L::text[]) with ordinality c(cited, id_hash, n)
+           left join kn_docs d on d.dataset = %s and d.generation = %s and d.id = c.cited
+           left join lateral (select x.id, x.title, x.url from src_documents r
+               join kn_docs x on x.dataset = %s and x.generation = %s and x.id = r.id
+               where r.dataset = %s and r.earlier_ids @> array[c.cited] order by r.id limit 1) e on d.id is null
+           left join src_tombstones t on t.dataset = %s and t.id_hash = c.id_hash
+           order by c.n',
+         p_ids, p_id_hashes, ds, g, ds, g, ds, ds);
      end $$`,
+  // Return types gained data_version, which create or replace cannot change.
+  `do $$ declare f regprocedure;
+   begin
+     for f in select p.oid::regprocedure from pg_proc p
+                where p.pronamespace = 'public'::regnamespace
+                  and p.proname in ('kn_search', 'kn_fetch', 'kn_range', 'kn_facets', 'kn_documents', 'kn_resolve_citation')
+                  and not ('data_version' = any(coalesce(p.proargnames, '{}'))) loop
+       execute format('drop function %s', f);
+     end loop;
+   end $$`,
   `create or replace function kn_generation(p_dataset text, p_generation text) returns jsonb ${definer} as $$
      declare v_recipe jsonb;
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       select k.recipe into v_recipe from kn_generations k where k.generation = p_generation;
+       select k.recipe || jsonb_build_object('dataVersion', k.data_version) into v_recipe
+         from kn_generations k where k.generation = p_generation;
        return v_recipe;
      end $$`,
   `create or replace function kn_search(
@@ -278,46 +307,46 @@ const createFunctions = [
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_search_sql(p_dataset, p_generation, p_target, p_mode, p_query, p_vector,
-         p_fields, p_filters, p_limit, p_candidates, p_rrf_k);
+       return query execute kn_versioned_sql(p_generation, kn_search_sql(p_dataset, p_generation, p_target, p_mode, p_query, p_vector,
+         p_fields, p_filters, p_limit, p_candidates, p_rrf_k));
      end $$`,
   `create or replace function kn_fetch(p_dataset text, p_generation text, p_ids text[])
      returns table (${hitColumns}) ${definer} as $$
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_fetch_sql(p_dataset, p_generation, p_ids);
+       return query execute kn_versioned_sql(p_generation, kn_fetch_sql(p_dataset, p_generation, p_ids));
      end $$`,
   `create or replace function kn_range(p_dataset text, p_generation text, p_document text, p_from integer, p_to integer)
      returns table (${hitColumns}) ${definer} as $$
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_range_sql(p_dataset, p_generation, p_document, p_from, p_to);
+       return query execute kn_versioned_sql(p_generation, kn_range_sql(p_dataset, p_generation, p_document, p_from, p_to));
      end $$`,
   `create or replace function kn_facets(p_dataset text, p_generation text, p_fields text[], p_filters jsonb)
-     returns table (field text, value text, count integer) ${definer} as $$
+     returns table (field text, value text, count integer, data_version bigint) ${definer} as $$
      declare f text;
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
        foreach f in array coalesce(p_fields, '{}') loop
-         return query execute kn_facets_sql(p_dataset, p_generation, f, p_filters);
+         return query execute kn_versioned_sql(p_generation, kn_facets_sql(p_dataset, p_generation, f, p_filters));
        end loop;
      end $$`,
   `create or replace function kn_documents(p_dataset text, p_generation text, p_ids text[], p_filters jsonb, p_limit integer, p_offset integer)
-     returns table (id text, title text, url text, fields jsonb, total integer) ${definer} as $$
+     returns table (id text, title text, url text, fields jsonb, total integer, data_version bigint) ${definer} as $$
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_documents_sql(p_dataset, p_generation, p_ids, p_filters, p_limit, p_offset);
+       return query execute kn_versioned_sql(p_generation, kn_documents_sql(p_dataset, p_generation, p_ids, p_filters, p_limit, p_offset));
      end $$`,
   `create or replace function kn_resolve_citation(p_dataset text, p_generation text, p_ids text[], p_id_hashes text[])
-     returns table (cited text, status text, document text, title text, url text, withdrawn_on date) ${definer} as $$
+     returns table (cited text, status text, document text, title text, url text, withdrawn_on date, data_version bigint) ${definer} as $$
      begin
        perform kn_allowed(p_dataset);
        perform kn_attached(p_dataset, p_generation);
-       return query execute kn_resolve_citation_sql(p_dataset, p_generation, p_ids, p_id_hashes);
+       return query execute kn_versioned_sql(p_generation, kn_resolve_citation_sql(p_dataset, p_generation, p_ids, p_id_hashes));
      end $$`,
 ];
 

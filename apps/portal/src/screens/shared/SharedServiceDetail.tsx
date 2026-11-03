@@ -1,3 +1,4 @@
+import { ChevronLeftIcon, PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -15,12 +16,10 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import type { SharedCapability } from '../../data/shared-services';
 import { useT, type T } from '../../i18n';
 import { requestExample, responseExample, type CodeLanguage } from './code';
-
-const back = 'M15 6l-6 6 6 6';
 
 type Status = 'idle' | 'running' | 'done';
 
@@ -157,7 +156,7 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
   return (
     <div className="stack">
       <a href="#/shared-services" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('sharedServices.back')}
       </a>
       <div className="page-head">
@@ -173,7 +172,7 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
           </p>
         </div>
         <a className="ds-button" data-variant="primary" href={builderHref}>
-          <Icon d={icons.plus} />
+          <Icon icon={PlusIcon} />
           {t('sharedServices.useInService')}
         </a>
       </div>

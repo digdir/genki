@@ -1,4 +1,11 @@
 import {
+  BookmarkIcon,
+  PencilIcon,
+  ThumbDownIcon,
+  ThumbUpIcon,
+  XMarkIcon,
+} from '@navikt/aksel-icons';
+import {
   Alert,
   Button,
   Checkbox,
@@ -16,7 +23,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { createFormat } from '@genai/i18n';
 import { useState } from 'react';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconComponent } from '../../components/Icon';
 import {
   piiText,
   qualityFeedback,
@@ -30,14 +37,12 @@ import type { Format, PlainKey } from '../../i18n';
 import type { FeedbackItem } from '../../types';
 import { langOf, type NewCase, type SetFlash } from './shared';
 
-const typeIcon: Record<FeedbackType, string> = {
-  'Tommel opp':
-    'M7 11v9H4v-9z M7 11l4-7c1.5 0 2.5 1 2.5 2.5V10h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.3 20H7',
-  'Tommel ned':
-    'M7 13V4H4v9z M7 13l4 7c1.5 0 2.5-1 2.5-2.5V14h5a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 17.3 4H7',
-  'Endret utkast': 'M4 20h4L19 9l-4-4L4 16z',
-  'Avvist godkjenning': 'M6 6l12 12M18 6L6 18',
-  Flagget: 'M5 21V4h11l-2 4 2 4H5',
+const typeIcon: Record<FeedbackType, IconComponent> = {
+  'Tommel opp': ThumbUpIcon,
+  'Tommel ned': ThumbDownIcon,
+  'Endret utkast': PencilIcon,
+  'Avvist godkjenning': XMarkIcon,
+  Flagget: BookmarkIcon,
 };
 
 const typeColor: Record<FeedbackType, 'success' | 'danger' | 'info' | 'warning'> = {
@@ -363,7 +368,7 @@ export const FeedbackTab = ({
       <li key={x.id} className="feedback-item">
         <div className="row-wrap">
           <Tag data-size="sm" data-color={typeColor[x.type]}>
-            <Icon d={typeIcon[x.type]} size={14} strokeWidth={1.8} />
+            <Icon icon={typeIcon[x.type]} size={14} />
             {t(typeKeys[x.type])}
           </Tag>
           <span className="meta">
