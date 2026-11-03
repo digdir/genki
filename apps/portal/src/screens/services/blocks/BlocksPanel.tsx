@@ -1,3 +1,15 @@
+import {
+  BookIcon,
+  BulletListIcon,
+  ChatIcon,
+  CogIcon,
+  FileTextIcon,
+  FolderIcon,
+  FunnelIcon,
+  NotePencilIcon,
+  RobotIcon,
+} from '@navikt/aksel-icons';
+import type { IconComponent } from '../../../components/Icon';
 import { Divider, Fieldset, Heading, Paragraph, Switch } from '@digdir/designsystemet-react';
 import { Fragment } from 'react';
 import { useT, type PlainKey } from '../../../i18n';
@@ -22,18 +34,16 @@ export const blockLabel: Record<BlockId, PlainKey> = {
   documentView: 'builderBlocks.documentView',
 };
 
-export const blockIcon: Record<BlockId, string> = {
-  projects: 'M3 6h6l2 2h10v11H3z',
-  threads: 'M5 6h14M5 12h14M5 18h9',
-  settings:
-    'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1',
-  chat: 'M5 5h14v10H10l-5 4z',
-  sources: 'M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11M9 8h5',
-  notes: 'M4 20l1-4L16 5l3 3L8 19zM14 7l3 3M13 20h7',
-  filter: 'M4 5h16l-6 7v6l-4 2v-8z',
-  procedure:
-    'M8 8h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3zM12 4v4M10 13v1M14 13v1',
-  documentView: 'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+export const blockIcon: Record<BlockId, IconComponent> = {
+  projects: FolderIcon,
+  threads: BulletListIcon,
+  settings: CogIcon,
+  chat: ChatIcon,
+  sources: BookIcon,
+  notes: NotePencilIcon,
+  filter: FunnelIcon,
+  procedure: RobotIcon,
+  documentView: FileTextIcon,
 };
 
 const blockHelp: Record<BlockId, PlainKey> = {

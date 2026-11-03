@@ -1,3 +1,4 @@
+import { CodeIcon, PaperplaneIcon, SparklesIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -11,7 +12,7 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AssistantProposal, AssistantTurn, ProposalDecision } from '../../api/assistant';
 import { useDeveloperView } from '../../components/developer-view';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import type { ChangeCard, ChatMessage } from '../../data/services';
 import {
@@ -30,9 +31,6 @@ import {
   type TurnEntry,
 } from './assistant/useAssistant';
 import './assistant/assistant.css';
-
-const sendArrow = 'M12 19V5M6 11l6-6 6 6';
-const sparkle = 'M12 3l2 6.5L20.5 12 14 14.5 12 21l-2-6.5L3.5 12 10 9.5z';
 
 interface Props {
   messages: ChatMessage[];
@@ -207,15 +205,7 @@ export const AssistantPanel = ({
           <div className="assistant-empty">
             <div className="assistant-welcome">
               <span className="assistant-mark" aria-hidden="true">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  focusable="false"
-                >
-                  <path d={sparkle} />
-                </svg>
+                <Icon icon={SparklesIcon} size={16} />
               </span>
               <Paragraph data-size="sm">{t('assistant.emptyWelcome')}</Paragraph>
             </div>
@@ -307,7 +297,7 @@ export const AssistantPanel = ({
                     })
                   }
                 >
-                  <Icon d={icons.code} size={16} />
+                  <Icon icon={CodeIcon} size={16} />
                   {t('assistant.showApiCall')}
                 </Button>
               ) : null}
@@ -361,7 +351,7 @@ export const AssistantPanel = ({
             aria-label={t('assistant.send')}
             aria-disabled={!ready || undefined}
           >
-            <Icon d={sendArrow} size={22} />
+            <Icon icon={PaperplaneIcon} size={22} />
           </Button>
         </form>
       </div>

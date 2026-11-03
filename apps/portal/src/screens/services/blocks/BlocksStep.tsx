@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import { Tabs, TabsList, TabsPanel, TabsTab, ToggleGroup } from '@digdir/designsystemet-react';
 import {
   useLayoutEffect,
@@ -218,7 +219,7 @@ export const BlocksFullscreen = ({
   return (
     <div className="blocks-fullscreen">
       <a href={backHref} className="back-link">
-        <Icon d="M15 6l-6 6 6 6" size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('builderBlocks.backToBuilder')}
       </a>
       <ServicePreview

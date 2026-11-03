@@ -20,9 +20,9 @@ import {
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { SparklesIcon } from '@navikt/aksel-icons';
+import { ChevronDownIcon, SparklesIcon, XMarkIcon } from '@navikt/aksel-icons';
 import { useId, useState, type ReactNode } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import {
   exampleDatasets,
   modelFor,
@@ -486,7 +486,7 @@ const Section = ({
             </Tag>
           ) : null}
           <span className={open ? 'chevron open' : 'chevron'}>
-            <Icon d={icons.chevronDown} />
+            <Icon icon={ChevronDownIcon} />
           </span>
         </button>
       </h2>
@@ -878,7 +878,7 @@ export const SetupTab = ({
                   aria-label={t('setup.removeFieldLabel', { name: f.name })}
                   onClick={() => setFields((fs) => fs.filter((_x, j) => j !== i))}
                 >
-                  <Icon d={icons.close} size={18} />
+                  <Icon icon={XMarkIcon} size={18} />
                 </Button>
               </div>
             ))}

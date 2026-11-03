@@ -40,7 +40,11 @@ import {
   openWorkerJobs,
   type WorkerJobs,
 } from './knowledge-jobs.js';
-import { listingFailedMessage, reconcileKnowledgeRuns } from './reconciler.js';
+import {
+  failureBudgetMessage,
+  listingFailedMessage,
+  reconcileKnowledgeRuns,
+} from './reconciler.js';
 
 const ORG = '991825827';
 const OTHER_ORG = '889640782';
@@ -355,6 +359,45 @@ describe('the worker and the knowledge queues', () => {
       error: listingFailedMessage,
       report: { failedDocuments: 1 },
     });
+  }, 90_000);
+
+  it('a run over its failure budget stops and keeps the documents it replaced', async () => {
+    const started = await start(pipeline());
+    await sendIndex(started.id, 'r-1');
+    await sendIndex(started.id, 'r-2');
+    await sendIndex(started.id, 'r-3');
+    const replaced: string[] = [];
+    const index = await work(knowledge(), knowledgeIndexQueue, async ({ job }) => {
+      if (job.data.record.endsWith('r-3')) {
+        replaced.push(job.data.record);
+        return;
+      }
+      throw new Error('the text layer could not be read');
+    });
+    await expect
+      .poll(async () => (await knowledgeStates(started.id, 'knowledge.index.dead')).length, {
+        timeout: 30_000,
+      })
+      .toBe(2);
+    await expect.poll(() => replaced.length, { timeout: 30_000 }).toBe(1);
+    await index();
+    await sendIndex(started.id, 'r-4');
+    const budget = async () => 2;
+    await reconcileKnowledgeRuns({
+      records,
+      servers: jobs.runJobs,
+      lockdown: false,
+      failureBudget: budget,
+    });
+    expect(await run(started.id)).toMatchObject({
+      status: 'cancelled',
+      error: failureBudgetMessage(2),
+      report: { failedDocuments: 2 },
+    });
+    expect(replaced).toEqual([`${started.id}-r-3`]);
+    expect(await knowledgeStates(started.id, 'knowledge.index')).toEqual(
+      expect.arrayContaining(['cancelled']),
+    );
   }, 90_000);
 
   it('the reconciler drops the jobs of a finished run', async () => {

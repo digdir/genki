@@ -1617,6 +1617,26 @@
                   imports: '@genai/schema-forms',
                 },
               },
+              {
+                to: 'docs-content',
+                label: 'Links on the public pages',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/portal/src/screens/about/PublicSite.tsx',
+                  imports: '@genai/docs-content',
+                },
+              },
+              {
+                to: 'docs-site',
+                label: 'Public pages about the platform, signed out',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/portal/src/screens/about/PublicSite.tsx',
+                  imports: '@genai/docs-site',
+                },
+              },
             ],
             keywords: 'portal agency tenant builder publish api keys datasets',
             schemas: [],
@@ -1691,21 +1711,161 @@
             summary:
               'The Norwegian documentation site: building blocks, flows and the target picture, for leaders, service owners and architects.',
             description:
-              'A static site at https://digdir.github.io/genki/ with no API and no sign-in. Its content is written from the README and the ADRs and lives in apps/docs/src/data, so a change to a decision and to the page that explains it can land in the same pull request.',
+              'A static site at https://digdir.github.io/genki/ with no API and no sign-in. It is a thin shell (header, footer, theme) around the pages in packages/docs-site, and its content is written from the README and the ADRs and lives in packages/docs-content. The portal shows the same pages signed out, so a change to a decision and to the page that explains it can land in the same pull request.',
             responsibilities: [
               'Explain the platform without reading code',
               'Show each flow step by step through the building blocks',
               'Link every building block to its ADRs and packages',
             ],
-            files: [
-              'apps/docs/src/App.tsx',
-              'apps/docs/src/data/blocks.ts',
-              'apps/docs/src/data/malbilde.ts',
-              'apps/docs/src/components/ArchitectureDiagram.tsx',
-            ],
+            files: ['apps/docs/src/App.tsx', 'apps/docs/src/main.tsx'],
             input: 'Readers',
             output: 'Links into the repository',
+            edges: [
+              {
+                to: 'docs-content',
+                label: 'Links in the header and footer',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/docs/src/App.tsx', imports: '@genai/docs-content' },
+              },
+              {
+                to: 'docs-site',
+                label: 'Renders the shared pages, figures and search',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/docs/src/App.tsx', imports: '@genai/docs-site' },
+              },
+            ],
             keywords: 'docs documentation site pages norwegian målbilde byggeklosser flyt',
+            schemas: [],
+          },
+          {
+            id: 'docs-content',
+            plane: 'consumers',
+            name: 'Docs content',
+            note: 'One copy of the Norwegian platform content',
+            icon: 'ui',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/docs-content'],
+            summary:
+              'The building blocks, flows, service types and target picture, in Norwegian, rendered by the shared docs pages in the docs site and the portal.',
+            description:
+              "Plain data with no React and no styling. The docs site on GitHub Pages and the portal's public pages under /about render the same content, so a change to a decision and to the text that explains it lands in one place.",
+            responsibilities: [
+              'Hold the building blocks, their parts, the flows and the service types',
+              'Hold the target picture',
+              'Link each building block to its ADRs and packages',
+            ],
+            files: [
+              'packages/docs-content/src/blocks.ts',
+              'packages/docs-content/src/components.ts',
+              'packages/docs-content/src/malbilde.ts',
+              'packages/docs-content/src/service-types.ts',
+            ],
+            input: 'Content written from the README and the ADRs',
+            output: 'Typed content for the docs site and the portal',
+            replaces: [],
+            edges: [],
+            keywords: 'docs content data norwegian byggeklosser målbilde flyt shared',
+            schemas: [],
+          },
+          {
+            id: 'docs-site',
+            plane: 'consumers',
+            name: 'Docs site pages',
+            note: 'One copy of the docs pages, figures and search',
+            icon: 'ui',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/docs-site'],
+            summary:
+              "The pages, figures and search of the docs site, rendered by the docs site on GitHub Pages and by the portal's public pages.",
+            description:
+              'React pages for the overview, target picture, building blocks, service types, flows, status labels, search and getting started, with the architecture figure, fullscreen figures and a MiniSearch index over the shared content. The routing is configurable, so the docs site keeps its own addresses and the portal serves the same pages under /about. The stylesheet is scoped under one root class, and labels come in bokmål and English.',
+            responsibilities: [
+              'Render the docs pages and figures from the shared content',
+              'Search the content in the browser',
+              'Route under a prefix chosen by the app',
+            ],
+            files: [
+              'packages/docs-site/src/DocsPage.tsx',
+              'packages/docs-site/src/router.ts',
+              'packages/docs-site/src/components/ArchitectureDiagram.tsx',
+              'packages/docs-site/src/search/index.ts',
+              'packages/docs-site/src/styles.css',
+            ],
+            input: 'The shared content and a route',
+            output: 'Rendered pages',
+            replaces: [],
+            edges: [
+              {
+                to: 'docs-content',
+                label: 'Content for every page',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/docs-site/src/search/index.ts',
+                  imports: '@genai/docs-content',
+                },
+              },
+              {
+                to: 'i18n',
+                label: 'Labels in bokmål and English',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/docs-site/src/i18n.ts', imports: '@genai/i18n' },
+              },
+            ],
+            keywords:
+              'docs pages figures search minisearch fullscreen målbilde byggeklosser flyt shared',
+            schemas: [],
+          },
+          {
+            id: 'admin-mcp',
+            plane: 'consumers',
+            name: 'Admin MCP',
+            note: 'Coding agents work on genki',
+            icon: 'chart',
+            color: '#f2b84b',
+            status: 'App',
+            packages: ['@genai/admin-mcp'],
+            summary:
+              'A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.',
+            description:
+              "Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token stays in memory. Tools list services, read a definition as YAML, validate and publish it with a change reason, run the playground with a compared setup, and list and read runs with their timelines. Secrets, keys, rights and operator routes are left out.",
+            responsibilities: [
+              'MCP tools over the definition, playground and task routes',
+              'Browser login with PKCE and a localhost callback',
+              'Validate before publish, and a required change reason',
+            ],
+            files: [
+              'apps/admin-mcp/src/main.ts',
+              'apps/admin-mcp/src/tools.ts',
+              'apps/admin-mcp/src/login.ts',
+              'apps/admin-mcp/src/protocol.ts',
+            ],
+            input: 'Tool calls from a coding agent',
+            output: 'Requests to the API as the person who logged in',
+            replaces: [],
+            edges: [
+              {
+                to: 'api',
+                label: 'Definitions, playground runs and run timelines',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/admin-mcp/src/tools.ts', contains: '/definitions/validate' },
+              },
+              {
+                to: 'ansattporten',
+                label: 'Browser login with PKCE',
+                kind: 'http',
+                target: 'http',
+                witness: { file: 'apps/admin-mcp/src/login.ts', contains: 'code_challenge' },
+              },
+            ],
+            keywords:
+              'admin mcp coding agent claude code copilot publish validate playground timeline',
             schemas: [],
           },
           {
@@ -2387,6 +2547,8 @@
               'Read published services from the definition store and re-bind triggers when they change',
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
+              'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
+              "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
             ],
             files: [
@@ -2398,6 +2560,7 @@
               'apps/worker/src/platform-work.ts',
               'apps/worker/src/knowledge-jobs.ts',
               'apps/worker/src/reconciler.ts',
+              'apps/worker/src/knowledge-handlers.ts',
             ],
             input: 'Files in blob folders, schedules',
             output: 'Results written back to blob storage',
@@ -2458,6 +2621,44 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-pgboss' },
+              },
+              {
+                to: 'ingest',
+                label:
+                  'Lists sources, plans runs against document records and indexes one document',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/ingest',
+                },
+              },
+              {
+                to: 'port-knowledge',
+                label: 'Reads the dataset config of a knowledge run',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/port-knowledge',
+                },
+              },
+              {
+                to: 'port-embedding',
+                label: 'Embeds chunks in knowledge.index',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/port-embedding',
+                },
+              },
+              {
+                to: 'providers-documents',
+                label: 'Converts documents with the text layer',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-documents' },
               },
             ],
             keywords: 'worker triggers batch schedule folder jobs',
@@ -5168,12 +5369,23 @@
               'Kudos, website and folder loaders',
               'Conversion and chunking',
               'Phrase extraction with a model',
+              'The pipeline spec and its sources, shared by the API and the worker',
+              {
+                'Knowledge listings':
+                  'list a source without fetching what its listing can compare, and load one document from its record',
+              },
+              {
+                'Document records on the knowledge database':
+                  "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
+              },
             ],
             files: [
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
               'packages/ingest/src/chunking.ts',
+              'packages/ingest/src/pipeline-sources.ts',
+              'packages/ingest/src/document-records.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -6365,6 +6577,8 @@
               'packages/port-knowledge/src/port.ts',
               'packages/port-knowledge/src/router.ts',
               'packages/port-knowledge/src/catalog.ts',
+              'packages/port-knowledge/src/records.ts',
+              'packages/port-knowledge/src/tombstone.ts',
             ],
             input: 'Query + filters',
             output: 'Hits',
@@ -7876,7 +8090,7 @@
             summary:
               "Built-in search engine and index writer in the platform's own Postgres or on the knowledge server.",
             description:
-              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles and stores the platform server's id there. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
+              "Hybrid search with Norwegian full text and pgvector, fused with RRF in one statement. Datasets are kept apart by id, filters and facets are parameterised SQL, and new generations stay invisible until promoted. It runs in the platform database (ADR 0023), or, for an endpoint set to `connection` knowledge, on the knowledge server through the API's reader pool or the worker's writer and owner pools, never the platform database (ADR 0042). Its setup creates the three knowledge roles, stores the platform server's id there and lets only its two logins connect to the database. On the knowledge server each generation is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog names the active one. There the API reads only through seven SECURITY DEFINER read functions that refuse a dataset the router did not allow, on a read pool that falls back to the primary when a server lacks the generation or does not answer.",
             responsibilities: [
               'Text, vector and hybrid search',
               'Filters, facets, fetch and range',
@@ -7892,6 +8106,7 @@
               'packages/providers-pgvector/src/knowledge-writer.ts',
               'packages/providers-pgvector/src/knowledge-reads.ts',
               'packages/providers-pgvector/src/read-functions.ts',
+              'packages/providers-pgvector/src/knowledge-records.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',

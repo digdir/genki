@@ -1,5 +1,8 @@
 import {
   KnowledgeError,
+  tombstoneHash,
+  type CitationResolution,
+  type CitationStatus,
   type DatasetConfig,
   type DatasetEmbedding,
   type FacetValue,
@@ -23,6 +26,18 @@ interface HitRow {
   fields: Record<string, unknown>;
   score: number | null;
   total: number | null;
+}
+
+/** Every read function's rows carry the generation's data version on the server that answered (bigint, as text). */
+type Versioned<R> = R & { data_version: string };
+
+interface CitationRow {
+  cited: string;
+  status: CitationStatus;
+  document: string | null;
+  title: string | null;
+  url: string | null;
+  withdrawn_on: string | null;
 }
 
 interface Recipe {
@@ -83,6 +98,8 @@ export const knowledgeReads = <D>(
   const { primary } = options;
   const read = options.read === primary ? undefined : options.read;
   const recipes = new Map<string, Recipe>();
+  // Keyed by the dataset config the router hands each read and then `served`, so one port's reads never report another's.
+  const answered = new WeakMap<DatasetConfig<D>, number>();
 
   const attempt = async <T>(
     pool: Pool,
@@ -171,10 +188,47 @@ export const knowledgeReads = <D>(
     return found;
   };
 
+  /** Runs one read function and keeps the data version of the server whose rows it returns, asking that server when there are none. */
+  const versioned = async <R extends object>(
+    dataset: DatasetConfig<D>,
+    signal: AbortSignal,
+    sql: string,
+    values: (g: string) => unknown[],
+    vectors = false,
+  ): Promise<R[]> => {
+    const answer = await reading(
+      dataset,
+      signal,
+      undefined,
+      async (c, g) => {
+        const { rows } = await c.query<Versioned<R>>(sql, values(g));
+        const version =
+          rows[0]?.data_version ??
+          (
+            await c.query<{ version: string | null }>(
+              `select kn_generation($1, $2)->>'dataVersion' as version`,
+              [dataset.id, g],
+            )
+          ).rows[0]?.version;
+        return { rows, version: version == null ? undefined : Number(version) };
+      },
+      vectors,
+    );
+    if (answer?.version !== undefined) answered.set(dataset, answer.version);
+    return answer?.rows ?? [];
+  };
+
   const hits = (rows: HitRow[]) => rows.map(hitOf);
 
   return {
-    served: async (dataset) => (dataset.generation ? { generation: dataset.generation } : {}),
+    served: async (dataset) => {
+      if (!dataset.generation) return {};
+      const dataVersion = answered.get(dataset);
+      return {
+        generation: dataset.generation,
+        ...(dataVersion === undefined ? {} : { dataVersion }),
+      };
+    },
     search: async (dataset, requests, signal) => {
       const built = await recipe(dataset, signal);
       if (!built) return requests.map(() => ({ hits: [], found: 0 }));
@@ -185,98 +239,77 @@ export const knowledgeReads = <D>(
       };
       return options.searchBatch(asBuilt, requests, signal, async (p, request, vector) => {
         const limit = request.limit ?? 10;
-        const rows = await reading(
+        const rows = await versioned<HitRow>(
           dataset,
           signal,
-          [] as HitRow[],
-          async (c, g) =>
-            (
-              await c.query<HitRow>(
-                `select * from kn_search($1, $2, $3, $4, $5, $6::halfvec, $7::text[], $8::jsonb, $9, $10, $11)`,
-                [
-                  dataset.id,
-                  g,
-                  p.target,
-                  p.mode,
-                  request.query,
-                  vector === undefined ? null : JSON.stringify(vector),
-                  p.fields ?? null,
-                  JSON.stringify(filterRows(dataset, request.filters)),
-                  limit,
-                  Math.max(limit * 4, 50),
-                  options.rrfK(dataset),
-                ],
-              )
-            ).rows,
+          `select * from kn_search($1, $2, $3, $4, $5, $6::halfvec, $7::text[], $8::jsonb, $9, $10, $11)`,
+          (g) => [
+            dataset.id,
+            g,
+            p.target,
+            p.mode,
+            request.query,
+            vector === undefined ? null : JSON.stringify(vector),
+            p.fields ?? null,
+            JSON.stringify(filterRows(dataset, request.filters)),
+            limit,
+            Math.max(limit * 4, 50),
+            options.rrfK(dataset),
+          ],
           vector !== undefined,
         );
         return { hits: hits(rows), found: rows[0]?.total ?? 0 };
       });
     },
     fetch: async (dataset, ids, signal) => {
-      const rows = await reading(dataset, signal, [] as HitRow[], async (c, g) => {
-        const { rows } = await c.query<HitRow>(`select * from kn_fetch($1, $2, $3::text[])`, [
-          dataset.id,
-          g,
-          ids,
-        ]);
-        return rows;
-      });
+      const rows = await versioned<HitRow>(
+        dataset,
+        signal,
+        `select * from kn_fetch($1, $2, $3::text[])`,
+        (g) => [dataset.id, g, ids],
+      );
       const byId = new Map(rows.map((r) => [r.id, hitOf(r)]));
       return ids.flatMap((id) => byId.get(id) ?? []);
     },
     range: async (dataset, document, from, to, signal) =>
       hits(
-        await reading(dataset, signal, [] as HitRow[], async (c, g) => {
-          const { rows } = await c.query<HitRow>(`select * from kn_range($1, $2, $3, $4, $5)`, [
-            dataset.id,
-            g,
-            document,
-            from,
-            to,
-          ]);
-          return rows;
-        }),
+        await versioned<HitRow>(
+          dataset,
+          signal,
+          `select * from kn_range($1, $2, $3, $4, $5)`,
+          (g) => [dataset.id, g, document, from, to],
+        ),
       ),
     facets: async (dataset, fields, filters, signal) => {
-      const rows = await reading(
+      const rows = await versioned<{ field: string; value: string; count: number }>(
         dataset,
         signal,
-        [] as { field: string; value: string; count: number }[],
-        async (c, g) =>
-          (
-            await c.query<{ field: string; value: string; count: number }>(
-              `select * from kn_facets($1, $2, $3::text[], $4::jsonb)`,
-              [dataset.id, g, fields, JSON.stringify(filterRows(dataset, filters))],
-            )
-          ).rows,
+        `select * from kn_facets($1, $2, $3::text[], $4::jsonb)`,
+        (g) => [dataset.id, g, fields, JSON.stringify(filterRows(dataset, filters))],
       );
       const result: Record<string, FacetValue[]> = Object.fromEntries(fields.map((f) => [f, []]));
       for (const row of rows) result[row.field]?.push({ value: row.value, count: row.count });
       return result;
     },
     documents: async (dataset, request, signal) => {
-      const rows = await reading(
+      const rows = await versioned<{
+        id: string | null;
+        title: string | null;
+        url: string | null;
+        fields: Record<string, unknown>;
+        total: number;
+      }>(
         dataset,
         signal,
-        [] as {
-          id: string | null;
-          title: string | null;
-          url: string | null;
-          fields: Record<string, unknown>;
-          total: number;
-        }[],
-        async (c, g) =>
-          (
-            await c.query(`select * from kn_documents($1, $2, $3::text[], $4::jsonb, $5, $6)`, [
-              dataset.id,
-              g,
-              request.ids ?? null,
-              JSON.stringify(filterRows(dataset, request.filters)),
-              request.limit ?? 100,
-              request.offset ?? 0,
-            ])
-          ).rows,
+        `select * from kn_documents($1, $2, $3::text[], $4::jsonb, $5, $6)`,
+        (g) => [
+          dataset.id,
+          g,
+          request.ids ?? null,
+          JSON.stringify(filterRows(dataset, request.filters)),
+          request.limit ?? 100,
+          request.offset ?? 0,
+        ],
       );
       // A page past the end is one row with no id that still carries the count.
       return {
@@ -290,6 +323,28 @@ export const knowledgeReads = <D>(
           })),
         found: rows[0]?.total ?? 0,
       };
+    },
+    resolveCitations: async (dataset, ids, signal) => {
+      const rows = await versioned<CitationRow>(
+        dataset,
+        signal,
+        `select cited, status, document, title, url, withdrawn_on::text, data_version
+           from kn_resolve_citation($1, $2, $3::text[], $4::text[])`,
+        (g) => [dataset.id, g, ids, ids.map((id) => tombstoneHash(dataset.id, id))],
+      );
+      const byId = new Map(rows.map((r) => [r.cited, r]));
+      return ids.map((cited): CitationResolution => {
+        const row = byId.get(cited);
+        if (!row) return { cited, status: 'unknown' };
+        return {
+          cited,
+          status: row.status,
+          ...(row.document === null ? {} : { document: row.document }),
+          ...(row.title === null ? {} : { title: row.title }),
+          ...(row.url === null ? {} : { url: row.url }),
+          ...(row.withdrawn_on === null ? {} : { withdrawnOn: row.withdrawn_on }),
+        };
+      });
     },
   };
 };

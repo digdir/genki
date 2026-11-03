@@ -1,10 +1,11 @@
+import { CodeIcon } from '@navikt/aksel-icons';
 import { Alert, Link, Paragraph, Tag } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { useT } from '../i18n';
 import { publicApiBase } from '../public-api';
 import { CopyButton } from './CopyButton';
 import { useDeveloperView } from './developer-view';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 import { SidePanel } from './SidePanel';
 
 export interface ApiCallPreview {
@@ -137,7 +138,7 @@ export const ApiCallLink = ({ call, width }: { call: ApiCallPreview; width?: Api
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
-        <Icon d={icons.code} size={16} />
+        <Icon icon={CodeIcon} size={16} />
         {t('common.apiCall')}
       </button>
       {open ? <ApiCallPanel call={call} width={width} onClose={() => setOpen(false)} /> : null}

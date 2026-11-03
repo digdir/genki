@@ -7,7 +7,14 @@ import {
   Paragraph,
   ToggleGroup,
 } from '@digdir/designsystemet-react';
-import { CogIcon } from '@navikt/aksel-icons';
+import {
+  ArrowCirclepathIcon,
+  ChevronDownIcon,
+  CogIcon,
+  ExpandIcon,
+  ShrinkIcon,
+  XMarkIcon,
+} from '@navikt/aksel-icons';
 import {
   cloneElement,
   isValidElement,
@@ -16,7 +23,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Icon, icons } from '../../../components/Icon';
+import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockIcon, blockLabel } from './BlocksPanel';
 import {
@@ -31,10 +38,10 @@ import {
 
 export type PreviewMode = 'setup' | 'try';
 
-const paths = {
-  reload: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',
-  expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
-  collapse: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+const controlIcons = {
+  reload: ArrowCirclepathIcon,
+  expand: ExpandIcon,
+  collapse: ShrinkIcon,
 };
 
 /** The width the frame has to draw on, measured as it changes. */
@@ -114,7 +121,7 @@ export const ServicePreview = ({
           aria-label={t('builderBlocks.reload')}
           onClick={onReload}
         >
-          <Icon d={paths.reload} />
+          <Icon icon={controlIcons.reload} />
         </Button>
         <span className="service-preview-address">{address}</span>
         {onFullscreen ? (
@@ -125,7 +132,7 @@ export const ServicePreview = ({
             aria-label={t('builderBlocks.fullscreen')}
             onClick={onFullscreen}
           >
-            <Icon d={paths.expand} />
+            <Icon icon={controlIcons.expand} />
           </Button>
         ) : null}
         {onExitFullscreen ? (
@@ -136,7 +143,7 @@ export const ServicePreview = ({
             aria-label={t('builderBlocks.exitFullscreen')}
             onClick={onExitFullscreen}
           >
-            <Icon d={paths.collapse} />
+            <Icon icon={controlIcons.collapse} />
           </Button>
         ) : null}
       </div>
@@ -202,7 +209,7 @@ const SetupPanel = ({
                 aria-label={t('builderBlocks.removeBlock', { block: t(blockLabel[id]) })}
                 onClick={() => onRemove(id)}
               >
-                <Icon d={icons.close} size={16} />
+                <Icon icon={XMarkIcon} size={16} />
               </Button>
             </li>
           </Card>
@@ -260,7 +267,7 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
       {mode === 'heading' ? (
         <>
           <Heading level={3} data-size="2xs" className="try-tool-heading">
-            <Icon d={blockIcon[active]} />
+            <Icon icon={blockIcon[active]} />
             {t(blockLabel[active])}
           </Heading>
           <TryBlock id={active} chat={chat} where="right" />
@@ -278,7 +285,7 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
           >
             {ids.map((id) => (
               <ToggleGroup.Item key={id} value={id}>
-                <Icon d={blockIcon[id]} />
+                <Icon icon={blockIcon[id]} />
                 {t(blockLabel[id])}
               </ToggleGroup.Item>
             ))}
@@ -296,10 +303,10 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
               aria-label={`${t(blockLabel[active])}, ${t('builderBlocks.toolPicker')}`}
             >
               <span className="try-tool-heading">
-                <Icon d={blockIcon[active]} />
+                <Icon icon={blockIcon[active]} />
                 {t(blockLabel[active])}
               </span>
-              <Icon d={icons.chevronDown} size={18} />
+              <Icon icon={ChevronDownIcon} size={18} />
             </Dropdown.Trigger>
             <Dropdown data-size="sm" placement="bottom-start" ref={menu}>
               <Dropdown.List>
@@ -312,7 +319,7 @@ const TryRight = ({ ids, chat }: { ids: BlockId[]; chat: ReactNode }) => {
                         menu.current?.hidePopover();
                       }}
                     >
-                      <Icon d={blockIcon[id]} />
+                      <Icon icon={blockIcon[id]} />
                       {t(blockLabel[id])}
                     </Dropdown.Button>
                   </Dropdown.Item>

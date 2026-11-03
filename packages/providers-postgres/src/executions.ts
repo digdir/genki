@@ -10,6 +10,11 @@ export interface IngestionExecutionReport {
   failed: string[];
   /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
   failedDocuments?: number;
+  /** For a run on the knowledge database: what its listing found against its pipeline's records. */
+  new?: number;
+  changed?: number;
+  deleted?: number;
+  unchanged?: number;
 }
 
 export interface IngestionExecution {

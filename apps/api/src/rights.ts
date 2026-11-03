@@ -72,8 +72,8 @@ const objectOf = (value: unknown): Record<string, unknown> =>
 const borrowsTenantSecret = (input: ActionInput) => {
   const source = objectOf(objectOf(input.spec).source);
   if (source.kind !== 'database') return false;
-  const password = String(objectOf(source.connection).password ?? '');
-  return !/\/connector-[a-z0-9-]+$/.test(password);
+  const password = objectOf(source.connection).password;
+  return typeof password !== 'string' || password !== input.connectorSecret;
 };
 const pipelineSave = (input: ActionInput): ActionRequirement =>
   borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';

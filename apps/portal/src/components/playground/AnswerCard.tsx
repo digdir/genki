@@ -1,3 +1,4 @@
+import { CodeIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Details, Heading, Link, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
@@ -17,7 +18,7 @@ import {
 } from '../../data/playground';
 import { useT, type T } from '../../i18n';
 import { AnswerMarkdown, type CiteRenderer } from '../AnswerMarkdown';
-import { Icon, icons } from '../Icon';
+import { Icon } from '../Icon';
 import { ResultTableView, tableFrom } from '../ResultTable';
 
 const citedOrder = (result: PlaygroundResult) => {
@@ -288,7 +289,7 @@ export const AnswerCard = ({
                       )
                     }
                   >
-                    <Icon d={icons.info} size={16} />
+                    <Icon icon={InformationSquareIcon} size={16} />
                   </Button>
                   {excerpts.length ? (
                     <Details data-size="sm">
@@ -351,7 +352,7 @@ export const AnswerCard = ({
               {t('playground.saveAsTest')}
             </Button>
             <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-              <Icon d={icons.code} size={18} />
+              <Icon icon={CodeIcon} size={18} />
               {t('common.apiCall')}
             </Button>
           </div>

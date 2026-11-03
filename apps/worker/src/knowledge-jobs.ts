@@ -45,6 +45,8 @@ export interface WorkerJobServers<Pool> {
   markerTimeoutMs: number;
   /** The platform queues the worker works, each with its handler. */
   work: QueueWork[];
+  /** The knowledge server's queues the worker works, each with its handler. */
+  knowledgeWork?: QueueWork[];
   open: OpenJobQueue<Pool>;
   runJobs: (pool: Pool, jobs: JobQueue, queues: QueueDefinition[]) => RunJobs;
   onError?: (error: unknown) => void;
@@ -58,8 +60,8 @@ export interface WorkerJobs {
 }
 
 /**
- * Installs the job queues on both servers and works the platform queues that have handlers. The
- * knowledge queues are installed and not worked until their handlers exist (#139, #140, #141).
+ * Installs the job queues on both servers and works the queues that have handlers on each:
+ * `knowledge.ingest` and `knowledge.index` since issue 139; the rest come with #140 and #141.
  */
 export const openWorkerJobs = async <Pool>(
   servers: WorkerJobServers<Pool>,
@@ -81,6 +83,7 @@ export const openWorkerJobs = async <Pool>(
     queues,
     { worker: knowledgeWriterRole, readers: [knowledgeReaderRole], works: true, ...onError },
   );
+  await workQueues(knowledge, servers.knowledgeWork ?? []);
   runJobs.push(servers.runJobs(servers.knowledge.writer, knowledge, queues));
   return { platform, knowledge, runJobs };
 };

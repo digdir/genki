@@ -18,11 +18,9 @@ import {
   type ParquetFile,
   type ParquetLookup,
   type ParquetLookupTable,
+  type ParquetSourceSpec as ParquetSpec,
 } from '@genai/ingest';
 import type { ParquetAccess } from './index-ingestion.js';
-import type { PipelineSpec } from './ingestion.js';
-
-type ParquetSpec = Extract<PipelineSpec['source'], { kind: 'parquet' }>;
 export const parquetReadTimeoutMs = 120_000;
 export const defaultParquetMaxBytes = 1024 * 1024 * 1024;
 const maxShards = 1000;

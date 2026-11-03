@@ -16,6 +16,64 @@ type KnowledgeTable = (typeof knowledgeTables)[number];
 const defaultLockTimeoutMs = 5000;
 const generationId = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+/**
+ * Document records (ADR 0042, "What is stored"): one row per document and dataset, owned by the
+ * pipelines that list it; its files; tombstones of deleted documents, holding only the id's hash and
+ * the date; and the dataset's change sequence. `kn_applied` keeps the change each generation has
+ * applied for each document, stored or skipped, so its data version can be read.
+ */
+const recordMigrations: string[] = [
+  `create table if not exists src_changes (
+     dataset text primary key,
+     last_change bigint not null default 0
+   )`,
+  `create table if not exists src_documents (
+     number bigserial unique,
+     dataset text not null,
+     id text not null,
+     owners text[] not null,
+     record jsonb not null,
+     metadata_hash text not null,
+     state text check (state in ('stored', 'skipped', 'failed', 'deleted')),
+     reason text,
+     last_seen timestamptz not null default now(),
+     missing integer not null default 0,
+     gone integer not null default 0,
+     earlier_ids text[] not null default '{}',
+     change bigint not null,
+     primary key (dataset, id)
+   )`,
+  `create index if not exists src_documents_earlier on src_documents using gin (earlier_ids)`,
+  `create index if not exists src_documents_change on src_documents (dataset, change)`,
+  `create table if not exists src_files (
+     dataset text not null,
+     document text not null,
+     file text not null,
+     sha256 text,
+     fetch_from jsonb not null default '{}',
+     state text check (state in ('stored', 'skipped', 'failed')),
+     change bigint not null,
+     primary key (dataset, document, file),
+     foreign key (dataset, document) references src_documents (dataset, id) on delete cascade
+   )`,
+  `create table if not exists src_tombstones (
+     dataset text not null,
+     id_hash text not null,
+     deleted_on date not null,
+     primary key (dataset, id_hash)
+   )`,
+  `create table if not exists kn_applied (
+     generation text not null,
+     dataset text not null,
+     id text not null,
+     change bigint not null,
+     primary key (generation, id)
+   )`,
+  `alter table kn_generations add column if not exists data_version bigint not null default 0`,
+  `alter table src_documents add column if not exists gone_run text`,
+  `alter table kn_applied add column if not exists applied_at timestamptz not null default now()`,
+];
+
 const migrations: string[] = [
   `create table if not exists kn_generations (
      generation text primary key,
@@ -83,8 +141,12 @@ const migrations: string[] = [
   `create or replace function kn_text(v jsonb) returns text
      language sql immutable parallel safe
      as $$ select case when jsonb_typeof(v) = 'string' then v #>> '{}' end $$`,
+  ...recordMigrations,
   `grant select, insert, update, delete on kn_docs, kn_chunks, kn_phrases to ${knowledgeRoles.writer}`,
   `grant select on kn_generations to ${knowledgeRoles.writer}`,
+  `grant update (recipe, data_version) on kn_generations to ${knowledgeRoles.writer}`,
+  `grant select, insert, update, delete on src_changes, src_documents, src_files, src_tombstones, kn_applied to ${knowledgeRoles.writer}`,
+  `grant usage, select on sequence src_documents_number_seq to ${knowledgeRoles.writer}`,
   // Functions are executable by PUBLIC when created; the reader reaches data only through the read functions.
   `revoke execute on function kn_int(jsonb), kn_text(jsonb) from public`,
   `grant execute on function kn_int(jsonb), kn_text(jsonb) to ${knowledgeRoles.writer}`,
@@ -389,5 +451,6 @@ export const dropGeneration = (
         );
     for (const table of knowledgeTables)
       await client.query(`drop table if exists ${partitionOf(table, generation)}`);
+    await client.query(`delete from kn_applied where generation = $1`, [generation]);
     await client.query(`delete from kn_generations where generation = $1`, [generation]);
   });

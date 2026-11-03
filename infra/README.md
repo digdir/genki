@@ -17,6 +17,8 @@ Bicep for genki's Azure environments: test (`env/test.bicepparam`, `genki-test.d
 | Log Analytics and Application Insights     | The environment's managed OpenTelemetry agent sends traces and logs to Application Insights                 |
 | DNS zone (optional, `createDnsZone`)       | `genki-test.digdir.cloud` or `genki.digdir.cloud` with a CNAME and a validation TXT record per host name    |
 
+From `KNOWLEDGE_SERVER_STAGE=server` on, also the environment's knowledge server in a network of its own, the knowledge identities and the principals job: see [Knowledge server](#knowledge-server).
+
 ## The containers
 
 One `Dockerfile`, three targets:
@@ -37,6 +39,8 @@ They also hold `/app/genki-docs`: the documentation the GenKI guide answers from
 
 The `apps` image holds all three app builds; `APP` picks which one a container serves. Settings are read at start, not at build: the container writes `/config.js` from its environment (`ANSATTPORTEN_ISSUER`, `OIDC_CLIENT_ID`, `API_AUDIENCE`, `ALTINN_RESOURCE`, `PUBLIC_API_BASE`, `PORTAL_URL`, and for the console `OIDC_ISSUER`, `OIDC_TOKEN_ENDPOINT`, `ENVIRONMENT`), so one image runs in every environment. It proxies `/api/` to the API (`API_UPSTREAM`), so the browser talks to one origin and the API needs no CORS. The proxy drops `/api` and forwards the rest of the request URI as the browser sent it, so encoded slashes in ids such as `digdir%2Fkudos` reach the API still encoded. The Azure ingress in front of the API decodes `%2F` anyway, so the API also accepts these ids with a plain slash (`/operator/datasets/digdir/kudos/pipelines`) and reads them as the encoded form (`apps/api/src/decoded-ids.ts`). It sends a Content Security Policy that allows connections to the login issuer only.
 
+The API writes one JSON line to its console log for each request slower than `SLOW_REQUEST_MS` (500 ms by default): `{"msg":"request","method":"GET","route":"/tenants/:tenant/overview","status":200,"ms":1234}`. It names the route pattern, never the ids in the path or the query string. `LOG_REQUESTS=true` logs every request the same way.
+
 ## Database
 
 The API and worker log in to Postgres with the app's managed identity and an Entra ID token as the password (`PGHOST`, `PGUSER`, `PGDATABASE`, `PGSSLMODE`, `AZURE_CLIENT_ID`). The token is fetched when a connection opens and reused until five minutes before it expires. `DATABASE_URL` still wins when set, which is how local development connects.
@@ -44,6 +48,71 @@ The API and worker log in to Postgres with the app's managed identity and an Ent
 The app identity owns the schema and runs migrations. Queries run as `genai_runtime` (no BYPASSRLS), switched per connection with the `role` option, so row-level security applies (ADR 0022). The worker switches to `genai_worker` instead: a member of `genai_runtime` with the same row-level security, and of the roles the apps run queries as, the only one with rights on the `pgboss` job tables (ADR 0041). The migration creates both roles and lets the app identity switch to them.
 
 The server allows the `vector` extension through its `azure.extensions` setting (`VECTOR`, in `modules/postgres.bicep`, for test and prod alike). Azure Postgres refuses `create extension` for any extension not on that list, and the pgvector engine creates `vector` when it first migrates. To allow more extensions later, add them to the same comma-separated value.
+
+## Knowledge server
+
+Each environment has a knowledge server of its own (ADR 0042), set up as its platform server is: private access in a delegated subnet, its own private DNS zone, Entra ID auth only. Each holds only its own environment's data and is bound to its own platform server. Test's starts now; prod's is in the template, switched on with the same steps when genki prod runs.
+
+| Resource                                           | Notes                                                                                                                                                                                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `genai-<env>-knowledge-vnet`                       | Test `10.43.0.0/24`, prod `10.42.0.0/24`: one delegated `postgres` subnet, peered both ways with `genai-<env>-vnet`. A server can never move network, so a network peered with it later reaches only the knowledge server |
+| `genai-<env>-knowledge-<suffix>`, PostgreSQL 17    | `Standard_D2ds_v5` (2 vCores, 8 GiB) and 64 GB in both to start, 7-day backups, not geo-redundant, no standby, all `knowledgePostgres*` parameters. Database `genai_knowledge`                                            |
+| Its private DNS zone                               | `genai-<env>-knowledge-<suffix>.private.postgres.database.azure.com`, linked to the knowledge network and the environment's own                                                                                           |
+| `genai-<env>-knowledge-api-id`, `-worker-id`       | The API's and the worker's own logins: the API's may act only as `genai_knowledge_reader`, the worker's as the writer and the owner                                                                                       |
+| `genai-<env>-knowledge-admin-id`                   | An Entra admin of the environment's knowledge server beside its admin group, held only by its principals job                                                                                                              |
+| `genai-<env>-knowledge-setup` (Container Apps job) | Started by hand: makes the two logins and sets up the database                                                                                                                                                            |
+
+- **Settings:** `azure.extensions` is `VECTOR,PG_PREWARM` and `shared_preload_libraries` is `pg_stat_statements,pg_prewarm` (PostgreSQL 17's default is `pg_stat_statements`). `shared_preload_libraries` is static: the server takes it only after a restart ([Azure: set a parameter](https://learn.microsoft.com/en-us/azure/postgresql/parameters/how-to-parameters-set-value)).
+- **Size:** start small and grow. Compute moves up or down with a restart, 10 to 30 seconds with Azure's near-zero downtime scaling ([Azure: scaling](https://learn.microsoft.com/en-us/azure/postgresql/scale/concepts-scaling-resources)); the disk only grows, and autogrow doubles it when it runs low ([Azure: autogrow](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-auto-grow-storage)). After an autogrow, raise `knowledgePostgresStorageSizeGB` to the new size: Azure does not shrink a disk, so a smaller value in the template is refused. For Kudos, binary quantisation would keep the vector index at about 1.5 GB instead of 12.7 GB, by extrapolation from 0.47 GB at 1 million vectors (issue 265 measures it at about 3 million).
+- **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). Prod's pools need at most 102: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, for 3 API replicas, plus 2 for the job. Test's need at most 82, for 2 replicas.
+- **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
+- **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role holds one of the logins with inherit or set.
+
+### Stages
+
+`KNOWLEDGE_SERVER_STAGE`, a GitHub variable read by `infra.yml` and `deploy.yml`, set on the environment or, without access to environment settings, as a repository variable (then prod's environment needs `none` set, since a repository variable reaches every environment and an environment's own value wins): `none` (the default, and what an unset variable means: nothing of the knowledge server), `server` (the network, the server, the identities and the job), `apps` (also the API and worker settings: `KNOWLEDGE_PGHOST`, `KNOWLEDGE_PGDATABASE`, `KNOWLEDGE_READ_PGHOST` on the same server, each app's own `KNOWLEDGE_PGUSER` and `KNOWLEDGE_AZURE_CLIENT_ID`, and the worker's `KNOWLEDGE_VCORES` and its readiness probe on `/readyz`). The worker stops at start while it has no login, so `apps` waits until the job has set up the database.
+
+Per environment, test first. The steps infra cannot do run in the `knowledge-server` workflow (`.github/workflows/knowledge-server.yml`), as the deploy identity, so they need GitHub access only:
+
+0. **A release with the setup script:** run `deploy.yml` with this change, stage still `none`. The job runs `scripts/knowledge-server-setup.ts` from the worker image, and `infra.yml` reuses the image that runs.
+1. **`server`:** set `KNOWLEDGE_SERVER_STAGE=server`, run infra with what-if, read it, then without. Then run `knowledge-server` with `restart`, which restarts the server only while `shared_preload_libraries` waits for it.
+2. **The database:** run `knowledge-server` with `setup`. It starts the job `genai-<env>-knowledge-setup`, waits for it and prints its log (below), and fails when the job does.
+3. **`apps`:** set `KNOWLEDGE_SERVER_STAGE=apps` and run infra. Then run `knowledge-server` with `check`: the server, its settings and Entra admins, both sides of the peering, the last job run, the apps' revisions and the API's `/health`. It fails on a server that is not ready, a restart still waiting, a peering side that is not `Connected`, an unhealthy revision or a `/health` other than 200. If the worker's new revision never becomes ready because the probe cannot reach a worker without ingress, set `server` again and run infra, which takes the probe out.
+
+A job run is safe to repeat: logins that exist are kept, and the setup changes nothing it already set.
+
+### What the job's log shows
+
+After setup the job prints the server's settings, extensions, logins, memberships and who may connect, so the checks need no way into the private network:
+
+- `settings.azure_extensions` lists `VECTOR` and `PG_PREWARM`, `settings.shared_preload_libraries` includes `pg_prewarm`, and `extensions` names the `vector` version.
+- `logins` holds no `genai-<env>-api-id`: the shared app identity has no role on the knowledge server.
+- `memberships` lists every role the two logins are members of: the API's login only `genai_knowledge_reader`, the worker's only `genai_knowledge_owner` and `genai_knowledge_writer`, all with `inherit_option` false. Any other role there needs a look.
+- `connect` lists only the two logins, `azure_pg_admin` and the database's owner, never `public`.
+- `members` lists the roles that hold one of the two logins: the role that created it, with `admin_option` only, and possibly the setup's own admin or an `azure_pg_admin` member with inherit or set. The setup fails on any other role that may inherit or set a login.
+
+### Restore drill
+
+A restore always creates a new server; the source is left as it is ([Azure: backup and restore](https://learn.microsoft.com/en-us/azure/postgresql/backup-restore/concepts-backup-restore)). Time one before a service depends on the server, and again with Kudos loaded (issue 148): run `knowledge-server` with `restore-drill`, which restores to `genai-<env>-knowledge-restore-drill` as of ten minutes earlier, prints the time and deletes the restored server, also when a step fails. It runs:
+
+```sh
+time az postgres flexible-server restore -g <resource group> -n genai-<env>-knowledge-restore-drill \
+  --source-server <server> --restore-time <a UTC time a few minutes ago, such as 2026-11-04T09:00:00Z> \
+  --vnet genai-<env>-knowledge-vnet --subnet postgres \
+  --private-dns-zone <server>.private.postgres.database.azure.com
+az postgres flexible-server show -g <resource group> -n genai-<env>-knowledge-restore-drill --query state
+az postgres flexible-server delete -g <resource group> -n genai-<env>-knowledge-restore-drill --yes
+```
+
+The restored server keeps neither the source's parameters nor its network rules, so a real restore sets `azure.extensions` and `shared_preload_libraries` again, and the template must then name the new server. Time for the empty server: not yet measured.
+
+### Open
+
+- Whether a run of `infra.yml` or `deploy.yml`, both of which redeploy `genai-<env>-vnet` without peerings, drops the knowledge peering on it until the same run makes it again. From `apps` on, the API and the worker reach the knowledge server only through it, so this would happen on every release. Microsoft's documentation does not say. The reports found are what-if noise: a network's what-if lists changes under `virtualNetworkPeerings` while the deploy keeps the peering ([arm-template-whatif #278](https://github.com/Azure/arm-template-whatif/issues/278)). So after the second `server` run, check both sides rather than the what-if alone: `az network vnet peering list -g <resource group> --vnet-name genai-<env>-vnet -o table`, and the same for `genai-<env>-knowledge-vnet`, both `Connected`. If a side is gone or `Disconnected`, stay at `server` until the template keeps the peering through a redeploy.
+- Whether Azure's Readiness probe reaches the worker, which has no ingress: the Container Apps documentation does not say.
+- How the `setup` action reads a finished job's log: it tries the job's log stream (`az containerapp job logs show`), then the `ContainerAppConsoleLogs` table in Log Analytics. The documentation names neither for a finished job; the job's status decides the run either way.
+- Whether the knowledge admin may revoke `CONNECT` on a database the template created: the setup fails with the grant it could not remove if not.
+- Whether two servers may share one delegated subnet and one private DNS zone, as the restore drill does: not checked in the documentation.
 
 ## Settings and secrets
 
@@ -62,6 +131,7 @@ Plain settings come from the GitHub environment's variables (Settings → Enviro
 | `PLATFORM_TENANT`                                                                        | Test only. The organisation that plays Digdir, for test organisations. Empty means Digdir                                                                                                                                                                                                                                 |
 | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking                                                                                                                                                                                                                                                                                              |
 | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, `hostnames` or `certificates`; see Host names below                                                                                                                                                                                                                                                               |
+| `KNOWLEDGE_SERVER_STAGE`                                                                 | `none`, `server` or `apps`; unset or empty means `none`. On the test environment, or a repository variable when environment settings are out of reach. See [Knowledge server](#knowledge-server)                                                                                                                          |
 | `LOCKDOWN_ENTRA_GROUPS`                                                                  | Test only. Entra group object ids, comma separated, whose members get the whole platform in lockdown                                                                                                                                                                                                                      |
 | `LOCKDOWN_USER_GROUPS`                                                                   | Test only. Entra group object ids, comma separated, whose members get every right in `PLATFORM_TENANT` in lockdown, as `LOCKDOWN_ENTRA_GROUPS` does, but never the operator role. Same client and email checks; `LOCKDOWN_ENTRA_GROUPS` wins for a login in both                                                          |
 | `LOCKDOWN_ENTRA_EMAIL_DOMAIN`                                                            | Test only. Extra guard for those Entra logins: the email must be at this domain. Set it to `digdir.no`; empty turns it off                                                                                                                                                                                                |
@@ -165,6 +235,7 @@ After that, run the deploy workflow whenever `main` should go to test; merges do
 
 ```sh
 az bicep build --file infra/main.bicep --stdout > /dev/null
+az bicep lint --file infra/main.bicep
 PG_ADMIN_GROUP_OBJECT_ID=00000000-0000-0000-0000-000000000000 PG_ADMIN_GROUP_NAME=x \
   az bicep build-params --file infra/env/test.bicepparam --stdout > /dev/null
 PG_ADMIN_GROUP_OBJECT_ID=00000000-0000-0000-0000-000000000000 PG_ADMIN_GROUP_NAME=x \
@@ -177,7 +248,7 @@ docker/smoke.sh genai-api:local genai-apps:local
 docker run --rm -p 127.0.0.1:18091:8080 -e APP=portal -e API_UPSTREAM=https://api.genki-test.digdir.cloud genai-apps:local
 ```
 
-None of these log in to Azure or deploy anything.
+None of these log in to Azure or deploy anything. Without the Azure CLI, run the `az` lines in `mcr.microsoft.com/azure-cli` (`docker run --rm -v "$PWD:/repo" -w /repo mcr.microsoft.com/azure-cli sh -c 'az bicep install && az bicep build --file infra/main.bicep --stdout > /dev/null'`). `docker run --rm genai-worker:local node scripts/knowledge-server-setup.ts` prints the setup script's usage from the image the principals job runs.
 
 ## Prod
 
@@ -231,6 +302,7 @@ The deploy workflow builds the images once and pushes them to the test registry.
    | `OPERATOR_SUBJECTS`                                                                      | The prod operators as `https://ansattporten.no\|<sub>` pairs. Personal data: only here, never in the repository |
    | `FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`, `TYPESENSE_URL`, `COLBERT_API_URL` | Models, search and reranking for prod                                                                           |
    | `CUSTOM_DOMAINS_STAGE`                                                                   | `none`, then `hostnames`, then `certificates`                                                                   |
+   | `KNOWLEDGE_SERVER_STAGE`                                                                 | `none` while test's value is a repository variable, otherwise unset; later `server`, then `apps`                |
    | `PROD_READY`                                                                             | `true` once everything above is in place; until then `deploy-prod` is skipped                                   |
 
    `PLATFORM_TENANT` and `ALTINN_RESOURCE` stay unset; prod fixes both.

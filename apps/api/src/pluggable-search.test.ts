@@ -14,6 +14,7 @@ import { createPool } from '@genai/providers-postgres';
 import { createAdmin } from './admin.js';
 import { loadCatalog } from './catalogs.js';
 import { createPlatform, type PlatformInput } from './composition.js';
+import type { JobRunStore } from './ingestion.js';
 import { translateMessage } from './i18n/index.js';
 import { toTimeline } from './timeline.js';
 import { stopPostgres } from '@genai/providers-postgres/testing';
@@ -187,6 +188,61 @@ describe('pluggable search engines over the API', () => {
       expect(title).not.toContain('deler lagring');
       // The app's locale middleware puts the refusal into bokmål through the catalogue.
       expect(translateMessage(title, 'nb')).toBe('kunnskapsdata skrives av bakgrunnstjenesten');
+    });
+
+    it('runs of a dataset on connection knowledge run as jobs', async () => {
+      const started: string[] = [];
+      const shared = { sharing: { tenants: [digdir] } };
+      const { call } = await boot({
+        catalogs: {
+          ...knowledgeCatalogs,
+          knowledge: {
+            ...knowledgeCatalogs.knowledge,
+            endpoints: {
+              'platform-pg': { ...platformPg, ...shared },
+              'knowledge-pg': {
+                ...knowledgeCatalogs.knowledge.endpoints['knowledge-pg'],
+                ...shared,
+              },
+            },
+          },
+        },
+        knowledgeServer: { reader: pool },
+        configurables: {
+          jobRuns: {
+            runsAsJobs: () => false,
+            runs: {
+              start: async (input: { dataset: string }) => {
+                started.push(input.dataset);
+                return { ok: true, value: { ...input, status: 'running', runsAsJobs: true } };
+              },
+            } as unknown as JobRunStore,
+          },
+        },
+      });
+      for (const [id, endpoint] of [
+        ['kudos-next', 'knowledge-pg'],
+        ['notes', 'platform-pg'],
+      ] as const) {
+        const published = await call(`/tenants/${digdir}/catalog/dataset/${id}`, 'kari', {
+          method: 'PUT',
+          body: dataset(endpoint),
+        });
+        expect(published.status).toBe(200);
+        const saved = await call(`/tenants/${digdir}/datasets/${id}/pipelines`, 'kari', {
+          body: {
+            id: 'site',
+            name: 'Nettsted',
+            source: { kind: 'website', sitemap: 'https://www.example.no/sitemap.xml' },
+          },
+        });
+        expect(saved.status).toBe(201);
+        const ran = await call(`/tenants/${digdir}/datasets/${id}/pipelines/site/execute`, 'kari', {
+          body: {},
+        });
+        expect(ran.status).toBe(202);
+      }
+      expect(started).toEqual([`${digdir}/kudos-next`]);
     });
 
     it('a dataset published onto the knowledge database names a new generation', async () => {

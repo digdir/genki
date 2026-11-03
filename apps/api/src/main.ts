@@ -52,6 +52,7 @@ import {
   platformTenantFrom,
 } from '@genai/composition';
 import { createApp } from './app.js';
+import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
 import { followChanges } from './change-feed.js';
@@ -147,6 +148,10 @@ log('altinn pdp', {
   kind: altinnPdp.kind,
   ...(altinnPdp.kind === 'altinn' ? { baseURL: altinnPdp.baseURL } : {}),
 });
+if (altinnPdp.kind === 'altinn')
+  void altinnPdp
+    .warm()
+    .catch((error: unknown) => log('altinn token not fetched at boot', { error: String(error) }));
 
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
@@ -437,7 +442,7 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
-    // No dataset runs as jobs yet: #139 names the datasets on `connection: knowledge`.
+    // The platform adds every dataset on `connection: knowledge` (createPlatform).
     ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
@@ -503,7 +508,7 @@ const platform = await createPlatform({
   ...(db
     ? {
         tenantDirectory: postgresTenantDirectory(db.tenants),
-        taskIndex: postgresTaskIndex(db.tasks),
+        taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
         ingestionExecutions: db.ingestionExecutions,
       }
     : {}),
@@ -549,6 +554,11 @@ const admin = createAdmin({
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {
+  requestTiming: {
+    write: (entry) => log('request', { ...entry }),
+    slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
+    everyRequest: process.env.LOG_REQUESTS === 'true',
+  },
   platform: {
     store: platform.definitions,
     plugins: platform.plugins,
@@ -697,19 +707,6 @@ if (mock) {
   });
 }
 
-const logRequests = process.env.LOG_REQUESTS === 'true';
-const fetchHandler: typeof app.fetch = logRequests
-  ? async (request, ...rest) => {
-      const response = await app.fetch(request, ...rest);
-      log('request', {
-        method: request.method,
-        path: new URL(request.url).pathname,
-        status: response.status,
-      });
-      return response;
-    }
-  : app.fetch;
-
-serve({ fetch: fetchHandler, port }, (info) => {
+serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });

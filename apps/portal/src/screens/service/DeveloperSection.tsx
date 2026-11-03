@@ -1,6 +1,14 @@
+import {
+  ClockIcon,
+  CodeIcon,
+  FileCodeIcon,
+  KeyHorizontalIcon,
+  LightningIcon,
+  TimelineIcon,
+} from '@navikt/aksel-icons';
 import { Alert, Heading, Paragraph } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconComponent } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
 import { servicePath } from './sections';
 import { defaultApiBase, serverSnippet } from './snippets';
@@ -11,7 +19,7 @@ interface Tool {
   id: DeveloperTool;
   label: PlainKey;
   desc: PlainKey;
-  icon: string;
+  icon: IconComponent;
   /** Where the organisation-wide part of this tool lives. */
   links?: readonly (readonly [string, PlainKey])[];
 }
@@ -20,7 +28,7 @@ const callTool: Tool = {
   id: 'call',
   label: 'devTools.call',
   desc: 'devTools.callDesc',
-  icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
+  icon: CodeIcon,
 };
 
 const tools: readonly Tool[] = [
@@ -29,32 +37,32 @@ const tools: readonly Tool[] = [
     id: 'keys',
     label: 'devTools.keys',
     desc: 'devTools.serviceKeysDesc',
-    icon: 'M14 10a4 4 0 1 0-4 4l2 2h2v2h2v2h4v-4z',
+    icon: KeyHorizontalIcon,
     links: [['#/developer/keys', 'devTools.openOrgKeys']],
   },
   {
     id: 'triggers',
     label: 'devTools.triggers',
     desc: 'devTools.serviceTriggersDesc',
-    icon: 'M13 3L5 14h6l-1 7 8-11h-6z',
+    icon: LightningIcon,
   },
   {
     id: 'runs',
     label: 'devTools.runs',
     desc: 'devTools.serviceRunsDesc',
-    icon: 'M4 6h16M4 12h10M4 18h6',
+    icon: TimelineIcon,
   },
   {
     id: 'definition',
     label: 'devTools.definition',
     desc: 'devTools.definitionDesc',
-    icon: 'M6 3h9l4 4v14H6zM14 3v5h5',
+    icon: FileCodeIcon,
   },
   {
     id: 'versions',
     label: 'devTools.versions',
     desc: 'devTools.versionsDesc',
-    icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+    icon: ClockIcon,
   },
 ];
 
@@ -118,7 +126,7 @@ export const DeveloperSection = ({
                   aria-current={active ? 'page' : undefined}
                   className={active ? 'active' : undefined}
                 >
-                  <Icon d={x.icon} />
+                  <Icon icon={x.icon} />
                   {t(x.label)}
                 </a>
               </li>

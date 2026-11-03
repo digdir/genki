@@ -12,6 +12,7 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
+import { connectorSecretOf } from './connectors.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -126,6 +127,7 @@ export const createConfigurables = (
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
+      connectorSecret: connectorSecretOf(store),
     };
 
     const publishProblems = async (definition: Definition) => {

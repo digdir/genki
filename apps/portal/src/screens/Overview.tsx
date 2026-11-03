@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Avatar,
@@ -9,7 +10,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Icon, icons } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import type { DatasetView } from '../api/datasets';
 import {
   ingestIssues,
@@ -292,7 +293,9 @@ export const Overview = ({
     onFailingIngests?.(failing);
   }, [onFailingIngests, failing]);
 
-  if (overview.status === 'loading') return <Loading label={t('overview.loading')} />;
+  const alertsKnown = settings.status !== 'loading' && datasets.status !== 'loading';
+  if (overview.status === 'loading' || (overview.status === 'ready' && !alertsKnown))
+    return <Loading label={t('overview.loading')} />;
   if (overview.status === 'error')
     return (
       <>
@@ -322,10 +325,9 @@ export const Overview = ({
   const noDatasets =
     empty || (datasets.status === 'ready' && (live ? datasets.data.length === 0 : !hasDataset));
   const doneSteps: Record<string, boolean> = { dataset: hasDataset };
-  const used =
-    usage.status === 'ready' && !empty
-      ? usage.data.totals.inputTokens + usage.data.totals.outputTokens
-      : 0;
+  const monthTotals =
+    overview.data.usageThisMonth ?? (usage.status === 'ready' ? usage.data.totals : undefined);
+  const used = monthTotals && !empty ? monthTotals.inputTokens + monthTotals.outputTokens : 0;
   const quotaAlert = quota !== null && used / quota > 0.9;
   const counts = (['I bruk', 'Utkast', 'I test', 'Satt på pause'] as const)
     .map((status) => ({ status, n: services.filter((s) => s.status === status).length }))
@@ -344,7 +346,7 @@ export const Overview = ({
         </div>
         {empty || !canCreate ? null : (
           <a className="ds-button" data-variant="primary" href="#/services/new">
-            <Icon d={icons.plus} />
+            <Icon icon={PlusIcon} />
             {t('overview.newService')}
           </a>
         )}
@@ -560,7 +562,9 @@ export const Overview = ({
                         </Tag>
                       </div>
                       <span className="meta-15">{j.meta}</span>
-                      <span className="body">{queued ? t('overview.restarting') : j.message}</span>
+                      <span className="ingest-message">
+                        {queued ? t('overview.restarting') : j.message}
+                      </span>
                       {queued ? null : (
                         <div className="actions">
                           {j.retryText ? (

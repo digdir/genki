@@ -1,3 +1,4 @@
+import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -23,6 +24,7 @@ import type {
   BatchFilterField,
   BatchSourceDataset,
 } from '../../api/batch-runs';
+import { Icon } from '../../components/Icon';
 import type { PlaygroundInputField } from '../../api/playground';
 import {
   filledValues,
@@ -369,7 +371,7 @@ export const BatchWizard = ({
                 className={n === step ? 'current' : n < step ? 'done' : undefined}
               >
                 <span aria-hidden="true" className="batch-step-dot">
-                  {n < step ? '✓' : n}
+                  {n < step ? <Icon icon={CheckmarkIcon} size={14} /> : n}
                 </span>
                 {t(labelKey)}
               </li>

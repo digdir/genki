@@ -1,12 +1,15 @@
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type {
-  DatasetConfig,
-  IndexDocument,
-  IndexWriter,
-  KnowledgeConnection,
+import {
+  KnowledgeRouter,
+  tombstoneHash,
+  type DatasetConfig,
+  type IndexDocument,
+  type IndexWriter,
+  type KnowledgeConnection,
 } from '@genai/port-knowledge';
+import { envSecrets } from '@genai/kernel';
 import { knowledgeContract, knowledgeContractSubject } from '@genai/port-knowledge/contract';
 import {
   fixtureFilters,
@@ -258,10 +261,11 @@ describe('read functions on the knowledge server', () => {
     );
   });
 
-  it('a cited id resolves to its document in the generation, and an unknown id to nothing', async () => {
+  it('a cited id resolves to its document in the generation, and an unknown id to unknown', async () => {
     expect(
       await asReader(
-        `select * from kn_resolve_citation($1, $2, array['a', 'finnes-ikke'], array['hash-a', 'hash-f'])`,
+        `select cited, status, document, title, url, withdrawn_on
+           from kn_resolve_citation($1, $2, array['a', 'finnes-ikke'], array['hash-a', 'hash-f'])`,
         [kudos.id, kudosGeneration],
         [kudos.id],
       ),
@@ -274,7 +278,209 @@ describe('read functions on the knowledge server', () => {
         url: null,
         withdrawn_on: null,
       },
+      {
+        cited: 'finnes-ikke',
+        status: 'unknown',
+        document: null,
+        title: null,
+        url: null,
+        withdrawn_on: null,
+      },
     ]);
+  });
+
+  const cite = (ids: string[], dataset: Dataset = kudos, generation = kudosGeneration) =>
+    asReader<Record<string, unknown>>(
+      `select cited, status, document, title, url, withdrawn_on::text
+         from kn_resolve_citation($1, $2, $3::text[], $4::text[])`,
+      [dataset.id, generation, ids, ids.map((id) => tombstoneHash(dataset.id, id))],
+      [dataset.id],
+    );
+
+  it("a withdrawn document's citation resolves to its tombstone", async () => {
+    await owner.query(
+      `insert into src_tombstones (dataset, id_hash, deleted_on) values ($1, $2, '2026-10-01')`,
+      [kudos.id, tombstoneHash(kudos.id, 'trukket')],
+    );
+    expect(await cite(['trukket'])).toEqual([
+      {
+        cited: 'trukket',
+        status: 'withdrawn',
+        document: null,
+        title: null,
+        url: null,
+        withdrawn_on: '2026-10-01',
+      },
+    ]);
+  });
+
+  it("every tombstone holds only the id's hash and the date, and a citation gets the same answer for both kinds", async () => {
+    const { rows } = await owner.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+         where table_name = 'src_tombstones' order by column_name`,
+    );
+    expect(rows.map((r) => r.column_name)).toEqual(['dataset', 'deleted_on', 'id_hash']);
+    // A source's delete and a withdrawal on request write the same plain row.
+    for (const id of ['slettet-i-kilden', 'trukket-etter-krav'])
+      await owner.query(
+        `insert into src_tombstones (dataset, id_hash, deleted_on) values ($1, $2, '2026-10-02')`,
+        [kudos.id, tombstoneHash(kudos.id, id)],
+      );
+    const [deleted, withdrawn] = await cite(['slettet-i-kilden', 'trukket-etter-krav']);
+    expect(withdrawn).toEqual({ ...deleted, cited: 'trukket-etter-krav' });
+    expect(deleted).toMatchObject({ status: 'withdrawn', withdrawn_on: '2026-10-02' });
+  });
+
+  it('an earlier id resolves to its document', async () => {
+    await owner.query(
+      `insert into src_documents (dataset, id, owners, record, metadata_hash, state, earlier_ids, change)
+         values ($1, 'b', array['p1'], '{}', 'h', 'stored', array['b-gammel'], 1)`,
+      [kudos.id],
+    );
+    expect(await cite(['b-gammel'])).toEqual([
+      {
+        cited: 'b-gammel',
+        status: 'earlier',
+        document: 'b',
+        title: 'Rapport b',
+        url: null,
+        withdrawn_on: null,
+      },
+    ]);
+  });
+
+  it('the knowledge port resolves a citation to found, earlier or withdrawn through kn_resolve_citation', async () => {
+    await owner.query(
+      `insert into src_tombstones (dataset, id_hash, deleted_on) values ($1, $2, '2026-10-03')
+         on conflict do nothing`,
+      [kudos.id, tombstoneHash(kudos.id, 'borte')],
+    );
+    await owner.query(
+      `insert into src_documents (dataset, id, owners, record, metadata_hash, state, earlier_ids, change)
+         values ($1, 'a', array['p1'], '{}', 'h', 'stored', array['a-gammel'], 2)
+         on conflict do nothing`,
+      [kudos.id],
+    );
+    const router = new KnowledgeRouter({
+      catalog: {
+        endpoints: { knowledge: { engine: 'pgvector', options: { connection: 'knowledge' } } },
+        datasets: [
+          {
+            id: kudos.id,
+            endpoint: 'knowledge',
+            residency: 'norway',
+            filters: kudos.filters,
+            valueTypes: kudos.valueTypes,
+            options: {},
+            generation: kudosGeneration,
+          },
+        ],
+      },
+      adapters: [readEngine().adapter],
+      secrets: envSecrets({}),
+    });
+    const port = router.open(
+      { kind: 'dataset', id: kudos.id },
+      {
+        tenant: '991825827',
+        principal: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: '991825827' },
+        task: 't1',
+        signal,
+        meter: async () => undefined,
+      },
+    );
+    expect(await port.resolveCitations?.(['a', 'a-gammel', 'borte', 'ingen'])).toEqual([
+      { cited: 'a', status: 'found', document: 'a', title: 'Rapport a' },
+      { cited: 'a-gammel', status: 'earlier', document: 'a', title: 'Rapport a' },
+      { cited: 'borte', status: 'withdrawn', withdrawnOn: '2026-10-03' },
+      { cited: 'ingen', status: 'unknown' },
+    ]);
+  });
+
+  it('every read function returns the data version of the server that answered', async () => {
+    const versioned = dataset('digdir/versjon', 8);
+    const generation = 'g-20261103-versjon';
+    const elsewhereWorker = openKnowledgePools(
+      { ...elsewhere.source, user: 'knowledge_worker' },
+      'worker',
+    );
+    try {
+      const elsewhereWriter = pgvectorEngine({
+        pool: elsewhere.admin,
+        knowledge: elsewhereWorker.pools,
+      }).writer.connect(endpoint, { signal }) as IndexWriter<PgvectorDatasetOptions>;
+      const docs = [doc('v', 8, { type: ['rapport'] })];
+      await fill(versioned, generation, docs);
+      await elsewhereWriter.prepare(versioned, generation);
+      for (const d of docs) await elsewhereWriter.store(versioned, generation, d);
+      await elsewhereWriter.promote(versioned, generation);
+    } finally {
+      await elsewhereWorker.close();
+    }
+    await primary.admin.query(`update kn_generations set data_version = 7 where generation = $1`, [
+      generation,
+    ]);
+    await elsewhere.admin.query(
+      `update kn_generations set data_version = 9 where generation = $1`,
+      [generation],
+    );
+    const calls = [
+      `select data_version from kn_search($1, $2, 'chunks', 'text', 'lønn', null, null, '[]', 5, 50, 60)`,
+      `select data_version from kn_fetch($1, $2, array['v#0'])`,
+      `select data_version from kn_range($1, $2, 'v', 0, 1)`,
+      `select data_version from kn_facets($1, $2, array['type'], '[]')`,
+      `select data_version from kn_documents($1, $2, null, '[]', 10, 0)`,
+      `select data_version from kn_resolve_citation($1, $2, array['v', 'ingen'], array['x', 'y'])`,
+      `select (kn_generation($1, $2)->>'dataVersion')::bigint as data_version`,
+    ];
+    for (const [server, version] of [
+      [primary, '7'],
+      [elsewhere, '9'],
+    ] as const) {
+      const pool = readerPool(server);
+      for (const sql of calls) {
+        const rows = await asReader<{ data_version: string }>(
+          sql,
+          [versioned.id, generation],
+          [versioned.id],
+          pool,
+        );
+        expect(rows.length, sql).toBeGreaterThan(0);
+        expect(new Set(rows.map((r) => r.data_version)), sql).toEqual(new Set([version]));
+      }
+    }
+
+    const config = routed(versioned, generation);
+    for (const [read, version] of [
+      [readerPool(elsewhere), 9],
+      [readerPool(primary), 7],
+    ] as const) {
+      const connection = connectionOf(readEngine({ read, reader: api.pools.reader as pg.Pool }));
+      await connection.fetch(config, ['v#0'], signal);
+      expect(await connection.served?.(config, signal)).toEqual({
+        generation,
+        dataVersion: version,
+      });
+    }
+    // A read pool without the generation sends the read to the primary, whose version is recorded.
+    const lacking = connectionOf(
+      readEngine({ read: readerPool(elsewhere), reader: api.pools.reader as pg.Pool }),
+    );
+    const onPrimary = routed(kudos, kudosGeneration);
+    await primary.admin.query(`update kn_generations set data_version = 5 where generation = $1`, [
+      kudosGeneration,
+    ]);
+    await lacking.fetch(onPrimary, ['a#0'], signal);
+    expect(await lacking.served?.(onPrimary, signal)).toEqual({
+      generation: kudosGeneration,
+      dataVersion: 5,
+    });
+    // An empty answer still reports the version of the server that gave it.
+    const empty = connectionOf(
+      readEngine({ read: readerPool(elsewhere), reader: api.pools.reader as pg.Pool }),
+    );
+    expect(await empty.fetch(config, ['finnes-ikke'], signal)).toEqual([]);
+    expect(await empty.served?.(config, signal)).toEqual({ generation, dataVersion: 9 });
   });
 
   it('search reads through the read pool and writes nothing', async () => {
