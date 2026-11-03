@@ -192,6 +192,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   testData,
   registeredClients,
   ...(trustedEntra ? { trustedEntra } : {}),
+  onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 if (mock)
   mockRegistration = {

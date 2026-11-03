@@ -123,6 +123,7 @@ import {
   type KudosAccess,
 } from './index-ingestion.js';
 import type { ExecutionStore } from './ingestion.js';
+import { logFailedIngestion } from './ingestion-failure-log.js';
 import { describeEngines } from './knowledge-engines.js';
 import {
   InMemoryEventLog,
@@ -1136,6 +1137,7 @@ export const createPlatform = async (input: PlatformInput) => {
     embeddingResidency,
     testSets: evalStores.testSets,
   });
+  if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
     catalog: config.catalog,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
