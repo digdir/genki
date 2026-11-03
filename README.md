@@ -80,6 +80,7 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks, coding standards and pull requests                                                                                                                                 |
 | [`ROADMAP.md`](ROADMAP.md)                                                   | What the next year intends, and what genki will not do                                                                                                                               |
 | [`SECURITY.md`](SECURITY.md)                                                 | Reporting a vulnerability, and what happens next                                                                                                                                     |
+| [`ACCESSIBILITY.md`](ACCESSIBILITY.md)                                       | Our accessibility commitment, where we are, known limitations, and how to report a barrier                                                                                           |
 
 ## Repository layout
 
