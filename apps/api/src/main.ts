@@ -171,8 +171,9 @@ const registeredClients = clientRegistry(clients);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
-  log('lockdown: Entra logins in the configured groups get the whole platform', {
+  log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
+    userGroups: trustedEntra.userGroups?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });

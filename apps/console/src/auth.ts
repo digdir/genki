@@ -78,8 +78,6 @@ const claimsOf = (jwt: string): Record<string, unknown> => {
   }
 };
 
-export const isEntraLogin = (token: string) => claimsOf(token).acr === 'entraid';
-
 const nameOf = (...claims: Record<string, unknown>[]) => {
   for (const key of ['name', 'email'])
     for (const found of claims) if (typeof found[key] === 'string' && found[key]) return found[key];

@@ -171,6 +171,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
+      lockdown,
     });
   }
 

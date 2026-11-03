@@ -159,6 +159,9 @@
     },
     {
       "path": "apps/workspace"
+    },
+    {
+      "path": "apps/docs"
     }
   ]
 }

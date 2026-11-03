@@ -71,6 +71,26 @@ describe('booting the API', () => {
     expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
   });
 
+  it('refuses to start when LOCKDOWN_USER_GROUPS lists something that is not a group id', () => {
+    const userGroup = '789b5488-39ec-47b3-9217-840e5cd957fd';
+
+    expect(
+      bootProblems({ ...real, LOCKDOWN_USER_GROUPS: `${userGroup}, genki-test-users` }),
+    ).toEqual([expect.stringContaining('genki-test-users')]);
+    expect(bootProblems({ ...real, LOCKDOWN_USER_GROUPS: userGroup })).toEqual([]);
+  });
+
+  it('startup refuses lockdown user groups without a client allowlist', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_USER_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
+  });
+
   it('startup refuses bare OPERATOR_SUBJECTS outside dev mode', () => {
     const pair = 'https://test.ansattporten.no|subject-1';
 
