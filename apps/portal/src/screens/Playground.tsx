@@ -71,15 +71,17 @@ export const Playground = ({ api, tenant, tenantName, route }: ScreenProps) => {
           </Heading>
           <Paragraph className="lead">{t('playground.pageLead')}</Paragraph>
         </div>
-        <Button data-size="sm" onClick={makeService}>
-          {t('playground.makeService')}
-        </Button>
       </header>
       <Tabs data-size="md" value={view} onChange={(v) => navigate(hrefs[v as View])}>
-        <TabsList aria-label={t('playground.viewsLabel')}>
-          <TabsTab value="frontend">{t('playground.tabFrontend')}</TabsTab>
-          <TabsTab value="backend">{t('playground.tabBackend')}</TabsTab>
-        </TabsList>
+        <div className="playground-tabs">
+          <TabsList aria-label={t('playground.viewsLabel')}>
+            <TabsTab value="frontend">{t('playground.tabFrontend')}</TabsTab>
+            <TabsTab value="backend">{t('playground.tabBackend')}</TabsTab>
+          </TabsList>
+          <Button data-size="sm" onClick={makeService}>
+            {t('playground.makeService')}
+          </Button>
+        </div>
         <TabsPanel value="frontend" className="playground-view">
           <BlocksStep
             state={blocks}

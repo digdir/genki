@@ -11,13 +11,7 @@ import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
 import { BlocksPanel } from './BlocksPanel';
 import type { BlocksStart } from './handoff';
-import {
-  defaultLayout,
-  turnOff,
-  type BlockLayout,
-  type PreviewZoom,
-  type TemplateId,
-} from './rules';
+import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
 import { ServicePreview, type PreviewMode } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
 import './blocks.css';
@@ -33,8 +27,7 @@ export const useBlocksState = (start?: () => BlocksStart | undefined) => {
   const [first] = useState(() => start?.());
   const [layout, setLayout] = useState<BlockLayout>(first?.layout ?? defaultLayout);
   const [template, setTemplate] = useState<TemplateId | undefined>(first ? first.template : 'all');
-  const [mode, setMode] = useState<PreviewMode>('setup');
-  const [zoom, setZoom] = useState<PreviewZoom>('fit');
+  const [mode, setMode] = useState<PreviewMode>('try');
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
@@ -43,13 +36,11 @@ export const useBlocksState = (start?: () => BlocksStart | undefined) => {
     layout,
     template,
     mode,
-    zoom,
     tab,
     width,
     height,
     conversation,
     setMode,
-    setZoom,
     setTab,
     setWidth,
     setHeight,
@@ -175,11 +166,9 @@ export const BlocksStep = ({
     <ServicePreview
       layout={state.layout}
       mode={state.mode}
-      zoom={state.zoom}
       address={address}
       chat={chat}
       onMode={state.setMode}
-      onZoom={state.setZoom}
       onRemove={(id) => state.change(turnOff(state.layout, id))}
       onReload={state.restart}
       onFullscreen={onFullscreen}
@@ -235,11 +224,9 @@ export const BlocksFullscreen = ({
       <ServicePreview
         layout={state.layout}
         mode={state.mode}
-        zoom={state.zoom}
         address={address}
         chat={chat}
         onMode={state.setMode}
-        onZoom={state.setZoom}
         onRemove={(id) => state.change(turnOff(state.layout, id))}
         onReload={state.restart}
         onExitFullscreen={onExit}

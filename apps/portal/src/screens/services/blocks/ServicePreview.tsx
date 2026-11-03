@@ -27,7 +27,6 @@ import {
   type BlockId,
   type BlockLayout,
   type Panel,
-  type PreviewZoom,
 } from './rules';
 
 export type PreviewMode = 'setup' | 'try';
@@ -63,11 +62,9 @@ const frameLabel: Record<Panel, PlainKey> = {
 export const ServicePreview = ({
   layout,
   mode,
-  zoom,
   address,
   chat,
   onMode,
-  onZoom,
   onRemove,
   onReload,
   onFullscreen,
@@ -76,11 +73,9 @@ export const ServicePreview = ({
 }: {
   layout: BlockLayout;
   mode: PreviewMode;
-  zoom: PreviewZoom;
   address: string;
   chat: ReactNode;
   onMode: (mode: PreviewMode) => void;
-  onZoom: (zoom: PreviewZoom) => void;
   onRemove: (id: BlockId) => void;
   onReload: () => void;
   onFullscreen?: () => void;
@@ -90,7 +85,7 @@ export const ServicePreview = ({
   const t = useT();
   const used = (['left', 'main', 'right'] as Panel[]).filter((p) => blocksIn(layout, p).length);
   const [viewport, available] = useAvailableWidth();
-  const scale = previewScale(zoom, available);
+  const scale = previewScale(available);
   return (
     <section className="service-preview" aria-labelledby="forhandsvisning-tittel">
       <div className="service-preview-head">
@@ -99,13 +94,13 @@ export const ServicePreview = ({
         </Heading>
         <ToggleGroup
           data-size="sm"
-          data-color="accent"
+          variant="secondary"
           aria-label={t('builderBlocks.previewView')}
           value={mode}
           onChange={(v) => onMode(v as PreviewMode)}
         >
-          <ToggleGroup.Item value="setup">{t('builderBlocks.viewSetup')}</ToggleGroup.Item>
           <ToggleGroup.Item value="try">{t('builderBlocks.viewTry')}</ToggleGroup.Item>
+          <ToggleGroup.Item value="setup">{t('builderBlocks.viewSetup')}</ToggleGroup.Item>
         </ToggleGroup>
       </div>
       <Paragraph data-size="sm" className="meta">
@@ -122,19 +117,6 @@ export const ServicePreview = ({
           <Icon d={paths.reload} />
         </Button>
         <span className="service-preview-address">{address}</span>
-        <span className="service-preview-zoom" aria-live="polite">
-          {t('builderBlocks.zoomPercent', { percent: Math.round(scale * 100) })}
-        </span>
-        <ToggleGroup
-          data-size="sm"
-          variant="secondary"
-          aria-label={t('builderBlocks.zoom')}
-          value={zoom}
-          onChange={(v) => onZoom(v as PreviewZoom)}
-        >
-          <ToggleGroup.Item value="fit">{t('builderBlocks.zoomFit')}</ToggleGroup.Item>
-          <ToggleGroup.Item value="actual">{t('builderBlocks.zoomActual')}</ToggleGroup.Item>
-        </ToggleGroup>
         {onFullscreen ? (
           <Button
             variant="tertiary"
@@ -161,7 +143,6 @@ export const ServicePreview = ({
       <div
         className="service-preview-viewport"
         ref={viewport}
-        data-zoom={zoom}
         style={height ? { height: `${height}px` } : undefined}
       >
         <div

@@ -61,10 +61,6 @@ export const blocksUi = {
     tryHelp:
       'Prøv tjenesten med kildene du valgte i skjemaet. Bare du ser utkastet til du publiserer.',
     reload: 'Start samtalen på nytt',
-    zoom: 'Størrelse på forhåndsvisningen',
-    zoomFit: 'Tilpass',
-    zoomActual: 'Faktisk størrelse',
-    zoomPercent: '{percent} %',
     fullscreen: 'Vis større',
     exitFullscreen: 'Vis mindre',
     backToBuilder: 'Tilbake til byggeren',

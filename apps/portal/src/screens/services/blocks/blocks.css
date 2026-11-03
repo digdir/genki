@@ -1,3 +1,8 @@
+/* The building blocks step and its preview use the whole column, wherever they are shown. */
+.main-inner:has(.blocks-split, .blocks-fullscreen) {
+  max-width: none;
+}
+
 .blocks-split {
   flex: 1;
   min-height: 0;
@@ -156,29 +161,19 @@
   background: var(--ds-color-neutral-background-tinted);
 }
 
-.service-preview-zoom {
-  font-size: var(--ds-font-size-2);
-  color: var(--ds-color-neutral-text-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The space the service is drawn in. The frame inside is drawn at a fixed width and zoomed to fit,
-   or shown at its actual size with scrolling. */
+/* The space the service is drawn in. The frame inside is drawn at a fixed width and zoomed to fit;
+   it scrolls sideways only below the smallest zoom. */
 .service-preview-viewport {
+  display: flex;
+  justify-content: center;
   width: 100%;
-  overflow: auto;
+  overflow: auto hidden;
   border-radius: var(--ds-border-radius-lg);
 }
 
 /* Menus that float out of the preview are placed in screen pixels, so they undo the zoom. */
 .service-preview-frame .ds-dropdown {
   zoom: calc(1 / var(--preview-scale, 1));
-}
-
-.service-preview-viewport[data-zoom='fit'] {
-  display: flex;
-  justify-content: center;
-  overflow: hidden;
 }
 
 .service-preview-frame {

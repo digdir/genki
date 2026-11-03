@@ -62,10 +62,6 @@ export const blocksUi = {
     tryHelp:
       'Try the service with the sources you chose in the form. Only you see the draft until you publish.',
     reload: 'Start the conversation again',
-    zoom: 'Size of the preview',
-    zoomFit: 'Fit',
-    zoomActual: 'Actual size',
-    zoomPercent: '{percent}%',
     fullscreen: 'Show larger',
     exitFullscreen: 'Show smaller',
     backToBuilder: 'Back to the builder',

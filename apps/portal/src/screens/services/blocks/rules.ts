@@ -79,15 +79,12 @@ export const rightPanelMode = (count: number): RightPanelMode =>
 /** The width the preview draws the service at, as on an ordinary laptop screen. */
 export const previewWidth = 1280;
 
-export type PreviewZoom = 'fit' | 'actual';
-
 /**
- * How much to zoom the preview. Fit zooms the service drawn at {@link previewWidth} to the space
+ * How much to zoom the preview: the service drawn at {@link previewWidth} is fitted to the space
  * there is, out on a small screen and in on a large one, within limits that keep it readable.
- * Actual size shows it at 100 %, and the frame scrolls when it does not fit.
  */
-export const previewScale = (zoom: PreviewZoom, available: number) =>
-  zoom === 'actual' || available <= 0
+export const previewScale = (available: number) =>
+  available <= 0
     ? 1
     : Math.min(1.5, Math.max(0.5, Math.floor((available / previewWidth) * 1000) / 1000));
 

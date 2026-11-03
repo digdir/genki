@@ -47,6 +47,17 @@ describe('the playground', () => {
     expectAccessible(container);
   });
 
+  it('starts the preview in «Prøv tjenesten», with «Endre layout» as the other choice', async () => {
+    await renderAt('#/playground');
+    const modes = await screen.findByRole('group', { name: 'Visning' });
+    const radios = within(modes).getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.map((r) => r.closest('label')?.textContent)).toEqual([
+      'Prøv tjenesten',
+      'Endre layout',
+    ]);
+    expect(radios[0]?.checked).toBe(true);
+  });
+
   it('makes a new service that starts with the building blocks tried in the playground', async () => {
     await renderAt('#/playground');
     const projects = await screen.findByRole('switch', { name: /^Prosjekter/ });

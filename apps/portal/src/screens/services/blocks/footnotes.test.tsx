@@ -18,11 +18,9 @@ const tryOut = (layout: BlockLayout) =>
     <ServicePreview
       layout={layout}
       mode="try"
-      zoom="fit"
       address="ny-tjeneste.genki.no"
       chat={<Chat />}
       onMode={noop}
-      onZoom={noop}
       onRemove={noop}
       onReload={noop}
     />,
