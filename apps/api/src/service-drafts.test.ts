@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createApp } from './app.js';
 import { createPlatform } from './composition.js';
@@ -140,7 +141,9 @@ const boot = async (lockdown = false) => {
       }
     ).definition.spec;
   expect((await publish({})).status).toBe(201);
-  return { send, publish, saveDraft, draft, latest, draftPath };
+  const remember = (who: string, name: string) =>
+    actorNames(platform.configEntries).remember(principals[who] as Principal, name);
+  return { send, publish, saveDraft, draft, latest, draftPath, remember };
 };
 
 const specOf = (draft: Record<string, unknown>) => (draft.definition as { spec: Spec }).spec;
@@ -387,6 +390,17 @@ describe('the list of service drafts', () => {
       },
       expect.objectContaining({ id: 'svar', name: 'Svar', latestVersion: 1 }),
     ]);
+  });
+
+  it('names who saved the draft last when the platform knows the name', async () => {
+    const env = await boot();
+    await env.remember('kari', 'Kari Nordmann');
+    await saveNew(env.send, 'utkast-k3x9q2', { name: 'Permisjon' });
+
+    expect((await listed(env.send))[0]).toMatchObject({
+      by: 'employee:test:kari',
+      byName: 'Kari Nordmann',
+    });
   });
 
   it('gives a draft with no name yet a null name', async () => {
