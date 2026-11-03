@@ -239,7 +239,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
             env: concat(serverEnv, knowledgeEnv.worker)
             volumeMounts: dataMount
           },
-          // 503 while the knowledge server is bound to another platform server or out of reach (issue 136).
+          // 503 until the worker has reached the knowledge server and found it bound to this platform server.
           empty(knowledge)
             ? {}
             : { probes: [{ type: 'Readiness', httpGet: { path: '/readyz', port: 8081 }, periodSeconds: 10 }] }

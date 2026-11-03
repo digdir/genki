@@ -119,7 +119,7 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
     ).rows;
   for (const { grantee } of await others()) {
     if (grantee === 'public') continue;
-    // A grant others hold through refuses to go; the check below names it instead of the raw error.
+    // A grant others hold through, or one this admin has no rights on, fails; the check below names it.
     await client.query('savepoint knowledge_connect');
     try {
       await client.query(`revoke connect on database ${database} from ${roleName(grantee)}`);
@@ -128,11 +128,29 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
       await client.query('rollback to savepoint knowledge_connect');
     }
   }
-  // A revoke without rights on the database, or of another grantor's grant, only warns.
+  // A revoke of another grantor's grant changes nothing, and one without the grant option only warns.
   const left = await others();
   if (left.length > 0)
     throw new Error(
       `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; revoke each as its grantor, or revoke the grantor's own grant with cascade, and run setup again`,
+    );
+  // A role that inherits or may set one of the logins connects through it. The admin option alone, which
+  // PostgreSQL gives the role that created a login, lets in neither. The admin running this setup and, on
+  // Azure, the server's admins may connect anyway.
+  const { rows: members } = await client.query<{ member: string; login: string; grantor: string }>(
+    `select m.rolname as member, l.rolname as login, g.rolname as grantor
+       from pg_auth_members a join pg_roles l on l.oid = a.roleid join pg_roles m on m.oid = a.member
+       join pg_roles g on g.oid = a.grantor
+      where l.rolname = any($1) and (a.inherit_option or a.set_option)
+        and m.rolname <> current_user
+        and not exists (select from pg_roles z
+                         where z.rolname = 'azure_pg_admin' and pg_has_role(m.oid, z.oid, 'MEMBER'))
+      order by member, login`,
+    [logins],
+  );
+  if (members.length > 0)
+    throw new Error(
+      `${members.map((row) => `${row.member} can act as ${row.login} (granted by ${row.grantor})`).join(', ')} and so connect to ${name}; revoke each as its grantor and run setup again`,
     );
 };
 

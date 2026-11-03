@@ -301,6 +301,38 @@ describe('knowledge server setup', () => {
     });
   });
 
+  it('setup fails, naming the member, while another role can act as one of its logins', async () => {
+    const own = fencedLogins('member_of');
+    for (const login of [...Object.values(own), 'member_of_stray'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_member_of', async (pool) => {
+      await setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform });
+      await admin.query(`grant ${own.apiLogin} to member_of_stray`);
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).rejects.toThrow(
+        /member_of_stray can act as member_of_api \(granted by \w+\).* genai_knowledge_member_of/,
+      );
+    });
+  });
+
+  // PostgreSQL 16 and later give a role that creates a login the admin option on it, and more where
+  // createrole_self_grant asks for it; the admin running setup may connect anyway.
+  it('setup accepts its own admin, or a role with the admin option only, as a holder of its logins', async () => {
+    const own = fencedLogins('admin_only');
+    for (const login of [...Object.values(own), 'admin_only_creator'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await admin.query(
+      `grant ${own.workerLogin} to admin_only_creator with admin true, inherit false, set false`,
+    );
+    await admin.query(`grant ${own.apiLogin} to current_user with inherit true, set true`);
+    await fencedDatabase('genai_knowledge_admin_only', async (pool) => {
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).resolves.toMatchObject({ outcome: 'bound' });
+    });
+  });
+
   it("a login of one environment cannot connect to the other environment's database", async () => {
     const other = { apiLogin: 'other_knowledge_api', workerLogin: 'other_knowledge_worker' };
     const otherDatabase = 'genai_knowledge_other';
