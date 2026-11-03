@@ -1,3 +1,20 @@
+import {
+  BarChartIcon,
+  Buildings3Icon,
+  BulletListIcon,
+  ChevronDownIcon,
+  CodeIcon,
+  CogIcon,
+  ComponentIcon,
+  DatabaseIcon,
+  HouseIcon,
+  MenuHamburgerIcon,
+  PersonGroupIcon,
+  RectangleSectionsIcon,
+  SandboxIcon,
+  ShieldLockIcon,
+  SidebarLeftIcon,
+} from '@navikt/aksel-icons';
 import { Alert, Avatar, Button, Divider, SkipLink, Tag } from '@digdir/designsystemet-react';
 import {
   createContext,
@@ -10,20 +27,20 @@ import {
   type ReactNode,
 } from 'react';
 import type { ApiClient } from './api';
-import { Icon, icons } from './components/Icon';
+import { Icon, type IconComponent } from './components/Icon';
 import { formatOrgNumber, profileFor } from './data/organisations';
 import { useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
 import type { Organisation, PortalRight, Session } from './types';
 
-type NavItem = { path: string; label: PlainKey; icon: string; also?: readonly string[] };
+type NavItem = { path: string; label: PlainKey; icon: IconComponent; also?: readonly string[] };
 
-export const navigationGroups = [
+type NavGroup = { heading?: PlainKey; items: readonly NavItem[] };
+
+export const navigationGroups: readonly NavGroup[] = [
   {
-    items: [
-      { path: '/overview', label: 'shell.navOverview', icon: 'M4 11l8-7 8 7v9h-5v-6H9v6H4z' },
-    ],
+    items: [{ path: '/overview', label: 'shell.navOverview', icon: HouseIcon }],
   },
   {
     heading: 'shell.groupBuild',
@@ -31,30 +48,30 @@ export const navigationGroups = [
       {
         path: '/services',
         label: 'shell.navServices',
-        icon: 'M4 5h16v14H4zM4 9h16M8 13h8',
+        icon: RectangleSectionsIcon,
         also: ['/step-flows'],
       },
       {
         path: '/shared-services',
         label: 'shell.navSharedServices',
-        icon: 'M8 7a3 3 0 1 0 0 .01M16 7a3 3 0 1 0 0 .01M3 19c0-3 2-5 5-5s5 2 5 5M13 15c1-1 2-1 3-1 3 0 5 2 5 5',
+        icon: PersonGroupIcon,
       },
       {
         path: '/datasets',
         label: 'shell.navDatasets',
-        icon: 'M5 6c0-1.7 3-3 7-3s7 1.3 7 3-3 3-7 3-7-1.3-7-3zM5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3',
+        icon: DatabaseIcon,
       },
       {
         path: '/building-blocks',
         label: 'shell.navBuildingBlocks',
-        icon: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+        icon: ComponentIcon,
         also: ['/skills'],
       },
-      { path: '/playground', label: 'shell.navPlayground', icon: 'M7 4v16l13-8z' },
+      { path: '/playground', label: 'shell.navPlayground', icon: SandboxIcon },
       {
         path: '/developer',
         label: 'shell.menuDeveloper',
-        icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
+        icon: CodeIcon,
         also: ['/api-reference'],
       },
     ],
@@ -65,9 +82,9 @@ export const navigationGroups = [
       {
         path: '/statistics',
         label: 'shell.navStatistics',
-        icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+        icon: BarChartIcon,
       },
-      { path: '/log', label: 'shell.navLog', icon: 'M4 6h16M4 12h10M4 18h6' },
+      { path: '/log', label: 'shell.navLog', icon: BulletListIcon },
     ],
   },
   {
@@ -76,16 +93,16 @@ export const navigationGroups = [
       {
         path: '/access',
         label: 'shell.navAccess',
-        icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+        icon: ShieldLockIcon,
       },
       {
         path: '/settings',
         label: 'shell.navSettings',
-        icon: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M4.9 4.9L7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
+        icon: CogIcon,
       },
     ],
   },
-] as const satisfies readonly { heading?: PlainKey; items: readonly NavItem[] }[];
+];
 
 export const navigation: readonly NavItem[] = navigationGroups.flatMap(
   (g): readonly NavItem[] => g.items,
@@ -271,7 +288,7 @@ const NavLinks = ({
                       title={compact ? t(item.label) : undefined}
                     >
                       <span className="nav-item">
-                        <Icon d={item.icon} />
+                        <Icon icon={item.icon} />
                         <span className={compact ? 'visually-hidden' : undefined}>
                           {t(item.label)}
                         </span>
@@ -440,21 +457,21 @@ export const Shell = ({
           title={orgCompact ? organisation.name : undefined}
         >
           {orgCompact ? (
-            <Icon d={icons.organisation} />
+            <Icon icon={Buildings3Icon} />
           ) : (
             <>
               <span className="org-button">
                 <span className="org-name">{organisation.name}</span>
                 {narrow ? null : <span className="meta">{orgMeta}</span>}
               </span>
-              <Icon d={icons.chevronDown} size={16} />
+              <Icon icon={ChevronDownIcon} size={16} />
             </>
           )}
         </Button>
       ) : (
         <div className="org-static" title={orgCompact ? organisation.name : undefined}>
           <span className="visually-hidden">{t('shell.actingForLabel')} </span>
-          {orgCompact ? <Icon d={icons.organisation} /> : null}
+          {orgCompact ? <Icon icon={Buildings3Icon} /> : null}
           <span className={orgCompact ? 'visually-hidden' : 'org-button'}>
             <span className="org-name">{organisation.name}</span>
             {narrow ? null : <span className="meta">{orgMeta}</span>}
@@ -532,7 +549,7 @@ export const Shell = ({
                 aria-controls="hovedmeny"
                 onClick={() => toggle('menu')}
               >
-                <Icon d={icons.menu} />
+                <Icon icon={MenuHamburgerIcon} />
                 <span>{t('shell.menu')}</span>
               </Button>
             ) : null}
@@ -563,7 +580,7 @@ export const Shell = ({
                 aria-label={t(collapsed ? 'shell.showSidebar' : 'shell.hideSidebar')}
                 onClick={toggleCollapsed}
               >
-                <Icon d={icons.sidebar} />
+                <Icon icon={SidebarLeftIcon} />
               </Button>
             </div>
             <NavLinks path={path} badges={badges} onNavigate={closeAll} compact={collapsed} />

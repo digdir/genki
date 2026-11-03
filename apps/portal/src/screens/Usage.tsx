@@ -1,3 +1,4 @@
+import { DownloadIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -54,8 +55,6 @@ import {
 } from './usage/model';
 import { UsageChart } from './usage/UsageChart';
 import './usage.css';
-
-const DOWNLOAD = 'M12 4v11M7 10l5 5 5-5M5 20h14';
 
 type SortKey = 'name' | 'tok' | 'cost';
 type DialogState = { kind: 'export' } | { kind: 'limit'; id: string } | undefined;
@@ -845,7 +844,7 @@ export const Usage = ({ api, tenant, tenantName, live }: ScreenProps) => {
         </div>
         {hasData ? (
           <Button variant="secondary" onClick={() => setDialog({ kind: 'export' })}>
-            <Icon d={DOWNLOAD} />
+            <Icon icon={DownloadIcon} />
             {t('usage.export')}
           </Button>
         ) : null}
