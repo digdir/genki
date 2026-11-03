@@ -12,7 +12,6 @@ import {
 import type { ApiClient } from './api';
 import { Icon, icons } from './components/Icon';
 import { formatOrgNumber, profileFor } from './data/organisations';
-import { isEntraLogin } from './oidc';
 import { useEscape, useNarrow } from './hooks';
 import { translator, useT, type PlainKey, type T } from './i18n';
 import { Unregistered } from './screens/Unregistered';
@@ -211,24 +210,25 @@ interface ShellProps {
 
 export const LockdownBanner = ({
   api,
-  entra,
 }: {
-  api: Pick<ApiClient, 'getHealth'>;
-  entra: boolean;
+  api: Pick<ApiClient, 'getHealth' | 'isReadOnlyInLockdown'>;
 }) => {
   const t = useT();
-  const [locked, setLocked] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    api.getHealth(controller.signal).then(
-      (health) => setLocked(health.lockdown === true),
-      () => undefined,
-    );
+    api
+      .getHealth(controller.signal)
+      .then(async (health) => {
+        if (health.lockdown !== true) return;
+        if (await api.isReadOnlyInLockdown(controller.signal)) setReadOnly(true);
+      })
+      .catch(() => undefined);
     return () => controller.abort();
   }, [api]);
-  return locked ? (
+  return readOnly ? (
     <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-      {t(entra ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
+      {t('shell.lockdownReadOnly')}
     </Alert>
   ) : null;
 };
@@ -319,7 +319,12 @@ export const Shell = ({
   useEffect(() => {
     if (!narrow) setOpen((o) => (o === 'menu' ? undefined : o));
   }, [narrow]);
-  useEffect(closeAll, [path, closeAll]);
+  const shownPath = useRef(path);
+  useEffect(() => {
+    if (shownPath.current === path) return;
+    shownPath.current = path;
+    closeAll();
+  }, [path, closeAll]);
   const area = path.split('/')[1] ?? '';
   const shownArea = useRef(area);
   useEffect(() => {
@@ -570,7 +575,7 @@ export const Shell = ({
         )}
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="main-inner">
-            <LockdownBanner api={api} entra={isEntraLogin(session.token)} />
+            <LockdownBanner api={api} />
             {gated ? (
               <Unregistered
                 api={api}

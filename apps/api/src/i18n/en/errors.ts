@@ -10,6 +10,12 @@ export const catalogErrors = {
   facetsList: 'facets are a list of field names',
   facetsFilter: 'facets must be filter fields too: {missing}',
   runsInside: '{engine} runs inside the platform and takes no {key}',
+  moveWithEngineSwitch:
+    'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+  generationOfAnother: '{generation} is the generation of another dataset',
+  knowledgeWrittenByWorker: 'knowledge data is written by the worker',
+  knowledgeBusy: 'the knowledge server is busy, try again',
+  noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',
   tenantEndpointsModels: 'tenant endpoints list their models explicitly',
   tenantEndpointsAuth: 'tenant endpoints use api-key or bearer',
@@ -151,6 +157,8 @@ export const knowledgeErrors = {
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
+  notSendRunBack: 'not allowed to send this run back',
+  onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
   datasetGone: 'the dataset is gone',
   parquetOneLocation: 'a Parquet source needs exactly one of url, urls and huggingface',
   parquetGlob: 'must be a .parquet glob',
@@ -180,6 +188,13 @@ export const knowledgeErrors = {
   enrichmentWriteFailed: 'The questions could not be stored',
   enrichmentModelRefused: 'The model cannot be used',
   enrichmentUncounted: 'Model use cannot be counted, so no questions are proposed',
+  jobRunQueuedExists:
+    'a run of {dataset}/{pipeline} already waits for the open one; wait for it or cancel it',
+  jobRunNotSentBack: 'only an ended run that runs as jobs can be sent back',
+  jobRunOpen:
+    '{dataset}/{pipeline} has an open run; wait for it or cancel it before sending this one back',
+  ingestStillEnding:
+    'the last ingest job of {dataset}/{pipeline} is still ending; start the run again in a minute',
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',

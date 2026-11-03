@@ -32,6 +32,7 @@ import {
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
+import { readOnlyInLockdown } from './lockdown.js';
 import { toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
 
@@ -58,6 +59,7 @@ export interface PlatformApiOptions {
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
   now?: () => Date;
+  lockdown?: boolean;
 }
 
 const tenantParam = z
@@ -309,7 +311,16 @@ const routes = {
     summary:
       'The organisations the signed-in person may act for, with names and rights, for logins whose token lists none',
     responses: {
-      200: json(z.object({ organisations: z.array(MyOrganisation) }), 'Organisations'),
+      200: json(
+        z.object({
+          organisations: z.array(MyOrganisation),
+          lockdownReadOnly: z.literal(true).optional().openapi({
+            description:
+              'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
+          }),
+        }),
+        'Organisations',
+      ),
       401: problems[401],
     },
   }),
@@ -841,6 +852,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
             ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
+        ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
       200,
     );

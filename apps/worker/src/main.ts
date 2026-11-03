@@ -3,11 +3,16 @@ import { join } from 'node:path';
 import {
   attachRuntimeBlocks,
   type BlockTexts,
+  boundPlatformId,
   createRuntime,
+  databaseHosts,
+  knowledgeServerEndpoints,
+  savedKnowledgeCatalog,
   followChanges,
   isLockdown,
   loadCatalog,
   mayUseModels,
+  openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
   runtimeBlocksOf,
@@ -32,6 +37,9 @@ import {
   triggerPauseKind,
   type TokenPrice,
   type TriggerBinding,
+  defaultMarkerTimeoutMs,
+  InMemoryJobQueue,
+  workQueues,
 } from '@genai/jobs';
 import {
   envSecrets,
@@ -42,16 +50,35 @@ import {
 } from '@genai/kernel';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
 import {
   createPostgresStores,
+  ingestSender,
+  knowledgeSourceFromEnv,
   LocalKeyWrapper,
+  platformId,
   PostgresDefinitionStore,
+  PostgresJobRunRecords,
   PostgresLeaderLease,
   postgresSourceFromEnv,
+  workerRole,
 } from '@genai/providers-postgres';
 import { parse as parseYaml } from 'yaml';
-import { isDevMode, workerBootProblems, workerDevModeWarning } from './boot-guard.js';
+import {
+  isDevMode,
+  knowledgeServerProblems,
+  workerBootProblems,
+  workerDevModeWarning,
+} from './boot-guard.js';
 import { followPublished } from './follow.js';
+import {
+  knowledgeRuntimeInput,
+  startHealthServer,
+  watchKnowledgeBinding,
+} from './knowledge-binding.js';
+import { openWorkerJobs } from './knowledge-jobs.js';
+import { platformWork } from './platform-work.js';
+import { reconcileKnowledgeRuns } from './reconciler.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -76,15 +103,6 @@ const configDir = process.env.CONFIG_DIR ?? join(root, 'apps', 'api', 'config', 
 const blobDir = process.env.BLOB_DIR ?? join(root, '.data', 'blobs');
 const platformTenant = platformTenantFrom(process.env);
 
-const databaseHosts = (...urls: (string | undefined)[]) =>
-  urls.flatMap((url) => {
-    try {
-      return url ? [new URL(url).hostname.replace(/^\[|\]$/g, '')] : [];
-    } catch {
-      return [];
-    }
-  });
-
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
   ? await createPostgresStores(
@@ -92,6 +110,7 @@ const db = databaseSource
       LocalKeyWrapper.fromBase64(process.env.CONTENT_MASTER_KEY),
       {
         onError: (error) => log('postgres connection error', { error: String(error) }),
+        role: workerRole,
         ...(process.env.DATABASE_RUNTIME_URL
           ? { runtime: { connectionString: process.env.DATABASE_RUNTIME_URL } }
           : {}),
@@ -99,6 +118,24 @@ const db = databaseSource
     )
   : undefined;
 log('storage', { kind: db ? 'postgres' : 'memory' });
+
+const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
+const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'worker') : undefined;
+const knowledgeWriter = knowledgeServer?.pools.writer;
+// Set once the runtime exists: filter indexes skipped while unbound are followed when the binding is fixed.
+let followKnowledge = () => {};
+const knowledgeBinding = watchKnowledgeBinding({
+  platformId: () => (db ? platformId(db.pool) : Promise.resolve('')),
+  ...(knowledgeWriter ? { boundTo: () => boundPlatformId(knowledgeWriter) } : {}),
+  log,
+  onBound: () => followKnowledge(),
+});
+await knowledgeBinding.start();
+const health = await startHealthServer({
+  port: Number(process.env.WORKER_HEALTH_PORT ?? 8081),
+  ready: () => knowledgeBinding.ready(),
+});
+log('health', { url: health.url, knowledgeServer: Boolean(knowledgeServer) });
 
 const secrets = envSecrets();
 const catalogs = {
@@ -109,6 +146,52 @@ const catalogs = {
     ? loadCatalog(configDir, 'embeddings.yaml', 'models')
     : { catalog: { endpoints: {}, models: [] }, skipped: [] },
 };
+const savedKnowledge = savedKnowledgeCatalog(
+  db ? await db.configEntries.latest({ kind: 'knowledge-endpoint' }) : [],
+);
+const knowledgeRefused = [
+  ...knowledgeServerProblems(process.env, catalogs.knowledge.catalog),
+  ...knowledgeServerProblems(process.env, savedKnowledge),
+];
+if (
+  !process.env.KNOWLEDGE_DATABASE_URL &&
+  !process.env.KNOWLEDGE_PGHOST &&
+  knowledgeServerEndpoints(savedKnowledge).length > 0
+)
+  log('warning', {
+    message: `saved knowledge endpoints skipped, no knowledge server is configured: ${knowledgeServerEndpoints(savedKnowledge).join(', ')}`,
+  });
+if (knowledgeRefused.length > 0) {
+  log('refusing to start', { problems: knowledgeRefused });
+  process.exit(1);
+}
+// The queues are worked only once the worker has passed every refusal above.
+const jobError = (error: unknown) =>
+  log('job queue error', {
+    error: error instanceof Error ? error.message : JSON.stringify(error),
+  });
+const workerJobs = db
+  ? await openWorkerJobs({
+      platform: { owner: db.pool, worker: db.runtimePool },
+      ...(knowledgeServer?.pools.owner && knowledgeServer.pools.writer
+        ? {
+            knowledge: { owner: knowledgeServer.pools.owner, writer: knowledgeServer.pools.writer },
+          }
+        : {}),
+      markerTimeoutMs: Number(process.env.MARKER_TIMEOUT_MS ?? defaultMarkerTimeoutMs),
+      work: platformWork,
+      open: openJobQueue,
+      runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
+      onError: jobError,
+    })
+  : undefined;
+const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
+if (!workerJobs) await workQueues(jobs, platformWork);
+log('jobs', {
+  kind: db ? 'pg-boss' : 'memory',
+  queues: platformWork.length,
+  knowledgeServer: Boolean(workerJobs?.knowledge),
+});
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
@@ -212,17 +295,13 @@ const runtime = await createRuntime({
   state: db?.state ?? new InMemoryStateStore(),
   blobStore: blob,
   egress: {
-    platformHosts: [
-      'localhost',
-      '127.0.0.1',
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
-      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
-    ],
+    platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)],
   },
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
         knowledgePool: db.pool,
+        ...knowledgeRuntimeInput(knowledgeServer, knowledgeBinding),
         connections: db.connections,
         modelClassifications: db.modelClassifications,
       }
@@ -232,6 +311,7 @@ const runtime = await createRuntime({
   logger: log,
   logFailureMessages: process.env.LOG_FAILURE_MESSAGES === 'true',
 });
+followKnowledge = runtime.followKnowledge;
 
 if (!db) {
   const promptsDir = join(servicesDir, 'prompts');
@@ -370,15 +450,55 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+// Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
+const knowledgeRunsLease = db
+  ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
+  : undefined;
+const knowledgeRunRecords =
+  db && workerJobs
+    ? new PostgresJobRunRecords(db.runtimePool, ingestSender(workerJobs.platform))
+    : undefined;
+const reconcileKnowledge = async () => {
+  if (!knowledgeRunRecords || !workerJobs || !(await knowledgeRunsLease?.tryAcquire())) return;
+  const pass = await reconcileKnowledgeRuns({
+    records: knowledgeRunRecords,
+    servers: workerJobs.runJobs,
+    lockdown,
+  });
+  if (pass.sentBack + pass.ended.length + pass.started.length + pass.dropped > 0)
+    log('knowledge runs reconciled', {
+      sentBack: pass.sentBack,
+      ended: pass.ended.map((run) => run.id),
+      started: pass.started.map((run) => run.id),
+      dropped: pass.dropped,
+    });
+};
+const knowledgeReconciler = knowledgeRunRecords
+  ? setInterval(
+      () =>
+        void reconcileKnowledge().catch((error: unknown) =>
+          log('knowledge reconciler failed', { error: String(error) }),
+        ),
+      60_000,
+    )
+  : undefined;
+
 const stop = () => {
   retention?.stop();
+  if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   stopFollowingChanges?.();
   following.stop();
   worker.stop();
   void (async () => {
+    await jobs.stop();
+    await workerJobs?.knowledge?.stop();
+    knowledgeBinding.stop();
+    await health.close();
+    await knowledgeServer?.close();
     await db?.close();
     await lease?.release();
     await retentionLease?.release();
+    await knowledgeRunsLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();
   })().finally(() => process.exit(0));

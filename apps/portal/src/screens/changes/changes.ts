@@ -59,6 +59,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.onboarding.decide': 'changes.onboardingDecide',
   'platform.onboarding.request': 'changes.onboardingRequest',
   'platform.pipeline.cancel': 'changes.pipelineCancel',
+  'platform.jobs.redrive': 'changes.jobsRedrive',
   'platform.pipeline.delete': 'changes.pipelineDelete',
   'platform.pipeline.execute': 'changes.pipelineExecute',
   'platform.pipeline.save': 'changes.pipelineSave',

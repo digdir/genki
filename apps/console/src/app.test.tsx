@@ -28,17 +28,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('a locked environment', () => {
-  const health = (lockdown: boolean): typeof fetch => {
+  const health = (lockdown: boolean, readOnly = true): typeof fetch => {
     const base = mockFetch();
     return async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      return url.endsWith('/health')
-        ? Response.json({ status: 'ok', version: 'test', lockdown })
-        : base(input, init);
+      if (url.endsWith('/health'))
+        return Response.json({ status: 'ok', version: 'test', lockdown });
+      if (url.endsWith('/me'))
+        return Response.json({
+          organisations: [],
+          ...(readOnly ? { lockdownReadOnly: true } : {}),
+        });
+      return base(input, init);
     };
   };
 
-  it('tells a TestID operator that changes, models and ingestion need an Entra login', async () => {
+  it('tells a read-only operator that changes, models and ingestion need an Entra login', async () => {
     await signedIn('#/tenants', [operatorRole], health(true));
 
     expect(
@@ -48,27 +53,17 @@ describe('a locked environment', () => {
     ).toBeTruthy();
   });
 
-  it('shows an Entra login the ordinary locked-environment banner', async () => {
-    const token = `e30.${btoa(JSON.stringify({ acr: 'entraid' })).replace(/=+$/, '')}.sig`;
-    const session = { name: 'Lise Dahl', roles: [operatorRole], token };
-    window.location.hash = '#/tenants';
-    render(
-      <App
-        auth={{
-          current: () => session,
-          login: async () => session,
-          logout: async () => undefined,
-          expire: () => undefined,
-        }}
-        fetch={health(true)}
-      />,
-    );
+  it('shows no banner to an admitted Entra login', async () => {
+    const seen: string[] = [];
+    const fetcher = health(true, false);
+    await signedIn('#/tenants', [operatorRole], async (input, init) => {
+      seen.push(String(input instanceof Request ? input.url : input));
+      return fetcher(input, init);
+    });
 
-    expect(
-      await screen.findByText(
-        'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
-      ),
-    ).toBeTruthy();
+    await waitFor(() => expect(seen.some((url) => url.endsWith('/me'))).toBe(true));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Virksomheter' })).toBeTruthy();
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
   });
 
   it('shows no banner when the environment is not locked', async () => {

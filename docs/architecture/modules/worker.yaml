@@ -21,11 +21,17 @@ responsibilities:
   - Record each trigger run and skip paused triggers
   - Read published services from the definition store and re-bind triggers when they change
   - Fire schedules from one worker at a time through a Postgres advisory lock
+  - Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)
+  - Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not
 files:
   - apps/worker/src/main.ts
   - apps/worker/src/worker.ts
   - apps/worker/src/follow.ts
   - apps/worker/src/boot-guard.ts
+  - apps/worker/src/knowledge-binding.ts
+  - apps/worker/src/platform-work.ts
+  - apps/worker/src/knowledge-jobs.ts
+  - apps/worker/src/reconciler.ts
 input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
@@ -79,4 +85,11 @@ edges:
     witness:
       file: apps/worker/src/main.ts
       imports: '@genai/providers-postgres'
+  - to: providers-pgboss
+    label: Opens the durable job queue (works jobs)
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-pgboss'
 keywords: worker triggers batch schedule folder jobs

@@ -1,0 +1,1903 @@
+:root {
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-feature-settings: 'cv05' 1;
+  --app-max-width: 1200px;
+  --app-gutter: var(--ds-size-5);
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--ds-color-background-default);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ds-color-background-default) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--ds-color-border-subtle);
+}
+
+.app-header-inner {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--ds-size-3) var(--app-gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-4);
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-2);
+  text-decoration: none;
+  color: var(--ds-color-neutral-text-default);
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.brand svg {
+  width: 32px;
+  height: 32px;
+}
+
+.nav {
+  display: flex;
+  gap: var(--ds-size-1);
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+
+.nav a {
+  text-decoration: none;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border-radius: var(--ds-border-radius-md);
+  color: var(--ds-color-neutral-text-subtle);
+  font-weight: 500;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.nav a:hover {
+  background: var(--ds-color-neutral-surface-hover);
+  color: var(--ds-color-neutral-text-default);
+}
+
+.nav a[aria-current='page'] {
+  background: var(--ds-color-accent-surface-tinted);
+  color: var(--ds-color-accent-text-default);
+}
+
+/* Sidebytte: kort toning uten forskyvning, nok til å se at siden byttet. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.page-enter {
+  animation: page-enter 0.15s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--ds-size-8) var(--app-gutter) var(--ds-size-14);
+}
+
+.app-footer {
+  border-top: 1px solid var(--ds-color-border-subtle);
+  padding: var(--ds-size-6) var(--app-gutter);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.app-footer-inner {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-4);
+  justify-content: space-between;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-4);
+}
+
+.stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-10);
+}
+
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+  align-items: center;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--ds-size-8);
+  align-items: center;
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hero-visual {
+  position: relative;
+  min-height: 300px;
+}
+
+.lede {
+  font-size: var(--ds-font-size-5);
+  line-height: 1.5;
+  color: var(--ds-color-neutral-text-subtle);
+  max-width: 60ch;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ds-size-4);
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--ds-size-4);
+}
+
+.block-card {
+  cursor: pointer;
+  height: 100%;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  border-top: 4px solid var(--fig, var(--ds-color-border-default));
+}
+
+.block-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.block-card:focus-visible {
+  outline: var(--ds-border-width-focus) solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.block-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-3);
+}
+
+.block-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-surface-tinted);
+  color: var(--ds-color-text-default);
+  flex-shrink: 0;
+}
+
+.block-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* Figure palette: calm, own tones, independent of the brand colours.
+   Fills and strokes are mixed with the page background so they work in both colour schemes. */
+.fig {
+  --fig-sand: #a58e5c;
+  --fig-mist: #6b8299;
+  --fig-lilac: #7f7494;
+  --fig-teal: #4f8a8b;
+  --fig-sage: #6d8b6f;
+  --fig-olive: #8f8a5a;
+  --fig-stone: #8a7f6b;
+  --fig-rose: #a07878;
+  --fig-ocean: #5a7ea3;
+  --fig: var(--fig-stone);
+  --fig-fill: color-mix(in srgb, var(--fig) 11%, var(--ds-color-background-default));
+  --fig-fill-strong: color-mix(in srgb, var(--fig) 24%, var(--ds-color-background-default));
+  --fig-line: color-mix(in srgb, var(--fig) 45%, var(--ds-color-background-default));
+}
+
+.fig [data-tone='sand'],
+.fig[data-tone='sand'] {
+  --fig: var(--fig-sand);
+}
+.fig [data-tone='mist'],
+.fig[data-tone='mist'] {
+  --fig: var(--fig-mist);
+}
+.fig [data-tone='lilac'],
+.fig[data-tone='lilac'] {
+  --fig: var(--fig-lilac);
+}
+.fig [data-tone='teal'],
+.fig[data-tone='teal'] {
+  --fig: var(--fig-teal);
+}
+.fig [data-tone='sage'],
+.fig[data-tone='sage'] {
+  --fig: var(--fig-sage);
+}
+.fig [data-tone='olive'],
+.fig[data-tone='olive'] {
+  --fig: var(--fig-olive);
+}
+.fig [data-tone='stone'],
+.fig[data-tone='stone'] {
+  --fig: var(--fig-stone);
+}
+.fig [data-tone='rose'],
+.fig[data-tone='rose'] {
+  --fig: var(--fig-rose);
+}
+.fig [data-tone='ocean'],
+.fig[data-tone='ocean'] {
+  --fig: var(--fig-ocean);
+}
+
+/* Architecture diagram */
+.diagram-wrap {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+  font-family: inherit;
+}
+
+/* Kompakt figur på detaljsidene: begrenset høyde, sentrert, uten tomme felt på sidene. */
+.diagram.compact {
+  height: 400px;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Rammen krymper til tegningen, så fullskjermknappen ligger i figurens hjørne. */
+.figure-fit {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.stack-figure {
+  width: 100%;
+  max-width: 520px;
+  display: block;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .diagram.compact {
+    width: 100%;
+    height: auto;
+  }
+
+  /* Auto-marger i et grid krymper elementet til innholdet, så de nulles her. */
+  .figure-fit {
+    width: auto;
+    margin-inline: 0;
+  }
+}
+
+.diagram .node {
+  cursor: pointer;
+  outline: none;
+}
+
+/* On narrow screens the drawing is replaced by a list of the same layers. */
+.diagram-list {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: var(--ds-size-2);
+}
+
+.diagram-list li > * {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--ds-color-text-default);
+  background: var(--fig-fill);
+  border: 1.5px solid var(--fig-line);
+  border-left: 6px solid var(--fig);
+  border-radius: var(--ds-border-radius-md);
+  padding: var(--ds-size-3) var(--ds-size-4);
+  cursor: pointer;
+}
+
+.diagram-list li > div {
+  cursor: default;
+}
+
+.diagram-list li > .active {
+  background: var(--fig-fill-strong);
+  border-color: var(--fig);
+}
+
+.diagram-list li > *:focus-visible {
+  outline: var(--ds-border-width-focus) solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.diagram-list span {
+  font-size: var(--ds-font-size-2);
+  color: var(--ds-color-text-subtle);
+}
+
+@media (max-width: 640px) {
+  .diagram {
+    display: none;
+  }
+  .diagram-list {
+    display: grid;
+  }
+}
+
+.block-icon.toned {
+  background: var(--fig-fill-strong);
+  color: var(--fig);
+}
+
+.cap-list.compact {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: var(--ds-size-1);
+  font-size: var(--ds-font-size-2);
+}
+
+/* Dark figures, after the target-architecture reference: monospace labels, dark panel, cool accents.
+   Same look in both colour schemes. */
+.fig-dark {
+  --fd-bg: #0c1322;
+  --fd-grid: rgba(120, 160, 210, 0.08);
+  --fd-text: #e6edf7;
+  --fd-muted: #9fb0c6;
+  --fd-link: #46c7d9;
+  --fd-grey: #2b3545;
+  --fd-grey-line: #6c7a8f;
+  --fd-cyan: #0f3b4a;
+  --fd-cyan-line: #3fc4d8;
+  --fd-green: #11482d;
+  --fd-green-line: #43d17e;
+  --fd-blue: #13315f;
+  --fd-blue-line: #4a92e6;
+  --fd-purple: #2a1f4f;
+  --fd-purple-line: #a884f3;
+  font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.fig-caption {
+  margin: 0 0 var(--ds-size-1);
+  font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  font-size: var(--ds-font-size-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2f9e62;
+}
+
+.diagram .bg,
+.stack-figure .bg {
+  fill: var(--fd-bg);
+}
+
+.diagram .gridline {
+  fill: none;
+  stroke: var(--fd-grid);
+  stroke-width: 1;
+}
+
+.diagram .link line {
+  stroke: var(--fd-link);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.diagram .link circle {
+  fill: var(--fd-link);
+}
+
+.diagram .node .box {
+  fill: var(--fd-grey);
+  stroke: var(--fd-grey-line);
+  stroke-width: 1.5;
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s,
+    filter 0.2s;
+}
+
+.diagram .node.cyan .box {
+  fill: var(--fd-cyan);
+  stroke: var(--fd-cyan-line);
+}
+
+.diagram .node.green .box {
+  fill: var(--fd-green);
+  stroke: var(--fd-green-line);
+}
+
+.diagram .node.blue .box {
+  fill: var(--fd-blue);
+  stroke: var(--fd-blue-line);
+}
+
+/* Leverandører: språkmodellene og infrastrukturen de kjører på. */
+.diagram .node.purple .box {
+  fill: var(--fd-purple);
+  stroke: var(--fd-purple-line);
+}
+
+.diagram .node:hover .box,
+.diagram .node:focus-visible .box,
+.diagram .node.active .box {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.diagram .node:focus-visible .box {
+  stroke: #fff;
+}
+
+/* Aktivt lag: lys aksentkant uansett farge, så også grå bokser skiller seg ut. */
+.diagram .node.active .box {
+  stroke: var(--fd-link);
+  filter: drop-shadow(0 0 8px var(--fd-link));
+}
+
+.diagram .host.more.active .box {
+  stroke-dasharray: none;
+}
+
+.diagram .node.grey {
+  color: var(--fd-grey-line);
+}
+.diagram .node.cyan {
+  color: var(--fd-cyan-line);
+}
+.diagram .node.green {
+  color: var(--fd-green-line);
+}
+.diagram .node.blue {
+  color: var(--fd-blue-line);
+}
+.diagram .node.purple {
+  color: var(--fd-purple-line);
+}
+
+.diagram .node .icon {
+  color: var(--fd-text);
+}
+
+.diagram .node .title {
+  fill: var(--fd-text);
+  font-weight: 600;
+  font-size: 24px;
+}
+
+.diagram .node .title.small {
+  font-size: 19px;
+}
+
+.diagram .node .chip rect {
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.diagram .node .chip text {
+  fill: var(--fd-text);
+  font-size: 15px;
+}
+
+/* Hero: isometric stack of layers */
+.stack-figure .thread {
+  stroke: var(--fd-link);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+  opacity: 0.6;
+}
+
+.stack-figure .slab {
+  cursor: pointer;
+  outline: none;
+}
+
+.stack-figure .face {
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transition: filter 0.2s;
+}
+
+.stack-figure .grey .top {
+  fill: #3a4557;
+  stroke: #8a98ad;
+}
+.stack-figure .grey .left {
+  fill: #2a3342;
+  stroke: #8a98ad;
+}
+.stack-figure .grey .right {
+  fill: #222a37;
+  stroke: #8a98ad;
+}
+.stack-figure .blue .top {
+  fill: #1e4f93;
+  stroke: #5ea4f0;
+}
+.stack-figure .blue .left {
+  fill: #163a6e;
+  stroke: #5ea4f0;
+}
+.stack-figure .blue .right {
+  fill: #112d57;
+  stroke: #5ea4f0;
+}
+.stack-figure .green .top {
+  fill: #1b6b41;
+  stroke: #52d98a;
+}
+.stack-figure .green .left {
+  fill: #144f30;
+  stroke: #52d98a;
+}
+.stack-figure .green .right {
+  fill: #0f3e26;
+  stroke: #52d98a;
+}
+.stack-figure .purple .top {
+  fill: #3b2a6e;
+  stroke: #b394f5;
+}
+.stack-figure .purple .left {
+  fill: #2d1f55;
+  stroke: #b394f5;
+}
+.stack-figure .purple .right {
+  fill: #241945;
+  stroke: #b394f5;
+}
+
+.stack-figure .slab:hover .top,
+.stack-figure .slab:focus-visible .top {
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+}
+
+.stack-figure .slab:focus-visible .face {
+  stroke: #fff;
+}
+
+.stack-figure .label {
+  fill: #fff;
+  font-weight: 600;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+.stack-figure .use path {
+  fill: none;
+  stroke: #52d98a;
+  stroke-width: 1.5;
+}
+
+.stack-figure .use circle {
+  fill: #52d98a;
+}
+
+.stack-figure .use rect {
+  fill: #11482d;
+  stroke: #43d17e;
+  stroke-width: 1.5;
+}
+
+.stack-figure .use svg {
+  color: #d7f7e4;
+}
+
+.stack-figure .use text {
+  fill: var(--fd-text);
+  font-size: 13px;
+}
+
+.stack-figure .pulse {
+  fill: #7fe3f0;
+}
+
+.stack-figure .pulse.up {
+  fill: #6fe39c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block-card,
+  .nav a {
+    transition: none;
+  }
+}
+
+/* Detail page */
+.detail-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--ds-size-5);
+  align-items: start;
+}
+
+.detail-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--ds-border-radius-lg);
+  display: grid;
+  place-items: center;
+  background: var(--fig-fill-strong);
+  color: var(--fig);
+}
+
+.detail-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--ds-size-6);
+}
+
+@media (max-width: 860px) {
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detail-grid > *,
+.flow-layout > * {
+  min-width: 0;
+}
+
+.detail-grid .ds-tabs > [role='tablist'],
+.detail-grid ds-tablist {
+  overflow-x: auto;
+}
+
+.prose p {
+  margin: 0 0 var(--ds-size-4);
+  max-width: 70ch;
+  line-height: 1.6;
+}
+
+.pkg-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+}
+
+.pkg {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--ds-font-size-2);
+  padding: 2px var(--ds-size-2);
+  border-radius: var(--ds-border-radius-sm);
+  background: var(--ds-color-neutral-surface-tinted);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.cap-list {
+  margin: 0;
+  padding-inline-start: 1.2em;
+  line-height: 1.6;
+}
+
+.cap-list li + li {
+  margin-top: var(--ds-size-2);
+}
+
+.reuse-box {
+  background: var(--fig-fill);
+  border-color: var(--fig-line);
+}
+
+.flow-card {
+  background: var(--fig-fill);
+  border-color: var(--fig-line);
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ds-size-3);
+  flex-wrap: wrap;
+}
+
+/* Flow page */
+.flow-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  gap: var(--ds-size-6);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .flow-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.flow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.flow-step {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--ds-size-3);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border-radius: var(--ds-border-radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.flow-step:hover {
+  background: var(--ds-color-neutral-surface-hover);
+}
+
+.flow-step[aria-current='step'] {
+  background: var(--ds-color-accent-surface-tinted);
+  border-color: var(--ds-color-accent-border-subtle);
+}
+
+.flow-step .num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  background: var(--ds-color-neutral-surface-tinted);
+  color: var(--ds-color-neutral-text-default);
+}
+
+.flow-step[aria-current='step'] .num {
+  background: var(--ds-color-accent-base-default);
+  color: var(--ds-color-accent-base-contrast-default);
+}
+
+.flow-controls {
+  display: flex;
+  gap: var(--ds-size-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.progress {
+  height: 4px;
+  background: var(--ds-color-neutral-surface-tinted);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress > div {
+  height: 100%;
+  background: var(--ds-color-accent-base-default);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Get started */
+pre.code {
+  margin: 0;
+  padding: var(--ds-size-4);
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-neutral-surface-tinted);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--ds-font-size-2);
+  line-height: 1.6;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--ds-size-3);
+}
+
+.stat {
+  padding: var(--ds-size-4);
+  border-radius: var(--ds-border-radius-md);
+  background: var(--ds-color-surface-tinted);
+}
+
+.stat b {
+  display: block;
+  font-size: var(--ds-font-size-7);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ds-color-text-default);
+}
+
+.stat span {
+  color: var(--ds-color-text-subtle);
+  font-size: var(--ds-font-size-2);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Services (cases) */
+.case-card {
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+}
+
+/* Hele kortet er klikkbart: tittel-lenken dekker kortet, merkelappene ligger over. */
+.case-card h2 a::after,
+.type-card h2 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.case-card .tag-link,
+.type-card .tag-link {
+  position: relative;
+  z-index: 1;
+}
+
+.type-card {
+  position: relative;
+}
+
+.case-card:hover,
+.type-card:hover {
+  border-color: var(--ds-color-accent-border-default);
+}
+
+/* Kortblokkene i Designsystemet er posisjonerte; nullstill dem så lenkens overlegg dekker hele kortet. */
+.case-card .ds-card__block,
+.type-card .ds-card__block,
+.component-card .ds-card__block {
+  position: static;
+}
+
+.case-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-size-1);
+  font-weight: 600;
+  color: var(--ds-color-accent-text-subtle);
+}
+
+/* Next level: components of a block */
+.component-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--ds-size-3);
+}
+
+.component-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  border-color: var(--fig-line);
+}
+
+/* Første blokk fyller kortet, så bunnlinjen med status og lenke flukter på tvers av raden. */
+.component-card > :first-child {
+  flex: 1;
+}
+
+.component-card .component-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ds-size-2);
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/* Litt mindre skrift i bunnlinjen, så status og lenke alltid får plass på én linje. */
+.component-card .component-foot .case-cta,
+.component-card .component-foot .ds-tag {
+  font-size: 14px;
+}
+
+.component-card .case-cta {
+  font-size: var(--ds-font-size-3);
+}
+
+.component-card:hover {
+  border-color: var(--fig);
+}
+
+.component-head {
+  display: flex;
+  gap: var(--ds-size-3);
+  align-items: flex-start;
+}
+
+.component-head h3 {
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2);
+  font-size: var(--ds-font-size-3);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+/* Live data from Hugging Face */
+.live-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ds-size-2);
+}
+
+.live-list li {
+  display: grid;
+  gap: 2px;
+  font-size: var(--ds-font-size-3);
+  overflow-wrap: anywhere;
+}
+
+.live-list .meta {
+  font-size: var(--ds-font-size-2);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.diagram .title.xs {
+  font-size: 15px;
+}
+
+.diagram .host.more .box {
+  stroke-dasharray: 6 6;
+  fill: transparent;
+}
+
+.diagram .host.more .dot {
+  fill: var(--fd-text);
+  stroke: none;
+}
+
+.tag-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tag-link:hover,
+.tag-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Status page */
+.status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ds-size-2);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ds-size-3);
+  flex-wrap: wrap;
+}
+
+.component-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.component-link:hover,
+.component-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Hele delkortet skal kjennes klikkbart: lenken dekker kortet, merkelappen ligger over. */
+.component-card {
+  position: relative;
+}
+
+.component-card .component-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.component-card .tag-link,
+.component-card .case-cta {
+  position: relative;
+  z-index: 1;
+}
+
+/* Service types */
+.stack-figure .use {
+  cursor: pointer;
+  outline: none;
+}
+
+.stack-figure .use:hover rect,
+.stack-figure .use:focus-visible rect {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px #43d17e);
+}
+
+.stack-figure .use:focus-visible rect {
+  stroke: #fff;
+}
+
+.stack-figure .use:hover text {
+  text-decoration: underline;
+}
+
+.type-icon {
+  background: var(--ds-color-success-surface-tinted);
+  color: var(--ds-color-success-text-default);
+}
+
+.build-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ds-size-2);
+}
+
+.build-list li {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: var(--ds-size-3);
+  padding: var(--ds-size-2) 0;
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+  font-size: var(--ds-font-size-3);
+}
+
+.build-label {
+  font-weight: 600;
+}
+
+.inline-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+}
+
+@media (max-width: 560px) {
+  .build-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ds-size-1);
+  }
+}
+
+/* "Vi bygger sammen": midtblokken fyller kortet, så lenkene nederst flukter på tvers av raden. */
+.together-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.together-card > :nth-child(2) {
+  flex: 1;
+}
+
+/* Figures: fullscreen button and fullscreen layout */
+.figure {
+  position: relative;
+  outline: none;
+}
+
+.figure-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(230, 237, 247, 0.25);
+  background: rgba(12, 19, 34, 0.75);
+  color: #e6edf7;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.figure-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Bare på pc med mus og bred skjerm. Vises ved hover eller fokus, og alltid i fullskjerm. */
+@media (hover: hover) and (min-width: 960px) {
+  .figure-btn {
+    display: inline-flex;
+  }
+
+  .figure:hover .figure-btn,
+  .figure:focus-within .figure-btn,
+  .figure:fullscreen .figure-btn,
+  .figure.is-full .figure-btn {
+    opacity: 1;
+  }
+
+  .figure-btn:hover,
+  .figure-btn:focus-visible {
+    background: rgba(12, 19, 34, 0.95);
+    border-color: #46c7d9;
+    outline: none;
+  }
+}
+
+.figure-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(12, 19, 34, 0.8);
+  color: #9fb0c6;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Fullskjerm: sidens bakgrunn (følger valgt tema), figuren sentrert og skalert. */
+.figure:fullscreen,
+.figure.is-full {
+  background: var(--ds-color-background-default);
+  display: grid;
+  place-items: center;
+  padding: 48px;
+  border-radius: 0;
+  overflow: auto;
+}
+
+.figure.is-full {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+/* Bred figur skaleres etter bredden, høy figur etter høyden. */
+.figure:fullscreen .diagram,
+.figure.is-full .diagram {
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 96px);
+}
+
+.figure:fullscreen .stack-figure,
+.figure.is-full .stack-figure {
+  width: auto;
+  height: calc(100vh - 96px);
+  max-width: 100%;
+  margin: 0;
+}
+
+.figure-fit:fullscreen,
+.figure-fit.is-full {
+  width: auto;
+}
+
+.figure:fullscreen .figure-btn,
+.figure.is-full .figure-btn {
+  top: 16px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  background: var(--ds-color-neutral-surface-default);
+  color: var(--ds-color-neutral-text-default);
+  border-color: var(--ds-color-neutral-border-default);
+}
+
+.figure:fullscreen .figure-hint,
+.figure.is-full .figure-hint {
+  background: var(--ds-color-neutral-surface-tinted);
+  color: var(--ds-color-neutral-text-subtle);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+/* Flytsiden i fullskjerm: figur, kontroller og stegliste side om side, steglisten kan rulle. */
+.figure:fullscreen .flow-full,
+.figure.is-full .flow-full {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+  gap: var(--ds-size-6);
+  align-items: start;
+  width: 100%;
+}
+
+.figure:fullscreen .flow-full .diagram,
+.figure.is-full .flow-full .diagram {
+  width: 100%;
+  height: auto;
+}
+
+.figure:fullscreen .flow-full .flow-steps,
+.figure.is-full .flow-full .flow-steps {
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+.figure:fullscreen .flow-full .figure-hint,
+.figure.is-full .flow-full .figure-hint {
+  display: none;
+}
+
+/* To lister side om side; én kolonne på smale skjermer. */
+.live-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.live-grid.one {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 720px;
+}
+
+@media (max-width: 720px) {
+  .live-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* I fullskjerm: tydelig markering av boksen som er valgt med piltastene. */
+.figure:fullscreen .diagram .node:focus-visible .box,
+.figure.is-full .diagram .node:focus-visible .box {
+  stroke: #fff;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 10px #fff);
+}
+
+.figure:fullscreen .stack-figure .slab:focus-visible .face,
+.figure.is-full .stack-figure .slab:focus-visible .face,
+.figure:fullscreen .stack-figure .use:focus-visible rect,
+.figure.is-full .stack-figure .use:focus-visible rect {
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+/* Search */
+.search-dialog {
+  width: min(680px, 100% - 2 * var(--ds-size-4));
+  max-width: none;
+}
+
+.search-box {
+  display: grid;
+  gap: var(--ds-size-3);
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.search-results a {
+  display: grid;
+  gap: 2px;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border-radius: var(--ds-border-radius-md);
+  text-decoration: none;
+  color: inherit;
+}
+
+.search-results li.is-cursor a,
+.search-results a:hover {
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+.search-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-size-2);
+}
+
+.search-context {
+  color: var(--ds-color-neutral-text-subtle);
+  font-size: var(--ds-font-size-2);
+}
+
+.search-excerpt {
+  color: var(--ds-color-neutral-text-subtle);
+  font-size: var(--ds-font-size-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.search-form {
+  max-width: 640px;
+}
+
+/* Målbildet (produktbladet): tre spalter, hver boks lenker videre. */
+.mb {
+  /* Friskere utgaver av figurtonene, bare på bladet. */
+  --fig-sand: #d98a1f;
+  --fig-mist: #2f6fb5;
+  --fig-lilac: #7a5bc2;
+  --fig-teal: #1a9d94;
+  --fig-sage: #2f9a5e;
+  --fig-olive: #8a9a1f;
+  --fig-stone: #6c7a8a;
+  --fig-rose: #d4566c;
+  --fig-ocean: #1f78c9;
+  --mb-ink: #184d8f;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-4);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: 14px;
+  padding: var(--ds-size-5);
+  background: var(--ds-color-background-default);
+}
+
+.mb-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    'main main'
+    'gains effects';
+  gap: var(--ds-size-4);
+  /* Strekk, så gevinster og samlet effekt får samme høyde og bunnkantene flukter. */
+  align-items: stretch;
+}
+
+.mb-main {
+  grid-area: main;
+}
+.mb-side.gains {
+  grid-area: gains;
+}
+.mb-side.effects {
+  grid-area: effects;
+}
+
+/* På brede skjermer bryter bladet ut av sidebredden, så alt kan ses samtidig. */
+@media (min-width: 1200px) {
+  .mb-figure:not(:fullscreen):not(.is-full) {
+    --mb-w: min(100vw - 2 * var(--app-gutter) - 20px, 1900px);
+    width: var(--mb-w);
+    margin-inline: calc(50% - var(--mb-w) / 2);
+  }
+}
+
+/* Tre spalter som på plakaten når det er plass. */
+@media (min-width: 1400px) {
+  .mb-grid {
+    grid-template-columns: minmax(260px, 1.2fr) minmax(0, 3fr) minmax(260px, 1.2fr);
+    grid-template-areas: 'gains main effects';
+  }
+  .mb-points {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* De sju nye byggeklossene på én rad, som på plakaten. */
+  .mb-tiles:not(.small) {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .mb-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'main' 'gains' 'effects';
+  }
+  .mb {
+    padding: var(--ds-size-3);
+  }
+}
+
+.mb-main,
+.mb-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-3);
+  min-width: 0;
+}
+
+/* Områdene får litt sterkere tone enn figurene ellers, så de skiller seg fra hverandre med ett blikk. */
+.mb-side,
+.mb-users,
+.mb-practice,
+.mb-sub[data-tone] {
+  --fig-fill: color-mix(in srgb, var(--fig) 18%, var(--ds-color-background-default));
+  --fig-line: color-mix(in srgb, var(--fig) 55%, var(--ds-color-background-default));
+  background: var(--fig-fill);
+  border: 1px solid var(--fig-line);
+}
+
+.mb-side {
+  padding: var(--ds-size-4);
+  border-radius: 12px;
+}
+
+/* Overskriften i hvert område tar områdets farge, mørknet mot tekstfargen så den er lesbar. */
+.mb-side > h2,
+.mb-users > h2,
+.mb-practice > h2,
+.mb-sub > h3 {
+  color: color-mix(in srgb, var(--fig) 65%, var(--ds-color-text-default));
+}
+
+/* Tittelbåndet øverst, som på plakaten. */
+.mb-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-1);
+  padding: var(--ds-size-4) var(--ds-size-5);
+  border-radius: 12px;
+  background: var(--ds-color-accent-base-default);
+  color: var(--ds-color-accent-base-contrast-default);
+}
+
+.mb-head h1,
+.mb-head p {
+  margin: 0;
+  color: inherit;
+}
+
+.mb-head p {
+  opacity: 0.9;
+  font-size: var(--ds-font-size-3);
+}
+
+.mb ul,
+.mb ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mb-points {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--ds-size-2);
+}
+
+.mb-point,
+.mb-band,
+.mb-principle,
+.mb-tile {
+  display: flex;
+  gap: var(--ds-size-3);
+  align-items: flex-start;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid transparent;
+  font-size: var(--ds-font-size-2);
+  line-height: 1.35;
+}
+
+.mb-point {
+  align-items: center;
+}
+
+.mb-point strong,
+.mb-band strong,
+.mb-principle strong {
+  display: block;
+  font-weight: 600;
+}
+
+.mb-point-text {
+  display: block;
+  color: var(--ds-color-neutral-text-subtle);
+  font-size: var(--ds-font-size-1);
+  line-height: 1.35;
+}
+
+/* Rund, fylt ikonplate i områdets farge, som på plakaten. */
+.mb-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--fig, var(--mb-ink));
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.mb-badge svg {
+  width: 26px;
+  height: 26px;
+}
+
+.mb-badge.big {
+  width: 52px;
+  height: 52px;
+  background: var(--mb-ink);
+}
+
+.mb-badge.big svg {
+  width: 32px;
+  height: 32px;
+}
+
+.mb-users .mb-badge {
+  width: 40px;
+  height: 40px;
+  background: var(--mb-ink);
+}
+
+a.mb-point:hover,
+a.mb-band:hover,
+a.mb-principle:hover,
+.mb-tile:hover {
+  border-color: var(--ds-color-accent-border-default);
+  background: var(--ds-color-accent-surface-tinted);
+}
+
+a.mb-point:focus-visible,
+a.mb-band:focus-visible,
+a.mb-principle:focus-visible,
+.mb-tile:focus-visible,
+.mb-arrow:focus-visible {
+  outline: var(--ds-border-width-focus) solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+/* Hvem som bruker løsningen */
+.mb-users {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+  padding: var(--ds-size-3) var(--ds-size-4);
+  border-radius: 12px;
+}
+
+.mb-user-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-2) var(--ds-size-5);
+  font-size: var(--ds-font-size-2);
+  font-weight: 500;
+}
+
+.mb-user {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-2);
+  color: inherit;
+  text-decoration: none;
+  padding: 2px var(--ds-size-2) 2px 2px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.mb-user:hover {
+  border-color: var(--ds-color-accent-border-default);
+  background: var(--ds-color-background-default);
+}
+
+.mb-user:focus-visible {
+  outline: var(--ds-border-width-focus) solid var(--ds-color-focus-outer);
+  outline-offset: 2px;
+}
+
+.mb-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-size-3);
+  color: var(--ds-color-accent-text-subtle);
+  font-size: var(--ds-font-size-2);
+  text-decoration: none;
+  padding: var(--ds-size-1);
+  border-radius: 8px;
+}
+
+.mb-arrow:hover {
+  text-decoration: underline;
+}
+
+/* Fellesløsningen */
+.mb-platform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-4);
+  padding: var(--ds-size-4);
+  border-radius: 12px;
+  border: 2px solid var(--ds-color-accent-border-subtle);
+  background: var(--ds-color-accent-surface-default);
+}
+
+.mb-platform-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-3);
+  color: var(--ds-color-accent-text-default);
+}
+
+.mb-platform-head p {
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.mb-sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+}
+
+.mb-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--ds-size-2);
+}
+
+.mb-tiles.small {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
+.mb-tile {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--ds-size-2);
+  padding: var(--ds-size-3) var(--ds-size-2);
+  height: 100%;
+  background: color-mix(in srgb, var(--fig) 14%, var(--ds-color-background-default));
+  border-color: color-mix(in srgb, var(--fig) 40%, var(--ds-color-background-default));
+  font-size: var(--ds-font-size-2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.mb-tiles.small .mb-tile {
+  flex-direction: row;
+  text-align: left;
+  align-items: center;
+  padding: var(--ds-size-2) var(--ds-size-3);
+}
+
+.mb-tile-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--fig);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.mb-tile-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.mb-tiles.small .mb-tile-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.mb-tiles.small .mb-tile-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mb-band {
+  align-items: center;
+  background: color-mix(in srgb, var(--fig) 14%, var(--ds-color-background-default));
+  border-color: color-mix(in srgb, var(--fig) 40%, var(--ds-color-background-default));
+}
+
+.mb-sub[data-tone] {
+  padding: var(--ds-size-3) var(--ds-size-4);
+  border-radius: 12px;
+  background: var(--fig-fill);
+  border: 1px solid var(--fig-line);
+}
+
+.mb-principles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--ds-size-2);
+}
+
+.mb-principle {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--ds-size-1);
+  height: 100%;
+  background: var(--ds-color-background-default);
+  border-color: var(--fig-line);
+}
+
+.mb-principle .mb-badge {
+  margin-bottom: var(--ds-size-1);
+}
+
+/* Fra idé til tjeneste */
+.mb-practice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+  padding: var(--ds-size-3) var(--ds-size-4);
+  border-radius: 12px;
+}
+
+.mb-practice-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-size-2);
+}
+
+.mb-practice-list li {
+  display: flex;
+  align-items: stretch;
+  gap: var(--ds-size-2);
+  min-width: 0;
+}
+
+.mb-practice-list li > .mb-principle {
+  flex: 1;
+}
+
+.mb-practice-arrow {
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+@media (max-width: 640px) {
+  .mb-practice-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mb-practice-arrow {
+    display: none;
+  }
+}
+
+.mb-footer {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+  padding: var(--ds-size-3) var(--ds-size-4);
+  border-radius: 12px;
+  background: var(--ds-color-accent-base-default);
+  color: var(--ds-color-accent-base-contrast-default);
+  font-size: var(--ds-font-size-3);
+}
+
+.mb-footer span {
+  opacity: 0.9;
+  font-size: var(--ds-font-size-2);
+}
+
+.mb-practice-intro {
+  margin: 0;
+  font-size: var(--ds-font-size-2);
+  line-height: 1.5;
+  color: var(--ds-color-neutral-text-subtle);
+  max-width: 80ch;
+}
+
+.mb-practice-intro strong {
+  color: var(--ds-color-text-default);
+}
+
+/* I fullskjerm fyller bladet bredden og kan rulles. */
+.figure:fullscreen .mb,
+.figure.is-full .mb {
+  width: min(100%, 1900px);
+  align-self: start;
+}

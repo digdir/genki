@@ -4,6 +4,7 @@
 - workspace
 - portal
 - console
+- docs
 - schema-forms
 - adapter-mcp
 - adapter-a2a
@@ -49,6 +50,7 @@
 - providers-openapi-tools
 - providers-langfuse
 - providers-postgres
+- providers-pgboss
 - providers-pgvector
 - providers-parquet
 - providers-postgres-source

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Event, Principal, Task, Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
-import { isTrustedEntraLogin } from '@genai/composition';
+import { isAdmittedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
 import {
   ALL_GRANT,
@@ -250,7 +250,7 @@ export const portalAdminHandlers = (deps: {
       ...(typeof input.lastFour === 'string' ? { lastFour: input.lastFour } : {}),
       ...(typeof input.createdAt === 'string' ? { createdAt: input.createdAt } : {}),
       ...(typeof input.expiresAt === 'string' ? { expiresAt: input.expiresAt } : {}),
-      ...(isTrustedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
+      ...(isAdmittedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
     };
     await deps.apiKeys.add(key);
     return {
@@ -285,7 +285,7 @@ export const portalAdminHandlers = (deps: {
     delete kept.revokedAt;
     delete kept.lastUsedAt;
     delete kept.admittedInLockdown;
-    if (isTrustedEntraLogin(principal)) kept.admittedInLockdown = true;
+    if (isAdmittedEntraLogin(principal)) kept.admittedInLockdown = true;
     if (Array.isArray(input.allowedOverrides)) {
       const chosen = overridable(input.allowedOverrides);
       if (chosen.length > 0) kept.allowedOverrides = chosen;

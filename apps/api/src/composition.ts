@@ -73,7 +73,6 @@ import {
 } from '@genai/providers-mcp-client';
 import type { RegisteredAgent } from '@genai/strategy-remote';
 import { checkFlow } from '@genai/strategy-step-flow';
-import { createHash } from 'node:crypto';
 import type { Admin } from './admin.js';
 import {
   capabilityModes,
@@ -98,6 +97,8 @@ import {
 } from './frontends.js';
 import { createWebhooks, egressSender, type WebhookSender } from './webhooks.js';
 import { createConfigurables, type ConfigurablesInput } from './configurables.js';
+import { definitionSubject } from './definition-subject.js';
+import { portalGateMetrics, portalGateRuns } from './gate-runs.js';
 import { checkOverrides, serviceOverridesOf } from './settings-runtime.js';
 import { requestLocale, t } from './i18n/index.js';
 import {
@@ -147,7 +148,7 @@ import {
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
 import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
@@ -418,6 +419,7 @@ export interface PlatformInput {
   labels?: LabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
@@ -492,18 +494,7 @@ export const defaultGates = new Map<string, Gate>([
   ],
 ]);
 
-const stable = (value: unknown): string =>
-  Array.isArray(value)
-    ? `[${value.map(stable).join(',')}]`
-    : value && typeof value === 'object'
-      ? `{${Object.keys(value)
-          .sort()
-          .map((k) => `${JSON.stringify(k)}:${stable((value as Record<string, unknown>)[k])}`)
-          .join(',')}}`
-      : JSON.stringify(value);
-
-export const definitionSubject = (spec: unknown) =>
-  `spec:${createHash('sha256').update(stable(spec)).digest('hex').slice(0, 16)}`;
+export { definitionSubject };
 
 const retrievalInput = {
   type: 'object',
@@ -1016,6 +1007,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
+    ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
@@ -1182,10 +1174,22 @@ export const createPlatform = async (input: PlatformInput) => {
     const current = await store.get('Service', d.metadata.tenant, d.metadata.id);
     if (!current) return undefined;
     const candidate = definitionSubject(d.spec);
+    const testSets = evaluation?.testSets ?? [];
     const decision = await publishGate({
       tenant: d.metadata.tenant,
       service: d.metadata.id,
       candidate,
+      candidateFallback: {
+        runs: await portalGateRuns(
+          configEntries,
+          evalStores.testSets,
+          d.metadata.tenant,
+          d.metadata.id,
+          candidate,
+          testSets,
+        ),
+        metrics: portalGateMetrics,
+      },
       ...(current
         ? { baseline: definitionSubject((current.definition as { spec: unknown }).spec) }
         : {}),

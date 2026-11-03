@@ -19,6 +19,7 @@ import {
   pendingIngestionBackend,
   type ExecutionStore,
   type IngestionBackend,
+  type JobRuns,
 } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
 import { createGateRegistry } from './scoped-registry.js';
@@ -35,6 +36,8 @@ export interface ConfigurablesInput {
   now?: () => Date;
   scheduleIntervalMs?: number;
   admitsIngestion?: (principal: Principal | undefined) => boolean;
+  /** Runs of these datasets are knowledge jobs (ADR 0042). */
+  jobRuns?: JobRuns;
   onWarning?: (message: string) => void;
 }
 
@@ -102,13 +105,16 @@ export const createConfigurables = (
       backend: input.ingestion ?? deps.ingestion ?? pendingIngestionBackend(),
       ...(input.now ? { now: input.now } : {}),
       ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
+      ...(input.jobRuns ? { jobs: input.jobRuns } : {}),
       ...(input.onWarning ? { onRefused: input.onWarning, onError: input.onWarning } : {}),
     });
-    await ingestion
-      .failStaleRuns()
-      .catch((error: unknown) =>
-        input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
-      );
+    const closeStaleRuns = () =>
+      ingestion
+        .failStaleRuns()
+        .catch((error: unknown) =>
+          input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
+        );
+    await closeStaleRuns();
     const configDeps = {
       catalog,
       gates,
@@ -192,6 +198,7 @@ export const createConfigurables = (
         if (interval > 0 && !ticking) {
           ticking = true;
           setInterval(() => void runSchedules().catch(() => undefined), interval).unref();
+          setInterval(() => void closeStaleRuns(), interval).unref();
         }
       },
     };

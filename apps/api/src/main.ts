@@ -23,10 +23,15 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  ingestSender,
+  knowledgeReadSourceFromEnv,
+  knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
+  PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
@@ -38,7 +43,11 @@ import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
 import {
+  databaseHosts,
+  knowledgeServerEndpoints,
+  savedKnowledgeCatalog,
   defaultPlatformTenant,
+  openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
 } from '@genai/composition';
@@ -66,7 +75,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
-import { bootProblems, devModeWarning, isDevMode } from './boot-guard.js';
+import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
 import { unknownTestPerson } from './dev-login.js';
@@ -74,6 +83,22 @@ import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+
+/**
+ * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
+ * genai_runtime; pg-boss starts for sending on the first send, since the worker installs it.
+ */
+const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0]) => {
+  let queue: Promise<PgBossJobQueue> | undefined;
+  const started = () =>
+    (queue ??= PgBossJobQueue.start(runtimePool, { works: false }).catch((error: unknown) => {
+      queue = undefined;
+      throw error;
+    }));
+  return new PostgresJobRuns(runtimePool, {
+    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+  });
+};
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -123,15 +148,6 @@ log('altinn pdp', {
   ...(altinnPdp.kind === 'altinn' ? { baseURL: altinnPdp.baseURL } : {}),
 });
 
-const databaseHosts = (...urls: (string | undefined)[]) =>
-  urls.flatMap((url) => {
-    try {
-      return url ? [new URL(url).hostname.replace(/^\[|\]$/g, '')] : [];
-    } catch {
-      return [];
-    }
-  });
-
 const databaseSource = postgresSourceFromEnv(process.env);
 const db = databaseSource
   ? await createPostgresStores(
@@ -156,8 +172,9 @@ const registeredClients = clientRegistry(clients);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
-  log('lockdown: Entra logins in the configured groups get the whole platform', {
+  log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
+    userGroups: trustedEntra.userGroups?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });
@@ -305,6 +322,35 @@ const catalogs = {
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
+const savedKnowledge = savedKnowledgeCatalog(
+  db ? await db.configEntries.latest({ kind: 'knowledge-endpoint' }) : [],
+);
+const knowledgeRefused = [
+  ...knowledgeServerProblems(process.env, catalogs.knowledge.catalog),
+  ...knowledgeServerProblems(process.env, savedKnowledge),
+];
+if (
+  !process.env.KNOWLEDGE_DATABASE_URL &&
+  !process.env.KNOWLEDGE_PGHOST &&
+  knowledgeServerEndpoints(savedKnowledge).length > 0
+)
+  log('warning', {
+    message: `saved knowledge endpoints skipped, no knowledge server is configured: ${knowledgeServerEndpoints(savedKnowledge).join(', ')}`,
+  });
+if (knowledgeRefused.length > 0) {
+  log('refusing to start', { problems: knowledgeRefused });
+  process.exit(1);
+}
+const knowledgeSource = knowledgeSourceFromEnv(process.env, 'api');
+const knowledgeReadSource = knowledgeReadSourceFromEnv(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools(knowledgeSource, 'api', knowledgeReadSource)
+  : undefined;
+log('knowledge server', {
+  configured: Boolean(knowledgeServer),
+  readHost: knowledgeReadSource?.host ?? 'primary',
+});
+
 const dataDir = process.env.DATA_DIR ?? join(import.meta.dirname, '..', '.data');
 
 const allowWorker = (inner: PolicyDecisionPoint): PolicyDecisionPoint => ({
@@ -391,6 +437,8 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
+    // No dataset runs as jobs yet: #139 names the datasets on `connection: knowledge`.
+    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT
@@ -408,6 +456,7 @@ const platform = await createPlatform({
     embeddings: catalogs.embeddings.catalog,
   },
   ...(db ? { knowledgePool: db.pool, changes: db.changes } : {}),
+  ...(knowledgeServer ? { knowledgeServer: knowledgeServer.pools } : {}),
   ...(db
     ? {
         rateLimits: {
@@ -448,13 +497,7 @@ const platform = await createPlatform({
   tasks,
   blobStore: new FileSystemBlobStore(process.env.BLOB_DIR ?? join(dataDir, 'blobs')),
   egress: {
-    platformHosts: [
-      'localhost',
-      '127.0.0.1',
-      `localhost:${port}`,
-      ...databaseHosts(process.env.DATABASE_URL, process.env.DATABASE_RUNTIME_URL),
-      ...(process.env.PGHOST ? [process.env.PGHOST] : []),
-    ],
+    platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`, ...databaseHosts(process.env)],
   },
   catalogSkips: skipped,
   ...(db

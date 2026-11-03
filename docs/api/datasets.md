@@ -18,6 +18,8 @@ Datasets and what fills and serves them: ingestion pipelines and their runs, fil
 5. `POST .../pipelines/{id}/execute`: start a run; it continues in the background. An unknown pipeline answers `404`, for execute and delete alike.
 6. `GET .../pipelines/{id}/executions` and `GET /tenants/{tenant}/datasets/{id}`: progress, status and skipped documents.
 
+A dataset whose runs run as knowledge jobs ([ADR 0042](../adr/0042-the-knowledge-database.md)) runs them in the worker. A start while the pipeline has an open run creates the run `queued`, and a start while one is already `queued` is refused with `409`. Such a run ends when its jobs have ended: `failed` when the source could not be listed, otherwise `succeeded`, with `report.failedDocuments` counting documents whose jobs ended as dead letters. `POST .../pipelines/{id}/executions/{execution}/redrive` with a `change-reason` sends those dead letters back and reopens the run (`202`, audited as `platform.jobs.redrive`, `manage-datasets`); the worker sends them back within a minute.
+
 `GET .../pipelines/{id}/versions` lists every saved version, oldest first; each has `deleted`, which is `true` on the version that removed the pipeline.
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.

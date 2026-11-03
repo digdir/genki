@@ -119,6 +119,8 @@ export const adminActionRights: Readonly<
   'platform.pipeline.delete': 'manage-datasets',
   'platform.pipeline.execute': 'manage-datasets',
   'platform.pipeline.cancel': 'manage-datasets',
+  // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
+  'platform.jobs.redrive': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
   'platform.dataset.enrichment.apply': 'manage-datasets',

@@ -194,6 +194,14 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     );
   }
 
+  /** Each routed dataset's config with the endpoint it is on. */
+  datasetConfigs(): { endpoint: string; config: DatasetConfig }[] {
+    return [...this.#routes.values()].map(({ dataset, config }) => ({
+      endpoint: dataset.endpoint,
+      config,
+    }));
+  }
+
   resolve(idOrAlias: string): string | undefined {
     if (this.#routes.has(idOrAlias)) return idOrAlias;
     return this.#aliases.get(idOrAlias);
@@ -241,7 +249,7 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
   }
 
   #port(route: Route, ref: Ref, ctx: PortContext): KnowledgePort {
-    const { dataset, config, connection, engine, capabilities } = route;
+    const { dataset, connection, engine, capabilities } = route;
     const declared = new Set(capabilities);
     const need = (capability: KnowledgeCapability) => {
       if (!declared.has(capability))
@@ -256,6 +264,8 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
     const max = this.options.maxResidency;
     if (max && order.indexOf(dataset.residency) > order.indexOf(max))
       throw new KnowledgeError('residency', `dataset ${dataset.id} is stored outside ${max}`);
+    // Only past the checks above does the connection learn which dataset it may read.
+    const config: DatasetConfig = { ...route.config, allowed: [dataset.id] };
 
     const checkFilters = (filters: Record<string, FilterValue> = {}) => {
       for (const [field, value] of Object.entries(filters)) {
