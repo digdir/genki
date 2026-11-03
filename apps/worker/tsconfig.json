@@ -30,7 +30,22 @@
       "path": "../../packages/providers-postgres"
     },
     {
+      "path": "../../packages/providers-pgboss"
+    },
+    {
       "path": "../../packages/providers-langfuse"
+    },
+    {
+      "path": "../../packages/ingest"
+    },
+    {
+      "path": "../../packages/port-embedding"
+    },
+    {
+      "path": "../../packages/port-knowledge"
+    },
+    {
+      "path": "../../packages/providers-documents"
     }
   ]
 }

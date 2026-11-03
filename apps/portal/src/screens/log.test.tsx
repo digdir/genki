@@ -165,6 +165,22 @@ describe('run timeline', () => {
     expect(screen.queryByText(/0 øre/)).toBeNull();
   });
 
+  it('shows a cost below one øre from the run in micro-NOK', async () => {
+    const base = mockFetch();
+    await renderAt('#/log/t1', async (input, init) => {
+      const response = await base(input, init);
+      if (!/\/tasks\/t1\/timeline$/.test(String(input))) return response;
+      return Response.json({
+        ...((await response.json()) as object),
+        costOre: 0,
+        costMicroNok: 714,
+      });
+    });
+    await steps();
+
+    expect(screen.getByText('0,1 øre')).toBeTruthy();
+  });
+
   it('Vis hvem requires a reason, shows a notice and adds an entry under Endringer', async () => {
     await renderAt('#/log/t1');
     await steps();

@@ -758,12 +758,16 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks',
-    summary: "The tenant's service runs, newest first",
+    summary: "The tenant's service runs, or its playground runs, newest first",
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
       headers: readHeaders,
       query: z.object({
+        origin: z
+          .enum(['playground'])
+          .optional()
+          .describe('playground lists playground runs instead of service runs'),
         status: taskStatus.optional(),
         service: z.string().optional(),
         from: z.string().optional().describe('ISO time, inclusive'),
@@ -794,7 +798,7 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks/{task}',
-    summary: 'One service run',
+    summary: 'One service run or playground run',
     description: described(member, notAudited),
     request: { params: z.object({ tenant, task }), headers: readHeaders },
     responses: { 200: json(TaskRow, 'Run'), ...memberRead },
@@ -2077,6 +2081,10 @@ const TenantUsage = z
     ingestion: z.object({
       usage: Usage,
       byDataset: z.array(z.object({ dataset: z.string(), usage: Usage })),
+    }),
+    testing: z.object({
+      usage: Usage,
+      byOrigin: z.array(z.object({ origin: z.string(), usage: Usage })),
     }),
   })
   .openapi('TenantUsage');

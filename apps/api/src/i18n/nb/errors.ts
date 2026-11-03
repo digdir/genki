@@ -9,6 +9,20 @@ export const catalogErrors = defineNamespace({
   facetsList: 'fasetter er en liste med feltnavn',
   facetsFilter: 'fasetter må også være filterfelt: {missing}',
   runsInside: '{engine} kjører inne i plattformen og tar ikke {key}',
+  moveWithEngineSwitch:
+    'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
+  generationOfAnother: '{generation} er generasjonen til et annet datasett',
+  knowledgeWrittenByWorker: 'kunnskapsdata skrives av bakgrunnstjenesten',
+  knowledgePhrases:
+    'søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene har dem',
+  knowledgeOnePipeline:
+    'et datasett i kunnskapsdatabasen fylles av én pipeline til medeiere er bygget; det har {pipelines}',
+  knowledgeChunking:
+    'oppdeling endres gjennom en ny generasjon, som ikke er bygget ennå; datasettets generasjon beholder oppdelingen den ble fylt med',
+  knowledgeSourceKind:
+    'en kilde av typen {kind} kan ikke fylle et datasett i kunnskapsdatabasen ennå',
+  knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
+  noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',
   tenantEndpointsModels: 'virksomhetens endepunkter lister modellene sine eksplisitt',
   tenantEndpointsAuth: 'virksomhetens endepunkter bruker api-key eller bearer',
@@ -150,6 +164,8 @@ export const knowledgeErrors = defineNamespace({
   datasetChangedEngine: 'Datasettet er endret siden søkemotoren ble tatt i bruk.',
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
+  notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
+  onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
   datasetGone: 'datasettet finnes ikke lenger',
   parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
   parquetGlob: 'må være et .parquet-filmønster',
@@ -179,6 +195,13 @@ export const knowledgeErrors = defineNamespace({
   enrichmentWriteFailed: 'Spørsmålene kunne ikke lagres',
   enrichmentModelRefused: 'Modellen kan ikke brukes',
   enrichmentUncounted: 'Bruken av modellen kan ikke telles, så det blir ikke foreslått spørsmål',
+  jobRunQueuedExists:
+    'en kjøring av {dataset}/{pipeline} venter allerede på den åpne; vent på den eller avbryt den',
+  jobRunNotSentBack: 'bare en avsluttet kjøring som går som jobber, kan sendes tilbake',
+  jobRunOpen:
+    '{dataset}/{pipeline} har en åpen kjøring; vent på den eller avbryt den før du sender denne tilbake',
+  ingestStillEnding:
+    'den siste innlesingsjobben for {dataset}/{pipeline} avslutter fortsatt; start kjøringen igjen om et minutt',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',

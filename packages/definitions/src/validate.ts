@@ -67,6 +67,37 @@ const joinPath = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
     .join('')
     .replace(/^\./, '');
 
+type Issue = z.core.$ZodIssue;
+
+const depth = (issues: Issue[]) => Math.min(...issues.map((i) => i.path.length));
+
+const wrongType = (branch: Issue[]) =>
+  branch.every((i) => i.code === 'invalid_type' && i.path.length === 0);
+
+const closestBranch = (branches: Issue[][]) => {
+  const fitting = branches.filter((branch) => !wrongType(branch));
+  return (fitting.length > 0 ? fitting : branches).reduce((best, branch) =>
+    depth(branch) > depth(best) || (depth(branch) === depth(best) && branch.length < best.length)
+      ? branch
+      : best,
+  );
+};
+
+const leafIssues = (issue: Issue): Issue[] =>
+  issue.code === 'invalid_union' && issue.errors.length > 0
+    ? closestBranch(issue.errors).flatMap((inner) =>
+        leafIssues({ ...inner, path: [...issue.path, ...inner.path] }),
+      )
+    : [issue];
+
+const messageOf = (issue: Issue) =>
+  issue.code === 'invalid_type' && issue.expected === 'nonoptional' ? 'Required' : issue.message;
+
+const errorsFrom = (issues: Issue[], base: (string | number)[]) =>
+  issues
+    .flatMap(leafIssues)
+    .map((issue) => ({ path: joinPath(base, issue), message: messageOf(issue) }));
+
 const check = (
   schema: z.ZodType,
   value: unknown,
@@ -74,23 +105,14 @@ const check = (
   errors: ValidationError[],
 ) => {
   const result = schema.safeParse(value);
-  if (!result.success) {
-    for (const issue of result.error.issues)
-      errors.push({ path: joinPath(base, issue), message: issue.message });
-  }
+  if (!result.success) errors.push(...errorsFrom(result.error.issues, base));
 };
 
 const parse = <T>(schema: z.ZodType<T>, input: unknown): Validated<T> => {
   const parsed = schema.safeParse(input);
   return parsed.success
     ? { ok: true, definition: parsed.data }
-    : {
-        ok: false,
-        errors: parsed.error.issues.map((issue) => ({
-          path: joinPath([], issue),
-          message: issue.message,
-        })),
-      };
+    : { ok: false, errors: errorsFrom(parsed.error.issues, []) };
 };
 
 const placeWords: Record<Residency, string> = {

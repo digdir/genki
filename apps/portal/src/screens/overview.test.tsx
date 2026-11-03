@@ -134,7 +134,7 @@ describe('Oversikt', () => {
     const cost = await screen.findByText('Anslått kostnad hittil');
     expect(cost.nextElementSibling?.textContent).toBe('Ikke priset');
     expect(
-      screen.getByText(/byggeren og assistenten vises ikke her, men teller med i kvoten/),
+      screen.getByText(/Assistenten har sitt eget daglige budsjett og er ikke med/),
     ).toBeTruthy();
   });
 

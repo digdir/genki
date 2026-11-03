@@ -1,6 +1,6 @@
 # 0025 Search engine switching
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; in-place updates and generation recipes proposed in ADR 0042, 2026-10-27). Proposed 2026-10-07
 
 ## Decision
 
@@ -22,4 +22,6 @@ Search engines differ in cost, residency and what they support (0023), and a ten
 - A switch is an `engine-switch` config entry; its progress and decisions are versioned and audited like any other change.
 - The copy or re-ingest job runs on the instance that started it, and is not resumed elsewhere. While it runs, it writes a heartbeat on the switch every 30 seconds. A switch whose heartbeat is older than two minutes (configurable) is marked as failed with "Overføringen stoppet. Start den på nytt.", and the tenant can try again.
 - The writer port can drop a generation that is still active in its engine (`drop(dataset, generation, { force: true })`). Through the routers, a forced drop is refused for the generation the catalog serves, also from another endpoint of the same engine, since pgvector endpoints share tables per dataset id.
+- The comparison runs two endpoints against each other (`openAt`). Two generations on the same engine cannot be compared, because a pgvector search always reads the active generation.
+- [ADR 0042](0042-the-knowledge-database.md), proposed, changes how pgvector datasets get new generations: in-place updates for normal runs, and generations, activation and rollback within one engine for a changed recipe. Activation names the generation in the catalog, and a named candidate can be searched and compared with the active generation on the same engine, which the previous point rules out today. For datasets in the knowledge database, documents owned by their pipelines replace copying the other pipelines' documents into each new generation (issue 107), and a disabled pipeline keeps its documents. A switch into the knowledge database fills its generation with ingestion runs that run as jobs (ADR 0041) and follows their run records instead of a heartbeat in the API, and the generation it fills can be checked through a service's full retrieval path in an evaluation run before it is activated. Otherwise engine switches stay as described here, and a switch counts as an open run of every pipeline of its dataset.
 - One instance at a time cleans up old generations, under a lease in the config entries: the copies a cancel, rollback or retry left on the target, and the previous engine's data when the retention period is over. Data on engines the platform may not write to, such as the shared Typesense cluster, is never deleted. A drop that fails is recorded and not retried automatically.

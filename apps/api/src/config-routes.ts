@@ -51,6 +51,11 @@ export interface ConfigDeps {
     tenant: string;
     principal: Principal;
   }) => Promise<number | undefined>;
+  connectorSecret?: (
+    tenant: string,
+    dataset: string,
+    pipeline: string,
+  ) => Promise<string | undefined>;
 }
 
 export const ingestionTarget = (item: CatalogItem): IngestionTarget => ({
@@ -382,7 +387,7 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
     const dataset = String(input.dataset);
     const target = `pipeline:${dataset}/${String(input.id)}`;
     if (!mayWrite(principal, scope)) return refused(target, 'not allowed to run this pipeline');
-    const cancelled = deps.ingestion.cancel({
+    const cancelled = await deps.ingestion.cancel({
       dataset,
       execution: String(input.execution),
       by: actor(principal),
@@ -395,6 +400,28 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
           audit: { scope, execution: cancelled.value.id },
         }
       : { ok: false, errors: cancelled.errors, target, conflict: true as const };
+  },
+  'platform.jobs.redrive': async (input, principal) => {
+    const scope = scopeOf(input);
+    const dataset = String(input.dataset);
+    const target = `pipeline:${dataset}/${String(input.id)}`;
+    if (!mayWrite(principal, scope)) return refused(target, 'not allowed to send this run back');
+    const sent = await deps.ingestion.redrive({
+      dataset,
+      pipeline: String(input.id),
+      execution: String(input.execution),
+      by: actor(principal),
+      reason: String(input.reason ?? ''),
+      principal,
+    });
+    return sent.ok
+      ? { ok: true, value: sent.value, target, audit: { scope, execution: sent.value.id } }
+      : {
+          ok: false,
+          errors: sent.errors,
+          target,
+          ...(sent.conflict ? { conflict: true as const } : {}),
+        };
   },
   'platform.testset.save': async (input, principal) => {
     const tenant = input.tenant;
@@ -957,10 +984,12 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         ]);
       if (id && !(await deps.ingestion.get(guard.scope, dataset, pipelineId)))
         return problem(c, 404, 'Not found');
+      const connectorSecret = await deps.connectorSecret?.(guard.scope, dataset, pipelineId);
       const response = await perform(c, guard.principal, 'platform.pipeline.save', guard.scope, {
         dataset,
         id: pipelineId,
         spec,
+        ...(connectorSecret ? { connectorSecret } : {}),
       });
       return !id && response.status === 200 ? c.json(await response.json(), 201) : response;
     };
@@ -1040,6 +1069,18 @@ export const registerConfigRoutes = <E extends Env, S extends Schema, B extends 
         id: param(c, 'id'),
         execution: param(c, 'execution'),
       });
+    });
+    app.post(`${base}/datasets/:dataset/pipelines/:id/executions/:execution/redrive`, async (c) => {
+      const guard = await access(c, 'manage-datasets');
+      if ('response' in guard) return guard.response;
+      const item = itemFor(c, guard.scope);
+      if (!item) return problem(c, 404, 'Not found');
+      const response = await perform(c, guard.principal, 'platform.jobs.redrive', guard.scope, {
+        dataset: item.id,
+        id: param(c, 'id'),
+        execution: param(c, 'execution'),
+      });
+      return response.status === 200 ? c.json(await response.json(), 202) : response;
     });
     app.get(`${base}/datasets/:dataset/pipelines/:id/executions`, async (c) => {
       const guard = await access(c);

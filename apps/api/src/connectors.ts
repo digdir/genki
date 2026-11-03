@@ -383,6 +383,14 @@ export interface ConnectorEntrySpec {
   connector?: ConnectorLink;
 }
 
+export const connectorSecretOf =
+  (entries: Pick<ConfigEntryStore, 'latest'>) =>
+  async (tenant: string, dataset: string, pipeline: string) =>
+    (await entries.latest({ kind: connectorMappingKind, scope: tenant }))
+      .filter((entry) => !entry.deleted)
+      .map((entry) => (entry.spec as ConnectorEntrySpec).connector)
+      .find((link) => link?.dataset === dataset && link.pipeline === pipeline)?.connection.password;
+
 const statusOf = (link: ConnectorLink | undefined, last: Execution | undefined): ConnectorStatus =>
   !link
     ? 'not_connected'

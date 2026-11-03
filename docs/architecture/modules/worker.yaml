@@ -21,11 +21,20 @@ responsibilities:
   - Record each trigger run and skip paused triggers
   - Read published services from the definition store and re-bind triggers when they change
   - Fire schedules from one worker at a time through a Postgres advisory lock
+  - Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)
+  - Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding
+  - Cancel a knowledge run whose document dead letters reach its pipeline's failure budget
+  - Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not
 files:
   - apps/worker/src/main.ts
   - apps/worker/src/worker.ts
   - apps/worker/src/follow.ts
   - apps/worker/src/boot-guard.ts
+  - apps/worker/src/knowledge-binding.ts
+  - apps/worker/src/platform-work.ts
+  - apps/worker/src/knowledge-jobs.ts
+  - apps/worker/src/reconciler.ts
+  - apps/worker/src/knowledge-handlers.ts
 input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
@@ -79,4 +88,39 @@ edges:
     witness:
       file: apps/worker/src/main.ts
       imports: '@genai/providers-postgres'
+  - to: providers-pgboss
+    label: Opens the durable job queue (works jobs)
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-pgboss'
+  - to: ingest
+    label: Lists sources, plans runs against document records and indexes one document
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/knowledge-handlers.ts
+      imports: '@genai/ingest'
+  - to: port-knowledge
+    label: Reads the dataset config of a knowledge run
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/knowledge-handlers.ts
+      imports: '@genai/port-knowledge'
+  - to: port-embedding
+    label: Embeds chunks in knowledge.index
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/knowledge-handlers.ts
+      imports: '@genai/port-embedding'
+  - to: providers-documents
+    label: Converts documents with the text layer
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-documents'
 keywords: worker triggers batch schedule folder jobs

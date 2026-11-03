@@ -1,12 +1,20 @@
 import type { Pool } from 'pg';
 import { withPlatformAccess, withTenant } from './tenancy.js';
 
-export type IngestionExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type IngestionExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface IngestionExecutionReport {
   stored: number;
   skipped: number;
   failed: string[];
+  /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
+  failedDocuments?: number;
+  /** For a run on the knowledge database: what its listing found against its pipeline's records. */
+  new?: number;
+  changed?: number;
+  deleted?: number;
+  unchanged?: number;
 }
 
 export interface IngestionExecution {
@@ -21,9 +29,15 @@ export interface IngestionExecution {
   endedAt?: string;
   report?: IngestionExecutionReport;
   error?: string;
+  /** Runs as knowledge jobs, ends with them, and is left alone by the check for stopped runs. */
+  runsAsJobs?: boolean;
+  /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
+  admittedAt?: string;
+  cancelRequestedAt?: string;
+  cancelledBy?: string;
 }
 
-interface Row {
+export interface Row {
   id: string;
   scope: string;
   dataset: string;
@@ -36,11 +50,15 @@ interface Row {
   ended_at: string | null;
   report: IngestionExecutionReport | null;
   error: string | null;
+  runs_as_jobs?: boolean;
+  admitted_at?: string | null;
+  cancel_requested_at?: string | null;
+  cancelled_by?: string | null;
 }
 
 export const executionScope = (dataset: string) => /^(\d{9})\//.exec(dataset)?.[1] ?? 'platform';
 
-const toExecution = (row: Row): IngestionExecution => ({
+export const toExecution = (row: Row): IngestionExecution => ({
   id: row.id,
   dataset: row.dataset,
   pipeline: row.pipeline,
@@ -52,6 +70,10 @@ const toExecution = (row: Row): IngestionExecution => ({
   ...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
   ...(row.report === null ? {} : { report: row.report }),
   ...(row.error === null ? {} : { error: row.error }),
+  ...(row.runs_as_jobs ? { runsAsJobs: true } : {}),
+  ...(row.admitted_at ? { admittedAt: row.admitted_at } : {}),
+  ...(row.cancel_requested_at ? { cancelRequestedAt: row.cancel_requested_at } : {}),
+  ...(row.cancelled_by ? { cancelledBy: row.cancelled_by } : {}),
 });
 
 export class PostgresIngestionExecutions {
@@ -92,16 +114,25 @@ export class PostgresIngestionExecutions {
     return row && toExecution(row);
   }
 
+  async beat(execution: IngestionExecution, at: string): Promise<void> {
+    await withTenant(this.pool, executionScope(execution.dataset), (client) =>
+      client.query(
+        `update ingestion_executions set heartbeat_at = $2 where id = $1 and status = 'running'`,
+        [execution.id, at],
+      ),
+    );
+  }
+
   async failStale(input: {
-    startedBefore: string;
+    heartbeatBefore: string;
     except: string[];
     endedAt: string;
     error: string;
   }): Promise<number> {
     const result = await withPlatformAccess(this.pool, 'ingestion-stale-runs', (client) =>
       client.query<{ changed: number }>(
-        'select fail_stale_ingestion_executions($1, $2, $3, $4) as changed',
-        [input.startedBefore, input.except, input.endedAt, input.error],
+        'select fail_stopped_ingestion_executions($1, $2, $3, $4) as changed',
+        [input.heartbeatBefore, input.except, input.endedAt, input.error],
       ),
     );
     return result.rows[0]?.changed ?? 0;

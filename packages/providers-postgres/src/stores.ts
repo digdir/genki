@@ -132,6 +132,16 @@ export class PostgresTaskStore implements TaskStore {
     }));
   }
 
+  async envelopes(query: { tenant: string; since?: string; limit?: number }): Promise<Task[]> {
+    const found = await this.pool.query<{ envelope: Task }>(
+      `select envelope from tasks
+       where tenant = $1 and ($2::timestamptz is null or created_at >= $2)
+       order by created_at desc limit $3`,
+      [query.tenant, query.since ?? null, query.limit ?? 1000],
+    );
+    return found.rows.map((row) => row.envelope);
+  }
+
   async tokensUsed(query: {
     tenant: string;
     since: string;

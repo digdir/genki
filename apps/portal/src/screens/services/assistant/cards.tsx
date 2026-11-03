@@ -128,7 +128,7 @@ export const AssistantBanner = ({
               tenant: tenantName,
             })}
           </Paragraph>
-          <Link href="#/usage">{t('assistant.bannerBudgetLink')}</Link>
+          <Link href="#/statistics">{t('assistant.bannerBudgetLink')}</Link>
         </Alert>
       )}
     </div>

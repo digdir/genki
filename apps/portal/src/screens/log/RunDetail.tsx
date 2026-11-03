@@ -1,3 +1,4 @@
+import { ChevronLeftIcon, VitalsIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -37,8 +38,6 @@ import { Steps } from './Steps';
 type Flash = { text: string; color: 'success' | 'info' } | undefined;
 
 const pseudonymOf = (caller: string) => /\((A-[A-Z0-9]{4})\)/.exec(caller)?.[1];
-
-const traceIcon = 'M4 12h4l3-7 4 14 3-7h2';
 
 export const RunDetail = ({
   api,
@@ -246,7 +245,11 @@ export const RunDetail = ({
                         header.data.usage.costMicroNok === undefined
                         ? null
                         : header.data.usage.costMicroNok / 10_000
-                      : (run.costOre ?? null),
+                      : run.costMicroNok !== undefined
+                        ? run.costMicroNok === null
+                          ? null
+                          : run.costMicroNok / 10_000
+                        : (run.costOre ?? null),
                   ),
                 },
               ]
@@ -338,7 +341,7 @@ export const RunDetail = ({
       {child ? (
         <nav aria-label={t('logRun.breadcrumbs')} className="crumbs">
           <a href={`#/log/${runId}`} className="log-back">
-            <Icon d="M15 6l-6 6 6 6" size={16} />
+            <Icon icon={ChevronLeftIcon} size={16} />
             {run.service}
           </a>
           <span aria-hidden="true">/</span>
@@ -408,9 +411,9 @@ export const RunDetail = ({
         <ul aria-label={t('logRun.tracing')} className="plain-list log-traces">
           {traces.map((t) => (
             <li key={t.note}>
-              <Icon d={traceIcon} size={16} strokeWidth={1.6} />
+              <Icon icon={VitalsIcon} size={16} />
               <span>{t.note}</span>
-              {t.link ? <a href="#/integrations?tab=tracing">{t.link}</a> : null}
+              {t.link ? <a href="#/developer/runs">{t.link}</a> : null}
             </li>
           ))}
         </ul>

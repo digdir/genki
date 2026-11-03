@@ -135,6 +135,7 @@ export interface ApiContext {
     headers?: Record<string, string>,
   ) => Promise<T>;
   tenantPath: (tenant: string) => string;
+  query?: <T>(method: string, path: string, body: unknown) => Promise<T>;
   send?: (
     method: string,
     path: string,
@@ -285,8 +286,10 @@ export const createApiClient = ({
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      fetchJson<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
-    ...featureClients({ get, request, tenantPath, send: raw }),
+      get<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
+    isReadOnlyInLockdown: async (signal?: AbortSignal) =>
+      (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
+    ...featureClients({ get, request, tenantPath, send: raw, query: sendJson }),
     listStepBlocks: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ blocks: StepBlockSchema[] }>(`${tenantPath(tenant)}/step-flows/blocks`, signal))
         .blocks,
@@ -428,7 +431,7 @@ export const createApiClient = ({
       const metadata = definition.metadata as { tenant?: unknown } | undefined;
       if (typeof metadata?.tenant !== 'string') return definition;
       try {
-        const completed = await request<{ definition?: Record<string, unknown> }>(
+        const completed = await sendJson<{ definition?: Record<string, unknown> }>(
           'POST',
           `${tenantPath(metadata.tenant)}/definitions/complete`,
           { definition },
@@ -442,7 +445,7 @@ export const createApiClient = ({
     },
     validate: async (definition: unknown, files: Record<string, string> = {}) => {
       try {
-        await request<{ valid: true }>('POST', '/definitions/validate', { definition, files });
+        await sendJson<{ valid: true }>('POST', '/definitions/validate', { definition, files });
         return { valid: true, errors: [] } satisfies ValidationResult;
       } catch (error) {
         if (error instanceof ApiError && error.status === 422)
@@ -700,7 +703,7 @@ export const createApiClient = ({
       }),
     draftInputFields: async (tenant: string, definition: unknown) =>
       (
-        await request<{ fields: PlaygroundInputField[] }>(
+        await sendJson<{ fields: PlaygroundInputField[] }>(
           'POST',
           `${tenantPath(tenant)}/definitions/input-fields`,
           { definition },
@@ -715,7 +718,7 @@ export const createApiClient = ({
       bundle: TenantBundle,
       options: { dryRun: boolean; onConflict: 'skip' | 'overwrite'; reason: string },
     ) =>
-      request<ImportPlan>(
+      (options.dryRun ? sendJson<ImportPlan> : request<ImportPlan>)(
         'POST',
         `${tenantPath(tenant)}/import?dryRun=${options.dryRun}&onConflict=${options.onConflict}`,
         bundle,

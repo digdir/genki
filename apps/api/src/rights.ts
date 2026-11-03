@@ -72,8 +72,8 @@ const objectOf = (value: unknown): Record<string, unknown> =>
 const borrowsTenantSecret = (input: ActionInput) => {
   const source = objectOf(objectOf(input.spec).source);
   if (source.kind !== 'database') return false;
-  const password = String(objectOf(source.connection).password ?? '');
-  return !/\/connector-[a-z0-9-]+$/.test(password);
+  const password = objectOf(source.connection).password;
+  return typeof password !== 'string' || password !== input.connectorSecret;
 };
 const pipelineSave = (input: ActionInput): ActionRequirement =>
   borrowsTenantSecret(input) ? ['manage-datasets', 'manage-services'] : 'manage-datasets';
@@ -119,6 +119,8 @@ export const adminActionRights: Readonly<
   'platform.pipeline.delete': 'manage-datasets',
   'platform.pipeline.execute': 'manage-datasets',
   'platform.pipeline.cancel': 'manage-datasets',
+  // Knowledge jobs only: ADR 0042 widens ADR 0041, where only operators send jobs back.
+  'platform.jobs.redrive': 'manage-datasets',
   'platform.dataset.upload': 'manage-datasets',
   'platform.dataset.upload.delete': 'manage-datasets',
   'platform.dataset.enrichment.apply': 'manage-datasets',

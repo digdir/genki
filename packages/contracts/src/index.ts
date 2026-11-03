@@ -152,6 +152,23 @@ export interface Usage {
   costMicroNok?: number;
 }
 
+export interface UsagePrice {
+  inputPerThousand: number;
+  outputPerThousand: number;
+}
+
+export const withListPrice = (usage: Usage, price: UsagePrice | undefined): Usage =>
+  usage.costMicroNok !== undefined || !price
+    ? usage
+    : {
+        ...usage,
+        costMicroNok: Math.round(
+          (((usage.inputTokens ?? 0) / 1000) * price.inputPerThousand +
+            ((usage.outputTokens ?? 0) / 1000) * price.outputPerThousand) *
+            1_000_000,
+        ),
+      };
+
 export interface ModelProvenance {
   id: string;
   endpoint: string;
@@ -163,6 +180,8 @@ export interface IndexProvenance {
   engine?: string;
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the knowledge server that answered (ADR 0042). */
+  dataVersion?: number;
 }
 
 export type ResourceProvenance = { model: ModelProvenance } | { index: IndexProvenance };

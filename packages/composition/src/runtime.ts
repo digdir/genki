@@ -1,4 +1,4 @@
-import type { Principal, Ref, Usage } from '@genai/contracts';
+import type { Principal, Ref, Usage, UsagePrice } from '@genai/contracts';
 import {
   platformSettings,
   SettingsRegistry,
@@ -70,6 +70,7 @@ import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
   pgvectorEngineName,
+  type KnowledgePools,
   type PgvectorEngineOptions,
 } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
@@ -111,7 +112,9 @@ import {
   ContextualKnowledgeRouter,
   portContexts,
   routerCatalog,
+  knowledgeServerEndpoints,
   withoutEngines,
+  withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
 import { openRetrievalPorts, usingRetrievalPorts, type RuntimeConfig } from './retrieval-ports.js';
@@ -191,6 +194,8 @@ export interface RuntimeInput {
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
+  knowledgeGuard?: () => void;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
@@ -306,6 +311,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
+    priceOf: (id) => prices[id] as UsagePrice | undefined,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const embeddingModels = new Set(embedders.describe().map((e) => e.id));
@@ -343,7 +349,13 @@ export const createRuntime = async (input: RuntimeInput) => {
   const pgvector = input.knowledgePool
     ? pgvectorEngine({
         pool: input.knowledgePool,
+        ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
+        ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+        onVacuumError: (error) =>
+          input.logger?.('knowledge vacuum failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [
@@ -358,7 +370,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(pgvector ? [pgvector.writer as IndexWriterAdapter] : []),
   ];
   const knowledgeSeed = withoutEngines(
-    input.catalogs.knowledge,
+    input.knowledgeServer
+      ? input.catalogs.knowledge
+      : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning),
     pgvector ? [] : [pgvectorEngineName],
     input.onWarning,
   );
@@ -369,8 +383,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
-    priceOf: (id) =>
-      prices[id] as { inputPerThousand: number; outputPerThousand: number } | undefined,
+    priceOf: (id) => prices[id] as UsagePrice | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     onParameterDropped: (model, parameter) =>
@@ -531,8 +544,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
-        ? ((config as { endpoint?: { residency?: Residency } }).endpoint?.residency ??
-          input.agents?.(String((config as { agent?: unknown }).agent ?? ''))?.endpoint.residency)
+        ? ((config as { endpoint?: { residency?: Residency } } | null)?.endpoint?.residency ??
+          input.agents?.(String((config as { agent?: unknown } | null)?.agent ?? ''))?.endpoint
+            .residency)
         : undefined,
   };
   const strategies: Strategy[] = [
@@ -629,10 +643,28 @@ export const createRuntime = async (input: RuntimeInput) => {
   late.store = store;
 
   const prices: Record<string, unknown> = input.prices ?? {};
+  let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
+  /** Brings the knowledge server's filter indexes in line with the current catalog. */
+  const followKnowledge = () => {
+    if (!pgvector || !knowledgeCatalog) return;
+    const onKnowledgeServer = new Set(knowledgeServerEndpoints(knowledgeCatalog));
+    pgvector
+      .followCatalog(
+        knowledge
+          .datasetConfigs()
+          .filter((d) => onKnowledgeServer.has(d.endpoint))
+          .map((d) => d.config),
+      )
+      .catch((error: unknown) =>
+        input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
+      );
+  };
   const apply = (catalogs: EffectiveCatalogs) => {
     models.reload(catalogs.models);
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
+    knowledgeCatalog = catalogs.knowledge;
+    followKnowledge();
     rerank.reload(catalogs.rerank);
     replaceSet(plugins.datasets, knowledge.datasets().keys());
     replaceSet(plugins.rerankers, rerank.rerankers());
@@ -791,6 +823,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     decorate,
     refreshTools,
     sync,
+    followKnowledge,
     quarantined: () => [...quarantine.values()],
   };
 };

@@ -23,6 +23,13 @@ const residencyLabel = (t: T, r: string | null) =>
         ? t('sharedServices.residencyOutside')
         : t('sharedServices.notGiven');
 
+const residencyColor = (t: T, location: string) =>
+  location === 'Norge' || location === t('sharedServices.residencyNorway')
+    ? 'success'
+    : location === 'EU/EØS' || location === t('sharedServices.residencyEu')
+      ? 'info'
+      : 'warning';
+
 const fromApi = (t: T, s: SharedService): SharedCapability => ({
   id: s.id,
   alias: s.id,
@@ -67,6 +74,11 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
           <h2 className="cap-card-title">
             <a href={href}>{c.name}</a>
           </h2>
+        </div>
+        <div className="tag-row">
+          <Tag data-size="sm" data-color={residencyColor(t, c.location)}>
+            {c.location}
+          </Tag>
           {c.used ? (
             <Tag data-size="sm" data-color="accent">
               {c.used}
@@ -75,45 +87,8 @@ const Card = ({ entry: { capability: c } }: { entry: Entry }) => {
         </div>
         <p className="cap-does">{c.does}</p>
       </div>
-      <dl className="kv">
-        <dt>{t('sharedServices.input')}</dt>
-        <dd>{c.input}</dd>
-        <dt>{t('sharedServices.output')}</dt>
-        <dd>{c.output}</dd>
-        <dt>{t('sharedServices.model')}</dt>
-        <dd className="tag-row">
-          {c.model}
-          <Tag
-            data-size="sm"
-            data-color={
-              c.location === 'Norge' || c.location === t('sharedServices.residencyNorway')
-                ? 'success'
-                : c.location === 'EU/EØS' || c.location === t('sharedServices.residencyEu')
-                  ? 'info'
-                  : 'warning'
-            }
-          >
-            {c.location}
-          </Tag>
-        </dd>
-      </dl>
-      <div className="cap-figures">
-        <div>
-          <span className="meta">{t('sharedServices.quality')}</span>
-          <span className="cap-figure">
-            {c.score
-              ? t('sharedServices.scoreOf', { score: c.score })
-              : t('sharedServices.notMeasured')}
-          </span>
-          {c.scoreNote ? <span className="score-note">{c.scoreNote}</span> : null}
-        </div>
-        <div>
-          <span className="meta">{t('sharedServices.per1000')}</span>
-          <span className="cap-figure">{c.price}</span>
-          <span className="meta">{c.priceNote}</span>
-        </div>
-      </div>
       <Button
+        className="cap-action"
         variant="secondary"
         aria-label={t('sharedServices.tryAndDetailsFor', { name: c.name })}
         onClick={() => {
@@ -181,7 +156,6 @@ export const SharedServices = ({ api, route, live }: ScreenProps) => {
           ))}
         </ul>
       )}
-      <p className="meta footnote">{t('sharedServices.footnote')}</p>
     </div>
   );
 };

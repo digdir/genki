@@ -3,7 +3,7 @@ kind: Service
 metadata: { tenant: '991825827', id: klarsprak, name: Klarspråk }
 spec:
   purpose: Skriv om brev og vedtak til klart språk etter Språkrådets råd, uten å endre meningen
-  riskClass: minimal
+  riskClass: limited
   input: { accepts: [text/plain] }
   output:
     kind: fields
@@ -14,7 +14,7 @@ spec:
     id: single-call
     version: 1
     config: { instructions: prompts/klarsprak.nb.md, temperature: 0.2 }
-  model: { primary: foundry-openai/gpt-4o-2m-tps, residency: global }
+  model: { primary: foundry-openai/gpt-5.6-terra, residency: global }
   exposure: { rest: true, mcp: true }
   triggers:
     - { kind: document-arrives, folder: klarsprak/innboks }

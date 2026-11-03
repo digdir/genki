@@ -90,7 +90,7 @@ const openPostgres = async (): Promise<Stores> => {
     directory: postgresTenantDirectory(db.tenants),
     executions: db.ingestionExecutions,
     tasks: db.tasks,
-    taskIndex: postgresTaskIndex(db.tasks),
+    taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
     log: db.log,
     configEntries: db.configEntries,
   };
@@ -167,7 +167,7 @@ const record = async (stores: Stores, t: Task) => {
 
 const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'ola' };
 
-const portal = (stores: Stores) => {
+const portal = (stores: Stores, tenant = ORG_A) => {
   const app = new Hono();
   registerPortalRoutes(app, {
     admin: {} as Admin,
@@ -175,7 +175,7 @@ const portal = (stores: Stores) => {
       kind: 'employee',
       issuer: 'test',
       subject: 'kari',
-      tenant: ORG_A,
+      tenant,
     }),
     definitions: {
       capabilities: async () => [],
@@ -183,6 +183,9 @@ const portal = (stores: Stores) => {
     } as unknown as DefinitionStore,
     tasks: (tenant) => stores.taskIndex.all(tenant),
     task: async (id) => (await stores.tasks.get(id))?.task,
+    events: (id) => stores.log.read(id, 0, () => false),
+    ...(stores.taskIndex.envelopes ? { taskEnvelopes: stores.taskIndex.envelopes } : {}),
+    ...(stores.taskIndex.usageEvents ? { usageEvents: stores.taskIndex.usageEvents } : {}),
     apiKeys: new InMemoryTenantApiKeys(),
     connections: new InMemoryConnections(),
     requirementFor: () => ({ resource: 'urn:altinn:resource:test', action: 'read' }),
@@ -309,22 +312,75 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     ]);
   });
 
-  it('marks runs left running for more than six hours as failed when the platform starts and keeps newer ones', async () => {
+  it('a run another instance is still working on is not marked failed when an instance starts', async () => {
     const { executions } = backend().stores();
-    const stale = execution(`${name}-stale`, '2026-10-07T01:00:00.000Z', { pipeline: 'restart' });
-    const fresh = execution(`${name}-fresh`, new Date().toISOString(), { pipeline: 'restart' });
-    await executions.save(stale);
-    await executions.save(fresh);
+    const now = Date.now();
+    const working = execution(`${name}-working`, new Date(now - 7 * 3_600_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(working);
+    await executions.beat(working, new Date(now - 10_000).toISOString());
 
     const reopened = await backend().reopen();
     await platformOn(reopened.configEntries, reopened.executions);
 
-    expect(await reopened.executions.get(stale.id)).toMatchObject({
+    expect((await reopened.executions.get(working.id))?.status).toBe('running');
+  });
+
+  it('a run whose instance stopped is marked failed once its heartbeat is two minutes old', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const startedAt = new Date(now - 3_600_000).toISOString();
+    const stopped = execution(`${name}-stopped`, startedAt, { pipeline: 'restart' });
+    const beating = execution(`${name}-beating`, startedAt, { pipeline: 'restart' });
+    await executions.save(stopped);
+    await executions.save(beating);
+    await executions.beat(stopped, new Date(now - 121_000).toISOString());
+    await executions.beat(beating, new Date(now - 110_000).toISOString());
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(stopped.id)).toMatchObject({
       status: 'failed',
       endedAt: expect.any(String),
       error: staleRunMessage,
     });
-    expect((await reopened.executions.get(fresh.id))?.status).toBe('running');
+    expect((await executions.get(beating.id))?.status).toBe('running');
+  });
+
+  it('a run without a heartbeat is marked failed two minutes after it started', async () => {
+    const { executions } = backend().stores();
+    const now = Date.now();
+    const old = execution(`${name}-unbeaten`, new Date(now - 121_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    const young = execution(`${name}-young`, new Date(now - 110_000).toISOString(), {
+      pipeline: 'restart',
+    });
+    await executions.save(old);
+    await executions.save(young);
+
+    await platformOn(backend().stores().configEntries, executions);
+
+    expect(await executions.get(old.id)).toMatchObject({
+      status: 'failed',
+      error: staleRunMessage,
+    });
+    expect((await executions.get(young.id))?.status).toBe('running');
+  });
+
+  it('a heartbeat after a run has ended leaves its end state alone', async () => {
+    const { executions } = backend().stores();
+    const run = execution(`${name}-ended`, '2026-10-07T08:00:00.000Z', { pipeline: 'restart' });
+    await executions.save(run);
+    await executions.save({ ...run, status: 'succeeded', endedAt: '2026-10-07T08:05:00.000Z' });
+
+    await executions.beat(run, '2026-10-07T08:05:01.000Z');
+
+    expect(await executions.get(run.id)).toMatchObject({
+      status: 'succeeded',
+      endedAt: '2026-10-07T08:05:00.000Z',
+    });
   });
 
   it('does not mark a run this process holds as stale', async () => {
@@ -333,7 +389,7 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
     await executions.save(held);
 
     const changed = await executions.failStale({
-      startedBefore: '2026-10-06T02:00:00.000Z',
+      heartbeatBefore: '2026-10-06T02:00:00.000Z',
       except: [held.id],
       endedAt: '2026-10-07T08:00:00.000Z',
       error: staleRunMessage,
@@ -353,6 +409,36 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
 
     expect(response.status).toBe(200);
     expect(body.data.map((t) => [t.id, t.status])).toEqual([[`${name}-a1`, 'completed']]);
+  });
+
+  it("adds up a tenant's usage per model the same way after a restart", async () => {
+    const stores = backend().stores();
+    const org = name === 'memory' ? '310000011' : '310000012';
+    const run = task(`${name}-u1`, org, '2026-10-20T08:00:00.000Z');
+    await record(stores, run);
+    await stores.log.append(
+      {
+        type: 'kernel.usage',
+        v: 1,
+        task: run.id,
+        ts: run.createdAt,
+        data: { usage: { inputTokens: 70, outputTokens: 5 }, model: { kind: 'model', id: 'm' } },
+        actor: 'kernel',
+      },
+      { tenant: org, key: `task:${run.id}` },
+    );
+
+    const response = await portal(await backend().reopen(), org).request(
+      `/tenants/${org}/usage?days=366`,
+    );
+    const body = (await response.json()) as {
+      totals: { runs: number; inputTokens: number };
+      byModel: { model: string }[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.totals).toMatchObject({ runs: 1, inputTokens: 70 });
+    expect(body.byModel.map((m) => m.model)).toEqual(['m']);
   });
 
   it('keeps a building-block adoption across a restart', async () => {
@@ -503,7 +589,7 @@ describe('the postgres task index and the monthly quota', () => {
     const assistant: Task = {
       ...task('quota-assistant', quotaOrg, '2026-10-10T08:00:00.000Z'),
       service: {
-        capability: { id: 'platform/builder-assistant', version: '1' },
+        capability: { id: 'platform/draft/assistant/0f3a9c2e7b1d4e65', version: '1' },
         strategy: { id: 'builder-assistant', version: '1' },
         configHash: 'h',
       },

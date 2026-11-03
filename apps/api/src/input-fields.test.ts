@@ -5,7 +5,8 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets, type Kernel } from '@genai/kernel';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { createAdmin } from './admin.js';
-import { capabilityResolver, createPlatform } from './composition.js';
+import { capabilityResolver, createPlatform, facetOptions } from './composition.js';
+import type { KnowledgeRouter } from '@genai/port-knowledge';
 import { digdir, plugins } from './testkit.js';
 
 const fakes: FakeServer[] = [];
@@ -220,6 +221,55 @@ describe('options drawn from dataset facets', () => {
     expect(entry?.inputSchema).toMatchObject({
       properties: { agency: { enum: ['Digdir', 'Udir'] } },
     });
+  });
+});
+
+describe('facet options shared between requests', () => {
+  const counting = (
+    answers: (() => Promise<Record<string, { value: string; count: number }[]>>)[],
+  ) => {
+    const calls = { facets: 0 };
+    const knowledge = {
+      open: () => ({
+        facets: () => {
+          const answer = answers[Math.min(calls.facets, answers.length - 1)];
+          calls.facets++;
+          return answer?.() ?? Promise.resolve({});
+        },
+      }),
+    } as unknown as KnowledgeRouter;
+    return { calls, knowledge };
+  };
+  const from = { dataset: 'kudos', facet: 'organisation' };
+
+  it('asks the search engine once when many versions need the same facet at the same time', async () => {
+    const { calls, knowledge } = counting([
+      async () => ({ organisation: [{ value: 'Digdir', count: 5 }] }),
+    ]);
+    const cache = new Map();
+
+    const all = await Promise.all(
+      Array.from({ length: 5 }, () => facetOptions(knowledge, cache, kari, digdir, from)),
+    );
+
+    expect(all.every((o) => o[0]?.value === 'Digdir')).toBe(true);
+    expect(calls.facets).toBe(1);
+  });
+
+  it('asks again after a failed lookup instead of keeping the failure', async () => {
+    const { calls, knowledge } = counting([
+      async () => {
+        throw new Error('timeout');
+      },
+      async () => ({ organisation: [{ value: 'Udir', count: 2 }] }),
+    ]);
+    const cache = new Map();
+
+    await expect(facetOptions(knowledge, cache, kari, digdir, from)).rejects.toThrow('timeout');
+    const options = await facetOptions(knowledge, cache, kari, digdir, from);
+
+    expect(options).toEqual([{ value: 'Udir', count: 2 }]);
+    expect(calls.facets).toBe(2);
   });
 });
 
