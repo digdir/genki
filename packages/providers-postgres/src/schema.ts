@@ -85,6 +85,8 @@ const definerFunctions = [
   'apply_knowledge_job_request(text, text)',
   'end_job_ingestion_execution(text, text, text, jsonb, text)',
   'start_queued_job_ingestion_execution(text, text, text, text, text)',
+  'report_job_ingestion_execution(text, jsonb, boolean)',
+  'stop_job_ingestion_execution_at_budget(text, text)',
   'find_api_key_policy(text)',
 ];
 
@@ -801,6 +803,33 @@ const migrations: string[] = [
           and not exists (select from knowledge_job_requests r
                            where r.run = p_id and r.applied_at is null)
         returning *;
+     end $$`,
+  // A running run's counts as its jobs report them: set (a listing's) or added to (a document's).
+  `create or replace function report_job_ingestion_execution(p_id text, p_report jsonb, p_add boolean)
+     returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update ingestion_executions r
+          set report = coalesce(r.report, '{"stored": 0, "skipped": 0, "failed": []}'::jsonb)
+                       || case when p_add
+                            then (select coalesce(jsonb_object_agg(e.key,
+                                    coalesce((r.report ->> e.key)::bigint, 0) + e.value::bigint), '{}'::jsonb)
+                                    from jsonb_each_text(p_report) e)
+                            -- A listing's counts are kept from its first delivery.
+                            else (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                                    from jsonb_each(p_report) e
+                                   where not coalesce(r.report ? e.key, false)) end
+        where r.id = p_id and r.runs_as_jobs and r.status = 'running';
+     end $$`,
+  // A run over its failure budget is cancelled and keeps what it replaced (ADR 0017, ADR 0042).
+  `create or replace function stop_job_ingestion_execution_at_budget(p_id text, p_at text)
+     returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update ingestion_executions set cancel_requested_at = p_at, cancelled_by = 'failure-budget'
+        where id = p_id and runs_as_jobs and status = 'running' and cancel_requested_at is null;
      end $$`,
   `create or replace function start_queued_job_ingestion_execution(
        p_dataset text, p_pipeline text, p_admitted_after text, p_now text, p_expired text)

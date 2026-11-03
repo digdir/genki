@@ -2434,6 +2434,8 @@
               'Read published services from the definition store and re-bind triggers when they change',
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
+              'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
+              "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
             ],
             files: [
@@ -2445,6 +2447,7 @@
               'apps/worker/src/platform-work.ts',
               'apps/worker/src/knowledge-jobs.ts',
               'apps/worker/src/reconciler.ts',
+              'apps/worker/src/knowledge-handlers.ts',
             ],
             input: 'Files in blob folders, schedules',
             output: 'Results written back to blob storage',
@@ -2505,6 +2508,44 @@
                 kind: 'call',
                 target: 'call',
                 witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-pgboss' },
+              },
+              {
+                to: 'ingest',
+                label:
+                  'Lists sources, plans runs against document records and indexes one document',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/ingest',
+                },
+              },
+              {
+                to: 'port-knowledge',
+                label: 'Reads the dataset config of a knowledge run',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/port-knowledge',
+                },
+              },
+              {
+                to: 'port-embedding',
+                label: 'Embeds chunks in knowledge.index',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/worker/src/knowledge-handlers.ts',
+                  imports: '@genai/port-embedding',
+                },
+              },
+              {
+                to: 'providers-documents',
+                label: 'Converts documents with the text layer',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-documents' },
               },
             ],
             keywords: 'worker triggers batch schedule folder jobs',
@@ -5215,12 +5256,23 @@
               'Kudos, website and folder loaders',
               'Conversion and chunking',
               'Phrase extraction with a model',
+              'The pipeline spec and its sources, shared by the API and the worker',
+              {
+                'Knowledge listings':
+                  'list a source without fetching what its listing can compare, and load one document from its record',
+              },
+              {
+                'Document records on the knowledge database':
+                  "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
+              },
             ],
             files: [
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
               'packages/ingest/src/chunking.ts',
+              'packages/ingest/src/pipeline-sources.ts',
+              'packages/ingest/src/document-records.ts',
             ],
             input: 'Source config',
             output: 'Documents, chunks and phrases',
@@ -6412,6 +6464,8 @@
               'packages/port-knowledge/src/port.ts',
               'packages/port-knowledge/src/router.ts',
               'packages/port-knowledge/src/catalog.ts',
+              'packages/port-knowledge/src/records.ts',
+              'packages/port-knowledge/src/tombstone.ts',
             ],
             input: 'Query + filters',
             output: 'Hits',
@@ -7939,6 +7993,7 @@
               'packages/providers-pgvector/src/knowledge-writer.ts',
               'packages/providers-pgvector/src/knowledge-reads.ts',
               'packages/providers-pgvector/src/read-functions.ts',
+              'packages/providers-pgvector/src/knowledge-records.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',
