@@ -117,20 +117,20 @@ describe('builder assistant', () => {
     expect(send.getAttribute('aria-disabled')).toBe('true');
     expect(within(panel).getByText('Svar på alle tre først.')).toBeTruthy();
 
-    const chip = within(first).getByRole('button', { name: 'Skjema på nettsiden' });
+    const chip = within(first).getByRole('radio', { name: 'Skjema på nettsiden' });
     fireEvent.click(chip);
-    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect((chip as HTMLInputElement).checked).toBe(true);
     fireEvent.click(
       within(
         within(panel).getByRole('group', { name: '2. Hva skal skje med en klage etterpå?' }),
-      ).getByRole('button', { name: 'Opprette sak' }),
+      ).getByRole('radio', { name: 'Opprette sak' }),
     );
     fireEvent.click(
       within(
         within(panel).getByRole('group', {
           name: '3. Skal en person godkjenne før noe sendes videre?',
         }),
-      ).getByRole('button', { name: 'Annet' }),
+      ).getByRole('radio', { name: 'Annet' }),
     );
     fireEvent.click(send);
     expect(turns).toHaveLength(1);

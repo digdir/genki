@@ -174,15 +174,17 @@ export const Questions = ({
               </span>
               <div role="group" aria-labelledby={label} className="ax-chips">
                 {[...q.options, ...(q.allowOther ? [otherKey] : [])].map((o) => (
-                  <Chip.Button
+                  <Chip.Radio
                     key={o}
                     data-size="sm"
-                    aria-pressed={picked[q.id] === o}
+                    name={label}
+                    checked={picked[q.id] === o}
+                    readOnly={done}
                     aria-disabled={done || undefined}
-                    onClick={() => !done && setPicked((p) => ({ ...p, [q.id]: o }))}
+                    onChange={() => !done && setPicked((p) => ({ ...p, [q.id]: o }))}
                   >
                     {o === otherKey ? t('assistant.other') : o}
-                  </Chip.Button>
+                  </Chip.Radio>
                 ))}
               </div>
               {picked[q.id] === otherKey ? (
