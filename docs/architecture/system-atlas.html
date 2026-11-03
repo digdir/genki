@@ -3129,7 +3129,7 @@
               'Run tasks and stream client events',
               'Enforce policy, tenant sharing and budgets',
               'Own the audit record and the SPI for ports and stores',
-              'Gate every model, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, metering and the audit event kernel.gate.call',
+              'Gate every model, decision, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, the closed request shape, metering and the audit event kernel.gate.call',
             ],
             files: [
               'packages/kernel/src/kernel.ts',
@@ -3360,6 +3360,7 @@
                           items: { type: 'string', enum: ['employees', 'public'] },
                         },
                         riskClass: { type: 'string', enum: ['minimal', 'limited', 'high'] },
+                        decidesAboutPeople: { type: 'boolean' },
                         riskConfirmation: {
                           type: 'object',
                           properties: {
@@ -6004,7 +6005,7 @@
             packages: ['@genai/guardrails'],
             summary: 'Named guardrails that wrap every strategy and are enforced, not just stored.',
             description:
-              'pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and human-approval, each with its own schema. The composition root wraps every service strategy with them.',
+              'pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and human-approval, custom-rules and purpose-check, each with its own schema. The composition root wraps every service strategy with them.',
             responsibilities: [
               'Norwegian PII detection and redaction',
               'Require sources and language rules',
@@ -6013,6 +6014,7 @@
                   'house style and service text per answer language, on answer calls only',
               },
               'Human approval and refused topics',
+              'Purpose check through the decision port, where a refusal or an unsure answer goes to a person',
             ],
             files: [
               'packages/guardrails/src/strategy.ts',
@@ -6323,7 +6325,7 @@
             id: 'port-model',
             plane: 'ports',
             name: 'Model port',
-            note: 'chat · chatStream · router',
+            note: 'chat · chatStream · decide · router',
             icon: 'llm',
             color: '#74a7ff',
             status: 'Port',
@@ -6334,7 +6336,8 @@
               'Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.',
             responsibilities: [
               'Model catalog and discovery',
-              'Capability checks',
+              'Operations on the catalogue (chat, decide) and capability checks',
+              'The kernel port decision, the decide operation on the same catalogue (ADR 0047,',
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), residency and sharing, runs the payload guard and meters (ADR 0047)',
               'Credential resolution',
             ],
@@ -6343,10 +6346,11 @@
               'packages/port-model/src/router.ts',
               'packages/port-model/src/gate.ts',
               'packages/port-model/src/catalog.ts',
+              'packages/port-model/src/decision.ts',
               'packages/port-model/src/instructions.ts',
             ],
             input: 'Generic chat request',
-            output: 'Completion, deltas, usage',
+            output: 'Completion, deltas, decision answers, usage',
             replaces: [{ module: 'llm', how: 'Provider abstraction' }],
             edges: [
               {
@@ -6476,6 +6480,12 @@
                               type: 'string',
                               enum: ['stream', 'tools', 'json-schema', 'reasoning'],
                             },
+                          },
+                          operations: {
+                            default: ['chat'],
+                            minItems: 1,
+                            type: 'array',
+                            items: { type: 'string', enum: ['chat', 'decide'] },
                           },
                           contextWindow: {
                             type: 'integer',
@@ -7220,7 +7230,7 @@
             id: 'providers-openai',
             plane: 'providers',
             name: 'openai-chat adapter',
-            note: 'Chat, Responses + Foundry discovery',
+            note: 'Chat, Responses, Decisions + Foundry discovery',
             icon: 'llm',
             color: '#8fa8b3',
             status: 'Provider',
@@ -7231,11 +7241,13 @@
               'Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
             responsibilities: [
               'openai-chat protocol with per-model API selection and learned Responses recovery',
+              'The decide operation against the Azure OpenAI Decisions API, with a closed response shape',
               'Azure deployment discovery',
             ],
             files: [
               'packages/providers-openai/src/index.ts',
               'packages/providers-openai/src/responses.ts',
+              'packages/providers-openai/src/decisions.ts',
             ],
             input: 'Port request',
             output: 'OpenAI API call',
@@ -7273,7 +7285,7 @@
               },
               {
                 to: 'azure-foundry',
-                label: 'Chat completions, Responses and deployment listing',
+                label: 'Chat completions, Responses, Decisions and deployment listing',
                 kind: 'http',
                 target: 'http',
                 witness: {

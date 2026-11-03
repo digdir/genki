@@ -13,6 +13,7 @@ import {
   type ChatRequest,
   type ChatResult,
   type Credential,
+  type DecisionPort,
   type DeploymentConfig,
   type ModelAdapter,
   type ModelPort,
@@ -240,6 +241,7 @@ describe('model router', () => {
       id: 'a/small',
       residency: 'norway',
       capabilities: ['stream'],
+      operations: ['chat'],
     });
   });
 
@@ -331,8 +333,8 @@ describe('model router', () => {
   it('lists the catalog for publish-time checks', () => {
     expect(setup().router.models()).toEqual(
       new Map([
-        ['a/small', { residency: 'norway', capabilities: ['stream'] }],
-        ['b/large', { residency: 'global', capabilities: ['tools'] }],
+        ['a/small', { residency: 'norway', capabilities: ['stream'], operations: ['chat'] }],
+        ['b/large', { residency: 'global', capabilities: ['tools'], operations: ['chat'] }],
       ]),
     );
   });
@@ -607,6 +609,7 @@ describe('model discovery', () => {
     expect(live.get('one/gpt-5-mini')).toEqual({
       residency: 'eu',
       capabilities: ['stream', 'tools', 'json-schema'],
+      operations: ['chat'],
     });
 
     const again = setup().router;
@@ -786,5 +789,170 @@ describe('model calls through the gate', () => {
       },
     ]);
     expect(JSON.stringify(audit)).not.toMatch(/hemmelig/);
+  });
+});
+
+describe('operations on the catalogue', () => {
+  const question = {
+    input: 'Kan jeg søke om dette?',
+    questions: [{ type: 'predicate' as const, name: 'purpose', instructions: 'I formålet?' }],
+  };
+  const decider = (operations?: string[]) => {
+    const a = recording('proto-a');
+    const decided: unknown[] = [];
+    const adapter: ModelAdapter = {
+      ...a.adapter,
+      connect: (endpoint) => ({
+        ...a.adapter.connect(endpoint as never),
+        decide: async (_model, request) => {
+          decided.push(request);
+          return {
+            answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+            usage: { inputTokens: 5, outputTokens: 0, requests: 1 },
+            servedModel: 'served',
+            calibrated: true,
+          };
+        },
+      }),
+    };
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            ...(operations ? { operations } : {}),
+          },
+        ],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+    });
+    return { router, decided, chats: a.calls };
+  };
+  const decide = (router: ModelRouter, ctx = testContext().ctx) =>
+    router.decisions().open({ kind: 'model', id: 'a/luna' }, ctx);
+
+  it('a catalogue model offers chat and nothing else unless an operator classifies more', async () => {
+    const { router, decided } = decider();
+    expect(router.models().get('a/luna')?.operations).toEqual(['chat']);
+    await expect(decide(router).decide(question)).rejects.toMatchObject({ code: 'unsupported' });
+    expect(decided).toEqual([]);
+
+    await router.classify('a/luna', { operations: ['chat', 'decide'] });
+    expect(router.describe()[0]?.operations).toEqual(['chat', 'decide']);
+    await expect(decide(router).decide(question)).resolves.toMatchObject({ calibrated: true });
+  });
+
+  it('a model without the chat operation refuses chat as unsupported', async () => {
+    const { router, chats } = decider(['decide']);
+    await expect(
+      router.open({ kind: 'model', id: 'a/luna' }, testContext().ctx).chat({ messages: [] }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    expect(chats).toEqual([]);
+  });
+
+  it('an adapter that does not implement decide refuses decide as unsupported', async () => {
+    const { adapter } = recording('proto-a');
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            operations: ['decide'],
+          },
+        ],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+    });
+    await expect(decide(router).decide(question)).rejects.toMatchObject({
+      code: 'unsupported',
+      message: 'the adapter for one does not implement the decide operation',
+    });
+  });
+
+  it('the kernel port decision needs its own grant and passes the use:decision policy', async () => {
+    const { router } = decider(['chat', 'decide']);
+    const kari: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'kari',
+      tenant: '999888777',
+    };
+    const model = { kind: 'model', id: 'a/luna', tenant: '999888777' };
+    const asked: string[] = [];
+    const kernelWith = (grants: { port: string; ref: typeof model }[]) =>
+      createKernel({
+        strategies: [
+          {
+            id: 'decide',
+            version: '1',
+            requires: { kernel: 1, ports: ['model', 'decision'], features: [] },
+            run: async function* (ctx) {
+              const port = await ctx.use<DecisionPort>('decision', model);
+              const result = await port.decide(question);
+              yield { type: 'kernel.result', data: [textPart(JSON.stringify(result.answers))] };
+            },
+          },
+        ],
+        capabilities: [
+          {
+            descriptor: {
+              id: 'decide',
+              version: '1',
+              tenant: '999888777',
+              title: 'decide',
+              description: 'decide',
+              input: {},
+              interaction: ['unary'],
+              accepts: [],
+              produces: [],
+              emits: [],
+              oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+            },
+            strategy: { id: 'decide', version: '1' },
+            config: {},
+            grants,
+          },
+        ],
+        ports: { model: router, decision: router.decisions() },
+        policy: {
+          decide: async (_p, action) => {
+            asked.push(action);
+            return { allow: true };
+          },
+        },
+      });
+
+    const ungranted = kernelWith([{ port: 'model', ref: model }]);
+    const refused = await ungranted.invoke(kari, 'decide', {});
+    await expect(refused.result).rejects.toThrow(/no grant for decision/);
+
+    const granted = kernelWith([{ port: 'decision', ref: model }]);
+    const run = await granted.invoke(kari, 'decide', {});
+    await run.result;
+    expect(asked).toContain('use:decision');
+    const audit = [];
+    for await (const e of await granted.events(kari, run.task, { audience: 'audit' }))
+      if (e.type === 'kernel.gate.call') audit.push(e.data);
+    expect(audit).toEqual([
+      {
+        port: 'decision',
+        operation: 'decide',
+        model: 'a/luna',
+        endpoint: 'one',
+        residency: 'eu',
+        outcome: 'ok',
+        usage: { inputTokens: 5, outputTokens: 0, requests: 1 },
+      },
+    ]);
   });
 });

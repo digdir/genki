@@ -59,6 +59,7 @@ const refusalCodes: Record<GateRefusal, EmbeddingError['code']> = {
   'not-shared': 'bad_request',
   residency: 'residency',
   media: 'bad_request',
+  shape: 'bad_request',
 };
 
 const embedPayload: GatePayload<string[], EmbedResult> = {

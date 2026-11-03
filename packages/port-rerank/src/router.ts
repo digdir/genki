@@ -49,6 +49,7 @@ const refusalCodes: Record<GateRefusal, RerankError['code']> = {
   'not-shared': 'forbidden',
   residency: 'residency',
   media: 'bad_request',
+  shape: 'bad_request',
 };
 
 const rerankPayload: GatePayload<RerankRequest, Ranked[]> = {

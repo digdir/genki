@@ -12,7 +12,7 @@ export const narrowerResidency = (a: Residency | undefined, b: Residency | undef
 
 export type Admission = 'admitted' | 'open';
 
-export type GateRefusal = 'admission' | 'disabled' | 'not-shared' | 'residency' | 'media';
+export type GateRefusal = 'admission' | 'disabled' | 'not-shared' | 'residency' | 'media' | 'shape';
 
 export class GateError extends Error {
   constructor(
@@ -67,6 +67,7 @@ export interface GateRecord {
   outcome: 'ok' | 'refused' | 'failed';
   refusal?: GateRefusal | 'guard';
   usage?: Usage;
+  dropped?: number;
 }
 
 export interface GateTarget {
@@ -90,6 +91,9 @@ export interface GatePayload<Req, Res> {
   mapResult(result: Res, map: (text: string) => string): Res;
   usage?(result: Res): Usage | undefined;
   provenance?(result: Res): ResourceProvenance | undefined;
+  /** Names what in a request falls outside the operation's closed shape. */
+  check?(request: Req): string | undefined;
+  dropped?(result: Res): number | undefined;
 }
 
 export type GateChunk<Res> = { kind: 'delta'; text: string } | { kind: 'done'; result: Res };
@@ -144,6 +148,11 @@ export const createGate = (options: GateOptions = {}): Gate => {
         'media',
         'the payload has image, audio or file content, which cannot be masked',
       );
+    const outside = (body: Req) => {
+      const problem = payload.check?.(body);
+      if (problem) throw new GateError('shape', problem);
+    };
+    outside(request);
     const guards = distinct(ctx.guards ?? []);
     const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
     const call: GateCall = {
@@ -155,6 +164,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
       ? payload.mapRequest(request, (text) => maskers.reduce((t, m) => m.mask(t), text))
       : request;
     for (const guard of guards) if (guard.request) body = (await guard.request(call, body)) as Req;
+    outside(body);
     const restoring = maskers.filter((m) => m.unmask);
     const restore = (text: string) =>
       restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);
@@ -177,7 +187,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     let written = false;
     return async (
       outcome: GateRecord['outcome'],
-      extra: Pick<GateRecord, 'refusal' | 'usage'> = {},
+      extra: Pick<GateRecord, 'refusal' | 'usage' | 'dropped'> = {},
     ) => {
       if (written) return;
       written = true;
@@ -221,12 +231,13 @@ export const createGate = (options: GateOptions = {}): Gate => {
     record: ReturnType<typeof recorder>,
   ) => {
     const usage = payload.usage?.(result);
+    const dropped = payload.dropped?.(result);
     try {
       if (usage) await ctx.meter(usage, target.model);
       const provenance = payload.provenance?.(result);
       if (provenance) await ctx.provenance?.(provenance);
     } finally {
-      await record('ok', usage ? { usage } : {});
+      await record('ok', { ...(usage ? { usage } : {}), ...(dropped ? { dropped } : {}) });
     }
   };
 

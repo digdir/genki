@@ -7,7 +7,7 @@ import {
   type Residency,
   type Strategy,
 } from '@genai/kernel';
-import type { ModelPort } from '@genai/port-model';
+import type { DecisionPort, ModelPort } from '@genai/port-model';
 import {
   assembleLanguage,
   chooseLanguage,
@@ -42,6 +42,8 @@ export const SOURCES_MIME = 'application/vnd.genai.sources+json';
 export const defaultDisclosure = defaultMessages.disclosure;
 
 const checkpointKind = 'guardrails.human-approval';
+const purposeKind = 'guardrails.purpose-review';
+const purposeQuestion = 'within_purpose';
 
 export interface GuardInfo {
   service?: ServiceProvenance;
@@ -58,6 +60,7 @@ export interface CustomRuleHooks {
 }
 
 export interface GuardStrategyOptions {
+  decisions?: boolean;
   describe?: (ctx: InvocationContext) => Promise<GuardInfo | undefined>;
   rules?: CustomRuleHooks;
   writtenStandard?: (
@@ -97,6 +100,15 @@ interface Held {
   provenance: Provenance;
   language?: Language;
 }
+
+interface PurposeHeld {
+  kind: typeof purposeKind;
+  input: Input;
+  provenance: Provenance;
+  language?: Language;
+}
+
+type PurposeVerdict = 'within' | 'outside' | 'uncertain' | 'refused';
 
 interface RuntimeConfig {
   guardrails?: unknown;
@@ -176,7 +188,9 @@ export const guardStrategy = <C>(
   options: GuardStrategyOptions = {},
 ): Strategy<C> => {
   const features = [...new Set<Feature>([...inner.requires.features, 'interrupts', 'checkpoint'])];
-  const ports = [...new Set([...inner.requires.ports, 'model'])];
+  const ports = [
+    ...new Set([...inner.requires.ports, 'model', ...(options.decisions ? ['decision'] : [])]),
+  ];
 
   const setup = async (ctx: InvocationContext, config: C) => {
     const runtime = config as RuntimeConfig;
@@ -225,11 +239,19 @@ export const guardStrategy = <C>(
         ...(runtime.model?.tenant ? { tenant: runtime.model.tenant } : {}),
       });
     };
+    const decider = async (scoped: InvocationContext, id: string) => {
+      if (!options.decisions) throw new Error('decisions are not available on this platform');
+      return scoped.use<DecisionPort>('decision', {
+        kind: 'model',
+        id,
+        ...(runtime.model?.tenant ? { tenant: runtime.model.tenant } : {}),
+      });
+    };
     const entries = guardrails.customRules ?? [];
     const rules: CustomRule[] = options.rules
       ? await options.rules.resolve(ctx, entries)
       : entries.flatMap((e) => inlineRule(e) ?? []);
-    return { guardrails, provenance, guarded, primaryModel, rules };
+    return { guardrails, provenance, guarded, primaryModel, decider, rules };
   };
 
   const ruleRuntime = (ctx: InvocationContext, model: () => Promise<ModelPort>): RuleRuntime => ({
@@ -316,6 +338,73 @@ export const guardStrategy = <C>(
     }
   };
 
+  const decisionEvent = (
+    rule: NonNullable<Guardrails['purposeCheck']>,
+    verdict: PurposeVerdict,
+    outcome: 'continue' | 'refuse' | 'person',
+    extra: { probability?: number; calibrated?: boolean; decidedBy?: 'model' | 'person' } = {},
+  ): Emitted => ({
+    type: 'kernel.notice',
+    data: {
+      kind: 'decision',
+      rule: 'purpose-check',
+      operation: 'decide',
+      model: rule.model,
+      question: purposeQuestion,
+      answer: verdict,
+      refusal: verdict === 'refused',
+      threshold: rule.threshold,
+      outcome,
+      decidedBy: extra.decidedBy ?? 'model',
+      ...(extra.probability === undefined ? {} : { probability: extra.probability }),
+      ...(extra.calibrated === undefined ? {} : { calibrated: extra.calibrated }),
+    },
+  });
+
+  const checkPurpose = async (
+    rule: NonNullable<Guardrails['purposeCheck']>,
+    purpose: string,
+    question: string,
+    port: DecisionPort,
+  ) => {
+    const result = await port.decide({
+      input: question,
+      questions: [
+        {
+          type: 'predicate',
+          name: purposeQuestion,
+          instructions: `Er innspillet innenfor formålet til tjenesten? Formålet er: ${purpose}`,
+        },
+      ],
+    });
+    const answer = result.answers[0];
+    const probability = answer?.type === 'predicate' ? answer.probability : undefined;
+    const verdict: PurposeVerdict =
+      probability === undefined
+        ? 'refused'
+        : probability >= rule.threshold
+          ? 'within'
+          : probability <= 1 - rule.threshold
+            ? 'outside'
+            : 'uncertain';
+    const unsure = verdict === 'refused' ? rule.refusal : rule.uncertain;
+    const outcome =
+      verdict === 'within'
+        ? 'continue'
+        : verdict === 'outside'
+          ? 'refuse'
+          : unsure === 'person'
+            ? 'person'
+            : 'continue';
+    return {
+      outcome,
+      event: decisionEvent(rule, verdict, outcome, {
+        ...(probability === undefined ? {} : { probability }),
+        calibrated: result.calibrated,
+      }),
+    } as const;
+  };
+
   const rewrite = async (text: string, target: Language, model: ModelPort) => {
     const result = await model.chat({
       messages: [
@@ -335,8 +424,12 @@ export const guardStrategy = <C>(
     input: Input,
     config: C,
     stream: (scoped: InvocationContext, config: C) => AsyncIterable<Emitted>,
+    purposeCleared = false,
   ): AsyncIterable<Emitted> {
-    const { guardrails, provenance, guarded, primaryModel, rules } = await setup(ctx, config);
+    const { guardrails, provenance, guarded, primaryModel, decider, rules } = await setup(
+      ctx,
+      config,
+    );
     const question = questionOf(input);
     const pii = guardrails.piiBeforeModel;
 
@@ -400,6 +493,44 @@ export const guardStrategy = <C>(
     if (await offTopic(guardrails, question, () => primaryModel(scoped))) {
       yield* refusal(say(guardrails.refuseTopics?.message ?? defaultMessages.topic), told([]));
       return;
+    }
+
+    const purposeRule = guardrails.purposeCheck;
+    if (purposeRule && !purposeCleared) {
+      const checked = await checkPurpose(
+        purposeRule,
+        ctx.capability.description,
+        question,
+        await decider(scoped, purposeRule.model),
+      );
+      yield checked.event;
+      if (checked.outcome === 'refuse') {
+        yield* refusal(say(purposeRule.message), told([]));
+        return;
+      }
+      if (checked.outcome === 'person') {
+        const held: PurposeHeld = {
+          kind: purposeKind,
+          input,
+          provenance: told([]),
+          ...(target ? { language: target } : {}),
+        };
+        await ctx.state.checkpoint(held);
+        yield {
+          type: 'kernel.interrupt',
+          data: {
+            id: 'purpose-review',
+            reason: 'review',
+            prompt: [textPart(say(defaultMessages.purposeReview)), textPart(question)],
+            responseSchema: {
+              type: 'object',
+              properties: { within: { type: 'boolean' }, reviewer: { type: 'string' } },
+              required: ['within'],
+            },
+          },
+        };
+        return;
+      }
     }
 
     const holds = Boolean(
@@ -498,6 +629,8 @@ export const guardStrategy = <C>(
 
   const isHeld = (checkpoint: unknown): checkpoint is Held =>
     (checkpoint as Held | undefined)?.kind === checkpointKind;
+  const isPurposeHeld = (checkpoint: unknown): checkpoint is PurposeHeld =>
+    (checkpoint as PurposeHeld | undefined)?.kind === purposeKind;
 
   return {
     id: inner.id,
@@ -507,6 +640,7 @@ export const guardStrategy = <C>(
       guard(ctx, input, config, (scoped, assembled) => inner.run(scoped, input, assembled)),
     resume: (ctx, checkpoint, response, config) => {
       if (isHeld(checkpoint)) return approve(ctx, checkpoint, response, config);
+      if (isPurposeHeld(checkpoint)) return reviewed(ctx, checkpoint, response, config);
       if (!inner.resume) throw new Error(`strategy ${inner.id} cannot resume`);
       const resumeInner = inner.resume.bind(inner);
       return guard(ctx, response, config, (scoped, assembled) =>
@@ -514,6 +648,32 @@ export const guardStrategy = <C>(
       );
     },
   };
+
+  async function* reviewed(
+    ctx: InvocationContext,
+    held: PurposeHeld,
+    response: Input,
+    config: C,
+  ): AsyncIterable<Emitted> {
+    const { guardrails } = await setup(ctx, config);
+    const within = (response.data as { within?: unknown } | undefined)?.within === true;
+    const rule = guardrails.purposeCheck;
+    if (rule)
+      yield decisionEvent(rule, within ? 'within' : 'outside', within ? 'continue' : 'refuse', {
+        decidedBy: 'person',
+      });
+    if (within) {
+      yield* guard(
+        ctx,
+        held.input,
+        config,
+        (scoped, assembled) => inner.run(scoped, held.input, assembled),
+        true,
+      );
+      return;
+    }
+    yield* refusal(inLanguage(defaultMessages.purposeRejected, held.language), held.provenance);
+  }
 
   async function* approve(
     ctx: InvocationContext,

@@ -614,6 +614,7 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
+    operations: z.array(z.string()).optional(),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
@@ -629,6 +630,10 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
+    operations: z
+      .array(z.enum(['chat', 'decide']))
+      .min(1)
+      .optional(),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })

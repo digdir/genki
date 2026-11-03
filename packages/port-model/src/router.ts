@@ -22,9 +22,11 @@ import {
   type CatalogModel,
   type ModelCatalog,
 } from './catalog.js';
-import { chatPayload, modelRefusal } from './gate.js';
+import type { DecisionPort, DecisionRequest, DecisionResult } from './decision.js';
+import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
+  defaultOperations,
   ModelError,
   residencyAllows,
   type Capability,
@@ -32,12 +34,14 @@ import {
   type ChatRequest,
   type ChatResult,
   type ModelPort,
+  type Operation,
   type Residency,
 } from './port.js';
 
 export interface ModelClassification {
   residency?: Residency;
   capabilities?: Capability[];
+  operations?: Operation[];
   enabled?: boolean;
   parameters?: ParameterRules;
   observed?: Partial<Record<TunableParameter, string>>;
@@ -78,6 +82,7 @@ export interface ModelDescription {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  operations: Operation[];
   enabled: boolean;
   origin: 'catalog' | 'discovered';
   classified: boolean;
@@ -89,6 +94,12 @@ export interface ModelDescription {
 export interface RefreshResult {
   discovered: number;
   failed: { endpoint: string; error: string }[];
+}
+
+export interface LiveModel {
+  residency: Residency;
+  capabilities: Capability[];
+  operations: Operation[];
 }
 
 interface Route {
@@ -120,7 +131,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   readonly #static = new Map<string, Route>();
   #discovered = new Map<string, Route>();
   #classes: Record<string, ModelClassification> = {};
-  readonly #live = new Map<string, { residency: Residency; capabilities: Capability[] }>();
+  readonly #live = new Map<string, LiveModel>();
   readonly #gate: Gate;
 
   constructor(private readonly options: ModelRouterOptions) {
@@ -217,6 +228,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...route.model,
       residency: c.residency ?? route.model.residency,
       capabilities: c.capabilities ?? route.model.capabilities,
+      operations: c.operations ?? route.model.operations,
       enabled: c.enabled ?? true,
       ...((c.parameters ?? route.model.parameters)
         ? { parameters: c.parameters ?? route.model.parameters }
@@ -229,7 +241,11 @@ export class ModelRouter implements PortProvider<ModelPort> {
     for (const route of this.#routes().values()) {
       const model = this.#effective(route);
       if (model.enabled)
-        this.#live.set(model.id, { residency: model.residency, capabilities: model.capabilities });
+        this.#live.set(model.id, {
+          residency: model.residency,
+          capabilities: model.capabilities,
+          operations: model.operations,
+        });
     }
   }
 
@@ -275,6 +291,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
               deployment: found.deployment,
               residency: 'global',
               capabilities: discovery.capabilities,
+              operations: [...defaultOperations],
               options: {},
             },
             ...(found.model ? { family: found.model } : {}),
@@ -323,6 +340,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...(route.family ? { family: route.family } : {}),
       residency: model.residency,
       capabilities: model.capabilities,
+      operations: model.operations,
       enabled: model.enabled,
       origin: route.origin,
       classified: Object.keys(this.#classes[model.id] ?? {}).some(
@@ -340,7 +358,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  models(): Map<string, { residency: Residency; capabilities: Capability[] }> {
+  models(): Map<string, LiveModel> {
     return this.#live;
   }
 
@@ -358,7 +376,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     await this.options.classifications?.save(model, next).catch(() => undefined);
   }
 
-  open(ref: Ref, ctx: PortContext): ModelPort {
+  #resolve(ref: Ref, ctx: PortContext, operation: Operation) {
     if (this.options.admits && !this.options.admits(ctx.principal))
       throw new ModelError('unauthorized', 'this caller may not use models in this environment');
     const route = this.#routes().get(ref.id);
@@ -374,27 +392,10 @@ export class ModelRouter implements PortProvider<ModelPort> {
       );
     const connection = this.#connections.get(model.endpoint) as ModelConnection;
     const deployment: DeploymentConfig = { deployment: model.deployment, options: route.options };
-    const modelRef: Ref = { kind: 'model', id: model.id };
-
-    const require = (request: ChatRequest, extra: Capability[] = []) => {
-      const missing = [...needed(request), ...extra].filter((c) => !model.capabilities.includes(c));
-      if (missing.length > 0)
-        throw new ModelError(
-          'unsupported',
-          `model ${model.id} does not support ${missing.join(', ')}`,
-        );
-    };
-    const failure = (error: unknown) => {
-      if (error instanceof ModelError) return error;
-      if (ctx.signal.aborted) return new ModelError('cancelled', 'the request was cancelled');
-      return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
-    };
-    const served = { id: model.id, endpoint: model.endpoint, deployment: model.deployment };
-    const gate = this.#gate;
     const target: GateTarget = {
-      port: 'model',
-      operation: 'chat',
-      model: modelRef,
+      port: operation === 'chat' ? 'model' : 'decision',
+      operation,
+      model: { kind: 'model', id: model.id },
       endpoint: model.endpoint,
       residency: model.residency,
       admission: 'admitted',
@@ -404,6 +405,84 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...(this.options.maxResidency ? { routerResidency: this.options.maxResidency } : {}),
       refuse: modelRefusal,
     };
+    const failure = (error: unknown) => {
+      if (error instanceof ModelError) return error;
+      if (ctx.signal.aborted) return new ModelError('cancelled', 'the request was cancelled');
+      return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
+    };
+    const served = { id: model.id, endpoint: model.endpoint, deployment: model.deployment };
+    const info = () => ({
+      id: model.id,
+      residency: model.residency,
+      capabilities: model.capabilities,
+      operations: model.operations,
+      ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+      ...(model.parameters ? { parameters: model.parameters } : {}),
+    });
+    const offers = (needed: Operation) => {
+      if (!model.operations.includes(needed))
+        throw new ModelError(
+          'unsupported',
+          `model ${model.id} does not offer the ${needed} operation`,
+        );
+    };
+    return { model, connection, deployment, target, failure, served, info, offers };
+  }
+
+  /** The kernel port `decision`: the decide operation on the same catalogue. */
+  decisions(): PortProvider<DecisionPort> {
+    return { open: (ref, ctx) => this.#openDecision(ref, ctx) };
+  }
+
+  #openDecision(ref: Ref, ctx: PortContext): DecisionPort {
+    const { model, connection, deployment, target, failure, served, info, offers } = this.#resolve(
+      ref,
+      ctx,
+      'decide',
+    );
+    const payload = {
+      ...decidePayload,
+      usage: (result: DecisionResult) =>
+        withListPrice(result.usage, this.options.priceOf?.(model.id)),
+      provenance: () => ({ model: served }),
+    };
+    return {
+      info,
+      decide: async (request: DecisionRequest) => {
+        offers('decide');
+        const decide = connection.decide?.bind(connection);
+        if (!decide)
+          throw new ModelError(
+            'unsupported',
+            `the adapter for ${model.endpoint} does not implement the decide operation`,
+          );
+        return this.#gate.call(ctx, target, payload, request, async (sent) => {
+          try {
+            return await decide(deployment, sent, ctx.signal);
+          } catch (error) {
+            throw failure(error);
+          }
+        });
+      },
+    };
+  }
+
+  open(ref: Ref, ctx: PortContext): ModelPort {
+    const { model, connection, deployment, target, failure, served, info, offers } = this.#resolve(
+      ref,
+      ctx,
+      'chat',
+    );
+    const require = (request: ChatRequest, extra: Capability[] = []) => {
+      offers('chat');
+      const missing = [...needed(request), ...extra].filter((c) => !model.capabilities.includes(c));
+      if (missing.length > 0)
+        throw new ModelError(
+          'unsupported',
+          `model ${model.id} does not support ${missing.join(', ')}`,
+        );
+    };
+    const gate = this.#gate;
     const payload = {
       ...chatPayload,
       usage: (result: ChatResult) => withListPrice(result.usage, this.options.priceOf?.(model.id)),
@@ -429,13 +508,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     };
 
     return {
-      info: () => ({
-        id: model.id,
-        residency: model.residency,
-        capabilities: model.capabilities,
-        ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
-        ...(model.parameters ? { parameters: model.parameters } : {}),
-      }),
+      info,
 
       chat: async (input) => {
         const request = bounded(input);

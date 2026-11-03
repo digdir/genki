@@ -543,6 +543,7 @@ export class RunMapper {
     if (stage === 'citations') return this.citations(e, ts, prev, data);
     if (stage === 'answer-discarded') return this.discarded(e, ts, data);
     if (stage === 'exhausted' || stage === 'recovered-empty') return this.exhausted(e, ts, data);
+    if (kind === 'decision') return this.decision(e, ts, data);
     if (kind === 'documents')
       return void this.add(
         this.completed(e, ts, prev, {
@@ -788,6 +789,50 @@ export class RunMapper {
       step.durationSeconds = round(ms / 1000);
     }
     this.add(step, true);
+  }
+
+  private decision(e: Event, ts: number, data: Data) {
+    const answer = str(data.answer);
+    const outcome = str(data.outcome);
+    const probability = num(data.probability);
+    const refusal = data.refusal === true;
+    const byPerson = data.decidedBy === 'person';
+    const answers: Record<string, ApiKey> = {
+      within: 'steps.decisionWithin',
+      outside: 'steps.decisionOutside',
+      uncertain: 'steps.decisionUncertain',
+      refused: 'steps.decisionRefused',
+    };
+    const outcomes: Record<string, ApiKey> = {
+      continue: 'steps.decisionContinue',
+      refuse: 'steps.decisionRefuse',
+      person: 'steps.decisionPerson',
+    };
+    const rows: [string, string][] = [
+      [t('steps.decisionOperation'), str(data.operation) ?? 'decide'],
+      [t('steps.decisionQuestion'), str(data.question) ?? ''],
+      [
+        t('steps.decisionAnswer'),
+        answer && answers[answer] ? plain(answers[answer]) : (answer ?? ''),
+      ],
+      ...(probability === undefined
+        ? []
+        : ([[t('steps.decisionProbability'), decimal(probability)]] as [string, string][])),
+      [t('steps.decisionRefusal'), refusal ? t('steps.decisionYes') : t('steps.decisionNo')],
+      ...(outcome && outcomes[outcome]
+        ? ([[t('steps.decisionOutcome'), plain(outcomes[outcome])]] as [string, string][])
+        : []),
+    ];
+    this.add({
+      id: `e${e.seq}`,
+      type: 'decision',
+      title: byPerson ? t('steps.decisionByPerson') : t('steps.decisionTitle'),
+      summary: answer && answers[answer] ? plain(answers[answer]) : t('steps.decisionTitle'),
+      at: this.offset(ts),
+      blocks: [{ kind: 'kv', rows }],
+      ...(str(data.model) && !byPerson ? { model: str(data.model) as string } : {}),
+      ...this.rawOf(data),
+    });
   }
 
   private rerank(e: Event, ts: number, prev: number, data: Data) {

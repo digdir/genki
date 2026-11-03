@@ -161,7 +161,11 @@ export const releaseGate = (
         ? { allow: false, reason: 'the quality matrix only runs draft services' }
         : { allow: true };
     const gate = catalog();
-    if (action === 'use:model' && gate && isCandidate(gate, resource.id))
+    if (
+      (action === 'use:model' || action === 'use:decision') &&
+      gate &&
+      isCandidate(gate, resource.id)
+    )
       return {
         allow: false,
         reason: `model ${resource.id} is not released yet; it is waiting for the quality matrix`,

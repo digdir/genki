@@ -17,7 +17,12 @@ import {
   type GateLaneSetup,
 } from '@genai/kernel/gate-contract';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
-import { ModelRouter, type ChatResult, type ModelAdapter } from '@genai/port-model';
+import {
+  ModelRouter,
+  type ChatResult,
+  type DecisionRequest,
+  type ModelAdapter,
+} from '@genai/port-model';
 import { RerankRouter, type RerankAdapter } from '@genai/port-rerank';
 
 const tenant = '999888777';
@@ -140,6 +145,83 @@ const lanes = () => {
     },
   };
 
+  const decision: GateLane = {
+    port: 'decision',
+    operation: 'decide',
+    admission: 'admitted',
+    tenant,
+    has: { ...has, enabled: true },
+    answersWithText: false,
+    refusalOf,
+    open: (setup): GateLaneRun => {
+      const w = watched(setup);
+      const adapter: ModelAdapter = {
+        protocol: 'fake',
+        endpointOptions: z.object({}),
+        modelOptions: z.object({}),
+        connect: () => ({
+          chat: async () => {
+            throw new Error('not used');
+          },
+          chatStream: async function* () {
+            yield* [];
+            throw new Error('not used');
+          },
+          decide: async (_model, request) => {
+            const input = request.input;
+            w.upstream.push(...(typeof input === 'string' ? [input] : input.map((m) => m.content)));
+            if (setup.failUpstream) throw new Error('the provider is down');
+            return {
+              answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+              usage: { inputTokens: 1, outputTokens: 0, requests: 1 },
+              servedModel: 'fake',
+              calibrated: true,
+            };
+          },
+        }),
+      };
+      const router = new ModelRouter({
+        gate: w.gate,
+        admits: () => setup.admitted ?? true,
+        catalog: {
+          endpoints: { fake: without(endpoint('fake'), 'engine') },
+          models: [
+            {
+              id: 'fake/decider',
+              endpoint: 'fake',
+              deployment: 'd',
+              residency: setup.residency ?? 'norway',
+              operations: ['chat', 'decide'],
+              ...w.shared,
+            },
+          ],
+        },
+        adapters: [adapter],
+        secrets: envSecrets({ K: 'k' }),
+        ...(setup.routerResidency ? { maxResidency: setup.routerResidency } : {}),
+        classifications: {
+          load: async () => (setup.enabled === false ? { 'fake/decider': { enabled: false } } : {}),
+          save: async () => undefined,
+        },
+      });
+      return {
+        ...w,
+        call: async (text, extra = {}) => {
+          await router.refresh();
+          const port = router
+            .decisions()
+            .open({ kind: 'model', id: 'fake/decider', tenant }, w.ctx);
+          const request = {
+            input: extra.media ? [{ role: 'user', content: image }] : text,
+            questions: [{ type: 'predicate', name: 'purpose', instructions: 'Is this in scope?' }],
+          } as DecisionRequest;
+          await port.decide(request);
+          return undefined;
+        },
+      };
+    },
+  };
+
   const embedding: GateLane = {
     port: 'embedding',
     operation: 'embed',
@@ -247,7 +329,7 @@ const lanes = () => {
     },
   };
 
-  return [model, embedding, rerank];
+  return [model, decision, embedding, rerank];
 };
 
 const subject: GateContractSubject = {
@@ -255,7 +337,7 @@ const subject: GateContractSubject = {
   nationalIdGuard: () => modelGuard({ vault: createVault(['national-id']) }),
 };
 
-describe(`${gateContract.contract} contract: the model, embedding and rerank routers`, () => {
+describe(`${gateContract.contract} contract: the model, decision, embedding and rerank routers`, () => {
   for (const check of gateContract.checks)
     it(check.name, async () => {
       await check.run(subject, new AbortController().signal);

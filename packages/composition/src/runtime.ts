@@ -497,6 +497,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       wrap(
         withHooks(
           guardStrategy(withSettings(settings, strategy), {
+            decisions: true,
             rules: ruleHooks,
             answerLanguage: async (ctx, request, config, question) =>
               answerLanguageFor(
@@ -574,6 +575,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerank,
     tools,
     blob,
+    decision: models.decisions(),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);

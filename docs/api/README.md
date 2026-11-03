@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-03: decisions on the governed gate
+
+- A service definition takes `spec.decidesAboutPeople` (boolean). With it, publishing and `POST /definitions/validate` answer `422` unless `spec.riskClass` is `high`, the `human-approval` guardrail is set, and `pii-out-of-log` is not set, so the model input is kept for review.
+- The guardrail `purpose-check` asks a decision model whether the input is within the service's purpose: `{ "model", "threshold"?: 0.8, "uncertain"?: "person" | "allow", "refusal"?: "person" | "allow", "message"? }`. Publishing answers `422` when the model does not offer the `decide` operation or runs outside the service's residency. A refusal or an answer below the threshold interrupts the run for a person (`id: "purpose-review"`, resume with `{ "within": true | false }`); it is never turned into a refusal.
+- `GET /operator/models` lists `operations` per model, and `PATCH /operator/models/{id}` takes `operations: ["chat", "decide"]`. Without a value a model offers `chat` only.
+- `GET /tenants/{tenant}/tasks/{task}/timeline` shows each decision as a step of type `decision`.
+
 ### 2026-11-03: usage from an AI gateway
 
 Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CREDENTIAL`, see [gateway.md](gateway.md)); without one every answer is as before.

@@ -6,6 +6,13 @@ import {
   type PortContext,
 } from '@genai/kernel';
 import {
+  decisionRequestProblem,
+  type DecisionMessage,
+  type DecisionPort,
+  type DecisionRequest,
+  type DecisionResult,
+} from './decision.js';
+import {
   ModelError,
   type ChatMessage,
   type ChatRequest,
@@ -39,12 +46,35 @@ export const chatPayload: GatePayload<ChatRequest, ChatResult> = {
   }),
 };
 
+const decisionContents = (input: unknown): unknown[] =>
+  typeof input === 'string'
+    ? [input]
+    : Array.isArray(input)
+      ? input.map((m) => (m as Partial<DecisionMessage> | null)?.content)
+      : [];
+
+export const decidePayload: GatePayload<DecisionRequest, DecisionResult> = {
+  contents: (request) => decisionContents((request as Partial<DecisionRequest> | null)?.input),
+  mapRequest: (request, map) => ({
+    ...request,
+    input:
+      typeof request.input === 'string'
+        ? map(request.input)
+        : request.input.map((m) => ({ ...m, content: map(m.content) })),
+  }),
+  mapResult: (result) => result,
+  check: decisionRequestProblem,
+  usage: (result) => result.usage,
+  dropped: (result) => result.dropped,
+};
+
 const refusalCodes: Record<GateRefusal, ModelError['code']> = {
   admission: 'unauthorized',
   disabled: 'bad_request',
   'not-shared': 'bad_request',
   residency: 'residency',
   media: 'refused',
+  shape: 'bad_request',
 };
 
 export const modelRefusal = (refusal: GateRefusal, message: string) =>
@@ -70,5 +100,26 @@ export const gatedModel = (
     chat: (request) => gate.call(ctx, target, chatPayload, request, (r) => port.chat(r)),
     chatStream: (request) =>
       gate.stream(ctx, target, chatPayload, request, (r) => port.chatStream(r)),
+  };
+};
+
+/** Puts a decision port that did not come from the router, such as a fake, behind a gate. */
+export const gatedDecision = (
+  port: DecisionPort,
+  ctx: PortContext,
+  gate: Gate = createGate(),
+): DecisionPort => {
+  const info = port.info();
+  const target = {
+    port: 'decision',
+    operation: 'decide',
+    model: { kind: 'model', id: info.id },
+    residency: info.residency,
+    admission: 'admitted' as const,
+    refuse: modelRefusal,
+  };
+  return {
+    info: () => port.info(),
+    decide: (request) => gate.call(ctx, target, decidePayload, request, (r) => port.decide(r)),
   };
 };

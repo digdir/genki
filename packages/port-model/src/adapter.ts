@@ -1,5 +1,6 @@
 import type { Credential } from '@genai/kernel';
 import type { z } from 'zod';
+import type { DecisionRequest, DecisionResult } from './decision.js';
 import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
 
 export interface EndpointConfig<O = unknown> {
@@ -29,6 +30,11 @@ export interface ModelConnection<M = unknown> {
     request: ChatRequest,
     signal: AbortSignal,
   ): AsyncIterable<ChatChunk>;
+  decide?(
+    model: DeploymentConfig<M>,
+    request: DecisionRequest,
+    signal: AbortSignal,
+  ): Promise<DecisionResult>;
 }
 
 export interface ModelAdapter<E = unknown, M = unknown> {

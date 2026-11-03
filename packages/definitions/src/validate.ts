@@ -4,6 +4,7 @@ import { flowSettingRefs } from './flow-settings.js';
 import { checkSettingValue, type SettingDefinition } from './settings.js';
 import type { z } from 'zod';
 import {
+  decisionModelOf,
   publicNamesOf,
   residencies,
   serviceDefinition,
@@ -37,7 +38,10 @@ export interface PluginSchemas {
   tools: Map<string, z.ZodType>;
   guardrails: Map<string, z.ZodType>;
   blocks: Set<string>;
-  models: Map<string, { residency: (typeof residencies)[number]; capabilities: string[] }>;
+  models: Map<
+    string,
+    { residency: (typeof residencies)[number]; capabilities: string[]; operations?: string[] }
+  >;
   settings?: SettingDefinition[];
   retrieval?: z.ZodType;
   rerankers?: Set<string>;
@@ -287,6 +291,43 @@ const missingLanguageInstructions = (spec: ServiceDefinition['spec']): Validatio
   });
 };
 
+const decisionProblems = (
+  spec: ServiceDefinition['spec'],
+  plugins: PluginSchemas,
+): ValidationError[] => {
+  const errors: ValidationError[] = [];
+  const id = decisionModelOf(spec);
+  const model = id ? plugins.models.get(id) : undefined;
+  const path = 'spec.guardrails.purpose-check.model';
+  if (id && !model) errors.push({ path, message: `unknown model ${id}` });
+  if (id && model && !(model.operations ?? ['chat']).includes('decide'))
+    errors.push({ path, message: `model ${id} does not offer the decide operation` });
+  if (id && model && wider(model.residency, spec.model.residency))
+    errors.push({
+      path,
+      message: `model ${id} runs in ${model.residency}, outside ${spec.model.residency}`,
+    });
+  if (!spec.decidesAboutPeople) return errors;
+  if (spec.riskClass !== 'high')
+    errors.push({
+      path: 'spec.riskClass',
+      message: 'a service that decides about people must have risk class high',
+    });
+  if (spec.guardrails['human-approval'] === undefined)
+    errors.push({
+      path: 'spec.guardrails.human-approval',
+      message:
+        'a service that decides about people needs a person to approve each result before it is final',
+    });
+  if (spec.guardrails['pii-out-of-log'] !== undefined)
+    errors.push({
+      path: 'spec.guardrails.pii-out-of-log',
+      message:
+        'a service that decides about people must keep the model input for review, so it cannot remove personal data from the run log',
+    });
+  return errors;
+};
+
 const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): ValidationError[] => {
   const { spec } = definition;
   const errors: ValidationError[] = [];
@@ -470,6 +511,7 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
     });
   }
   errors.push(...residencyProblems(spec, plugins));
+  errors.push(...decisionProblems(spec, plugins));
   errors.push(...inputFieldProblems(spec));
   errors.push(...tableColumnProblems(spec.output));
   if (spec.knowledge.reranker !== undefined && !plugins.rerankers?.has(spec.knowledge.reranker)) {

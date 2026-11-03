@@ -2,6 +2,7 @@ import { inputFieldsSchema, type CapabilityDescriptor } from '@genai/contracts';
 import type { Capability } from '@genai/kernel';
 import { resolvePrompts, type PromptFiles } from './prompts.js';
 import {
+  decisionModelOf,
   publicNamesOf,
   toolRef,
   variantChatOf,
@@ -111,6 +112,9 @@ export const toCapabilities = (
               id !== undefined && id !== model.primary && id !== spec.model.fallback,
           )
           .map((id) => ({ port: 'model', ref: ref('model', id) })),
+        ...(decisionModelOf(spec)
+          ? [{ port: 'decision', ref: ref('model', decisionModelOf(spec) as string) }]
+          : []),
       ],
     };
     const names = publicNamesOf(definition, variant);

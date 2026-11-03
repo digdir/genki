@@ -65,6 +65,11 @@ const nb = {
       reasoning: 'Resonnerer',
     },
   },
+  operations: {
+    label: 'Operasjoner',
+    help: 'Hva utrullingen kan brukes til. Uten verdi bare samtale.',
+    values: { chat: 'Samtale', decide: 'Beslutninger' },
+  },
   contextWindow: { label: 'Kontekstvindu (tokens)' },
   maxOutputTokens: { label: 'Mest svar modellen kan gi (tokens)' },
   parameters: { label: 'Regler for parametere' },
@@ -123,6 +128,11 @@ const en: Record<keyof typeof nb, LabelText> = {
       'json-schema': 'Answers by a schema',
       reasoning: 'Reasons',
     },
+  },
+  operations: {
+    label: 'Operations',
+    help: 'What the deployment can be used for. Without a value, chat only.',
+    values: { chat: 'Chat', decide: 'Decisions' },
   },
   contextWindow: { label: 'Context window (tokens)' },
   maxOutputTokens: { label: 'Most output the model can give (tokens)' },
