@@ -66,7 +66,7 @@ Each environment has a knowledge server of its own (ADR 0042), set up as its pla
 - **Size:** start small and grow. Compute moves up or down with a restart, 10 to 30 seconds with Azure's near-zero downtime scaling ([Azure: scaling](https://learn.microsoft.com/en-us/azure/postgresql/scale/concepts-scaling-resources)); the disk only grows, and autogrow doubles it when it runs low ([Azure: autogrow](https://learn.microsoft.com/en-us/azure/postgresql/scale/how-to-auto-grow-storage)). After an autogrow, raise `knowledgePostgresStorageSizeGB` to the new size: Azure does not shrink a disk, so a smaller value in the template is refused. For Kudos, binary quantisation would keep the vector index at about 1.5 GB instead of 12.7 GB, by extrapolation from 0.47 GB at 1 million vectors (issue 265 measures it at about 3 million).
 - **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). Prod's pools need at most 102: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, for 3 API replicas, plus 2 for the job. Test's need at most 82, for 2 replicas.
 - **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
-- **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role can act as one of the logins.
+- **Only its own logins connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to the environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left, or while another role holds one of the logins with inherit or set.
 
 ### Stages
 
@@ -89,7 +89,7 @@ After setup the job prints the server's settings, extensions, logins, membership
 - `logins` holds no `genai-<env>-api-id`: the shared app identity has no role on the knowledge server.
 - `memberships` lists every role the two logins are members of: the API's login only `genai_knowledge_reader`, the worker's only `genai_knowledge_owner` and `genai_knowledge_writer`, all with `inherit_option` false. Any other role there needs a look.
 - `connect` lists only the two logins, `azure_pg_admin` and the database's owner, never `public`.
-- `members` lists the roles that hold one of the two logins: at most the role that created it, with `admin_option` only. The setup fails on any that may inherit or set a login.
+- `members` lists the roles that hold one of the two logins: the role that created it, with `admin_option` only, and possibly the setup's own admin or an `azure_pg_admin` member with inherit or set. The setup fails on any other role that may inherit or set a login.
 
 ### Restore drill
 

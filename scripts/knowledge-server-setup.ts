@@ -101,7 +101,8 @@ export const knowledgeServerReport = async (knowledge: Pool, logins: string[]) =
         where m.rolname = any($1) order by login, role`,
       [logins],
     ),
-    // Every role that holds one of the two logins; the setup refuses any but those with the admin option only.
+    // Every role that holds one of the two logins; the setup refuses inherit or set to any but its own admin and
+    // the server's admins.
     members: await query(
       `select l.rolname as login, m.rolname as member, a.admin_option, a.inherit_option, a.set_option
          from pg_auth_members a join pg_roles l on l.oid = a.roleid join pg_roles m on m.oid = a.member

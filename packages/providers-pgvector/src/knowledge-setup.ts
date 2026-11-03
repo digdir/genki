@@ -134,9 +134,9 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
     throw new Error(
       `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; revoke each as its grantor, or revoke the grantor's own grant with cascade, and run setup again`,
     );
-  // A role that inherits or may set one of the logins connects through it. The admin option alone, which
-  // PostgreSQL gives the role that created a login, lets in neither. The admin running this setup and, on
-  // Azure, the server's admins may connect anyway.
+  // A role that inherits one of the logins connects through it, and one that may set it acts as it wherever it
+  // connects; both are refused. The admin option alone, which PostgreSQL gives the role that created a login,
+  // is neither. The admin running this setup and, on Azure, the server's admins may connect anyway.
   const { rows: members } = await client.query<{ member: string; login: string; grantor: string }>(
     `select m.rolname as member, l.rolname as login, g.rolname as grantor
        from pg_auth_members a join pg_roles l on l.oid = a.roleid join pg_roles m on m.oid = a.member
@@ -150,7 +150,7 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
   );
   if (members.length > 0)
     throw new Error(
-      `${members.map((row) => `${row.member} can act as ${row.login} (granted by ${row.grantor})`).join(', ')} and so connect to ${name}; revoke each as its grantor and run setup again`,
+      `${members.map((row) => `${row.member} holds ${row.login} with inherit or set (granted by ${row.grantor})`).join(', ')}, which only the setup's admin and the server's admins may on ${name}; revoke each as its grantor and run setup again`,
     );
 };
 

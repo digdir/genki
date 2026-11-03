@@ -311,7 +311,7 @@ describe('knowledge server setup', () => {
       await expect(
         setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
       ).rejects.toThrow(
-        /member_of_stray can act as member_of_api \(granted by \w+\).* genai_knowledge_member_of/,
+        /member_of_stray holds member_of_api with inherit or set \(granted by \w+\).* genai_knowledge_member_of/,
       );
     });
   });
@@ -402,4 +402,33 @@ describe('knowledge server setup', () => {
       }
     },
   );
+});
+
+// Its own server, since `azure_pg_admin` changes the connect grants the tests above expect.
+describe('knowledge server setup on a server with azure_pg_admin', () => {
+  let server: StartedPostgreSqlContainer;
+  let serverAdmin: pg.Pool;
+
+  beforeAll(async () => {
+    server = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
+    serverAdmin = new pg.Pool({ connectionString: server.getConnectionUri() });
+  }, 120_000);
+
+  afterAll(async () => {
+    await serverAdmin?.end();
+    await stopPostgres(server);
+  });
+
+  it('setup accepts a server admin that holds one of its logins', async () => {
+    for (const login of Object.values(logins))
+      await serverAdmin.query(`create role ${login} login password 'login-pw'`);
+    await serverAdmin.query('create role azure_pg_admin nologin');
+    await serverAdmin.query(
+      `create role server_admin login password 'login-pw' in role azure_pg_admin`,
+    );
+    await serverAdmin.query(`grant ${logins.apiLogin} to server_admin with inherit true, set true`);
+    await expect(
+      setUpKnowledgeServer(serverAdmin, { ...logins, platformId: platform }),
+    ).resolves.toMatchObject({ outcome: 'bound' });
+  });
 });
