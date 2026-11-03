@@ -4,4 +4,5 @@ export * from './catalog.js';
 export * from './router.js';
 export * from './parameters.js';
 export * from './instructions.js';
+export * from './untrusted.js';
 export * from './schema-labels.js';
