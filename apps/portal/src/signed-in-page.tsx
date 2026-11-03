@@ -64,7 +64,7 @@ export const Page = ({
   const t = useT();
   const [area = 'overview', id, sub] = props.route.segments;
   if (area === 'overview') return <Overview {...props} onFailingIngests={onFailingIngests} />;
-  if (area === 'architecture-assistant') return <ArchitectureAssistant />;
+  if (area === 'architecture-assistant') return <ArchitectureAssistant {...props} />;
   if (area === 'services')
     return (
       <StrategyCatalogue api={props.api} tenant={props.tenant}>
