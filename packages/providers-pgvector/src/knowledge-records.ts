@@ -218,6 +218,21 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     return rows[0]?.embedding ?? undefined;
   },
 
+  held: async (record, generation) => {
+    const { rows } = await writer.query(
+      `select 1 from kn_applied where generation = $1 and id = $2 and change = $3`,
+      [generation, record.id, record.change],
+    );
+    return rows.length > 0;
+  },
+
+  touch: async (record, generation) => {
+    await writer.query(
+      `update kn_applied set applied_at = now() where generation = $1 and id = $2 and change = $3`,
+      [generation, record.id, record.change],
+    );
+  },
+
   find: async (number) => {
     const { rows } = await writer.query<RecordRow>(
       `select ${recordColumns} from src_documents where number = $1::bigint`,

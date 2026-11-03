@@ -1,3 +1,4 @@
+import type { EmbeddingPort } from '@genai/port-embedding';
 import { describe, expect, it, vi } from 'vitest';
 import {
   indexRecord,
@@ -71,6 +72,64 @@ describe('planRun', () => {
   it('deleting the last upload removes it at the next run', () => {
     const plan = planRun([], [owned('upload')], { complete: true, deletes: 'explicit' });
     expect(deletes(plan)).toEqual(['upload']);
+  });
+
+  it('a re-checked page that still answers is neither embedded nor rewritten', async () => {
+    const calls: string[] = [];
+    const record = {
+      number: '9',
+      dataset: 'digdir/site',
+      id: 'p',
+      record: { loc: 'https://www.example.no/p' },
+      state: 'stored' as const,
+      change: 4,
+      gone: 0,
+    };
+    const records = {
+      find: async () => record,
+      held: async () => true,
+      touch: async () => void calls.push('touch'),
+      replace: async () => {
+        calls.push('replace');
+        return true;
+      },
+      fail: async () => undefined,
+    } as unknown as DocumentRecords;
+    const outcome = await indexRecord({
+      records,
+      listing: {
+        deletes: 'crawled',
+        load: async () => {
+          calls.push('load');
+          return {
+            key: 'p',
+            docNum: 'p',
+            texts: ['# P\n\nInnhold.'],
+            stored: () => ({ id: 'p', title: 'P' }),
+            storedChunks: (chunks) => chunks.map((c) => ({ ...c })),
+          };
+        },
+      },
+      dataset: 'digdir/site',
+      run: 'run-1',
+      record: '9',
+      generation: 'g-1',
+      chunking: {
+        strategy: { kind: 'header-based' },
+        minimumLength: 1,
+        maximumLength: 4000,
+        metadataStyle: 'pr',
+      },
+      embedder: {
+        info: () => ({ id: 'fake', dimensions: 3 }),
+        embed: async () => {
+          calls.push('embed');
+          return { vectors: [] };
+        },
+      } as unknown as EmbeddingPort,
+    });
+    expect(outcome).toBe('checked');
+    expect(calls).toEqual(['load', 'touch']);
   });
 
   it('an index job whose record changed while it ran fails, so its retry writes the newer change', async () => {

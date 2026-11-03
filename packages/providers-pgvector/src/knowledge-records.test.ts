@@ -333,6 +333,27 @@ describe('document records on the knowledge server', () => {
     expect(await tombstones()).toBe(0);
   });
 
+  it('a held record is checked without being written again', async () => {
+    const name = 'digdir/checked';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: 'site', generation, plan: newDocs('p') },
+      noSend,
+    );
+    const record = await recordOf(name, 'p');
+    expect(await records.held(record, generation)).toBe(false);
+    await records.replace(record, generation, { document: doc('p') });
+    expect(await records.held(record, generation)).toBe(true);
+    await admin.query(
+      `update kn_applied set applied_at = now() - interval '8 days' where generation = $1`,
+      [generation],
+    );
+    await records.touch(record, generation);
+    const [owned] = await records.owned(name, 'site', generation);
+    expect(Date.parse(owned?.appliedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
+    expect(await dataVersion(generation)).toBe(1);
+  });
+
   it('a changed chunking setting leaves the active generation unchanged', async () => {
     const name = 'digdir/chunking';
     const generation = await freshGeneration(name);

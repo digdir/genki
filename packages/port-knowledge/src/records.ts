@@ -73,7 +73,8 @@ export interface IndexRecord {
   gone: number;
 }
 
-export type IndexOutcome = 'stored' | 'skipped' | 'deleted';
+/** `checked`: a re-checked page that still answered, left as the generation holds it. */
+export type IndexOutcome = 'stored' | 'skipped' | 'deleted' | 'checked';
 
 /** The document records of the knowledge server, as the worker's writer reaches them. */
 export interface DocumentRecords {
@@ -92,6 +93,10 @@ export interface DocumentRecords {
   /** The embedding a generation was built with: its index jobs embed with it, not the catalog's. */
   embedding(generation: string): Promise<{ model: string; dimensions: number } | undefined>;
   find(number: string): Promise<IndexRecord | undefined>;
+  /** Whether the generation already holds the record's current change. */
+  held(record: IndexRecord, generation: string): Promise<boolean>;
+  /** Marks a held record as checked now, without writing it, so its next re-check waits again. */
+  touch(record: IndexRecord, generation: string): Promise<void>;
   /**
    * Replaces one document in the generation in one transaction, or removes it when it was skipped,
    * records the change it applied and moves the generation's data version. Answers false, and

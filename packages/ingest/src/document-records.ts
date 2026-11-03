@@ -201,6 +201,14 @@ const writeRecord = async (
     // One 404 or 410 is not enough: the page keeps its last version until the second.
     return 'skipped';
   }
+  // A re-check of a crawled page the generation already holds only looks for a 404 or 410.
+  if (
+    options.listing.deletes === 'crawled' &&
+    (await options.records.held(record, options.generation))
+  ) {
+    await options.records.touch(record, options.generation);
+    return 'checked';
+  }
   if (document.skip || document.texts.every((t) => t.trim() === '')) {
     applied(
       await options.records.replace(record, options.generation, {
