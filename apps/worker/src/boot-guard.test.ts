@@ -21,6 +21,14 @@ describe('booting the worker', () => {
     ]);
   });
 
+  it('the worker sends prompt content to the trace sink only in dev mode', () => {
+    const db = { DATABASE_URL: 'postgres://db/genai' };
+    expect(workerBootProblems({ ...db, TRACES_CONTENT: 'true' })).toEqual([
+      expect.stringContaining('TRACES_CONTENT'),
+    ]);
+    expect(workerBootProblems({ GENAI_DEV_MODE: 'true', TRACES_CONTENT: 'true' })).toEqual([]);
+  });
+
   it('refuses dev mode in production', () => {
     expect(workerBootProblems({ GENAI_DEV_MODE: 'true', GENAI_ENV: 'production' })).toEqual([
       expect.stringContaining('production'),

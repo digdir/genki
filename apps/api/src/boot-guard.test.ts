@@ -118,6 +118,14 @@ describe('booting the API', () => {
     ]);
   });
 
+  it('sends prompt content to the trace sink only in dev mode', () => {
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'true' })).toEqual([
+      expect.stringContaining('TRACES_CONTENT'),
+    ]);
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'false' })).toEqual([]);
+    expect(bootProblems({ ...dev, TRACES_CONTENT: 'true' })).toEqual([]);
+  });
+
   it('names every missing setting when none is set', () => {
     const problems = bootProblems({});
     expect(problems).toHaveLength(3);

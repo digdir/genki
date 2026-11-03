@@ -122,7 +122,6 @@ Accepting this record does not let a Langfuse judge block a publish. That needs 
   - per-case traces under a run
   - the experiment export, the score collector with judge cost inside the run's lease, the label import with approval and the dataset import
   - the pending sink deletes, their pass in the nightly purge, and refusing to remove a connection with pending deletes
-  - limiting `TRACES_CONTENT` to development mode
 - Before agency data goes to Digdir's instance:
   - whose model key an agency's judges use there, and so who pays for their calls, is decided. The cost of each judge call is readable (about USD 0.008 per call on `claude-sonnet-5` at Langfuse's list price, measured on Digdir's instance on 2026-10-29), so Digdir's key with the cost shown per tenant is an option beside each tenant's own key.
   - where the instance stores what it receives is confirmed, so operators can set its connections' residency
