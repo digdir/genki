@@ -1,8 +1,9 @@
+import { XMarkIcon } from '@navikt/aksel-icons';
 import { Button, Heading } from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useT } from '../i18n';
 import { useEscape, useNarrow } from '../hooks';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 
 export const SidePanel = ({
   title,
@@ -56,7 +57,7 @@ export const SidePanel = ({
           aria-label={t('common.close')}
           onClick={onClose}
         >
-          <Icon d={icons.close} />
+          <Icon icon={XMarkIcon} />
         </Button>
       </div>
       <div className="side-panel-body">{children}</div>

@@ -88,6 +88,72 @@ const memberships = async (client: PoolClient, login: string, allowed: string[])
     );
 };
 
+/**
+ * Roles are global to a server, so the knowledge roles a login holds count in every database on it.
+ * The database is fenced by who may connect to it, so a login made for another database on the same
+ * server, such as another environment's, never reaches it: only its own two logins,
+ * its owner and, on Azure, the server's admins (`azure_pg_admin`).
+ */
+const connectOnly = async (client: PoolClient, name: string, logins: string[]) => {
+  const database = roleName(name);
+  await client.query(`revoke connect on database ${database} from public`);
+  await client.query(`grant connect on database ${database} to ${logins.map(roleName).join(', ')}`);
+  const { rows: azure } = await client.query(
+    `select from pg_roles where rolname = 'azure_pg_admin'`,
+  );
+  if (azure.length > 0)
+    await client.query(`grant connect on database ${database} to azure_pg_admin`);
+  const kept = [...logins, ...(azure.length > 0 ? ['azure_pg_admin'] : [])];
+  const others = async () =>
+    (
+      await client.query<{ grantee: string; grantor: string }>(
+        `select coalesce(r.rolname, 'public') as grantee, g.rolname as grantor
+           from pg_database d
+           cross join aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
+           left join pg_roles r on r.oid = a.grantee
+           join pg_roles g on g.oid = a.grantor
+          where d.datname = current_database() and a.privilege_type = 'CONNECT'
+            and a.grantee <> d.datdba and coalesce(r.rolname, 'public') <> all($1)`,
+        [kept],
+      )
+    ).rows;
+  for (const { grantee } of await others()) {
+    if (grantee === 'public') continue;
+    // A grant others hold through, or one this admin has no rights on, fails; the check below names it.
+    await client.query('savepoint knowledge_connect');
+    try {
+      await client.query(`revoke connect on database ${database} from ${roleName(grantee)}`);
+      await client.query('release savepoint knowledge_connect');
+    } catch {
+      await client.query('rollback to savepoint knowledge_connect');
+    }
+  }
+  // A revoke of another grantor's grant changes nothing, and one without the grant option only warns.
+  const left = await others();
+  if (left.length > 0)
+    throw new Error(
+      `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; revoke each as its grantor, or revoke the grantor's own grant with cascade, and run setup again`,
+    );
+  // A role that inherits one of the logins connects through it, and one that may set it acts as it wherever it
+  // connects; both are refused. The admin option alone, which PostgreSQL gives the role that created a login,
+  // is neither. The admin running this setup and, on Azure, the server's admins may connect anyway.
+  const { rows: members } = await client.query<{ member: string; login: string; grantor: string }>(
+    `select m.rolname as member, l.rolname as login, g.rolname as grantor
+       from pg_auth_members a join pg_roles l on l.oid = a.roleid join pg_roles m on m.oid = a.member
+       join pg_roles g on g.oid = a.grantor
+      where l.rolname = any($1) and (a.inherit_option or a.set_option)
+        and m.rolname <> current_user
+        and not exists (select from pg_roles z
+                         where z.rolname = 'azure_pg_admin' and pg_has_role(m.oid, z.oid, 'MEMBER'))
+      order by member, login`,
+    [logins],
+  );
+  if (members.length > 0)
+    throw new Error(
+      `${members.map((row) => `${row.member} holds ${row.login} with inherit or set (granted by ${row.grantor})`).join(', ')}, which only the setup's admin and the server's admins may on ${name}; revoke each as its grantor and run setup again`,
+    );
+};
+
 const bind = async (
   client: PoolClient,
   options: KnowledgeSetupOptions,
@@ -144,6 +210,7 @@ export const setUpKnowledgeServer = async (
     );
     await memberships(client, options.apiLogin, [knowledgeRoles.reader]);
     await memberships(client, options.workerLogin, [knowledgeRoles.owner, knowledgeRoles.writer]);
+    await connectOnly(client, rows[0]?.db ?? '', [options.apiLogin, options.workerLogin]);
     const binding = await bind(client, options);
     await client.query('commit');
     return binding;

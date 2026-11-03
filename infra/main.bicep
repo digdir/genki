@@ -86,6 +86,33 @@ param addressPrefix string = '10.40.0.0/16'
 param appsSubnetPrefix string = '10.40.0.0/23'
 param postgresSubnetPrefix string = '10.40.2.0/24'
 
+@description('none: nothing of the knowledge server. server: the server, its network, the knowledge identities and the principals job. apps: also the API and worker settings for it.')
+@allowed(['none', 'server', 'apps'])
+param knowledgeServerStage string = 'none'
+
+@description('The knowledge database on this environment\'s knowledge server.')
+param knowledgeDatabaseName string = 'genai_knowledge'
+param knowledgePostgresSkuName string = 'Standard_D2ds_v5'
+param knowledgePostgresSkuTier string = 'GeneralPurpose'
+param knowledgePostgresStorageSizeGB int = 64
+
+@description('The vCores of knowledgePostgresSkuName, for the worker (KNOWLEDGE_VCORES).')
+param knowledgePostgresVCores int = 2
+
+@minValue(7)
+@maxValue(35)
+param knowledgePostgresBackupRetentionDays int = 7
+
+@description('Azure sets this only when the server is created.')
+@allowed(['Enabled', 'Disabled'])
+param knowledgePostgresGeoRedundantBackup string = 'Disabled'
+
+@allowed(['Disabled', 'SameZone', 'ZoneRedundant'])
+param knowledgePostgresHighAvailability string = 'Disabled'
+
+@description('The knowledge server\'s own network, peered with this environment\'s.')
+param knowledgeAddressPrefix string = '10.42.0.0/24'
+
 param logRetentionInDays int = 30
 param minReplicas int = 1
 param maxReplicas int = 3
@@ -161,16 +188,117 @@ module postgres 'modules/postgres.bicep' = {
     backupRetentionDays: postgresBackupRetentionDays
     geoRedundantBackup: postgresGeoRedundantBackup
     highAvailability: postgresHighAvailability
-    databaseName: 'genai'
+    databaseNames: ['genai']
     delegatedSubnetId: network.outputs.postgresSubnetId
     privateDnsZoneId: network.outputs.postgresDnsZoneId
     adminGroupObjectId: postgresAdminGroupObjectId
     adminGroupName: postgresAdminGroupName
-    appIdentityPrincipalId: appIdentity.properties.principalId
-    appIdentityName: appIdentity.name
-    appIdentityIsAdmin: appIdentityIsPostgresAdmin
+    identityAdmins: appIdentityIsPostgresAdmin
+      ? [{ principalId: appIdentity.properties.principalId, name: appIdentity.name }]
+      : []
   }
 }
+
+// The knowledge server (ADR 0042): one per environment, set up as the platform server is, in a network of its own
+// peered with the environment's. A server cannot move network once made, so a network peered with it later
+// reaches the knowledge server and not the environment's network.
+var knowledgeOn = knowledgeServerStage != 'none'
+var knowledgeServerName = '${baseName}-knowledge-${suffix}'
+var knowledgeVnetName = '${baseName}-knowledge-vnet'
+// Azure evaluates the reference functions of a resource it does not deploy, and fails on one that does not exist, so
+// each read of a knowledge resource's outputs or properties sits behind `knowledgeOn ?`, even in a conditional module
+// (Bicep: conditional deployment, runtime functions).
+
+resource knowledgeApiIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (knowledgeOn) {
+  name: '${baseName}-knowledge-api-id'
+  location: location
+  tags: allTags
+}
+
+resource knowledgeWorkerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (knowledgeOn) {
+  name: '${baseName}-knowledge-worker-id'
+  location: location
+  tags: allTags
+}
+
+resource knowledgeAdminIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (knowledgeOn) {
+  name: '${baseName}-knowledge-admin-id'
+  location: location
+  tags: allTags
+}
+
+module knowledgeNetwork 'modules/knowledge-network.bicep' = if (knowledgeOn) {
+  name: 'knowledge-network'
+  params: {
+    name: knowledgeVnetName
+    location: location
+    tags: allTags
+    addressPrefix: knowledgeAddressPrefix
+    serverName: knowledgeServerName
+    environmentVnetId: network.outputs.vnetId
+  }
+}
+
+// The environment's side of the peering.
+module knowledgePeering 'modules/peering.bicep' = if (knowledgeOn) {
+  name: 'knowledge-peering'
+  params: {
+    vnetName: '${baseName}-vnet'
+    name: 'to-${knowledgeVnetName}'
+    remoteVnetId: knowledgeOn ? knowledgeNetwork!.outputs.vnetId : ''
+  }
+}
+
+module knowledgePostgres 'modules/postgres.bicep' = if (knowledgeOn) {
+  name: 'knowledge-postgres'
+  params: {
+    name: knowledgeServerName
+    location: location
+    tags: allTags
+    version: postgresVersion
+    skuName: knowledgePostgresSkuName
+    skuTier: knowledgePostgresSkuTier
+    storageSizeGB: knowledgePostgresStorageSizeGB
+    backupRetentionDays: knowledgePostgresBackupRetentionDays
+    geoRedundantBackup: knowledgePostgresGeoRedundantBackup
+    highAvailability: knowledgePostgresHighAvailability
+    databaseNames: [knowledgeDatabaseName]
+    delegatedSubnetId: knowledgeOn ? knowledgeNetwork!.outputs.subnetId : ''
+    privateDnsZoneId: knowledgeOn ? knowledgeNetwork!.outputs.dnsZoneId : ''
+    adminGroupObjectId: postgresAdminGroupObjectId
+    adminGroupName: postgresAdminGroupName
+    identityAdmins: knowledgeOn
+      ? [{ principalId: knowledgeAdminIdentity!.properties.principalId, name: knowledgeAdminIdentity!.name }]
+      : []
+    extensions: 'VECTOR,PG_PREWARM'
+    sharedPreloadLibraries: 'pg_stat_statements,pg_prewarm'
+  }
+}
+
+var knowledgeHost = knowledgeOn ? knowledgePostgres!.outputs.fqdn : ''
+
+// The principals job: makes the two logins by object id and sets up the database, as the knowledge admin.
+var knowledgeSetup = knowledgeOn
+  ? {
+      host: knowledgeHost
+      admin: { id: knowledgeAdminIdentity!.id, clientId: knowledgeAdminIdentity!.properties.clientId }
+      args: [
+        '--principals'
+        '--admin-user'
+        knowledgeAdminIdentity!.name
+        '--database'
+        knowledgeDatabaseName
+        '--api-login'
+        knowledgeApiIdentity!.name
+        '--api-object-id'
+        knowledgeApiIdentity!.properties.principalId
+        '--worker-login'
+        knowledgeWorkerIdentity!.name
+        '--worker-object-id'
+        knowledgeWorkerIdentity!.properties.principalId
+      ]
+    }
+  : {}
 
 module storage 'modules/storage.bicep' = {
   name: 'storage'
@@ -233,6 +361,24 @@ module apps 'modules/containerapps.bicep' = {
     existingCertificates: existingCertificates
     postgresHost: postgres.outputs.fqdn
     postgresDatabase: postgres.outputs.databaseName
+    knowledge: knowledgeServerStage == 'apps'
+      ? {
+          host: knowledgeHost
+          database: knowledgeDatabaseName
+          vcores: knowledgePostgresVCores
+          api: {
+            id: knowledgeApiIdentity!.id
+            clientId: knowledgeApiIdentity!.properties.clientId
+            name: knowledgeApiIdentity!.name
+          }
+          worker: {
+            id: knowledgeWorkerIdentity!.id
+            clientId: knowledgeWorkerIdentity!.properties.clientId
+            name: knowledgeWorkerIdentity!.name
+          }
+        }
+      : {}
+    knowledgeSetup: knowledgeSetup
     minReplicas: minReplicas
     maxReplicas: maxReplicas
     cpu: cpu
@@ -268,3 +414,11 @@ output keyVaultName string = vault.outputs.name
 output postgresHost string = postgres.outputs.fqdn
 output appIdentityClientId string = appIdentity.properties.clientId
 output appIdentityName string = appIdentity.name
+output knowledgePostgresHost string = knowledgeOn ? knowledgeHost : ''
+output knowledgeApiIdentity object = knowledgeOn
+  ? { name: knowledgeApiIdentity!.name, principalId: knowledgeApiIdentity!.properties.principalId }
+  : {}
+output knowledgeWorkerIdentity object = knowledgeOn
+  ? { name: knowledgeWorkerIdentity!.name, principalId: knowledgeWorkerIdentity!.properties.principalId }
+  : {}
+output knowledgeSetupJobName string = apps.outputs.knowledgeSetupJobName

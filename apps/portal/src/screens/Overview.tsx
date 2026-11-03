@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Avatar,
@@ -9,7 +10,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Icon, icons } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import type { DatasetView } from '../api/datasets';
 import {
   ingestIssues,
@@ -345,7 +346,7 @@ export const Overview = ({
         </div>
         {empty || !canCreate ? null : (
           <a className="ds-button" data-variant="primary" href="#/services/new">
-            <Icon d={icons.plus} />
+            <Icon icon={PlusIcon} />
             {t('overview.newService')}
           </a>
         )}

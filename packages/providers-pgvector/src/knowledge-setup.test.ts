@@ -236,6 +236,144 @@ describe('knowledge server setup', () => {
     }
   });
 
+  const fencedDatabase = async (name: string, run: (pool: pg.Pool) => Promise<void>) => {
+    await admin.query(`create database ${name}`);
+    const pool = new pg.Pool({
+      connectionString: container.getConnectionUri().replace(/\/[^/]+$/, `/${name}`),
+    });
+    try {
+      await run(pool);
+    } finally {
+      await pool.end();
+    }
+  };
+  const fencedLogins = (prefix: string) => ({
+    apiLogin: `${prefix}_api`,
+    workerLogin: `${prefix}_worker`,
+  });
+  const connectGrantees = async (database: string) =>
+    (
+      await admin.query<{ grantee: string }>(
+        `select coalesce(r.rolname, 'public') as grantee
+           from pg_database d cross join aclexplode(d.datacl) a
+           left join pg_roles r on r.oid = a.grantee
+          where d.datname = $1 and a.privilege_type = 'CONNECT' order by grantee`,
+        [database],
+      )
+    ).rows.map((row) => row.grantee);
+
+  it('setup takes back a connect grant to any login but its own two', async () => {
+    const own = fencedLogins('taken_back');
+    for (const login of [...Object.values(own), 'taken_back_stray'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_taken_back', async (pool) => {
+      await admin.query('grant connect on database genai_knowledge_taken_back to taken_back_stray');
+      await setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform });
+    });
+    expect(await connectGrantees('genai_knowledge_taken_back')).toEqual(
+      [container.getUsername(), own.apiLogin, own.workerLogin].sort(),
+    );
+  });
+
+  it('setup fails, naming the grant, while a connect grant it cannot take back is left', async () => {
+    const own = fencedLogins('kept_grant');
+    for (const login of [...Object.values(own), 'kept_grantor', 'kept_grantee'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_kept_grant', async (pool) => {
+      await admin.query(
+        'grant connect on database genai_knowledge_kept_grant to kept_grantor with grant option',
+      );
+      const grantor = new pg.Client({
+        host: container.getHost(),
+        port: container.getPort(),
+        database: 'postgres',
+        user: 'kept_grantor',
+        password: 'login-pw',
+      });
+      await grantor.connect();
+      await grantor.query('grant connect on database genai_knowledge_kept_grant to kept_grantee');
+      await grantor.end();
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).rejects.toThrow(
+        /kept_grantee \(granted by kept_grantor\).* can still connect to genai_knowledge_kept_grant/,
+      );
+    });
+  });
+
+  it('setup fails, naming the member, while another role can act as one of its logins', async () => {
+    const own = fencedLogins('member_of');
+    for (const login of [...Object.values(own), 'member_of_stray'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_member_of', async (pool) => {
+      await setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform });
+      await admin.query(`grant ${own.apiLogin} to member_of_stray`);
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).rejects.toThrow(
+        /member_of_stray holds member_of_api with inherit or set \(granted by \w+\).* genai_knowledge_member_of/,
+      );
+    });
+  });
+
+  // PostgreSQL 16 and later give a role that creates a login the admin option on it, and more where
+  // createrole_self_grant asks for it; the admin running setup may connect anyway.
+  it('setup accepts its own admin, or a role with the admin option only, as a holder of its logins', async () => {
+    const own = fencedLogins('admin_only');
+    for (const login of [...Object.values(own), 'admin_only_creator'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await admin.query(
+      `grant ${own.workerLogin} to admin_only_creator with admin true, inherit false, set false`,
+    );
+    await admin.query(`grant ${own.apiLogin} to current_user with inherit true, set true`);
+    await fencedDatabase('genai_knowledge_admin_only', async (pool) => {
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).resolves.toMatchObject({ outcome: 'bound' });
+    });
+  });
+
+  it("a login of one environment cannot connect to the other environment's database", async () => {
+    const other = { apiLogin: 'other_knowledge_api', workerLogin: 'other_knowledge_worker' };
+    const otherDatabase = 'genai_knowledge_other';
+    for (const login of Object.values(other))
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await admin.query(`create database ${otherDatabase}`);
+    const otherAdmin = new pg.Pool({
+      connectionString: container.getConnectionUri().replace(/\/[^/]+$/, `/${otherDatabase}`),
+    });
+    try {
+      await setUpKnowledgeServer(otherAdmin, { ...other, platformId: otherPlatform });
+      const connect = async (user: string, database: string, role?: string) => {
+        const client = new pg.Client({
+          host: container.getHost(),
+          port: container.getPort(),
+          database,
+          user,
+          password: 'login-pw',
+          ...(role ? { options: `-c role=${role}` } : {}),
+        });
+        await client.connect();
+        await client.end();
+      };
+      await connect(logins.workerLogin, container.getDatabase(), knowledgeRoles.owner);
+      await connect(other.workerLogin, otherDatabase, knowledgeRoles.owner);
+      for (const [user, database] of [
+        [other.workerLogin, container.getDatabase()],
+        [other.apiLogin, container.getDatabase()],
+        [logins.workerLogin, otherDatabase],
+        [logins.apiLogin, otherDatabase],
+      ] as const) {
+        await expect(connect(user, database)).rejects.toThrow(/permission denied for database/);
+        await expect(connect(user, database, knowledgeRoles.owner)).rejects.toThrow(
+          /permission denied for database/,
+        );
+      }
+    } finally {
+      await otherAdmin.end();
+    }
+  });
+
   it('setup refuses a knowledge role that bypasses row-level security', async () => {
     await admin.query(`alter role ${knowledgeRoles.writer} bypassrls`);
     try {
@@ -264,4 +402,33 @@ describe('knowledge server setup', () => {
       }
     },
   );
+});
+
+// Its own server, since `azure_pg_admin` changes the connect grants the tests above expect.
+describe('knowledge server setup on a server with azure_pg_admin', () => {
+  let server: StartedPostgreSqlContainer;
+  let serverAdmin: pg.Pool;
+
+  beforeAll(async () => {
+    server = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
+    serverAdmin = new pg.Pool({ connectionString: server.getConnectionUri() });
+  }, 120_000);
+
+  afterAll(async () => {
+    await serverAdmin?.end();
+    await stopPostgres(server);
+  });
+
+  it('setup accepts a server admin that holds one of its logins', async () => {
+    for (const login of Object.values(logins))
+      await serverAdmin.query(`create role ${login} login password 'login-pw'`);
+    await serverAdmin.query('create role azure_pg_admin nologin');
+    await serverAdmin.query(
+      `create role server_admin login password 'login-pw' in role azure_pg_admin`,
+    );
+    await serverAdmin.query(`grant ${logins.apiLogin} to server_admin with inherit true, set true`);
+    await expect(
+      setUpKnowledgeServer(serverAdmin, { ...logins, platformId: platform }),
+    ).resolves.toMatchObject({ outcome: 'bound' });
+  });
 });

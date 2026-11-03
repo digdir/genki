@@ -1,10 +1,11 @@
+import { CheckmarkIcon, XMarkIcon } from '@navikt/aksel-icons';
 import { Alert, Button, Heading, Paragraph, Table, Tag } from '@digdir/designsystemet-react';
 import { intlLocale } from '@genai/i18n';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import type { CatalogProposal, ProposalMapping } from '../../api/building-blocks';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { ReasonField, reasonProblem } from '../../components/ReasonField';
 import { kindLabel } from '../../data/building-blocks';
 import { useT, type Format, type PlainKey, type T } from '../../i18n';
@@ -233,7 +234,7 @@ export const ProposalSection = ({
             {proposal.tests.map((test) => (
               <li key={test.name}>
                 <span className={test.passed ? 'bb-check' : 'bb-cross'}>
-                  <Icon d={test.passed ? icons.check : icons.close} size={18} strokeWidth={2} />
+                  <Icon icon={test.passed ? CheckmarkIcon : XMarkIcon} size={18} />
                 </span>
                 <span>
                   {test.name}

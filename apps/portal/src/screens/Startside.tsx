@@ -1,3 +1,4 @@
+import { MenuHamburgerIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -8,7 +9,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Icon, icons } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import { NotDecided } from '../components/NotDecided';
 import { access, dataHandlingPath, logged, stored } from '../data/data-handling';
 import {
@@ -109,7 +110,7 @@ export const Startside = ({
               aria-controls="sidemeny"
               onClick={() => setMenuOpen((o) => !o)}
             >
-              <Icon d={icons.menu} />
+              <Icon icon={MenuHamburgerIcon} />
               {t('shell.menu')}
             </Button>
           ) : (
