@@ -25,6 +25,7 @@ import {
   ShieldCheckmarkIcon,
   SparklesIcon,
   TerminalIcon,
+  TestFlaskIcon,
   WrenchIcon,
 } from '@navikt/aksel-icons';
 import {
@@ -84,6 +85,7 @@ const userIcons: Record<string, Icon> = {
   Sykehus: HospitalIcon,
   Utdanning: BooksIcon,
   Fylker: Buildings2Icon,
+  Forskning: TestFlaskIcon,
 };
 
 const to = (t: Point['to']) => (typeof t === 'string' ? t : t ? href(t as Route) : undefined);

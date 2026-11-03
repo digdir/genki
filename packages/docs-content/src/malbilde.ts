@@ -21,7 +21,7 @@ export const malbilde = {
   subtitle:
     'En sikker, fleksibel og gjenbrukbar nasjonal fellesløsning som gjør det enklere for offentlige virksomheter å utvikle, ta i bruk og videreutvikle KI-baserte tjenester, sammen.',
 
-  /** Hvem som bruker fellesløsningen. Hver lenker til en oversikt over virksomhetene (Wikipedia, SNL, regjeringen.no). */
+  /** Målgruppene som bruker fellesløsningen. Hver lenker til en oversikt over virksomhetene (Wikipedia, SNL, regjeringen.no). */
   users: [
     {
       name: 'Kommuner',
@@ -58,6 +58,12 @@ export const malbilde = {
       nameEn: 'Counties',
       to: 'https://no.wikipedia.org/wiki/Norges_fylker',
       title: 'Norges fylker (Wikipedia)',
+    },
+    {
+      name: 'Forskning',
+      nameEn: 'Research',
+      to: 'https://no.wikipedia.org/wiki/Forskning',
+      title: 'Forskning (Wikipedia)',
     },
   ] as { name: string; nameEn: string; to: string; title: string }[],
   usersLine: 'Bruker fellesløsningen for å utvikle og ta i bruk KI-tjenester',
@@ -156,9 +162,9 @@ export const malbilde = {
     },
     {
       id: 'innovasjon',
-      title: 'Mer innovasjon',
-      titleEn: 'More innovation',
-      text: 'Mer tid til å utvikle nye tjenester og forbedre interne prosesser. Felles infrastruktur utvikles i samarbeid og kan brukes i skyen eller som åpen kildekode.',
+      title: 'Mer innovasjon og skalering',
+      titleEn: 'More innovation and scale',
+      text: 'Mer tid til å utvikle nye tjenester og forbedre interne prosesser. Det som virker ett sted, kan tas i bruk av flere. Felles infrastruktur utvikles i samarbeid og kan brukes i skyen eller som åpen kildekode.',
       to: { page: 'typer' },
     },
     {

@@ -201,7 +201,7 @@ const nbOverview = defineNamespace({
 
 const nbTarget = defineNamespace({
   platform: 'Fellesløsningen',
-  users: 'Offentlige virksomheter',
+  users: 'Målgrupper',
   newBlocks: 'Nye byggeklosser',
   reused: 'Gjenbrukes',
   reusedLabel: 'Byggeklosser som gjenbrukes',
@@ -453,7 +453,7 @@ const enOverview: Translation<typeof nbOverview> = {
 
 const enTarget: Translation<typeof nbTarget> = {
   platform: 'The shared platform',
-  users: 'Public agencies',
+  users: 'Target groups',
   newBlocks: 'New building blocks',
   reused: 'Reused',
   reusedLabel: 'Building blocks that are reused',
