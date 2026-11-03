@@ -22,6 +22,7 @@ import { bodyLimit } from 'hono/body-limit';
 import {
   answerOf,
   answerSourcesOf,
+  markersOf,
   citationBundle,
   excerptLength,
   excerptOf,
@@ -747,6 +748,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       return c.json(failureError(outcome.events, outcome.error), 500);
     }
     const { citations, sources } = sourcesBundle(outcome.parts);
+    const markers = markersOf(outcome.parts);
     const usage = await usageOf(kernel, principal, run.task);
     if (conversationId)
       await options.conversations
@@ -773,6 +775,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       ...(conversationId ? { conversation_id: conversationId } : {}),
       ...(citations.length ? { citations } : {}),
       ...(sources.length ? { sources } : {}),
+      ...(markers.length ? { markers } : {}),
       ...noAnswerMarker(outcome.parts),
       ...tableMarker(outcome.parts),
       ai_generated: true,
@@ -858,12 +861,14 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
           if (parts) {
             await stream.remember(parts);
             const { citations, sources } = sourcesBundle(parts);
+            const markers = markersOf(parts);
             const sourcesChunk = () =>
               citations.length || sources.length
                 ? send(
                     chunk({}, null, {
                       ...(citations.length ? { citations } : {}),
                       ...(sources.length ? { sources } : {}),
+                      ...(markers.length ? { markers } : {}),
                     }),
                   )
                 : undefined;

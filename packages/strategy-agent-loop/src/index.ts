@@ -39,7 +39,14 @@ import {
   soundsLikeRefusal,
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
-import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
+import {
+  chunkIdsToMarkers,
+  documentKey,
+  dropUnknownMarkers,
+  parseCitations,
+  sourcesFirst,
+  stripPageMarkers,
+} from './citations.js';
 import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
@@ -133,6 +140,7 @@ export const agentLoopConfig = z.strictObject({
   synthesisMaxTokens: z.number().int().positive().optional(),
   evaluatorTemperature: z.number().min(0).max(2).optional(),
   noToolCallRetry: z.boolean().optional(),
+  citeBy: z.enum(['document', 'excerpt']).optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -396,6 +404,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     const runStarted = Date.now();
     const config = agentLoopRuntimeConfig.parse(raw);
     const settings = config.strategy;
+    const citeBy = settings.citeBy ?? 'document';
     const ablated = new Set(settings.ablate ?? []);
     const { query, history } = readInput(input);
     const workspace = new Workspace({
@@ -479,6 +488,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           },
         ),
       ...(settings.generationPrompt ? { generationPrompt: settings.generationPrompt } : {}),
+      ...(settings.citeBy ? { citeBy: settings.citeBy } : {}),
     });
 
     let answer: string | undefined;
@@ -830,7 +840,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       answer !== undefined &&
       parseCitations(answer, workspace.citationIndex).length === 0
     ) {
-      const marked = chunkIdsToMarkers(answer, [...workspace.chunks.values()]);
+      const marked = chunkIdsToMarkers(answer, [...workspace.chunks.values()], citeBy);
       if (marked) {
         workspace.citationIndex = marked.index;
         workspace.sourceOrder = marked.chunks;
@@ -871,6 +881,17 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'uncited' } };
         yield { type: 'kernel.part.delta', data: { text: settled } };
         answer = settled;
+      }
+      if (citeBy === 'excerpt') {
+        const shown = dropUnknownMarkers(answer, workspace.citationIndex);
+        if (shown !== answer) {
+          yield {
+            type: 'kernel.notice',
+            data: { stage: 'answer-discarded', reason: 'unknown-markers' },
+          };
+          yield { type: 'kernel.part.delta', data: { text: shown } };
+          answer = shown;
+        }
       }
       workspace.citations = citationsFor(answer, workspace);
     }
@@ -917,7 +938,15 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           meta: {
             citations: clarification
               ? []
-              : workspace.citations.map((c) => ({ index: c.index, chunkId: c.chunkId })),
+              : workspace.citations.map((c) => {
+                  const chunk = workspace.chunks.get(c.chunkId);
+                  return {
+                    index: c.index,
+                    chunkId: c.chunkId,
+                    ...(citeBy === 'excerpt' && chunk ? { document: documentKey(chunk) } : {}),
+                  };
+                }),
+            ...(citeBy === 'excerpt' ? { citeBy } : {}),
             ...(!clarification &&
             workspace.citations.length === 0 &&
             soundsLikeRefusal(answer ?? '')

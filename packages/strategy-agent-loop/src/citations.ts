@@ -5,6 +5,8 @@ export interface Citation {
 
 export type CitationIndex = Map<number, string>;
 
+export type CiteBy = 'document' | 'excerpt';
+
 const markers = /\[(\d+)\]/g;
 
 export const buildCitationIndex = (chunkIds: string[]): CitationIndex =>
@@ -133,6 +135,22 @@ export const numberByDocument = <C extends Numberable>(docs: C[]) => {
   };
 };
 
+export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
+  const groups = new Map<string, C[]>();
+  for (const d of docs) groups.set(documentKey(d), [...(groups.get(documentKey(d)) ?? []), d]);
+  const ordered = [...groups.values()].flat();
+  return {
+    context: ordered.map((c, i) => `[${i + 1}] ${stripPageMarkers(c.content)}`).join('\n\n'),
+    index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,
+    chunks: ordered,
+  };
+};
+
+const unknownMarker = / ?\[(\d{1,3})\]/g;
+
+export const dropUnknownMarkers = (text: string, index: CitationIndex) =>
+  text.replace(unknownMarker, (whole, n: string) => (index.has(Number(n)) ? whole : ''));
+
 export const sourcesFirst = <C extends { chunkId: string }>(first: C[], rest: C[]): C[] => {
   const ids = new Set(first.map((c) => c.chunkId));
   return [...first, ...rest.filter((c) => !ids.has(c.chunkId))];
@@ -191,6 +209,7 @@ const bracketed = /\[([^\]\n]{1,400})\]|\(([^)\n]{1,400})\)/g;
 export const chunkIdsToMarkers = <C extends { chunkId: string; document?: string; url?: string }>(
   text: string,
   known: C[],
+  citeBy: CiteBy = 'document',
 ): { text: string; index: CitationIndex; chunks: C[] } | undefined => {
   const byId = new Map(known.map((c) => [c.chunkId, c]));
   const numbers = new Map<string, number>();
@@ -204,7 +223,7 @@ export const chunkIdsToMarkers = <C extends { chunkId: string; document?: string
     const marks = new Set<number>();
     for (const id of ids) {
       const chunk = byId.get(id) as C;
-      const key = documentKey(chunk);
+      const key = citeBy === 'excerpt' ? chunk.chunkId : documentKey(chunk);
       let n = numbers.get(key);
       if (n === undefined) {
         n = numbers.size + 1;

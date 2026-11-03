@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   detectInsufficientContext,
   numberByDocument,
+  numberByExcerpt,
+  type CiteBy,
   parseCitations,
   sourcesFirst,
   stripSourceLists,
@@ -12,6 +14,7 @@ import {
   ambiguityInstruction,
   citationInstruction,
   defaultGenerationPrompt,
+  excerptCitationInstruction,
   sameLanguageRule,
   untrustedData,
 } from './prompts.js';
@@ -65,6 +68,7 @@ export interface ToolEnvironment {
   signal: AbortSignal;
   systemPrompt: string;
   generationPrompt?: string;
+  citeBy?: CiteBy;
   search?: SearchSettings;
 }
 
@@ -609,8 +613,13 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
   }
 };
 
-export const generationPromptFor = (template: string, context: string, question: string) =>
-  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citationInstruction}\n\n${sameLanguageRule}`;
+export const generationPromptFor = (
+  template: string,
+  context: string,
+  question: string,
+  citeBy: CiteBy = 'document',
+) =>
+  `${template.replace('{context}', context).replace('{question}', question)}\n\n${ambiguityInstruction}\n\n${citeBy === 'excerpt' ? excerptCitationInstruction : citationInstruction}\n\n${sameLanguageRule}`;
 
 const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> => {
   const { workspace } = env;
@@ -627,7 +636,11 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
     workspace.attached,
     workspace.contextDocs.length ? workspace.contextDocs : chunks.slice(0, 10),
   );
-  const { context, index, chunks: ordered } = numberByDocument(docs);
+  const {
+    context,
+    index,
+    chunks: ordered,
+  } = env.citeBy === 'excerpt' ? numberByExcerpt(docs) : numberByDocument(docs);
   let text: string;
   try {
     text = stripSourceLists(
@@ -637,6 +650,7 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
           env.generationPrompt ?? defaultGenerationPrompt,
           context,
           args.data.query,
+          env.citeBy,
         ),
       ),
     );
