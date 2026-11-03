@@ -431,6 +431,52 @@ describe('service definitions', () => {
     ]);
   });
 
+  it('names the missing field inside a mode, not only the mode', () => {
+    expect(
+      errorsOf(
+        withSpec({
+          variants: [
+            { id: 'default' },
+            { id: 'search', strategy: { id: 'rag-single-shot', version: 1 } },
+          ],
+        }),
+      ),
+    ).toEqual([{ path: 'spec.variants[1].strategy.config', message: 'Required' }]);
+  });
+
+  it('names the field of the wrong type inside a mode', () => {
+    expect(
+      errorsOf(withSpec({ variants: [{ id: 'default' }, { id: 'search', chat: 'yes' }] })).map(
+        (e) => e.path,
+      ),
+    ).toEqual(['spec.variants[1].chat']);
+  });
+
+  it('names an unknown key inside a mode object, not a type mismatch on the mode', () => {
+    const errors = errorsOf(withSpec({ variants: [{ id: 'default' }, { name: 'search' }] }));
+    expect(errors.map((e) => e.path).sort()).toEqual(['spec.variants[1]', 'spec.variants[1].id']);
+    expect(errors.find((e) => e.path === 'spec.variants[1]')?.message).toContain('name');
+  });
+
+  it('names both an unknown key and a wrongly typed field inside a mode', () => {
+    const errors = errorsOf(
+      withSpec({ variants: [{ id: 'default' }, { id: 's', titel: 'x', chat: 'yes' }] }),
+    );
+    expect(errors.map((e) => e.path).sort()).toEqual(['spec.variants[1]', 'spec.variants[1].chat']);
+    expect(errors.find((e) => e.path === 'spec.variants[1]')?.message).toContain('titel');
+  });
+
+  it('names the wrong field inside an alias object', () => {
+    const errors = errorsOf(
+      withSpec({ variants: [{ id: 'default' }, { id: 's', aliases: [{ nam: 'x' }] }] }),
+    );
+    expect(errors.map((e) => e.path).sort()).toEqual([
+      'spec.variants[1].aliases[0]',
+      'spec.variants[1].aliases[0].name',
+    ]);
+    expect(errors.find((e) => e.path === 'spec.variants[1].aliases[0]')?.message).toContain('nam');
+  });
+
   it('checks mode overrides against the strategy the mode switches to', () => {
     const strategy = { id: 'rag-single-shot', version: 1, config: { generate: false } };
     expect(
@@ -1215,6 +1261,21 @@ describe('platform settings', () => {
       'batch.approvalLimitNok': 150,
     });
     expect(new Set(platformSettings.map((s) => s.key)).size).toBe(platformSettings.length);
+  });
+
+  it('the night window is set only for the platform and is 01:00-06:00 by default', () => {
+    expect(resolveSettings(platformSettings, { values: {} })['knowledge.nightWindow']?.value).toBe(
+      '01:00-06:00',
+    );
+    expect(platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.settableAt).toEqual([
+      'platform',
+    ]);
+  });
+
+  it('the night window setting refuses a window that starts when it ends', () => {
+    const schema = platformSettings.find((s) => s.key === 'knowledge.nightWindow')?.schema;
+    expect(schema?.safeParse('22:00-04:00').success).toBe(true);
+    expect(schema?.safeParse('01:00-01:00').success).toBe(false);
   });
 
   it('lets a tenant change the new settings within their ranges, and nothing below the tenant', () => {

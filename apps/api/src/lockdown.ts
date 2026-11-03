@@ -1,6 +1,7 @@
 import {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -21,6 +22,7 @@ export const entraNotTrustedType = 'urn:genai:problem:entra-not-trusted';
 export {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -72,6 +74,8 @@ export const modelRunRoutes = new Set([
 export const ingestionRoutes = new Set([
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/execute',
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
   'POST /tenants/:tenant/connectors/:id/sync',
   'POST /tenants/:tenant/datasets/:id/engine-switches',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/retry',

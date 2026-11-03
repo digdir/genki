@@ -112,7 +112,14 @@ const DatasetChange = datasetFields
   .partial()
   .openapi('DatasetChange', { description: 'Only the fields to change; the rest are kept' });
 
-const executionStatuses = ['running', 'succeeded', 'failed', 'cancelled'] as const;
+const executionStatuses = [
+  'queued',
+  'running',
+  'waiting',
+  'succeeded',
+  'failed',
+  'cancelled',
+] as const;
 const LastExecution = z.object({
   status: z.enum(executionStatuses),
   startedAt: z.string(),
@@ -201,6 +208,11 @@ const Execution = z
         skipped: z.number().int(),
         skippedDocuments: z.array(SkippedDocument).optional(),
         failed: z.array(z.string()),
+        failedDocuments: z
+          .number()
+          .int()
+          .optional()
+          .describe('A run that runs as jobs: documents whose jobs ended as dead letters'),
         generation: z.string().optional(),
         promoted: z.boolean().optional(),
         previous: z.string().optional(),
@@ -218,6 +230,12 @@ const Execution = z
       .optional(),
     error: z.string().optional(),
     cancelledBy: z.string().optional(),
+    runsAsJobs: z
+      .boolean()
+      .optional()
+      .describe('Runs as knowledge jobs in the worker and ends when its jobs have ended'),
+    admittedAt: z.string().optional().describe('When the API last admitted the run'),
+    cancelRequestedAt: z.string().optional(),
   })
   .openapi('IngestionExecution');
 const PipelineEstimate = z
@@ -670,6 +688,22 @@ const pipelineRoutes = (base: Base): RouteConfig[] => {
         400: either('Missing reason'),
         ...guarded(base, 'manage-datasets'),
         409: either('No such running run'),
+      },
+    }),
+    createRoute({
+      method: 'post',
+      path: `${root}/{id}/executions/{execution}/redrive`,
+      summary: `Send the dead letters of a run that runs as knowledge jobs back, and reopen the run, admitted from now; the worker sends them back within a minute (${who(base, 'manage-datasets')}, audited, locked in lockdown for others than trusted logins)`,
+      request: {
+        params: params({ id, execution: param('a1b2c3') }),
+        headers: reasonHeader,
+      },
+      responses: {
+        202: audited(Execution, 'The run, reopened'),
+        400: either('Missing reason, or the run does not run as jobs or has not ended'),
+        ...guarded(base, 'manage-datasets'),
+        404: either('No such dataset'),
+        409: either('The pipeline has another open run'),
       },
     }),
     createRoute({

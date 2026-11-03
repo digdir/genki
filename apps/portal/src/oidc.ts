@@ -113,14 +113,6 @@ export const organisationsFrom = (claims: Record<string, unknown>, resource: str
   return [...found.values()];
 };
 
-export const isEntraLogin = (token: string) => {
-  try {
-    return decodeJwt(token).acr === 'entraid';
-  } catch {
-    return false;
-  }
-};
-
 interface MyOrganisations {
   organisations?: { orgNumber: string; name: string; rights: string[] }[];
   title?: string;

@@ -29,7 +29,7 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0030](0030-frontends-from-schemas.md)                   | Frontends from schemas                                       | Accepted; (a) partly built, (b) built and proven by two test builds        |
 | [0031](0031-services-variants-and-ways-of-working.md)    | Services, variants and ways of working                       | Accepted, partly built                                                     |
 | [0032](0032-the-portal-is-one-client.md)                 | The portal is one client                                     | Accepted, partly built                                                     |
-| [0033](0033-locked-test-environment.md)                  | Locked test environment                                      | Accepted, built; user groups proposed                                      |
+| [0033](0033-locked-test-environment.md)                  | Locked test environment                                      | Accepted, built                                                            |
 | [0034](0034-tokens-in-the-browser.md)                    | Tokens in the browser                                        | Proposed                                                                   |
 | [0035](0035-operator-login.md)                           | Operator login                                               | Proposed                                                                   |
 | [0036](0036-delegating-platform-rights.md)               | Delegating platform rights                                   | Proposed                                                                   |
@@ -38,6 +38,8 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0039](0039-parquet-sources.md)                          | Parquet sources                                              | Proposed                                                                   |
 | [0040](0040-evaluating-with-langfuse.md)                 | Evaluating with Langfuse                                     | Accepted, not built; judges that block proposed                            |
 | [0041](0041-durable-jobs-on-pg-boss.md)                  | Durable jobs on pg-boss                                      | Accepted, partly built                                                     |
-| [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed, connection and generation partitions built                       |
+| [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed, connection, partitions, read functions and knowledge jobs built  |
 | [0044](0044-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built                                                            |
 | [0045](0045-data-stays-in-the-eu-eea.md)                 | Data stays in the EU/EEA; the region is an operating detail  | Proposed                                                                   |
+| [0046](0046-admin-mcp-for-coding-agents.md)              | Coding agents work on genki through a local admin MCP server | Proposed                                                                   |
+| [0047](0047-one-governed-path-for-model-operations.md)   | One governed path for model operations                       | Proposed                                                                   |

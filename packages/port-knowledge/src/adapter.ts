@@ -42,6 +42,8 @@ export interface DatasetConfig<O = unknown> {
   valueTypes?: Record<string, FilterValueType>;
   /** The generation the catalog names as active, for engines that keep generations by name. */
   generation?: string;
+  /** The datasets the router allowed this read, set by the router only after its tenant and residency checks. */
+  allowed?: string[];
 }
 
 export interface DatasetDraft {

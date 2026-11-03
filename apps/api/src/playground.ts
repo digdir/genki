@@ -533,9 +533,15 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     const refusalOf = (policy: BlockPolicy, definition: unknown) => {
       const spec = record(record(definition).spec);
       const model = record(spec.model);
-      const models = [model.primary, model.fallback, ...Object.values(record(model.roles))].filter(
-        (m): m is string => typeof m === 'string',
+      const variantModels = (Array.isArray(spec.variants) ? spec.variants : []).map(
+        (v) => record(v).model,
       );
+      const models = [
+        model.primary,
+        model.fallback,
+        ...Object.values(record(model.roles)),
+        ...variantModels,
+      ].filter((m): m is string => typeof m === 'string');
       const checks = [
         ...models.map((m) => verdict(policy, 'model', m, modelResidency(m) ?? null)),
         ...datasetIds(spec).map((d) => verdict(policy, 'dataset', d, datasetResidency(d) ?? null)),
@@ -584,7 +590,13 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           const raw = setup.service.definition;
           if (raw === undefined)
             return { ok: false, path: 'service.definition', message: 'send the draft definition' };
-          const parsed = typeof raw === 'string' ? (parseYaml(raw) as unknown) : raw;
+          let parsed: unknown = raw;
+          if (typeof raw === 'string')
+            try {
+              parsed = parseYaml(raw);
+            } catch (error) {
+              return { ok: false, path: 'service.definition', message: (error as Error).message };
+            }
           return {
             ok: true,
             definition: withModel(record(parsed), setup.model),

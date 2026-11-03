@@ -49,6 +49,7 @@ const tenantTables = [
   'clients',
   'webhook_deliveries',
   'ingestion_executions',
+  'knowledge_job_requests',
   'trigger_runs',
   'api_key_policies',
 ];
@@ -79,6 +80,11 @@ const definerFunctions = [
   'platform_tenants()',
   'find_ingestion_execution(text)',
   'fail_stopped_ingestion_executions(text, text[], text, text)',
+  'job_ingestion_executions()',
+  'pending_knowledge_job_requests()',
+  'apply_knowledge_job_request(text, text)',
+  'end_job_ingestion_execution(text, text, text, jsonb, text)',
+  'start_queued_job_ingestion_execution(text, text, text, text, text)',
   'find_api_key_policy(text)',
 ];
 
@@ -702,12 +708,121 @@ const migrations: string[] = [
        perform require_platform_access();
        update ingestion_executions set status = 'failed', ended_at = p_ended_at, error = p_error
          where status = 'running' and coalesce(heartbeat_at, started_at) < p_heartbeat_before
-           and not (id = any(p_except));
+           and not (id = any(p_except)) and not runs_as_jobs;
        get diagnostics changed = row_count;
        return changed;
      end $$`,
+  // Runs that run as jobs (ADR 0042, "Ingestion runs"): two more states, admission, a cancel mark.
+  `do $$
+     declare existing text;
+     begin
+       select conname into existing from pg_constraint
+        where conrelid = 'ingestion_executions'::regclass and contype = 'c'
+          and pg_get_constraintdef(oid) like '%status%'
+          and pg_get_constraintdef(oid) not like '%queued%';
+       if existing is not null then
+         execute format('alter table ingestion_executions drop constraint %I', existing);
+         alter table ingestion_executions add constraint ingestion_executions_status_check
+           check (status in ('queued', 'running', 'waiting', 'succeeded', 'failed', 'cancelled'));
+       end if;
+     end $$`,
+  `alter table ingestion_executions
+     add column if not exists runs_as_jobs boolean not null default false,
+     add column if not exists admitted_at text collate "C",
+     add column if not exists cancel_requested_at text collate "C",
+     add column if not exists cancelled_by text`,
+  `create unique index if not exists ingestion_executions_one_queued
+     on ingestion_executions (dataset, pipeline) where status = 'queued'`,
+  `create unique index if not exists ingestion_executions_one_open
+     on ingestion_executions (dataset, pipeline) where status = 'running' and runs_as_jobs`,
+  `create or replace function refuse_worker_admission() returns trigger
+     language plpgsql as $$ begin
+       if current_user = '${workerRole}' and (
+            (tg_op = 'INSERT' and new.admitted_at is not null)
+         or (tg_op = 'UPDATE' and new.admitted_at is distinct from old.admitted_at)) then
+         raise exception 'only the API admits an ingestion run' using errcode = 'insufficient_privilege';
+       end if;
+       return new;
+     end $$`,
+  `create or replace trigger ingestion_executions_admission
+     before insert or update on ingestion_executions
+     for each row execute function refuse_worker_admission()`,
+  `create table if not exists knowledge_job_requests (
+     id text primary key,
+     scope text not null,
+     run text not null references ingestion_executions (id) on delete cascade,
+     kind text not null check (kind in ('redrive')),
+     requested_by text not null,
+     reason text not null,
+     requested_at text collate "C" not null,
+     applied_at text collate "C"
+   )`,
+  `alter table knowledge_job_requests
+     add column if not exists previous_status text,
+     add column if not exists previous_error text`,
+  `create index if not exists knowledge_job_requests_pending
+     on knowledge_job_requests (requested_at) where applied_at is null`,
+  ...tenantIsolation('knowledge_job_requests', 'scope'),
+  `create or replace function job_ingestion_executions() returns setof ingestion_executions
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from ingestion_executions
+         where runs_as_jobs and status in ('queued', 'running', 'waiting') order by started_at, id;
+     end $$`,
+  `create or replace function pending_knowledge_job_requests() returns setof knowledge_job_requests
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from knowledge_job_requests where applied_at is null
+         order by requested_at, id;
+     end $$`,
+  `create or replace function apply_knowledge_job_request(p_id text, p_applied_at text) returns void
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       update knowledge_job_requests set applied_at = p_applied_at where id = p_id and applied_at is null;
+     end $$`,
+  `create or replace function end_job_ingestion_execution(
+       p_id text, p_status text, p_ended_at text, p_report jsonb, p_error text)
+     returns setof ingestion_executions
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       if p_status not in ('succeeded', 'failed', 'cancelled') then
+         raise exception 'a run ends as succeeded, failed or cancelled';
+       end if;
+       return query update ingestion_executions
+          set status = p_status, ended_at = p_ended_at,
+              report = coalesce(report, '{"stored": 0, "skipped": 0, "failed": []}'::jsonb)
+                       || coalesce(p_report, '{}'::jsonb),
+              error = p_error
+        where id = p_id and runs_as_jobs and status in ('queued', 'running')
+          and not exists (select from knowledge_job_requests r
+                           where r.run = p_id and r.applied_at is null)
+        returning *;
+     end $$`,
+  `create or replace function start_queued_job_ingestion_execution(
+       p_dataset text, p_pipeline text, p_admitted_after text, p_now text, p_expired text)
+     returns setof ingestion_executions
+     language plpgsql volatile security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       if exists (select from ingestion_executions where dataset = p_dataset
+                    and pipeline = p_pipeline and status = 'running' and runs_as_jobs) then
+         return;
+       end if;
+       update ingestion_executions set status = 'failed', ended_at = p_now, error = p_expired
+        where dataset = p_dataset and pipeline = p_pipeline and status = 'queued'
+          and p_admitted_after is not null and coalesce(admitted_at, '') < p_admitted_after;
+       return query update ingestion_executions set status = 'running'
+        where dataset = p_dataset and pipeline = p_pipeline and status = 'queued'
+          and cancel_requested_at is null
+        returning *;
+     end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,
+  `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
   `create table if not exists platform_identity (
      singleton boolean primary key default true check (singleton),

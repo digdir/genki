@@ -90,7 +90,7 @@ const openPostgres = async (): Promise<Stores> => {
     directory: postgresTenantDirectory(db.tenants),
     executions: db.ingestionExecutions,
     tasks: db.tasks,
-    taskIndex: postgresTaskIndex(db.tasks),
+    taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
     log: db.log,
     configEntries: db.configEntries,
   };
@@ -167,7 +167,7 @@ const record = async (stores: Stores, t: Task) => {
 
 const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'ola' };
 
-const portal = (stores: Stores) => {
+const portal = (stores: Stores, tenant = ORG_A) => {
   const app = new Hono();
   registerPortalRoutes(app, {
     admin: {} as Admin,
@@ -175,7 +175,7 @@ const portal = (stores: Stores) => {
       kind: 'employee',
       issuer: 'test',
       subject: 'kari',
-      tenant: ORG_A,
+      tenant,
     }),
     definitions: {
       capabilities: async () => [],
@@ -183,6 +183,9 @@ const portal = (stores: Stores) => {
     } as unknown as DefinitionStore,
     tasks: (tenant) => stores.taskIndex.all(tenant),
     task: async (id) => (await stores.tasks.get(id))?.task,
+    events: (id) => stores.log.read(id, 0, () => false),
+    ...(stores.taskIndex.envelopes ? { taskEnvelopes: stores.taskIndex.envelopes } : {}),
+    ...(stores.taskIndex.usageEvents ? { usageEvents: stores.taskIndex.usageEvents } : {}),
     apiKeys: new InMemoryTenantApiKeys(),
     connections: new InMemoryConnections(),
     requirementFor: () => ({ resource: 'urn:altinn:resource:test', action: 'read' }),
@@ -406,6 +409,36 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
 
     expect(response.status).toBe(200);
     expect(body.data.map((t) => [t.id, t.status])).toEqual([[`${name}-a1`, 'completed']]);
+  });
+
+  it("adds up a tenant's usage per model the same way after a restart", async () => {
+    const stores = backend().stores();
+    const org = name === 'memory' ? '310000011' : '310000012';
+    const run = task(`${name}-u1`, org, '2026-10-20T08:00:00.000Z');
+    await record(stores, run);
+    await stores.log.append(
+      {
+        type: 'kernel.usage',
+        v: 1,
+        task: run.id,
+        ts: run.createdAt,
+        data: { usage: { inputTokens: 70, outputTokens: 5 }, model: { kind: 'model', id: 'm' } },
+        actor: 'kernel',
+      },
+      { tenant: org, key: `task:${run.id}` },
+    );
+
+    const response = await portal(await backend().reopen(), org).request(
+      `/tenants/${org}/usage?days=366`,
+    );
+    const body = (await response.json()) as {
+      totals: { runs: number; inputTokens: number };
+      byModel: { model: string }[];
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.totals).toMatchObject({ runs: 1, inputTokens: 70 });
+    expect(body.byModel.map((m) => m.model)).toEqual(['m']);
   });
 
   it('keeps a building-block adoption across a restart', async () => {

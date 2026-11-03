@@ -44,6 +44,7 @@ export {
   cachedEntraPassword,
   knowledgeIdentityTokenSource,
   knowledgeLocalLogins,
+  knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   managedIdentityTokenSource,
   postgresSourceFromEnv,
@@ -120,6 +121,19 @@ export {
   type IngestionExecutionReport,
   type IngestionExecutionStatus,
 } from './executions.js';
+export {
+  ingestSender,
+  ingestStillEndingMessage,
+  PostgresJobRunRecords,
+  PostgresJobRuns,
+  queuedRunExistsMessage,
+  sentBackMessage,
+  type IngestSender,
+  type JobRunRequest,
+  type JobRunResult,
+  type QueuedRunRules,
+  type RunOutcome,
+} from './job-runs.js';
 
 const runtimePoolFor = (owner: Pool, role: string) =>
   withClientErrorListener(

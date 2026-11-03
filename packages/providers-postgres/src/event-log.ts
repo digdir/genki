@@ -128,6 +128,16 @@ export class PostgresEventLog implements EventLog {
     }
   }
 
+  async usageOf(tasks: string[]): Promise<{ task: string; data: unknown }[]> {
+    if (tasks.length === 0) return [];
+    const found = await this.pool.query<{ task: string; data: unknown }>(
+      `select task, envelope->'data' as data from events
+       where task = any($1) and type = 'kernel.usage' order by task, seq`,
+      [tasks],
+    );
+    return found.rows;
+  }
+
   async #decode(row: Row): Promise<Event> {
     let content: { data: unknown; fallback?: Part[] } = { data: erased };
     if (row.envelope) {

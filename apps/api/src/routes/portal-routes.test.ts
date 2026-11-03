@@ -27,10 +27,11 @@ const task = (
   tenant: string,
   at: string,
   status: Task['status'] = 'completed',
+  capability = `${tenant}/klarsprak/default`,
 ): Task => ({
   id,
   service: {
-    capability: { id: `${tenant}/klarsprak/default`, version: '1' },
+    capability: { id: capability, version: '1' },
     strategy: { id: 'single-call', version: '1' },
     configHash: 'h',
   },
@@ -132,6 +133,19 @@ const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> 
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     });
   return { send, admin, legacy, store, keys };
+};
+
+const withPlaygroundRuns = () => {
+  const tasks = [
+    task('t1', digdir, '2026-10-05T09:00:00Z'),
+    task('p1', digdir, '2026-10-06T09:00:00Z', 'completed', 'platform/draft/playground/p1'),
+    task('p2', other, '2026-10-06T09:30:00Z', 'completed', 'platform/draft/playground/p2'),
+  ];
+  return setup({
+    tasks: () =>
+      tasks.map((t) => ({ task: t.id, tenant: t.tenant, status: t.status, at: t.createdAt })),
+    task: async (id: string) => tasks.find((t) => t.id === id),
+  });
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -308,6 +322,30 @@ describe('portal routes', () => {
     expect(all.data.map((t) => t.id)).toEqual(['t2', 't1']);
     expect(failed.data.map((t) => t.id)).toEqual(['t2']);
     expect(none.data).toEqual([]);
+  });
+
+  it('lists playground runs only when asked for them, without other tenants', async () => {
+    const { send } = await withPlaygroundRuns();
+    const services = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'kari'),
+    );
+    const playground = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks?origin=playground`, 'kari'),
+    );
+
+    expect(services.data.map((t) => t.id)).toEqual(['t1']);
+    expect(playground.data.map((t) => t.id)).toEqual(['p1']);
+  });
+
+  it('reads a playground run by id like a service run, but not one from another tenant', async () => {
+    const { send } = await withPlaygroundRuns();
+
+    const own = await send(`/tenants/${digdir}/tasks/p1`, 'kari');
+    const foreign = await send(`/tenants/${digdir}/tasks/p2`, 'kari');
+
+    expect(own.status).toBe(200);
+    expect(await json<{ id: string }>(own)).toMatchObject({ id: 'p1' });
+    expect(foreign.status).toBe(404);
   });
 
   it('adds up usage per day, service and model, and prices model tokens', async () => {
@@ -889,5 +927,82 @@ describe('service summaries and run headers', () => {
       excerpt: 'Tildelingsbrev 2024',
       actor: { kind: 'api-key', name: 'Fagsystemet' },
     });
+  });
+});
+
+describe('the dashboard on a busy tenant', () => {
+  const busy = async () => {
+    const tasks = Array.from({ length: 3000 }, (_, i) =>
+      task(
+        `b${i}`,
+        digdir,
+        new Date(Date.parse('2026-10-01T00:00:00Z') + i * 150_000).toISOString(),
+        i % 100 === 0 ? 'failed' : 'completed',
+      ),
+    );
+    const calls = { envelopes: 0, usage: 0 };
+    const env = await setup({
+      tasks: () => {
+        throw new Error('the dashboard must not list task rows one by one');
+      },
+      task: async () => {
+        throw new Error('the dashboard must not read tasks one by one');
+      },
+      events: () => {
+        throw new Error('the dashboard must not read the event log task by task');
+      },
+      taskEnvelopes: async (tenant, query) => {
+        calls.envelopes++;
+        return tasks
+          .filter((t) => t.tenant === tenant && (!query.since || t.createdAt >= query.since))
+          .reverse()
+          .slice(0, query.limit ?? 1000);
+      },
+      usageEvents: async (ids) => {
+        calls.usage++;
+        return ids.map((id) => ({
+          task: id,
+          data: {
+            usage: { inputTokens: 1000, outputTokens: 200, requests: 1 },
+            model: { kind: 'model', id: 'foundry/gpt-4o' },
+          },
+        }));
+      },
+    });
+    return { ...env, calls };
+  };
+
+  it('builds the overview from a few batched queries and counts every task of the month, past the newest thousand', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{
+      recentTasks: { id: string; usage: { inputTokens: number } }[];
+      usageThisMonth: { inputTokens: number; runs: number };
+      review: { failedTasksLastDay: number };
+    }>(await send(`/tenants/${digdir}/overview`, 'kari'));
+
+    expect(body.usageThisMonth.runs).toBe(3000);
+    expect(body.usageThisMonth.inputTokens).toBe(3_000_000);
+    expect(body.recentTasks.map((t) => t.id)).toEqual([
+      'b2999',
+      'b2998',
+      'b2997',
+      'b2996',
+      'b2995',
+    ]);
+    expect(body.recentTasks[0]?.usage.inputTokens).toBe(1000);
+    expect(body.review.failedTasksLastDay).toBe(4);
+    expect(calls.envelopes).toBe(5);
+    expect(calls.usage).toBe(2);
+  });
+
+  it('builds the usage report from one envelope query per origin and one usage query', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{ totals: { runs: number; inputTokens: number } }>(
+      await send(`/tenants/${digdir}/usage?days=30`, 'kari'),
+    );
+
+    expect(body.totals.runs).toBe(3000);
+    expect(body.totals.inputTokens).toBe(3_000_000);
+    expect(calls).toEqual({ envelopes: 2, usage: 1 });
   });
 });

@@ -1751,7 +1751,9 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
         task: async (id) => (await taskStore.get(id))?.task,
+        ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
+        ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
         apiKeys,
         connections,
         requirementFor:

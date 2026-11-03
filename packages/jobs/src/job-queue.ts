@@ -98,6 +98,23 @@ export interface JobQueue extends JobReads {
   stop(): Promise<void>;
 }
 
+/**
+ * A run's jobs on one server, found by the run id in their data (ADR 0042, "Jobs"). Only the
+ * worker's role can use it: it reads the job tables, which the API's roles cannot.
+ */
+export interface RunJobs {
+  /** Jobs of the run that are waiting, retrying or running. */
+  open(run: string): Promise<number>;
+  /** The run's dead letters, counted by the queue they failed in. */
+  deadLetters(run: string): Promise<Record<string, number>>;
+  /** Cancels the run's jobs that have not started, except in the named queues. */
+  cancel(run: string, options?: { except?: string[] }): Promise<number>;
+  /** Sends the run's dead letters back to their queues. */
+  redrive(run: string): Promise<number>;
+  /** Every run with a job that is waiting, retrying or running. */
+  runs(): Promise<string[]>;
+}
+
 export class JobQueueError extends Error {}
 
 export const minimumHeartbeatSeconds = 10;

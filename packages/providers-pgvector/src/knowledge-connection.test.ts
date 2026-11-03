@@ -75,31 +75,31 @@ describe('a pgvector endpoint on the knowledge server', () => {
     expect(reader.query.mock.calls.length + writer.query.mock.calls.length).toBeGreaterThan(0);
   });
 
-  it('a `knowledge` endpoint refuses searches as not ready until its read functions exist', async () => {
-    const engine = pgvectorEngine({
-      pool: fakePool().pool,
-      knowledge: { reader: fakePool().pool },
-    });
+  it('a knowledge connection refuses a dataset the router did not hand it', async () => {
+    const reader = fakePool();
+    const engine = pgvectorEngine({ pool: fakePool().pool, knowledge: { reader: reader.pool } });
     const connection = engine.adapter.connect(knowledgeEndpoint as never);
+    const unrouted = { ...dataset, generation: 'g-1' };
+    const other = { ...unrouted, allowed: ['digdir/annet'] };
     const outcomes = await Promise.all(
-      [
-        () => connection.search(dataset, [{ query: 'lønn' }], signal),
-        () => connection.fetch(dataset, ['a'], signal),
-        () => connection.range(dataset, 'a', 0, 2, signal),
-        () => connection.facets(dataset, ['type'], {}, signal),
-      ].map((call) =>
-        call().then(
-          () => 'answered',
-          (error: unknown) =>
-            error instanceof KnowledgeError ? `${error.code}: ${error.message}` : String(error),
+      [unrouted, other].flatMap((d) =>
+        [
+          () => connection.search(d, [{ query: 'lønn' }], signal),
+          () => connection.fetch(d, ['a'], signal),
+          () => connection.range(d, 'a', 0, 2, signal),
+          () => connection.facets(d, ['type'], {}, signal),
+          () => connection.documents?.(d, {}, signal) ?? Promise.resolve(),
+        ].map((call) =>
+          call().then(
+            () => 'answered',
+            (error: unknown) => (error instanceof KnowledgeError ? error.code : String(error)),
+          ),
         ),
       ),
     );
-    expect(new Set(outcomes)).toEqual(
-      new Set([
-        'unavailable: the knowledge server is not ready: its read functions are not built yet',
-      ]),
-    );
+    expect(new Set(outcomes)).toEqual(new Set(['forbidden']));
+    expect(reader.connect).not.toHaveBeenCalled();
+    expect(reader.query).not.toHaveBeenCalled();
   });
 
   it('saving or probing a `knowledge` endpoint without a knowledge server is refused', async () => {

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Event, Principal, Task, Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
-import { isTrustedEntraLogin } from '@genai/composition';
+import { isAdmittedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
 import {
   ALL_GRANT,
@@ -156,7 +156,9 @@ export interface PortalRouteDeps {
   definitions: DefinitionStore;
   tasks(tenant?: string): PortalTaskRow[] | Promise<PortalTaskRow[]>;
   task(id: string): Promise<Task | undefined>;
+  taskEnvelopes?(tenant: string, query: { since?: string; limit?: number }): Promise<Task[]>;
   events?(task: string): AsyncIterable<Event>;
+  usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
   apiKeys: TenantApiKeys;
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
@@ -250,7 +252,7 @@ export const portalAdminHandlers = (deps: {
       ...(typeof input.lastFour === 'string' ? { lastFour: input.lastFour } : {}),
       ...(typeof input.createdAt === 'string' ? { createdAt: input.createdAt } : {}),
       ...(typeof input.expiresAt === 'string' ? { expiresAt: input.expiresAt } : {}),
-      ...(isTrustedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
+      ...(isAdmittedEntraLogin(principal) ? { admittedInLockdown: true } : {}),
     };
     await deps.apiKeys.add(key);
     return {
@@ -285,7 +287,7 @@ export const portalAdminHandlers = (deps: {
     delete kept.revokedAt;
     delete kept.lastUsedAt;
     delete kept.admittedInLockdown;
-    if (isTrustedEntraLogin(principal)) kept.admittedInLockdown = true;
+    if (isAdmittedEntraLogin(principal)) kept.admittedInLockdown = true;
     if (Array.isArray(input.allowedOverrides)) {
       const chosen = overridable(input.allowedOverrides);
       if (chosen.length > 0) kept.allowedOverrides = chosen;
@@ -376,6 +378,10 @@ export const usageView = (t: Tally) => {
 
 const day = (iso: string) => iso.slice(0, 10);
 
+const windowLimit = 50_000;
+
+type ModelUsage = { model: string; usage: Usage };
+
 const problem = (
   c: Context,
   status: 400 | 401 | 403 | 404,
@@ -429,8 +435,23 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   };
   const tenantTasks = (tenant: string, keep: (row: PortalTaskRow) => boolean = () => true) =>
     tasksOf(tenant, keep, true);
-  const tenantTestRuns = async (tenant: string) =>
-    (await tasksOf(tenant, () => true, false)).filter(
+  const playgroundRuns = async (tenant: string, keep: (row: PortalTaskRow) => boolean) =>
+    (await tasksOf(tenant, keep, false)).filter(
+      (t) => originOf(t.service.capability.id) === 'playground',
+    );
+  const tasksSince = async (tenant: string, since: string | undefined, fromService: boolean) => {
+    const found = deps.taskEnvelopes
+      ? await deps.taskEnvelopes(tenant, since ? { since, limit: windowLimit } : {})
+      : await tasksOf(tenant, (row) => since === undefined || row.at >= since, fromService);
+    return found.filter(
+      (t) =>
+        (t.tenant === tenant || t.owner === tenant) &&
+        (since === undefined || t.createdAt >= since) &&
+        (originOf(t.service.capability.id) === serviceOrigin) === fromService,
+    );
+  };
+  const tenantTestRunsSince = async (tenant: string, since: string) =>
+    (await tasksSince(tenant, since, false)).filter(
       (t) => originOf(t.service.capability.id) !== 'assistant',
     );
 
@@ -444,19 +465,26 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     endedAt: t.endedAt ?? null,
   });
 
-  const modelUsage = async (task: string) => {
-    const out: { model: string; usage: Usage }[] = [];
-    if (!deps.events) return out;
-    for await (const event of deps.events(task)) {
-      if (event.type !== 'kernel.usage') continue;
-      const data = event.data as { usage?: Usage; model?: { id?: string } };
-      if (data.usage) out.push({ model: data.model?.id ?? 'ukjent', usage: data.usage });
+  const usageByTask = async (tasks: string[]) => {
+    const out = new Map<string, ModelUsage[]>();
+    const collect = (task: string, raw: unknown) => {
+      const data = (raw ?? {}) as { usage?: Usage; model?: { id?: string } };
+      if (!data.usage) return;
+      const list = out.get(task) ?? [];
+      list.push({ model: data.model?.id ?? 'ukjent', usage: data.usage });
+      out.set(task, list);
+    };
+    if (deps.usageEvents) {
+      for (const e of await deps.usageEvents(tasks)) collect(e.task, e.data);
+    } else if (deps.events) {
+      for (const task of tasks)
+        for await (const event of deps.events(task))
+          if (event.type === 'kernel.usage') collect(task, event.data);
     }
     return out;
   };
 
-  const taskTally = async (t: Task) => {
-    const models = await modelUsage(t.id);
+  const taskTally = (t: Task, models: ModelUsage[] = []) => {
     if (models.length === 0) return { tally: tallyOf(t.usage), models };
     const tally = models.map((m) => tallyOf(m.usage, deps.prices?.[m.model])).reduce(add, empty());
     return {
@@ -465,9 +493,9 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     };
   };
 
-  const taskRow = async (caps: CompiledCapability[], t: Task) => ({
+  const taskRow = (caps: CompiledCapability[], t: Task, models?: ModelUsage[]) => ({
     ...taskBase(caps, t),
-    usage: usageView((await taskTally(t)).tally),
+    usage: usageView(taskTally(t, models).tally),
   });
 
   const weekMs = 7 * 86_400_000;
@@ -491,11 +519,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
 
   const runsThisWeek = async (tenant: string) => {
     const since = new Date(now().getTime() - weekMs).toISOString();
-    const recent = await tenantTasks(tenant, (row) => row.at >= since);
-    const caps = await capabilitiesOf(tenant);
+    const [recent, caps] = await Promise.all([
+      tasksSince(tenant, since, true),
+      capabilitiesOf(tenant),
+    ]);
     const counts = new Map<string, number>();
     for (const t of recent) {
-      if (t.createdAt < since) continue;
       const service = serviceOf(caps, t.service.capability.id);
       counts.set(service, (counts.get(service) ?? 0) + 1);
     }
@@ -607,7 +636,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     withInput: boolean,
     withUsage: boolean,
   ) => {
-    const actors = await taskActors(tasks, tenant);
+    const [actors, usage] = await Promise.all([
+      taskActors(tasks, tenant),
+      withUsage ? usageByTask(tasks.map((t) => t.id)) : new Map<string, ModelUsage[]>(),
+    ]);
     const names = new Map<string, string>();
     for (const id of new Set(tasks.map((t) => serviceOf(caps, t.service.capability.id))))
       names.set(
@@ -622,7 +654,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const base = taskBase(caps, t);
         const excerpt = withInput ? excerptOf(await inputTextOf(t.id)) : '';
         return {
-          ...(withUsage ? await taskRow(caps, t) : base),
+          ...(withUsage ? taskRow(caps, t, usage.get(t.id)) : base),
           serviceName: names.get(base.service) ?? base.service,
           ...(excerpt ? { excerpt } : {}),
           actor: actors.get(t.id) ?? { kind: 'system' as const },
@@ -643,10 +675,22 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       const at = new Date(iso).getTime();
       return at >= from.getTime() && at <= to.getTime();
     };
-    const tasks = (await tenantTasks(tenant)).filter(
-      (t) =>
-        within(t.createdAt) && (project === undefined || projectOf.get(t.id)?.project === project),
-    );
+    const since = from.toISOString();
+    const [tasks, testRuns] = await Promise.all([
+      tasksSince(tenant, since, true).then((found) =>
+        found.filter(
+          (t) =>
+            within(t.createdAt) &&
+            (project === undefined || projectOf.get(t.id)?.project === project),
+        ),
+      ),
+      project === undefined
+        ? tenantTestRunsSince(tenant, since).then((found) =>
+            found.filter((t) => within(t.createdAt)),
+          )
+        : Promise.resolve([]),
+    ]);
+    const usage = await usageByTask([...tasks, ...testRuns].map((t) => t.id));
     let totals = empty();
     const daily = new Map<string, Tally>();
     const byService = new Map<string, Tally>();
@@ -670,7 +714,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     };
     const count = (key: string) => runs.set(key, (runs.get(key) ?? 0) + 1);
     for (const t of tasks) {
-      const { tally, models } = await taskTally(t);
+      const { tally, models } = taskTally(t, usage.get(t.id));
       const date = day(t.createdAt);
       totals = add(totals, tally);
       bump(daily, date, tally);
@@ -696,9 +740,8 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     }
     let testing = empty();
     const byOrigin = new Map<string, Tally>();
-    for (const t of project === undefined ? await tenantTestRuns(tenant) : []) {
-      if (!within(t.createdAt)) continue;
-      const { tally, models } = await taskTally(t);
+    for (const t of testRuns) {
+      const { tally, models } = taskTally(t, usage.get(t.id));
       testing = add(testing, tally);
       totals = add(totals, tally);
       bump(daily, day(t.createdAt), tally);
@@ -776,8 +819,21 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   app.get('/tenants/:tenant/overview', async (c) => {
     const g = await guard(c);
     if (g instanceof Response) return g;
-    const caps = await capabilitiesOf(g.tenant);
-    const services = (await serviceSummaries(g.tenant)).map((s) => ({
+    const start = now();
+    const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+    const dayAgo = new Date(start.getTime() - 86_400_000).toISOString();
+    const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
+    const [caps, summaries, latest, lastDay, usage, connections, qualityWarnings] =
+      await Promise.all([
+        capabilitiesOf(g.tenant),
+        serviceSummaries(g.tenant),
+        tasksSince(g.tenant, undefined, true),
+        tasksSince(g.tenant, dayAgo, true),
+        seesUsage ? usageOver(g.tenant, month, start) : undefined,
+        deps.connections.list(g.tenant),
+        deps.qualityWarnings?.(g.tenant),
+      ]);
+    const services = summaries.map((s) => ({
       id: s.id,
       name: s.name,
       latestVersion: s.latestVersion,
@@ -786,27 +842,18 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       warnings: s.warnings,
       runsThisWeek: s.runsThisWeek,
     }));
-    const tasks = (await tenantTasks(g.tenant)).sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
-    );
-    const start = now();
-    const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-    const seesUsage = requireRight(g.principal, g.tenant, 'view-usage').ok;
-    const usage = seesUsage ? await usageOver(g.tenant, month, start) : undefined;
-    const connections = await deps.connections.list(g.tenant);
-    const dayAgo = start.getTime() - 86_400_000;
+    const recent = latest.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
+    const recentUsage = seesUsage ? await usageByTask(recent.map((t) => t.id)) : undefined;
     return c.json({
       services,
-      recentTasks: await Promise.all(
-        tasks.slice(0, 5).map((t) => (seesUsage ? taskRow(caps, t) : taskBase(caps, t))),
+      recentTasks: recent.map((t) =>
+        recentUsage ? taskRow(caps, t, recentUsage.get(t.id)) : taskBase(caps, t),
       ),
       ...(usage ? { usageThisMonth: usage.totals } : {}),
-      qualityWarnings: (await deps.qualityWarnings?.(g.tenant)) ?? [],
+      qualityWarnings: qualityWarnings ?? [],
       review: {
         pendingToolChanges: connections.reduce((n, s) => n + s.pending.length, 0),
-        failedTasksLastDay: tasks.filter(
-          (t) => t.status === 'failed' && new Date(t.createdAt).getTime() >= dayAgo,
-        ).length,
+        failedTasksLastDay: lastDay.filter((t) => t.status === 'failed').length,
       },
     });
   });
@@ -1023,10 +1070,12 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     const from = c.req.query('from');
     const to = c.req.query('to');
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500);
-    const tasks = await tenantTasks(
-      g.tenant,
-      (row) => (!status || row.status === status) && (!from || row.at >= from),
-    );
+    const keep = (row: PortalTaskRow) =>
+      (!status || row.status === status) && (!from || row.at >= from);
+    const tasks =
+      c.req.query('origin') === 'playground'
+        ? await playgroundRuns(g.tenant, keep)
+        : await tenantTasks(g.tenant, keep);
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const rows = tasks
       .map((t) => taskBase(caps, t))
@@ -1089,7 +1138,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     if (
       !found ||
       (found.tenant !== g.tenant && found.owner !== g.tenant) ||
-      originOf(found.service.capability.id) !== serviceOrigin
+      ![serviceOrigin, 'playground'].includes(originOf(found.service.capability.id))
     )
       return problem(c, 404, 'Not found');
     const [view] = await taskViews(

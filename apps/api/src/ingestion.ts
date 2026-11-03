@@ -191,6 +191,8 @@ export interface IngestionReport {
   skipped: number;
   skippedDocuments?: SkippedDocument[];
   failed: string[];
+  /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
+  failedDocuments?: number;
   generation?: string;
   promoted?: boolean;
   previous?: string;
@@ -290,7 +292,8 @@ export class InMemoryIngestionBackend implements IngestionBackend {
   }
 }
 
-export type ExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Execution {
   id: string;
@@ -305,6 +308,51 @@ export interface Execution {
   report?: IngestionReport;
   error?: string;
   cancelledBy?: string;
+  /** Runs as knowledge jobs and ends with them, so the check for stopped runs leaves it alone. */
+  runsAsJobs?: boolean;
+  /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
+  admittedAt?: string;
+  cancelRequestedAt?: string;
+}
+
+export type JobRunResult =
+  { ok: true; value: Execution } | { ok: false; message: string; conflict?: boolean };
+
+/**
+ * Records of runs that run as jobs (ADR 0042): a run and its ingest job commit together, one run
+ * per pipeline is open and at most one waits as `queued`.
+ */
+export interface JobRunStore {
+  start(input: {
+    id: string;
+    dataset: string;
+    pipeline: string;
+    pipelineVersion: number;
+    backend: string;
+    startedBy: string;
+    startedAt: string;
+    admittedAt: string;
+  }): Promise<JobRunResult>;
+  cancel(input: {
+    dataset: string;
+    execution: string;
+    by: string;
+    at: string;
+  }): Promise<Execution | undefined>;
+  redrive(input: {
+    dataset: string;
+    pipeline: string;
+    execution: string;
+    by: string;
+    reason: string;
+    at: string;
+  }): Promise<JobRunResult>;
+}
+
+export interface JobRuns {
+  /** The datasets whose runs are jobs; #139 sets it to the datasets on `connection: knowledge`. */
+  runsAsJobs(dataset: string): boolean;
+  runs: JobRunStore;
 }
 
 export interface ExecutionStore {
@@ -354,6 +402,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const stale = [...this.#executions.values()].filter(
       (e) =>
         e.status === 'running' &&
+        !e.runsAsJobs &&
         (this.#heartbeats.get(e.id) ?? e.startedAt) < input.heartbeatBefore &&
         !input.except.includes(e.id),
     );
@@ -431,6 +480,7 @@ export class IngestionService {
       now?: () => Date;
       newId?: () => string;
       admits?: (principal: Principal | undefined) => boolean;
+      jobs?: JobRuns;
       onRefused?: (message: string) => void;
       onError?: (message: string) => void;
     },
@@ -594,6 +644,27 @@ export class IngestionService {
       };
     if (!input.pipeline.spec.enabled)
       return { ok: false, errors: [{ path: 'enabled', message: 'the pipeline is turned off' }] };
+    const jobs = this.options.jobs;
+    if (jobs?.runsAsJobs(input.pipeline.dataset)) {
+      const now = this.#now();
+      const started = await jobs.runs.start({
+        id: this.options.newId?.() ?? crypto.randomUUID(),
+        dataset: input.pipeline.dataset,
+        pipeline: input.pipeline.id,
+        pipelineVersion: input.pipeline.version,
+        backend: backend.name,
+        startedBy: input.by,
+        startedAt: now,
+        admittedAt: now,
+      });
+      if (!started.ok)
+        return {
+          ok: false,
+          ...(started.conflict ? { conflict: true } : {}),
+          errors: [{ path: 'pipeline', message: started.message }],
+        };
+      return { ok: true, value: started.value, done: Promise.resolve(started.value) };
+    }
     const holder = this.#holder(input.target);
     if (holder)
       return {
@@ -682,20 +753,69 @@ export class IngestionService {
     return { ok: true, value: execution, done };
   }
 
-  cancel(input: {
+  async cancel(input: {
     dataset: string;
     execution: string;
     by: string;
-  }): { ok: true; value: Execution } | { ok: false; errors: { path: string; message: string }[] } {
+  }): Promise<
+    { ok: true; value: Execution } | { ok: false; errors: { path: string; message: string }[] }
+  > {
     const running = this.#running.get(input.execution);
-    if (!running || running.execution.dataset !== input.dataset)
+    if (running && running.execution.dataset === input.dataset) {
+      running.cancelledBy = input.by;
+      running.controller.abort(new Error(`cancelled by ${input.by}`));
+      return { ok: true, value: running.execution };
+    }
+    const marked = this.options.jobs
+      ? await this.options.jobs.runs.cancel({ ...input, at: this.#now() })
+      : undefined;
+    return marked
+      ? { ok: true, value: marked }
+      : {
+          ok: false,
+          errors: [{ path: 'execution', message: `no running ingestion ${input.execution}` }],
+        };
+  }
+
+  /** Reopens a run that runs as jobs and has the worker send its dead letters back (ADR 0042). */
+  async redrive(input: {
+    dataset: string;
+    pipeline: string;
+    execution: string;
+    by: string;
+    reason: string;
+    principal?: Principal;
+  }): Promise<
+    | { ok: true; value: Execution }
+    | { ok: false; errors: { path: string; message: string }[]; conflict?: boolean }
+  > {
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; sending back ${input.execution} by ${input.by} was refused`,
+      );
+      return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
+    }
+    const jobs = this.options.jobs;
+    if (!jobs?.runsAsJobs(input.dataset))
       return {
         ok: false,
-        errors: [{ path: 'execution', message: `no running ingestion ${input.execution}` }],
+        errors: [{ path: 'execution', message: 'only a run that runs as jobs can be sent back' }],
       };
-    running.cancelledBy = input.by;
-    running.controller.abort(new Error(`cancelled by ${input.by}`));
-    return { ok: true, value: running.execution };
+    const sent = await jobs.runs.redrive({
+      dataset: input.dataset,
+      pipeline: input.pipeline,
+      execution: input.execution,
+      by: input.by,
+      reason: input.reason,
+      at: this.#now(),
+    });
+    return sent.ok
+      ? sent
+      : {
+          ok: false,
+          ...(sent.conflict ? { conflict: true } : {}),
+          errors: [{ path: 'execution', message: sent.message }],
+        };
   }
 
   onFinished(listener: (execution: Execution) => void) {

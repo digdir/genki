@@ -114,6 +114,10 @@ export const settingSchemaLabels: SchemaLabels = {
       label: 'Temperatur for svaret',
       help: 'Tomt bruker standarden til arbeidsmåten.',
     },
+    'knowledge.nightWindow': {
+      label: 'Nattvindu for tungt arbeid',
+      help: 'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00.',
+    },
     'knowledge.switchRetentionDays': {
       label: 'Dager forrige søkemotor beholdes',
       help: 'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter motor.',
@@ -299,6 +303,10 @@ export const settingSchemaLabels: SchemaLabels = {
     'synthesis.temperature': {
       label: 'Temperature for the answer',
       help: 'Empty uses the default of the way of working.',
+    },
+    'knowledge.nightWindow': {
+      label: 'Night window for heavy work',
+      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00.',
     },
     'knowledge.switchRetentionDays': {
       label: 'Days the previous search engine is kept',
@@ -540,6 +548,12 @@ export const settingSchemaLabels: SchemaLabels = {
       'x-group': {
         nb: 'Svar',
         en: 'Answers',
+      },
+    },
+    'knowledge.nightWindow': {
+      'x-group': {
+        nb: 'Søk',
+        en: 'Search',
       },
     },
     'knowledge.switchRetentionDays': {

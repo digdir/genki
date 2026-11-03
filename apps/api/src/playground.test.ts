@@ -221,6 +221,24 @@ describe('the playground', () => {
     });
   });
 
+  it('refuses a draft whose variant uses a not-allowed model, even when the service model is allowed', async () => {
+    const { run } = await boot({ residencyRule: true });
+    const draft = service('svar', 'Svar på bokmål.');
+    draft.spec.model.primary = 'local/echo';
+    const definition = {
+      ...draft,
+      spec: { ...draft.spec, variants: [{ id: 'default', model: modelId }] },
+    };
+
+    const refused = await run({
+      setup: { service: { id: 'svar', version: 'draft', definition }, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ policy: { block: modelId } });
+  });
+
   it('compare returns two results with their own cost', async () => {
     const { run } = await boot();
 
@@ -307,6 +325,23 @@ describe('the playground', () => {
       text: 'Bokmålssvar.',
       compare: { text: 'Nynorsksvar.' },
     });
+  });
+
+  it('a service draft with broken YAML is refused with 422 naming the definition', async () => {
+    const { run } = await boot();
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 'draft', definition: 'kind: Service\nspec: [unclosed' },
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual([
+      { path: 'setup.service.definition', message: expect.stringMatching(/line \d+/) },
+    ]);
   });
 
   it('the playground is refused when the setting turns it off', async () => {

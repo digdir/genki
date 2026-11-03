@@ -23,7 +23,7 @@ Running work and measuring it: service runs (tasks) and their timelines, table r
 5. `GET /eval-runs/compare`: compare with the run of the published version.
 6. `GET /tenants/{tenant}/gates`: the gates publishing must pass; then publish (see [Services](services.md)).
 
-To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`.
+To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenant}/tasks/{task}/timeline`. Both also read a playground run, and `GET /tenants/{tenant}/tasks?origin=playground` lists the tenant's playground runs instead of its service runs.
 
 ## Two kinds of evaluation run
 

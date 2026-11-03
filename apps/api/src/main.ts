@@ -23,11 +23,15 @@ import {
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import {
   createPostgresStores,
+  ingestSender,
+  knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   LocalKeyWrapper,
   PostgresDefinitionStore,
+  PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import type { PolicyDecisionPoint } from '@genai/kernel';
@@ -48,6 +52,7 @@ import {
   platformTenantFrom,
 } from '@genai/composition';
 import { createApp } from './app.js';
+import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
 import { followChanges } from './change-feed.js';
@@ -79,6 +84,22 @@ import { asPlatformResource } from './platform-resource.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
 import { admitMaskinportenClients, maskinportenClientRegistry } from './maskinporten-clients.js';
 import { isLockdown, operatorClientIds, trustedEntraFrom } from './lockdown.js';
+
+/**
+ * Runs that run as knowledge jobs (ADR 0042) send their jobs only to the platform server, as
+ * genai_runtime; pg-boss starts for sending on the first send, since the worker installs it.
+ */
+const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0]) => {
+  let queue: Promise<PgBossJobQueue> | undefined;
+  const started = () =>
+    (queue ??= PgBossJobQueue.start(runtimePool, { works: false }).catch((error: unknown) => {
+      queue = undefined;
+      throw error;
+    }));
+  return new PostgresJobRuns(runtimePool, {
+    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+  });
+};
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -152,8 +173,9 @@ const registeredClients = clientRegistry(clients);
 
 const trustedEntra = trustedEntraFrom(process.env, platformTenant, resource);
 if (trustedEntra)
-  log('lockdown: Entra logins in the configured groups get the whole platform', {
+  log('lockdown: Entra logins in the configured groups are admitted', {
     groups: trustedEntra.groups.length,
+    userGroups: trustedEntra.userGroups?.length ?? 0,
     clients: trustedEntra.clientIds.length,
     emailDomain: trustedEntra.emailDomain ?? null,
   });
@@ -321,8 +343,14 @@ if (knowledgeRefused.length > 0) {
   process.exit(1);
 }
 const knowledgeSource = knowledgeSourceFromEnv(process.env, 'api');
-const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'api') : undefined;
-log('knowledge server', { configured: Boolean(knowledgeServer) });
+const knowledgeReadSource = knowledgeReadSourceFromEnv(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools(knowledgeSource, 'api', knowledgeReadSource)
+  : undefined;
+log('knowledge server', {
+  configured: Boolean(knowledgeServer),
+  readHost: knowledgeReadSource?.host ?? 'primary',
+});
 
 const dataDir = process.env.DATA_DIR ?? join(import.meta.dirname, '..', '.data');
 
@@ -410,6 +438,8 @@ const platform = await createPlatform({
     store: configEntries,
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
+    // No dataset runs as jobs yet: #139 names the datasets on `connection: knowledge`.
+    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT
@@ -474,7 +504,7 @@ const platform = await createPlatform({
   ...(db
     ? {
         tenantDirectory: postgresTenantDirectory(db.tenants),
-        taskIndex: postgresTaskIndex(db.tasks),
+        taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
         ingestionExecutions: db.ingestionExecutions,
       }
     : {}),
@@ -520,6 +550,11 @@ const admin = createAdmin({
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {
+  requestTiming: {
+    write: (entry) => log('request', { ...entry }),
+    slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
+    everyRequest: process.env.LOG_REQUESTS === 'true',
+  },
   platform: {
     store: platform.definitions,
     plugins: platform.plugins,
@@ -668,19 +703,6 @@ if (mock) {
   });
 }
 
-const logRequests = process.env.LOG_REQUESTS === 'true';
-const fetchHandler: typeof app.fetch = logRequests
-  ? async (request, ...rest) => {
-      const response = await app.fetch(request, ...rest);
-      log('request', {
-        method: request.method,
-        path: new URL(request.url).pathname,
-        status: response.status,
-      });
-      return response;
-    }
-  : app.fetch;
-
-serve({ fetch: fetchHandler, port }, (info) => {
+serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });

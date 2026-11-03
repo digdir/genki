@@ -196,6 +196,30 @@ describe('operator login with Ansattporten', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
+  it('tells a user-group Entra login that the console is for operators', async () => {
+    const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'kari@digdir.example' })}.sig`;
+    const api = liveApi(false, (path) =>
+      path === '/api/mock/ansattporten/token'
+        ? json({
+            access_token: entraAccess,
+            id_token: idToken('Kari Bruker'),
+            token_type: 'Bearer',
+          })
+        : undefined,
+    );
+    const c = client(api.fetch);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+    window.history.replaceState(null, '', `/callback?code=abc&state=${state}`);
+
+    render(<App auth={c.auth} fetch={api.fetch} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Du har ikke tilgang til driftskonsollet' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Driftskonsollet er bare for Digdirs driftsteam/)).toBeTruthy();
+    expect(screen.queryByRole('navigation')).toBeNull();
+  });
+
   it('makes the console treat a trusted Entra login as operator and names it by email', async () => {
     const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'lise@digdir.example' })}.sig`;
     const api = liveApi(true, (path) =>
