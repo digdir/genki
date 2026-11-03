@@ -710,7 +710,18 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       };
     };
 
-    const quotaOf = async (tenant: string): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+    const quotaOf = async (
+      tenant: string,
+      fresh = false,
+    ): Promise<PlaygroundQuota & { exhausted: boolean }> => {
+      if (deps.quota) {
+        const used = await deps.quota(tenant, { fresh });
+        return {
+          usedPercent: Math.round((used.usedTokens / used.monthlyTokens) * 1000) / 10,
+          monthlyTokens: used.monthlyTokens,
+          exhausted: used.exhausted,
+        };
+      }
       const now = new Date();
       const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
       let used = 0;
@@ -785,8 +796,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
     app.get('/tenants/:tenant/playground/options', async (c) => {
       const g = await guard(c);
       if (g instanceof Response) return g;
-      const policy = await readBlockPolicy(deps.configEntries, g.tenant);
-      const listed = await deps.definitions.list(g.tenant);
+      const [policy, listed, sets, quota] = await Promise.all([
+        readBlockPolicy(deps.configEntries, g.tenant),
+        deps.definitions.list(g.tenant),
+        deps.evalStores.testSets.list(g.tenant),
+        quotaOf(g.tenant),
+      ]);
       const unordered = await Promise.all(
         listed
           .filter((d) => d.kind === 'Service')
@@ -826,13 +841,12 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const services = unordered.sort(
         (a, b) => Number(b.chat) - Number(a.chat) || a.name.localeCompare(b.name, 'nb'),
       );
-      const testSets = (await deps.evalStores.testSets.list(g.tenant)).map((set) => ({
+      const testSets = sets.map((set) => ({
         id: set.metadata.id,
         name: set.metadata.name,
         cases: set.spec.cases.length,
         ...(set.spec.service ? { service: set.spec.service } : {}),
       }));
-      const quota = await quotaOf(g.tenant);
       const skills = (
         await Promise.all(
           listed
@@ -957,7 +971,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
           files: definition.files,
         });
       }
-      const quota = await quotaOf(g.tenant);
+      const quota = await quotaOf(g.tenant, true);
       if (quota.exhausted) {
         const exhausted: PlaygroundQuotaExhausted = {
           type: 'about:blank',
@@ -1080,7 +1094,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
       const response: PlaygroundRunResponse = {
         ...first,
         ...(compare ? { compare } : {}),
-        quota: quotaView(await quotaOf(g.tenant)),
+        quota: quotaView(await quotaOf(g.tenant, true)),
       };
       return c.json(response);
     });
@@ -1140,7 +1154,7 @@ export const playgroundModule: PlatformModuleFactory = () => ({
             );
             if (prepared.uploaded && outcomes.some((o) => !o.ok))
               await deps.blobs.delete({ tenant: g.tenant, path: prepared.uploaded });
-            send('done', { quota: quotaView(await quotaOf(g.tenant)) });
+            send('done', { quota: quotaView(await quotaOf(g.tenant, true)) });
           };
           work()
             .catch((error: unknown) =>

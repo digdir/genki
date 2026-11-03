@@ -192,6 +192,26 @@ describe('postgres event log', () => {
     await reader.close();
   });
 
+  it('reads one event type of many tasks in one query and opens the encrypted content', async () => {
+    const stores = await openStores(pool, wrapper);
+    const inputScope = { tenant: '999888777', key: 'thread:inputs' };
+    const input = (task: string, query: string) =>
+      event(task, 'kernel.task.input', { input: { data: { query } } });
+    await stores.log.append(input('i-1', 'første'), inputScope);
+    await stores.log.append(event('i-1', 'kernel.part.delta', { text: 'svar' }), inputScope);
+    await stores.log.append(input('i-2', 'andre'), inputScope);
+    await stores.log.append(input('i-3', 'tredje'), inputScope);
+
+    const found = await stores.log.ofType(['i-1', 'i-2'], 'kernel.task.input');
+
+    expect(found.map((e) => [e.task, e.data])).toEqual([
+      ['i-1', { input: { data: { query: 'første' } } }],
+      ['i-2', { input: { data: { query: 'andre' } } }],
+    ]);
+    expect(await stores.log.ofType([], 'kernel.task.input')).toEqual([]);
+    await stores.close();
+  });
+
   it('reads the usage events of many tasks in one query and nothing else', async () => {
     const stores = await openStores(pool, wrapper);
     const usageScope = { tenant: '999888777', key: 'thread:usage' };

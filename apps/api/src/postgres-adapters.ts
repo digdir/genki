@@ -1,4 +1,4 @@
-import type { Task, TaskStatus } from '@genai/contracts';
+import type { Event, Task, TaskStatus } from '@genai/contracts';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { DirectoryEntry, TaskIndex, TenantDirectoryStore, TrackedTask } from './extensions.js';
 
@@ -24,6 +24,7 @@ export interface TaskRows {
 
 export interface UsageRows {
   usageOf(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
+  ofType?(tasks: string[], type: string): Promise<Event[]>;
 }
 
 interface TaskRow {
@@ -77,6 +78,12 @@ export const postgresTaskIndex = (
     : {}),
   ...(options.events
     ? { usageEvents: (ids: string[]) => options.events?.usageOf(ids) ?? Promise.resolve([]) }
+    : {}),
+  ...(options.events?.ofType
+    ? {
+        eventsOfType: (ids: string[], type: string) =>
+          options.events?.ofType?.(ids, type) ?? Promise.resolve([]),
+      }
     : {}),
   ...(tasks.tokensUsed
     ? {

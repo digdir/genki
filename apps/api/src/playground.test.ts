@@ -15,6 +15,7 @@ import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
 import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
+import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
 
 const servers: FakeServer[] = [];
@@ -122,7 +123,10 @@ const openPolicy = {
   reason: 'Alle modeller er tillatt i testene',
 };
 
-const boot = async ({ residencyRule = false } = {}) => {
+const boot = async ({
+  residencyRule = false,
+  taskIndex,
+}: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp(() => ({ status: 200, json: {} }));
   servers.push(model, search);
@@ -144,6 +148,7 @@ const boot = async ({ residencyRule = false } = {}) => {
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     settings,
+    ...(taskIndex ? { taskIndex } : {}),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {
       const principal = people[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -532,6 +537,31 @@ describe('the playground', () => {
     expect(model.seen.length).toBe(before);
     expect(await blobs.list(tenant, 'playground/')).toEqual([]);
     expect(options.quota.usedPercent).toBeGreaterThanOrEqual(100);
+  });
+
+  it('options and runs read the monthly quota from one usage query, never task by task', async () => {
+    const sums: string[] = [];
+    const { call, run } = await boot({
+      taskIndex: {
+        all: async () => {
+          throw new Error('the playground must not read every task to find the quota');
+        },
+        running: async () => [],
+        tokensUsed: async (owner) => {
+          sums.push(owner);
+          return 25_000_000;
+        },
+      },
+    });
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const answer = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+
+    expect(options.quota).toEqual({ usedPercent: 50, monthlyTokens: 50_000_000 });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toMatchObject({ quota: { usedPercent: 50 } });
+    expect(sums).toEqual([tenant, tenant, tenant]);
   });
 
   it('a playground answer saved as a test case keeps the chosen test set and origin', async () => {
