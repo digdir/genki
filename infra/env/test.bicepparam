@@ -13,7 +13,8 @@ param maxReplicas = 2
 param knowledgeServerStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', 'none')
 param knowledgePostgresHost = readEnvironmentVariable('KNOWLEDGE_PGHOST', '')
 param knowledgeDatabaseName = 'genai_knowledge_test'
-param knowledgePostgresVCores = 2
+// Both from prod's outputs knowledgePostgresHost and knowledgePostgresVCores.
+param knowledgePostgresVCores = int(readEnvironmentVariable('KNOWLEDGE_VCORES', '2'))
 
 param keyVaultSecretNames = [
   'content-master-key'

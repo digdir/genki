@@ -86,8 +86,9 @@ export const createPrincipals = async (
 };
 
 /** What an admin checks after setup, printed to the log since the server is private. */
-export const knowledgeServerReport = async (knowledge: Pool) => {
-  const query = async (sql: string) => (await knowledge.query(sql)).rows;
+export const knowledgeServerReport = async (knowledge: Pool, logins: string[]) => {
+  const query = async (sql: string, values: unknown[] = []) =>
+    (await knowledge.query(sql, values)).rows;
   const [settings] = await query(
     `select current_database() as database, current_setting('server_version') as server_version,
             current_setting('azure.extensions', true) as azure_extensions,
@@ -100,10 +101,12 @@ export const knowledgeServerReport = async (knowledge: Pool) => {
     logins: (await query(`select rolname from pg_roles where rolcanlogin order by rolname`)).map(
       (row: { rolname: string }) => row.rolname,
     ),
+    // Every role the two logins hold, so a role that is not a knowledge role shows too.
     memberships: await query(
       `select m.rolname as login, r.rolname as role, a.inherit_option, a.set_option
          from pg_auth_members a join pg_roles r on r.oid = a.roleid join pg_roles m on m.oid = a.member
-        where r.rolname like 'genai_knowledge_%' order by login, role`,
+        where m.rolname = any($1) order by login, role`,
+      [logins],
     ),
     connect: (
       await query(
@@ -266,7 +269,9 @@ const main = async () => {
         ? `Knowledge server rebound from platform server ${binding.previous} to ${binding.platformId}, and audited`
         : `Knowledge server set up, bound to platform server ${binding.platformId}`,
     );
-    console.log(JSON.stringify(await knowledgeServerReport(knowledge), null, 2));
+    console.log(
+      JSON.stringify(await knowledgeServerReport(knowledge, [apiLogin, workerLogin]), null, 2),
+    );
   } finally {
     await Promise.all([platform?.end(), knowledge.end()]);
   }

@@ -116,9 +116,17 @@ const connectOnly = async (client: PoolClient, name: string, logins: string[]) =
         [kept],
       )
     ).rows;
-  for (const { grantee } of await others())
-    if (grantee !== 'public')
+  for (const { grantee } of await others()) {
+    if (grantee === 'public') continue;
+    // A grant others hold through refuses to go; the check below names it instead of the raw error.
+    await client.query('savepoint knowledge_connect');
+    try {
       await client.query(`revoke connect on database ${database} from ${roleName(grantee)}`);
+      await client.query('release savepoint knowledge_connect');
+    } catch {
+      await client.query('rollback to savepoint knowledge_connect');
+    }
+  }
   // A revoke without rights on the database, or of another grantor's grant, only warns.
   const left = await others();
   if (left.length > 0)

@@ -63,10 +63,10 @@ One Postgres Flexible Server holds the knowledge data of test and prod, to keep 
 | `genai-<env>-knowledge-setup` (Container Apps job) | Both  | Started by hand. In prod it makes the logins and sets up a database; in test it prints test's platform id                                                            |
 
 - **Settings:** `azure.extensions` is `VECTOR,PG_PREWARM` and `shared_preload_libraries` is `pg_stat_statements,pg_prewarm` (PostgreSQL 17's default is `pg_stat_statements`). `shared_preload_libraries` is static: the server takes it only after a restart ([Azure: set a parameter](https://learn.microsoft.com/en-us/azure/postgresql/parameters/how-to-parameters-set-value)).
-- **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). The pools need at most 184: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, when old and new replicas overlap, for prod's 3 API replicas and test's 2, plus 2 for a job.
+- **Connections:** `max_connections` stays at Azure's default, 859 on `Standard_D2ds_v5` with 15 reserved ([Azure: limits](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-limits)). The pools need at most 182: the API's reader pool takes 10 per replica (`pg`'s default), the worker's owner and writer pools 20, pg-boss uses those pools (ADR 0041), counted twice for a deploy, when old and new replicas overlap, for prod's 3 API replicas and test's 2, plus 2 for a job.
 - **pgvector:** Azure lists 0.8.2 for PostgreSQL 17 ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)); the job's log shows the version the server runs (`extensions`). The VACUUM workaround of ADR 0042 holds until it is 0.8.4 or later.
 - **Each database lets only its own environment connect:** the setup revokes `CONNECT` from `PUBLIC` and grants it to that environment's two logins and `azure_pg_admin`, since roles are global to a server. It fails when a grant it cannot remove is left.
-- **Night windows:** set `knowledge.nightWindow` to `21:00-01:00` in test's platform settings, so test's heavy work never runs beside prod's (`01:00-06:00`, the default).
+- **Night windows:** set `knowledge.nightWindow` to `20:00-00:00` in test's platform settings. A build may run an hour past its window, so test's heavy work then never runs beside prod's (`01:00-06:00`, the default).
 - **Shared:** a change to the server itself, such as a parameter, a restart, a resize or an Azure upgrade, reaches test and prod at once and cannot be tried on test first. A restore brings back both databases.
 
 ### Stages
@@ -75,18 +75,21 @@ One Postgres Flexible Server holds the knowledge data of test and prod, to keep 
 
 Once, before prod's `server` stage:
 
-1. Give prod's deploy identity `Network Contributor` on test's network, which prod's template peers and links to: `az role assignment create --assignee <prod DEPLOY_PRINCIPAL_ID> --role "Network Contributor" --scope <test's vnet id>`. Test's network id is `az network vnet show -g <test resource group> -n genai-test-vnet --query id -o tsv`, or test's infra output `vnetId`.
-2. In the prod environment, set `KNOWLEDGE_TEST_VNET_ID` to that id.
+1. Give prod's deploy identity `Network Contributor` on test's resource group: prod's template deploys test's side of the peering there as a nested deployment, and links its DNS zone to test's network. The parent's deployer needs "the necessary permissions to initiate deployments at those scopes" ([Azure: deploy to resource groups](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/deploy-to-resource-group)), and Network Contributor holds `Microsoft.Resources/deployments/*` and `Microsoft.Network/*` ([Azure: networking roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/networking#network-contributor)): `az role assignment create --assignee <prod DEPLOY_PRINCIPAL_ID> --role "Network Contributor" --scope $(az group show -n <test resource group> --query id -o tsv)`.
+2. In the prod environment, set `KNOWLEDGE_TEST_VNET_ID` to test's network id: `az network vnet show -g <test resource group> -n genai-test-vnet --query id -o tsv`, or test's infra output `vnetId`.
 
 Then, in this order:
 
+0. **A release with the setup script:** run `deploy.yml` to test and prod with this change, stage still `none`. The job runs `scripts/knowledge-server-setup.ts` from the worker image, and `infra.yml` reuses the image that runs.
 1. **Prod, `server`:** set `KNOWLEDGE_SERVER_STAGE=server` in prod, run infra with what-if, read it, then without. Restart the server when `az postgres flexible-server parameter show -g rg-genai-prod -s <server> -n shared_preload_libraries --query isConfigPendingRestart` says `true`: `az postgres flexible-server restart -g rg-genai-prod -n <server>`. The server's host is prod's output `knowledgePostgresHost` (its name is the part before the first dot), and the jobs are in `knowledgeJobNames`.
 2. **Prod's database:** `az containerapp job start -g rg-genai-prod -n genai-prod-knowledge-setup`. Follow it with `az containerapp job execution list -g rg-genai-prod -n genai-prod-knowledge-setup -o table` and read its log with `az containerapp job logs show -g rg-genai-prod -n genai-prod-knowledge-setup --container setup` (a preview command), or in Log Analytics.
-3. **Test, `server`:** set `KNOWLEDGE_SERVER_STAGE=server` and `KNOWLEDGE_PGHOST` (prod's output `knowledgePostgresHost`) in test, and run infra. Then `az containerapp job start -g <test resource group> -n genai-test-knowledge-setup`: its log says `Platform server …, id <uuid>`.
+3. **Test, `server`:** set `KNOWLEDGE_SERVER_STAGE=server`, `KNOWLEDGE_PGHOST` and `KNOWLEDGE_VCORES` (prod's outputs `knowledgePostgresHost` and `knowledgePostgresVCores`) in test, and run infra. When prod's server is resized, set `KNOWLEDGE_VCORES` in test again. Then `az containerapp job start -g <test resource group> -n genai-test-knowledge-setup`: its log says `Platform server …, id <uuid>`.
 4. **Test's database:** in prod, set `KNOWLEDGE_TEST_PLATFORM_ID` to that id, and `KNOWLEDGE_TEST_API_PRINCIPAL_ID` and `KNOWLEDGE_TEST_WORKER_PRINCIPAL_ID` from test's outputs `knowledgeApiIdentity` and `knowledgeWorkerIdentity` (`principalId`). Run prod's infra: it adds the job `genai-prod-knowledge-setup-test`. Start it as in step 2.
-5. **Apps:** set `KNOWLEDGE_SERVER_STAGE=apps` in prod and run infra, then in test. The worker's new revision must become ready; if the probe cannot reach a worker without ingress, set `server` again and run infra, which takes the probe out.
+5. **Apps:** set `KNOWLEDGE_SERVER_STAGE=apps` in prod and run infra, then in test. The worker's new revision must become ready; if the probe cannot reach a worker without ingress, set `server` again and run infra, which takes the probe out. In test, `infra.yml` and `deploy.yml` stop at `apps` while `KNOWLEDGE_PGHOST` is empty.
 
 A job run is safe to repeat: logins that exist are kept, and the setup changes nothing it already set.
+
+Test's database cannot be rebound: `--rebind` is audited on the platform server it binds to, and prod's job cannot reach test's. If test's platform server is ever replaced, an admin drops `genai_knowledge_test`, prod's infra creates it again, and prod's test job sets it up; its data is ingested again.
 
 ### What the job's log shows
 
@@ -94,7 +97,7 @@ After setup the job prints the server's settings, extensions, logins, membership
 
 - `settings.azure_extensions` lists `VECTOR` and `PG_PREWARM`, `settings.shared_preload_libraries` includes `pg_prewarm`, and `extensions` names the `vector` version.
 - `logins` holds no `genai-<env>-api-id`: the shared app identity has no role on the knowledge server.
-- `memberships`: the API's login has only `genai_knowledge_reader`, the worker's only `genai_knowledge_owner` and `genai_knowledge_writer`, all with `inherit_option` false.
+- `memberships` lists every role the two logins are members of: the API's login only `genai_knowledge_reader`, the worker's only `genai_knowledge_owner` and `genai_knowledge_writer`, all with `inherit_option` false. Any other role there needs a look.
 - `connect` lists only that environment's two logins, `azure_pg_admin` and the database's owner, never `public`.
 
 ### Restore drill
@@ -287,6 +290,7 @@ The deploy workflow builds the images once and pushes them to the test registry.
 2. **Roles for the prod deploy identity**:
    - on `rg-genai-prod`: `Contributor`, plus `Role Based Access Control Administrator` limited to AcrPull, AcrPush and Key Vault Secrets User
    - on the test registry: `Container Registry Data Importer and Data Reader` (the role Azure documents for `az acr import` between registries in one tenant; `AcrPull` is the older equivalent for registries without repository permissions)
+   - on test's resource group: `Network Contributor`, for the knowledge server's peering and DNS link to test's network ([Knowledge server](#knowledge-server))
 3. **Entra group** `genai-prod-pg-admins`, with the people who may administer prod's Postgres.
 4. **GitHub environment `prod`** with required reviewers, and these variables:
 

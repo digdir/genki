@@ -236,6 +236,71 @@ describe('knowledge server setup', () => {
     }
   });
 
+  const fencedDatabase = async (name: string, run: (pool: pg.Pool) => Promise<void>) => {
+    await admin.query(`create database ${name}`);
+    const pool = new pg.Pool({
+      connectionString: container.getConnectionUri().replace(/\/[^/]+$/, `/${name}`),
+    });
+    try {
+      await run(pool);
+    } finally {
+      await pool.end();
+    }
+  };
+  const fencedLogins = (prefix: string) => ({
+    apiLogin: `${prefix}_api`,
+    workerLogin: `${prefix}_worker`,
+  });
+  const connectGrantees = async (database: string) =>
+    (
+      await admin.query<{ grantee: string }>(
+        `select coalesce(r.rolname, 'public') as grantee
+           from pg_database d cross join aclexplode(d.datacl) a
+           left join pg_roles r on r.oid = a.grantee
+          where d.datname = $1 and a.privilege_type = 'CONNECT' order by grantee`,
+        [database],
+      )
+    ).rows.map((row) => row.grantee);
+
+  it('setup takes back a connect grant to any login but its own two', async () => {
+    const own = fencedLogins('taken_back');
+    for (const login of [...Object.values(own), 'taken_back_stray'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_taken_back', async (pool) => {
+      await admin.query('grant connect on database genai_knowledge_taken_back to taken_back_stray');
+      await setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform });
+    });
+    expect(await connectGrantees('genai_knowledge_taken_back')).toEqual(
+      [container.getUsername(), own.apiLogin, own.workerLogin].sort(),
+    );
+  });
+
+  it('setup fails, naming the grant, while a connect grant it cannot take back is left', async () => {
+    const own = fencedLogins('kept_grant');
+    for (const login of [...Object.values(own), 'kept_grantor', 'kept_grantee'])
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await fencedDatabase('genai_knowledge_kept_grant', async (pool) => {
+      await admin.query(
+        'grant connect on database genai_knowledge_kept_grant to kept_grantor with grant option',
+      );
+      const grantor = new pg.Client({
+        host: container.getHost(),
+        port: container.getPort(),
+        database: 'postgres',
+        user: 'kept_grantor',
+        password: 'login-pw',
+      });
+      await grantor.connect();
+      await grantor.query('grant connect on database genai_knowledge_kept_grant to kept_grantee');
+      await grantor.end();
+      await expect(
+        setUpKnowledgeServer(pool, { ...own, platformId: otherPlatform }),
+      ).rejects.toThrow(
+        /kept_grantee \(granted by kept_grantor\).* can still connect to genai_knowledge_kept_grant/,
+      );
+    });
+  });
+
   it("a login of one environment cannot connect to the other environment's database", async () => {
     const other = { apiLogin: 'other_knowledge_api', workerLogin: 'other_knowledge_worker' };
     const otherDatabase = 'genai_knowledge_other';

@@ -55,6 +55,7 @@ jobs:
       OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
       KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
       KNOWLEDGE_PGHOST: ${{ vars.KNOWLEDGE_PGHOST }}
+      KNOWLEDGE_VCORES: ${{ vars.KNOWLEDGE_VCORES }}
       KNOWLEDGE_TEST_VNET_ID: ${{ vars.KNOWLEDGE_TEST_VNET_ID }}
       KNOWLEDGE_TEST_PLATFORM_ID: ${{ vars.KNOWLEDGE_TEST_PLATFORM_ID }}
       KNOWLEDGE_TEST_API_PRINCIPAL_ID: ${{ vars.KNOWLEDGE_TEST_API_PRINCIPAL_ID }}
@@ -90,6 +91,10 @@ jobs:
             echo "version=bootstrap" >> "$GITHUB_OUTPUT"
           fi
       - run: |
+          if [ "${{ inputs.environment }}" = test ] && [ "$KNOWLEDGE_SERVER_STAGE" = apps ] && [ -z "$KNOWLEDGE_PGHOST" ]; then
+            echo "::error::KNOWLEDGE_SERVER_STAGE is apps but KNOWLEDGE_PGHOST is empty: set it to prod's output knowledgePostgresHost (infra/README.md, Knowledge server)."
+            exit 1
+          fi
           az deployment group ${{ inputs.what-if && 'what-if' || 'create' }} \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "infra-${{ github.run_id }}" \

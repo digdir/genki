@@ -473,6 +473,7 @@ output postgresHost string = postgres.outputs.fqdn
 output appIdentityClientId string = appIdentity.properties.clientId
 output appIdentityName string = appIdentity.name
 output knowledgePostgresHost string = knowledgeOn ? knowledgeHost : ''
+output knowledgePostgresVCores int = knowledgePostgresVCores
 output knowledgeApiIdentity object = knowledgeOn
   ? { name: knowledgeApiIdentity!.name, principalId: knowledgeApiIdentity!.properties.principalId }
   : {}

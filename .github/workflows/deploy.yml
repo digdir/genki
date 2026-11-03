@@ -159,7 +159,12 @@ jobs:
           OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
           KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
           KNOWLEDGE_PGHOST: ${{ vars.KNOWLEDGE_PGHOST }}
+          KNOWLEDGE_VCORES: ${{ vars.KNOWLEDGE_VCORES }}
         run: |
+          if [ "$KNOWLEDGE_SERVER_STAGE" = apps ] && [ -z "$KNOWLEDGE_PGHOST" ]; then
+            echo "::error::KNOWLEDGE_SERVER_STAGE is apps but KNOWLEDGE_PGHOST is empty: set it to prod's output knowledgePostgresHost (infra/README.md, Knowledge server)."
+            exit 1
+          fi
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "genki-${{ github.run_id }}" \
