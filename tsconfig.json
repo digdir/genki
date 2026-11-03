@@ -128,6 +128,12 @@
       "path": "packages/port-blob"
     },
     {
+      "path": "packages/port-usage"
+    },
+    {
+      "path": "packages/providers-ai-gateway"
+    },
+    {
       "path": "packages/jobs"
     },
     {

@@ -90,7 +90,11 @@ const Usage = z
     unpricedTokens: z.number().int(),
   })
   .openapi('UsageTotals');
-const UsageWithRuns = Usage.extend({ runs: z.number().int() });
+const BySource = z
+  .array(z.object({ source: z.enum(['genki', 'gateway']), usage: Usage }))
+  .optional()
+  .describe('The sum split per source; only when an AI gateway is configured');
+const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
 
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
@@ -2060,7 +2064,7 @@ const qualityRoutes: RouteConfig[] = [
 
 const Day = z.object({
   date: z.string(),
-  usage: Usage,
+  usage: Usage.extend({ bySource: BySource }),
   byService: z.record(z.string(), UsageWithRuns),
   byModel: z.record(z.string(), Usage),
 });
@@ -2070,12 +2074,32 @@ const TenantUsage = z
     from: z.string(),
     to: z.string(),
     priced: z.boolean(),
-    totals: UsageWithRuns,
+    totals: UsageWithRuns.describe('The sum of genki and the AI gateway, when one is configured'),
     daily: z.array(Day),
     byService: z.array(
       z.object({ service: z.string(), usage: UsageWithRuns, title: z.string().optional() }),
     ),
-    byModel: z.array(z.object({ model: z.string(), usage: Usage })),
+    byModel: z.array(
+      z.object({
+        model: z.string(),
+        source: z.enum(['genki', 'gateway']).optional(),
+        usage: Usage,
+      }),
+    ),
+    bySubject: z
+      .array(
+        z.object({
+          subject: z
+            .object({ kind: z.string(), id: z.string(), org: z.string().optional() })
+            .nullable(),
+          usage: Usage,
+          cost: z.object({ currency: z.string(), micros: z.number().int() }),
+          rate: z.number().nullable().describe('Kroner per unit of the currency, at rateDay'),
+          rateDay: z.string().nullable(),
+        }),
+      )
+      .optional()
+      .describe("The AI gateway's rows per owner, in the currency it charged"),
     byProject: z.array(z.object({ project: z.string(), usage: UsageWithRuns, name: z.string() })),
     project: z.string().optional(),
     ingestion: z.object({
@@ -2141,6 +2165,19 @@ const operationsRoutes: RouteConfig[] = [
           data: z.array(z.object({ orgNumber: z.string(), usage: UsageWithRuns })),
         }),
         'Usage',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/usage/unassigned',
+    summary: 'AI gateway usage this month that belongs to no tenant',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({ from: z.string(), to: z.string(), data: z.array(z.unknown()) }),
+        'Usage rows',
       ),
       ...operatorOnly,
     },

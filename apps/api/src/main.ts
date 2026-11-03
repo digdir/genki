@@ -76,6 +76,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
+import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
@@ -112,7 +113,8 @@ const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-gena
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 
-const refused = bootProblems(process.env);
+const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
 if (refused.length > 0) {
   log('refusing to start', { problems: refused });
   process.exit(1);
@@ -425,6 +427,7 @@ const platform = await createPlatform({
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
+  ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
     ? { testOverride: { allowHttp: true, allowLoopback: true } }
     : { platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`] },

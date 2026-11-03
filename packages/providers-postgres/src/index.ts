@@ -27,6 +27,7 @@ import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
 import { PostgresIngestionExecutions } from './executions.js';
+import { PostgresUsageBuckets } from './usage.js';
 import { PostgresRateLimiter } from './rate-limits.js';
 import {
   PostgresRetentionStore,
@@ -61,6 +62,7 @@ export {
 export { PostgresClients } from './clients.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
+export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
@@ -205,6 +207,7 @@ export const createPostgresStores = async (
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),
     rateLimits: new PostgresRateLimiter(pool),
+    usageBuckets: new PostgresUsageBuckets(pool),
     retention: new PostgresRetentionStore(pool),
     threadRetention: new PostgresThreadRetention(pool, keys),
     threadErasure: new PostgresThreadErasure(pool, keys),

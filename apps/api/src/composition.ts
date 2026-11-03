@@ -1,3 +1,4 @@
+import type { UsageReads } from '@genai/port-usage';
 import {
   type Catalogs,
   createRuntime,
@@ -405,6 +406,7 @@ export interface PlatformInput {
   reservedClientIds?: string[];
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
+  gatewayUsage?: UsageReads;
   webhookSend?: WebhookSender;
   webhookEgress?: EgressOptions;
   endpoints?: PlatformEndpoints;
@@ -1788,6 +1790,7 @@ export const createPlatform = async (input: PlatformInput) => {
           })),
         prices,
         ingestionUsage,
+        ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);

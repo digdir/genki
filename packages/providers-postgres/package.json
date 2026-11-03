@@ -28,6 +28,7 @@
     "@genai/identity": "0.0.0",
     "@genai/jobs": "0.0.0",
     "@genai/kernel": "0.0.0",
+    "@genai/port-usage": "0.0.0",
     "@genai/providers-mcp-client": "0.0.0",
     "pg": "^8.23.1"
   }

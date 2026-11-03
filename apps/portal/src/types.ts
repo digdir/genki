@@ -261,7 +261,10 @@ export interface UsageTotals {
   runs?: number;
   costMicroNok: number | null;
   priced?: boolean;
+  bySource?: { source: UsageSourceId; usage: UsageTotals }[];
 }
+
+export type UsageSourceId = 'genki' | 'gateway';
 
 export interface TaskActor {
   kind: 'person' | 'api-key' | 'system';
@@ -423,7 +426,14 @@ export interface UsageReport {
     byModel?: Record<string, UsageTotals>;
   }[];
   byService: { service: string; title?: string; usage: UsageTotals }[];
-  byModel: { model: string; usage: UsageTotals }[];
+  byModel: { model: string; source?: UsageSourceId; usage: UsageTotals }[];
+  bySubject?: {
+    subject: { kind: string; id: string; org?: string } | null;
+    usage: UsageTotals;
+    cost: { currency: string; micros: number };
+    rate: number | null;
+    rateDay: string | null;
+  }[];
   byProject?: { project: string; name: string; usage: UsageTotals }[];
   project?: string;
 }

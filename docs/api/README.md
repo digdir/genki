@@ -63,6 +63,15 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-03: usage from an AI gateway
+
+Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CREDENTIAL`, see [gateway.md](gateway.md)); without one every answer is as before.
+
+- `totals`, `daily[].usage` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage` are the sum of genki's own usage and the gateway's. Each gains `bySource: [{ "source": "genki", "usage" }, { "source": "gateway", "usage" }]`.
+- `byModel` rows gain `source`, `genki` or `gateway`. The gateway's rows also come as `bySubject`: the owner (`subject`, or `null` for a key without one), `usage` in kroner, the amount the gateway charged as `cost: { currency, micros }`, and the latest `rate` used with its `rateDay`. A gateway amount with no rate counts as unpriced, never as 0 kr.
+- `byService`, `byProject`, `testing`, `ingestion` and `daily[].byService`/`daily[].byModel` stay genki's own: the gateway cannot see services, projects or test runs.
+- `GET /operator/usage/unassigned` lists this month's gateway rows that belong to no tenant. Operators only.
+
 ### 2026-10-26: rights stay within their scope
 
 - Saving or attaching an API key policy answers `403` when the policy's scopes need a right the person lacks: `admin` needs all five rights, `ingest` needs `manage-datasets`. API keys, machine clients and operators are unchanged.
