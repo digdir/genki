@@ -5,10 +5,10 @@ import {
   CpuIcon,
   ExclamationmarkTriangleIcon,
   FileCheckmarkIcon,
+  FileXMarkIcon,
   FileTextIcon,
   InformationSquareIcon,
   LightningIcon,
-  MagnifyingGlassCheckmarkIcon,
   MagnifyingGlassIcon,
   PersonCheckmarkIcon,
   QuestionmarkCircleIcon,
@@ -48,7 +48,7 @@ export const stepIcons: Record<string, IconComponent> = {
   error: ExclamationmarkTriangleIcon,
   step: BulletListIcon,
   note: InformationSquareIcon,
-  searchnote: MagnifyingGlassCheckmarkIcon,
+  searchnote: FileXMarkIcon,
 };
 const unknownIcon = QuestionmarkCircleIcon;
 

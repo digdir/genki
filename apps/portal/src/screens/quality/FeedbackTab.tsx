@@ -1,5 +1,5 @@
 import {
-  ExclamationmarkTriangleIcon,
+  BookmarkIcon,
   PencilIcon,
   ThumbDownIcon,
   ThumbUpIcon,
@@ -42,7 +42,7 @@ const typeIcon: Record<FeedbackType, IconComponent> = {
   'Tommel ned': ThumbDownIcon,
   'Endret utkast': PencilIcon,
   'Avvist godkjenning': XMarkIcon,
-  Flagget: ExclamationmarkTriangleIcon,
+  Flagget: BookmarkIcon,
 };
 
 const typeColor: Record<FeedbackType, 'success' | 'danger' | 'info' | 'warning'> = {

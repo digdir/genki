@@ -1,4 +1,4 @@
-import { ThumbUpIcon } from '@navikt/aksel-icons';
+import { ThumbDownIcon, ThumbUpIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Fieldset, Label, Textarea } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { Icon } from '../../components/Icon';
@@ -76,9 +76,7 @@ export const PreviewTab = () => {
                 aria-disabled={c.sent || undefined}
                 onClick={() => vote('down')}
               >
-                <span className="flip">
-                  <Icon icon={ThumbUpIcon} size={18} />
-                </span>
+                <Icon icon={ThumbDownIcon} size={18} />
                 {t('quality.no')}
               </Button>
             </div>
