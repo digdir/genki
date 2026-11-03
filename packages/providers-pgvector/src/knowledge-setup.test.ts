@@ -236,6 +236,47 @@ describe('knowledge server setup', () => {
     }
   });
 
+  it("a login of one environment cannot connect to the other environment's database", async () => {
+    const other = { apiLogin: 'other_knowledge_api', workerLogin: 'other_knowledge_worker' };
+    const otherDatabase = 'genai_knowledge_other';
+    for (const login of Object.values(other))
+      await admin.query(`create role ${login} login password 'login-pw'`);
+    await admin.query(`create database ${otherDatabase}`);
+    const otherAdmin = new pg.Pool({
+      connectionString: container.getConnectionUri().replace(/\/[^/]+$/, `/${otherDatabase}`),
+    });
+    try {
+      await setUpKnowledgeServer(otherAdmin, { ...other, platformId: otherPlatform });
+      const connect = async (user: string, database: string, role?: string) => {
+        const client = new pg.Client({
+          host: container.getHost(),
+          port: container.getPort(),
+          database,
+          user,
+          password: 'login-pw',
+          ...(role ? { options: `-c role=${role}` } : {}),
+        });
+        await client.connect();
+        await client.end();
+      };
+      await connect(logins.workerLogin, container.getDatabase(), knowledgeRoles.owner);
+      await connect(other.workerLogin, otherDatabase, knowledgeRoles.owner);
+      for (const [user, database] of [
+        [other.workerLogin, container.getDatabase()],
+        [other.apiLogin, container.getDatabase()],
+        [logins.workerLogin, otherDatabase],
+        [logins.apiLogin, otherDatabase],
+      ] as const) {
+        await expect(connect(user, database)).rejects.toThrow(/permission denied for database/);
+        await expect(connect(user, database, knowledgeRoles.owner)).rejects.toThrow(
+          /permission denied for database/,
+        );
+      }
+    } finally {
+      await otherAdmin.end();
+    }
+  });
+
   it('setup refuses a knowledge role that bypasses row-level security', async () => {
     await admin.query(`alter role ${knowledgeRoles.writer} bypassrls`);
     try {

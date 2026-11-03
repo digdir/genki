@@ -157,6 +157,8 @@ jobs:
           LOCKDOWN_USER_GROUPS: ${{ vars.LOCKDOWN_USER_GROUPS }}
           LOCKDOWN_ENTRA_EMAIL_DOMAIN: ${{ vars.LOCKDOWN_ENTRA_EMAIL_DOMAIN }}
           OPERATOR_CLIENT_IDS: ${{ vars.OPERATOR_CLIENT_IDS }}
+          KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+          KNOWLEDGE_PGHOST: ${{ vars.KNOWLEDGE_PGHOST }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -247,6 +249,11 @@ jobs:
           COLBERT_API_URL: ${{ vars.COLBERT_API_URL }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_TENANT }}
           ALTINN_RESOURCE: ${{ vars.ALTINN_RESOURCE }}
+          KNOWLEDGE_SERVER_STAGE: ${{ vars.KNOWLEDGE_SERVER_STAGE }}
+          KNOWLEDGE_TEST_VNET_ID: ${{ vars.KNOWLEDGE_TEST_VNET_ID }}
+          KNOWLEDGE_TEST_PLATFORM_ID: ${{ vars.KNOWLEDGE_TEST_PLATFORM_ID }}
+          KNOWLEDGE_TEST_API_PRINCIPAL_ID: ${{ vars.KNOWLEDGE_TEST_API_PRINCIPAL_ID }}
+          KNOWLEDGE_TEST_WORKER_PRINCIPAL_ID: ${{ vars.KNOWLEDGE_TEST_WORKER_PRINCIPAL_ID }}
         run: |
           url=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \

@@ -20,6 +20,32 @@ param addressPrefix = '10.41.0.0/16'
 param appsSubnetPrefix = '10.41.0.0/23'
 param postgresSubnetPrefix = '10.41.2.0/24'
 
+// The one knowledge server for test and prod, created here. The size and standby Kudos needs come later, as a change here (ADR 0042).
+param knowledgeServerStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', 'none')
+param createKnowledgeServer = true
+param knowledgeDatabaseName = 'genai_knowledge'
+param knowledgeDatabaseNames = ['genai_knowledge', 'genai_knowledge_test']
+param knowledgePostgresSkuName = 'Standard_D2ds_v5'
+param knowledgePostgresSkuTier = 'GeneralPurpose'
+param knowledgePostgresStorageSizeGB = 64
+param knowledgePostgresVCores = 2
+param knowledgePostgresBackupRetentionDays = 7
+param knowledgePostgresGeoRedundantBackup = 'Disabled'
+param knowledgePostgresHighAvailability = 'Disabled'
+param knowledgeAddressPrefix = '10.42.0.0/24'
+param knowledgeClientVnetIds = [readEnvironmentVariable('KNOWLEDGE_TEST_VNET_ID', '')]
+param knowledgeOtherSetups = [
+  {
+    env: 'test'
+    database: 'genai_knowledge_test'
+    platformId: readEnvironmentVariable('KNOWLEDGE_TEST_PLATFORM_ID', '')
+    apiLogin: 'genai-test-knowledge-api-id'
+    apiObjectId: readEnvironmentVariable('KNOWLEDGE_TEST_API_PRINCIPAL_ID', '')
+    workerLogin: 'genai-test-knowledge-worker-id'
+    workerObjectId: readEnvironmentVariable('KNOWLEDGE_TEST_WORKER_PRINCIPAL_ID', '')
+  }
+]
+
 param keyVaultSecretNames = [
   'content-master-key'
   'altinn-pdp-maskinporten-key'

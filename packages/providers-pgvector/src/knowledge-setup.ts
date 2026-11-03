@@ -88,6 +88,45 @@ const memberships = async (client: PoolClient, login: string, allowed: string[])
     );
 };
 
+/**
+ * Roles are global to a server, so the knowledge roles a login holds count in every database on it.
+ * Where test and prod share a server, each database is fenced by who may connect to it: its own
+ * environment's logins, its owner and, on Azure, the server's admins (`azure_pg_admin`).
+ */
+const connectOnly = async (client: PoolClient, name: string, logins: string[]) => {
+  const database = roleName(name);
+  await client.query(`revoke connect on database ${database} from public`);
+  await client.query(`grant connect on database ${database} to ${logins.map(roleName).join(', ')}`);
+  const { rows: azure } = await client.query(
+    `select from pg_roles where rolname = 'azure_pg_admin'`,
+  );
+  if (azure.length > 0)
+    await client.query(`grant connect on database ${database} to azure_pg_admin`);
+  const kept = [...logins, ...(azure.length > 0 ? ['azure_pg_admin'] : [])];
+  const others = async () =>
+    (
+      await client.query<{ grantee: string; grantor: string }>(
+        `select coalesce(r.rolname, 'public') as grantee, g.rolname as grantor
+           from pg_database d
+           cross join aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
+           left join pg_roles r on r.oid = a.grantee
+           join pg_roles g on g.oid = a.grantor
+          where d.datname = current_database() and a.privilege_type = 'CONNECT'
+            and a.grantee <> d.datdba and coalesce(r.rolname, 'public') <> all($1)`,
+        [kept],
+      )
+    ).rows;
+  for (const { grantee } of await others())
+    if (grantee !== 'public')
+      await client.query(`revoke connect on database ${database} from ${roleName(grantee)}`);
+  // A revoke without rights on the database, or of another grantor's grant, only warns.
+  const left = await others();
+  if (left.length > 0)
+    throw new Error(
+      `${left.map((row) => `${row.grantee} (granted by ${row.grantor})`).join(', ')} can still connect to ${name}; run setup as the database's owner or an admin who can revoke it`,
+    );
+};
+
 const bind = async (
   client: PoolClient,
   options: KnowledgeSetupOptions,
@@ -144,6 +183,7 @@ export const setUpKnowledgeServer = async (
     );
     await memberships(client, options.apiLogin, [knowledgeRoles.reader]);
     await memberships(client, options.workerLogin, [knowledgeRoles.owner, knowledgeRoles.writer]);
+    await connectOnly(client, rows[0]?.db ?? '', [options.apiLogin, options.workerLogin]);
     const binding = await bind(client, options);
     await client.query('commit');
     return binding;

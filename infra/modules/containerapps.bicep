@@ -20,6 +20,16 @@ param identityEnv object
 param webSettings object
 param postgresHost string
 param postgresDatabase string
+
+@description('The knowledge server for the API and worker: { host, database, vcores, api: { id, clientId, name }, worker: { id, clientId, name } }. Empty: none.')
+param knowledge object = {}
+
+@description('Principals jobs: { name, args, admin }. Each runs the knowledge setup script in the worker image.')
+param knowledgeJobs array = []
+param knowledgeJobHost string = ''
+
+@description('The knowledge admin identity { id, clientId }, for jobs with admin set.')
+param knowledgeAdmin object = {}
 param storageAccountName string
 param storageShareName string
 
@@ -148,6 +158,21 @@ var serverEnv = concat(
 var dataVolume = [{ name: 'data', storageType: 'AzureFile', storageName: dataStorage.name }]
 var dataMount = [{ volumeName: 'data', mountPath: '/data' }]
 
+// Each app logs in to the knowledge server as its own identity; the shared identity has no role there.
+var knowledgeEnv = empty(knowledge)
+  ? { api: [], worker: [] }
+  : toObject(['api', 'worker'], app => app, app => concat(
+      [
+        { name: 'KNOWLEDGE_PGHOST', value: knowledge.host }
+        { name: 'KNOWLEDGE_PGDATABASE', value: knowledge.database }
+        { name: 'KNOWLEDGE_READ_PGHOST', value: knowledge.host }
+        { name: 'KNOWLEDGE_PGUSER', value: knowledge[app].name }
+        { name: 'KNOWLEDGE_AZURE_CLIENT_ID', value: knowledge[app].clientId }
+      ],
+      app == 'worker' ? [{ name: 'KNOWLEDGE_VCORES', value: string(knowledge.vcores) }] : []
+    ))
+var knowledgeIdentity = toObject(['api', 'worker'], app => app, app => empty(knowledge) ? {} : { '${knowledge[app].id}': {} })
+
 resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   name: '${name}-api'
   location: location
@@ -155,7 +180,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
   dependsOn: [certificates]
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: { '${identityId}': {} }
+    userAssignedIdentities: union({ '${identityId}': {} }, knowledgeIdentity.api)
   }
   properties: {
     environmentId: environment.id
@@ -178,7 +203,7 @@ resource api 'Microsoft.App/containerApps@2025-02-02-preview' = {
           name: 'api'
           image: apiImage
           resources: { cpu: json(cpu), memory: memory }
-          env: concat([{ name: 'PORT', value: '8080' }], serverEnv)
+          env: concat([{ name: 'PORT', value: '8080' }], serverEnv, knowledgeEnv.api)
           volumeMounts: dataMount
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, periodSeconds: 30 }
@@ -198,7 +223,7 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
   tags: tags
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: { '${identityId}': {} }
+    userAssignedIdentities: union({ '${identityId}': {} }, knowledgeIdentity.worker)
   }
   properties: {
     environmentId: environment.id
@@ -210,19 +235,78 @@ resource worker 'Microsoft.App/containerApps@2025-02-02-preview' = {
     }
     template: {
       containers: [
-        {
-          name: 'worker'
-          image: workerImage
-          resources: { cpu: json(cpu), memory: memory }
-          env: serverEnv
-          volumeMounts: dataMount
-        }
+        union(
+          {
+            name: 'worker'
+            image: workerImage
+            resources: { cpu: json(cpu), memory: memory }
+            env: concat(serverEnv, knowledgeEnv.worker)
+            volumeMounts: dataMount
+          },
+          // 503 while the knowledge server is bound to another platform server or out of reach (issue 136).
+          empty(knowledge)
+            ? {}
+            : { probes: [{ type: 'Readiness', httpGet: { path: '/readyz', port: 8081 }, periodSeconds: 10 }] }
+        )
       ]
       volumes: dataVolume
       scale: { minReplicas: 1, maxReplicas: 1 }
     }
   }
 }
+
+// The principals jobs (ADR 0042): run by hand, inside the environment's network, the only place the
+// knowledge server can be reached from. The platform side logs in as the app identity, the only one
+// that can read the platform server's id; the knowledge side as the knowledge admin identity.
+var platformTenantEnv = filter(identityPlainEnv, pair => pair.name == 'PLATFORM_TENANT')
+
+resource knowledgeSetup 'Microsoft.App/jobs@2025-02-02-preview' = [for job in knowledgeJobs: {
+  name: '${name}-${job.name}'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: union({ '${identityId}': {} }, job.admin ? { '${knowledgeAdmin.id}': {} } : {})
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      replicaTimeout: 600
+      replicaRetryLimit: 0
+      registries: [{ server: registryServer, identity: identityId }]
+    }
+    template: {
+      containers: [
+        {
+          name: 'setup'
+          image: workerImage
+          resources: { cpu: json('0.25'), memory: '0.5Gi' }
+          command: ['node', 'scripts/knowledge-server-setup.ts']
+          args: job.args
+          env: concat(
+            [
+              { name: 'AZURE_CLIENT_ID', value: identityClientId }
+              { name: 'PGHOST', value: postgresHost }
+              { name: 'PGDATABASE', value: postgresDatabase }
+              { name: 'PGUSER', value: identityName }
+              { name: 'PGSSLMODE', value: 'require' }
+            ],
+            platformTenantEnv,
+            job.admin
+              ? [
+                  { name: 'KNOWLEDGE_PGHOST', value: knowledgeJobHost }
+                  { name: 'KNOWLEDGE_ADMIN_AZURE_CLIENT_ID', value: knowledgeAdmin.clientId }
+                ]
+              : []
+          )
+        }
+      ]
+    }
+  }
+}]
 
 var apiPublicUrl = empty(hostnames.api) ? 'https://${api.properties.configuration.ingress.fqdn}' : 'https://${hostnames.api}'
 var portalUrl = empty(hostnames.portal) ? '' : 'https://${hostnames.portal}'
@@ -312,6 +396,7 @@ output verificationId string = environment.properties.customDomainConfiguration.
 output appName string = api.name
 output workerName string = worker.name
 output webAppNames array = [for (item, i) in webApps: web[i].name]
+output knowledgeJobNames array = [for (job, i) in knowledgeJobs: knowledgeSetup[i].name]
 output fqdn string = api.properties.configuration.ingress.fqdn
 output defaultFqdns object = {
   api: api.properties.configuration.ingress.fqdn

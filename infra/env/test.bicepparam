@@ -9,6 +9,12 @@ param appIdentityIsPostgresAdmin = true
 param minReplicas = 1
 param maxReplicas = 2
 
+// Prod creates the one knowledge server for test and prod; test has its own database on it.
+param knowledgeServerStage = readEnvironmentVariable('KNOWLEDGE_SERVER_STAGE', 'none')
+param knowledgePostgresHost = readEnvironmentVariable('KNOWLEDGE_PGHOST', '')
+param knowledgeDatabaseName = 'genai_knowledge_test'
+param knowledgePostgresVCores = 2
+
 param keyVaultSecretNames = [
   'content-master-key'
   'altinn-pdp-maskinporten-key'
