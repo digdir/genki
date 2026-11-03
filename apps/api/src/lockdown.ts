@@ -1,6 +1,7 @@
 import {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
@@ -21,6 +22,7 @@ export const entraNotTrustedType = 'urn:genai:problem:entra-not-trusted';
 export {
   configuredCredentialScope,
   isLockdown,
+  lockdownUserScope,
   mayUseModels,
   operatorClientIds,
   readOnlyInLockdown,
