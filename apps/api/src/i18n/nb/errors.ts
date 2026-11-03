@@ -429,7 +429,7 @@ export const operationErrors = defineNamespace({
   descriptorInReview:
     '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
   kindInTest:
-    'operasjonen {operation} er i test i dette miljøet; to operatører må flytte den til produksjon før en tjeneste kan bruke den',
+    'operasjonen {operation} er i test i dette miljøet; en operatør må flytte den til produksjon før en tjeneste kan bruke den',
   notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
   noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
   modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
@@ -439,8 +439,6 @@ export const operationErrors = defineNamespace({
   noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
   noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
   maturityValues: 'modenheten er test eller production',
-  ownPromotion:
-    'samme person kan ikke bekrefte sin egen forfremmelse; be en annen operatør bekrefte den',
   noProcessorRecord: '{id} har ingen databehandleropplysninger',
   noModelEndpoint: 'ingen modellendepunkt {id}',
 });

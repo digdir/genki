@@ -30,14 +30,13 @@ import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 export const maturityAction = 'platform.operations.maturity';
 export const processorRecordAction = 'platform.operations.processor-record';
 
-type Status = 400 | 401 | 403 | 404 | 409;
+type Status = 400 | 401 | 403 | 404;
 
 const titles: Record<Status, string> = {
   400: 'Invalid request',
   401: 'Unauthorized',
   403: 'Forbidden',
   404: 'Not found',
-  409: 'Conflict',
 };
 
 const problem = (c: Context, status: Status, errors: ValidationError[] = []) =>
@@ -114,7 +113,7 @@ export const describedStepProblems = async (
       const maturity = await deps.governance.maturityOf(descriptor.operation);
       if (maturity.maturity !== 'production')
         refuse(
-          `the ${descriptor.operation} operation is in test in this environment; two operators must move it to production before a service can use it`,
+          `the ${descriptor.operation} operation is in test in this environment; an operator must move it to production before a service can use it`,
         );
       if (typeof modelId !== 'string' || !own.has(modelId)) {
         refuse(`the model ${String(modelId)} is not one of the service's models`);
@@ -236,15 +235,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
         return problem(c, 400, [{ path: 'maturity', message: 'maturity is test or production' }]);
       const by = actorOf(guard.principal.actor ?? guard.principal);
       const before = await governance.maturityOf(kind);
-      const step = maturityStep(before, maturity, by);
-      if (step === 'own-promotion')
-        return problem(c, 409, [
-          {
-            path: 'maturity',
-            message:
-              'the same person cannot confirm their own promotion; ask another operator to confirm it',
-          },
-        ]);
+      const step = maturityStep(before, maturity);
       if (step === 'unchanged') return c.json({ ...maturityView(before, descriptors), step });
       const done = await audited<MaturityState>(
         c,

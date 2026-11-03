@@ -101,11 +101,7 @@ const OperationKind = z
     kind: z.string(),
     environment: z.enum(['test', 'production']),
     maturity: z.enum(['test', 'production']),
-    promotion: z
-      .object({ by: z.string(), at: z.string() })
-      .optional()
-      .describe('A promotion to production that waits for a second operator'),
-    promotedBy: z.array(z.string()).optional(),
+    by: z.string().optional().describe('The operator who last set the maturity'),
     at: z.string().optional(),
     descriptors: z.array(
       z.object({ id: z.string(), status: z.enum(['review', 'described', 'typed']) }),
@@ -2075,7 +2071,7 @@ const qualityRoutes: RouteConfig[] = [
     description: described(
       operator,
       audited,
-      'Production takes two different operators: the first asks, the second confirms. One operator may move a kind back to test.',
+      'One operator moves a kind to production or back to test; every change is audited with who, when and why. Asking for the maturity the kind already has changes nothing.',
     ),
     request: {
       params: z.object({ kind: pathParam('kind', 'decide') }),
@@ -2085,14 +2081,13 @@ const qualityRoutes: RouteConfig[] = [
     responses: {
       200: json(
         OperationKind.extend({
-          step: z.enum(['requested', 'promoted', 'demoted', 'unchanged']),
+          step: z.enum(['promoted', 'demoted', 'unchanged']),
         }),
         'The kind after the change',
       ),
       400: problem('Invalid maturity or missing change reason'),
       ...operatorOnly,
       404: problem('No descriptor describes the kind'),
-      409: problem('The same operator asked for the promotion'),
     },
   }),
   createRoute({

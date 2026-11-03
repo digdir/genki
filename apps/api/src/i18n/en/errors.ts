@@ -429,7 +429,7 @@ export const operationErrors = {
   descriptorInReview:
     '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
   kindInTest:
-    'the {operation} operation is in test in this environment; two operators must move it to production before a service can use it',
+    'the {operation} operation is in test in this environment; an operator must move it to production before a service can use it',
   notServiceModel: "the model {modelId} is not one of the service's models",
   noCatalogueModel: 'there is no model {modelId} in the catalogue',
   modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
@@ -439,8 +439,6 @@ export const operationErrors = {
   noOperationDescriptors: 'this platform has no operation descriptors',
   noDescriptorForKind: 'no descriptor describes {kind}',
   maturityValues: 'maturity is test or production',
-  ownPromotion:
-    'the same person cannot confirm their own promotion; ask another operator to confirm it',
   noProcessorRecord: '{id} has no processor record',
   noModelEndpoint: 'no model endpoint {id}',
 } satisfies Translation<typeof source.operationErrors>;

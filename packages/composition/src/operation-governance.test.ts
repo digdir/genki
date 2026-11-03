@@ -24,52 +24,42 @@ describe('maturity per operation kind', () => {
     expect(await governance.maturity('classify')).toBe('test');
   });
 
-  it('promoting a kind to production needs a second person', async () => {
+  it('one operator promotes a kind to production, recorded with who and when', async () => {
     const store = new InMemoryConfigEntryStore();
     const governance = operationGovernance(store, 'production');
+    expect(maturityStep(await governance.maturityOf('classify'), 'production')).toBe('promoted');
     await record(store, 'production', 'operator:test:drift');
-    const pending = await governance.maturityOf('classify');
-    expect(pending).toMatchObject({
-      maturity: 'test',
-      promotion: { by: 'operator:test:drift' },
-    });
-    expect(maturityStep(pending, 'production', 'operator:test:vakt')).toBe('promoted');
-    await record(store, 'production', 'operator:test:vakt');
     expect(await governance.maturityOf('classify')).toMatchObject({
       maturity: 'production',
-      promotedBy: ['operator:test:drift', 'operator:test:vakt'],
+      by: 'operator:test:drift',
+      at: expect.any(String),
     });
   });
 
-  it('the same person cannot confirm their own promotion', async () => {
+  it('one operator moves a kind back to test', async () => {
     const store = new InMemoryConfigEntryStore();
     const governance = operationGovernance(store, 'production');
     await record(store, 'production', 'operator:test:drift');
-    expect(
-      maturityStep(await governance.maturityOf('classify'), 'production', 'operator:test:drift'),
-    ).toBe('own-promotion');
-    await record(store, 'production', 'operator:test:drift');
-    expect(await governance.maturity('classify')).toBe('test');
+    expect(maturityStep(await governance.maturityOf('classify'), 'test')).toBe('demoted');
+    await record(store, 'test', 'operator:test:drift');
+    expect(await governance.maturityOf('classify')).toMatchObject({
+      maturity: 'test',
+      by: 'operator:test:drift',
+    });
+    expect(await store.history(maturityEntryKind, 'production', 'classify')).toHaveLength(2);
   });
 
-  it('one person demotes a kind, and the next promotion needs two people again', async () => {
+  it('asking for the maturity a kind already has changes nothing', async () => {
     const store = new InMemoryConfigEntryStore();
     const governance = operationGovernance(store, 'production');
+    expect(maturityStep(await governance.maturityOf('classify'), 'test')).toBe('unchanged');
     await record(store, 'production', 'operator:test:drift');
-    await record(store, 'production', 'operator:test:vakt');
-    expect(
-      maturityStep(await governance.maturityOf('classify'), 'test', 'operator:test:vakt'),
-    ).toBe('demoted');
-    await record(store, 'test', 'operator:test:vakt');
-    expect(await governance.maturity('classify')).toBe('test');
-    await record(store, 'production', 'operator:test:drift');
-    expect(await governance.maturity('classify')).toBe('test');
+    expect(maturityStep(await governance.maturityOf('classify'), 'production')).toBe('unchanged');
   });
 
   it('maturity is kept per environment', async () => {
     const store = new InMemoryConfigEntryStore();
     await record(store, 'production', 'operator:test:drift');
-    await record(store, 'production', 'operator:test:vakt');
     expect(await operationGovernance(store, 'production').maturity('classify')).toBe('production');
     expect(await operationGovernance(store, 'test').maturity('classify')).toBe('test');
   });

@@ -108,7 +108,6 @@ const boot = async (
     send('/operator/operation-kinds/classify/maturity', who, { body: { maturity }, reason });
   const promote = async () => {
     expect((await setMaturity('drift', 'production')).status).toBe(200);
-    expect((await setMaturity('vakt', 'production')).status).toBe(200);
   };
   const processorRecord = (extra: Record<string, unknown> = {}) =>
     send('/operator/model-endpoints/lab/processor-record', 'drift', {
@@ -266,21 +265,16 @@ describe('the described tier', () => {
 });
 
 describe('maturity per operation kind', () => {
-  it('promoting a kind to production needs a second person', async () => {
+  it('one operator promotes a kind to production, audited with who and why', async () => {
     const { setMaturity, send, admin } = await boot();
-    const first = await setMaturity('drift', 'production');
-    expect(await first.json()).toMatchObject({
+    const promoted = await setMaturity('drift', 'production');
+    expect(promoted.status).toBe(200);
+    expect(await promoted.json()).toMatchObject({
       kind: 'classify',
       environment: 'production',
-      maturity: 'test',
-      step: 'requested',
-      promotion: { by: 'operator:test:drift' },
-    });
-    const second = await setMaturity('vakt', 'production');
-    expect(await second.json()).toMatchObject({
       maturity: 'production',
       step: 'promoted',
-      promotedBy: ['operator:test:drift', 'operator:test:vakt'],
+      by: 'operator:test:drift',
     });
     const listed = (await (await send('/operator/operation-kinds', 'drift')).json()) as {
       data: { kind: string; maturity: string; descriptors: { id: string }[] }[];
@@ -289,26 +283,49 @@ describe('maturity per operation kind', () => {
       maturity: 'production',
       descriptors: [{ id: 'example/classify@1', status: 'described' }],
     });
-    expect(
-      (await admin.audit()).filter((a) => a.action === 'platform.operations.maturity'),
-    ).toHaveLength(2);
+    const audited = (await admin.audit()).filter(
+      (a) => a.action === 'platform.operations.maturity',
+    );
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({
+      actor: 'operator:test:drift',
+      target: 'operation-kind:classify',
+      outcome: 'applied',
+      reason,
+      at: expect.any(String),
+    });
   });
 
-  it('the same person cannot confirm their own promotion', async () => {
-    const { setMaturity } = await boot();
-    await setMaturity('drift', 'production');
-    const again = await setMaturity('drift', 'production');
-    expect(again.status).toBe(409);
-    expect(await again.json()).toMatchObject({ errors: [{ path: 'maturity' }] });
-  });
-
-  it('one person may demote a kind, since it only narrows what the kind serves', async () => {
+  it('one operator moves a kind back to test', async () => {
     const { setMaturity, promote } = await boot();
     await promote();
-    expect(await (await setMaturity('drift', 'test')).json()).toMatchObject({
+    expect(await (await setMaturity('vakt', 'test')).json()).toMatchObject({
       maturity: 'test',
       step: 'demoted',
+      by: 'operator:test:vakt',
     });
+  });
+
+  it('promoting a kind already in production changes nothing', async () => {
+    const { setMaturity, promote, admin } = await boot();
+    await promote();
+    expect(await (await setMaturity('vakt', 'production')).json()).toMatchObject({
+      maturity: 'production',
+      step: 'unchanged',
+      by: 'operator:test:drift',
+    });
+    expect(
+      (await admin.audit()).filter((a) => a.action === 'platform.operations.maturity'),
+    ).toHaveLength(1);
+  });
+
+  it('a maturity change without a change reason is refused', async () => {
+    const { send } = await boot();
+    const refused = await send('/operator/operation-kinds/classify/maturity', 'drift', {
+      body: { maturity: 'production' },
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ errors: [{ path: 'change-reason' }] });
   });
 
   it('only operators set the maturity of a kind', async () => {

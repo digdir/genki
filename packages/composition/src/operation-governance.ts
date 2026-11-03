@@ -14,50 +14,26 @@ export interface MaturityState {
   kind: string;
   environment: EnvironmentTier;
   maturity: Maturity;
-  promotedBy?: string[];
-  promotion?: { by: string; at: string };
+  by?: string;
   at?: string;
 }
 
-/** Production takes two different people after the last demotion, as risk confirmation does (ADR 0020). */
+/** The latest entry decides; one operator promotes or demotes, and history stays in the store. */
 export const maturityState = (
   kind: string,
   environment: EnvironmentTier,
   history: readonly ConfigEntry<MaturityRecord>[],
 ): MaturityState => {
-  const live = history.filter((e) => !e.deleted);
-  const demoted = live.findLastIndex((e) => e.spec.maturity === 'test');
-  const promotions = live.slice(demoted + 1);
-  const people: string[] = [];
-  let confirmed: ConfigEntry<MaturityRecord> | undefined;
-  for (const entry of promotions) {
-    if (!people.includes(entry.by)) people.push(entry.by);
-    if (people.length === 2) {
-      confirmed = entry;
-      break;
-    }
-  }
-  if (confirmed)
-    return { kind, environment, maturity: 'production', promotedBy: people, at: confirmed.at };
-  const first = promotions[0];
-  const last = live[demoted];
-  return {
-    kind,
-    environment,
-    maturity: 'test',
-    ...(first ? { promotion: { by: first.by, at: first.at } } : {}),
-    ...(last ? { at: last.at } : {}),
-  };
+  const last = history.filter((e) => !e.deleted).at(-1);
+  if (!last) return { kind, environment, maturity: 'test' };
+  return { kind, environment, maturity: last.spec.maturity, by: last.by, at: last.at };
 };
 
-export type MaturityStep = 'requested' | 'promoted' | 'demoted' | 'unchanged' | 'own-promotion';
+export type MaturityStep = 'promoted' | 'demoted' | 'unchanged';
 
-export const maturityStep = (state: MaturityState, wanted: Maturity, by: string): MaturityStep => {
-  if (wanted === 'test')
-    return state.maturity === 'test' && !state.promotion ? 'unchanged' : 'demoted';
-  if (state.maturity === 'production') return 'unchanged';
-  if (!state.promotion) return 'requested';
-  return state.promotion.by === by ? 'own-promotion' : 'promoted';
+export const maturityStep = (state: MaturityState, wanted: Maturity): MaturityStep => {
+  if (state.maturity === wanted) return 'unchanged';
+  return wanted === 'production' ? 'promoted' : 'demoted';
 };
 
 const text = (max: number) => z.string().trim().min(1).max(max);
