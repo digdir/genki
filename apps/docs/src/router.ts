@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 
 export type Route =
   | { page: 'oversikt' }
@@ -83,15 +83,55 @@ export function navigate(route: Route) {
   }
 }
 
+// Hver historikkoppføring får et løpenummer i history.state, så vi kan skille en ny navigasjon
+// (ingen nummer ennå: scroll til toppen) fra tilbake og fram (nummeret finnes: gjenopprett
+// scrollposisjonen vi lagret da brukeren forlot siden). Nettleseren klarer ikke dette selv,
+// fordi forsiden rendres på nytt etter at den har prøvd å gjenopprette posisjonen.
+const scrollPositions = new Map<number, number>();
+let highestEntry = 0;
+let pendingScroll: number | null = null;
+
+function entryIndex(): number | undefined {
+  const state: unknown = window.history.state;
+  if (
+    typeof state === 'object' &&
+    state !== null &&
+    'idx' in state &&
+    typeof state.idx === 'number'
+  ) {
+    return state.idx;
+  }
+  return undefined;
+}
+
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
   useEffect(() => {
+    window.history.scrollRestoration = 'manual';
+    const initial = entryIndex();
+    let current: number = initial ?? 0;
+    if (initial === undefined) window.history.replaceState({ idx: current }, '');
+    highestEntry = Math.max(highestEntry, current);
     const onChange = () => {
+      scrollPositions.set(current, window.scrollY);
+      const idx = entryIndex();
+      if (idx === undefined) {
+        current = ++highestEntry;
+        window.history.replaceState({ idx: current }, '');
+        pendingScroll = 0;
+      } else {
+        current = idx;
+        pendingScroll = scrollPositions.get(idx) ?? 0;
+      }
       setRoute(parseHash(window.location.hash));
-      window.scrollTo({ top: 0 });
     };
     window.addEventListener('hashchange', onChange);
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
+  useLayoutEffect(() => {
+    if (pendingScroll === null) return;
+    window.scrollTo({ top: pendingScroll });
+    pendingScroll = null;
+  }, [route]);
   return route;
 }
