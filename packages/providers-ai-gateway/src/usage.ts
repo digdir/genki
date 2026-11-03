@@ -66,6 +66,12 @@ const withoutUndefined = <T extends object>(value: T) =>
   };
 
 /** Reads gateway settings from the environment; nothing configured leaves the gateway off. */
+const withoutTrailingSlashes = (url: string) => {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end -= 1;
+  return url.slice(0, end);
+};
+
 export const gatewayUsageConfigFromEnv = (
   env: NodeJS.ProcessEnv,
 ): { config?: GatewayUsageConfig; problems: string[] } => {
@@ -85,7 +91,7 @@ export const gatewayUsageConfigFromEnv = (
   return {
     config: {
       id: 'gateway',
-      baseUrl: (baseUrl as string).replace(/\/+$/, ''),
+      baseUrl: withoutTrailingSlashes(baseUrl as string),
       credential: credential as string,
       since,
       timeoutMs,

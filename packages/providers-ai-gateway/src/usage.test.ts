@@ -121,6 +121,18 @@ describe('gateway settings', () => {
     expect(problems).toEqual(['GATEWAY_USAGE_CREDENTIAL must be a secret:// reference']);
   });
 
+  it('strips any number of trailing slashes from the base URL in linear time', () => {
+    const url = `https://gateway-api.example.no/v1${'/'.repeat(100_000)}`;
+    const started = performance.now();
+    const { config } = gatewayUsageConfigFromEnv({
+      GATEWAY_USAGE_URL: url,
+      GATEWAY_USAGE_CREDENTIAL: 'secret://env/gateway-usage-key',
+    });
+
+    expect(config?.baseUrl).toBe('https://gateway-api.example.no/v1');
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
   it('turns the gateway on with a base URL and a credential reference', () => {
     const { config } = gatewayUsageConfigFromEnv({
       GATEWAY_USAGE_URL: 'https://gateway-api.example.no/v1/',
