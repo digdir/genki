@@ -1,11 +1,11 @@
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
 import {
-  ModelError,
-  type ChatChunk,
-  type ChatRequest,
-  type ChatResult,
-  type ModelPort,
-} from '@genai/port-model';
+  withUse,
+  type Emitted,
+  type InvocationContext,
+  type PayloadGuard,
+  type Strategy,
+} from '@genai/kernel';
+import { ModelError, type ChatRequest, type ChatResult } from '@genai/port-model';
 import {
   KnowledgeError,
   type KnowledgePort,
@@ -90,41 +90,29 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
       const has = (point: HookPoint, mode?: HookConfig['mode']) =>
         hooks.some((h) => h.enabled && h.point === point && (!mode || h.mode === mode));
 
-      const model = (port: ModelPort): ModelPort => {
-        const id = port.info().id;
-        const before = async (request: ChatRequest) => {
-          const refused =
-            has('before_model') && (await hooked('before_model', modelPayload(id, request)));
-          if (refused) throw new ModelError('refused', refusalText(refused));
-        };
-        const after = async (result: ChatResult) => {
-          const refused =
-            has('after_model') && (await hooked('after_model', resultPayload(id, result)));
-          if (refused) throw new ModelError('refused', refusalText(refused));
-        };
-        return {
-          info: () => port.info(),
-          chat: async (request) => {
-            await before(request);
-            const result = await port.chat(request);
-            await after(result);
-            return result;
-          },
-          chatStream: async function* (request): AsyncIterable<ChatChunk> {
-            await before(request);
-            const hold = has('after_model', 'enforce');
-            const held: ChatChunk[] = [];
-            for await (const chunk of port.chatStream(request)) {
-              if (chunk.kind === 'done') {
-                await after(chunk.result);
-                yield* held;
-                yield chunk;
-              } else if (hold) held.push(chunk);
-              else yield chunk;
+      const modelGuard: PayloadGuard | undefined =
+        has('before_model') || has('after_model')
+          ? {
+              holdsStream: has('after_model', 'enforce'),
+              request: async (call, body) => {
+                if (call.port !== 'model' || !has('before_model')) return body;
+                const refused = await hooked(
+                  'before_model',
+                  modelPayload(call.model, body as ChatRequest),
+                );
+                if (refused) throw new ModelError('refused', refusalText(refused));
+                return body;
+              },
+              result: async (call, body) => {
+                if (call.port !== 'model' || !has('after_model')) return;
+                const refused = await hooked(
+                  'after_model',
+                  resultPayload(call.model, body as ChatResult),
+                );
+                if (refused) throw new ModelError('refused', refusalText(refused));
+              },
             }
-          },
-        };
-      };
+          : undefined;
 
       const tool = (port: ToolPort): ToolPort => ({
         definition: () => port.definition(),
@@ -186,9 +174,12 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
 
       const scoped: InvocationContext = {
         ...ctx,
-        use: async <P>(port: string, ref: Parameters<InvocationContext['use']>[1]) => {
-          const opened = await ctx.use<P>(port, ref);
-          if (port === 'model') return model(opened as ModelPort) as P;
+        use: async <P>(...[port, ref, options]: Parameters<InvocationContext['use']>) => {
+          const opened = await ctx.use<P>(
+            port,
+            ref,
+            modelGuard ? withUse(options, { guards: [modelGuard] }) : options,
+          );
           if (port === 'tools') return tool(opened as ToolPort) as P;
           if (port === 'knowledge') return knowledge(opened as KnowledgePort) as P;
           return opened;

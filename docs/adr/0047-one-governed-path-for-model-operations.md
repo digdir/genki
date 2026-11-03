@@ -1,6 +1,6 @@
 # 0047 One governed path for model operations
 
-Status: proposed, 2026-11-03
+Status: proposed, 2026-11-03 (gate as a wrapper and payload guard in the gate built, 2026-11-03)
 
 ## Context
 
@@ -10,7 +10,7 @@ Model providers add a new kind of API every month or two: decisions, image, spee
 
 ### One gate
 
-Every model call passes through one gate in the kernel, `packages/kernel/src/gate.ts`, whatever its kind. The gate does, in this order and nothing else: admission, enabled, tenant sharing, every residency ceiling (router, request, service), the payload guard on the request, the call through the egress-guarded fetch, usage into the meter, provenance, the audit event `kernel.gate.call` (port, operation, model, endpoint, status, byte counts, never the body), then the guard on the result. The three routers call the gate; their own copies of these checks are removed. Embeddings and rerank declare their admission explicitly (`open`, as ADR 0033 intends), instead of having none by accident.
+Every model call passes through one gate in the kernel, `packages/kernel/src/gate.ts`, whatever its kind. The gate does, in this order and nothing else: admission, enabled, tenant sharing, every residency ceiling (router, request, service), the payload guard on the request, the call through the egress-guarded fetch, usage into the meter, provenance, the audit event `kernel.gate.call` (port, operation, model, endpoint, status, byte counts, never the body), then the guard on the result. The three routers call the gate; their own copies of these checks are removed. Each port declares its admission explicitly instead of having none by accident: embeddings are `open`, as ADR 0033 intends, and rerank is admitted like chat.
 
 ### The payload guard moves into the gate
 
@@ -76,4 +76,5 @@ Turned down:
 - Rerank becomes metered, and embeddings get the egress guard and tenant sharing.
 - The masker covers patterns for Norwegian ids, phone, email, account numbers and ICD-10 codes, not names or free-text health data. Masking reduces exposure; it does not make data anonymous.
 - A new host, or a partner model sold under its own terms, may be a new sub-processor that agencies must be told about before their data reaches it. In production that notice, not the code, sets how fast a new kind can go live.
-- Not built yet: everything in this record. Issue #248 is the first operation on the gate.
+- Built (#277): `packages/kernel/src/gate.ts`, as a wrapper the model, embedding and rerank routers call, and the contract suite `gate@1` (`packages/kernel/src/gate-contract.ts`), run against the bare gate and against the three routers. The gate checks admission, enabled, tenant sharing and every residency ceiling, refuses image, audio and file content, masks and runs the guards, calls, meters, records provenance and writes `kernel.gate.call`; the egress guard stays in each endpoint's fetch. The PII vault and the model hooks are handed to it on every `use` (`UseOptions.guards`), and the service's residency with them. Embeddings and rerank have optional `tenants` in their catalogs. Rerank is metered as one request per call.
+- Not built yet: the routers' own checks are still there, payload shapes are not closed (`payload.ts`), there are no operations on the catalogue, descriptors, tiers or maturity, and calls outside a run (ingestion, search without a task) write no audit event. Issue #248 is the first operation on the gate.

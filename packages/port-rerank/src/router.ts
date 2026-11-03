@@ -1,6 +1,11 @@
-import type { Ref } from '@genai/contracts';
+import type { Principal, Ref } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
+  type Gate,
+  type GatePayload,
+  type GateRefusal,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
@@ -8,7 +13,13 @@ import {
 } from '@genai/kernel';
 import type { RerankAdapter, RerankConnection, RerankerConfig } from './adapter.js';
 import { parseRerankCatalog, type CatalogReranker } from './catalog.js';
-import { RerankError, type Ranked, type RerankPort, type Residency } from './port.js';
+import {
+  RerankError,
+  type Ranked,
+  type RerankPort,
+  type RerankRequest,
+  type Residency,
+} from './port.js';
 
 export interface RerankRouterOptions {
   catalog: unknown;
@@ -20,6 +31,8 @@ export interface RerankRouterOptions {
   maxDocuments?: number;
   onWarning?: (message: string) => void;
   fetchFor?: (endpoint: string) => typeof fetch | undefined;
+  admits?: (principal: Principal) => boolean;
+  gate?: Gate;
 }
 
 interface Route {
@@ -30,14 +43,35 @@ interface Route {
 
 const order: Residency[] = ['norway', 'eu', 'global'];
 
+const refusalCodes: Record<GateRefusal, RerankError['code']> = {
+  admission: 'unauthorized',
+  disabled: 'bad_request',
+  'not-shared': 'forbidden',
+  residency: 'residency',
+  media: 'bad_request',
+};
+
+const rerankPayload: GatePayload<RerankRequest, Ranked[]> = {
+  contents: (request) => [request.query, ...request.documents],
+  mapRequest: (request, map) => ({
+    ...request,
+    query: typeof request.query === 'string' ? map(request.query) : request.query,
+    documents: request.documents.map((d) => (typeof d === 'string' ? map(d) : d)),
+  }),
+  mapResult: (ranking) => ranking,
+  usage: () => ({ requests: 1 }),
+};
+
 const valid = (ranking: Ranked[], count: number) =>
   ranking.filter((r) => Number.isInteger(r.index) && r.index >= 0 && r.index < count);
 
 export class RerankRouter implements PortProvider<RerankPort> {
   readonly #routes = new Map<string, Route>();
   readonly #warned = new Set<string>();
+  readonly #gate: Gate;
 
   constructor(private readonly options: RerankRouterOptions) {
+    this.#gate = options.gate ?? createGate(options.admits ? { admits: options.admits } : {});
     this.reload(options.catalog);
   }
 
@@ -106,6 +140,23 @@ export class RerankRouter implements PortProvider<RerankPort> {
     if (max && order.indexOf(reranker.residency) > order.indexOf(max))
       throw new RerankError('residency', `reranker ${reranker.id} runs outside ${max}`);
     const maxDocuments = this.options.maxDocuments ?? 200;
+    const refusals = new WeakSet<RerankError>();
+    const target: GateTarget = {
+      port: 'rerank',
+      operation: 'rerank',
+      model: { kind: 'reranker', id: reranker.id },
+      endpoint: reranker.endpoint,
+      residency: reranker.residency,
+      admission: 'admitted',
+      ...(reranker.tenants ? { tenants: reranker.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(max ? { routerResidency: max } : {}),
+      refuse: (refusal, message) => {
+        const error = new RerankError(refusalCodes[refusal], message);
+        refusals.add(error);
+        return error;
+      },
+    };
 
     return {
       info: () => ({
@@ -118,9 +169,12 @@ export class RerankRouter implements PortProvider<RerankPort> {
           throw new RerankError('bad_request', `at most ${maxDocuments} documents per rerank`);
         if (request.documents.length === 0) return { ranking: [] };
         try {
-          const ranking = await connection.rerank(config, request, ctx.signal);
+          const ranking = await this.#gate.call(ctx, target, rerankPayload, request, (sent) =>
+            connection.rerank(config, sent, ctx.signal),
+          );
           return { ranking: valid(ranking, request.documents.length) };
         } catch (error) {
+          if (error instanceof RerankError && refusals.has(error)) throw error;
           if (ctx.signal.aborted) throw new RerankError('cancelled', 'the rerank was cancelled');
           const failure =
             error instanceof RerankError

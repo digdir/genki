@@ -1,4 +1,5 @@
 export * from './spi.js';
+export * from './gate.js';
 export {
   CapabilityRegistry,
   checkCapability,

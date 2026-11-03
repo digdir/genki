@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envSecrets } from '@genai/kernel';
+import { createGate, envSecrets } from '@genai/kernel';
 import { EmbeddingRouter, parseEmbeddingCatalog, type Residency } from './index.js';
 import { fakeEmbedder, fakeEmbeddingAdapter, fakeVector, testContext } from './testing.js';
 
@@ -192,6 +192,67 @@ describe('embedding router', () => {
     await expect(
       setup({}, failing).router.open(ref, testContext(controller.signal).ctx).embed(['a']),
     ).rejects.toMatchObject({ code: 'cancelled' });
+  });
+});
+
+describe('embedding through the gate', () => {
+  it("an embedding call outside the service's residency is refused", async () => {
+    const { router, adapter } = setup({ residency: 'eu' });
+    const { ctx } = testContext();
+
+    await expect(
+      router.open(ref, { ...ctx, serviceResidency: 'norway' }).embed(['a']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it('an embedding call is let through in lockdown for a login without model access, so search keeps working', async () => {
+    const adapter = fakeEmbeddingAdapter();
+    const router = new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [adapter],
+      secrets: envSecrets({}),
+      gate: createGate({ admits: () => false }),
+    });
+
+    await router.open(ref, testContext().ctx).embed(['a']);
+
+    expect(adapter.calls).toHaveLength(1);
+  });
+
+  it('an embedding call for a tenant the embedder is not shared with is refused', async () => {
+    const { router, adapter } = setup({ tenants: ['111222333'] });
+
+    await expect(router.open(ref, testContext().ctx).embed(['a'])).rejects.toMatchObject({
+      code: 'bad_request',
+      message: expect.stringMatching(/not shared/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it("embedding calls use the endpoint's egress-guarded fetch", () => {
+    const given: (typeof fetch | undefined)[] = [];
+    const guarded = (async () => new Response()) as unknown as typeof fetch;
+    const adapter = fakeEmbeddingAdapter();
+    new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [
+        {
+          ...adapter,
+          connect: (endpoint: Parameters<typeof adapter.connect>[0]) => {
+            given.push(endpoint.fetch);
+            return adapter.connect(endpoint);
+          },
+        },
+      ],
+      secrets: envSecrets({}),
+      fetchFor: (endpoint) => (endpoint === 'foundry' ? guarded : undefined),
+    });
+
+    expect(given).toEqual([guarded]);
   });
 });
 

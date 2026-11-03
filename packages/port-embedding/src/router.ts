@@ -1,6 +1,11 @@
 import { withListPrice, type Ref, type UsagePrice } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
+  type Gate,
+  type GatePayload,
+  type GateRefusal,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
@@ -25,6 +30,8 @@ export interface EmbeddingRouterOptions {
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
+  fetchFor?: (endpoint: string) => typeof fetch | undefined;
+  gate?: Gate;
 }
 
 export interface EmbeddingOpenOptions {
@@ -46,6 +53,20 @@ interface Route {
   connection: EmbeddingConnection;
 }
 
+const refusalCodes: Record<GateRefusal, EmbeddingError['code']> = {
+  admission: 'unauthorized',
+  disabled: 'bad_request',
+  'not-shared': 'bad_request',
+  residency: 'residency',
+  media: 'bad_request',
+};
+
+const embedPayload: GatePayload<string[], EmbedResult> = {
+  contents: (texts) => texts,
+  mapRequest: (texts, map) => texts.map((t) => (typeof t === 'string' ? map(t) : t)),
+  mapResult: (result) => result,
+};
+
 const batches = <T>(items: T[], size: number | undefined): T[][] => {
   if (!size || items.length <= size) return [items];
   const out: T[][] = [];
@@ -55,8 +76,10 @@ const batches = <T>(items: T[], size: number | undefined): T[][] => {
 
 export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
   readonly #routes = new Map<string, Route>();
+  readonly #gate: Gate;
 
   constructor(private readonly options: EmbeddingRouterOptions) {
+    this.#gate = options.gate ?? createGate();
     this.reload(options.catalog);
   }
 
@@ -72,6 +95,7 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     const connections = new Map<string, EmbeddingConnection>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
       const adapter = adapters.get(endpoint.protocol) as EmbeddingAdapter;
+      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -85,6 +109,7 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           options: adapter.endpointOptions.parse(endpoint.options),
           maxRetries: options.maxRetries ?? 3,
           timeoutMs: options.timeoutMs ?? 60_000,
+          ...(guarded ? { fetch: guarded } : {}),
         }),
       );
     }
@@ -128,8 +153,29 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
         throw new EmbeddingError('residency', `embedder ${model.id} runs outside ${max}`);
     }
     const embedderRef: Ref = { kind: 'embedder', id: model.id };
+    const target: GateTarget = {
+      port: 'embedding',
+      operation: 'embed',
+      model: embedderRef,
+      endpoint: model.endpoint,
+      residency: model.residency,
+      admission: 'open',
+      ...(model.tenants ? { tenants: model.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(this.options.maxResidency ? { routerResidency: this.options.maxResidency } : {}),
+      ...(request.maxResidency ? { requestResidency: request.maxResidency } : {}),
+      refuse: (refusal, message) => new EmbeddingError(refusalCodes[refusal], message),
+    };
+    const payload: GatePayload<string[], EmbedResult> = {
+      ...embedPayload,
+      usage: (result) =>
+        withListPrice(
+          { inputTokens: result.usage.inputTokens, requests: 1 },
+          this.options.priceOf?.(model.id),
+        ),
+    };
 
-    const call = async (texts: string[]): Promise<EmbedResult> => {
+    const send = async (texts: string[]): Promise<EmbedResult> => {
       let result: EmbedResult;
       try {
         result = await connection.embed(config, texts, ctx.signal);
@@ -152,15 +198,9 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           'invalid_response',
           `embedder ${model.id} returned a vector of ${result.vectors[wrong]?.length} dimensions, expected ${model.dimensions}`,
         );
-      await ctx.meter(
-        withListPrice(
-          { inputTokens: result.usage.inputTokens, requests: 1 },
-          this.options.priceOf?.(model.id),
-        ),
-        embedderRef,
-      );
       return result;
     };
+    const call = (texts: string[]) => this.#gate.call(ctx, target, payload, texts, send);
 
     return {
       info: () => ({

@@ -12,12 +12,14 @@ description: Adapters are per wire protocol, not per vendor (ADR 0021). Models a
   endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.
 responsibilities:
   - Model catalog and discovery
-  - Residency and capability checks
-  - Refusing callers the environment does not admit (lockdown, ADR 0033)
-  - Credential resolution and metering
+  - Capability checks
+  - Calls through the kernel gate, which checks admission (lockdown, ADR 0033), residency and
+    sharing, runs the payload guard and meters (ADR 0047)
+  - Credential resolution
 files:
   - packages/port-model/src/port.ts
   - packages/port-model/src/router.ts
+  - packages/port-model/src/gate.ts
   - packages/port-model/src/catalog.ts
   - packages/port-model/src/instructions.ts
 input: Generic chat request

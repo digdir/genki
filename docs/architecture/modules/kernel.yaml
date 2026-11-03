@@ -17,9 +17,13 @@ responsibilities:
   - Run tasks and stream client events
   - Enforce policy, tenant sharing and budgets
   - Own the audit record and the SPI for ports and stores
+  - Gate every model, embedding and rerank call (ADR 0047) with admission, enabled, tenant
+    sharing, residency, the payload guard, metering and the audit event kernel.gate.call
 files:
   - packages/kernel/src/kernel.ts
   - packages/kernel/src/spi.ts
+  - packages/kernel/src/gate.ts
+  - packages/kernel/src/gate-contract.ts
   - packages/kernel/src/memory.ts
   - packages/kernel/src/retention.ts
   - packages/kernel/src/secrets.ts
@@ -34,4 +38,4 @@ replaces:
   - module: telemetry
     how: Event log as the audit trail
 edges: []
-keywords: kernel task event log policy budget audit contracts spi
+keywords: kernel task event log policy budget audit contracts spi gate

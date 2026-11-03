@@ -9,9 +9,12 @@ packages:
   - '@genai/port-rerank'
 summary: Reranks candidate passages through a catalog of rerank endpoints.
 description: Same router shape as the model and knowledge ports; ColBERT is the first adapter.
+  Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown,
+  checked against tenant sharing and every residency ceiling, masked and metered.
 responsibilities:
   - Rerank catalog
   - Rerank with timeouts and warnings
+  - Calls through the kernel gate
 files:
   - packages/port-rerank/src/port.ts
   - packages/port-rerank/src/router.ts

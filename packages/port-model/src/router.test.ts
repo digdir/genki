@@ -686,3 +686,105 @@ describe('reloading the catalog', () => {
     );
   });
 });
+
+describe('model calls through the gate', () => {
+  it('a payload with an image is refused before it leaves', async () => {
+    const { router, a } = setup();
+    const image = [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }];
+
+    await expect(
+      open(router, 'a/small').chat({
+        messages: [{ role: 'user', content: image as unknown as string }],
+      }),
+    ).rejects.toMatchObject({ code: 'refused', message: expect.stringMatching(/image/) });
+    expect(a.calls).toEqual([]);
+  });
+
+  it("a chat call outside the service's residency is refused", async () => {
+    const { router, b } = setup();
+    const { ctx } = testContext();
+
+    await expect(
+      open(router, 'b/large', { ...ctx, serviceResidency: 'eu' }).chat({ messages: [] }),
+    ).rejects.toMatchObject({ code: 'residency', message: 'model b/large runs outside eu' });
+    expect(b.calls).toEqual([]);
+  });
+
+  it('every gate call writes one kernel.gate.call audit event without payload text', async () => {
+    const { router } = setup();
+    const kari: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'kari',
+      tenant: '999888777',
+    };
+    const model = { kind: 'model', id: 'a/small', tenant: '999888777' };
+    const kernel = createKernel({
+      strategies: [
+        {
+          id: 'ask',
+          version: '1',
+          requires: { kernel: 1, ports: ['model'], features: [] },
+          run: async function* (ctx) {
+            const port = await ctx.use<ModelPort>('model', model, { serviceResidency: 'norway' });
+            await port.chat({ messages: [{ role: 'user', content: 'hemmelig spørsmål' }] });
+            for await (const chunk of port.chatStream({
+              messages: [{ role: 'user', content: 'hemmelig strøm' }],
+            }))
+              if (chunk.kind === 'done') yield { type: 'kernel.result', data: [] };
+          },
+        },
+      ],
+      capabilities: [
+        {
+          descriptor: {
+            id: 'ask',
+            version: '1',
+            tenant: '999888777',
+            title: 'ask',
+            description: 'ask',
+            input: {},
+            interaction: ['unary'],
+            accepts: [],
+            produces: [],
+            emits: [],
+            oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+          },
+          strategy: { id: 'ask', version: '1' },
+          config: {},
+          grants: [{ port: 'model', ref: model }],
+        },
+      ],
+      ports: { model: router },
+      policy: { decide: async () => ({ allow: true }) },
+    });
+
+    const run = await kernel.invoke(kari, 'ask', {});
+    await run.result;
+    const audit = [];
+    for await (const e of await kernel.events(kari, run.task, { audience: 'audit' }))
+      if (e.type === 'kernel.gate.call') audit.push(e.data);
+
+    expect(audit).toEqual([
+      {
+        port: 'model',
+        operation: 'chat',
+        model: 'a/small',
+        endpoint: 'one',
+        residency: 'norway',
+        outcome: 'ok',
+        usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
+      },
+      {
+        port: 'model',
+        operation: 'chat',
+        model: 'a/small',
+        endpoint: 'one',
+        residency: 'norway',
+        outcome: 'ok',
+        usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
+      },
+    ]);
+    expect(JSON.stringify(audit)).not.toMatch(/hemmelig/);
+  });
+});

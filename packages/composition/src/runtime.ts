@@ -24,6 +24,7 @@ import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
+  createGate,
   createKernel,
   type Capability as KernelCapability,
   type EventLog,
@@ -307,7 +308,10 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const gate = createGate(input.admitsModelUse ? { admits: input.admitsModelUse } : {});
   const embedders = new EmbeddingRouter({
+    gate,
+    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
@@ -377,6 +381,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     input.onWarning,
   );
   const models = new ModelRouter({
+    gate,
     catalog: input.catalogs.models,
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     adapters: modelAdapters,
@@ -403,6 +408,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const rerank = new RerankRouter({
+    gate,
     catalog: input.catalogs.rerank,
     adapters: [colbert],
     ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),

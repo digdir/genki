@@ -1,5 +1,12 @@
 import { textPart, type Input, type Part, type ServiceProvenance } from '@genai/contracts';
-import type { Emitted, Feature, InvocationContext, Strategy } from '@genai/kernel';
+import {
+  withUse,
+  type Emitted,
+  type Feature,
+  type InvocationContext,
+  type Residency,
+  type Strategy,
+} from '@genai/kernel';
 import type { ModelPort } from '@genai/port-model';
 import {
   assembleLanguage,
@@ -18,7 +25,7 @@ import {
   type Language,
   type WrittenStandard,
 } from './language.js';
-import { guardModel } from './model.js';
+import { modelGuard } from './model.js';
 import { createVault, findPii, redactPii, type PiiVault } from './pii.js';
 import {
   applyRules,
@@ -93,7 +100,7 @@ interface Held {
 
 interface RuntimeConfig {
   guardrails?: unknown;
-  model?: { primary?: string; tenant?: string };
+  model?: { primary?: string; tenant?: string; residency?: Residency };
 }
 
 const questionOf = (input: Input) => {
@@ -189,18 +196,26 @@ export const guardStrategy = <C>(
       aiDisclosure: info.aiDisclosure ?? defaultDisclosure,
       ...extra,
     });
-    const guarded = (instruction?: string): InvocationContext => ({
-      ...ctx,
-      use: async <P>(port: string, ref: Parameters<InvocationContext['use']>[1]) => {
-        const opened = await ctx.use<P>(port, ref);
-        if (port !== 'model') return opened;
-        return guardModel(opened as ModelPort, {
-          ...(vault ? { vault, restore: pii?.restore ?? true } : {}),
-          ...(instruction ? { instruction } : {}),
-          onServed: (model) => served.add(model),
-        }) as P;
-      },
-    });
+    const guarded = (instruction?: string): InvocationContext => {
+      const guard = modelGuard({
+        ...(vault ? { vault, restore: pii?.restore ?? true } : {}),
+        ...(instruction ? { instruction } : {}),
+        onServed: (model) => served.add(model),
+      });
+      const serviceResidency = runtime.model?.residency;
+      return {
+        ...ctx,
+        use: <P>(...[port, ref, options]: Parameters<InvocationContext['use']>) =>
+          ctx.use<P>(
+            port,
+            ref,
+            withUse(options, {
+              guards: [guard],
+              ...(serviceResidency ? { serviceResidency } : {}),
+            }),
+          ),
+      };
+    };
     const primaryModel = async (scoped: InvocationContext) => {
       const id = runtime.model?.primary;
       if (!id) throw new Error('the service has no model for its guardrails');

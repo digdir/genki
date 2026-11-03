@@ -1,7 +1,10 @@
 import { withListPrice, type Principal, type Ref } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
   type Credential,
+  type Gate,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
@@ -19,6 +22,7 @@ import {
   type CatalogModel,
   type ModelCatalog,
 } from './catalog.js';
+import { chatPayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
   ModelError,
@@ -58,6 +62,7 @@ export interface ModelRouterOptions {
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
   fetchFor?: (endpoint: string) => typeof fetch | undefined;
   admits?: (principal: Principal) => boolean;
+  gate?: Gate;
 }
 
 export interface ModelPrice {
@@ -116,8 +121,10 @@ export class ModelRouter implements PortProvider<ModelPort> {
   #discovered = new Map<string, Route>();
   #classes: Record<string, ModelClassification> = {};
   readonly #live = new Map<string, { residency: Residency; capabilities: Capability[] }>();
+  readonly #gate: Gate;
 
   constructor(private readonly options: ModelRouterOptions) {
+    this.#gate = options.gate ?? createGate(options.admits ? { admits: options.admits } : {});
     this.#adapters = new Map(options.adapters.map((a) => [a.protocol, a]));
     this.#catalog = this.#load(options.catalog);
   }
@@ -383,9 +390,24 @@ export class ModelRouter implements PortProvider<ModelPort> {
       return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
     };
     const served = { id: model.id, endpoint: model.endpoint, deployment: model.deployment };
-    const meter = async (result: ChatResult) => {
-      await ctx.meter(withListPrice(result.usage, this.options.priceOf?.(model.id)), modelRef);
-      await ctx.provenance?.({ model: served });
+    const gate = this.#gate;
+    const target: GateTarget = {
+      port: 'model',
+      operation: 'chat',
+      model: modelRef,
+      endpoint: model.endpoint,
+      residency: model.residency,
+      admission: 'admitted',
+      enabled: model.enabled,
+      ...(model.tenants ? { tenants: model.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(this.options.maxResidency ? { routerResidency: this.options.maxResidency } : {}),
+      refuse: modelRefusal,
+    };
+    const payload = {
+      ...chatPayload,
+      usage: (result: ChatResult) => withListPrice(result.usage, this.options.priceOf?.(model.id)),
+      provenance: () => ({ model: served }),
     };
     const observe = (result: ChatResult): ChatResult => {
       const { droppedParameters, ...rest } = result;
@@ -418,31 +440,33 @@ export class ModelRouter implements PortProvider<ModelPort> {
       chat: async (input) => {
         const request = bounded(input);
         require(request);
-        let result: ChatResult;
-        try {
-          result = await connection.chat(deployment, request, ctx.signal);
-        } catch (error) {
-          throw failure(error);
-        }
-        await meter(result);
+        const result = await gate.call(ctx, target, payload, request, async (sent) => {
+          try {
+            return await connection.chat(deployment, sent, ctx.signal);
+          } catch (error) {
+            throw failure(error);
+          }
+        });
         return observe(result);
       },
 
       chatStream: async function* (input): AsyncIterable<ChatChunk> {
         const request = bounded(input);
         require(request, ['stream']);
-        let result: ChatResult | undefined;
-        try {
-          for await (const chunk of connection.chatStream(deployment, request, ctx.signal)) {
-            if (chunk.kind === 'done') result = chunk.result;
-            else yield chunk;
+        const upstream = async function* (sent: ChatRequest): AsyncIterable<ChatChunk> {
+          let ended = false;
+          try {
+            for await (const chunk of connection.chatStream(deployment, sent, ctx.signal)) {
+              if (chunk.kind === 'done') ended = true;
+              yield chunk;
+            }
+          } catch (error) {
+            throw failure(error);
           }
-        } catch (error) {
-          throw failure(error);
-        }
-        if (!result) throw new ModelError('unavailable', 'the stream ended without a result');
-        await meter(result);
-        yield { kind: 'done', result: observe(result) };
+          if (!ended) throw new ModelError('unavailable', 'the stream ended without a result');
+        };
+        for await (const chunk of gate.stream(ctx, target, payload, request, upstream))
+          yield chunk.kind === 'done' ? { kind: 'done', result: observe(chunk.result) } : chunk;
       },
     };
   }

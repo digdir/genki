@@ -3129,10 +3129,13 @@
               'Run tasks and stream client events',
               'Enforce policy, tenant sharing and budgets',
               'Own the audit record and the SPI for ports and stores',
+              'Gate every model, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, metering and the audit event kernel.gate.call',
             ],
             files: [
               'packages/kernel/src/kernel.ts',
               'packages/kernel/src/spi.ts',
+              'packages/kernel/src/gate.ts',
+              'packages/kernel/src/gate-contract.ts',
               'packages/kernel/src/memory.ts',
               'packages/kernel/src/retention.ts',
               'packages/kernel/src/secrets.ts',
@@ -3146,7 +3149,7 @@
               { module: 'telemetry', how: 'Event log as the audit trail' },
             ],
             edges: [],
-            keywords: 'kernel task event log policy budget audit contracts spi',
+            keywords: 'kernel task event log policy budget audit contracts spi gate',
             schemas: [],
           },
           {
@@ -6331,13 +6334,14 @@
               'Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.',
             responsibilities: [
               'Model catalog and discovery',
-              'Residency and capability checks',
-              'Refusing callers the environment does not admit (lockdown, ADR 0033)',
-              'Credential resolution and metering',
+              'Capability checks',
+              'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), residency and sharing, runs the payload guard and meters (ADR 0047)',
+              'Credential resolution',
             ],
             files: [
               'packages/port-model/src/port.ts',
               'packages/port-model/src/router.ts',
+              'packages/port-model/src/gate.ts',
               'packages/port-model/src/catalog.ts',
               'packages/port-model/src/instructions.ts',
             ],
@@ -6804,8 +6808,12 @@
             packages: ['@genai/port-rerank'],
             summary: 'Reranks candidate passages through a catalog of rerank endpoints.',
             description:
-              'Same router shape as the model and knowledge ports; ColBERT is the first adapter.',
-            responsibilities: ['Rerank catalog', 'Rerank with timeouts and warnings'],
+              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, masked and metered.",
+            responsibilities: [
+              'Rerank catalog',
+              'Rerank with timeouts and warnings',
+              'Calls through the kernel gate',
+            ],
             files: [
               'packages/port-rerank/src/port.ts',
               'packages/port-rerank/src/router.ts',
@@ -6913,6 +6921,10 @@
                             type: 'string',
                             enum: ['degrade', 'fail'],
                           },
+                          tenants: {
+                            type: 'array',
+                            items: { type: 'string', pattern: '^\\d{9}$' },
+                          },
                           options: {
                             default: {},
                             type: 'object',
@@ -6942,11 +6954,11 @@
             packages: ['@genai/port-embedding'],
             summary: 'Turns text into vectors through a catalog of embedding models.',
             description:
-              'Same router shape as the model and rerank ports. Checks residency and dimensions, batches input and meters usage to the caller, so search engines without built-in embedding can use vectors.',
+              "Same router shape as the model and rerank ports. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, masks and meters, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
             responsibilities: [
               'Embedding catalog',
-              'Residency and dimension checks',
-              'Batching and metering',
+              'Dimension checks and batching',
+              "Calls through the kernel gate, with the endpoint's egress guard",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
@@ -7064,6 +7076,10 @@
                             type: 'integer',
                             exclusiveMinimum: 0,
                             maximum: 9007199254740991,
+                          },
+                          tenants: {
+                            type: 'array',
+                            items: { type: 'string', pattern: '^\\d{9}$' },
                           },
                           options: {
                             default: {},

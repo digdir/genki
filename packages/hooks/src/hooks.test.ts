@@ -1,6 +1,7 @@
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
+import type { Emitted, InvocationContext, Strategy, UseOptions } from '@genai/kernel';
 import { describeContract } from '@genai/plugins/testing';
 import type { ModelPort } from '@genai/port-model';
+import { gatedFake } from '@genai/port-model/testing';
 import type { KnowledgePort } from '@genai/port-knowledge';
 import type { ToolPort } from '@genai/port-tools';
 import { describe, expect, it } from 'vitest';
@@ -164,7 +165,8 @@ const ctx = (): InvocationContext =>
     task: 't1',
     capability: { id: '991825827/svar' },
     signal: new AbortController().signal,
-    use: async (port: string) => (port === 'model' ? fakeModel() : fakeTool),
+    use: async (port: string, _ref: unknown, options?: UseOptions) =>
+      port === 'model' ? gatedFake(fakeModel(), options) : fakeTool,
   }) as unknown as InvocationContext;
 
 const inner = (body: (ctx: InvocationContext) => AsyncIterable<Emitted>): Strategy => ({
