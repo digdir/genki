@@ -65,19 +65,36 @@ export interface HeavyDeps {
 }
 
 /**
- * The recall check samples this many of a generation's own vectors and sends a REINDEX when
- * recall@10 falls more than `recallMargin` below the generation's baseline. Measured with
+ * The recall check samples up to 200 of a generation's own vectors and sends a REINDEX when
+ * recall@10 falls more than the margin below the generation's baseline. Measured with
  * `scripts/knowledge-recall-noise.sql` on the Kudos pilot's 20,248 page vectors (1,536 dimensions,
  * m 16, ef_construction 64, ef_search 40, pgvector 0.8.2), 20 samples per size on one unchanged
  * index: recall@10 0.9970 ± 0.0031 at 50 vectors, 0.9977 ± 0.0023 at 100, 0.9982 ± 0.0014 at 200
  * and 0.9976 ± 0.0013 at 500, lowest 0.9945 at 200. So 200 is where the spread stops shrinking.
  * A night and its baseline are two samples, so their difference spreads by about √2 · 0.0014 ≈
  * 0.002; a margin of 0.01 is five of those, three times the largest healthy gap seen (0.0037),
- * while a corrupted graph loses far more. Exact search reads the whole partition per query: about
- * 50 ms at 20,000 vectors here, so about 25 minutes a night at 3 million.
+ * while a corrupted graph loses far more.
+ *
+ * Each exact search reads every vector of the partition, so the queries share a budget of
+ * `recallBudget` vector reads a night: 200 up to 500,000 chunks, fewer above, never under 50
+ * (about 3 million chunks, Kudos's size). Fewer queries are noisier, by √(200 / n) as measured
+ * (0.0031 at 50 against 0.0014 at 200), so the margin widens by the same factor: 0.02 at 50.
  */
 export const recallSampleSize = 200;
 export const recallMargin = 0.01;
+export const recallBudget = recallSampleSize * 500_000;
+const fewestRecallQueries = 50;
+
+export const recallQueries = (chunks: number) => {
+  const sample = Math.max(
+    fewestRecallQueries,
+    Math.min(recallSampleSize, Math.floor(recallBudget / Math.max(chunks, 1))),
+  );
+  return {
+    sample,
+    margin: Number((recallMargin * Math.sqrt(recallSampleSize / sample)).toFixed(4)),
+  };
+};
 
 /** A build still running this long after the window's end is cancelled (ADR 0042, "Heavy work"). */
 export const buildOverrunMs = 60 * 60_000;
@@ -161,7 +178,10 @@ export const buildWork = (deps: HeavyDeps) =>
             overrun = (await deps.server.progress(backend).catch(() => undefined)) ?? 'unknown';
             deps.log?.('knowledge build cancelled', { generation, kind, progress: overrun });
             await deps.server.cancel(backend);
-          })(),
+          })().catch((error: unknown) => {
+            overrun = undefined;
+            deps.log?.('knowledge build cancel failed', { generation, kind, error: String(error) });
+          }),
         Math.max(end.getTime() + buildOverrunMs - started.getTime(), 0),
       );
     try {
@@ -176,6 +196,7 @@ export const buildWork = (deps: HeavyDeps) =>
           throttled: !inNightWindow(deps.window(), nowOf(deps)),
         });
     } catch (error) {
+      deps.log?.('knowledge build failed', { generation, kind, error: String(error) });
       if (overrun !== undefined)
         throw new Error(
           `the build was cancelled an hour after the night window ended, at ${JSON.stringify(overrun)}`,
@@ -203,10 +224,11 @@ export const checkWork = (deps: HeavyDeps) =>
     for (const dataset of deps.datasets()) {
       const generation = dataset.generation;
       if (!generation) continue;
-      const sample = await deps.server.recall(generation, { sample: recallSampleSize });
+      const { sample: size, margin } = recallQueries(await deps.server.chunks(generation));
+      const sample = await deps.server.recall(generation, { sample: size });
       if (!sample) continue;
       const baseline = await deps.server.baseline(generation, sample.recall);
-      const dropped = sample.recall < baseline - recallMargin;
+      const dropped = sample.recall < baseline - margin;
       deps.log?.('knowledge recall checked', { generation, ...sample, baseline, dropped });
       if (dropped)
         await sendHeavy(deps, { tenant: tenantOf(dataset.id), generation, kind: 'reindex' });
@@ -258,7 +280,7 @@ export const heavyWindow = (deps: HeavyDeps, work: { build: QueueWork; fill: Que
 /**
  * The reconciler's last step of a run whose jobs have ended: its `VACUUM (ANALYZE)` of the dataset's
  * active generation, or the `knowledge.build` job for it, after which the run ends once that job
- * has. A VACUUM that waited too long for writers is tried again on the next pass.
+ * has. A VACUUM that fails, as one that waited too long for writers, is tried again on the next pass.
  */
 export const finishRun =
   (
@@ -275,6 +297,7 @@ export const finishRun =
       return false;
     } catch (error) {
       deps.log?.('knowledge run vacuum failed', { run: run.id, generation, error: String(error) });
-      return (error as { code?: string }).code !== '55P03';
+      // Only a partition that no longer exists has nothing left to VACUUM; anything else is tried again.
+      return (error as { code?: string }).code === '42P01';
     }
   };

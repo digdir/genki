@@ -27,24 +27,16 @@ export const tryGenerationWrite = async (client: PoolClient, generation: string)
   return rows[0]?.ok === true;
 };
 
-/** Whether a writer would get the generation's lock now: taken shared and let go at once. */
+/**
+ * Whether a writer would get the generation's lock now: one statement in a transaction of its own,
+ * so the lock ends with it and never stays on a pooled connection.
+ */
 export const generationWritable = async (pool: Pool, generation: string) => {
-  const client = await pool.connect();
-  try {
-    const { rows } = await client.query<{ ok: boolean }>(
-      `select pg_try_advisory_lock_shared($1::int, hashtext($2)) as ok`,
-      [generationLockSpace, generation],
-    );
-    const ok = rows[0]?.ok === true;
-    if (ok)
-      await client.query(`select pg_advisory_unlock_shared($1::int, hashtext($2))`, [
-        generationLockSpace,
-        generation,
-      ]);
-    return ok;
-  } finally {
-    client.release();
-  }
+  const { rows } = await pool.query<{ ok: boolean }>(
+    `select pg_try_advisory_xact_lock_shared($1::int, hashtext($2)) as ok`,
+    [generationLockSpace, generation],
+  );
+  return rows[0]?.ok === true;
 };
 
 const partitionsOf = (generation: string) =>
@@ -131,6 +123,14 @@ export const reindexGeneration = (owner: Pool, generation: string, options: Main
     await prepareSession(client, options);
     for (const table of ['kn_chunks', 'kn_phrases'] as const) {
       const index = `${partitionOf(table, generation)}_vec`;
+      // A REINDEX CONCURRENTLY cancelled half-way leaves an invalid copy that nothing else drops.
+      const { rows: leftovers } = await client.query<{ name: string }>(
+        `select c.relname as name from pg_index i join pg_class c on c.oid = i.indexrelid
+          where not i.indisvalid and c.relname like $1`,
+        [`${index}_ccnew%`],
+      );
+      for (const { name } of leftovers)
+        await client.query(`drop index concurrently if exists ${name}`);
       const { rows } = await client.query<{ found: string | null }>(
         `select to_regclass($1)::text as found`,
         [index],
@@ -191,31 +191,42 @@ export const generationsToFreeze = async (owner: Pool) => {
   return [...new Set(tables.filter((t) => old.has(t.name)).map((t) => t.generation))];
 };
 
-/** A build's progress, for the report when it is cancelled at the window's end. */
+/**
+ * Reads another backend of the worker's login as that login, not as the owner role it switches to:
+ * PostgreSQL shows progress and allows a cancel only to a member of the backend's own role.
+ */
+const asLogin = (owner: Pool, run: (client: PoolClient) => Promise<unknown>) =>
+  onSession(owner, async (client) => {
+    await client.query('set role none');
+    return run(client);
+  });
+
+/** A build's or VACUUM's progress, for the report when it is cancelled at the window's end. */
 export const buildProgress = async (owner: Pool, pid: number) => {
-  const { rows } = await owner.query<{
-    phase: string;
-    blocks_done: string;
-    blocks_total: string;
-    tuples_done: string;
-    tuples_total: string;
-  }>(
-    `select phase, blocks_done::text, blocks_total::text, tuples_done::text, tuples_total::text
-       from pg_stat_progress_create_index where pid = $1`,
-    [pid],
-  );
-  const row = rows[0];
-  return row
+  let found: Record<string, string> | undefined;
+  await asLogin(owner, async (client) => {
+    const { rows } = await client.query<Record<string, string>>(
+      `select phase, blocks_done::text || '/' || blocks_total::text as blocks,
+              tuples_done::text || '/' || tuples_total::text as tuples
+         from pg_stat_progress_create_index where pid = $1
+       union all
+       select phase, heap_blks_scanned::text || '/' || heap_blks_total::text, null
+         from pg_stat_progress_vacuum where pid = $1`,
+      [pid],
+    );
+    found = rows[0];
+  });
+  return found?.phase
     ? {
-        phase: row.phase,
-        blocks: `${row.blocks_done}/${row.blocks_total}`,
-        tuples: `${row.tuples_done}/${row.tuples_total}`,
+        phase: found.phase,
+        blocks: found.blocks,
+        ...(found.tuples ? { tuples: found.tuples } : {}),
       }
     : undefined;
 };
 
 export const cancelBackend = (owner: Pool, pid: number) =>
-  owner.query(`select pg_cancel_backend($1)`, [pid]);
+  asLogin(owner, (client) => client.query(`select pg_cancel_backend($1)`, [pid]));
 
 export interface RecallSample {
   recall: number;

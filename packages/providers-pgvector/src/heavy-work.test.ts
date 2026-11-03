@@ -6,6 +6,8 @@ import { stopPostgres } from '@genai/providers-postgres/testing';
 import {
   attachGeneration,
   buildGeneration,
+  buildProgress,
+  cancelBackend,
   generationChunks,
   generationLockSpace,
   generationsToFreeze,
@@ -242,6 +244,66 @@ describe('the VACUUM workaround for pgvector 0.8.2', () => {
   it('counts the chunks a generation holds', async () => {
     const { generation } = await loaded(4);
     expect(await generationChunks(owner, generation)).toBe(12);
+  });
+});
+
+describe('builds the worker watches', () => {
+  it("a build's progress is read and the build cancelled from the worker's owner login", async () => {
+    // A slow index expression keeps CREATE INDEX running long enough to watch and cancel it.
+    await owner.query(`create table if not exists slow_build (x int)`);
+    await owner.query(`insert into slow_build select generate_series(1, 200)`);
+    await owner.query(
+      `create or replace function slow_id(x int) returns int immutable language sql
+         as $$ select x from (select pg_sleep(0.05)) s $$`,
+    );
+    const session = await owner.connect();
+    const { rows } = await session.query<{ pid: number }>(`select pg_backend_pid() as pid`);
+    const pid = rows[0]?.pid as number;
+    const building = session.query(`create index slow_build_x on slow_build ((slow_id(x)))`);
+    building.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const progress = await buildProgress(owner, pid);
+    expect(progress?.phase).toMatch(/building index/);
+    await cancelBackend(owner, pid);
+    await expect(building).rejects.toThrow(/canceling statement/);
+    session.release(true);
+  }, 60_000);
+});
+
+describe('REINDEX', () => {
+  const vecIndex = (generation: string) => `${partitionOf('kn_chunks', generation)}_vec`;
+  const fileOf = async (index: string) =>
+    (
+      await admin.query<{ file: string }>(
+        `select relfilenode::text as file from pg_class where relname = $1`,
+        [index],
+      )
+    ).rows[0]?.file;
+
+  it("REINDEX rebuilds the generation's HNSW indexes", async () => {
+    const { generation } = await loaded(4);
+    const before = await fileOf(vecIndex(generation));
+    expect(before).toBeDefined();
+    await reindexGeneration(owner, generation, {});
+    expect(await fileOf(vecIndex(generation))).not.toBe(before);
+  });
+
+  it('a cancelled REINDEX leaves no invalid index behind', async () => {
+    const { generation } = await loaded(4);
+    const chunks = partitionOf('kn_chunks', generation);
+    // What a REINDEX CONCURRENTLY cancelled half-way leaves: an invalid copy named _ccnew.
+    await owner.query(
+      `create index ${vecIndex(generation)}_ccnew on ${chunks}
+         using hnsw ((vec::halfvec(${dims})) halfvec_cosine_ops)`,
+    );
+    await admin.query(`update pg_index set indisvalid = false where indexrelid = $1::regclass`, [
+      `${vecIndex(generation)}_ccnew`,
+    ]);
+    await reindexGeneration(owner, generation, {});
+    const { rows } = await admin.query(`select relname from pg_class where relname like $1`, [
+      `${chunks}%ccnew%`,
+    ]);
+    expect(rows).toEqual([]);
   });
 });
 

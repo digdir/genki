@@ -132,7 +132,9 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
       }
     }
     if (stopping.cancelRequestedAt)
-      for (const server of deps.servers) result.dropped += await server.cancel(run.id);
+      // A cancelled run still ends with its VACUUM, so its build job is kept (ADR 0042, "Heavy work").
+      for (const server of deps.servers)
+        result.dropped += await server.cancel(run.id, { except: ['knowledge.build'] });
     // One server after the other, the platform server first: an ingest job sends its last
     // document jobs before it completes, so a count taken in this order cannot miss both.
     let open = 0;

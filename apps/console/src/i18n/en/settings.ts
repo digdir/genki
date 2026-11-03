@@ -254,7 +254,7 @@ export const settings = {
   descSynthesisInstructions:
     'A custom system instruction for the answering model. Empty uses the built-in one.',
   descKnowledgeNightWindow:
-    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or «always» to let them run at any hour, as before a launch.',
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
   descKnowledgeHeavyThreshold:
     'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   descKnowledgeSwitchRetentionDays:

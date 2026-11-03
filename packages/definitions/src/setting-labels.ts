@@ -310,7 +310,7 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'knowledge.nightWindow': {
       label: 'Night window for heavy work',
-      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or «always» to let them run at any hour, as before a launch.',
+      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
     },
     'knowledge.heavyThreshold': {
       label: 'Heavy work threshold (chunks)',

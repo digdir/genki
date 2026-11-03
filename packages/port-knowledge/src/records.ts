@@ -76,7 +76,6 @@ export interface IndexRecord {
 /** `checked`: a re-checked page that still answered, left as the generation holds it. */
 export type IndexOutcome = 'stored' | 'skipped' | 'deleted' | 'checked';
 
-/** The document records of the knowledge server, as the worker's writer reaches them. */
 /**
  * A writer that cannot get its generation's lock, because VACUUM holds it or waits for it: the
  * job writes nothing and is sent again later (ADR 0042, "Heavy work", the pgvector 0.8.2 workaround).
@@ -88,6 +87,7 @@ export class GenerationBusy extends Error {
   }
 }
 
+/** The document records of the knowledge server, as the worker's writer reaches them. */
 export interface DocumentRecords {
   /** The records a pipeline owns in a dataset, with the change each holds in the generation. */
   owned(dataset: string, pipeline: string, generation: string): Promise<OwnedRecord[]>;

@@ -16,6 +16,7 @@ import {
   finishRun,
   heavyWindow,
   recallMargin,
+  recallQueries,
   runVacuum,
   type HeavyDeps,
   type HeavyServer,
@@ -237,6 +238,16 @@ describe("a run's end", () => {
     expect(t.deps.server.vacuum).not.toHaveBeenCalled();
   });
 
+  it('a run whose VACUUM fails stays open for the next pass', async () => {
+    const t = deps({
+      server: server({ vacuum: vi.fn(async () => Promise.reject(new Error('connection reset'))) }),
+    });
+    expect(await finishRun(t.deps, async () => undefined)(run)).toBe(false);
+    const gone = Object.assign(new Error('relation does not exist'), { code: '42P01' });
+    const dropped = deps({ server: server({ chunks: vi.fn(async () => Promise.reject(gone)) }) });
+    expect(await finishRun(dropped.deps, async () => undefined)(run)).toBe(true);
+  });
+
   it('a VACUUM that waited too long for the lock is tried again on the next pass', async () => {
     const busy = Object.assign(new Error('canceling statement due to lock timeout'), {
       code: '55P03',
@@ -321,6 +332,57 @@ describe('knowledge.build', () => {
     }
   });
 
+  it('a build whose cancel fails is logged, and the build goes on', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let finish: () => void = () => undefined;
+      const slow = server({
+        build: vi.fn(
+          (_d: DatasetConfig, _g: string, options: { onBackend?: (pid: number) => void }) =>
+            new Promise<void>((resolve) => {
+              options.onBackend?.(4242);
+              finish = resolve;
+            }),
+        ),
+        cancel: vi.fn(async () => Promise.reject(new Error('permission denied to cancel query'))),
+      });
+      const log = vi.fn();
+      const t = deps({ server: slow, log }, night);
+      const running = buildWork(t.deps).handler(
+        job(knowledgeBuildQueue, { tenant: '991825827', generation: 'g-docs-2', kind: 'index' }),
+      );
+      await vi.advanceTimersByTimeAsync(4.5 * 3_600_000 + 1_000);
+      expect(log).toHaveBeenCalledWith(
+        'knowledge build cancel failed',
+        expect.objectContaining({ generation: 'g-docs-2' }),
+      );
+      finish();
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a failed build is logged', async () => {
+    const log = vi.fn();
+    const t = deps(
+      {
+        log,
+        server: server({ vacuum: vi.fn(async () => Promise.reject(new Error('disk full'))) }),
+      },
+      night,
+    );
+    await expect(
+      buildWork(t.deps).handler(
+        job(knowledgeBuildQueue, { tenant: '991825827', generation: 'g-docs-1', kind: 'freeze' }),
+      ),
+    ).rejects.toThrow('disk full');
+    expect(log).toHaveBeenCalledWith(
+      'knowledge build failed',
+      expect.objectContaining({ generation: 'g-docs-1', kind: 'freeze' }),
+    );
+  });
+
   it('a catch-up build is refused until candidates exist', async () => {
     const t = deps({}, night);
     await expect(
@@ -360,6 +422,32 @@ describe('the nightly checks', () => {
         startAfter: night,
       },
     ]);
+  });
+
+  it("a large generation's recall check samples fewer vectors, with a margin widened to match", async () => {
+    expect(recallQueries(100_000)).toEqual({ sample: 200, margin: 0.01 });
+    expect(recallQueries(1_000_000).sample).toBe(100);
+    expect(recallQueries(3_000_000)).toEqual({ sample: 50, margin: 0.02 });
+    // A drop of 0.015 is a REINDEX on a small generation and noise on a large one.
+    const drop = (chunks: number) =>
+      deps(
+        {
+          server: server({
+            chunks: vi.fn(async () => chunks),
+            recall: vi.fn(async () => ({ recall: 0.98, queries: 50 })),
+            baseline: vi.fn(async () => 0.995),
+          }),
+        },
+        night,
+      );
+    const small = drop(100_000);
+    await checkWork(small.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(small.deps.server.recall).toHaveBeenCalledWith('g-docs-1', { sample: 200 });
+    expect(small.sent).toHaveLength(1);
+    const large = drop(3_000_000);
+    await checkWork(large.deps).handler(job(knowledgeCheckQueue, {}));
+    expect(large.deps.server.recall).toHaveBeenCalledWith('g-docs-1', { sample: 50 });
+    expect(large.sent).toEqual([]);
   });
 
   it('recall inside the measured margin sends nothing', async () => {

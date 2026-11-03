@@ -312,7 +312,12 @@ const ingestOnly = async (s: Awaited<ReturnType<typeof scenario>>) => {
 
 describe('heavy work and the VACUUM lock', () => {
   it("a writer that cannot get its generation's lock is sent again later", async () => {
-    const s = await scenario();
+    const embedded: string[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: { model: 'fake/embed', dimensions: 3 },
+      catalogEmbedding: { model: 'fake/embed', dimensions: 3 },
+      embedded,
+    });
     await s.file('a.md', '# A\n\nInnhold i a.');
     const { sent } = await ingestOnly(s);
     const vacuum = await owner().connect();
@@ -336,6 +341,8 @@ describe('heavy work and the VACUUM lock', () => {
     expect(wait).toBeGreaterThanOrEqual(110_000);
     expect(wait).toBeLessThanOrEqual(130_000);
     expect(await docsIn(s.generation)).toEqual([]);
+    // Given way before anything was embedded, so the retry pays for the model once.
+    expect(embedded).toEqual([]);
     const { rows } = await admin.query(`select state from src_documents where dataset = $1`, [
       s.dataset.id,
     ]);

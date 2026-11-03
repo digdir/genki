@@ -98,4 +98,23 @@ describe('the knowledge reconciler', () => {
       });
     expect(calls).toEqual(['finishing 0', 'finishing 2', 'end r-1']);
   });
+
+  it('a cancelled run keeps its VACUUM build job', async () => {
+    const cancels: (string[] | undefined)[] = [];
+    const cancelled = { ...run, cancelRequestedAt: '2026-11-02T11:00:00.000Z' };
+    await reconcileKnowledgeRuns({
+      records: { ...records([]), open: async () => [cancelled], find: async () => cancelled },
+      servers: [
+        {
+          ...server(async () => 1),
+          cancel: async (_run, options) => {
+            cancels.push(options?.except);
+            return 0;
+          },
+        },
+      ],
+      lockdown: false,
+    });
+    expect(cancels[0]).toEqual(['knowledge.build']);
+  });
 });

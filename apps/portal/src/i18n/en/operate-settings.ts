@@ -514,7 +514,7 @@ const settingDefs = {
   synthesis_instructions_desc:
     'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
   knowledge_nightWindow_desc:
-    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or «always» to let them run at any hour, as before a launch.',
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
   knowledge_heavyThreshold_desc:
     'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   knowledge_switchRetentionDays_desc:
