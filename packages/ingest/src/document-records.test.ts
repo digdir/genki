@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  indexRecord,
   ingestListing,
   metadataHash,
   planRun,
@@ -57,12 +58,63 @@ describe('planRun', () => {
   });
 
   it('an empty listing deletes nothing', () => {
-    const plan = planRun([], [owned('a', { missing: 1 }), owned('b', { missing: 4 })], {
-      complete: true,
-      deletes: 'explicit',
-    });
-    expect(deletes(plan)).toEqual([]);
-    expect(plan.writes).toEqual([]);
+    for (const rule of ['listed', 'crawled'] as const) {
+      const plan = planRun([], [owned('a', { missing: 1 }), owned('b', { missing: 4 })], {
+        complete: true,
+        deletes: rule,
+      });
+      expect(deletes(plan)).toEqual([]);
+      expect(plan.writes).toEqual([]);
+    }
+  });
+
+  it('deleting the last upload removes it at the next run', () => {
+    const plan = planRun([], [owned('upload')], { complete: true, deletes: 'explicit' });
+    expect(deletes(plan)).toEqual(['upload']);
+  });
+
+  it('an index job whose record changed while it ran fails, so its retry writes the newer change', async () => {
+    const failed: string[] = [];
+    const record = {
+      number: '7',
+      dataset: 'digdir/docs',
+      id: 'a',
+      record: { path: '/docs/a.md' },
+      state: null,
+      change: 3,
+      gone: 0,
+    };
+    const records = {
+      find: async () => record,
+      replace: async () => false,
+      fail: async (_r: unknown, reason: string) => void failed.push(reason),
+    } as unknown as DocumentRecords;
+    await expect(
+      indexRecord({
+        records,
+        listing: {
+          deletes: 'listed',
+          load: async () => ({
+            key: 'a',
+            docNum: 'a',
+            texts: ['# A\n\nInnhold.'],
+            stored: () => ({ id: 'a', title: 'A' }),
+            storedChunks: (chunks) => chunks.map((c) => ({ ...c })),
+          }),
+        },
+        dataset: 'digdir/docs',
+        run: 'run-1',
+        record: '7',
+        generation: 'g-1',
+        chunking: {
+          strategy: { kind: 'header-based' },
+          minimumLength: 1,
+          maximumLength: 4000,
+          metadataStyle: 'pr',
+        },
+      }),
+    ).rejects.toThrow('changed while its job ran');
+    expect(failed).toEqual(['StaleRecord']);
   });
 
   it('an explicit delete removes at once', () => {

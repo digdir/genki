@@ -231,7 +231,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
         `select change::text from src_documents where number = $1::bigint for update`,
         [record.number],
       );
-      if (Number(current[0]?.change) !== record.change) return;
+      if (Number(current[0]?.change) !== record.change) return false;
       const embedding = recipe.embedding as { dimensions?: number } | undefined;
       if ('document' in result)
         await replaceDocument(
@@ -261,6 +261,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
         ],
       );
       await moveDataVersion(client, generation);
+      return true;
     }),
 
   remove: (record, generation) =>

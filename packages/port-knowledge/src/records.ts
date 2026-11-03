@@ -92,14 +92,14 @@ export interface DocumentRecords {
   find(number: string): Promise<IndexRecord | undefined>;
   /**
    * Replaces one document in the generation in one transaction, or removes it when it was skipped,
-   * records the change it applied and moves the generation's data version. A record that has
-   * changed since the job read it is left alone: a later job applies its newer change.
+   * records the change it applied and moves the generation's data version. Answers false, and
+   * writes nothing, when the record has changed since the job read it.
    */
   replace(
     record: IndexRecord,
     generation: string,
     result: { document: IndexDocument } | { skip: string },
-  ): Promise<void>;
+  ): Promise<boolean>;
   /** Deletes a document from the generation and leaves its tombstone, in one transaction. */
   remove(record: IndexRecord, generation: string): Promise<void>;
   /**

@@ -44,6 +44,11 @@ export interface Listing {
   load(record: Record<string, unknown>): Promise<SourceDocument>;
 }
 
+/** A record that changed while its index job ran: the job fails, and its retry writes the newer change. */
+export class StaleRecord extends Error {
+  override readonly name = 'StaleRecord';
+}
+
 /** A page that answered 404 or 410 when an index job fetched it. */
 export class PageGone extends Error {
   override readonly name = 'PageGone';
@@ -104,8 +109,10 @@ export const planRun = (
       counts.unchanged++;
     }
   }
-  // An empty listing deletes nothing: an unmounted folder or an emptied store looks the same.
-  if (!options.complete || listedIds.size === 0) return { writes, process, counts };
+  // An empty listing of a listed or crawled source deletes nothing: an unmounted folder looks the
+  // same. An explicit source lists what it holds, so its last file is deleted like any other.
+  const empty = listedIds.size === 0 && options.deletes !== 'explicit';
+  if (!options.complete || empty) return { writes, process, counts };
   for (const record of owned) {
     if (listedIds.has(record.id) || record.state === 'deleted') continue;
     if (record.missing + 1 >= missesBeforeDelete[options.deletes]) {
@@ -156,6 +163,13 @@ export const indexRecord = async (
   }
 };
 
+const applied = (done: boolean) => {
+  if (!done)
+    throw new StaleRecord(
+      'the record changed while its job ran; the retry writes the newer change',
+    );
+};
+
 const writeRecord = async (
   options: IndexRecordOptions,
   found: IndexRecord,
@@ -176,15 +190,17 @@ const writeRecord = async (
     return 'skipped';
   }
   if (document.skip || document.texts.every((t) => t.trim() === '')) {
-    await options.records.replace(record, options.generation, {
-      skip: document.skip ?? 'no_text',
-    });
+    applied(
+      await options.records.replace(record, options.generation, {
+        skip: document.skip ?? 'no_text',
+      }),
+    );
     return 'skipped';
   }
   const prepared = await prepareDocument(document, options.chunking, 'pipeline');
   const doc = toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases);
   const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
-  await options.records.replace(record, options.generation, { document: written });
+  applied(await options.records.replace(record, options.generation, { document: written }));
   return 'stored';
 };
 

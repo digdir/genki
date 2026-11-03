@@ -303,7 +303,7 @@ describe('document records on the knowledge server', () => {
       noSend,
     );
     await records.replace(await recordOf(name, 'a'), generation, { document: doc('a', 'Ny') });
-    await records.replace(old, generation, { document: doc('a', 'Gammel') });
+    expect(await records.replace(old, generation, { document: doc('a', 'Gammel') })).toBe(false);
     const { rows } = await admin.query<{ text: string }>(
       `select text from ${partitionOf('kn_chunks', generation)} order by position`,
     );
