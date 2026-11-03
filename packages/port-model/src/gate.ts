@@ -26,6 +26,8 @@ const refusalCodes: Record<GateRefusal, ModelError['code']> = {
   disabled: 'bad_request',
   'not-shared': 'bad_request',
   residency: 'residency',
+  maturity: 'refused',
+  processor: 'refused',
   media: 'refused',
   shape: 'bad_request',
 };

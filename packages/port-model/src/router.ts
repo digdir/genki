@@ -26,7 +26,7 @@ import {
   type ModelCatalog,
 } from './catalog.js';
 import type { DecisionPort, DecisionRequest, DecisionResult } from './decision.js';
-import type { OperationPort } from './operation.js';
+import { unrecordedGovernance, type OperationGovernance, type OperationPort } from './operation.js';
 import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
@@ -69,6 +69,7 @@ export interface ModelRouterOptions {
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
   gate?: Gate;
   descriptors?: DescriptorRegistry;
+  governance?: OperationGovernance;
 }
 
 export interface ModelPrice {
@@ -522,29 +523,54 @@ export class ModelRouter implements PortProvider<ModelPort> {
 
   /** The kernel port `operation`: a descriptor call on a catalogue model, for the raw tier. */
   operations(): PortProvider<OperationPort> {
-    return { open: (ref, ctx) => this.#openOperation(ref, ctx) };
+    return { open: (ref, ctx) => this.#openOperation(ref, ctx, 'raw') };
   }
 
-  #openOperation(ref: Ref, ctx: PortContext): OperationPort {
+  /** The kernel port `described`: a reviewed descriptor call from a service's `call-operation` step. */
+  described(): PortProvider<OperationPort> {
+    return { open: (ref, ctx) => this.#openOperation(ref, ctx, 'described') };
+  }
+
+  #openOperation(ref: Ref, ctx: PortContext, tier: 'raw' | 'described'): OperationPort {
     const { model, target, served, info } = this.#resolve(ref, ctx, 'chat');
-    const raw: GateTarget = { ...target };
-    Reflect.deleteProperty(raw, 'refuse');
+    const plain: GateTarget = { ...target };
+    Reflect.deleteProperty(plain, 'refuse');
+    const governance = this.options.governance ?? unrecordedGovernance;
     return {
       info,
       call: async (id, input) => {
         const descriptor = this.options.descriptors?.get(id);
         if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
+        if (tier === 'described' && descriptor.status === 'review')
+          throw new ModelError(
+            'refused',
+            `${id} is in review; only an operator tries it, in the raw tier`,
+          );
         const endpoint = this.#described(model);
         if (endpoint.protocol !== descriptor.api.protocol)
           throw new ModelError(
             'unsupported',
             `${id} is for ${descriptor.api.protocol}, and ${model.id} speaks ${endpoint.protocol}`,
           );
+        const [maturity, processor] = await Promise.all([
+          governance.maturity(descriptor.operation),
+          governance.processor(model.endpoint),
+        ]);
         return describedCall(
           {
             gate: this.#gate,
             ctx,
-            target: { ...raw, port: 'operation', operation: descriptor.operation },
+            target: {
+              ...plain,
+              port: tier === 'raw' ? 'operation' : 'described',
+              operation: descriptor.operation,
+              maturity,
+              synthetic: tier === 'raw',
+              processorRecord: processor !== undefined,
+              ...(tier === 'described' && processor?.acceptsUnmaskedInput
+                ? { unmaskedInput: true }
+                : {}),
+            },
             descriptor,
             endpoint,
             deployment: model.deployment,

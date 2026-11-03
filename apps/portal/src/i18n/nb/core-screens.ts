@@ -118,6 +118,8 @@ export const changes = defineNamespace({
   clientsWebhookTest: 'testet webhooken til klienten',
   qualityMatrixRun: 'startet kvalitetsmatrisen',
   operationTry: 'prøvde en operasjonsbeskrivelse på syntetiske data',
+  operationMaturity: 'endret modenheten til en operasjonstype',
+  processorRecord: 'endret databehandleropplysningene for et modellendepunkt',
   taskReviewApprove: 'godkjente tabellen',
   taskReviewEdit: 'rettet i tabellen',
   clientsRemove: 'fjernet klienten',

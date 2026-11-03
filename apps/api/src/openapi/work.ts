@@ -96,6 +96,23 @@ const BySource = z
   .describe('The sum split per source; only when an AI gateway is configured');
 const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
 
+const OperationKind = z
+  .object({
+    kind: z.string(),
+    environment: z.enum(['test', 'production']),
+    maturity: z.enum(['test', 'production']),
+    promotion: z
+      .object({ by: z.string(), at: z.string() })
+      .optional()
+      .describe('A promotion to production that waits for a second operator'),
+    promotedBy: z.array(z.string()).optional(),
+    at: z.string().optional(),
+    descriptors: z.array(
+      z.object({ id: z.string(), status: z.enum(['review', 'described', 'typed']) }),
+    ),
+  })
+  .openapi('OperationKind');
+
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
 const TaskBase = z.object({
@@ -2033,6 +2050,49 @@ const qualityRoutes: RouteConfig[] = [
       403: problem('Not an operator, not a test environment, or a login that is not admitted'),
       404: problem('No such descriptor or model'),
       502: problem('The provider failed'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-kinds',
+    summary: 'The operation kinds, their maturity in this environment and their descriptors',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          environment: z.enum(['test', 'production']),
+          data: z.array(OperationKind),
+        }),
+        'The kinds',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-kinds/{kind}/maturity',
+    summary: 'Move an operation kind to test or production in this environment',
+    description: described(
+      operator,
+      audited,
+      'Production takes two different operators: the first asks, the second confirms. One operator may move a kind back to test.',
+    ),
+    request: {
+      params: z.object({ kind: pathParam('kind', 'decide') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ maturity: z.enum(['test', 'production']) })),
+    },
+    responses: {
+      200: json(
+        OperationKind.extend({
+          step: z.enum(['requested', 'promoted', 'demoted', 'unchanged']),
+        }),
+        'The kind after the change',
+      ),
+      400: problem('Invalid maturity or missing change reason'),
+      ...operatorOnly,
+      404: problem('No descriptor describes the kind'),
+      409: problem('The same operator asked for the promotion'),
     },
   }),
   createRoute({

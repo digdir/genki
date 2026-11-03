@@ -252,6 +252,7 @@ import { documentAccessRoutes } from './openapi/access.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { operatorOperationsModule } from './operator-operations.js';
+import { describedStepProblems, operationGovernanceModule } from './operation-governance.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
@@ -314,6 +315,7 @@ export const platformModules: PlatformModuleFactory[] = [
   serviceLifecycleModule,
   operatorModelsModule,
   operatorOperationsModule,
+  operationGovernanceModule,
   modelMatrixModule,
   hooksModule,
   pluginsModule,
@@ -1174,20 +1176,33 @@ export const createPlatform = async (input: PlatformInput) => {
       const problems = checkFlow(d, blocks);
       return problems.length > 0 ? problems : undefined;
     }
-    if (d.kind === 'Service')
-      for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+    if (d.kind === 'Service') {
+      const flowOf = async (flowRef: string) => {
         const at = flowRef.lastIndexOf('@');
         const id = flowRef.slice(0, at);
         const version = Number(flowRef.slice(at + 1));
         const flow =
           (await store.get('StepFlow', d.metadata.tenant, id, version))?.definition ??
           (await runtime.sharedRecipe(d.metadata.tenant, id, version));
-        const problems =
-          flow?.kind === 'StepFlow'
-            ? [...flowInputProblems(d, flow, flowRef), ...flowTableProblems(d, flow, flowRef)]
-            : [];
+        return flow?.kind === 'StepFlow' ? flow : undefined;
+      };
+      for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+        const flow = await flowOf(flowRef);
+        const problems = flow
+          ? [
+              ...flowInputProblems(d, flow, flowRef),
+              ...flowTableProblems(d, flow, flowRef),
+              ...(await describedStepProblems(d, flow, flowRef, {
+                descriptors: runtime.descriptors,
+                governance: runtime.governance,
+                models: () => models.describe(),
+                flow: flowOf,
+              })),
+            ]
+          : [];
         if (problems.length > 0) return problems;
       }
+    }
     const configProblems = await config.publishProblems(d);
     if (configProblems.length > 0) return configProblems;
     const evaluation = (d.spec as { evaluation?: { testSets?: string[]; gates?: string[] } })
@@ -1653,6 +1668,7 @@ export const createPlatform = async (input: PlatformInput) => {
     operations: {
       tier: runtime.environmentTier,
       descriptors: runtime.descriptors,
+      governance: runtime.governance,
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),

@@ -81,6 +81,14 @@ export const toCapabilities = (
         aiDisclosure: 'Svaret er laget med kunstig intelligens.',
       },
     };
+    const modelGrants = [
+      ...(model.primary ? [model.primary] : []),
+      ...(spec.model.fallback ? [spec.model.fallback] : []),
+      ...[...new Set(Object.values(spec.model.roles ?? {}))].filter(
+        (id): id is string =>
+          id !== undefined && id !== model.primary && id !== spec.model.fallback,
+      ),
+    ];
     const capability: Capability = {
       descriptor,
       strategy: { id: strategy.id, version: String(strategy.version) },
@@ -104,14 +112,10 @@ export const toCapabilities = (
         ...(spec.knowledge.reranker
           ? [{ port: 'rerank', ref: ref('reranker', spec.knowledge.reranker) }]
           : []),
-        ...(model.primary ? [{ port: 'model', ref: ref('model', model.primary) }] : []),
-        ...(spec.model.fallback ? [{ port: 'model', ref: ref('model', spec.model.fallback) }] : []),
-        ...[...new Set(Object.values(spec.model.roles ?? {}))]
-          .filter(
-            (id): id is string =>
-              id !== undefined && id !== model.primary && id !== spec.model.fallback,
-          )
-          .map((id) => ({ port: 'model', ref: ref('model', id) })),
+        ...modelGrants.map((id) => ({ port: 'model', ref: ref('model', id) })),
+        ...(strategy.id === 'step-flow'
+          ? modelGrants.map((id) => ({ port: 'described', ref: ref('model', id) }))
+          : []),
         ...(decisionModelOf(spec)
           ? [{ port: 'decision', ref: ref('model', decisionModelOf(spec) as string) }]
           : []),

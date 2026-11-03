@@ -384,6 +384,64 @@ describe('the gate', () => {
   });
 });
 
+describe('the bar before real data', () => {
+  const described = (extra: Partial<GateTarget>): GateTarget => ({
+    ...targetFor({}, 'described', 'classify', 'admitted'),
+    ...extra,
+  });
+  const attempt = async (tier: 'test' | 'production', target: GateTarget, request: unknown) => {
+    const audit: GateRecord[] = [];
+    let sent = false;
+    const outcome = await createGate({ tier })
+      .call(contextFor({}, [], audit), target, chat, request, async () => {
+        sent = true;
+        return 'svar';
+      })
+      .then(
+        () => 'ok',
+        (error: unknown) => (error instanceof GateError ? error.refusal : 'failed'),
+      );
+    return { outcome, sent, audit };
+  };
+  const hei = { messages: ['hei'] };
+
+  it('a kind in test serves only synthetic calls in a test environment', async () => {
+    const inTest = described({ maturity: 'test', processorRecord: true });
+    expect((await attempt('test', { ...inTest, synthetic: true }, hei)).outcome).toBe('ok');
+    const real = await attempt('test', inTest, hei);
+    expect(real).toMatchObject({ outcome: 'maturity', sent: false });
+    expect(real.audit).toMatchObject([{ outcome: 'refused', refusal: 'maturity' }]);
+    expect((await attempt('production', { ...inTest, synthetic: true }, hei)).outcome).toBe(
+      'maturity',
+    );
+    const ready = described({ maturity: 'production', processorRecord: true });
+    expect((await attempt('production', ready, hei)).outcome).toBe('ok');
+  });
+
+  it('an endpoint without a processor record cannot carry real data, and a synthetic call needs none', async () => {
+    const bare = described({ maturity: 'production', processorRecord: false });
+    expect(await attempt('production', bare, hei)).toMatchObject({
+      outcome: 'processor',
+      sent: false,
+    });
+    expect((await attempt('test', { ...bare, synthetic: true }, hei)).outcome).toBe('ok');
+  });
+
+  it('media passes only to a target whose endpoint records acceptsUnmaskedInput', async () => {
+    const image = {
+      messages: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }],
+    };
+    const ready = described({ maturity: 'production', processorRecord: true });
+    expect(await attempt('production', ready, image)).toMatchObject({
+      outcome: 'media',
+      sent: false,
+    });
+    expect((await attempt('production', { ...ready, unmaskedInput: true }, image)).outcome).toBe(
+      'ok',
+    );
+  });
+});
+
 describe('use', () => {
   it('hands the guards and the service residency to the port and writes kernel.gate.call to the audit log', async () => {
     const guard: PayloadGuard = { masker: tokenMasker() };

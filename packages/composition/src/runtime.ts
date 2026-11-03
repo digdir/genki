@@ -103,6 +103,7 @@ import {
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
 import { outsideRun } from './outside-run.js';
+import { operationGovernance } from './operation-governance.js';
 import {
   operationTryPolicy,
   operationTryRunner,
@@ -321,7 +322,9 @@ export const createRuntime = async (input: RuntimeInput) => {
   const modelAdapters = [openAiChat, anthropicMessages];
   const descriptors = input.descriptors ?? loadDescriptors();
   const environmentTier = input.environmentTier ?? 'production';
+  const governance = operationGovernance(configEntries, environmentTier);
   const gate = createGate({
+    tier: environmentTier,
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
     outside: outsideRun(input.log, input.now),
@@ -400,6 +403,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const models = new ModelRouter({
     gate,
     descriptors,
+    governance,
     catalog: input.catalogs.models,
     adapters: modelAdapters,
     sources: [azureDeployments],
@@ -488,6 +492,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       retrieval: async (ctx, config) =>
         createRagRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig)),
       agent: agentLoop as Strategy<unknown>,
+      describedOperations: true,
     }),
   );
   const wrap = input.wrapStrategy ?? ((strategy: Strategy) => strategy);
@@ -593,6 +598,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     blob,
     decision: models.decisions(),
     operation: models.operations(),
+    described: models.described(),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);
@@ -857,6 +863,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     quarantined: () => [...quarantine.values()],
     descriptors,
     environmentTier,
+    governance,
     tryOperation: operationTryRunner({
       kernel: () => kernel,
       registry,

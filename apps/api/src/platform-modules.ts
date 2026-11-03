@@ -1,4 +1,9 @@
-import type { EnvironmentTier, OperationTry, OperationTryOutcome } from '@genai/composition';
+import type {
+  EnvironmentTier,
+  OperationGovernanceStore,
+  OperationTry,
+  OperationTryOutcome,
+} from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
 import type { DescriptorRegistry } from '@genai/operations';
 import type {
@@ -67,6 +72,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   operations?: {
     tier: EnvironmentTier;
     descriptors: DescriptorRegistry;
+    governance: OperationGovernanceStore;
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };
   enrichmentTask?: TrackedWork;

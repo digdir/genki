@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-03: the described tier, maturity per kind and processor records
+
+- A step flow may use the block `call-operation@1` with `params: { descriptor, model? }` and the descriptor's typed input as the step `input`; `model` is one of the service's models and defaults to its main model. The step answers `{ result }`. Publishing a service whose flow (or a subflow it reaches) has such a step answers `422` unless the descriptor is reviewed (`status` `described` or `typed`, not `review`), its operation kind is `production` in this environment, the model is one of the service's, within the service's residency, and its endpoint has a processor record. The same refusals hold when the step runs, so a kind moved back to test or a removed processor record stops the service at the next call; `kernel.gate.call` names `port: "described"` and the refusal (`maturity`, `processor`, `media`).
+- `GET /operator/operation-kinds` and `POST /operator/operation-kinds/{kind}/maturity` with `{ "maturity": "test" | "production" }` (operators, audited, `change-reason`): production takes a second operator to confirm; the same operator asking twice gets `409`. Moving a kind back to test takes one operator.
+- `GET /operator/processor-records`, and `GET`, `PUT` and `DELETE /operator/model-endpoints/{id}/processor-record` (operators, audited, `change-reason` on writes): `{ agreement, subProcessors: [{ name, location }], retention: { days, note? }, acceptsUnmaskedInput, unmaskedInputReason? }`. `acceptsUnmaskedInput: true` needs a reason and lets image, audio and file input through to a described operation on that endpoint; text is still masked.
+- An operation descriptor may have `status: described`: reviewed, served to services through `call-operation@1`, without types of Genki's own.
+
 ### 2026-11-03: operation descriptors
 
 - `POST /operator/operations/{descriptor}/try` (operators, test only, audited admin task with `change-reason`): calls a descriptor on a catalogue model with synthetic data, masked and metered. See [operations.md](operations.md).

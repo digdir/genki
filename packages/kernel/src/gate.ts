@@ -13,7 +13,25 @@ export const narrowerResidency = (a: Residency | undefined, b: Residency | undef
 
 export type Admission = 'admitted' | 'open';
 
-export type GateRefusal = 'admission' | 'disabled' | 'not-shared' | 'residency' | 'media' | 'shape';
+export type GateRefusal =
+  | 'admission'
+  | 'disabled'
+  | 'not-shared'
+  | 'residency'
+  | 'maturity'
+  | 'processor'
+  | 'media'
+  | 'shape';
+
+export const environmentTiers = ['test', 'production'] as const;
+export type EnvironmentTier = (typeof environmentTiers)[number];
+
+export const maturities = ['test', 'production'] as const;
+export type Maturity = (typeof maturities)[number];
+
+/** A kind in test serves only synthetic calls in a test environment; a kind in production serves any call. */
+export const maturityAdmits = (maturity: Maturity, tier: EnvironmentTier, synthetic: boolean) =>
+  maturity === 'production' || (tier === 'test' && synthetic);
 
 export class GateError extends Error {
   constructor(
@@ -85,6 +103,10 @@ export interface GateTarget {
   tenant?: string;
   routerResidency?: Residency;
   requestResidency?: Residency;
+  maturity?: Maturity;
+  synthetic?: boolean;
+  processorRecord?: boolean;
+  unmaskedInput?: boolean;
   refuse?: (refusal: GateRefusal, message: string) => Error;
 }
 
@@ -107,6 +129,7 @@ export interface GateOptions {
   admits?: (principal: Principal) => boolean;
   egress?: (endpoint: string) => typeof fetch | undefined;
   outside?: OutsideRun;
+  tier?: EnvironmentTier;
 }
 
 export interface Gate {
@@ -151,9 +174,24 @@ export const createGate = (options: GateOptions = {}): Gate => {
     for (const ceiling of [target.routerResidency, target.requestResidency, ctx.serviceResidency])
       if (ceiling && !residencyAllows(ceiling, target.residency))
         refuse('residency', `${name} runs outside ${ceiling}`);
+    const synthetic = target.synthetic === true;
+    if (
+      target.maturity &&
+      !maturityAdmits(target.maturity, options.tier ?? 'production', synthetic)
+    )
+      refuse(
+        'maturity',
+        `the ${target.operation} operation is in test: it serves only synthetic calls in a test environment`,
+      );
+    if (target.processorRecord === false && !synthetic)
+      refuse(
+        'processor',
+        `endpoint ${target.endpoint ?? ''} has no processor record, so it cannot carry real data`,
+      );
   };
 
   const inShape = <Req, Res>(
+    target: GateTarget,
     payload: GatePayload<Res>,
     body: unknown,
     map?: (text: string) => string,
@@ -162,7 +200,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
       side: 'request',
       ...(map ? { map } : {}),
     });
-    if (walked.media.length > 0)
+    if (walked.media.length > 0 && target.unmaskedInput !== true)
       throw new GateError(
         'media',
         'the payload has image, audio or file content, which cannot be masked',
@@ -197,7 +235,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     payload: GatePayload<Res>,
     request: Req,
   ) => {
-    inShape(payload, request);
+    inShape(target, payload, request);
     const guards = distinct(ctx.guards ?? []);
     const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
     const call: GateCall = {
@@ -206,10 +244,10 @@ export const createGate = (options: GateOptions = {}): Gate => {
       model: target.model.id,
     };
     let body: Req = maskers.length
-      ? inShape(payload, request, (text) => maskers.reduce((t, m) => m.mask(t), text))
+      ? inShape(target, payload, request, (text) => maskers.reduce((t, m) => m.mask(t), text))
       : request;
     for (const guard of guards) if (guard.request) body = (await guard.request(call, body)) as Req;
-    body = inShape(payload, body);
+    body = inShape(target, payload, body);
     const restoring = maskers.filter((m) => m.unmask);
     const restore = (text: string) =>
       restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);

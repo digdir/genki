@@ -100,6 +100,8 @@ usage:
 stream: none
 `);
 
+const reviewedClassify = { ...classifyDescriptor, status: 'described' as const };
+
 const fakeChatAdapter: ModelAdapter = {
   protocol: 'fake',
   endpointOptions: z.object({}),
@@ -475,8 +477,8 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     },
   };
 
-  const operation: GateLane = {
-    port: 'operation',
+  const descriptorLane = (tier: 'operation' | 'described'): GateLane => ({
+    port: tier,
     operation: 'classify',
     admission: 'admitted',
     tenant,
@@ -507,7 +509,13 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
         },
         adapters: [{ ...fakeChatAdapter, protocol: 'openai-chat' }],
         secrets: envSecrets({ K: 'k' }),
-        descriptors: descriptorRegistry([classifyDescriptor]),
+        descriptors: descriptorRegistry([
+          tier === 'operation' ? classifyDescriptor : reviewedClassify,
+        ]),
+        governance: {
+          maturity: async () => 'production',
+          processor: async () => ({ acceptsUnmaskedInput: false }),
+        },
         ...(setup.routerResidency ? { maxResidency: setup.routerResidency } : {}),
         classifications: {
           load: async () =>
@@ -519,10 +527,9 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
         ...w,
         call: async (text, extra = {}) => {
           await router.refresh();
-          const port = router
-            .operations()
-            .open({ kind: 'model', id: 'fake/described', tenant }, w.ctx);
-          await port.call(classifyDescriptor.id, {
+          const ports = tier === 'operation' ? router.operations() : router.described();
+          const port = ports.open({ kind: 'model', id: 'fake/described', tenant }, w.ctx);
+          await port.call(reviewedClassify.id, {
             text: extra.media ? image : text,
             label:
               extra.smuggle === 'url'
@@ -536,9 +543,16 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
         },
       };
     },
-  };
+  });
 
-  return [model, decision, embedding, rerank, operation];
+  return [
+    model,
+    decision,
+    embedding,
+    rerank,
+    descriptorLane('operation'),
+    descriptorLane('described'),
+  ];
 };
 
 const subject: GateContractSubject = {

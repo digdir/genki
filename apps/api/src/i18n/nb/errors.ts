@@ -422,6 +422,29 @@ export const qualityErrors = defineNamespace({
   noPendingShare: 'ingen ventende deling av {skill}',
 });
 
+export const operationErrors = defineNamespace({
+  stepAt: '{at}: {message}',
+  fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
+  noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  descriptorInReview:
+    '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
+  kindInTest:
+    'operasjonen {operation} er i test i dette miljøet; to operatører må flytte den til produksjon før en tjeneste kan bruke den',
+  notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
+  noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
+  modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
+  noProcessorRecordForService:
+    'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
+  operatorsGovernOperations: 'bare operatører styrer operasjoner',
+  noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
+  noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
+  maturityValues: 'modenheten er test eller production',
+  ownPromotion:
+    'samme person kan ikke bekrefte sin egen forfremmelse; be en annen operatør bekrefte den',
+  noProcessorRecord: '{id} har ingen databehandleropplysninger',
+  noModelEndpoint: 'ingen modellendepunkt {id}',
+});
+
 export const adapterErrors = defineNamespace({
   fillFormOrAsk: 'Fyll ut skjemaet eller skriv et spørsmål.',
   fieldList: '{name} må være en liste med valg.',
@@ -486,6 +509,7 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,

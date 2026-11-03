@@ -162,7 +162,7 @@ export const releaseGate = (
         : { allow: true };
     const gate = catalog();
     if (
-      (action === 'use:model' || action === 'use:decision') &&
+      (action === 'use:model' || action === 'use:decision' || action === 'use:described') &&
       gate &&
       isCandidate(gate, resource.id)
     )

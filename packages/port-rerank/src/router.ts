@@ -39,6 +39,8 @@ const refusalCodes: Record<GateRefusal, RerankError['code']> = {
   disabled: 'bad_request',
   'not-shared': 'forbidden',
   residency: 'residency',
+  maturity: 'forbidden',
+  processor: 'forbidden',
   media: 'bad_request',
   shape: 'bad_request',
 };

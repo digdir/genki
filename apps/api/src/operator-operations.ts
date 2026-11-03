@@ -31,6 +31,8 @@ const gateStatus: Record<GateRefusal, 400 | 403> = {
   disabled: 403,
   'not-shared': 403,
   residency: 403,
+  maturity: 403,
+  processor: 403,
   media: 400,
   shape: 400,
 };

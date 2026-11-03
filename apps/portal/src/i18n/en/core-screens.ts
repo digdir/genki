@@ -123,6 +123,8 @@ export const changes = {
   clientsWebhookTest: "tested the client's webhook",
   qualityMatrixRun: 'started the quality matrix',
   operationTry: 'tried an operation descriptor on synthetic data',
+  operationMaturity: 'changed the maturity of an operation kind',
+  processorRecord: 'changed the processor record of a model endpoint',
   taskReviewApprove: 'approved the table',
   taskReviewEdit: 'corrected the table',
   clientsRemove: 'removed the client',

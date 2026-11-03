@@ -31,6 +31,8 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.clients.webhook-test': 'changes.clientsWebhookTest',
   'platform.quality.matrix.run': 'changes.qualityMatrixRun',
   'platform.operations.try': 'changes.operationTry',
+  'platform.operations.maturity': 'changes.operationMaturity',
+  'platform.operations.processor-record': 'changes.processorRecord',
   'platform.task.review.approve': 'changes.taskReviewApprove',
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',

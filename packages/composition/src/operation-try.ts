@@ -4,6 +4,7 @@ import { createVault, piiCategories } from '@genai/guardrails';
 import type {
   Capability,
   CapabilityRegistry,
+  EnvironmentTier,
   Kernel,
   PayloadGuard,
   PolicyDecisionPoint,
@@ -12,8 +13,7 @@ import type {
 import type { OperationPort } from '@genai/port-model';
 import { withModelAdmission } from './lockdown.js';
 
-export const environmentTiers = ['test', 'production'] as const;
-export type EnvironmentTier = (typeof environmentTiers)[number];
+export { environmentTiers, type EnvironmentTier } from '@genai/kernel';
 
 /** The tier is test only where the deployment says `GENAI_ENV=test`, as genki-test does; anything else is production. */
 export const environmentTierOf = (env: Record<string, string | undefined>): EnvironmentTier =>

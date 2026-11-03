@@ -46,6 +46,7 @@ export interface StepFlowOptions {
   now?: () => Date;
   maxSteps?: number;
   maxDepth?: number;
+  describedOperations?: boolean;
 }
 
 interface Progress {
@@ -467,7 +468,11 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
   return {
     id: 'step-flow',
     version: '1',
-    requires: { kernel: 1, ports: ['model', 'tools'], features: ['checkpoint', 'interrupts'] },
+    requires: {
+      kernel: 1,
+      ports: ['model', 'tools', ...(options.describedOperations ? ['described'] : [])],
+      features: ['checkpoint', 'interrupts'],
+    },
     run: (ctx, input, raw) =>
       execute(ctx, input, raw, { version: 1, input, done: {}, executed: 0 }, undefined),
     resume: (ctx, checkpoint, response, raw) => {

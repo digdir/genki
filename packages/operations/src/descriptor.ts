@@ -13,7 +13,7 @@ import { DescriptorError, fieldNames, shapeOf } from './shape.js';
 
 export const descriptorIdPattern = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*@[1-9]\d*$/;
 
-export const descriptorStatuses = ['review', 'typed'] as const;
+export const descriptorStatuses = ['review', 'described', 'typed'] as const;
 export type DescriptorStatus = (typeof descriptorStatuses)[number];
 
 /** The operations Genki has its own types for; a typed descriptor must declare exactly their shapes. */

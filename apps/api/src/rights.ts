@@ -198,6 +198,8 @@ export const adminActionRights: Readonly<
   'platform.clients.webhook-test': 'manage-services',
   'platform.quality.matrix.run': 'operator',
   'platform.operations.try': 'operator',
+  'platform.operations.maturity': 'operator',
+  'platform.operations.processor-record': 'operator',
   'platform.plugin.verify': 'operator',
   'platform.plugin.register': 'operator',
   'platform.plugin.remove': 'operator',

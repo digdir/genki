@@ -18,6 +18,8 @@ responsibilities:
   - Authenticate callers and choose stores
   - Run a published service over a document set, with a cost estimate, a cost cap and a retry list
   - Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap
+  - Let operators set the maturity of operation kinds and the processor records of model endpoints,
+    and refuse a service's call-operation step at publish unless both allow it (ADR 0047)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -27,6 +29,7 @@ files:
   - apps/api/src/batch-runs.ts
   - apps/api/src/projects.ts
   - apps/api/src/task-export.ts
+  - apps/api/src/operation-governance.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:

@@ -49,12 +49,14 @@ export const wireRequest = (
   descriptor: Descriptor,
   input: unknown,
   deployment: string,
+  options: { media?: boolean } = {},
 ): WireRequest => {
   const body = evaluate(descriptor.request.body, { input, deployment });
   const walked = walk(descriptor.wire.request, body, { side: 'request' });
-  if (walked.media.length > 0 || walked.problems.length > 0)
+  const media = options.media ? [] : walked.media;
+  if (media.length > 0 || walked.problems.length > 0)
     throw new ShapeError(
-      `${descriptor.id} built a request outside its wire shape: ${[...walked.problems, ...walked.media.map((m) => `${m}: media`)].join('; ')}`,
+      `${descriptor.id} built a request outside its wire shape: ${[...walked.problems, ...media.map((m) => `${m}: media`)].join('; ')}`,
     );
   return {
     method: descriptor.request.method,
@@ -103,6 +105,7 @@ const messageOf = async (response: Response) => {
 
 export interface SendOptions {
   signal?: AbortSignal;
+  media?: boolean;
   fail?: (status: number | undefined, message: string) => Error;
 }
 
@@ -115,7 +118,9 @@ export const describedSend = async <Res = unknown>(
   options: SendOptions = {},
 ): Promise<Answer<Res>> => {
   const fail = options.fail ?? ((status, message) => new OperationError(status, message));
-  const request = wireRequest(descriptor, input, deployment);
+  const request = wireRequest(descriptor, input, deployment, {
+    ...(options.media ? { media: true } : {}),
+  });
   const url = new URL(`${withoutTrailingSlashes(endpoint.baseURL)}${request.path}`);
   for (const [name, value] of Object.entries(request.query)) url.searchParams.set(name, value);
   const signals = [
@@ -176,6 +181,7 @@ export const describedCall = async <Res = unknown>(
     async (sent) => {
       answered = await describedSend<Res>(descriptor, call.endpoint, call.deployment, sent, {
         signal: call.ctx.signal,
+        ...(call.target.unmaskedInput ? { media: true } : {}),
         ...(call.fail ? { fail: call.fail } : {}),
       });
       return answered.result;
