@@ -1,6 +1,6 @@
 # 0037 Owner pages and developer tools in the portal
 
-Status: proposed, 2026-10-20 (rewritten to a developer tools area, 2026-10-30)
+Status: proposed, 2026-10-20 (rewritten to a developer tools area, 2026-10-30; the menu, Utviklerverktøy at `/developer` and forwarding of old addresses built, 2026-11-03)
 
 ## Context
 

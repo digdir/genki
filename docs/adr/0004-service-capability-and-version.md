@@ -19,6 +19,6 @@ The plan had services, agents, modes and capabilities with no defined mapping, a
 
 ## Consequences
 
-- `InvokeOptions` gets an optional version.
-- The parity harness calls each side by its own names: headless-rag by its agent names, the platform by `<service>__<variant>`. Since the headless-rag aliases were removed on 2026-10-09, the harness's MCP and REST scenarios still need that per-side mapping (ADR 0017, open items).
+- The entry point resolves the version pin before the kernel runs, so `InvokeOptions` carries no version.
+- The parity harness calls each side by its own names: headless-rag by its agent names, the platform by `<service>__<variant>`. Since the headless-rag aliases were removed on 2026-10-09, the harness's MCP and REST scenarios use that per-side mapping (ADR 0017, parity harness names).
 - Rolling back means publishing an earlier version as a new one, so history stays linear.
