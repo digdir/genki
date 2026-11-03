@@ -75,10 +75,11 @@ export interface HeavyDeps {
  * 0.002; a margin of 0.01 is five of those, three times the largest healthy gap seen (0.0037),
  * while a corrupted graph loses far more.
  *
- * Each exact search reads every vector of the partition, so the queries share a budget of
- * `recallBudget` vector reads a night: 200 up to 500,000 chunks, fewer above, never under 50
- * (about 3 million chunks, Kudos's size). Fewer queries are noisier, by √(200 / n) as measured
- * (0.0031 at 50 against 0.0014 at 200), so the margin widens by the same factor: 0.02 at 50.
+ * Each exact search reads every vector of the partition, so a generation's queries share a
+ * budget of `recallBudget` vector reads a night: 200 up to 500,000 chunks, fewer above, and never
+ * under 50, which is reached at 2 million chunks (Kudos's 3 million then reads 150 million).
+ * Fewer queries are noisier, by √(200 / n) as measured (0.0031 at 50 against 0.0014 at 200), so
+ * the margin widens by the same factor: 0.02 at 50.
  */
 export const recallSampleSize = 200;
 export const recallMargin = 0.01;

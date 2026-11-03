@@ -299,10 +299,19 @@ describe('REINDEX', () => {
     await admin.query(`update pg_index set indisvalid = false where indexrelid = $1::regclass`, [
       `${vecIndex(generation)}_ccnew`,
     ]);
-    await reindexGeneration(owner, generation, {});
-    const { rows } = await admin.query(`select relname from pg_class where relname like $1`, [
-      `${chunks}%ccnew%`,
+    // And what one cancelled after its swap leaves: the old index, invalid, named _ccold.
+    await owner.query(
+      `create index ${vecIndex(generation)}_ccold on ${chunks}
+         using hnsw ((vec::halfvec(${dims})) halfvec_cosine_ops)`,
+    );
+    await admin.query(`update pg_index set indisvalid = false where indexrelid = $1::regclass`, [
+      `${vecIndex(generation)}_ccold`,
     ]);
+    await reindexGeneration(owner, generation, {});
+    const { rows } = await admin.query(
+      `select relname from pg_class where relname like $1 or relname like $2`,
+      [`${chunks}%ccnew%`, `${chunks}%ccold%`],
+    );
     expect(rows).toEqual([]);
   });
 });

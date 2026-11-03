@@ -123,11 +123,12 @@ export const reindexGeneration = (owner: Pool, generation: string, options: Main
     await prepareSession(client, options);
     for (const table of ['kn_chunks', 'kn_phrases'] as const) {
       const index = `${partitionOf(table, generation)}_vec`;
-      // A REINDEX CONCURRENTLY cancelled half-way leaves an invalid copy that nothing else drops.
+      // A REINDEX CONCURRENTLY cancelled half-way leaves an invalid `_ccnew` copy, or after its
+      // swap an invalid `_ccold` one, that nothing else drops.
       const { rows: leftovers } = await client.query<{ name: string }>(
         `select c.relname as name from pg_index i join pg_class c on c.oid = i.indexrelid
           where not i.indisvalid and c.relname like $1`,
-        [`${index}_ccnew%`],
+        [`${index}\\_cc%`],
       );
       for (const { name } of leftovers)
         await client.query(`drop index concurrently if exists ${name}`);

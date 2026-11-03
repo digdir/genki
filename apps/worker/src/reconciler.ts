@@ -155,13 +155,20 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     if (started) result.started.push(started);
   }
 
+  const open = await deps.records.open();
   const live = new Set(
-    (await deps.records.open())
-      .filter((run) => run.status !== 'queued' && !run.cancelRequestedAt)
-      .map((run) => run.id),
+    open.filter((run) => run.status !== 'queued' && !run.cancelRequestedAt).map((run) => run.id),
+  );
+  // A cancelled run that is still open keeps its VACUUM until it ends (ADR 0042, "Heavy work").
+  const cancelling = new Set(
+    open.filter((run) => run.status === 'running' && run.cancelRequestedAt).map((run) => run.id),
   );
   for (const [i, server] of deps.servers.entries())
     for (const run of jobRuns[i] ?? [])
-      if (!live.has(run)) result.dropped += await server.cancel(run);
+      if (!live.has(run))
+        result.dropped += await server.cancel(
+          run,
+          cancelling.has(run) ? { except: ['knowledge.build'] } : {},
+        );
   return result;
 };

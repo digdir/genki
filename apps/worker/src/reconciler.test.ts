@@ -117,4 +117,27 @@ describe('the knowledge reconciler', () => {
     });
     expect(cancels[0]).toEqual(['knowledge.build']);
   });
+
+  it("a cancelled run's VACUUM build job survives a whole pass", async () => {
+    const cancelled = { ...run, cancelRequestedAt: '2026-11-02T11:00:00.000Z' };
+    // One waiting job of the run: its VACUUM on the knowledge server.
+    let jobs = [{ run: run.id, queue: 'knowledge.build' }];
+    const knowledge: RunJobs = {
+      open: async (id) => jobs.filter((j) => j.run === id).length,
+      deadLetters: async () => ({}),
+      cancel: async (id, options) => {
+        const before = jobs.length;
+        jobs = jobs.filter((j) => j.run !== id || options?.except?.includes(j.queue));
+        return before - jobs.length;
+      },
+      redrive: async () => 0,
+      runs: async () => [...new Set(jobs.map((j) => j.run))],
+    };
+    await reconcileKnowledgeRuns({
+      records: { ...records([]), open: async () => [cancelled], find: async () => cancelled },
+      servers: [knowledge],
+      lockdown: false,
+    });
+    expect(jobs).toEqual([{ run: run.id, queue: 'knowledge.build' }]);
+  });
 });
