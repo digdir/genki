@@ -15,5 +15,6 @@
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [{ "path": "../../packages/docs-content" }, { "path": "../../packages/docs-site" }]
 }

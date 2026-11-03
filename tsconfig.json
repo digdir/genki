@@ -107,6 +107,12 @@
       "path": "packages/i18n"
     },
     {
+      "path": "packages/docs-content"
+    },
+    {
+      "path": "packages/docs-site"
+    },
+    {
       "path": "packages/adapter-rest"
     },
     {

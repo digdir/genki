@@ -54,9 +54,10 @@ module.exports = {
     },
     {
       name: 'not-unresolvable',
+      comment: 'Vite query suffixes such as ?inline are resolved by the bundler',
       severity: 'error',
       from: {},
-      to: { couldNotResolve: true },
+      to: { couldNotResolve: true, pathNot: '\\?inline$' },
     },
     {
       name: 'only-apps-compose',
