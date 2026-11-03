@@ -224,6 +224,7 @@ describe('the worker and the knowledge queues', () => {
     ]);
     expect(await names(knowledgeDb())).toEqual([
       'knowledge.build',
+      'knowledge.check',
       'knowledge.cleanup',
       'knowledge.convert',
       'knowledge.export',

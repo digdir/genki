@@ -53,4 +53,49 @@ describe('the knowledge reconciler', () => {
     await reconcileKnowledgeRuns({ records, servers: [platform, knowledge], lockdown: false });
     expect(ended).toEqual([]);
   });
+
+  const records = (calls: string[]): ReconcilerRecords => ({
+    open: async () => [run],
+    find: async () => run,
+    requests: async () => [],
+    applied: async () => undefined,
+    end: async (r) => {
+      calls.push(`end ${r.id}`);
+      return { ended: r };
+    },
+    startQueued: async () => undefined,
+  });
+
+  it('a run ends with VACUUM (ANALYZE) before it is marked finished', async () => {
+    const calls: string[] = [];
+    await reconcileKnowledgeRuns({
+      records: records(calls),
+      servers: [server(async () => 0)],
+      lockdown: false,
+      finishing: async (r) => {
+        calls.push(`vacuum ${r.id}`);
+        return true;
+      },
+    });
+    expect(calls).toEqual(['vacuum r-1', 'end r-1']);
+  });
+
+  it("a heavy run's VACUUM (ANALYZE) is a build job that keeps the run open until it ends", async () => {
+    const calls: string[] = [];
+    // The first pass sends the build job; the second sees it open; the third finds it ended.
+    const open = [0, 1, 0];
+    let pass = 0;
+    const finishing = async () => {
+      calls.push(`finishing ${pass}`);
+      return pass === 2;
+    };
+    for (pass = 0; pass < 3; pass += 1)
+      await reconcileKnowledgeRuns({
+        records: records(calls),
+        servers: [server(async () => open[pass] ?? 0)],
+        lockdown: false,
+        finishing,
+      });
+    expect(calls).toEqual(['finishing 0', 'finishing 2', 'end r-1']);
+  });
 });

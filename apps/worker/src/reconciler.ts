@@ -41,6 +41,11 @@ export interface ReconcilerDeps {
   now?: () => Date;
   /** The pipeline's `maxDocumentFailures` for a run: its document dead letters before it stops. */
   failureBudget?: (run: IngestionExecution) => Promise<number>;
+  /**
+   * The run's `VACUUM (ANALYZE)` once its jobs have ended: true when it ran and the run may end,
+   * false when it went as a `knowledge.build` job, which keeps the run open (ADR 0042, "Heavy work").
+   */
+  finishing?: (run: IngestionExecution) => Promise<boolean>;
 }
 
 export interface Reconciled {
@@ -133,6 +138,7 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     let open = 0;
     for (const server of deps.servers) open += await server.open(run.id);
     if (open > 0) continue;
+    if (deps.finishing && !(await deps.finishing(stopping))) continue;
     const dead: Record<string, number> = {};
     for (const server of deps.servers)
       for (const [queue, count] of Object.entries(await server.deadLetters(run.id)))

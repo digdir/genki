@@ -23,6 +23,8 @@ responsibilities:
   - Filters, facets, fetch and range
   - Index writer with generations
   - Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)
+  - A per-generation advisory lock that writers take shared and VACUUM exclusively
+  - Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample
 files:
   - packages/providers-pgvector/src/engine.ts
   - packages/providers-pgvector/src/schema.ts
@@ -33,6 +35,7 @@ files:
   - packages/providers-pgvector/src/knowledge-reads.ts
   - packages/providers-pgvector/src/read-functions.ts
   - packages/providers-pgvector/src/knowledge-records.ts
+  - packages/providers-pgvector/src/heavy-work.ts
 input: Searches and index documents
 output: SQL
 replaces:

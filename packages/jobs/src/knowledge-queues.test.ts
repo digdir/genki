@@ -7,7 +7,13 @@ import {
   knowledgePlatformQueues,
   knowledgeServerQueues,
 } from './knowledge-queues.js';
-import { inNightWindow, nextNightWindowStart } from './night-window.js';
+import {
+  heavyWorkStart,
+  inNightWindow,
+  nextNightWindowStart,
+  nightlyCron,
+  nightWindowEnd,
+} from './night-window.js';
 
 const sixHours = 6 * 60 * 60 * 1000;
 
@@ -98,6 +104,15 @@ describe('the knowledge queues', () => {
         deadLetter: false,
       },
       {
+        name: 'knowledge.check',
+        policy: 'singleton',
+        expireInSeconds: 7200,
+        heartbeatSeconds: 60,
+        retryLimit: 2,
+        retryBackoff: false,
+        deadLetter: false,
+      },
+      {
         name: 'knowledge.cleanup',
         policy: 'singleton',
         expireInSeconds: 7200,
@@ -166,5 +181,31 @@ describe('the night window', () => {
     expect(inNightWindow(window, new Date('2026-07-01T04:00:00Z'))).toBe(false);
     expect(inNightWindow('22:00-04:00', new Date('2026-01-15T22:30:00Z'))).toBe(true);
     expect(inNightWindow('22:00-04:00', new Date('2026-01-15T12:00:00Z'))).toBe(false);
+  });
+
+  it('heavy work sent by day starts at the next window, and inside it at once', () => {
+    const day = new Date('2026-11-03T13:00:00Z');
+    const night = new Date('2026-11-04T01:30:00Z');
+    expect(heavyWorkStart('01:00-06:00', day).toISOString()).toBe('2026-11-04T00:00:00.000Z');
+    expect(heavyWorkStart('01:00-06:00', night)).toBe(night);
+  });
+
+  it('with the window set to always, heavy work starts at once and the window never ends', () => {
+    const day = new Date('2026-11-03T13:00:00Z');
+    expect(inNightWindow('always', day)).toBe(true);
+    expect(heavyWorkStart('always', day)).toBe(day);
+    expect(nightWindowEnd('always', day)).toBeUndefined();
+  });
+
+  it('gives the end of the window a build runs in', () => {
+    expect(nightWindowEnd('01:00-06:00', new Date('2026-11-04T01:30:00Z'))?.toISOString()).toBe(
+      '2026-11-04T05:00:00.000Z',
+    );
+  });
+
+  it('the nightly checks are scheduled at the window start in Europe/Oslo', () => {
+    expect(nightlyCron('01:00-06:00')).toBe('0 1 * * *');
+    expect(nightlyCron('22:30-04:00')).toBe('30 22 * * *');
+    expect(nightlyCron('always')).toBe('0 1 * * *');
   });
 });

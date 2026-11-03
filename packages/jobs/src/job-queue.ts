@@ -93,6 +93,17 @@ export interface JobQueue extends JobReads {
     options: ScheduleOptions,
   ): Promise<void>;
   unschedule(queue: QueueDefinition, key?: string): Promise<void>;
+  /**
+   * Completes a running job and sends it again under its key, to start later, in one transaction:
+   * a job that gives way (to VACUUM, to the night window) uses none of its retries.
+   */
+  sendAgain<T extends JobData>(
+    queue: QueueDefinition<T>,
+    job: Job<T>,
+    options: { key?: string; startAfter: Date },
+  ): Promise<void>;
+  /** Moves the start of every job waiting in these queues, as when the night window changes. */
+  retime(queues: QueueDefinition[], startAfter: Date): Promise<number>;
   cancel(queue: QueueDefinition, id: string): Promise<void>;
   redrive(queue: QueueDefinition, ids: string[]): Promise<number>;
   stop(): Promise<void>;
@@ -319,6 +330,33 @@ export class InMemoryJobQueue implements JobQueue {
 
   async unschedule(queue: QueueDefinition, key?: string) {
     this.#schedules.delete(`${queue.name}/${key ?? ''}`);
+  }
+
+  async sendAgain<T extends JobData>(
+    queue: QueueDefinition<T>,
+    job: Job<T>,
+    options: { key?: string; startAfter: Date },
+  ) {
+    const stored = this.#jobs.get(job.id);
+    if (!stored || stored.state !== 'active')
+      throw new JobQueueError(`job ${job.id} is not running`);
+    stored.state = 'completed';
+    await this.send(queue, job.data, {
+      ...(options.key === undefined ? {} : { key: options.key }),
+      startAfter: options.startAfter,
+    });
+  }
+
+  async retime(queues: QueueDefinition[], startAfter: Date) {
+    const names = new Set(queues.map((q) => q.name));
+    let moved = 0;
+    for (const job of this.#jobs.values())
+      if (names.has(job.queue) && queued(job)) {
+        job.startAfter = startAfter.getTime();
+        moved += 1;
+      }
+    void this.#tick();
+    return moved;
   }
 
   async cancel(queue: QueueDefinition, id: string) {

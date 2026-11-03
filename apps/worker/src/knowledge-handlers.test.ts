@@ -9,6 +9,7 @@ import {
   type PipelineSpec,
 } from '@genai/ingest';
 import {
+  knowledgeFillQueue,
   knowledgeIndexQueue,
   knowledgeIngestQueue,
   knowledgeServerQueues,
@@ -20,6 +21,7 @@ import type { EmbeddingPort } from '@genai/port-embedding';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import {
   attachGeneration,
+  generationLockSpace,
   knowledgeRecordsOf,
   migrateKnowledgeServer,
   openKnowledgePools,
@@ -128,6 +130,8 @@ const scenario = async (
     catalogEmbedding?: DatasetConfig['embedding'];
     embedded?: string[];
     bound?: () => void;
+    /** `knowledge.heavyThreshold` and `knowledge.nightWindow` as the worker reads them. */
+    heavy?: { threshold: number; window: string; now?: Date };
   } = {},
 ) => {
   datasets += 1;
@@ -149,14 +153,33 @@ const scenario = async (
     chunking: { minimumLength: 1 },
   });
   const sent: Record<string, string>[] = [];
+  const sentTo: { queue: string; data: Record<string, string>; startAfter?: Date }[] = [];
+  const sentAgain: { queue: string; data: Record<string, string>; startAfter: Date }[] = [];
   const failing = { load: false };
   const work = knowledgeWork({
     records: knowledgeRecordsOf(writer()),
     knowledge: {
       send: async (queue, data, options) => {
         sent.push(data as Record<string, string>);
+        sentTo.push({
+          queue: queue.name,
+          data: data as Record<string, string>,
+          ...(options?.startAfter ? { startAfter: options.startAfter } : {}),
+        });
         return knowledgeQueue.send(queue, data, options);
       },
+      sendAgain: async (queue, j, options) => {
+        sentAgain.push({
+          queue: queue.name,
+          data: j.data as Record<string, string>,
+          startAfter: options.startAfter,
+        });
+      },
+    },
+    heavy: {
+      threshold: () => extra.heavy?.threshold ?? 100_000,
+      window: () => extra.heavy?.window ?? '01:00-06:00',
+      ...(extra.heavy?.now ? { now: () => extra.heavy?.now as Date } : {}),
     },
     runs: runRecords,
     pipeline: async () => spec,
@@ -186,7 +209,16 @@ const scenario = async (
     admission: { records: runRecords, platformTenant: ORG, lockdown: false },
   });
   const file = (name: string, text: string) => writeFile(join(folderRoot, folder, name), text);
-  return { dataset, generation: dataset.generation as string, work, sent, file, failing };
+  return {
+    dataset,
+    generation: dataset.generation as string,
+    work,
+    sent,
+    sentTo,
+    sentAgain,
+    file,
+    failing,
+  };
 };
 
 const startRun = async (dataset: string) => {
@@ -267,6 +299,73 @@ const versions = async (dataset: string, generation: string) => {
   );
   return rows[0];
 };
+
+const ingestOnly = async (s: Awaited<ReturnType<typeof scenario>>) => {
+  const run = await startRun(s.dataset.id);
+  const before = s.sent.length;
+  await handler(
+    s.work.platform,
+    knowledgeIngestQueue.name,
+  )(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+  return { run, sent: s.sent.slice(before) };
+};
+
+describe('heavy work and the VACUUM lock', () => {
+  it("a writer that cannot get its generation's lock is sent again later", async () => {
+    const s = await scenario();
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    const { sent } = await ingestOnly(s);
+    const vacuum = await owner().connect();
+    await vacuum.query(`select pg_advisory_lock($1::int, hashtext($2))`, [
+      generationLockSpace,
+      s.generation,
+    ]);
+    const before = Date.now();
+    try {
+      await handler(
+        s.work.knowledge,
+        knowledgeIndexQueue.name,
+      )(job(knowledgeIndexQueue.name, sent[0] as Record<string, string>));
+    } finally {
+      await vacuum.query(`select pg_advisory_unlock_all()`);
+      vacuum.release();
+    }
+    expect(s.sentAgain).toHaveLength(1);
+    expect(s.sentAgain[0]?.queue).toBe('knowledge.index');
+    const wait = (s.sentAgain[0]?.startAfter.getTime() ?? 0) - before;
+    expect(wait).toBeGreaterThanOrEqual(110_000);
+    expect(wait).toBeLessThanOrEqual(130_000);
+    expect(await docsIn(s.generation)).toEqual([]);
+    const { rows } = await admin.query(`select state from src_documents where dataset = $1`, [
+      s.dataset.id,
+    ]);
+    expect(rows[0]?.state).toBeNull();
+  }, 60_000);
+
+  it("a run's index jobs become fill jobs once it has written the heavy threshold", async () => {
+    // Tuesday 3 November 2026 at 14:00 in Oslo: the next window starts at 01:00, 00:00 UTC.
+    const s = await scenario({}, undefined, {
+      heavy: { threshold: 2, window: '01:00-06:00', now: new Date('2026-11-03T13:00:00Z') },
+    });
+    for (const name of ['a', 'b', 'c'])
+      await s.file(`${name}.md`, `# ${name}\n\nInnhold i ${name}.`);
+    const { run, sent } = await ingestOnly(s);
+    const index = handler(s.work.knowledge, knowledgeIndexQueue.name);
+    for (const data of sent) await index(job(knowledgeIndexQueue.name, data));
+    expect(await reportOf(run)).toMatchObject({ stored: 2, chunks: 2 });
+    const fills = s.sentTo.filter((x) => x.queue === 'knowledge.fill');
+    expect(fills).toEqual([
+      { queue: 'knowledge.fill', data: sent[2], startAfter: new Date('2026-11-04T00:00:00Z') },
+    ]);
+    expect(await docsIn(s.generation)).toHaveLength(2);
+    await handler(
+      s.work.heavy,
+      knowledgeFillQueue.name,
+    )(job(knowledgeFillQueue.name, fills[0]?.data as Record<string, string>));
+    expect(await docsIn(s.generation)).toHaveLength(3);
+    expect(await reportOf(run)).toMatchObject({ stored: 3, chunks: 3 });
+  }, 60_000);
+});
 
 describe('knowledge.ingest and knowledge.index', () => {
   it("a folder pipeline run twice with one file changed writes one document, reports 1 changed, and its generation's data version equals the dataset's last change", async () => {

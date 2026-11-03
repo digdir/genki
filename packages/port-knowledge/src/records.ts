@@ -77,6 +77,17 @@ export interface IndexRecord {
 export type IndexOutcome = 'stored' | 'skipped' | 'deleted' | 'checked';
 
 /** The document records of the knowledge server, as the worker's writer reaches them. */
+/**
+ * A writer that cannot get its generation's lock, because VACUUM holds it or waits for it: the
+ * job writes nothing and is sent again later (ADR 0042, "Heavy work", the pgvector 0.8.2 workaround).
+ */
+export class GenerationBusy extends Error {
+  constructor(readonly generation: string) {
+    super(`VACUUM holds generation ${generation}; the job is sent again later`);
+    this.name = 'GenerationBusy';
+  }
+}
+
 export interface DocumentRecords {
   /** The records a pipeline owns in a dataset, with the change each holds in the generation. */
   owned(dataset: string, pipeline: string, generation: string): Promise<OwnedRecord[]>;
@@ -93,6 +104,8 @@ export interface DocumentRecords {
   /** The embedding a generation was built with: its index jobs embed with it, not the catalog's. */
   embedding(generation: string): Promise<{ model: string; dimensions: number } | undefined>;
   find(number: string): Promise<IndexRecord | undefined>;
+  /** Whether a writer would get the generation's lock now, checked before a job embeds anything. */
+  writable(generation: string): Promise<boolean>;
   /** Whether the generation already holds the record's current change. */
   held(record: IndexRecord, generation: string): Promise<boolean>;
   /** Marks a held record as checked now, without writing it, so its next re-check waits again. */
@@ -100,14 +113,15 @@ export interface DocumentRecords {
   /**
    * Replaces one document in the generation in one transaction, or removes it when it was skipped,
    * records the change it applied and moves the generation's data version. Answers false, and
-   * writes nothing, when the record has changed since the job read it.
+   * writes nothing, when the record has changed since the job read it. Throws GenerationBusy,
+   * writing nothing, when VACUUM holds the generation.
    */
   replace(
     record: IndexRecord,
     generation: string,
     result: { document: IndexDocument } | { skip: string },
   ): Promise<boolean>;
-  /** Deletes a document from the generation and leaves its tombstone, in one transaction. */
+  /** Deletes a document from the generation and leaves its tombstone, in one transaction; GenerationBusy as replace. */
   remove(record: IndexRecord, generation: string): Promise<void>;
   /**
    * Counts a 404 or 410, at most once per run; at the second, the record is marked deleted with
