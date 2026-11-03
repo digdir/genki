@@ -33,12 +33,17 @@ export {
   type TokenProviders,
 } from './credentials.js';
 export {
+  InMemoryOutsideRunRetention,
   InMemoryRetentionStore,
   InMemoryThreadErasure,
   minimumRetentionDays,
+  outsideRunLogPrefix,
+  outsideRunTask,
   retentionClassDays,
   retentionClasses,
   retentionPolicy,
+  type OutsideRunCutoff,
+  type OutsideRunRetentionStore,
   type PurgeCount,
   type RetentionClass,
   type RetentionCutoff,

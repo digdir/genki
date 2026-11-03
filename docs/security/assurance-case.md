@@ -152,7 +152,7 @@ These are proposed or decided but not built, and must be closed before productio
 - Tokens are kept in `sessionStorage` in the browser; production needs a backend-for-frontend ([ADR 0034](../adr/0034-tokens-in-the-browser.md)).
 - In genki-test, operators are recognised by membership of an Entra group that Digdir IT set up for genki-test (`LOCKDOWN_ENTRA_GROUPS`), logging in through the clients in `OPERATOR_CLIENT_IDS` ([ADR 0033](../adr/0033-locked-test-environment.md)). The same group rule outside the locked environment (`OPERATOR_ENTRA_GROUPS`) and audited break-glass access are not built yet ([ADR 0035](../adr/0035-operator-login.md)), so production needs them first.
 - In the API, the kernel shares the runtime database role with the API's own queries, and deployed apps can still switch back to the owner role ([ADR 0022](../adr/0022-tenant-isolation-in-postgres.md)).
-- The log of calls outside a run (`outside-run:<tenant>:<day>`) has no retention sweep yet, and its usage is not in the portal's usage figures ([ADR 0047](../adr/0047-one-governed-path-for-model-operations.md)).
+- The usage in the log of calls outside a run (`outside-run:<tenant>:<day>`) is not in the portal's usage figures ([ADR 0047](../adr/0047-one-governed-path-for-model-operations.md)).
 - Budgets in money are not built ([#24](https://github.com/digdir/genki/issues/24)).
 
 ## Keeping this current

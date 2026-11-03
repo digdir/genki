@@ -30,6 +30,7 @@ import { PostgresIngestionExecutions } from './executions.js';
 import { PostgresUsageBuckets } from './usage.js';
 import { PostgresRateLimiter } from './rate-limits.js';
 import {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -66,6 +67,7 @@ export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -209,6 +211,7 @@ export const createPostgresStores = async (
     rateLimits: new PostgresRateLimiter(pool),
     usageBuckets: new PostgresUsageBuckets(pool),
     retention: new PostgresRetentionStore(pool),
+    outsideRunRetention: new PostgresOutsideRunRetention(pool),
     threadRetention: new PostgresThreadRetention(pool, keys),
     threadErasure: new PostgresThreadErasure(pool, keys),
     erase: (tenant: string, scope: string) => keys.erase(tenant, scope),

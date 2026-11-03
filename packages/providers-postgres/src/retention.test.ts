@@ -3,6 +3,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Task } from '@genai/contracts';
+import { outsideRunTask } from '@genai/kernel';
 import {
   ContentKeys,
   createPostgresStores,
@@ -149,6 +150,53 @@ describe('postgres retention', () => {
     expect(await stores.retention.purge(cutoff())).toEqual({ payloads: 0, envelopes: 0 });
     expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 1, envelopes: 0 });
     expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 0, envelopes: 0 });
+  });
+});
+
+describe('postgres outside-run log retention', () => {
+  const neighbour = `${tenant}1`;
+  const logDay = (owner: string, days: number) => outsideRunTask(owner, daysAgo(days));
+  const seedLog = async (owner: string, days: number) => {
+    const task = logDay(owner, days);
+    const base = { v: 1, task, ts: daysAgo(days).toISOString(), actor: 'kernel' as const };
+    const scope = { tenant: owner, key: taskScope(task) };
+    await stores.log.append(
+      { ...base, type: 'kernel.gate.call', audience: 'audit', data: { operation: 'embed' } },
+      scope,
+    );
+    await stores.log.append(
+      { ...base, type: 'kernel.usage', audience: 'audit', data: { usage: { requests: 1 } } },
+      scope,
+    );
+  };
+  const keyCount = async (task: string) =>
+    (await pool.query('select 1 from content_keys where scope = $1', [taskScope(task)])).rowCount;
+
+  beforeAll(async () => {
+    for (const days of [0, 200, 201, 400]) await seedLog(tenant, days);
+    await seedLog(other, 400);
+    await seedLog(neighbour, 400);
+  });
+
+  it('deletes each outside-run log day before the cutoff with its content key', async () => {
+    expect(await stores.outsideRunRetention.purge({ tenant, before: daysAgo(200) })).toBe(2);
+
+    for (const days of [201, 400]) {
+      expect(await collect(logDay(tenant, days))).toEqual([]);
+      expect(await keyCount(logDay(tenant, days))).toBe(0);
+    }
+  });
+
+  it("keeps the cutoff day, today's log and other tenants' logs", async () => {
+    for (const days of [0, 200]) expect(await collect(logDay(tenant, days))).toHaveLength(2);
+    expect(await collect(logDay(other, 400))).toHaveLength(2);
+    expect(await collect(logDay(neighbour, 400))).toHaveLength(2);
+    expect(await keyCount(logDay(neighbour, 400))).toBe(1);
+  });
+
+  it('purging the outside-run log twice changes nothing the second time', async () => {
+    expect(await stores.outsideRunRetention.purge({ tenant, before: daysAgo(200) })).toBe(0);
+    expect(await collect(logDay(tenant, 0))).toHaveLength(2);
   });
 });
 

@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Event } from '@genai/contracts';
-import { createGate, envSecrets, InMemoryEventLog, type PortContext } from '@genai/kernel';
+import {
+  createGate,
+  envSecrets,
+  InMemoryEventLog,
+  outsideRunTask,
+  type PortContext,
+} from '@genai/kernel';
 import { EmbeddingRouter } from '@genai/port-embedding';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
-import { outsideRun, outsideRunTask } from './outside-run.js';
+import { outsideRun } from './outside-run.js';
 
 const tenant = '999888777';
 const at = new Date('2026-11-03T10:00:00Z');

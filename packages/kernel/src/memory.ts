@@ -80,6 +80,10 @@ export class InMemoryEventLog implements EventLog {
     this.#events.delete(task);
   }
 
+  tasks(): string[] {
+    return [...this.#events.keys()];
+  }
+
   wake(task: string): void {
     const waiters = this.#waiters.get(task) ?? [];
     this.#waiters.delete(task);

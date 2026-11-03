@@ -1,7 +1,4 @@
-import type { EventLog, OutsideRun, PortContext } from '@genai/kernel';
-
-export const outsideRunTask = (tenant: string, at: Date) =>
-  `outside-run:${tenant}:${at.toISOString().slice(0, 10)}`;
+import { outsideRunTask, type EventLog, type OutsideRun, type PortContext } from '@genai/kernel';
 
 /** Audits and meters model calls made outside a run, one log per tenant and day. */
 export const outsideRun = (log: EventLog, now: () => Date = () => new Date()): OutsideRun => {
