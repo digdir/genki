@@ -52,6 +52,7 @@ import {
   platformTenantFrom,
 } from '@genai/composition';
 import { createApp } from './app.js';
+import { defaultSlowRequestMs } from './request-timing.js';
 import { sharedLimiter } from './rate-limit.js';
 import { kernelTaskReader } from './timeline.js';
 import { followChanges } from './change-feed.js';
@@ -503,7 +504,7 @@ const platform = await createPlatform({
   ...(db
     ? {
         tenantDirectory: postgresTenantDirectory(db.tenants),
-        taskIndex: postgresTaskIndex(db.tasks),
+        taskIndex: postgresTaskIndex(db.tasks, { events: db.log }),
         ingestionExecutions: db.ingestionExecutions,
       }
     : {}),
@@ -549,6 +550,11 @@ const admin = createAdmin({
   ...(db ? { records: db.adminRecords } : {}),
 });
 const app = createApp(version, {
+  requestTiming: {
+    write: (entry) => log('request', { ...entry }),
+    slowMs: Number(process.env.SLOW_REQUEST_MS) || defaultSlowRequestMs,
+    everyRequest: process.env.LOG_REQUESTS === 'true',
+  },
   platform: {
     store: platform.definitions,
     plugins: platform.plugins,
@@ -697,19 +703,6 @@ if (mock) {
   });
 }
 
-const logRequests = process.env.LOG_REQUESTS === 'true';
-const fetchHandler: typeof app.fetch = logRequests
-  ? async (request, ...rest) => {
-      const response = await app.fetch(request, ...rest);
-      log('request', {
-        method: request.method,
-        path: new URL(request.url).pathname,
-        status: response.status,
-      });
-      return response;
-    }
-  : app.fetch;
-
-serve({ fetch: fetchHandler, port }, (info) => {
+serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });

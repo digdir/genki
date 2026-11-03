@@ -192,6 +192,29 @@ describe('postgres event log', () => {
     await reader.close();
   });
 
+  it('reads the usage events of many tasks in one query and nothing else', async () => {
+    const stores = await openStores(pool, wrapper);
+    const usageScope = { tenant: '999888777', key: 'thread:usage' };
+    const usage = (task: string, tokens: number) =>
+      event(task, 'kernel.usage', {
+        usage: { inputTokens: tokens },
+        model: { kind: 'model', id: 'm' },
+      });
+    await stores.log.append(event('u-1', 'kernel.part.delta', { text: 'hei' }), usageScope);
+    await stores.log.append(usage('u-1', 5), usageScope);
+    await stores.log.append(usage('u-1', 7), usageScope);
+    await stores.log.append(usage('u-2', 3), usageScope);
+    await stores.log.append(usage('u-3', 9), usageScope);
+
+    expect(await stores.log.usageOf(['u-1', 'u-2'])).toEqual([
+      { task: 'u-1', data: { usage: { inputTokens: 5 }, model: { kind: 'model', id: 'm' } } },
+      { task: 'u-1', data: { usage: { inputTokens: 7 }, model: { kind: 'model', id: 'm' } } },
+      { task: 'u-2', data: { usage: { inputTokens: 3 }, model: { kind: 'model', id: 'm' } } },
+    ]);
+    expect(await stores.log.usageOf([])).toEqual([]);
+    await stores.close();
+  });
+
   it('makes content unreadable after erasure, while the envelope survives', async () => {
     const stores = await openStores(pool, wrapper);
     const erasable = { tenant: '999888777', key: 'thread:erase-me' };
@@ -311,6 +334,47 @@ describe('postgres task and state stores', () => {
         excludeCapabilityPrefix: 'platform/draft/assistant/',
       }),
     ).toBe(2002);
+    await stores.close();
+  });
+
+  it('lists the task envelopes of one tenant since a time, newest first, without results', async () => {
+    const stores = await openStores(pool, wrapper);
+    const tenant = '555666777';
+    const principal: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
+    const put = (id: string, owner: string, createdAt: string) =>
+      stores.tasks.put(
+        {
+          task: {
+            id,
+            service: {
+              capability: { id: `${owner}/svar/default`, version: '1' },
+              strategy: { id: 's', version: '1' },
+              configHash: 'h',
+            },
+            principal: { kind: 'employee', id: 'kari', tenant: owner },
+            tenant: owner,
+            owner,
+            status: 'completed',
+            artifacts: [],
+            usage: { inputTokens: 10, outputTokens: 2 },
+            result: [textPart('hemmelig svar')],
+            createdAt,
+          },
+          principal,
+          lastSeq: 1,
+        },
+        { tenant: owner, key: `task:${id}` },
+      );
+    await put('e-old', tenant, '2026-09-20T08:00:00.000Z');
+    await put('e-1', tenant, '2026-10-02T08:00:00.000Z');
+    await put('e-2', tenant, '2026-10-03T08:00:00.000Z');
+    await put('e-other', '666777888', '2026-10-03T09:00:00.000Z');
+
+    const found = await stores.tasks.envelopes({ tenant, since: '2026-10-01T00:00:00.000Z' });
+    expect(found.map((t) => t.id)).toEqual(['e-2', 'e-1']);
+    expect(found[0]?.usage).toEqual({ inputTokens: 10, outputTokens: 2 });
+    expect(JSON.stringify(found)).not.toContain('hemmelig');
+    expect((await stores.tasks.envelopes({ tenant, limit: 1 })).map((t) => t.id)).toEqual(['e-2']);
     await stores.close();
   });
 

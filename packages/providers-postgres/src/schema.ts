@@ -848,6 +848,7 @@ const migrations: string[] = [
      end $$`,
   `create index if not exists tasks_tenant_recent on tasks (tenant, created_at desc)`,
   `create index if not exists tasks_recent on tasks (created_at desc)`,
+  `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
   `create table if not exists platform_identity (
      singleton boolean primary key default true check (singleton),

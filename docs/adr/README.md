@@ -41,3 +41,5 @@ Each record says whether it is built, and names what is missing if not. Numbers 
 | [0042](0042-the-knowledge-database.md)                   | The knowledge database                                       | Proposed, connection, partitions, read functions, knowledge jobs and document records built |
 | [0044](0044-stateless-openai-responses.md)               | Stateless OpenAI Responses behind the model port             | Accepted, built                                                                             |
 | [0045](0045-data-stays-in-the-eu-eea.md)                 | Data stays in the EU/EEA; the region is an operating detail  | Proposed                                                                                    |
+| [0046](0046-admin-mcp-for-coding-agents.md)              | Coding agents work on genki through a local admin MCP server | Proposed                                                                                    |
+| [0047](0047-one-governed-path-for-model-operations.md)   | One governed path for model operations                       | Proposed                                                                                    |

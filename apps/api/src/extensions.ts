@@ -1,5 +1,5 @@
 import { t } from './i18n/index.js';
-import type { Principal, TaskStatus } from '@genai/contracts';
+import type { Principal, Task, TaskStatus } from '@genai/contracts';
 import {
   anonymousFeedback,
   basicPiiRedactor,
@@ -65,6 +65,8 @@ export interface TaskIndex {
   all(tenant?: string): Promise<TrackedTask[]>;
   running(): Promise<TrackedTask[]>;
   tokensUsed?(tenant: string, since: string): Promise<number>;
+  envelopes?(tenant: string, query: { since?: string; limit?: number }): Promise<Task[]>;
+  usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
 }
 
 const taskStatuses: readonly TaskStatus[] = [
