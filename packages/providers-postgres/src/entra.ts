@@ -111,3 +111,13 @@ export const knowledgeSourceFromEnv = (
     ssl: env.KNOWLEDGE_PGSSLMODE === 'disable' ? false : { rejectUnauthorized: true },
   };
 };
+
+/** The API's read pool: `KNOWLEDGE_READ_PGHOST` when it names a server other than the primary, else none, so reads use the primary pool. */
+export const knowledgeReadSourceFromEnv = (
+  env: Env,
+  identity: (clientId: string) => TokenSource = knowledgeIdentityTokenSource,
+): PostgresPoolOptions | undefined => {
+  const host = env.KNOWLEDGE_READ_PGHOST;
+  if (env.KNOWLEDGE_DATABASE_URL || !host || host === env.KNOWLEDGE_PGHOST) return undefined;
+  return knowledgeSourceFromEnv({ ...env, KNOWLEDGE_PGHOST: host }, 'api', identity);
+};

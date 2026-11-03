@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   cachedEntraPassword,
+  knowledgeReadSourceFromEnv,
   knowledgeSourceFromEnv,
   postgresSourceFromEnv,
   type TokenSource,
@@ -109,6 +110,29 @@ describe('knowledge server settings', () => {
     expect(knowledgeSourceFromEnv({ PGHOST: 'pg.example', AZURE_CLIENT_ID: 'x' }, 'api')).toBe(
       undefined,
     );
+  });
+
+  it('the API reads on `KNOWLEDGE_READ_PGHOST` only when it names another server than the primary', () => {
+    const identity = () => tokens;
+    expect(
+      knowledgeReadSourceFromEnv(
+        { ...azure, KNOWLEDGE_READ_PGHOST: 'knowledge-replica.example' },
+        identity,
+      ),
+    ).toMatchObject({ host: 'knowledge-replica.example', database: 'genai_knowledge' });
+    expect(knowledgeReadSourceFromEnv(azure, identity)).toBeUndefined();
+    expect(
+      knowledgeReadSourceFromEnv(
+        { ...azure, KNOWLEDGE_READ_PGHOST: 'knowledge.example' },
+        identity,
+      ),
+    ).toBeUndefined();
+    expect(
+      knowledgeReadSourceFromEnv({
+        KNOWLEDGE_DATABASE_URL: 'postgres://127.0.0.1:55433/genai_knowledge',
+        KNOWLEDGE_READ_PGHOST: 'knowledge-replica.example',
+      }),
+    ).toBeUndefined();
   });
 
   it('the API and the worker each log in locally with their own login', () => {

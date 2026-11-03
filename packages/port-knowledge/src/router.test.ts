@@ -283,6 +283,38 @@ describe('knowledge router', () => {
     expect(other).toEqual(['fetch:c1,c2', 'range:d1:0-5', 'facets:orgs_short']);
   });
 
+  it('a router that did not allow a dataset never sets it in `app.datasets`', async () => {
+    const allowed: (string[] | undefined)[] = [];
+    const base = stub().adapter;
+    const adapter: typeof base = {
+      ...base,
+      connect: (endpoint) => {
+        const inner = base.connect(endpoint);
+        return {
+          ...inner,
+          search: (dataset, requests, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.search(dataset, requests, signal);
+          },
+          fetch: (dataset, ids, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.fetch(dataset, ids, signal);
+          },
+        };
+      },
+    };
+    const r = router(adapter);
+    expect(() =>
+      r.open({ kind: 'dataset', id: 'nav/internal', tenant: '991825827' }, context()),
+    ).toThrow(/not shared/);
+    expect(allowed).toEqual([]);
+    const port = r.open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+    await port.search({ query: 'x' });
+    await port.fetch(['c1']);
+    expect(allowed).toEqual([['digdir/kudos'], ['digdir/kudos']]);
+    expect(r.datasetConfigs().map((d) => d.config.allowed)).toEqual([undefined, undefined]);
+  });
+
   it('keeps a dataset shared with named tenants away from everyone else', async () => {
     const r = router();
 

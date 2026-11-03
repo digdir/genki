@@ -15,7 +15,9 @@ description: Hybrid search with Norwegian full text and pgvector, fused with RRF
   writer and owner pools, never the platform database (ADR 0042). Its setup creates the three
   knowledge roles and stores the platform server's id there. On the knowledge server each generation
   is its own partition with its own HNSW and filter indexes, built standalone and attached; the catalog
-  names the active one.
+  names the active one. There the API reads only through seven SECURITY DEFINER read functions that
+  refuse a dataset the router did not allow, on a read pool that falls back to the primary when a
+  server lacks the generation or does not answer.
 responsibilities:
   - Text, vector and hybrid search
   - Filters, facets, fetch and range
@@ -28,6 +30,8 @@ files:
   - packages/providers-pgvector/src/knowledge-setup.ts
   - packages/providers-pgvector/src/partitions.ts
   - packages/providers-pgvector/src/knowledge-writer.ts
+  - packages/providers-pgvector/src/knowledge-reads.ts
+  - packages/providers-pgvector/src/read-functions.ts
 input: Searches and index documents
 output: SQL
 replaces:
