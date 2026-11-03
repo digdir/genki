@@ -138,10 +138,11 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       missing: number;
       change: string;
       applied: string | null;
+      applied_at: Date | null;
       files: { name: string; sha256: string | null }[];
     }>(
       `select d.number::text, d.id, d.metadata_hash, d.state, d.missing, d.change::text,
-              a.change::text as applied,
+              a.change::text as applied, a.applied_at,
               coalesce((select jsonb_agg(jsonb_build_object('name', f.file, 'sha256', f.sha256) order by f.file)
                           from src_files f where f.dataset = d.dataset and f.document = d.id), '[]') as files
          from src_documents d
@@ -162,6 +163,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       missing: r.missing,
       change: Number(r.change),
       ...(r.applied === null ? {} : { applied: Number(r.applied) }),
+      ...(r.applied_at === null ? {} : { appliedAt: r.applied_at.toISOString() }),
     }));
   },
 
@@ -248,7 +250,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       else await deleteDocument(client, { generation, via: 'parent' }, record.id);
       await client.query(
         `insert into kn_applied (generation, dataset, id, change) values ($1, $2, $3, $4)
-           on conflict (generation, id) do update set change = excluded.change`,
+           on conflict (generation, id) do update set change = excluded.change, applied_at = now()`,
         [generation, record.dataset, record.id, record.change],
       );
       await client.query(

@@ -357,6 +357,8 @@ describe('document records on the knowledge server', () => {
       ['b', 2, undefined],
     ]);
     expect(owned[0]?.files).toEqual([{ name: 'a.md', sha256: 'a-1' }]);
+    expect(Date.parse(owned[0]?.appliedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
+    expect(owned[1]?.appliedAt).toBeUndefined();
     expect(await records.owned(name, 'other', generation)).toEqual([]);
   });
 });

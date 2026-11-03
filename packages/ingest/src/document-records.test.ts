@@ -138,6 +138,28 @@ describe('planRun', () => {
     expect(deletes(third)).toEqual(['page']);
   });
 
+  it('a crawled page not written for 7 days is downloaded again, so a removed page is found', () => {
+    const now = new Date('2026-11-10T12:00:00Z');
+    const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString();
+    const records = [
+      owned('fresh', { appliedAt: daysAgo(6) }),
+      owned('old', { appliedAt: daysAgo(8) }),
+    ];
+    const crawled = planRun([listed('fresh'), listed('old')], records, {
+      complete: true,
+      deletes: 'crawled',
+      now,
+    });
+    expect(crawled.process).toEqual(['old']);
+    expect(crawled.counts).toMatchObject({ unchanged: 2 });
+    const folder = planRun([listed('fresh'), listed('old')], records, {
+      complete: true,
+      deletes: 'listed',
+      now,
+    });
+    expect(folder.process).toEqual([]);
+  });
+
   it('a run writes every document its generation does not hold', () => {
     const plan = planRun(
       [listed('held'), listed('behind'), listed('absent')],

@@ -72,6 +72,18 @@ const sameFiles = (a: ListedFile[], b: ListedFile[]) =>
   stableJson([...a].sort((x, y) => (x.name < y.name ? -1 : 1))) ===
   stableJson([...b].sort((x, y) => (x.name < y.name ? -1 : 1)));
 
+/**
+ * Days after which a crawled page is downloaded again though its sitemap date has not moved, so a
+ * page the site removed but still lists is found by its 404.
+ */
+export const recheckCrawledAfterDays = 7;
+
+const recheck = (record: OwnedRecord, options: { deletes: DeleteRule; now?: Date }) =>
+  options.deletes === 'crawled' &&
+  record.appliedAt !== undefined &&
+  Date.parse(record.appliedAt) <
+    (options.now ?? new Date()).getTime() - recheckCrawledAfterDays * 86_400_000;
+
 /** Listings in a row a document may miss before it is deleted. */
 const missesBeforeDelete: Record<DeleteRule, number> = { listed: 2, crawled: 3, explicit: 1 };
 
@@ -83,7 +95,7 @@ const missesBeforeDelete: Record<DeleteRule, number> = { listed: 2, crawled: 3, 
 export const planRun = (
   listed: ListedDocument[],
   owned: OwnedRecord[],
-  options: { complete: boolean; deletes: DeleteRule },
+  options: { complete: boolean; deletes: DeleteRule; now?: Date },
 ): RunPlan => {
   const byId = new Map(owned.map((r) => [r.id, r]));
   const writes: RecordWrite[] = [];
@@ -105,7 +117,7 @@ export const planRun = (
       counts.changed++;
     } else {
       writes.push({ kind: 'seen', id: doc.id });
-      if (record.applied !== record.change) process.push(doc.id);
+      if (record.applied !== record.change || recheck(record, options)) process.push(doc.id);
       counts.unchanged++;
     }
   }

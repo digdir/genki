@@ -32,6 +32,8 @@ export interface OwnedRecord {
   change: number;
   /** The change of this record that the generation holds, if any. */
   applied?: number;
+  /** When the generation last wrote it, so a crawled page is downloaded again after a while. */
+  appliedAt?: string;
 }
 
 /** A change to one record. `new`, `changed` and `delete` take the next number in the change sequence. */
