@@ -929,3 +929,80 @@ describe('service summaries and run headers', () => {
     });
   });
 });
+
+describe('the dashboard on a busy tenant', () => {
+  const busy = async () => {
+    const tasks = Array.from({ length: 3000 }, (_, i) =>
+      task(
+        `b${i}`,
+        digdir,
+        new Date(Date.parse('2026-10-01T00:00:00Z') + i * 150_000).toISOString(),
+        i % 100 === 0 ? 'failed' : 'completed',
+      ),
+    );
+    const calls = { envelopes: 0, usage: 0 };
+    const env = await setup({
+      tasks: () => {
+        throw new Error('the dashboard must not list task rows one by one');
+      },
+      task: async () => {
+        throw new Error('the dashboard must not read tasks one by one');
+      },
+      events: () => {
+        throw new Error('the dashboard must not read the event log task by task');
+      },
+      taskEnvelopes: async (tenant, query) => {
+        calls.envelopes++;
+        return tasks
+          .filter((t) => t.tenant === tenant && (!query.since || t.createdAt >= query.since))
+          .reverse()
+          .slice(0, query.limit ?? 1000);
+      },
+      usageEvents: async (ids) => {
+        calls.usage++;
+        return ids.map((id) => ({
+          task: id,
+          data: {
+            usage: { inputTokens: 1000, outputTokens: 200, requests: 1 },
+            model: { kind: 'model', id: 'foundry/gpt-4o' },
+          },
+        }));
+      },
+    });
+    return { ...env, calls };
+  };
+
+  it('builds the overview from a few batched queries and counts every task of the month, past the newest thousand', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{
+      recentTasks: { id: string; usage: { inputTokens: number } }[];
+      usageThisMonth: { inputTokens: number; runs: number };
+      review: { failedTasksLastDay: number };
+    }>(await send(`/tenants/${digdir}/overview`, 'kari'));
+
+    expect(body.usageThisMonth.runs).toBe(3000);
+    expect(body.usageThisMonth.inputTokens).toBe(3_000_000);
+    expect(body.recentTasks.map((t) => t.id)).toEqual([
+      'b2999',
+      'b2998',
+      'b2997',
+      'b2996',
+      'b2995',
+    ]);
+    expect(body.recentTasks[0]?.usage.inputTokens).toBe(1000);
+    expect(body.review.failedTasksLastDay).toBe(4);
+    expect(calls.envelopes).toBe(5);
+    expect(calls.usage).toBe(2);
+  });
+
+  it('builds the usage report from one envelope query per origin and one usage query', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{ totals: { runs: number; inputTokens: number } }>(
+      await send(`/tenants/${digdir}/usage?days=30`, 'kari'),
+    );
+
+    expect(body.totals.runs).toBe(3000);
+    expect(body.totals.inputTokens).toBe(3_000_000);
+    expect(calls).toEqual({ envelopes: 2, usage: 1 });
+  });
+});

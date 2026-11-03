@@ -1,4 +1,4 @@
-import type { TaskStatus } from '@genai/contracts';
+import type { Task, TaskStatus } from '@genai/contracts';
 import { assistantCapabilityPrefix } from '@genai/jobs';
 import type { DirectoryEntry, TaskIndex, TenantDirectoryStore, TrackedTask } from './extensions.js';
 
@@ -19,6 +19,11 @@ export interface TaskRows {
     since: string;
     excludeCapabilityPrefix?: string;
   }): Promise<number>;
+  envelopes?(query: { tenant: string; since?: string; limit?: number }): Promise<Task[]>;
+}
+
+export interface UsageRows {
+  usageOf(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
 }
 
 interface TaskRow {
@@ -52,9 +57,27 @@ const tracked = (row: TaskRow): TrackedTask => ({
   at: row.endedAt ?? row.createdAt,
 });
 
-export const postgresTaskIndex = (tasks: TaskRows, limit = 1000): TaskIndex => ({
-  all: async (tenant) => (await tasks.list({ ...(tenant ? { tenant } : {}), limit })).map(tracked),
-  running: async () => (await tasks.list({ status: ['queued', 'running'], limit })).map(tracked),
+export const postgresTaskIndex = (
+  tasks: TaskRows,
+  options: { limit?: number; events?: UsageRows } = {},
+): TaskIndex => ({
+  all: async (tenant) =>
+    (await tasks.list({ ...(tenant ? { tenant } : {}), limit: options.limit ?? 1000 })).map(
+      tracked,
+    ),
+  running: async () =>
+    (await tasks.list({ status: ['queued', 'running'], limit: options.limit ?? 1000 })).map(
+      tracked,
+    ),
+  ...(tasks.envelopes
+    ? {
+        envelopes: (tenant: string, query: { since?: string; limit?: number }) =>
+          tasks.envelopes?.({ tenant, ...query }) ?? Promise.resolve([]),
+      }
+    : {}),
+  ...(options.events
+    ? { usageEvents: (ids: string[]) => options.events?.usageOf(ids) ?? Promise.resolve([]) }
+    : {}),
   ...(tasks.tokensUsed
     ? {
         tokensUsed: (tenant: string, since: string) =>
