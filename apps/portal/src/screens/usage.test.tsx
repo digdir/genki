@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../mock';
-import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 import type { UsageReport } from '../types';
 
 beforeAll(() => {
@@ -46,11 +46,13 @@ const table = async (name = 'Fordelt på tjeneste') => {
 
 describe('Forbruk', () => {
   it('shows quota, KPIs, chart and the service table from the usage API', async () => {
-    const { calls, fetch } = recording();
+    const held = heldFetch(/\/usage\?days=190$/);
+    const { calls, fetch } = recording(held.fetch);
     await renderAt('#/statistics', fetch);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
-    expect(screen.getByText('Henter forbruk')).toBeTruthy();
+    expect(await screen.findByText('Henter forbruk')).toBeTruthy();
+    await held.release();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
 

@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '../api';
 import { useAsync } from '../hooks';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const server = () => {
   const state = { version: 1, gets: 0, locale: 'nb' };
@@ -43,6 +46,8 @@ describe('the cache in the portal API layer', () => {
     await waitFor(() => expect(first.result.current.status).toBe('ready'));
     first.unmount();
     state.version = 2;
+    const later = Date.now() + 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
 
     const second = visit(api);
     await waitFor(() => expect(second.result.current).toEqual({ status: 'ready', data: ['v2'] }));

@@ -5,6 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createApiClient } from './api';
 import type { AuthClient } from './auth';
 import { navigate, parseRoute, useRoute } from './hooks';
+import { prefetchOnIntent, prefetchPath } from './prefetch';
 import type { ScreenProps } from './screen';
 import { developerHashFor } from './screens/developer-routes';
 import { Overview } from './screens/Overview';
@@ -196,9 +197,10 @@ const Portal = ({
   const route = useRoute();
   const orgParam = route.query.get('org');
   const [session, setSession] = useState<Session | undefined>(auth.current());
-  const [organisation, setOrganisation] = useState<Organisation | undefined>(
+  const [picked, setOrganisation] = useState<Organisation | undefined>(
     () => session && chosen(session, orgParam),
   );
+  const organisation = session?.organisations.find((o) => o.orgNumber === orgParam) ?? picked;
   const [busy, setBusy] = useState(() => auth.callbackPending?.() ?? false);
   const [failed, setFailed] = useState(false);
   const [unregistered, setUnregistered] = useState<Set<string>>(() => new Set());
@@ -332,6 +334,15 @@ const Portal = ({
     );
     return () => controller.abort();
   }, [api, live, tenantKey, token]);
+
+  const routePath = route.path;
+  useEffect(() => {
+    if (tenantKey && token) prefetchPath(routePath, api, tenantKey, live);
+  }, [routePath, api, tenantKey, token, live]);
+  useEffect(() => {
+    if (!tenantKey || !token) return;
+    return prefetchOnIntent(document, (path) => prefetchPath(path, api, tenantKey, live));
+  }, [api, tenantKey, token, live]);
 
   save.current = (next) => {
     locale.current = next ?? negotiate(languages) ?? 'nb';
