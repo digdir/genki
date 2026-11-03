@@ -581,6 +581,8 @@ export const Builder = ({
   );
   const forbidden = Object.values(prohibited).some(Boolean);
   const canPublish = rights.has('manage-services');
+  const canDelete = serverDraft && isNew && draftRevision > 0 && canPublish;
+  const [deleting, setDeleting] = useState<'asking' | 'busy' | 'failed'>();
   const edited = JSON.stringify(service) !== JSON.stringify(init.definition);
   const high = service.spec.riskClass === 'high';
   const serviceId = isNew ? slug(service.metadata.name ?? '') || 'ny-tjeneste' : id;
@@ -966,6 +968,25 @@ export const Builder = ({
     if (isNew && serverDraft) window.location.replace(`#${servicePath(result.id)}`);
   };
 
+  const deleteDraft = async () => {
+    setDeleting('busy');
+    draftBlocked.current = true;
+    try {
+      await api.quality.deleteDraft(
+        tenant,
+        id,
+        revisionRef.current,
+        tRef.current('services.deleteDraftReason'),
+      );
+    } catch {
+      draftBlocked.current = false;
+      setDeleting('failed');
+      return;
+    }
+    unsaved.current = false;
+    window.location.replace('#/services');
+  };
+
   const doPublishToTest = ({ reason }: PublishInput) => {
     record(current + 1, 'test', userName, reason);
   };
@@ -1232,6 +1253,16 @@ export const Builder = ({
                   {t('services.publishToTest')}
                 </Button>
               )}
+              {canDelete ? (
+                <Button
+                  variant="secondary"
+                  data-color="danger"
+                  data-size="sm"
+                  onClick={() => setDeleting('asking')}
+                >
+                  {t('services.deleteDraft')}
+                </Button>
+              ) : null}
               {canPublish &&
               !isNew &&
               current > 0 &&
@@ -1249,6 +1280,29 @@ export const Builder = ({
             </>
           }
         />
+        {canDelete && deleting ? (
+          <Alert data-color="danger" data-size="sm">
+            <Paragraph data-size="sm">{t('services.deleteDraftQuestion', { name })}</Paragraph>
+            {deleting === 'failed' ? (
+              <Paragraph data-size="sm">{t('services.deleteDraftFailed')}</Paragraph>
+            ) : null}
+            {deleting === 'busy' ? null : (
+              <div className="actions">
+                <Button
+                  variant="primary"
+                  data-color="danger"
+                  data-size="sm"
+                  onClick={() => void deleteDraft()}
+                >
+                  {t('services.deleteDraft')}
+                </Button>
+                <Button variant="secondary" data-size="sm" onClick={() => setDeleting(undefined)}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            )}
+          </Alert>
+        ) : null}
         <ServiceNav id={routeId} sections={sections} current={section} />
         {readOnly ? (
           <Alert data-color="info" data-size="sm">

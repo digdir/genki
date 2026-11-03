@@ -120,6 +120,11 @@ export const servicesUi = {
     draftChangedElsewhere:
       'Utkastet er endret et annet sted. Last inn siden på nytt for å se endringene.',
     draftSaveFailed: 'Kunne ikke lagre utkastet. Prøv igjen om litt.',
+    deleteDraft: 'Slett utkastet',
+    deleteDraftQuestion:
+      'Vil du slette utkastet til {name}? Det slettes for alle i virksomheten og kan ikke angres.',
+    deleteDraftReason: 'Utkast slettet fra byggeren',
+    deleteDraftFailed: 'Kunne ikke slette utkastet. Prøv igjen om litt.',
     rebaseReason: 'Utkastet oppdatert med den nyeste versjonen',
     pickedReason: 'Valgte verdier fra den publiserte versjonen',
     riskNoteHigh: '{label}: menneskelig godkjenning og utvidet logging er på.',

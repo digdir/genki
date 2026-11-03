@@ -563,6 +563,35 @@ describe('a new service saved as a draft on the server', () => {
   const savedAs = (calls: Call[], name: string) =>
     waitFor(() => expect(nameIn(draftWrites(calls, 'PUT').at(-1))).toBe(name), { timeout: 3000 });
 
+  const quiet = (
+    refuse?: (method: string, url: string) => Response | undefined,
+    drafts: Record<string, { definition: Record<string, unknown> }> = {},
+  ) => {
+    const calls: Call[] = [];
+    const base = mockFetch(exampleServices, logTimelines, liveModels, exampleDatasets, {
+      features: {
+        quality: { drafts },
+        assistant: {
+          reply: () => ({
+            turnId: 'trn_quiet',
+            status: 'completed',
+            message: 'Jeg venter på mer fra deg.',
+            proposals: [],
+            usage: { tokens: 10, budgetLeftToday: 1000, dailyBudget: 1000 },
+          }),
+        },
+      },
+    });
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? 'GET';
+      const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+      calls.push({ url, method, body });
+      return refuse?.(method, url) ?? base(input, init);
+    };
+    return { calls, fetch };
+  };
+
   const startNamed = async (name: string) => {
     const recording = recorded();
     const panel = await startBuilder(recording.fetch);
@@ -582,29 +611,7 @@ describe('a new service saved as a draft on the server', () => {
   };
 
   it('saves nothing while nothing has changed, and saves the first change the person makes', async () => {
-    const calls: Call[] = [];
-    const base = mockFetch([], logTimelines, liveModels, exampleDatasets, {
-      features: {
-        assistant: {
-          reply: () => ({
-            turnId: 'trn_quiet',
-            status: 'completed',
-            message: 'Jeg venter på mer fra deg.',
-            proposals: [],
-            usage: { tokens: 10, budgetLeftToday: 1000, dailyBudget: 1000 },
-          }),
-        },
-      },
-    });
-    const fetch: typeof globalThis.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      calls.push({
-        url,
-        method: init?.method ?? 'GET',
-        body: init?.body ? JSON.parse(String(init.body)) : undefined,
-      });
-      return base(input, init);
-    };
+    const { calls, fetch } = quiet();
     const panel = await startBuilder(fetch);
     await within(panel).findAllByText('Jeg venter på mer fra deg.');
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -671,6 +678,63 @@ describe('a new service saved as a draft on the server', () => {
       'Permisjonssvar',
     );
     expect(screen.getByRole('link', { name: 'Oppsett', current: 'page' })).toBeTruthy();
+  });
+
+  const deleteQuestion = /^Vil du slette utkastet til Permisjonssvar\?/;
+  const confirmBox = async () =>
+    (await screen.findByText(deleteQuestion)).parentElement as HTMLElement;
+
+  it('deletes a draft-only service after a confirmation on the page, and the list no longer shows it', async () => {
+    const { calls, id } = await startNamed('Permisjonssvar');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Avbryt' }));
+    expect(screen.queryByText(deleteQuestion)).toBeNull();
+    expect(draftWrites(calls, 'DELETE')).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/services'));
+    expect(draftWrites(calls, 'DELETE').map((c) => [idOf(c), c.body])).toEqual([
+      [id, { revision: revisions(calls).length }],
+    ]);
+    expect(await screen.findByText('Ingen tjenester ennå')).toBeTruthy();
+  });
+
+  it('offers to delete only a saved draft of a service never published', async () => {
+    const published = exampleServices.find((s) => s.id === 'rapportassistenten');
+    const { fetch } = quiet(undefined, {
+      rapportassistenten: { definition: published?.latest.definition ?? {} },
+    });
+    await startBuilder(fetch);
+    await screen.findByRole('button', { name: 'Publiser' });
+    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+
+    await rename('Permisjonssvar');
+    expect(await screen.findByRole('button', { name: 'Slett utkastet' })).toBeTruthy();
+
+    window.location.hash = '#/services/rapportassistenten';
+    await screen.findByText(/upublisert utkast/);
+    expect(screen.queryByRole('button', { name: 'Slett utkastet' })).toBeNull();
+  });
+
+  it('says so when the draft could not be deleted, keeps the page and goes on saving', async () => {
+    const { calls, fetch } = quiet((method, url) =>
+      method === 'DELETE' && draftPath.test(url) ? new Response(null, { status: 500 }) : undefined,
+    );
+    await startBuilder(fetch);
+    await rename('Permisjonssvar');
+    await savedAs(calls, 'Permisjonssvar');
+    const id = idOf(draftWrites(calls, 'PUT')[0]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Slett utkastet' }));
+    fireEvent.click(within(await confirmBox()).getByRole('button', { name: 'Slett utkastet' }));
+
+    expect(await screen.findByText('Kunne ikke slette utkastet. Prøv igjen om litt.')).toBeTruthy();
+    expect(window.location.hash).toBe(`#/services/${id}`);
+    await rename('Permisjonssvar for ledere');
+    await savedAs(calls, 'Permisjonssvar for ledere');
   });
 
   it('publishing clears the draft, opens the published service and drops the draft from the list', async () => {
