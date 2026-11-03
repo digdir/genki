@@ -2723,6 +2723,7 @@
               'One runtime builder that both composition roots call. It builds the model, knowledge, rerank, embedding and tool routers, wraps every service strategy in settings, guardrails, hooks and document scope, applies the catalogs stored as config entries, compiles published services into capabilities with the platform cost limits and quarantines the ones that fail. The API adds HTTP, admin modules and platform strategies on top; the worker runs triggers on the same kernel.',
             responsibilities: [
               'Build routers, ports, strategies, registry and kernel from catalogs, secrets and stores',
+              'Create the one model gate, with lockdown admission, plug-in egress guards and the log for calls outside a run (outside-run:\u003ctenant>:\u003cday>)',
               'Wrap every service strategy in settings, guardrails, hooks and document scope',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Compile published services into capabilities and quarantine invalid ones',
@@ -2738,6 +2739,7 @@
               'packages/composition/src/settings-runtime.ts',
               'packages/composition/src/document-scope.ts',
               'packages/composition/src/boot-guard.ts',
+              'packages/composition/src/outside-run.ts',
             ],
             input: 'Catalogs, secrets, definition and config stores, policy',
             output: 'A kernel with every strategy registered, and the registries behind it',
@@ -3129,13 +3131,15 @@
               'Run tasks and stream client events',
               'Enforce policy, tenant sharing and budgets',
               'Own the audit record and the SPI for ports and stores',
-              'Gate every model, decision, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, the closed request shape, metering and the audit event kernel.gate.call',
+              "Gate every model, decision, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, the closed payload shapes, the endpoint's egress guard, metering and the audit event kernel.gate.call, also for calls outside a run",
+              'Hold the closed payload shape of every operation and the one walker that masks, restores, finds media and validates with it',
             ],
             files: [
               'packages/kernel/src/kernel.ts',
               'packages/kernel/src/spi.ts',
               'packages/kernel/src/gate.ts',
               'packages/kernel/src/gate-contract.ts',
+              'packages/kernel/src/payload.ts',
               'packages/kernel/src/memory.ts',
               'packages/kernel/src/retention.ts',
               'packages/kernel/src/secrets.ts',
@@ -6331,14 +6335,14 @@
             status: 'Port',
             packages: ['@genai/port-model'],
             summary:
-              'One port for model calls; a router owns catalog, residency, capabilities, credentials and metering.',
+              'One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.',
             description:
               'Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.',
             responsibilities: [
               'Model catalog and discovery',
               'Operations on the catalogue (chat, decide) and capability checks',
               'The kernel port decision, the decide operation on the same catalogue (ADR 0047,',
-              'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), residency and sharing, runs the payload guard and meters (ADR 0047)',
+              'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
               'Credential resolution',
             ],
             files: [
@@ -6818,7 +6822,7 @@
             packages: ['@genai/port-rerank'],
             summary: 'Reranks candidate passages through a catalog of rerank endpoints.',
             description:
-              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, masked and metered.",
+              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
             responsibilities: [
               'Rerank catalog',
               'Rerank with timeouts and warnings',
@@ -6964,11 +6968,11 @@
             packages: ['@genai/port-embedding'],
             summary: 'Turns text into vectors through a catalog of embedding models.',
             description:
-              "Same router shape as the model and rerank ports. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, masks and meters, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
+              "Same router shape as the model and rerank ports. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search outside a run, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
             responsibilities: [
               'Embedding catalog',
               'Dimension checks and batching',
-              "Calls through the kernel gate, with the endpoint's egress guard",
+              "Calls through the kernel gate, which applies the endpoint's egress guard",
             ],
             files: [
               'packages/port-embedding/src/port.ts',

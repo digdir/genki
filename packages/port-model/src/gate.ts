@@ -1,69 +1,22 @@
 import {
+  chatShape,
   createGate,
+  decideShape,
   type Gate,
   type GatePayload,
   type GateRefusal,
   type PortContext,
+  type Shape,
 } from '@genai/kernel';
-import {
-  decisionRequestProblem,
-  type DecisionMessage,
-  type DecisionPort,
-  type DecisionRequest,
-  type DecisionResult,
-} from './decision.js';
-import {
-  ModelError,
-  type ChatMessage,
-  type ChatRequest,
-  type ChatResult,
-  type ModelPort,
-} from './port.js';
+import type { DecisionPort, DecisionResult } from './decision.js';
+import { ModelError, type ChatResult, type ModelPort } from './port.js';
 
-const mapMessage = (m: ChatMessage, map: (text: string) => string): ChatMessage => {
-  if (typeof m.content !== 'string') return m;
-  if (m.role === 'assistant')
-    return {
-      ...m,
-      content: map(m.content),
-      ...(m.toolCalls
-        ? { toolCalls: m.toolCalls.map((c) => ({ ...c, arguments: map(c.arguments) })) }
-        : {}),
-    };
-  return { ...m, content: map(m.content) };
-};
+export const chatPayload = (continuations: readonly Shape[] = []): GatePayload<ChatResult> => ({
+  shape: chatShape(continuations),
+});
 
-export const chatPayload: GatePayload<ChatRequest, ChatResult> = {
-  contents: (request) => request.messages.map((m) => m.content as unknown),
-  mapRequest: (request, map) => ({
-    ...request,
-    messages: request.messages.map((m) => mapMessage(m, map)),
-  }),
-  mapResult: (result, map) => ({
-    ...result,
-    content: map(result.content),
-    toolCalls: result.toolCalls.map((c) => ({ ...c, arguments: map(c.arguments) })),
-  }),
-};
-
-const decisionContents = (input: unknown): unknown[] =>
-  typeof input === 'string'
-    ? [input]
-    : Array.isArray(input)
-      ? input.map((m) => (m as Partial<DecisionMessage> | null)?.content)
-      : [];
-
-export const decidePayload: GatePayload<DecisionRequest, DecisionResult> = {
-  contents: (request) => decisionContents((request as Partial<DecisionRequest> | null)?.input),
-  mapRequest: (request, map) => ({
-    ...request,
-    input:
-      typeof request.input === 'string'
-        ? map(request.input)
-        : request.input.map((m) => ({ ...m, content: map(m.content) })),
-  }),
-  mapResult: (result) => result,
-  check: decisionRequestProblem,
+export const decidePayload: GatePayload<DecisionResult> = {
+  shape: decideShape,
   usage: (result) => result.usage,
   dropped: (result) => result.dropped,
 };
@@ -97,9 +50,9 @@ export const gatedModel = (
   };
   return {
     info: () => port.info(),
-    chat: (request) => gate.call(ctx, target, chatPayload, request, (r) => port.chat(r)),
+    chat: (request) => gate.call(ctx, target, chatPayload(), request, (r) => port.chat(r)),
     chatStream: (request) =>
-      gate.stream(ctx, target, chatPayload, request, (r) => port.chatStream(r)),
+      gate.stream(ctx, target, chatPayload(), request, (r) => port.chatStream(r)),
   };
 };
 

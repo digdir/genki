@@ -1,7 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { sourceLinkRules } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
-import { capabilities, parameterRules, residencies } from '@genai/port-model';
+import { capabilities, operations, parameterRules, residencies } from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
@@ -535,6 +535,7 @@ const PublicModel = z
     family: z.string().optional(),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
+    operations: z.array(z.enum(operations)),
     parameters: parameterRules,
     price: Price.nullable(),
   })

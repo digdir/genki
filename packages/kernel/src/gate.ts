@@ -1,4 +1,5 @@
 import type { Principal, Ref, ResourceProvenance, Usage } from '@genai/contracts';
+import { walk, type OperationShape } from './payload.js';
 import type { PortContext } from './spi.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -85,41 +86,54 @@ export interface GateTarget {
   refuse?: (refusal: GateRefusal, message: string) => Error;
 }
 
-export interface GatePayload<Req, Res> {
-  contents(request: Req): readonly unknown[];
-  mapRequest(request: Req, map: (text: string) => string): Req;
-  mapResult(result: Res, map: (text: string) => string): Res;
+export interface GatePayload<Res> {
+  shape: OperationShape;
   usage?(result: Res): Usage | undefined;
   provenance?(result: Res): ResourceProvenance | undefined;
-  /** Names what in a request falls outside the operation's closed shape. */
-  check?(request: Req): string | undefined;
+  /** Fields the adapter dropped from the provider's answer before it reached the port. */
   dropped?(result: Res): number | undefined;
 }
 
 export type GateChunk<Res> = { kind: 'delta'; text: string } | { kind: 'done'; result: Res };
 
+export interface OutsideRun {
+  audit(ctx: PortContext, record: GateRecord): Promise<void>;
+  meter(ctx: PortContext, usage: Usage, model: Ref): Promise<void>;
+}
+
 export interface GateOptions {
   admits?: (principal: Principal) => boolean;
+  egress?: (endpoint: string) => typeof fetch | undefined;
+  outside?: OutsideRun;
 }
 
 export interface Gate {
+  /** The fetch an adapter gets for an endpoint; the gate applies the endpoint's egress guard on every request. */
+  egress(endpoint: string): typeof fetch;
   call<Req, Res>(
     ctx: PortContext,
     target: GateTarget,
-    payload: GatePayload<Req, Res>,
+    payload: GatePayload<Res>,
     request: Req,
     send: (request: Req) => Promise<Res>,
   ): Promise<Res>;
   stream<Req, Res>(
     ctx: PortContext,
     target: GateTarget,
-    payload: GatePayload<Req, Res>,
+    payload: GatePayload<Res>,
     request: Req,
     send: (request: Req) => AsyncIterable<GateChunk<Res>>,
   ): AsyncIterable<GateChunk<Res>>;
 }
 
 const distinct = <T>(items: readonly T[]) => [...new Set(items)];
+
+export class ShapeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ShapeError';
+  }
+}
 
 export const createGate = (options: GateOptions = {}): Gate => {
   const admit = (ctx: PortContext, target: GateTarget) => {
@@ -137,22 +151,51 @@ export const createGate = (options: GateOptions = {}): Gate => {
         refuse('residency', `${name} runs outside ${ceiling}`);
   };
 
-  const guarded = async <Req, Res>(
-    ctx: PortContext,
-    target: GateTarget,
-    payload: GatePayload<Req, Res>,
-    request: Req,
-  ) => {
-    if (payload.contents(request).some((c) => typeof c !== 'string'))
+  const inShape = <Req, Res>(
+    payload: GatePayload<Res>,
+    body: unknown,
+    map?: (text: string) => string,
+  ): Req => {
+    const walked = walk<Req>(payload.shape.request, body, {
+      side: 'request',
+      ...(map ? { map } : {}),
+    });
+    if (walked.media.length > 0)
       throw new GateError(
         'media',
         'the payload has image, audio or file content, which cannot be masked',
       );
-    const outside = (body: Req) => {
-      const problem = payload.check?.(body);
-      if (problem) throw new GateError('shape', problem);
-    };
-    outside(request);
+    if (walked.problems.length > 0)
+      throw new GateError(
+        'shape',
+        `the request is outside its shape: ${walked.problems.join('; ')}`,
+      );
+    return walked.value;
+  };
+
+  const answered = <Res>(
+    payload: GatePayload<Res>,
+    result: unknown,
+    map?: (text: string) => string,
+  ) => {
+    const walked = walk<Res>(payload.shape.result, result, {
+      side: 'result',
+      ...(map ? { map } : {}),
+    });
+    if (walked.problems.length > 0)
+      throw new ShapeError(
+        `the provider answered outside the shape: ${walked.problems.join('; ')}`,
+      );
+    return walked;
+  };
+
+  const guarded = async <Req, Res>(
+    ctx: PortContext,
+    target: GateTarget,
+    payload: GatePayload<Res>,
+    request: Req,
+  ) => {
+    inShape(payload, request);
     const guards = distinct(ctx.guards ?? []);
     const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
     const call: GateCall = {
@@ -160,17 +203,17 @@ export const createGate = (options: GateOptions = {}): Gate => {
       operation: target.operation,
       model: target.model.id,
     };
-    let body = maskers.length
-      ? payload.mapRequest(request, (text) => maskers.reduce((t, m) => m.mask(t), text))
+    let body: Req = maskers.length
+      ? inShape(payload, request, (text) => maskers.reduce((t, m) => m.mask(t), text))
       : request;
     for (const guard of guards) if (guard.request) body = (await guard.request(call, body)) as Req;
-    outside(body);
+    body = inShape(payload, body);
     const restoring = maskers.filter((m) => m.unmask);
     const restore = (text: string) =>
       restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);
     const finish = async (result: Res) => {
       for (const guard of [...guards].reverse()) if (guard.result) await guard.result(call, result);
-      return restoring.length ? payload.mapResult(result, restore) : result;
+      return restoring.length ? answered(payload, result, restore).value : result;
     };
     const pending = (text: string) => Math.max(0, ...restoring.map((m) => m.pending?.(text) ?? 0));
     return {
@@ -183,15 +226,20 @@ export const createGate = (options: GateOptions = {}): Gate => {
     };
   };
 
+  // Only the kernel's `use` sets audit, so a context without it comes from outside a run.
+  const outside = (ctx: PortContext) => (ctx.audit ? undefined : options.outside);
+
   const recorder = (ctx: PortContext, target: GateTarget) => {
     let written = false;
+    const sink = outside(ctx);
+    const audit = ctx.audit ?? (sink ? (record: GateRecord) => sink.audit(ctx, record) : undefined);
     return async (
       outcome: GateRecord['outcome'],
       extra: Pick<GateRecord, 'refusal' | 'usage' | 'dropped'> = {},
     ) => {
       if (written) return;
       written = true;
-      await ctx.audit?.({
+      await audit?.({
         port: target.port,
         operation: target.operation,
         model: target.model.id,
@@ -206,7 +254,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
   const open = async <Req, Res>(
     ctx: PortContext,
     target: GateTarget,
-    payload: GatePayload<Req, Res>,
+    payload: GatePayload<Res>,
     request: Req,
     record: ReturnType<typeof recorder>,
   ) => {
@@ -223,18 +271,38 @@ export const createGate = (options: GateOptions = {}): Gate => {
     }
   };
 
-  const settle = async <Req, Res>(
-    ctx: PortContext,
-    target: GateTarget,
-    payload: GatePayload<Req, Res>,
-    result: Res,
+  const received = async <Res>(
+    payload: GatePayload<Res>,
+    result: unknown,
     record: ReturnType<typeof recorder>,
   ) => {
-    const usage = payload.usage?.(result);
-    const dropped = payload.dropped?.(result);
     try {
-      if (usage) await ctx.meter(usage, target.model);
-      const provenance = payload.provenance?.(result);
+      const walked = answered(payload, result);
+      return {
+        result: walked.value,
+        dropped: walked.dropped + (payload.dropped?.(walked.value) ?? 0),
+      };
+    } catch (error) {
+      await record('failed');
+      throw error;
+    }
+  };
+
+  const settle = async <Res>(
+    ctx: PortContext,
+    target: GateTarget,
+    payload: GatePayload<Res>,
+    answer: { result: Res; dropped: number },
+    record: ReturnType<typeof recorder>,
+  ) => {
+    const usage = payload.usage?.(answer.result);
+    const { dropped } = answer;
+    try {
+      if (usage) {
+        await ctx.meter(usage, target.model);
+        await outside(ctx)?.meter(ctx, usage, target.model);
+      }
+      const provenance = payload.provenance?.(answer.result);
       if (provenance) await ctx.provenance?.(provenance);
     } finally {
       await record('ok', { ...(usage ? { usage } : {}), ...(dropped ? { dropped } : {}) });
@@ -244,24 +312,33 @@ export const createGate = (options: GateOptions = {}): Gate => {
   const call = async <Req, Res>(
     ctx: PortContext,
     target: GateTarget,
-    payload: GatePayload<Req, Res>,
+    payload: GatePayload<Res>,
     request: Req,
     send: (request: Req) => Promise<Res>,
   ): Promise<Res> => {
     const record = recorder(ctx, target);
     const guard = await open(ctx, target, payload, request, record);
-    const result = await send(guard.body).catch(async (error: unknown) => {
+    const raw = await send(guard.body).catch(async (error: unknown) => {
       await record('failed');
       throw error;
     });
-    await settle(ctx, target, payload, result, record);
-    return guard.finish(result);
+    const answer = await received(payload, raw, record);
+    await settle(ctx, target, payload, answer, record);
+    return guard.finish(answer.result);
+  };
+
+  const event = (chunk: unknown): GateChunk<unknown> & { extra: number } => {
+    const { kind, text, result, ...rest } = (chunk ?? {}) as Record<string, unknown>;
+    const extra = Object.values(rest).filter((v) => v !== undefined).length;
+    if (kind === 'delta' && typeof text === 'string') return { kind, text, extra };
+    if (kind === 'done' && result !== undefined) return { kind, result, extra };
+    throw new ShapeError(`the stream sent an event outside its shape (${String(kind)})`);
   };
 
   async function* stream<Req, Res>(
     ctx: PortContext,
     target: GateTarget,
-    payload: GatePayload<Req, Res>,
+    payload: GatePayload<Res>,
     request: Req,
     send: (request: Req) => AsyncIterable<GateChunk<Res>>,
   ): AsyncIterable<GateChunk<Res>> {
@@ -280,24 +357,34 @@ export const createGate = (options: GateOptions = {}): Gate => {
       if (ready) yield { kind: 'delta', text: guard.restore(ready) };
     };
     const held: string[] = [];
-    let ended: { result: Res } | undefined;
+    let ended: { result: unknown } | undefined;
+    let extra = 0;
     try {
       for await (const chunk of send(guard.body)) {
-        if (chunk.kind === 'done') ended = { result: chunk.result };
-        else if (guard.holds) held.push(chunk.text);
-        else yield* release(chunk.text);
+        const seen = event(chunk);
+        extra += seen.extra;
+        if (seen.kind === 'done') ended = { result: seen.result };
+        else if (guard.holds) held.push(seen.text);
+        else yield* release(seen.text);
       }
       if (!ended) throw new Error('the stream ended without a result');
     } catch (error) {
       await record('failed');
       throw error;
     }
-    await settle(ctx, target, payload, ended.result, record);
-    const finished = await guard.finish(ended.result);
+    const answer = await received(payload, ended.result, record);
+    await settle(ctx, target, payload, { ...answer, dropped: answer.dropped + extra }, record);
+    const finished = await guard.finish(answer.result);
     for (const text of held) yield* release(text);
     if (carry) yield { kind: 'delta', text: guard.restore(carry) };
     yield { kind: 'done', result: finished };
   }
 
-  return { call, stream };
+  const egress = (endpoint: string): typeof fetch => {
+    const guarded: typeof fetch = (input, init) =>
+      (options.egress?.(endpoint) ?? globalThis.fetch)(input, init);
+    return guarded;
+  };
+
+  return { egress, call, stream };
 };

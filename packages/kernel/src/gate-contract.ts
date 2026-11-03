@@ -1,4 +1,4 @@
-import type { Usage } from '@genai/contracts';
+import type { ResourceProvenance, Usage } from '@genai/contracts';
 import type { Admission, GateRecord, GateRefusal, PayloadGuard, Residency } from './gate.js';
 
 export const gateContractVersion = 'gate@1';
@@ -15,13 +15,19 @@ export interface GateLaneSetup {
   serviceResidency?: Residency;
   guards?: PayloadGuard[];
   failUpstream?: boolean;
+  unknownAnswerField?: boolean;
+  unknownStreamEvent?: boolean;
 }
 
+export type Smuggled = 'field' | 'url' | 'object-id';
+
 export interface GateLaneRun {
-  call(text: string, extra?: { media?: boolean }): Promise<string | undefined>;
+  call(text: string, extra?: { media?: boolean; smuggle?: Smuggled }): Promise<string | undefined>;
+  stream?(text: string): Promise<string>;
   upstream: string[];
   metered: Usage[];
   audit: GateRecord[];
+  provenance?: ResourceProvenance[];
 }
 
 export interface GateLane {
@@ -29,7 +35,13 @@ export interface GateLane {
   operation: string;
   admission: Admission;
   tenant: string;
-  has: { enabled: boolean; sharing: boolean; routerResidency: boolean; requestResidency: boolean };
+  has: {
+    enabled: boolean;
+    sharing: boolean;
+    routerResidency: boolean;
+    requestResidency: boolean;
+    provenance?: boolean;
+  };
   answersWithText: boolean;
   refusalOf(error: unknown): GateRefusal | undefined;
   open(setup: GateLaneSetup): GateLaneRun;
@@ -54,12 +66,18 @@ const fail = (message: string): never => {
   throw new Error(message);
 };
 
-const refusalOf = async (lane: GateLane, setup: GateLaneSetup, text = 'hei', media = false) => {
+const refusalOf = async (
+  lane: GateLane,
+  setup: GateLaneSetup,
+  text = 'hei',
+  media = false,
+  smuggle?: Smuggled,
+) => {
   const run = lane.open(setup);
   let refusal: GateRefusal | undefined;
   let refused = false;
   try {
-    await run.call(text, { media });
+    await run.call(text, { media, ...(smuggle ? { smuggle } : {}) });
   } catch (error) {
     refused = true;
     refusal = lane.refusalOf(error);
@@ -170,6 +188,66 @@ export const gateContract: GateContractSuite = {
           if (outcome.upstream > 0) fail(`${lane.port}: the image reached the provider`);
           if (outcome.refusal !== 'media')
             fail(`${lane.port}: refused as ${String(outcome.refusal)}`);
+        }),
+    },
+    {
+      name: 'refuses a request field outside the closed shape before anything leaves',
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          const outcome = await refusalOf(lane, {}, 'hei', false, 'field');
+          if (!outcome.refused) fail(`${lane.port}: an unknown request field was not refused`);
+          if (outcome.refusal !== 'shape')
+            fail(`${lane.port}: refused as ${String(outcome.refusal)}, expected shape`);
+          if (outcome.upstream > 0) fail(`${lane.port}: the unknown field reached the provider`);
+        }),
+    },
+    {
+      name: 'refuses a URL or a provider-side object id in a request',
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          for (const smuggle of ['url', 'object-id'] as const) {
+            const outcome = await refusalOf(lane, {}, 'hei', false, smuggle);
+            if (!outcome.refused) fail(`${lane.port}: a request with a ${smuggle} was not refused`);
+            if (outcome.refusal !== 'shape' && outcome.refusal !== 'media')
+              fail(`${lane.port}: a ${smuggle} was refused as ${String(outcome.refusal)}`);
+            if (outcome.upstream > 0) fail(`${lane.port}: the ${smuggle} reached the provider`);
+          }
+        }),
+    },
+    {
+      name: 'drops an unknown field in the answer and counts it in the audit event',
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          const run = lane.open({ unknownAnswerField: true });
+          await run.call('hei');
+          const record = run.audit.at(-1);
+          if (record?.outcome !== 'ok') fail(`${lane.port}: the call did not pass`);
+          if (!record?.dropped) fail(`${lane.port}: the dropped field was not counted`);
+        }),
+    },
+    {
+      name: 'ends the stream on an event the gate does not know',
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          const run = lane.open({ unknownStreamEvent: true });
+          if (!run.stream) return;
+          const ended = await run.stream('hei').then(
+            () => false,
+            () => true,
+          );
+          if (!ended) fail(`${lane.port}: the stream went on after an unknown event`);
+          if (run.audit.at(-1)?.outcome !== 'failed')
+            fail(`${lane.port}: the stream was audited as ${String(run.audit.at(-1)?.outcome)}`);
+        }),
+    },
+    {
+      name: 'records the model it called as provenance',
+      run: (s) =>
+        everyLane(s, async (lane) => {
+          if (!lane.has.provenance) return;
+          const run = lane.open({});
+          await run.call('hei');
+          if (!run.provenance?.length) fail(`${lane.port}: no provenance was recorded`);
         }),
     },
     {

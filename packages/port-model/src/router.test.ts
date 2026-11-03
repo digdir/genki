@@ -224,7 +224,7 @@ describe('model router', () => {
     expect(a.calls).toHaveLength(0);
   });
 
-  it('refuses an unknown model and a model outside the allowed residency', () => {
+  it('refuses an unknown model at open and a model outside the allowed residency at the gate', async () => {
     const a = recording('proto-a');
     const b = recording('proto-b');
     const norwayOnly = new ModelRouter({
@@ -236,7 +236,9 @@ describe('model router', () => {
     });
 
     expect(() => open(norwayOnly, 'c/none')).toThrow(ModelError);
-    expect(() => open(norwayOnly, 'b/large')).toThrow(/outside norway/);
+    await expect(
+      open(norwayOnly, 'b/large').chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/outside norway/);
     expect(open(norwayOnly, 'a/small').info()).toEqual({
       id: 'a/small',
       residency: 'norway',
@@ -627,7 +629,9 @@ describe('model discovery', () => {
     await router.classify('two/claude-sonnet-5-5', { enabled: false });
 
     expect(router.models().has('two/claude-sonnet-5-5')).toBe(false);
-    expect(() => open(router, 'two/claude-sonnet-5-5')).toThrow(/turned off/);
+    await expect(
+      open(router, 'two/claude-sonnet-5-5').chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/turned off/);
     await router.classify('two/claude-sonnet-5-5', { enabled: true });
   });
 
@@ -684,9 +688,11 @@ describe('reloading the catalog', () => {
     expect((await own.chat({ messages: [{ role: 'user', content: 'hei' }] })).content).toBe(
       'proto-a:egen-dep',
     );
-    expect(() => router.open({ kind: 'model', id: '991825827/egen' }, testContext().ctx)).toThrow(
-      /not shared/,
-    );
+    await expect(
+      router
+        .open({ kind: 'model', id: '991825827/egen' }, testContext().ctx)
+        .chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/not shared/);
   });
 });
 

@@ -18,13 +18,16 @@ responsibilities:
   - Enforce policy, tenant sharing and budgets
   - Own the audit record and the SPI for ports and stores
   - Gate every model, decision, embedding and rerank call (ADR 0047) with admission, enabled,
-    tenant sharing, residency, the payload guard, the closed request shape, metering and the audit
-    event kernel.gate.call
+    tenant sharing, residency, the payload guard, the closed payload shapes, the endpoint's egress
+    guard, metering and the audit event kernel.gate.call, also for calls outside a run
+  - Hold the closed payload shape of every operation and the one walker that masks, restores,
+    finds media and validates with it
 files:
   - packages/kernel/src/kernel.ts
   - packages/kernel/src/spi.ts
   - packages/kernel/src/gate.ts
   - packages/kernel/src/gate-contract.ts
+  - packages/kernel/src/payload.ts
   - packages/kernel/src/memory.ts
   - packages/kernel/src/retention.ts
   - packages/kernel/src/secrets.ts

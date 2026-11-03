@@ -166,7 +166,7 @@ describe('rerank router', () => {
     expect(calls).toBe(0);
   });
 
-  it('refuses an unknown reranker and one outside the allowed residency', () => {
+  it('refuses an unknown reranker at open and one outside the allowed residency when called', async () => {
     const r = new RerankRouter({
       catalog: catalog('degrade', 'global'),
       adapters: [stub(async () => [])],
@@ -175,7 +175,12 @@ describe('rerank router', () => {
     });
 
     expect(() => r.open({ kind: 'reranker', id: 'none' }, context())).toThrow(/no reranker none/);
-    expect(() => r.open({ kind: 'reranker', id: 'colbert' }, context())).toThrow(/outside eu/);
+    await expect(
+      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank({
+        query: 'hei',
+        documents: ['a'],
+      }),
+    ).rejects.toThrow(/outside eu/);
   });
 
   it('a rerank call is refused in lockdown for a login without model access', async () => {

@@ -1,7 +1,8 @@
-import type { Principal, Ref } from '@genai/contracts';
+import type { Ref } from '@genai/contracts';
 import {
   createGate,
   credentialFor,
+  rerankShape,
   type Gate,
   type GatePayload,
   type GateRefusal,
@@ -13,13 +14,7 @@ import {
 } from '@genai/kernel';
 import type { RerankAdapter, RerankConnection, RerankerConfig } from './adapter.js';
 import { parseRerankCatalog, type CatalogReranker } from './catalog.js';
-import {
-  RerankError,
-  type Ranked,
-  type RerankPort,
-  type RerankRequest,
-  type Residency,
-} from './port.js';
+import { RerankError, type Ranked, type RerankPort, type Residency } from './port.js';
 
 export interface RerankRouterOptions {
   catalog: unknown;
@@ -30,8 +25,6 @@ export interface RerankRouterOptions {
   timeoutMs?: number;
   maxDocuments?: number;
   onWarning?: (message: string) => void;
-  fetchFor?: (endpoint: string) => typeof fetch | undefined;
-  admits?: (principal: Principal) => boolean;
   gate?: Gate;
 }
 
@@ -40,8 +33,6 @@ interface Route {
   config: RerankerConfig;
   connection: RerankConnection;
 }
-
-const order: Residency[] = ['norway', 'eu', 'global'];
 
 const refusalCodes: Record<GateRefusal, RerankError['code']> = {
   admission: 'unauthorized',
@@ -52,14 +43,8 @@ const refusalCodes: Record<GateRefusal, RerankError['code']> = {
   shape: 'bad_request',
 };
 
-const rerankPayload: GatePayload<RerankRequest, Ranked[]> = {
-  contents: (request) => [request.query, ...request.documents],
-  mapRequest: (request, map) => ({
-    ...request,
-    query: typeof request.query === 'string' ? map(request.query) : request.query,
-    documents: request.documents.map((d) => (typeof d === 'string' ? map(d) : d)),
-  }),
-  mapResult: (ranking) => ranking,
+const rerankPayload: GatePayload<Ranked[]> = {
+  shape: rerankShape,
   usage: () => ({ requests: 1 }),
 };
 
@@ -72,7 +57,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
   readonly #gate: Gate;
 
   constructor(private readonly options: RerankRouterOptions) {
-    this.#gate = options.gate ?? createGate(options.admits ? { admits: options.admits } : {});
+    this.#gate = options.gate ?? createGate();
     this.reload(options.catalog);
   }
 
@@ -88,7 +73,6 @@ export class RerankRouter implements PortProvider<RerankPort> {
     const connections = new Map<string, RerankConnection>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
       const adapter = adapters.get(endpoint.engine) as RerankAdapter;
-      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -101,7 +85,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
           ),
           options: adapter.endpointOptions.parse(endpoint.options),
           timeoutMs: options.timeoutMs ?? 10_000,
-          ...(guarded ? { fetch: guarded } : {}),
+          fetch: this.#gate.egress(name),
         }),
       );
     }
@@ -138,8 +122,6 @@ export class RerankRouter implements PortProvider<RerankPort> {
     if (!route) throw new RerankError('bad_request', `no reranker ${ref.id} in the catalog`);
     const { reranker, config, connection } = route;
     const max = this.options.maxResidency;
-    if (max && order.indexOf(reranker.residency) > order.indexOf(max))
-      throw new RerankError('residency', `reranker ${reranker.id} runs outside ${max}`);
     const maxDocuments = this.options.maxDocuments ?? 200;
     const refusals = new WeakSet<RerankError>();
     const target: GateTarget = {

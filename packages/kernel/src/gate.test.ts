@@ -21,7 +21,9 @@ import {
   type GateContractSubject,
   type GateLane,
   type GateLaneSetup,
+  type Smuggled,
 } from './gate-contract.js';
+import { array, number, object, optional, ref, text } from './payload.js';
 
 const tenant = '999888777';
 const kari: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant };
@@ -43,38 +45,29 @@ const tokenMasker = (): Masker => {
   };
 };
 
-interface Chat {
-  messages: unknown[];
-}
-
-const chat: GatePayload<Chat, string> = {
-  contents: (r) => r.messages,
-  mapRequest: (r, map) => ({
-    messages: r.messages.map((m) => (typeof m === 'string' ? map(m) : m)),
-  }),
-  mapResult: (text, map) => map(text),
+const chat: GatePayload<string> = {
+  shape: { request: object({ messages: array(text) }), result: text },
   usage: () => ({ inputTokens: 2, requests: 1 }),
 };
 
-const embed: GatePayload<unknown[], number[][]> = {
-  contents: (texts) => texts,
-  mapRequest: (texts, map) => texts.map((t) => (typeof t === 'string' ? map(t) : t)),
-  mapResult: (vectors) => vectors,
+const laneChat: GatePayload<Answer> = {
+  shape: {
+    request: object({ messages: array(text), user: optional(ref()) }),
+    result: object({ content: text }),
+  },
   usage: () => ({ inputTokens: 2, requests: 1 }),
 };
 
-interface Rerank {
-  query: unknown;
-  documents: string[];
-}
+const laneEmbed: GatePayload<Answer> = {
+  shape: { request: array(text), result: object({ vectors: array(array(number())) }) },
+  usage: () => ({ inputTokens: 2, requests: 1 }),
+};
 
-const rerank: GatePayload<Rerank, number[]> = {
-  contents: (r) => [r.query, ...r.documents],
-  mapRequest: (r, map) => ({
-    query: typeof r.query === 'string' ? map(r.query) : r.query,
-    documents: r.documents.map(map),
-  }),
-  mapResult: (ranking) => ranking,
+const laneRerank: GatePayload<Answer> = {
+  shape: {
+    request: object({ query: text, documents: array(text) }),
+    result: object({ ranking: array(number()) }),
+  },
   usage: () => ({ requests: 1 }),
 };
 
@@ -113,15 +106,17 @@ const targetFor = (
   ...(setup.requestResidency ? { requestResidency: setup.requestResidency } : {}),
 });
 
-const lane = <Req, Res>(
+type Answer = Record<string, unknown>;
+
+const lane = <Req>(
   port: string,
   operation: string,
   admission: GateTarget['admission'],
-  payload: GatePayload<Req, Res>,
-  request: (text: string, media: boolean) => Req,
+  payload: GatePayload<Answer>,
+  request: (text: string, extra: { media?: boolean; smuggle?: Smuggled }) => Req,
   sent: (request: Req) => string[],
-  answer: (request: Req) => Res,
-  text?: (result: Res) => string,
+  answer: (request: Req) => Answer,
+  text?: (result: Answer) => string,
 ): GateLane => ({
   port,
   operation,
@@ -135,6 +130,11 @@ const lane = <Req, Res>(
     const metered: Usage[] = [];
     const audit: GateRecord[] = [];
     const gate = createGate({ admits: () => setup.admitted ?? true });
+    const send = (r: Req) => {
+      upstream.push(...sent(r));
+      if (setup.failUpstream) throw new Error('the provider is down');
+      return setup.unknownAnswerField ? { ...answer(r), surprise: 1 } : answer(r);
+    };
     return {
       upstream,
       metered,
@@ -144,18 +144,45 @@ const lane = <Req, Res>(
           contextFor(setup, metered, audit),
           targetFor(setup, port, operation, admission),
           payload,
-          request(input, extra.media === true),
-          async (r) => {
-            upstream.push(...sent(r));
-            if (setup.failUpstream) throw new Error('the provider is down');
-            return answer(r);
-          },
+          request(input, extra),
+          async (r) => send(r),
         );
         return text?.(result);
       },
+      ...(text
+        ? {
+            stream: async (input: string) => {
+              let out = '';
+              for await (const chunk of gate.stream(
+                contextFor(setup, metered, audit),
+                targetFor(setup, port, operation, admission),
+                payload,
+                request(input, {}),
+                async function* (r) {
+                  const result = send(r);
+                  yield { kind: 'delta', text: text(result) };
+                  if (setup.unknownStreamEvent)
+                    yield { kind: 'tool-call', text: '' } as unknown as GateChunk<Answer>;
+                  yield { kind: 'done', result };
+                },
+              ))
+                if (chunk.kind === 'delta') out += chunk.text;
+              return out;
+            },
+          }
+        : {}),
     };
   },
 });
+
+const smuggled = (smuggle: Smuggled | undefined) =>
+  smuggle === 'field'
+    ? { previous_response_id: 'resp_1' }
+    : smuggle === 'url'
+      ? { user: 'https://evil.example/file' }
+      : smuggle === 'object-id'
+        ? { user: 'file-abc123' }
+        : {};
 
 const subject: GateContractSubject = {
   lanes: [
@@ -163,29 +190,46 @@ const subject: GateContractSubject = {
       'model',
       'chat',
       'admitted',
-      chat,
-      (text, media) => ({ messages: media ? [text, [image]] : [text] }),
+      laneChat,
+      (text, { media, smuggle }) => ({
+        messages: media ? [text, [image]] : [text],
+        ...smuggled(smuggle),
+      }),
       (r) => r.messages.filter((m): m is string => typeof m === 'string'),
-      (r) => String(r.messages[0]),
-      (result) => result,
+      (r) => ({ content: String(r.messages[0]) }),
+      (result) => String(result.content),
     ),
     lane(
       'embedding',
       'embed',
       'open',
-      embed,
-      (text, media) => (media ? [text, image] : [text]),
+      laneEmbed,
+      (text, { media, smuggle }) =>
+        smuggle === 'field'
+          ? [text, 42]
+          : smuggle
+            ? [text, smuggle === 'url' ? { url: 'https://evil.example' } : { file_id: 'file-1' }]
+            : media
+              ? [text, image]
+              : [text],
       (texts) => texts.filter((t): t is string => typeof t === 'string'),
-      (texts) => texts.map(() => [0.1]),
+      (texts) => ({ vectors: texts.map(() => [0.1]) }),
     ),
     lane(
       'rerank',
       'rerank',
       'admitted',
-      rerank,
-      (text, media) => ({ query: media ? image : text, documents: [text] }),
-      (r) => [...(typeof r.query === 'string' ? [r.query] : []), ...r.documents],
-      () => [0],
+      laneRerank,
+      (text, { media, smuggle }) => ({
+        query: media ? image : smuggle === 'url' ? { url: 'https://evil.example' } : text,
+        documents: smuggle === 'object-id' ? [{ file_id: 'file-1' }] : [text],
+        ...(smuggle === 'field' ? { model: 'other' } : {}),
+      }),
+      (r) => [
+        ...(typeof r.query === 'string' ? [r.query] : []),
+        ...r.documents.filter((d): d is string => typeof d === 'string'),
+      ],
+      () => ({ ranking: [0] }),
     ),
   ],
   nationalIdGuard: () => ({ masker: tokenMasker() }),
@@ -425,5 +469,54 @@ describe('use', () => {
         usage: { inputTokens: 2, requests: 1 },
       },
     ]);
+  });
+});
+
+describe('the gate outside a run', () => {
+  it('audits and meters a call outside a run through the outside sink, and leaves a run to its own audit', async () => {
+    const outside: { audit: GateRecord[]; metered: Usage[] } = { audit: [], metered: [] };
+    const gate = createGate({
+      outside: {
+        audit: async (_ctx, record) => {
+          outside.audit.push(record);
+        },
+        meter: async (_ctx, usage) => {
+          outside.metered.push(usage);
+        },
+      },
+    });
+    const target = targetFor({}, 'embedding', 'embed', 'open');
+    const payload = laneEmbed;
+    const send = async () => ({ vectors: [[0.1]] });
+    const noRun = contextFor({}, [], []);
+    Reflect.deleteProperty(noRun, 'audit');
+    await gate.call(noRun, target, payload, ['hei'], send);
+    expect(outside.audit).toMatchObject([{ port: 'embedding', outcome: 'ok' }]);
+    expect(outside.metered).toEqual([{ inputTokens: 2, requests: 1 }]);
+
+    const inRun: GateRecord[] = [];
+    await gate.call(contextFor({}, [], inRun), target, payload, ['hei'], send);
+    expect(inRun).toHaveLength(1);
+    expect(outside.audit).toHaveLength(1);
+  });
+
+  it("hands adapters a fetch that applies the endpoint's egress guard on every request", async () => {
+    const reached: string[] = [];
+    let allowed = false;
+    const gate = createGate({
+      egress: (endpoint) =>
+        endpoint === 'plugin'
+          ? ((async (input: string) => {
+              if (!allowed) throw new Error('egress refused');
+              reached.push(input);
+              return new Response('ok');
+            }) as unknown as typeof fetch)
+          : undefined,
+    });
+    const fetch = gate.egress('plugin');
+    await expect(fetch('https://plugin.example/a')).rejects.toThrow('egress refused');
+    allowed = true;
+    await fetch('https://plugin.example/b');
+    expect(reached).toEqual(['https://plugin.example/b']);
   });
 });

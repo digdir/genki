@@ -1,4 +1,4 @@
-import { withListPrice, type Principal, type Ref } from '@genai/contracts';
+import { withListPrice, type Ref } from '@genai/contracts';
 import {
   createGate,
   credentialFor,
@@ -8,6 +8,7 @@ import {
   type PortContext,
   type PortProvider,
   type SecretResolver,
+  type Shape,
 } from '@genai/kernel';
 import type {
   DeploymentConfig,
@@ -28,7 +29,6 @@ import { applyParameterRules, type ParameterRules, type TunableParameter } from 
 import {
   defaultOperations,
   ModelError,
-  residencyAllows,
   type Capability,
   type ChatChunk,
   type ChatRequest,
@@ -64,8 +64,6 @@ export interface ModelRouterOptions {
   maxRetries?: number;
   timeoutMs?: number;
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
-  fetchFor?: (endpoint: string) => typeof fetch | undefined;
-  admits?: (principal: Principal) => boolean;
   gate?: Gate;
 }
 
@@ -133,9 +131,11 @@ export class ModelRouter implements PortProvider<ModelPort> {
   #classes: Record<string, ModelClassification> = {};
   readonly #live = new Map<string, LiveModel>();
   readonly #gate: Gate;
+  readonly #continuations: Shape[];
 
   constructor(private readonly options: ModelRouterOptions) {
-    this.#gate = options.gate ?? createGate(options.admits ? { admits: options.admits } : {});
+    this.#continuations = options.adapters.flatMap((a) => (a.continuation ? [a.continuation] : []));
+    this.#gate = options.gate ?? createGate();
     this.#adapters = new Map(options.adapters.map((a) => [a.protocol, a]));
     this.#catalog = this.#load(options.catalog);
   }
@@ -168,7 +168,6 @@ export class ModelRouter implements PortProvider<ModelPort> {
         endpoint.baseURL,
       );
       credentials.set(name, credential);
-      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -177,7 +176,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           options: adapter.endpointOptions.parse(endpoint.options),
           maxRetries: options.maxRetries ?? 3,
           timeoutMs: options.timeoutMs ?? 120_000,
-          ...(guarded ? { fetch: guarded } : {}),
+          fetch: this.#gate.egress(name),
         }),
       );
     }
@@ -377,19 +376,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
   }
 
   #resolve(ref: Ref, ctx: PortContext, operation: Operation) {
-    if (this.options.admits && !this.options.admits(ctx.principal))
-      throw new ModelError('unauthorized', 'this caller may not use models in this environment');
     const route = this.#routes().get(ref.id);
     if (!route) throw new ModelError('bad_request', `no model ${ref.id} in the catalog`);
     const model = this.#effective(route);
-    if (!model.enabled) throw new ModelError('bad_request', `model ${model.id} is turned off`);
-    if (model.tenants && !model.tenants.includes(ref.tenant ?? ctx.tenant))
-      throw new ModelError('bad_request', `model ${model.id} is not shared with this tenant`);
-    if (this.options.maxResidency && !residencyAllows(this.options.maxResidency, model.residency))
-      throw new ModelError(
-        'residency',
-        `model ${model.id} runs outside ${this.options.maxResidency}`,
-      );
     const connection = this.#connections.get(model.endpoint) as ModelConnection;
     const deployment: DeploymentConfig = { deployment: model.deployment, options: route.options };
     const target: GateTarget = {
@@ -484,7 +473,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     };
     const gate = this.#gate;
     const payload = {
-      ...chatPayload,
+      ...chatPayload(this.#continuations),
       usage: (result: ChatResult) => withListPrice(result.usage, this.options.priceOf?.(model.id)),
       provenance: () => ({ model: served }),
     };

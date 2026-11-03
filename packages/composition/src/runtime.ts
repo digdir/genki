@@ -100,6 +100,7 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
+import { outsideRun } from './outside-run.js';
 import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
 import {
   guardedSend,
@@ -308,10 +309,13 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
-  const gate = createGate(input.admitsModelUse ? { admits: input.admitsModelUse } : {});
+  const gate = createGate({
+    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
+    outside: outsideRun(input.log, input.now),
+  });
   const embedders = new EmbeddingRouter({
     gate,
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
@@ -383,9 +387,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const models = new ModelRouter({
     gate,
     catalog: input.catalogs.models,
-    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     adapters: modelAdapters,
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => prices[id] as UsagePrice | undefined,
@@ -411,7 +413,6 @@ export const createRuntime = async (input: RuntimeInput) => {
     gate,
     catalog: input.catalogs.rerank,
     adapters: [colbert],
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),

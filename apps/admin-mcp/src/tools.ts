@@ -184,6 +184,7 @@ interface CatalogModel {
   id: string;
   residency: string;
   capabilities: string[];
+  operations?: string[];
   price: { inputPerThousand: number; outputPerThousand: number } | null;
 }
 
@@ -510,7 +511,7 @@ const listModels = tool({
   name: 'list_models',
   title: 'List models',
   description:
-    'The models this organisation can choose, with whether it may use them, where data is processed and the price per 1,000 tokens.',
+    'The models this organisation can choose, with whether it may use them, where data is processed, the calls each serves (chat, decide) and the price per 1,000 tokens.',
   kind: 'read',
   args: z.strictObject({}),
   run: async ({ client }) => {
@@ -533,13 +534,14 @@ const listModels = tool({
         dataLocation: m.dataLocation,
         price: known?.price ?? null,
         capabilities: known?.capabilities ?? [],
+        operations: known?.operations ?? ['chat'],
       };
     });
     return {
       text: models
         .map(
           (m) =>
-            `- ${m.id}: ${m.status.replace('_', ' ')}, data in ${m.dataLocation ?? 'unknown'}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
+            `- ${m.id}: ${m.status.replace('_', ' ')}, data in ${m.dataLocation ?? 'unknown'}, serves ${m.operations.join(', ')}, ${m.price ? `${m.price.inputPerThousand} kr in / ${m.price.outputPerThousand} kr out per 1,000 tokens` : 'not priced'}`,
         )
         .join('\n'),
       data: { models },

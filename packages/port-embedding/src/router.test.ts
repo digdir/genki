@@ -106,18 +106,18 @@ describe('embedding router', () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it('refuses a model whose residency exceeds the request', () => {
+  it('refuses a model whose residency exceeds the request when it is called', async () => {
     const { router } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'global');
     const { router: strict } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'eu');
 
-    expect(() => router.open(ref, testContext().ctx, { maxResidency: 'norway' })).toThrow(
-      expect.objectContaining({
-        code: 'residency',
-        message: expect.stringMatching(/outside norway/),
-      }),
-    );
-    expect(() => strict.open(ref, testContext().ctx)).toThrow(/outside eu/);
-    expect(() => router.open(ref, testContext().ctx)).not.toThrow();
+    await expect(
+      router.open(ref, testContext().ctx, { maxResidency: 'norway' }).embed(['hei']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    await expect(strict.open(ref, testContext().ctx).embed(['hei'])).rejects.toThrow(/outside eu/);
+    await expect(router.open(ref, testContext().ctx).embed(['hei'])).resolves.toBeDefined();
     expect(() => router.open({ kind: 'embedder', id: 'none' }, testContext().ctx)).toThrow(
       /no embedder none/,
     );
@@ -233,9 +233,13 @@ describe('embedding through the gate', () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it("embedding calls use the endpoint's egress-guarded fetch", () => {
+  it("embedding calls go through the gate's egress guard for the endpoint", async () => {
     const given: (typeof fetch | undefined)[] = [];
-    const guarded = (async () => new Response()) as unknown as typeof fetch;
+    const reached: string[] = [];
+    const guarded = (async (input: string) => {
+      reached.push(input);
+      return new Response();
+    }) as unknown as typeof fetch;
     const adapter = fakeEmbeddingAdapter();
     new EmbeddingRouter({
       catalog: catalog(),
@@ -249,10 +253,11 @@ describe('embedding through the gate', () => {
         },
       ],
       secrets: envSecrets({}),
-      fetchFor: (endpoint) => (endpoint === 'foundry' ? guarded : undefined),
+      gate: createGate({ egress: (endpoint) => (endpoint === 'foundry' ? guarded : undefined) }),
     });
 
-    expect(given).toEqual([guarded]);
+    await given[0]?.('https://foundry.example/embeddings');
+    expect(reached).toEqual(['https://foundry.example/embeddings']);
   });
 });
 

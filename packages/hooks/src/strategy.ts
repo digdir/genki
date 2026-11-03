@@ -1,11 +1,18 @@
 import {
   withUse,
   type Emitted,
+  type GateCall,
   type InvocationContext,
   type PayloadGuard,
   type Strategy,
 } from '@genai/kernel';
-import { ModelError, type ChatRequest, type ChatResult } from '@genai/port-model';
+import {
+  ModelError,
+  type ChatRequest,
+  type ChatResult,
+  type DecisionRequest,
+  type DecisionResult,
+} from '@genai/port-model';
 import {
   KnowledgeError,
   type KnowledgePort,
@@ -32,16 +39,47 @@ export interface WithHooksOptions {
 
 const modelPayload = (id: string, request: ChatRequest) => ({
   model: id,
+  operation: 'chat',
   messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
   tools: (request.tools ?? []).map((t) => t.name),
 });
 
 const resultPayload = (id: string, result: ChatResult) => ({
   model: id,
+  operation: 'chat',
   content: result.content,
   toolCalls: result.toolCalls.map((c) => ({ name: c.name, arguments: c.arguments })),
   finishReason: result.finishReason,
 });
+
+const decisionPayload = (id: string, request: DecisionRequest) => ({
+  model: id,
+  operation: 'decide',
+  input:
+    typeof request.input === 'string'
+      ? request.input
+      : request.input.map((m) => m.content).join('\n\n'),
+});
+
+const answersPayload = (id: string, result: DecisionResult) => ({
+  model: id,
+  operation: 'decide',
+  answers: result.answers,
+});
+
+const before = (call: GateCall, body: unknown) =>
+  call.port === 'model'
+    ? modelPayload(call.model, body as ChatRequest)
+    : call.port === 'decision'
+      ? decisionPayload(call.model, body as DecisionRequest)
+      : undefined;
+
+const after = (call: GateCall, body: unknown) =>
+  call.port === 'model'
+    ? resultPayload(call.model, body as ChatResult)
+    : call.port === 'decision'
+      ? answersPayload(call.model, body as DecisionResult)
+      : undefined;
 
 const searchPayload = (dataset: string, request: SearchRequest) => ({
   dataset,
@@ -95,20 +133,16 @@ export const withHooks = <C>(inner: Strategy<C>, options: WithHooksOptions): Str
           ? {
               holdsStream: has('after_model', 'enforce'),
               request: async (call, body) => {
-                if (call.port !== 'model' || !has('before_model')) return body;
-                const refused = await hooked(
-                  'before_model',
-                  modelPayload(call.model, body as ChatRequest),
-                );
+                const payload = before(call, body);
+                if (!payload || !has('before_model')) return body;
+                const refused = await hooked('before_model', payload);
                 if (refused) throw new ModelError('refused', refusalText(refused));
                 return body;
               },
               result: async (call, body) => {
-                if (call.port !== 'model' || !has('after_model')) return;
-                const refused = await hooked(
-                  'after_model',
-                  resultPayload(call.model, body as ChatResult),
-                );
+                const payload = after(call, body);
+                if (!payload || !has('after_model')) return;
+                const refused = await hooked('after_model', payload);
                 if (refused) throw new ModelError('refused', refusalText(refused));
               },
             }

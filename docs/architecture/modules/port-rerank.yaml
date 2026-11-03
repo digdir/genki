@@ -10,7 +10,8 @@ packages:
 summary: Reranks candidate passages through a catalog of rerank endpoints.
 description: Same router shape as the model and knowledge ports; ColBERT is the first adapter.
   Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown,
-  checked against tenant sharing and every residency ceiling, masked and metered.
+  checked against tenant sharing and every residency ceiling, held to its closed shape, masked and
+  metered. The router itself only routes and degrades.
 responsibilities:
   - Rerank catalog
   - Rerank with timeouts and warnings

@@ -1861,12 +1861,13 @@ export const createPlatform = async (input: PlatformInput) => {
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
-        .map(({ id, family, residency: r, capabilities, parameters }) => ({
+        .map(({ id, family, residency: r, capabilities, operations, parameters }) => ({
           id,
           name: displayNames.get(id) ?? id,
           ...(family ? { family } : {}),
           residency: r,
           capabilities,
+          operations,
           parameters,
           price: prices[id] ?? null,
         }));

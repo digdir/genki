@@ -49,3 +49,16 @@ export {
   type ThreadErasure,
   type ThreadRetentionStore,
 } from './retention.js';
+export {
+  chatShape,
+  decideShape,
+  embedShape,
+  maxDecisionQuestions,
+  rerankShape,
+  walk,
+  type OperationShape,
+  type Shape,
+  type Walked,
+  type WalkOptions,
+} from './payload.js';
+export * as shape from './payload.js';

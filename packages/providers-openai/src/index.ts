@@ -23,7 +23,12 @@ import type {
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
 import { decisionsBody, decisionsPath, decisionsResult } from './decisions.js';
-import { responsesParams, responsesResult, responsesStream } from './responses.js';
+import {
+  responsesContinuation,
+  responsesParams,
+  responsesResult,
+  responsesStream,
+} from './responses.js';
 
 const withoutTrailingSlashes = (url: string) => {
   let end = url.length;
@@ -119,6 +124,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
   protocol: 'openai-chat',
   endpointOptions,
   modelOptions,
+  continuation: responsesContinuation,
 
   connect(endpoint: EndpointConfig) {
     const client = new OpenAI({

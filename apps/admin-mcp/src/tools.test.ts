@@ -170,6 +170,47 @@ describe('explaining a run', () => {
   });
 });
 
+describe('listing models', () => {
+  it('names the calls each model serves, chat when the catalogue says nothing', async () => {
+    const client: GenkiClient = {
+      tenant,
+      request: async <T>(_method: string, path: string) =>
+        (path === '/models'
+          ? {
+              data: [
+                {
+                  id: 'foundry/gpt',
+                  residency: 'eu',
+                  capabilities: [],
+                  operations: ['chat', 'decide'],
+                  price: null,
+                },
+                { id: 'foundry/old', residency: 'eu', capabilities: [], price: null },
+              ],
+            }
+          : {
+              models: [
+                { id: 'foundry/gpt', status: 'allowed', dataLocation: 'eu' },
+                { id: 'foundry/old', status: 'allowed', dataLocation: 'eu' },
+              ],
+            }) as T,
+    };
+
+    const listed = await runTool(
+      adminTools,
+      'list_models',
+      {},
+      { client, spend: { budgetNok: 5, spentNok: 0 } },
+    );
+
+    expect(listed.text).toContain('foundry/gpt: allowed, data in eu, serves chat, decide');
+    expect(listed.text).toContain('foundry/old: allowed, data in eu, serves chat,');
+    expect(listed.data).toMatchObject({
+      models: [{ operations: ['chat', 'decide'] }, { operations: ['chat'] }],
+    });
+  });
+});
+
 describe('evaluating a change on the test set', () => {
   const yaml = stringify({
     apiVersion: 'genai/v1',

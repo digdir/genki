@@ -2,6 +2,7 @@ import { withListPrice, type Ref, type UsagePrice } from '@genai/contracts';
 import {
   createGate,
   credentialFor,
+  embedShape,
   type Gate,
   type GatePayload,
   type GateRefusal,
@@ -13,13 +14,7 @@ import {
 } from '@genai/kernel';
 import type { EmbeddingAdapter, EmbeddingConnection, EmbeddingModelConfig } from './adapter.js';
 import { parseEmbeddingCatalog, type CatalogEmbedder } from './catalog.js';
-import {
-  EmbeddingError,
-  residencyAllows,
-  type EmbeddingPort,
-  type EmbedResult,
-  type Residency,
-} from './port.js';
+import { EmbeddingError, type EmbeddingPort, type EmbedResult, type Residency } from './port.js';
 
 export interface EmbeddingRouterOptions {
   catalog: unknown;
@@ -30,7 +25,6 @@ export interface EmbeddingRouterOptions {
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
-  fetchFor?: (endpoint: string) => typeof fetch | undefined;
   gate?: Gate;
 }
 
@@ -62,12 +56,6 @@ const refusalCodes: Record<GateRefusal, EmbeddingError['code']> = {
   shape: 'bad_request',
 };
 
-const embedPayload: GatePayload<string[], EmbedResult> = {
-  contents: (texts) => texts,
-  mapRequest: (texts, map) => texts.map((t) => (typeof t === 'string' ? map(t) : t)),
-  mapResult: (result) => result,
-};
-
 const batches = <T>(items: T[], size: number | undefined): T[][] => {
   if (!size || items.length <= size) return [items];
   const out: T[][] = [];
@@ -96,7 +84,6 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     const connections = new Map<string, EmbeddingConnection>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
       const adapter = adapters.get(endpoint.protocol) as EmbeddingAdapter;
-      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -110,7 +97,7 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           options: adapter.endpointOptions.parse(endpoint.options),
           maxRetries: options.maxRetries ?? 3,
           timeoutMs: options.timeoutMs ?? 60_000,
-          ...(guarded ? { fetch: guarded } : {}),
+          fetch: this.#gate.egress(name),
         }),
       );
     }
@@ -149,10 +136,6 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     const route = this.#routes.get(ref.id);
     if (!route) throw new EmbeddingError('bad_request', `no embedder ${ref.id} in the catalog`);
     const { model, config, connection } = route;
-    for (const max of [this.options.maxResidency, request.maxResidency]) {
-      if (max && !residencyAllows(max, model.residency))
-        throw new EmbeddingError('residency', `embedder ${model.id} runs outside ${max}`);
-    }
     const embedderRef: Ref = { kind: 'embedder', id: model.id };
     const target: GateTarget = {
       port: 'embedding',
@@ -167,8 +150,8 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
       ...(request.maxResidency ? { requestResidency: request.maxResidency } : {}),
       refuse: (refusal, message) => new EmbeddingError(refusalCodes[refusal], message),
     };
-    const payload: GatePayload<string[], EmbedResult> = {
-      ...embedPayload,
+    const payload: GatePayload<EmbedResult> = {
+      shape: embedShape,
       usage: (result) =>
         withListPrice(
           { inputTokens: result.usage.inputTokens, requests: 1 },

@@ -1,7 +1,7 @@
 import type { Emitted, InvocationContext, Strategy, UseOptions } from '@genai/kernel';
 import { describeContract } from '@genai/plugins/testing';
-import type { ModelPort } from '@genai/port-model';
-import { gatedFake } from '@genai/port-model/testing';
+import { gatedDecision, type DecisionPort, type ModelPort } from '@genai/port-model';
+import { gatedFake, testContext } from '@genai/port-model/testing';
 import type { KnowledgePort } from '@genai/port-knowledge';
 import type { ToolPort } from '@genai/port-tools';
 import { describe, expect, it } from 'vitest';
@@ -218,6 +218,58 @@ describe('withHooks', () => {
       audience: 'audit',
       data: { hook: 'ord', point: 'before_model', outcome: 'refused' },
     });
+  });
+
+  it('runs before_model with the input text and after_model with the answers on a decision', async () => {
+    const seen: { point: string; payload: Record<string, unknown> }[] = [];
+    const decider: DecisionPort = {
+      info: () => ({ id: 'd', residency: 'norway', capabilities: [], operations: ['decide'] }),
+      decide: async () => ({
+        answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+        usage: { inputTokens: 1, requests: 1 },
+        servedModel: 'd',
+        calibrated: true,
+      }),
+    };
+    const deciding: InvocationContext = {
+      ...ctx(),
+      use: async (_port: string, _ref: unknown, options?: UseOptions) =>
+        gatedDecision(decider, { ...testContext().ctx, ...options }),
+    } as unknown as InvocationContext;
+    const strategy = withHooks(
+      inner(async function* (c) {
+        const port = await c.use<DecisionPort>('decision', { kind: 'model', id: 'd' });
+        yield {
+          type: 'x.test.decided',
+          data: await port.decide({
+            input: [{ role: 'user', content: 'Søknad om tilskudd' }],
+            questions: [{ type: 'predicate', name: 'purpose', instructions: 'Innenfor?' }],
+          }),
+        };
+      }),
+      {
+        invoke: async (h, call, signal) => {
+          seen.push({ point: call.point, payload: call.payload });
+          return invoke(h, call, signal);
+        },
+        hooks: async () => [hook('foer'), hook('etter', { point: 'after_model' })],
+      },
+    );
+    await collect(strategy.run(deciding, { parts: [] } as never, {}));
+    expect(seen).toEqual([
+      {
+        point: 'before_model',
+        payload: { model: 'd', operation: 'decide', input: 'Søknad om tilskudd' },
+      },
+      {
+        point: 'after_model',
+        payload: {
+          model: 'd',
+          operation: 'decide',
+          answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+        },
+      },
+    ]);
   });
 
   it('turns a refused tool call into an error result without calling the tool', async () => {

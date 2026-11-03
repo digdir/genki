@@ -1,12 +1,16 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { Usage } from '@genai/contracts';
+import type { ResourceProvenance, Usage } from '@genai/contracts';
 import { createVault, modelGuard } from '@genai/guardrails';
 import {
   createGate,
   envSecrets,
+  shape,
+  type Gate,
+  type GatePayload,
   type GateRecord,
   type GateRefusal,
+  type GateTarget,
   type PortContext,
 } from '@genai/kernel';
 import {
@@ -15,10 +19,12 @@ import {
   type GateLane,
   type GateLaneRun,
   type GateLaneSetup,
+  type Smuggled,
 } from '@genai/kernel/gate-contract';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
 import {
   ModelRouter,
+  type ChatChunk,
   type ChatResult,
   type DecisionRequest,
   type ModelAdapter,
@@ -35,6 +41,7 @@ const refusalOf = (error: unknown): GateRefusal | undefined => {
   if (message?.includes('is turned off')) return 'disabled';
   if (message?.includes('is not shared')) return 'not-shared';
   if (message?.includes('image, audio or file')) return 'media';
+  if (message?.includes('outside its shape')) return 'shape';
   return undefined;
 };
 
@@ -51,11 +58,30 @@ const without = (value: Record<string, unknown>, key: string) => {
   return copy;
 };
 
-const lanes = () => {
+type GateMaker = (setup: GateLaneSetup) => Gate;
+
+const realGate: GateMaker = (setup) => createGate({ admits: () => setup.admitted ?? true });
+
+const answering = <T extends object>(setup: GateLaneSetup, answer: T): T =>
+  setup.unknownAnswerField ? { ...answer, surprise: 1 } : answer;
+
+const toolMessage = (smuggle: Smuggled | undefined) =>
+  smuggle === 'url' || smuggle === 'object-id'
+    ? [
+        {
+          role: 'tool' as const,
+          content: 'svar',
+          toolCallId: smuggle === 'url' ? 'https://evil.example/call' : 'file-abc123',
+        },
+      ]
+    : [];
+
+const routerLanes = (makeGate: GateMaker = realGate) => {
   const watched = (setup: GateLaneSetup) => {
     const upstream: string[] = [];
     const metered: Usage[] = [];
     const audit: GateRecord[] = [];
+    const provenance: ResourceProvenance[] = [];
     const ctx: PortContext = {
       tenant,
       principal: { kind: 'employee', issuer: 'test', subject: 'kari', tenant },
@@ -67,12 +93,15 @@ const lanes = () => {
       audit: async (record) => {
         audit.push(record);
       },
+      provenance: async (resource) => {
+        provenance.push(resource);
+      },
       ...(setup.guards ? { guards: setup.guards } : {}),
       ...(setup.serviceResidency ? { serviceResidency: setup.serviceResidency } : {}),
     };
-    const gate = createGate({ admits: () => setup.admitted ?? true });
+    const gate = makeGate(setup);
     const shared = setup.sharedWith ? { tenants: setup.sharedWith } : {};
-    return { upstream, metered, audit, ctx, gate, shared };
+    return { upstream, metered, audit, provenance, ctx, gate, shared };
   };
   const has = { enabled: false, sharing: true, routerResidency: true, requestResidency: false };
 
@@ -81,7 +110,7 @@ const lanes = () => {
     operation: 'chat',
     admission: 'admitted',
     tenant,
-    has: { ...has, enabled: true },
+    has: { ...has, enabled: true, provenance: true },
     answersWithText: true,
     refusalOf,
     open: (setup): GateLaneRun => {
@@ -101,17 +130,29 @@ const lanes = () => {
               usage: { inputTokens: 1, outputTokens: 1, requests: 1 },
               servedModel: 'fake',
             };
-            return answer;
+            return answering(setup, answer);
           },
-          chatStream: async function* () {
-            yield* [];
-            throw new Error('not used');
+          chatStream: async function* (_model, request) {
+            const content = request.messages.at(-1)?.content ?? '';
+            w.upstream.push(content);
+            yield { kind: 'delta', text: content };
+            if (setup.unknownStreamEvent)
+              yield { kind: 'tool-call', text: '' } as unknown as ChatChunk;
+            yield {
+              kind: 'done',
+              result: {
+                content,
+                toolCalls: [],
+                finishReason: 'stop',
+                usage: { inputTokens: 1, outputTokens: 1, requests: 1 },
+                servedModel: 'fake',
+              },
+            };
           },
         }),
       };
       const router = new ModelRouter({
         gate: w.gate,
-        admits: () => setup.admitted ?? true,
         catalog: {
           endpoints: { fake: without(endpoint('fake'), 'engine') },
           models: [
@@ -120,7 +161,7 @@ const lanes = () => {
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
-              capabilities: [],
+              capabilities: ['stream'],
               ...w.shared,
             },
           ],
@@ -139,7 +180,21 @@ const lanes = () => {
           await router.refresh();
           const port = router.open({ kind: 'model', id: 'fake/model', tenant }, w.ctx);
           const content = (extra.media ? image : text) as string;
-          return (await port.chat({ messages: [{ role: 'user', content }] })).content;
+          const request = {
+            messages: [...toolMessage(extra.smuggle), { role: 'user' as const, content }],
+            ...(extra.smuggle === 'field' ? { previous_response_id: 'resp_1' } : {}),
+          };
+          return (await port.chat(request)).content;
+        },
+        stream: async (text) => {
+          await router.refresh();
+          const port = router.open({ kind: 'model', id: 'fake/model', tenant }, w.ctx);
+          let out = '';
+          for await (const chunk of port.chatStream({
+            messages: [{ role: 'user', content: text }],
+          }))
+            if (chunk.kind === 'delta') out += chunk.text;
+          return out;
         },
       };
     },
@@ -150,7 +205,7 @@ const lanes = () => {
     operation: 'decide',
     admission: 'admitted',
     tenant,
-    has: { ...has, enabled: true },
+    has: { ...has, enabled: true, provenance: true },
     answersWithText: false,
     refusalOf,
     open: (setup): GateLaneRun => {
@@ -171,18 +226,17 @@ const lanes = () => {
             const input = request.input;
             w.upstream.push(...(typeof input === 'string' ? [input] : input.map((m) => m.content)));
             if (setup.failUpstream) throw new Error('the provider is down');
-            return {
-              answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+            return answering(setup, {
+              answers: [{ type: 'predicate' as const, name: 'purpose', probability: 0.9 }],
               usage: { inputTokens: 1, outputTokens: 0, requests: 1 },
               servedModel: 'fake',
               calibrated: true,
-            };
+            });
           },
         }),
       };
       const router = new ModelRouter({
         gate: w.gate,
-        admits: () => setup.admitted ?? true,
         catalog: {
           endpoints: { fake: without(endpoint('fake'), 'engine') },
           models: [
@@ -212,8 +266,19 @@ const lanes = () => {
             .decisions()
             .open({ kind: 'model', id: 'fake/decider', tenant }, w.ctx);
           const request = {
-            input: extra.media ? [{ role: 'user', content: image }] : text,
-            questions: [{ type: 'predicate', name: 'purpose', instructions: 'Is this in scope?' }],
+            input: extra.media
+              ? [{ role: 'user', content: image }]
+              : extra.smuggle === 'object-id'
+                ? [{ role: 'user', content: text, file_id: 'file-abc123' }]
+                : text,
+            questions: [
+              {
+                type: 'predicate',
+                name: extra.smuggle === 'url' ? 'https://evil.example' : 'purpose',
+                instructions: 'Is this in scope?',
+              },
+            ],
+            ...(extra.smuggle === 'field' ? { store: true } : {}),
           } as DecisionRequest;
           await port.decide(request);
           return undefined;
@@ -240,7 +305,10 @@ const lanes = () => {
           embed: async (_model, texts) => {
             w.upstream.push(...texts);
             if (setup.failUpstream) throw new Error('the provider is down');
-            return { vectors: texts.map(() => [0.1, 0.2]), usage: { inputTokens: texts.length } };
+            return answering(setup, {
+              vectors: texts.map(() => [0.1, 0.2]),
+              usage: { inputTokens: texts.length },
+            });
           },
         }),
       };
@@ -269,7 +337,18 @@ const lanes = () => {
           const port = router.open({ kind: 'embedder', id: 'fake/embedder', tenant }, w.ctx, {
             ...(setup.requestResidency ? { maxResidency: setup.requestResidency } : {}),
           });
-          await port.embed([extra.media ? (image as unknown as string) : text]);
+          const smuggled =
+            extra.smuggle === 'field'
+              ? [42]
+              : extra.smuggle === 'url'
+                ? [{ url: 'https://evil.example' }]
+                : extra.smuggle === 'object-id'
+                  ? [{ file_id: 'file-abc123' }]
+                  : [];
+          await port.embed([
+            extra.media ? (image as unknown as string) : text,
+            ...(smuggled as unknown as string[]),
+          ]);
           return undefined;
         },
       };
@@ -294,7 +373,9 @@ const lanes = () => {
           rerank: async (_reranker, request) => {
             w.upstream.push(request.query, ...request.documents);
             if (setup.failUpstream) throw new Error('the provider is down');
-            return request.documents.map((_d, index) => ({ index, score: 1, rank: index + 1 }));
+            return request.documents.map((_d, index) =>
+              answering(setup, { index, score: 1, rank: index + 1 }),
+            );
           },
         }),
       };
@@ -319,10 +400,18 @@ const lanes = () => {
         ...w,
         call: async (text, extra = {}) => {
           const port = router.open({ kind: 'reranker', id: 'fake/reranker', tenant }, w.ctx);
-          await port.rerank({
-            query: extra.media ? (image as unknown as string) : text,
-            documents: [text],
+          const result = await port.rerank({
+            query: (extra.media
+              ? image
+              : extra.smuggle === 'url'
+                ? { url: 'https://evil.example' }
+                : text) as string,
+            documents: [
+              (extra.smuggle === 'object-id' ? { file_id: 'file-abc123' } : text) as string,
+            ],
+            ...(extra.smuggle === 'field' ? { model: 'other' } : {}),
           });
+          if (result.degraded) throw new Error(result.degraded.message);
           return undefined;
         },
       };
@@ -333,7 +422,7 @@ const lanes = () => {
 };
 
 const subject: GateContractSubject = {
-  lanes: lanes(),
+  lanes: routerLanes(),
   nationalIdGuard: () => modelGuard({ vault: createVault(['national-id']) }),
 };
 
@@ -341,5 +430,74 @@ describe(`${gateContract.contract} contract: the model, decision, embedding and 
   for (const check of gateContract.checks)
     it(check.name, async () => {
       await check.run(subject, new AbortController().signal);
+    });
+});
+
+const dropped = <T extends object>(value: T, ...keys: string[]): T => {
+  const copy = { ...value };
+  for (const key of keys) Reflect.deleteProperty(copy, key);
+  return copy;
+};
+
+interface Mutation {
+  admits?: false;
+  target?: (target: GateTarget) => GateTarget;
+  ctx?: (ctx: PortContext) => PortContext;
+  shape?: true;
+}
+
+const mutant =
+  (mutation: Mutation): GateMaker =>
+  (setup) => {
+    const real = createGate(
+      mutation.admits === false ? {} : { admits: () => setup.admitted ?? true },
+    );
+    const ctxOf = (ctx: PortContext) => mutation.ctx?.(ctx) ?? ctx;
+    const targetOf = (target: GateTarget) => mutation.target?.(target) ?? target;
+    const payloadOf = <Res>(payload: GatePayload<Res>): GatePayload<Res> =>
+      mutation.shape ? { ...payload, shape: { request: shape.json, result: shape.json } } : payload;
+    return {
+      egress: real.egress,
+      call: (ctx, target, payload, request, send) =>
+        real.call(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
+      stream: (ctx, target, payload, request, send) =>
+        real.stream(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
+    };
+  };
+
+const mutants: [string, Mutation][] = [
+  ['admission', { admits: false }],
+  ['the enabled check', { target: (t) => dropped(t, 'enabled') }],
+  ['tenant sharing', { target: (t) => dropped(t, 'tenants') }],
+  [
+    'the residency ceilings',
+    {
+      target: (t) => dropped(t, 'routerResidency', 'requestResidency'),
+      ctx: (c) => dropped(c, 'serviceResidency'),
+    },
+  ],
+  ['the payload guards', { ctx: (c) => dropped(c, 'guards') }],
+  ['the closed shapes', { shape: true }],
+  ['metering', { ctx: (c) => ({ ...c, meter: async () => undefined }) }],
+  ['provenance', { ctx: (c) => dropped(c, 'provenance') }],
+  ['the audit event', { ctx: (c) => ({ ...c, audit: async () => undefined }) }],
+];
+
+describe(`${gateContract.contract} proves the routers hold no governance of their own`, () => {
+  it('passes with the gate behind the same wrapper and nothing left out', async () => {
+    const mutated: GateContractSubject = { ...subject, lanes: routerLanes(mutant({})) };
+    for (const check of gateContract.checks) await check.run(mutated, new AbortController().signal);
+  });
+
+  for (const [name, mutation] of mutants)
+    it(`fails when the gate leaves out ${name}`, async () => {
+      const lanes = routerLanes(mutant(mutation));
+      const mutated: GateContractSubject = { ...subject, lanes };
+      const failed: string[] = [];
+      for (const check of gateContract.checks)
+        await check.run(mutated, new AbortController().signal).catch(() => {
+          failed.push(check.name);
+        });
+      expect(failed).not.toEqual([]);
     });
 });

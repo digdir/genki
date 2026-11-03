@@ -1,4 +1,4 @@
-import type { Credential } from '@genai/kernel';
+import type { Credential, Shape } from '@genai/kernel';
 import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
 import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
@@ -41,6 +41,8 @@ export interface ModelAdapter<E = unknown, M = unknown> {
   protocol: string;
   endpointOptions: z.ZodType<E>;
   modelOptions: z.ZodType<M>;
+  /** The closed shape of the replay state this adapter puts in `continuation`. */
+  continuation?: Shape;
   connect(endpoint: EndpointConfig<E>): ModelConnection<M>;
 }
 
@@ -59,7 +61,7 @@ export const errorFromStatus = (
   return new ModelError('unavailable', 'the model is unavailable');
 };
 
-export { authenticatedFetch, authHeaders, type Credential } from '@genai/kernel';
+export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/kernel';
 
 export interface DiscoveredDeployment {
   deployment: string;

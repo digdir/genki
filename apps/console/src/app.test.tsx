@@ -328,6 +328,25 @@ describe('modeller', () => {
     ]);
   });
 
+  it('shows the calls a model serves and sets them, never leaving a model with none', async () => {
+    const { calls, fetch } = recording();
+    await signedIn('#/models', [operatorRole], fetch);
+    await modelTable();
+    giveReason();
+
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+    expect(box('Avgjørelser for gpt-4.1').checked).toBe(true);
+    expect(box('Samtale for gpt-4o-2M-tps').disabled).toBe(true);
+    expect(box('Samtale for claude-sonnet-5-5').checked).toBe(true);
+
+    fireEvent.click(box('Avgjørelser for gpt-4o-2M-tps'));
+    await waitFor(() => expect(box('Avgjørelser for gpt-4o-2M-tps').checked).toBe(true));
+
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
+      ['/api/operator/models/foundry-openai/gpt-4o-2m-tps', { operations: ['chat', 'decide'] }],
+    ]);
+  });
+
   it('retires a model only through a dialog that says services pause instead of switching', async () => {
     const { calls, fetch } = recording();
     await signedIn('#/models', [operatorRole], fetch);
