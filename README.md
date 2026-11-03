@@ -6,7 +6,7 @@
 [![Node 24](https://img.shields.io/badge/node-24-0062BA)](mise.toml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-1E2B3C)](LICENSE)
 
-[Run it](#run-it-locally) · [How it works](#how-it-works) · [Build on it](#build-on-it) · [API](docs/api/README.md) · [Decisions](docs/adr/) · [Contributing](CONTRIBUTING.md)
+[Run it](#run-it-locally) · [How it works](#how-it-works) · [Build on it](#build-on-it) · [API](docs/api/README.md) · [Decisions](docs/adr/) · [Docs site (Norwegian)](https://digdir.github.io/genki/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -39,6 +39,7 @@ It provides:
 
 | Doc                                                                          | Use it for                                                                                                                                                                           |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [digdir.github.io/genki](https://digdir.github.io/genki/)                    | The documentation site, in Norwegian: building blocks, flows and the target picture, for leaders, service owners and architects. Source in [`apps/docs`](apps/docs/)                 |
 | [`docs/development.md`](docs/development.md)                                 | Running locally in detail: ports, dev mode, test persons, secrets, tests, package layout                                                                                             |
 | [`docs/api/README.md`](docs/api/README.md)                                   | The HTTP API: sign-in, rights, errors, and a guide per area                                                                                                                          |
 | [`docs/build-a-frontend.md`](docs/build-a-frontend.md)                       | The shortest path to your own frontend                                                                                                                                               |
@@ -50,7 +51,7 @@ It provides:
 
 ## Repository layout
 
-- **`apps/`**: the API, the worker, the portal, the workspace, the console, and `parity` (compares answers with headless-rag)
+- **`apps/`**: the API, the worker, the portal, the workspace, the console, `docs` (the documentation site), and `parity` (compares answers with headless-rag)
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
