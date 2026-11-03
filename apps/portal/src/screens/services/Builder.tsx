@@ -102,6 +102,7 @@ import { IntegrationService, IntegrationTab } from '../developer-routes';
 import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
+import { takeOver } from './blocks/handoff';
 import '../service/service.css';
 
 const setupSections: SectionId[] = [
@@ -431,7 +432,7 @@ export const Builder = ({
   const pushMsg = (m: ChatMessage) => setMessages((ms) => [...ms, m]);
   const addCard = (cid: string, card: ChangeCard) => setExtra((x) => ({ ...x, [cid]: card }));
   const split = !narrow;
-  const blocks = useBlocksState();
+  const blocks = useBlocksState(isNew ? takeOver : undefined);
   const [resultWish, setResultWish] = useState('');
   const showPane = (p: 'assistent' | 'tjeneste') => !split && setPane(p);
 

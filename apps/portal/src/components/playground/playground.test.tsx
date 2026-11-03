@@ -40,7 +40,7 @@ const withPlayground = (playground: PlaygroundMockOptions, seen: string[] = []) 
 };
 
 const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] = []) => {
-  await renderAt('#/playground', withPlayground(playground, seen));
+  await renderAt('#/playground/backend', withPlayground(playground, seen));
   return screen.findByRole('textbox', { name: 'Spørsmål' });
 };
 
@@ -291,7 +291,7 @@ describe('Prøveområde', () => {
 
   it('extraction sends the sample file and shows the fields', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
+    await renderAt('#/playground/backend', withPlayground({ runs }));
     fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));
@@ -535,7 +535,7 @@ describe('Prøveområde', () => {
 
   it('an uploaded document is sent as base64 with its name and type', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
+    await renderAt('#/playground/backend', withPlayground({ runs }));
     fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));

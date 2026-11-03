@@ -10,8 +10,15 @@ import {
 import { Icon } from '../../../components/Icon';
 import { useT } from '../../../i18n';
 import { BlocksPanel } from './BlocksPanel';
-import { defaultLayout, turnOff, type BlockLayout, type TemplateId } from './rules';
-import { ServicePreview, type PreviewDevice, type PreviewMode } from './ServicePreview';
+import type { BlocksStart } from './handoff';
+import {
+  defaultLayout,
+  turnOff,
+  type BlockLayout,
+  type PreviewZoom,
+  type TemplateId,
+} from './rules';
+import { ServicePreview, type PreviewMode } from './ServicePreview';
 import { TemplatesPanel } from './TemplatesPanel';
 import './blocks.css';
 
@@ -22,11 +29,12 @@ const leftMax = 640;
 const fullHeightMin = 480;
 const fullHeightMax = 1400;
 
-export const useBlocksState = () => {
-  const [layout, setLayout] = useState<BlockLayout>(defaultLayout);
-  const [template, setTemplate] = useState<TemplateId | undefined>('all');
+export const useBlocksState = (start?: () => BlocksStart | undefined) => {
+  const [first] = useState(() => start?.());
+  const [layout, setLayout] = useState<BlockLayout>(first?.layout ?? defaultLayout);
+  const [template, setTemplate] = useState<TemplateId | undefined>(first ? first.template : 'all');
   const [mode, setMode] = useState<PreviewMode>('setup');
-  const [device, setDevice] = useState<PreviewDevice>('desktop');
+  const [zoom, setZoom] = useState<PreviewZoom>('fit');
   const [tab, setTab] = useState<LeftTab>('blocks');
   const [width, setWidth] = useState(380);
   const [height, setHeight] = useState(720);
@@ -35,13 +43,13 @@ export const useBlocksState = () => {
     layout,
     template,
     mode,
-    device,
+    zoom,
     tab,
     width,
     height,
     conversation,
     setMode,
-    setDevice,
+    setZoom,
     setTab,
     setWidth,
     setHeight,
@@ -122,7 +130,8 @@ export const BlocksStep = ({
 }: {
   state: BlocksState;
   narrow: boolean;
-  assistant: ReactNode;
+  /** The builder assistant. Without it there is no Chat tab. */
+  assistant?: ReactNode;
   chat: ReactNode;
   address: string;
   onFullscreen: () => void;
@@ -149,7 +158,9 @@ export const BlocksStep = ({
       >
         <ToggleGroup.Item value="templates">{t('builderBlocks.tabTemplates')}</ToggleGroup.Item>
         <ToggleGroup.Item value="blocks">{t('builderBlocks.tabBlocks')}</ToggleGroup.Item>
-        <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
+        {assistant ? (
+          <ToggleGroup.Item value="chat">{t('builderBlocks.tabChat')}</ToggleGroup.Item>
+        ) : null}
       </ToggleGroup>
       {state.tab === 'chat' ? assistant : null}
       {state.tab === 'blocks' ? (
@@ -164,11 +175,11 @@ export const BlocksStep = ({
     <ServicePreview
       layout={state.layout}
       mode={state.mode}
-      device={state.device}
+      zoom={state.zoom}
       address={address}
       chat={chat}
       onMode={state.setMode}
-      onDevice={state.setDevice}
+      onZoom={state.setZoom}
       onRemove={(id) => state.change(turnOff(state.layout, id))}
       onReload={state.restart}
       onFullscreen={onFullscreen}
@@ -224,11 +235,11 @@ export const BlocksFullscreen = ({
       <ServicePreview
         layout={state.layout}
         mode={state.mode}
-        device={state.device}
+        zoom={state.zoom}
         address={address}
         chat={chat}
         onMode={state.setMode}
-        onDevice={state.setDevice}
+        onZoom={state.setZoom}
         onRemove={(id) => state.change(turnOff(state.layout, id))}
         onReload={state.restart}
         onExitFullscreen={onExit}

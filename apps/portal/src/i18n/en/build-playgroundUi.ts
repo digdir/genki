@@ -5,7 +5,12 @@ export const playgroundUi = {
   playground: {
     pageTitle: 'Playground',
     pageLead:
-      'Try a model, a dataset, a skill or a service draft without publishing anything. Compare two setups on the same question, and save good answers as test cases. Runs count towards the quota.',
+      'Try the interface in Frontend: which building blocks the service has, and where. Try the content in Backend: a model, a dataset, a skill or a service draft. Nothing is published, and runs count towards the quota.',
+    viewsLabel: 'The playground',
+    tabBackend: 'Backend',
+    tabFrontend: 'Frontend',
+    makeService: 'Make a service from this',
+    frontendAddress: 'new-service.genki.no',
     panelLabel: 'Try',
     panelTitle: 'Try',
     openInPlayground: 'Open in the playground',

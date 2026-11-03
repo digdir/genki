@@ -8,21 +8,50 @@ import {
   ToggleGroup,
 } from '@digdir/designsystemet-react';
 import { CogIcon } from '@navikt/aksel-icons';
-import { cloneElement, isValidElement, useRef, useState, type ReactNode } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Icon, icons } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockIcon, blockLabel } from './BlocksPanel';
-import { blocksIn, rightPanelMode, type BlockId, type BlockLayout, type Panel } from './rules';
+import {
+  blocksIn,
+  previewScale,
+  previewWidth,
+  rightPanelMode,
+  type BlockId,
+  type BlockLayout,
+  type Panel,
+  type PreviewZoom,
+} from './rules';
 
 export type PreviewMode = 'setup' | 'try';
-export type PreviewDevice = 'desktop' | 'mobile';
 
 const paths = {
   reload: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',
-  desktop: 'M3 5h18v11H3zM8 20h8M12 16v4',
-  mobile: 'M7 3h10v18H7zM11 18h2',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   collapse: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
+};
+
+/** The width the frame has to draw on, measured as it changes. */
+const useAvailableWidth = () => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setWidth(el.clientWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
 };
 
 const frameLabel: Record<Panel, PlainKey> = {
@@ -34,11 +63,11 @@ const frameLabel: Record<Panel, PlainKey> = {
 export const ServicePreview = ({
   layout,
   mode,
-  device,
+  zoom,
   address,
   chat,
   onMode,
-  onDevice,
+  onZoom,
   onRemove,
   onReload,
   onFullscreen,
@@ -47,11 +76,11 @@ export const ServicePreview = ({
 }: {
   layout: BlockLayout;
   mode: PreviewMode;
-  device: PreviewDevice;
+  zoom: PreviewZoom;
   address: string;
   chat: ReactNode;
   onMode: (mode: PreviewMode) => void;
-  onDevice: (device: PreviewDevice) => void;
+  onZoom: (zoom: PreviewZoom) => void;
   onRemove: (id: BlockId) => void;
   onReload: () => void;
   onFullscreen?: () => void;
@@ -60,6 +89,8 @@ export const ServicePreview = ({
 }) => {
   const t = useT();
   const used = (['left', 'main', 'right'] as Panel[]).filter((p) => blocksIn(layout, p).length);
+  const [viewport, available] = useAvailableWidth();
+  const scale = previewScale(zoom, available);
   return (
     <section className="service-preview" aria-labelledby="forhandsvisning-tittel">
       <div className="service-preview-head">
@@ -91,19 +122,18 @@ export const ServicePreview = ({
           <Icon d={paths.reload} />
         </Button>
         <span className="service-preview-address">{address}</span>
+        <span className="service-preview-zoom" aria-live="polite">
+          {t('builderBlocks.zoomPercent', { percent: Math.round(scale * 100) })}
+        </span>
         <ToggleGroup
           data-size="sm"
           variant="secondary"
-          aria-label={t('builderBlocks.device')}
-          value={device}
-          onChange={(v) => onDevice(v as PreviewDevice)}
+          aria-label={t('builderBlocks.zoom')}
+          value={zoom}
+          onChange={(v) => onZoom(v as PreviewZoom)}
         >
-          <ToggleGroup.Item value="desktop" icon aria-label={t('builderBlocks.desktop')}>
-            <Icon d={paths.desktop} />
-          </ToggleGroup.Item>
-          <ToggleGroup.Item value="mobile" icon aria-label={t('builderBlocks.mobile')}>
-            <Icon d={paths.mobile} />
-          </ToggleGroup.Item>
+          <ToggleGroup.Item value="fit">{t('builderBlocks.zoomFit')}</ToggleGroup.Item>
+          <ToggleGroup.Item value="actual">{t('builderBlocks.zoomActual')}</ToggleGroup.Item>
         </ToggleGroup>
         {onFullscreen ? (
           <Button
@@ -129,18 +159,29 @@ export const ServicePreview = ({
         ) : null}
       </div>
       <div
-        className="service-preview-frame"
-        data-device={device}
-        data-mode={mode}
+        className="service-preview-viewport"
+        ref={viewport}
+        data-zoom={zoom}
         style={height ? { height: `${height}px` } : undefined}
       >
-        {used.length === 0 ? (
-          <p className="meta service-preview-empty">{t('builderBlocks.nothingPlaced')}</p>
-        ) : mode === 'setup' ? (
-          used.map((p) => <SetupPanel key={p} panel={p} layout={layout} onRemove={onRemove} />)
-        ) : (
-          <TryView layout={layout} chat={chat} />
-        )}
+        <div
+          className="service-preview-frame"
+          data-mode={mode}
+          style={{
+            width: `${previewWidth}px`,
+            zoom: scale,
+            ['--preview-scale' as string]: scale,
+            ...(height ? { height: `${height / scale}px` } : {}),
+          }}
+        >
+          {used.length === 0 ? (
+            <p className="meta service-preview-empty">{t('builderBlocks.nothingPlaced')}</p>
+          ) : mode === 'setup' ? (
+            used.map((p) => <SetupPanel key={p} panel={p} layout={layout} onRemove={onRemove} />)
+          ) : (
+            <TryView layout={layout} chat={chat} />
+          )}
+        </div>
       </div>
     </section>
   );

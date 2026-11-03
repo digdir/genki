@@ -156,25 +156,40 @@
   background: var(--ds-color-neutral-background-tinted);
 }
 
+.service-preview-zoom {
+  font-size: var(--ds-font-size-2);
+  color: var(--ds-color-neutral-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The space the service is drawn in. The frame inside is drawn at a fixed width and zoomed to fit,
+   or shown at its actual size with scrolling. */
+.service-preview-viewport {
+  width: 100%;
+  overflow: auto;
+  border-radius: var(--ds-border-radius-lg);
+}
+
+/* Menus that float out of the preview are placed in screen pixels, so they undo the zoom. */
+.service-preview-frame .ds-dropdown {
+  zoom: calc(1 / var(--preview-scale, 1));
+}
+
+.service-preview-viewport[data-zoom='fit'] {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .service-preview-frame {
   display: flex;
+  flex: none;
   gap: var(--ds-size-2);
   min-height: 520px;
   padding: var(--ds-size-2);
+  box-sizing: border-box;
   border-radius: var(--ds-border-radius-lg);
   background: var(--ds-color-neutral-surface-tinted);
-  margin: 0 auto;
-  width: 100%;
-}
-
-.service-preview-frame[data-device='mobile'] {
-  max-width: 390px;
-  flex-direction: column;
-}
-
-.service-preview-frame[data-device='mobile'] .try-left,
-.service-preview-frame[data-device='mobile'] .try-right {
-  display: none;
 }
 
 .service-preview-empty {
@@ -204,10 +219,6 @@
 .preview-panel[data-panel='right'],
 .try-right {
   flex: 0 0 30%;
-}
-
-.service-preview-frame[data-device='mobile'] .preview-panel {
-  flex: none;
 }
 
 .preview-panel-name {

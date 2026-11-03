@@ -10,6 +10,8 @@ import {
   panels,
   placeIn,
   placeOf,
+  previewScale,
+  previewWidth,
   rightPanelMode,
   templateIds,
   templates,
@@ -140,5 +142,23 @@ describe('building block rules', () => {
     expect(blocksIn(inRight, 'right')).toContain('chat');
     expect(blocksIn(inRight, 'main')).not.toContain('chat');
     expect(placeIn(empty, 'sources', 'main')).toBe(empty);
+  });
+});
+
+describe('the size of the preview', () => {
+  it('zooms the service to the space there is when it fits the preview', () => {
+    expect(previewScale('fit', previewWidth)).toBe(1);
+    expect(previewScale('fit', previewWidth * 0.75)).toBe(0.75);
+    expect(previewScale('fit', previewWidth * 1.25)).toBe(1.25);
+  });
+
+  it('keeps the zoom readable on very small and very large screens', () => {
+    expect(previewScale('fit', 200)).toBe(0.5);
+    expect(previewScale('fit', previewWidth * 3)).toBe(1.5);
+  });
+
+  it('shows the actual size, and the actual size until the space is measured', () => {
+    expect(previewScale('actual', previewWidth / 2)).toBe(1);
+    expect(previewScale('fit', 0)).toBe(1);
   });
 });

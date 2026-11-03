@@ -677,7 +677,7 @@ export const PlaygroundPanel = ({
         <span className="playground-subtle">{contextText}</span>
       </div>
       <div className="playground-head-actions">
-        <Link href="#/playground">{t('playground.openInPlayground')}</Link>
+        <Link href="#/playground/backend">{t('playground.openInPlayground')}</Link>
         {onClose ? (
           <Button
             variant="tertiary"

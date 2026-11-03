@@ -1,0 +1,14 @@
+/* Lined up with the builder for a new service: the heading indented as in its header, the tabs
+   and the content on the column's edges. */
+.playground-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-size-4);
+  padding: 16px 24px 12px;
+}
+
+.playground-view {
+  padding: var(--ds-size-6) 0 0;
+}
