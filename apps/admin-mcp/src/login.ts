@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { isLoopback, type TokenSource } from './client.js';
+import { languageOf, loginPage, loginPageHeaders, type LoginPageKind } from './login-page.js';
 
 export interface Tokens {
   accessToken: string;
@@ -42,10 +43,12 @@ const discover = async (options: LoginOptions) => {
   const response = await send(`${issuer}/.well-known/openid-configuration`);
   if (!response.ok) throw new Error(`login discovery answered ${response.status}`);
   const discovery = (await response.json()) as Discovery;
-  const origin = new URL(issuer).origin;
-  for (const endpoint of [discovery.authorization_endpoint, discovery.token_endpoint])
-    if (new URL(endpoint).origin !== origin)
+  const { origin, protocol, host } = new URL(issuer);
+  for (const endpoint of [discovery.authorization_endpoint, discovery.token_endpoint]) {
+    const url = new URL(endpoint);
+    if (url.protocol !== protocol || (url.host !== host && !url.host.endsWith(`.${host}`)))
       throw new Error(`the login provider points outside ${origin}: ${endpoint}`);
+  }
   return discovery;
 };
 
@@ -80,9 +83,6 @@ const exchange = async (
   );
 };
 
-const page = (text: string) =>
-  `<!doctype html><meta charset="utf-8"><title>genki</title><p>${text}</p>`;
-
 export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
   const discovery = await discover(options);
   const state = randomString();
@@ -115,16 +115,12 @@ export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
   const code = await new Promise<string>((resolve, reject) => {
     const handler = (request: IncomingMessage, response: ServerResponse) => {
       const url = new URL(request.url ?? '/', redirectUri);
-      const reply = (status: number, text: string) =>
+      const reply = (status: number, kind: LoginPageKind) =>
         response
-          .writeHead(status, {
-            'content-type': 'text/html; charset=utf-8',
-            'cache-control': 'no-store',
-            'referrer-policy': 'no-referrer',
-          })
-          .end(page(text));
+          .writeHead(status, loginPageHeaders)
+          .end(loginPage(kind, languageOf(request.headers['accept-language'])));
       if (url.pathname !== callback.pathname || url.searchParams.get('state') !== state) {
-        reply(404, 'Denne siden hører ikke til en innlogging som pågår.');
+        reply(404, 'unknown');
         return;
       }
       const stop = () => {
@@ -134,12 +130,12 @@ export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
       const error = url.searchParams.get('error');
       const received = url.searchParams.get('code');
       if (error || !received) {
-        reply(400, 'Innloggingen ble avbrutt.');
+        reply(400, 'cancelled');
         stop();
         reject(new Error(`login failed: ${error ?? 'no code'}`));
         return;
       }
-      reply(200, 'Du er logget inn i genki. Du kan lukke denne fanen.');
+      reply(200, 'signed-in');
       stop();
       resolve(received);
     };
@@ -165,7 +161,7 @@ export const browserLogin = async (options: LoginOptions): Promise<Tokens> => {
         reject(
           error.code === 'EADDRINUSE'
             ? new Error(
-                `port ${port} is busy: stop what runs there (for example the console's dev server on 5174), or set ADMIN_MCP_REDIRECT_URI to another callback registered for the client`,
+                `port ${port} is busy: stop what runs there (for example the portal's dev server on 5173), or set ADMIN_MCP_REDIRECT_URI to another callback registered for the client`,
               )
             : error,
         );

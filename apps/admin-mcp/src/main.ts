@@ -70,7 +70,7 @@ const connect = (): GenkiClient => {
         audience: env('GENKI_AUDIENCE') ?? 'digdir:genai',
         altinnResource:
           env('GENKI_ALTINN_RESOURCE') ?? 'urn:altinn:resource:digdir-genai-platform-test',
-        redirectUri: env('ADMIN_MCP_REDIRECT_URI') ?? 'http://localhost:5174/callback',
+        redirectUri: env('ADMIN_MCP_REDIRECT_URI') ?? 'http://localhost:5173/callback',
         open: openBrowser,
       });
   return genkiClient({ apiBase, tenant, token, ...(portal ? { portal } : {}) });

@@ -51,9 +51,9 @@ claude mcp add genki-admin -s local \
   -- <path to genki>/node_modules/.bin/tsx --conditions=source <path to genki>/apps/admin-mcp/src/main.ts
 ```
 
-The first tool call opens the browser for an Ansattporten login (authorization code flow with PKCE, callback on `http://localhost:5174/callback`). It uses the console's Ansattporten client, which already has that callback registered for local development and is trusted in genki-test (`OPERATOR_CLIENT_IDS`), so a trusted Entra login works as it does in the console. No new registration is needed. When the token is about to expire the server refreshes it; if that fails, it opens the browser again. Restarting the agent means logging in again.
+The first tool call opens the browser for an Ansattporten login (authorization code flow with PKCE, callback on `http://localhost:5173/callback`). It uses the console's Ansattporten client, which has that callback registered for local development and is trusted in genki-test (`OPERATOR_CLIENT_IDS`), so a trusted Entra login works as it does in the console. No new registration is needed. When the token is about to expire the server refreshes it; if that fails, it opens the browser again. Restarting the agent means logging in again.
 
-**Not tried yet with a real login.** The flow is tested against a fake login provider. If you run the console's dev server on port 5174, stop it while you log in, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client.
+If you run the portal's dev server on port 5173, stop it while you log in, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client.
 
 ## Other clients
 
@@ -109,7 +109,7 @@ For other clients, or if a format has changed, see the client's documentation. T
 | `ANSATTPORTEN_ISSUER`         | `https://test.ansattporten.no`                   | The login issuer                                                                               |
 | `GENKI_AUDIENCE`              | `digdir:genai`                                   | The `resource` asked for at login                                                              |
 | `GENKI_ALTINN_RESOURCE`       | `urn:altinn:resource:digdir-genai-platform-test` | The Altinn resource in the login's `authorization_details`                                     |
-| `ADMIN_MCP_REDIRECT_URI`      | `http://localhost:5174/callback`                 | The login callback; must be registered for the client, http on this machine                    |
+| `ADMIN_MCP_REDIRECT_URI`      | `http://localhost:5173/callback`                 | The login callback; must be registered for the client, http on this machine                    |
 | `GENKI_DEV_LOGIN`             | `false`                                          | `true` uses the API's mock dev login. Local API only                                           |
 | `GENKI_READ_ONLY`             | `false`                                          | `true` removes `publish_definition`                                                            |
 | `GENKI_PLAYGROUND`            | `true`                                           | `false` removes `run_playground` and `evaluate_change`                                         |
@@ -185,7 +185,7 @@ Claude Code loads it when it runs in the genki repository and the task is to cha
 
 | Message or symptom                                    | What to do                                                                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `port 5174 is busy`                                   | The console's dev server or another genki-admin login uses it. Stop it, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client                     |
+| `port 5173 is busy`                                   | The portal's dev server or another genki-admin login uses it. Stop it, or set `ADMIN_MCP_REDIRECT_URI` to another callback registered for the client                      |
 | `login timed out`                                     | The browser login was not finished within 5 minutes. Call a tool again to start a new login                                                                               |
 | HTTP 403                                              | You lack the right for that organisation or service, or the environment is locked down (ADR 0033) and your login is not trusted there. The error carries the API's reason |
 | `this server works for <org> only`                    | `metadata.tenant` in the YAML is not `GENKI_TENANT`. Fix the YAML, or reconfigure the server for that organisation                                                        |

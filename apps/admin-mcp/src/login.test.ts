@@ -11,13 +11,13 @@ import {
 
 const issuer = 'https://ansattporten.example';
 
-const fakeProvider = (endpoints = issuer) => {
+const fakeProvider = (endpoints = issuer, authorize = endpoints) => {
   const exchanges: URLSearchParams[] = [];
   let refreshes = 0;
   const fetch = (async (url: string, init?: RequestInit) => {
     if (url.endsWith('/.well-known/openid-configuration'))
       return Response.json({
-        authorization_endpoint: `${endpoints}/authorize`,
+        authorization_endpoint: `${authorize}/authorize`,
         token_endpoint: `${endpoints}/token`,
       });
     const form = new URLSearchParams(String(init?.body));
@@ -146,6 +146,79 @@ describe('logging in through the browser', () => {
     const provider = fakeProvider('https://elsewhere.example');
 
     await expect(browserLogin(options(provider, approve))).rejects.toThrow(/points outside/);
+  });
+
+  it('accepts an authorize endpoint on a subdomain of the issuer, as Ansattporten has', async () => {
+    const provider = fakeProvider(issuer, 'https://login.ansattporten.example');
+
+    const tokens = await browserLogin(options(provider, approve));
+
+    expect(tokens.accessToken).toBe('person-token');
+  });
+
+  it('refuses a host that only ends with the issuer host', async () => {
+    const provider = fakeProvider(issuer, 'https://evilansattporten.example');
+
+    await expect(browserLogin(options(provider, approve))).rejects.toThrow(/points outside/);
+  });
+
+  it('shows a signed-in page in the browser language that never repeats the code or the state', async () => {
+    const pages: { status: number; headers: Headers; body: string; state: string }[] = [];
+    const visits: Promise<void>[] = [];
+    const visit = (language: string) => (authorize: URL) => {
+      const done = load(language, authorize);
+      visits.push(done);
+      return done;
+    };
+    const load = async (language: string, authorize: URL) => {
+      const state = authorize.searchParams.get('state') ?? '';
+      const response = await fetch(callbackFor(authorize, { code: 'the-code', state }), {
+        headers: { 'accept-language': language },
+      });
+      pages.push({
+        status: response.status,
+        headers: response.headers,
+        body: await response.text(),
+        state,
+      });
+    };
+
+    await browserLogin(options(fakeProvider(), visit('nb-NO,nb;q=0.9,en;q=0.8')));
+    await browserLogin(options(fakeProvider(), visit('en-GB,en;q=0.9')));
+    await Promise.all(visits);
+
+    const [nb, en] = pages;
+    expect(nb?.status).toBe(200);
+    expect(nb?.body).toContain('Du er logget inn');
+    expect(en?.body).toContain('You are signed in');
+    for (const page of pages) {
+      expect(page.body).not.toContain('the-code');
+      expect(page.body).not.toContain(page.state);
+      expect(page.headers.get('cache-control')).toBe('no-store');
+      expect(page.headers.get('content-security-policy')).toContain("default-src 'none'");
+    }
+  });
+
+  it('shows a page that says the sign-in was not completed when the provider sends an error', async () => {
+    let page = '';
+    let visited: Promise<void> | undefined;
+    const load = async (authorize: URL) => {
+      const response = await fetch(
+        callbackFor(authorize, {
+          error: 'access_denied',
+          state: authorize.searchParams.get('state') ?? '',
+        }),
+      );
+      page = await response.text();
+    };
+    const settings = options(fakeProvider(), (authorize) => {
+      visited = load(authorize);
+      return visited;
+    });
+
+    await expect(browserLogin(settings)).rejects.toThrow('access_denied');
+    await visited;
+    expect(page).toContain('Innloggingen ble ikke fullført');
   });
 
   it('says so when the callback port is busy', async () => {
