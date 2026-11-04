@@ -76,7 +76,11 @@ const endpoints = {
       options: { connection: 'platform' },
       sharing: { tenants: '*' },
     }),
-    entry('knowledge-pg', { engine: 'pgvector', options: { connection: 'knowledge' } }),
+    entry('knowledge-pg', {
+      engine: 'pgvector',
+      options: { connection: 'knowledge' },
+      sharing: { tenants: '*' },
+    }),
     entry('typesense-digdir', { engine: 'typesense', baseURL: 'https://ts.example' }),
   ],
 };
@@ -317,7 +321,7 @@ describe('engine switch of a platform dataset in the console', () => {
       testSets: ['genki-docs-sporsmal'],
       cases: 10,
       k: 5,
-      hitAt5: [90, 80],
+      hitAt5: [0.9, 0.8],
       meanRank: [1.4, 1.3],
       latencyMs: [120, 80],
       errors: [0, 0],
@@ -407,5 +411,60 @@ describe('engine switch of a platform dataset in the console', () => {
       await screen.findByText('Innlesingen stoppet. Feilmeldingen fra plattformen:'),
     ).toBeTruthy();
     expect(screen.getByText('listing the source failed after its retries')).toBeTruthy();
+  });
+
+  it("an agency's dataset is offered only knowledge endpoints shared with it", async () => {
+    const agency = '/tenants/405003309/datasets/notater';
+    const { api } = platform({
+      [`GET ${agency}/engine`]: () => [200, engineOn('platform-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [
+        200,
+        {
+          data: [
+            entry('knowledge-pg', {
+              engine: 'pgvector',
+              options: { connection: 'knowledge' },
+              sharing: { tenants: '*' },
+            }),
+            entry('knowledge-testdep', {
+              engine: 'pgvector',
+              options: { connection: 'knowledge' },
+              sharing: { tenants: ['405003309'] },
+            }),
+            entry('knowledge-intern', { engine: 'pgvector', options: { connection: 'knowledge' } }),
+          ],
+        },
+      ],
+      [`GET ${agency}/engine-switches/estimate?to=knowledge-pg&method=reingest`]: () => [
+        200,
+        estimate(),
+      ],
+    });
+    render(<EngineSwitchSection api={api} base={agency} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    const target = screen.getByLabelText('Til søkemotor');
+    expect(
+      within(target)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['knowledge-pg', 'knowledge-testdep']);
+  });
+
+  it("a refused estimate shows the platform's reason", async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [
+        404,
+        { title: 'Søkemotoren knowledge-pg finnes ikke for denne virksomheten.', status: 404 },
+      ],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Søkemotoren knowledge-pg finnes ikke for denne virksomheten.',
+    );
   });
 });

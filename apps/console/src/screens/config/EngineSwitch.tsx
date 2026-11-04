@@ -50,6 +50,16 @@ const onKnowledgeServer = (e: ConfigEntry) => {
 
 const sidOf = (id: string) => id.slice(id.lastIndexOf(':') + 1);
 
+/** The organisation a `/tenants/{org}/...` dataset path belongs to; a platform path has none. */
+const orgOf = (base: string) => /^\/tenants\/([^/]+)\//.exec(base)?.[1];
+
+/** An agency may only switch to an endpoint the platform shares with it. */
+const sharedWith = (e: ConfigEntry, org: string | undefined) => {
+  if (!org) return true;
+  const tenants = (e.spec as { sharing?: { tenants?: '*' | string[] } }).sharing?.tenants;
+  return tenants === '*' || (Array.isArray(tenants) && tenants.includes(decodeURIComponent(org)));
+};
+
 const messageOf = (error: unknown) => {
   if (!(error instanceof ApiError)) return undefined;
   const problem = error.problem as (ValidationProblem & { title?: string }) | undefined;
@@ -92,9 +102,16 @@ const Loaded = ({
     if (!choosing || !target) return;
     const controller = new AbortController();
     setEstimate(undefined);
-    api.engineSwitchEstimate(base, target, controller.signal).then(setEstimate, () => {
-      if (!controller.signal.aborted) setRefused(t('engineSwitch.noEstimate'));
-    });
+    api.engineSwitchEstimate(base, target, controller.signal).then(
+      (next) => {
+        setRefused(undefined);
+        setEstimate(next);
+      },
+      (error: unknown) => {
+        if (!controller.signal.aborted)
+          setRefused(messageOf(error) ?? t('engineSwitch.noEstimate'));
+      },
+    );
     return () => controller.abort();
   }, [api, base, choosing, target, t]);
 
@@ -219,8 +236,8 @@ const Loaded = ({
             {t('engineSwitch.comparison', {
               from: current.from,
               to: current.to,
-              before: current.comparison.hitAt5[0],
-              after: current.comparison.hitAt5[1],
+              before: Math.round(current.comparison.hitAt5[0] * 100),
+              after: Math.round(current.comparison.hitAt5[1] * 100),
               cases: current.comparison.cases,
             })}
           </Paragraph>
@@ -362,7 +379,9 @@ export const EngineSwitchSection = ({
         api.configList('/operator/catalog/entries?kind=knowledge-endpoint', signal),
       ]);
       const targets = endpoints.data
-        .filter((e) => onKnowledgeServer(e) && e.id !== engine.endpoint)
+        .filter(
+          (e) => onKnowledgeServer(e) && sharedWith(e, orgOf(base)) && e.id !== engine.endpoint,
+        )
         .map((e) => e.id);
       return { engine, targets };
     },
