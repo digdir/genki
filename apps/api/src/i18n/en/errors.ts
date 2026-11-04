@@ -449,6 +449,20 @@ export const operationErrors = {
   maturityValues: 'maturity is test or production',
   noProcessorRecord: '{id} has no processor record',
   noModelEndpoint: 'no model endpoint {id}',
+  operatorsManageDescriptors: 'only operators manage operation descriptors',
+  descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
+  descriptorUploadTooLarge: 'an upload is at most {size} KiB',
+  descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  bodyNotJson: 'the body is not JSON',
+  uploadStatusValues:
+    'status is review or described; typed means Genki has its own code for the operation',
+  descriptorIsMapping: 'a descriptor is a mapping of fields',
+  uploadNeverTyped:
+    'typed means Genki has its own code for the operation, so an upload is never typed',
+  uploadStartsInReview:
+    'an uploaded descriptor starts in review; an operator moves it to described after',
+  descriptorCalled: 'the descriptor is called {id}',
+  fixturesCalledTwice: 'two fixtures are called {names}',
 } satisfies Translation<typeof source.operationErrors>;
 
 export const adapterErrors = {

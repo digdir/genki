@@ -449,6 +449,20 @@ export const operationErrors = defineNamespace({
   maturityValues: 'modenheten er test eller production',
   noProcessorRecord: '{id} har ingen databehandleropplysninger',
   noModelEndpoint: 'ingen modellendepunkt {id}',
+  operatorsManageDescriptors: 'bare operatører forvalter operasjonsbeskrivelser',
+  descriptorBundled: '{id} følger med Genki; last opp en ny versjon i stedet',
+  descriptorUploadTooLarge: 'en opplasting er på høyst {size} KiB',
+  descriptorDescribedInUse: '{id} er beskrevet og kan være i bruk; last opp en ny versjon i stedet',
+  bodyNotJson: 'innholdet er ikke JSON',
+  uploadStatusValues:
+    'status er review eller described; typed betyr at Genki har egen kode for operasjonen',
+  descriptorIsMapping: 'en beskrivelse er et sett med felter',
+  uploadNeverTyped:
+    'typed betyr at Genki har egen kode for operasjonen, så en opplasting er aldri typed',
+  uploadStartsInReview:
+    'en opplastet beskrivelse starter under gjennomgang; en operatør flytter den til described etterpå',
+  descriptorCalled: 'beskrivelsen heter {id}',
+  fixturesCalledTwice: 'to opptak heter {names}',
 });
 
 export const adapterErrors = defineNamespace({

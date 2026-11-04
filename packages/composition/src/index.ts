@@ -24,4 +24,5 @@ export * from './platform-tenant.js';
 export * from './lockdown.js';
 export * from './operation-try.js';
 export * from './operation-governance.js';
+export * from './operation-descriptors.js';
 export { boundPlatformId, knowledgeRecordsOf, openKnowledgePools } from '@genai/providers-pgvector';

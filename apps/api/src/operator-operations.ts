@@ -92,6 +92,7 @@ export const operatorOperationsModule: PlatformModuleFactory = (deps) => ({
           body.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         );
       const id = c.req.param('id') ?? '';
+      await operations.descriptors.refresh();
       if (!operations.descriptors.get(id))
         return problem(c, 404, 'Not found', [{ path: 'id', message: `no descriptor ${id}` }]);
       if (!deps.models.describe().some((m) => m.id === body.data.model))

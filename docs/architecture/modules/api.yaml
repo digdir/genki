@@ -20,6 +20,8 @@ responsibilities:
   - Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap
   - Let operators set the maturity of operation kinds and the processor records of model endpoints,
     and refuse a service's call-operation step at publish unless both allow it (ADR 0047)
+  - Let operators upload operation descriptors with their fixtures, checked by the loader rules and
+    operation@1 before they are stored, and move or withdraw them, audited (ADR 0047)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -30,6 +32,7 @@ files:
   - apps/api/src/projects.ts
   - apps/api/src/task-export.ts
   - apps/api/src/operation-governance.ts
+  - apps/api/src/operation-descriptors.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:

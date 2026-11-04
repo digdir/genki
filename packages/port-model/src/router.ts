@@ -381,6 +381,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   async classify(id: string, classification: ModelClassification): Promise<ModelDescription> {
     const route = this.#routes().get(id);
     if (!route) throw new ModelError('bad_request', `no model ${id}`);
+    await this.options.descriptors?.refresh?.();
     const unknown = unknownOperations(
       classification.operations ?? [],
       operationKinds(this.options.descriptors),
@@ -567,6 +568,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     return {
       info,
       call: async (id, input) => {
+        await this.options.descriptors?.refresh?.();
         const descriptor = this.options.descriptors?.get(id);
         if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
         if (tier === 'described' && descriptor.status === 'review')

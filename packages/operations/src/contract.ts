@@ -11,6 +11,7 @@ import {
   type Shape,
 } from '@genai/kernel';
 import { syntheticNationalId } from '@genai/kernel/gate-contract';
+import { z } from 'zod';
 import type { Descriptor } from './descriptor.js';
 import { describedCall } from './executor.js';
 import { evaluate } from './mapping.js';
@@ -28,6 +29,33 @@ export interface OperationFixture {
   usage: Usage;
   dropped?: number;
 }
+
+const count = z.number().int().min(0);
+
+export const OperationFixtureSpec = z.strictObject({
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+  source: z.string().max(500).optional(),
+  deployment: z.string().min(1).max(200),
+  input: z.unknown(),
+  request: z.strictObject({
+    method: z.string().min(1).max(10),
+    path: z.string().min(1).max(500),
+    query: z.record(z.string(), z.string()).optional(),
+    body: z.unknown(),
+  }),
+  response: z.strictObject({
+    status: z.number().int().min(100).max(599).optional(),
+    body: z.unknown(),
+  }),
+  result: z.unknown(),
+  usage: z.strictObject({
+    inputTokens: count.optional(),
+    outputTokens: count.optional(),
+    cachedInputTokens: count.optional(),
+    requests: count.optional(),
+  }),
+  dropped: count.optional(),
+});
 
 export interface OperationCheckResult {
   check: string;

@@ -686,6 +686,7 @@ if (db)
     settings,
     supportSessions: db.adminRecords,
     catalog: platform.catalog,
+    descriptors: platform.descriptors,
     definitions: platform,
     models: platform.models,
     toolConnections: platform.toolConnections,

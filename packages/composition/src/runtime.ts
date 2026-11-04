@@ -48,6 +48,7 @@ import {
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
 import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
+import { liveDescriptors } from './operation-descriptors.js';
 import {
   catalogDescriptorProblems,
   ModelError,
@@ -345,7 +346,8 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
-  const descriptors = input.descriptors ?? loadDescriptors();
+  const descriptors = liveDescriptors(input.descriptors ?? loadDescriptors(), configEntries);
+  await descriptors.refresh();
   const environmentTier = input.environmentTier ?? 'production';
   const governance = operationGovernance(configEntries, environmentTier);
   const gate = createGate({

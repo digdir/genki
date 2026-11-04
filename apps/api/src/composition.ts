@@ -253,6 +253,7 @@ import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
 import { operatorOperationsModule } from './operator-operations.js';
 import { describedStepProblems, operationGovernanceModule } from './operation-governance.js';
+import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
@@ -316,6 +317,7 @@ export const platformModules: PlatformModuleFactory[] = [
   operatorModelsModule,
   operatorOperationsModule,
   operationGovernanceModule,
+  operationDescriptorsModule,
   modelMatrixModule,
   hooksModule,
   pluginsModule,
@@ -2144,6 +2146,7 @@ export const createPlatform = async (input: PlatformInput) => {
     embedders,
     writers,
     catalog: config.catalog,
+    descriptors: runtime.descriptors,
     ingestion: config.ingestion,
     gates: configurables.gates,
     guardrailRules: configurables.rules,

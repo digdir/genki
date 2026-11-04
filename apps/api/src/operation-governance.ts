@@ -80,6 +80,7 @@ export const describedStepProblems = async (
   deps: DescribedStepDeps,
 ): Promise<ValidationError[]> => {
   const path = 'spec.strategy.config.flow';
+  await deps.descriptors.refresh?.();
   const own = serviceModels(service.spec);
   const catalogue = new Map(deps.models().map((m) => [m.id, m]));
   const seen = new Set<string>([flowRef]);
@@ -231,6 +232,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const guard = await operator(c);
       if ('response' in guard) return guard.response;
       const { governance, descriptors } = guard.operations;
+      await descriptors.refresh();
       const kinds = new Set([
         ...builtInOperations,
         ...descriptors.list().map((d) => d.operation),
@@ -251,6 +253,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const kind = c.req.param('kind') ?? '';
       if (!isReasonLongEnough(reasonOf(c)))
         return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+      await descriptors.refresh();
       if (!descriptors.list().some((d) => d.operation === kind))
         return problem(c, 404, [{ path: 'kind', message: `no descriptor describes ${kind}` }]);
       const body = (await c.req.json().catch(() => ({}))) as { maturity?: unknown };
