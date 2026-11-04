@@ -10,7 +10,7 @@ metadata:
 spec:
   purpose: Finn kilder i Kudos uten å lage et svar
   audience: [employees]
-  riskClass: minimal
+  riskClass: limited
   variants:
     - id: default
   input: { accepts: [text/plain] }

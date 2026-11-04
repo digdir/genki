@@ -1,5 +1,6 @@
 import { extname } from 'node:path';
 import type { Principal } from '@genai/contracts';
+import { uploadPrefix } from '@genai/ingest';
 import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { enterTenant } from './access.js';
@@ -7,7 +8,6 @@ import { routeOnlyActions } from './admin.js';
 import type { CatalogItem } from './catalog-registry.js';
 import { changeReasonOf } from './http.js';
 import { t } from './i18n/index.js';
-import { uploadPrefix } from './index-ingestion.js';
 import type { PlatformModule, PlatformModuleFactory } from './platform-modules.js';
 
 export const uploadTypes: Record<string, string> = {

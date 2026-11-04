@@ -13,6 +13,8 @@ import {
   type IdentityTestDataInput,
 } from '@genai/identity';
 import { tenantAccess } from './access.js';
+import { appendVersion, InMemoryConfigEntryStore } from './config-store.js';
+import { connectorMappingKind, connectorSecretOf } from './connectors.js';
 import { withPdpActions } from './altinn-pdp.js';
 import type { Admin } from './admin.js';
 import { platformCaller } from './composition.js';
@@ -162,9 +164,11 @@ describe('database pipelines that name a tenant secret', () => {
     scopes: [],
     authorizedFor: [{ org: digdir, resource, actions: ['manage-datasets'] }],
   };
-  const pipeline = (password: string) => ({
+  const own = `secret://tenant/${digdir}/connector-arkiv`;
+  const pipeline = (password: string, connectorSecret: string | undefined = own) => ({
     dataset: `${digdir}/arkiv`,
     id: 'kobling',
+    ...(connectorSecret ? { connectorSecret } : {}),
     spec: {
       source: {
         kind: 'database',
@@ -183,12 +187,44 @@ describe('database pipelines that name a tenant secret', () => {
       ),
     ).toMatchObject({ kind: 'right', right: 'manage-services' });
     expect(
-      refusedAction(
-        datasetAdmin,
-        'platform.pipeline.save',
-        digdir,
-        pipeline(`secret://tenant/${digdir}/connector-arkiv`),
-      ),
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(own)),
     ).toBeUndefined();
+  });
+
+  it("a pipeline cannot name another connector's secret", () => {
+    const another = `secret://tenant/${digdir}/connector-personal`;
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+    expect(
+      refusedAction(datasetAdmin, 'platform.pipeline.save', digdir, pipeline(another, undefined)),
+    ).toMatchObject({ kind: 'right', right: 'manage-services' });
+  });
+
+  it("knows a pipeline's own connector secret only from the connector that created it", async () => {
+    const store = new InMemoryConfigEntryStore();
+    await appendVersion(store, {
+      kind: connectorMappingKind,
+      scope: digdir,
+      id: 'saksinnsyn.forslag',
+      spec: {
+        service: 'saksinnsyn',
+        proposal: 'forslag',
+        name: 'Saker',
+        connector: {
+          dataset: `${digdir}/arkiv`,
+          pipeline: 'kobling',
+          connection: { engine: 'postgres', host: 'db.example.no', password: own },
+        },
+      },
+      deleted: false,
+      by: 'employee:test:kari',
+      reason: 'Koblingen er godkjent',
+    });
+    const secretOf = connectorSecretOf(store);
+
+    expect(await secretOf(digdir, `${digdir}/arkiv`, 'kobling')).toBe(own);
+    expect(await secretOf(digdir, `${digdir}/annet`, 'kobling')).toBeUndefined();
+    expect(await secretOf('889640782', `${digdir}/arkiv`, 'kobling')).toBeUndefined();
   });
 });

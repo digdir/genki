@@ -11,7 +11,7 @@ import { actorLabel, formatDateTime, formatKroner, formatSeconds, statusOf } fro
 import { translator } from './i18n';
 import { exampleOrganisations, mockFetch } from './mock';
 import { NoAccess } from './screens/NoAccess';
-import { PublicDataHandling } from './screens/DataHandling';
+import { DataHandlingContent } from './screens/DataHandling';
 import { Startside } from './screens/Startside';
 import { requestProblems } from './screens/Unregistered';
 import { needsRight, rightLabel } from './Shell';
@@ -114,7 +114,7 @@ describe('screens in English', () => {
   });
 
   it('shows the data handling page in English', () => {
-    render(inEnglish(<PublicDataHandling />));
+    render(inEnglish(<DataHandlingContent />));
     expect(screen.getByRole('heading', { level: 1, name: 'How data is handled' })).toBeTruthy();
     expect(document.body.textContent).toContain('Digdir never creates API keys');
   });

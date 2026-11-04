@@ -1,3 +1,4 @@
+import { CheckmarkIcon, ChevronDownIcon, ExternalLinkIcon, PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Avatar,
@@ -20,7 +21,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useMemo, useState, type ReactNode } from 'react';
-import { Icon, icons } from '../components/Icon';
+import { Icon } from '../components/Icon';
 import { NotAvailable } from '../components/NotAvailable';
 import {
   altinnSync,
@@ -71,7 +72,7 @@ const Expandable = ({
     <button type="button" aria-expanded={open} onClick={onToggle} className="expand-button">
       {header}
       <span className={open ? 'chevron open' : 'chevron'}>
-        <Icon d={icons.chevronDown} size={18} />
+        <Icon icon={ChevronDownIcon} size={18} />
       </span>
     </button>
     {open ? children : null}
@@ -379,7 +380,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
                             data-size="sm"
                             onClick={() => openDialog({ kind: 'resource', id: r.id })}
                           >
-                            <Icon d={icons.plus} size={18} />
+                            <Icon icon={PlusIcon} size={18} />
                             {t('access.addGroupOrPerson')}
                           </Button>
                         </div>
@@ -405,7 +406,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
         <Button asChild>
           <a href="https://www.altinn.no" target="_blank" rel="noopener">
             {t('access.changeInAltinn')}
-            <Icon d={icons.external} size={18} />
+            <Icon icon={ExternalLinkIcon} size={18} />
             <span className="visually-hidden">{t('access.newTab')}</span>
           </a>
         </Button>
@@ -535,7 +536,7 @@ export const Access = ({ api, tenant, tenantName, route, live }: ScreenProps) =>
                                 .filter((r) => p.rights.includes(r.key))
                                 .map((r) => (
                                   <Tag key={r.key} data-size="sm" data-color="accent">
-                                    <Icon d={icons.check} size={14} strokeWidth={2} />
+                                    <Icon icon={CheckmarkIcon} size={14} />
                                     {t(rightKeys[r.key].label)}
                                   </Tag>
                                 ))

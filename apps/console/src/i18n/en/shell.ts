@@ -29,8 +29,6 @@ export const shell = {
   menuLabel: 'Console menu',
   owner: 'Digdir · Generative AI platform',
   title: 'Operations console',
-  lockdown:
-    'Locked test environment: only Entra ID logins can make changes. They and the API keys and clients they create can use models and run ingestion.',
   lockdownReadOnly:
     'Locked test environment: you can look around, but changes, models and ingestion need an Entra ID login.',
   envLocal: 'Local',

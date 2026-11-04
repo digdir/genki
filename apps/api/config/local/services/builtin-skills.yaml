@@ -4,7 +4,7 @@ metadata: { tenant: '991825827', id: builtin-skills, name: 'Innebygde ferdighete
 spec:
   purpose: 'Enkeltferdigheter: hent ut entiteter, oppsummer, og søk med flere spørringer'
   audience: [employees]
-  riskClass: minimal
+  riskClass: limited
   variants:
     - id: entity-extraction
     - id: summarization

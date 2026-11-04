@@ -112,7 +112,9 @@ describe('live Testsett', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Publisert versjon' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(writes().at(-1)).toMatchObject({
       method: 'POST',
       path: '/tenants/999888777/services/rapportassistenten/eval-runs',
@@ -178,7 +180,9 @@ describe('live Testsett', () => {
         },
       ],
     });
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     const rows = (await within(history).findAllByRole('row')).slice(1) as HTMLElement[];
 
     fireEvent.click(
@@ -201,7 +205,9 @@ describe('live Testsett', () => {
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
     fireEvent.click(run);
     fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(await within(history).findByText('Kjører')).toBeTruthy();
     await waitFor(() => expect(run.getAttribute('aria-disabled')).toBe('true'));
   });

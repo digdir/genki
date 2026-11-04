@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-10-12 (partly built; hosting region left to operations, 2026-10-30). Proposed 2026-10-06
 
-Not built yet: production. A test environment in Azure is deployed from `main` with the workflows in `.github/workflows`.
+Not built yet: a running production. `infra/env/prod.bicepparam` and the `deploy-prod` job exist, gated on `PROD_READY`. A test environment in Azure is deployed from `main` with the workflows in `.github/workflows`.
 
 ## Decision
 

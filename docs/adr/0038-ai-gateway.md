@@ -1,6 +1,6 @@
 # 0038 The AI Gateway as a usage source, key issuer and model route
 
-Status: proposed, 2026-10-20
+Status: proposed, 2026-10-20 (amended 2026-11-03: contract written, sign-in, money, step 4 headers; step 1 built, 2026-11-03)
 
 ## Context
 
@@ -18,10 +18,10 @@ genki integrates with the gateway in four steps, each usable on its own, behind 
 - **Step 1, usage (#21).** A `port-usage` package with a `UsageSource` interface; genki's own records are one source and the gateway another. A worker job reads closed buckets once and open buckets hourly, maps subjects to organisations by organisation number, and the usage routes and screens show the sum with the source on each row.
 - **Step 2, models and prices.** The gateway's model list (prices, residency, capabilities) becomes a model discovery source next to Foundry's, so a model genki routes through the gateway carries the price the gateway charges and the residency it runs in. Residency rules on services keep working on that data.
 - **Step 3, keys (#23).** The portal gets "Gateway-nøkler" under Tilgang. A key is made for `org:<tenant>` or `service:<id>` within the tenant, with optional budgets. Making, changing and revoking a key are audited admin tasks with a reason (ADR 0010), and need `manage-services` (ADR 0027). The key value is shown once, as the gateway returns it once.
-- **Step 4, genki's own calls through the gateway (optional, later).** A model endpoint may point at the gateway with a key whose consumer is `genki`. The model adapter then sends `genki-tenant` and `genki-task` on every call, so the gateway can attribute and budget genki's calls per organisation.
-- **No double counting.** While genki calls providers directly, gateway rows under `genki:*` do not exist. Once a model runs through the gateway, its rows under `genki:<tenant>` replace genki's own measured cost for those calls, because only the gateway knows the price tier and context it charged; genki's own records keep the task link and tokens. A test proves each call is counted once.
-- **Money stays in its currency.** The gateway reports USD; genki stores the currency and the rate used to show kroner, instead of converting on the way in.
-- **Sign-in comes first.** genki calls the gateway only with a credential the gateway checks (a client key now, a Maskinporten or Entra workload token later), and only reads usage and manages keys for subjects genki is allowed to. Nothing in steps 1 to 4 runs against a gateway without sign-in, outside the lab.
+- **Step 4, genki's own calls through the gateway (optional, later).** A model endpoint may point at the gateway with a key whose consumer is `genki`. genki then sends `genki-tenant` and `genki-task` on every call, added by the model gate of ADR 0047 from the call's context, so no adapter or strategy can leave them out or set them. The gateway reserves `consumer: genki` for keys genki's client issued, refuses a genki call whose `genki-tenant` is missing or outside genki's scope, and removes every `genki-*` header before the provider.
+- **No double counting.** Gateway rows under `genki:*` are stored but not counted while genki calls that model directly. Once a model runs through the gateway, its rows under `genki:<tenant>` replace genki's own measured cost for those calls, because only the gateway knows the price tier and context it charged; genki's own records keep the task link and tokens. A test proves each call is counted once.
+- **Money stays in its currency.** Usage rows carry `{ currency, micros }` as the gateway reports them, and nothing is converted on the way in. Rates live in one table, `currency_rates`, by currency and day from Norges Bank. A kroner figure uses the rate for the row's day or the latest before it and is shown with the rate and its day. A row with no rate counts as unpriced in kroner, never as 0. genki's own `Usage.costMicroNok` stays as it is.
+- **Sign-in comes first, on genki's identity model (ADR 0008).** genki calls the gateway only with a credential the gateway checks: a client key now, then a token for genki's managed identity from Entra ID. The gateway trusts several issuers at once, Entra ID for Digdir platforms and Maskinporten for other machine clients, so genki can move between them without a change on the gateway side. A client's scope (route scopes and organisation numbers) is configured on the gateway, never read from token claims or headers, and genki only reads usage and manages keys for its tenants. genki never forwards a person's Ansattporten token. Nothing in steps 1 to 4 runs against a gateway without sign-in, outside the lab.
 
 ## Why
 
@@ -36,8 +36,10 @@ Rejected:
 ## Consequences
 
 - New package `port-usage`, a gateway provider, a usage poll job in the worker, and a "Gateway-nøkler" section in the portal. Each step gets tests against a fake that implements the contract.
-- Step 4 needs the model adapters to send per-call headers from the port context, which they cannot do today.
-- `costMicroNok` gains a sibling for cost in another currency with its rate, or usage rows carry `{ currency, micros }` as the gateway does. Decide in step 1.
+- Step 4 needs the model gate of ADR 0047, which is proposed and not built.
+- `usage_buckets` and `currency_rates` are new tables. `Usage` gains `cost: Money` only when #22 brings prices in other currencies.
 - The model and embedding routers put the list price on each call's `costMicroNok` when the call is metered (#189), unless the provider already reported a cost, and leave a call on an unpriced model unpriced. A gateway that reports its charge per call therefore wins over the price list without a change to the routers.
-- To agree with the gateway team before step 1 is built: sign-in for genki as a client and what it may read, how keys already handed out get a subject, whether `/v1/models` on the API and the OpenAI-compatible `/v1` on the gateway listener stay on separate hosts, and `claim:<name>` subjects once the gateway supports JWT.
+- To agree with the gateway team before step 1 is built: the client scope and when genki moves from the client key to Entra ID, how keys already handed out get a subject, whether `/v1/models` on the API and the OpenAI-compatible `/v1` on the gateway listener stay on separate hosts, a test gateway or credential per genki environment, and which of the contract's rules the gateway keeps in its API and which need a change to agentgateway itself. The subject kind `claim:<name>` is reserved for when the gateway accepts tokens on the model listener.
+- If the gateway gets screens of its own for people, it signs them in with Ansattporten as genki does, so both read a person's organisations from the same Altinn rights.
+- Built (step 1, #21): `port-usage`, `providers-ai-gateway`, the `usage-gateway-poll` queue, `usage_buckets`, `usage_unassigned`, `usage_marks` and `currency_rates`, and the sum with `bySource` on the usage routes and screen; `docs/api/gateway.md` lists where it differs from the design. Not built: Norges Bank rates, and steps 2 to 4.
 - The lab API is a prototype. genki builds against the contract and the fake, and runs against a real gateway only once it has sign-in.

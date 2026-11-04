@@ -3,7 +3,7 @@ kind: Service
 metadata: { tenant: '991825827', id: klarsprak, name: Klarspråk }
 spec:
   purpose: Skriv om brev og vedtak til klart språk etter Språkrådets råd, uten å endre meningen
-  riskClass: minimal
+  riskClass: limited
   input: { accepts: [text/plain] }
   output:
     kind: fields

@@ -99,7 +99,7 @@ Bringing a generation up to date with the document changes made after its data v
 _Avoid_: resync, backfill
 
 **Data version**:
-The highest point in a dataset's history of document changes below which a generation has every change, recorded with every result that read it, so that two results are compared only when they read the same data. A service version is something else.
+The highest point in a dataset's history of document changes below which a generation has every change, recorded with every result that read it, so that two results are compared only when both hold every change up to the same point. A service version is something else.
 _Avoid_: index version, revision
 
 **Frozen sample**:

@@ -37,9 +37,15 @@ describe('Slik behandles data', () => {
     expect(page).toContain('driftslogger inneholder ikke spørsmål eller svar');
     expect(page).toContain('Svar laget med KI');
     expect(page).toContain('I dag kjører modellene i Azure med global behandling');
-    expect(screen.getByText('Databehandleravtale').nextElementSibling?.textContent).toBe(
-      'Ikke bestemt ennå',
+    const undecided = screen.getByRole('list', { name: 'Ikke bestemt ennå' });
+    expect(within(undecided).getByText('Databehandleravtale').parentElement?.textContent).toContain(
+      'Ikke bestemt',
     );
+    expect(
+      within(undecided)
+        .getAllByText('Ikke bestemt')
+        .every((tag) => tag.matches('.ds-tag')),
+    ).toBe(true);
     expect(page).not.toMatch(/example\.no|I Norge eller i EU/);
     expectAccessible();
   });

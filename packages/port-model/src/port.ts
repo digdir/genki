@@ -54,10 +54,22 @@ export type ChatChunk = { kind: 'delta'; text: string } | { kind: 'done'; result
 export const capabilities = ['stream', 'tools', 'json-schema', 'reasoning'] as const;
 export type Capability = (typeof capabilities)[number];
 
+export const builtInOperations = ['chat', 'decide'] as const;
+export type BuiltInOperation = (typeof builtInOperations)[number];
+export type Operation = string;
+export const operationKindPattern = /^[a-z][a-z0-9-]*$/;
+export const defaultOperations: Operation[] = ['chat'];
+
+/** The operation kinds a catalogue may list: the built-in kinds and every kind a registered descriptor defines. */
+export const operationKinds = (descriptors?: { list(): { operation: string }[] }): string[] => [
+  ...new Set([...builtInOperations, ...(descriptors?.list().map((d) => d.operation) ?? [])]),
+];
+
 export interface ModelInfo {
   id: string;
   residency: Residency;
   capabilities: Capability[];
+  operations?: Operation[];
   contextWindow?: number;
   parameters?: ParameterRules;
 }
