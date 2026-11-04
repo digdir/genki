@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -8,7 +9,7 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { statusColor, type JobId, type ServiceRow, type ServiceStatus } from '../../data/services';
 import { useT, type PlainKey } from '../../i18n';
 import { navigate } from '../../hooks';
@@ -57,7 +58,7 @@ export const ServiceList = ({ rows, tenantName }: { rows: ServiceRow[]; tenantNa
         </div>
         {canCreate ? (
           <Button variant="primary" onClick={() => navigate('/services/new')}>
-            <Icon d={icons.plus} />
+            <Icon icon={PlusIcon} />
             {t('serviceList.create')}
           </Button>
         ) : null}

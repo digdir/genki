@@ -11,4 +11,7 @@ export * from './retention-policy.js';
 export * from './retention.js';
 export * from './run-documents.js';
 export * from './job-queue.js';
+export * from './knowledge-queues.js';
+export * from './night-window.js';
+export * from './usage-queues.js';
 export * from './trace-deliveries.js';

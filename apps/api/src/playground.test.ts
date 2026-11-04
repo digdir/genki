@@ -15,6 +15,7 @@ import { resolveCatalog } from './catalogs.js';
 import { createPlatform } from './composition.js';
 import { platformScope } from './config-store.js';
 import { localeMiddleware } from './i18n/index.js';
+import type { TaskIndex } from './extensions.js';
 import type { PlaygroundOptions, PlaygroundRunResponse } from './playground.js';
 
 const servers: FakeServer[] = [];
@@ -122,7 +123,10 @@ const openPolicy = {
   reason: 'Alle modeller er tillatt i testene',
 };
 
-const boot = async ({ residencyRule = false } = {}) => {
+const boot = async ({
+  residencyRule = false,
+  taskIndex,
+}: { residencyRule?: boolean; taskIndex?: TaskIndex } = {}) => {
   const model = await fakeHttp(modelReply);
   const search = await fakeHttp(() => ({ status: 200, json: {} }));
   servers.push(model, search);
@@ -144,6 +148,7 @@ const boot = async ({ residencyRule = false } = {}) => {
     secrets: envSecrets({ FOUNDRY_OPENAI_KEY: 'm', TYPESENSE_KEY: 't', COLBERT_API_KEY: 'c' }),
     definitions: (plugins) => new InMemoryDefinitionStore(plugins),
     settings,
+    ...(taskIndex ? { taskIndex } : {}),
     policy: { decide: async () => ({ allow: true }) },
     authenticate: async (request) => {
       const principal = people[request.headers.get('authorization')?.slice(7) ?? ''];
@@ -219,6 +224,24 @@ describe('the playground', () => {
       status: 'not_allowed',
       policy: { ownedBy: 'Digdir' },
     });
+  });
+
+  it('refuses a draft whose variant uses a not-allowed model, even when the service model is allowed', async () => {
+    const { run } = await boot({ residencyRule: true });
+    const draft = service('svar', 'Svar på bokmål.');
+    draft.spec.model.primary = 'local/echo';
+    const definition = {
+      ...draft,
+      spec: { ...draft.spec, variants: [{ id: 'default', model: modelId }] },
+    };
+
+    const refused = await run({
+      setup: { service: { id: 'svar', version: 'draft', definition }, output: 'text' },
+      input: { text: 'Hei' },
+    });
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ policy: { block: modelId } });
   });
 
   it('compare returns two results with their own cost', async () => {
@@ -307,6 +330,23 @@ describe('the playground', () => {
       text: 'Bokmålssvar.',
       compare: { text: 'Nynorsksvar.' },
     });
+  });
+
+  it('a service draft with broken YAML is refused with 422 naming the definition', async () => {
+    const { run } = await boot();
+
+    const res = await run({
+      setup: {
+        service: { id: 'svar', version: 'draft', definition: 'kind: Service\nspec: [unclosed' },
+        output: 'text',
+      },
+      input: { text: 'Hei' },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual([
+      { path: 'setup.service.definition', message: expect.stringMatching(/line \d+/) },
+    ]);
   });
 
   it('the playground is refused when the setting turns it off', async () => {
@@ -497,6 +537,31 @@ describe('the playground', () => {
     expect(model.seen.length).toBe(before);
     expect(await blobs.list(tenant, 'playground/')).toEqual([]);
     expect(options.quota.usedPercent).toBeGreaterThanOrEqual(100);
+  });
+
+  it('options and runs read the monthly quota from one usage query, never task by task', async () => {
+    const sums: string[] = [];
+    const { call, run } = await boot({
+      taskIndex: {
+        all: async () => {
+          throw new Error('the playground must not read every task to find the quota');
+        },
+        running: async () => [],
+        tokensUsed: async (owner) => {
+          sums.push(owner);
+          return 25_000_000;
+        },
+      },
+    });
+
+    const options = (await call(`/tenants/${tenant}/playground/options`))
+      .body as unknown as PlaygroundOptions;
+    const answer = await run({ setup: own('Svar på bokmål.'), input: { text: 'Hei' } });
+
+    expect(options.quota).toEqual({ usedPercent: 50, monthlyTokens: 50_000_000 });
+    expect(answer.status).toBe(200);
+    expect(answer.body).toMatchObject({ quota: { usedPercent: 50 } });
+    expect(sums).toEqual([tenant, tenant, tenant]);
   });
 
   it('a playground answer saved as a test case keeps the chosen test set and origin', async () => {

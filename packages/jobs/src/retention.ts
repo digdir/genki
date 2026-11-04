@@ -1,12 +1,13 @@
 import type { CompiledCapability, SettingsRegistry } from '@genai/definitions';
 import {
+  type OutsideRunRetentionStore,
   type RetentionGroup,
   type RetentionPolicy,
   type RetentionStore,
   type ThreadRetentionStore,
 } from '@genai/kernel';
 import type { BlobStore } from '@genai/port-blob';
-import { retentionFor } from './retention-policy.js';
+import { retentionFor, tenantAuditDays } from './retention-policy.js';
 import { purgeRunDocuments } from './run-documents.js';
 import type { TraceDeliveryStore } from './trace-deliveries.js';
 import { schedule, type Clock, type ScheduledJob } from './scheduler.js';
@@ -18,6 +19,7 @@ export interface RetentionDeps {
   settings: SettingsRegistry;
   capabilities(): Promise<CompiledCapability[]>;
   threads?: ThreadRetentionStore;
+  outsideRun?: OutsideRunRetentionStore;
   documents?: Pick<BlobStore, 'list' | 'delete'>;
   tenants?: () => Promise<string[]>;
   /** Traces sent to a sink are deleted there too once their task's content is purged. */
@@ -33,6 +35,7 @@ export interface RetentionRun {
   envelopes: number;
   conversations: number;
   documents: number;
+  outsideRunDays: number;
 }
 
 const serviceNamed = (capabilities: CompiledCapability[], tenant: string, agent: string) =>
@@ -86,6 +89,13 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
         });
       }
   }
+  let outsideRunDays = 0;
+  if (deps.outsideRun)
+    for (const tenant of tenants)
+      outsideRunDays += await deps.outsideRun.purge({
+        tenant,
+        before: new Date(now.getTime() - tenantAuditDays(deps.settings, tenant) * dayMs),
+      });
   const documents = deps.documents
     ? await purgeRunDocuments({
         blobs: deps.documents,
@@ -102,6 +112,7 @@ export const purgeExpired = async (deps: RetentionDeps): Promise<RetentionRun> =
     envelopes: groups.reduce((n, g) => n + g.envelopes, 0),
     conversations,
     documents,
+    outsideRunDays,
     traceDeletes,
   };
 };

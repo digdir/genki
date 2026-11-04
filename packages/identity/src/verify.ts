@@ -11,6 +11,7 @@ import {
 import {
   fromOrgNo,
   INTERNAL_GRANT_PREFIX,
+  lockdownUserScope,
   trustedEntraScope,
   type AltinnResourceDetail,
   type OrgNo,
@@ -51,6 +52,7 @@ export interface ClientRegistry {
 
 export interface TrustedEntra {
   groups: readonly string[];
+  userGroups?: readonly string[];
   clientIds: readonly string[];
   emailDomain?: string;
   tenant: string;
@@ -153,14 +155,19 @@ const trustedEntraLogin = (
   payload: JWTPayload,
   registered: boolean,
 ): VerifiedIdentity => {
-  if (
-    !registered &&
-    (typeof payload.client_id !== 'string' || !trusted.clientIds.includes(payload.client_id))
-  )
+  const claimed = new Set(
+    (Array.isArray(payload.groups) ? payload.groups : []).flatMap((g) =>
+      typeof g === 'string' ? [g.toLowerCase()] : [],
+    ),
+  );
+  const member = (groups: readonly string[]) => groups.some((g) => claimed.has(g.toLowerCase()));
+  const operatorLogin = member(trusted.groups);
+  const userLogin = !operatorLogin && member(trusted.userGroups ?? []);
+  const allowedClient =
+    typeof payload.client_id === 'string' && trusted.clientIds.includes(payload.client_id);
+  if (userLogin ? registered || !allowedClient : !registered && !allowedClient)
     throw new AuthenticationError('entra_not_trusted', 'the login comes from an untrusted client');
-  const configured = new Set(trusted.groups.map((g) => g.toLowerCase()));
-  const groups = Array.isArray(payload.groups) ? payload.groups : [];
-  if (!groups.some((g) => typeof g === 'string' && configured.has(g.toLowerCase())))
+  if (!operatorLogin && !userLogin)
     throw new AuthenticationError('entra_not_trusted', 'the login is in no trusted Entra group');
   const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
   if (trusted.emailDomain && !email.endsWith(`@${trusted.emailDomain.toLowerCase()}`))
@@ -176,7 +183,7 @@ const trustedEntraLogin = (
       authorizedFor: [
         { org: trusted.tenant, resource: trusted.resource, actions: [...PLATFORM_RIGHTS] },
       ],
-      scopes: [trustedEntraScope],
+      scopes: [userLogin ? lockdownUserScope : trustedEntraScope],
       ...expiresAt(payload),
     },
   };

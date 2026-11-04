@@ -1,11 +1,15 @@
-import type {
-  PurgeCount,
-  RetentionCutoff,
-  RetentionGroup,
-  RetentionStore,
-  ThreadCutoff,
-  ThreadErasure,
-  ThreadRetentionStore,
+import {
+  outsideRunLogPrefix,
+  outsideRunTask,
+  type OutsideRunCutoff,
+  type OutsideRunRetentionStore,
+  type PurgeCount,
+  type RetentionCutoff,
+  type RetentionGroup,
+  type RetentionStore,
+  type ThreadCutoff,
+  type ThreadErasure,
+  type ThreadRetentionStore,
 } from '@genai/kernel';
 import type { Pool, PoolClient } from 'pg';
 import { threadScope } from './conversations.js';
@@ -14,6 +18,32 @@ import { withTenant } from './tenancy.js';
 
 const capabilityOf = `envelope->'service'->'capability'->>'id'`;
 const taskScopePrefix = '["task",';
+
+const dropTaskScopes = async (
+  client: PoolClient,
+  tenant: string,
+  rows: { scope: string }[],
+  recordErasure: boolean,
+) => {
+  const scopes = rows.map((r) => r.scope).filter((s) => s.startsWith(taskScopePrefix));
+  if (scopes.length === 0) return;
+  await client.query('delete from state where tenant = $1 and scope = any($2)', [tenant, scopes]);
+  await client.query('delete from content_keys where tenant = $1 and scope = any($2)', [
+    tenant,
+    scopes,
+  ]);
+  if (recordErasure)
+    await client.query(
+      `insert into erased_scopes (tenant, scope, reason) select $1, unnest($2::text[]), 'retention'
+       on conflict (tenant, scope) do update set erased_at = now(), reason = excluded.reason`,
+      [tenant, scopes],
+    );
+  else
+    await client.query('delete from erased_scopes where tenant = $1 and scope = any($2)', [
+      tenant,
+      scopes,
+    ]);
+};
 
 export class PostgresRetentionStore implements RetentionStore {
   constructor(private readonly pool: Pool) {}
@@ -37,7 +67,7 @@ export class PostgresRetentionStore implements RetentionStore {
       );
       const expiredIds = expired.rows.map((r) => r.id);
       await client.query('delete from events where task = any($1)', [expiredIds]);
-      await this.#dropTaskScopes(client, cutoff.tenant, expired.rows, false);
+      await dropTaskScopes(client, cutoff.tenant, expired.rows, false);
 
       const stale = await client.query<{ id: string; scope: string }>(
         `select id, scope from tasks t
@@ -52,7 +82,7 @@ export class PostgresRetentionStore implements RetentionStore {
         [staleIds],
       );
       await client.query('update tasks set body = null where id = any($1)', [staleIds]);
-      await this.#dropTaskScopes(client, cutoff.tenant, stale.rows, true);
+      await dropTaskScopes(client, cutoff.tenant, stale.rows, true);
       // What went to a trace sink is queued for deletion in the same transaction as the purge.
       await client.query(`select set_config('app.tenant', $1, true)`, [cutoff.tenant]);
       const marked = await client.query(
@@ -74,31 +104,41 @@ export class PostgresRetentionStore implements RetentionStore {
       client.release();
     }
   }
+}
 
-  async #dropTaskScopes(
-    client: PoolClient,
-    tenant: string,
-    rows: { scope: string }[],
-    recordErasure: boolean,
-  ) {
-    const scopes = rows.map((r) => r.scope).filter((s) => s.startsWith(taskScopePrefix));
-    if (scopes.length === 0) return;
-    await client.query('delete from state where tenant = $1 and scope = any($2)', [tenant, scopes]);
-    await client.query('delete from content_keys where tenant = $1 and scope = any($2)', [
-      tenant,
-      scopes,
-    ]);
-    if (recordErasure)
-      await client.query(
-        `insert into erased_scopes (tenant, scope) select $1, unnest($2::text[])
-         on conflict (tenant, scope) do update set erased_at = now()`,
-        [tenant, scopes],
+export class PostgresOutsideRunRetention implements OutsideRunRetentionStore {
+  constructor(private readonly pool: Pool) {}
+
+  async purge(cutoff: OutsideRunCutoff): Promise<number> {
+    const prefix = outsideRunLogPrefix(cutoff.tenant);
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      // The range uses the primary key; starts_with keeps it exact under any collation.
+      const expired = await client.query<{ task: string }>(
+        `select distinct task from events
+         where task >= $2 and task < $3 and starts_with(task, $2) and tenant = $1`,
+        [cutoff.tenant, prefix, outsideRunTask(cutoff.tenant, cutoff.before)],
       );
-    else
-      await client.query('delete from erased_scopes where tenant = $1 and scope = any($2)', [
-        tenant,
-        scopes,
+      const tasks = expired.rows.map((r) => r.task);
+      await client.query('delete from events where tenant = $1 and task = any($2)', [
+        cutoff.tenant,
+        tasks,
       ]);
+      await dropTaskScopes(
+        client,
+        cutoff.tenant,
+        tasks.map((task) => ({ scope: JSON.stringify(['task', task]) })),
+        false,
+      );
+      await client.query('commit');
+      return tasks.length;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -128,7 +168,8 @@ export class PostgresThreadRetention implements ThreadRetentionStore {
         [cutoff.tenant, cutoff.agent, cutoff.before.getTime()],
       ),
     );
-    for (const { id } of removed.rows) await this.keys.erase(cutoff.tenant, threadScope(id));
+    for (const { id } of removed.rows)
+      await this.keys.erase(cutoff.tenant, threadScope(id), 'retention');
     return removed.rows.length;
   }
 }
@@ -145,7 +186,8 @@ export class PostgresThreadErasure implements ThreadErasure {
        where tenant = $1 and envelope->>'thread' = $2 and starts_with(scope, '["thread",')`,
       [tenant, thread],
     );
-    for (const { scope } of found.rows) await this.keys.erase(tenant, scope);
+    for (const { scope } of found.rows)
+      await this.keys.erase(tenant, scope, 'conversation-deleted');
     return found.rows.length;
   }
 }

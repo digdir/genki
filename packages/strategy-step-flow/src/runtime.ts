@@ -5,7 +5,7 @@ import {
   type StepFlowDefinition,
 } from '@genai/definitions';
 import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
-import { languageInstructionsConfig } from '@genai/port-model';
+import { languageInstructionsConfig, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import { isPause, type BlockRegistry, type FlowRuntimeConfig } from './blocks.js';
 import { StepFailure } from './blocks/model.js';
@@ -46,6 +46,7 @@ export interface StepFlowOptions {
   now?: () => Date;
   maxSteps?: number;
   maxDepth?: number;
+  describedOperations?: boolean;
 }
 
 interface Progress {
@@ -68,6 +69,8 @@ const failureCode = (error: unknown): string | undefined => {
   for (let e = error; e instanceof Error; e = e.cause) if (e instanceof StepFailure) return e.code;
   return undefined;
 };
+
+const frameStep = (step: string, text: string) => untrustedData(`step:${step}`, text);
 
 class Paused extends Error {}
 
@@ -244,7 +247,9 @@ class Runner {
       if (this.progress.executed > this.maxSteps)
         throw new BudgetExceeded(`the flow ran more than ${this.maxSteps} steps`);
       const scope = this.scope(frame);
-      const input = block.input.parse(render(step.input ?? {}, scope));
+      const input = block.input.parse(
+        render(step.input ?? {}, scope, block.framesStepText ? frameStep : undefined),
+      );
       const params = block.params.parse(render(step.params ?? {}, scope));
       const resuming = this.progress.pending === key && this.resumed;
       const output: unknown = yield* block.run(
@@ -463,7 +468,11 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
   return {
     id: 'step-flow',
     version: '1',
-    requires: { kernel: 1, ports: ['model', 'tools'], features: ['checkpoint', 'interrupts'] },
+    requires: {
+      kernel: 1,
+      ports: ['model', 'tools', ...(options.describedOperations ? ['described'] : [])],
+      features: ['checkpoint', 'interrupts'],
+    },
     run: (ctx, input, raw) =>
       execute(ctx, input, raw, { version: 1, input, done: {}, executed: 0 }, undefined),
     resume: (ctx, checkpoint, response, raw) => {
