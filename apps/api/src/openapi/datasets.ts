@@ -135,6 +135,7 @@ const SkippedDocument = z.object({
     'outside_access',
     'conversion_failed',
     'unreachable',
+    'too_large',
   ]),
 });
 

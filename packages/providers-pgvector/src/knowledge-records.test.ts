@@ -169,6 +169,48 @@ describe('document records on the knowledge server', () => {
     expect(rows[0]?.last).toBe('5');
   });
 
+  it('an earlier id resolves to its document, for 377252', async () => {
+    const name = 'digdir/earlier';
+    const generation = await freshGeneration(name);
+    const uuid = 'de77ffc7-1a57-456a-af49-167e699a4e6e';
+    const kudos: ListedDocument = {
+      id: `kudos:${uuid}`,
+      record: { uuid },
+      metadata: { uuid, title: 'Statusrapport' },
+      files: [{ name: 'f1', sha256: 'aaa' }],
+      earlierIds: ['377252'],
+    };
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'new', listed: kudos, metadataHash: 'm' }]),
+      },
+      noSend,
+    );
+    await records.replace(await recordOf(name, kudos.id), generation, {
+      document: doc(kudos.id),
+    });
+
+    // A citation is resolved only inside a dataset the caller may read (ADR 0042).
+    const client = await admin.connect();
+    let rows: { cited: string; status: string; document: string }[];
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.datasets', $1, true)`, [JSON.stringify([name])]);
+      ({ rows } = await client.query<{ cited: string; status: string; document: string }>(
+        `select cited, status, document
+           from kn_resolve_citation($1, $2, array['377252'], array[$3])`,
+        [name, generation, tombstoneHash(name, '377252')],
+      ));
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+    expect(rows).toEqual([{ cited: '377252', status: 'earlier', document: `kudos:${uuid}` }]);
+  });
+
   it('sends the index job of every record to process in the transaction that writes it', async () => {
     const name = 'digdir/sends';
     const generation = await freshGeneration(name);

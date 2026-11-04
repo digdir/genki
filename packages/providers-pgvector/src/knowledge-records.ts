@@ -122,13 +122,21 @@ const writeRecord = async (
   const change = await nextChange(client, dataset);
   const { listed } = write;
   await client.query(
-    `insert into src_documents (dataset, id, owners, record, metadata_hash, state, change)
-     values ($1, $2, array[$3], $4, $5, null, $6)
+    `insert into src_documents (dataset, id, owners, record, metadata_hash, state, change, earlier_ids)
+     values ($1, $2, array[$3], $4, $5, null, $6, $7)
      on conflict (dataset, id) do update set
        owners = array[$3], record = excluded.record, metadata_hash = excluded.metadata_hash,
        state = null, reason = null, last_seen = now(), missing = 0, gone = 0, gone_run = null,
-       change = excluded.change`,
-    [dataset, listed.id, pipeline, JSON.stringify(listed.record), write.metadataHash, change],
+       change = excluded.change, earlier_ids = excluded.earlier_ids`,
+    [
+      dataset,
+      listed.id,
+      pipeline,
+      JSON.stringify(listed.record),
+      write.metadataHash,
+      change,
+      listed.earlierIds ?? [],
+    ],
   );
   await writeFiles(client, dataset, listed.id, listed.files, change);
   // A document listed again is no longer withdrawn.

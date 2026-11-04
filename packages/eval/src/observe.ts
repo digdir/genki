@@ -38,6 +38,7 @@ const asSources = (value: unknown): ObservedSource[] => {
         ...(chunkId === undefined ? {} : { chunkId }),
         ...(document === undefined ? {} : { document }),
         ...(typeof s.position === 'number' ? { position: s.position } : {}),
+        ...(typeof s.page === 'number' ? { page: s.page } : {}),
         ...(typeof s.url === 'string' ? { url: s.url } : {}),
       },
     ];
@@ -88,6 +89,10 @@ export const sameSource = (expected: SourceRef, actual: SourceRef) => {
   if (expected.chunkId !== undefined && actual.chunkId !== undefined)
     return expected.chunkId === actual.chunkId;
   if (expected.document === undefined || actual.document === undefined) return false;
-  if (expected.document !== actual.document) return false;
-  return expected.position === undefined || expected.position === actual.position;
+  // An index from before the source renumbered names the document by its earlier id.
+  if (expected.document !== actual.document && expected.earlierDocument !== actual.document)
+    return false;
+  if (expected.position !== undefined && expected.position !== actual.position) return false;
+  // Only an index that knows pages is held to the page; an older one is matched by document.
+  return expected.page === undefined || actual.page === undefined || expected.page === actual.page;
 };

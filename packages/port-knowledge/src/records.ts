@@ -19,6 +19,8 @@ export interface ListedDocument {
   /** What the metadata hash covers: the record without what changes when nothing does. */
   metadata: Record<string, unknown>;
   files: ListedFile[];
+  /** Ids the source gave the document before it renumbered (ADR 0042); a citation resolves through them. */
+  earlierIds?: string[];
 }
 
 /** A record its pipeline owns, with the change its run's generation has applied. */

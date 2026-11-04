@@ -6,6 +6,11 @@ import type { Chunk } from './chunk-document.js';
 import { documentId } from './ids.js';
 import { capitalize, javaSplit } from './text.js';
 
+/** A response larger than the caller's limit; the download stops there. */
+export class ResponseTooLarge extends Error {
+  override readonly name = 'ResponseTooLarge';
+}
+
 export interface FetchPolicy {
   allowedHosts: Set<string>;
   connectTimeoutMs: number;
@@ -253,7 +258,7 @@ export const guardedFetchStream = async (
           }
           total += value.byteLength;
           if (total > maxBytes)
-            throw new Error(`Website response exceeds size limit of ${maxBytes} bytes`);
+            throw new ResponseTooLarge(`Website response exceeds size limit of ${maxBytes} bytes`);
           await consume(value);
         }
         return response.headers;
