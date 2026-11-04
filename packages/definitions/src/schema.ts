@@ -100,6 +100,7 @@ export const serviceSpec = z.strictObject({
     .min(1)
     .default(['employees']),
   riskClass: z.enum(['minimal', 'limited', 'high']),
+  decidesAboutPeople: z.boolean().optional(),
   riskConfirmation: z
     .strictObject({
       by: z.string().min(1).optional(),
@@ -426,4 +427,9 @@ export const publicNamesOf = (definition: ServiceDefinition, v: Variant) => {
     (typeof v === 'string' ? undefined : v.publicName) ?? `${definition.metadata.id}__${id}`;
   const listed = typeof v === 'string' ? [] : v.aliases;
   return { primary, aliases: listed.map((a) => (typeof a === 'string' ? a : a.name)) };
+};
+
+export const decisionModelOf = (spec: Pick<ServiceDefinition['spec'], 'guardrails'>) => {
+  const model = (spec.guardrails['purpose-check'] as { model?: unknown } | undefined)?.model;
+  return typeof model === 'string' && model ? model : undefined;
 };

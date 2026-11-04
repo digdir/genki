@@ -31,7 +31,7 @@ export const dataHandling = defineNamespace({
   logged2: 'Plattformens driftslogger inneholder ikke spørsmål eller svar.',
   marking1: 'Svar fra plattformen er merket «Svar laget med KI» på skjermen.',
   marking2:
-    'I API-svarene er svaret merket med feltet ai_generated og overskriften genai-generated-by.',
+    'I API-svarene er svaret merket med feltet <code>ai_generated</code> og overskriften <code>genai-generated-by</code>.',
   undecidedStorage: 'Hvor lenge innholdet lagres',
   undecidedDpa: 'Databehandleravtale',
   notDecidedYet: 'Ikke bestemt ennå',
@@ -39,7 +39,7 @@ export const dataHandling = defineNamespace({
   storageTime: 'Hvor lenge data lagres',
   storageTimeBody: 'Datasett lagres til virksomheten sletter dem.',
   storageTimePlaceholder:
-    '[Plassholder: lagringstid for spørsmål, svar og logg, og hva som skjer med data når en virksomhet slutter å bruke plattformen.]',
+    'Hvor lenge spørsmål, svar og logger lagres, og hva som skjer med data når en virksomhet slutter å bruke plattformen, er ikke bestemt ennå.',
 });
 
 export const start = defineNamespace({
@@ -99,7 +99,7 @@ export const start = defineNamespace({
   ex1Trigger: 'Chat',
   ex1Title: 'Spør rapportene',
   ex1Body:
-    'Ansatte stiller spørsmål i intranettet og får svar fra evalueringer i Kudos, med lenke til rapporten og siden svaret bygger på.',
+    'Ansatte stiller spørsmål i intranettet og får svar fra evalueringer i Kudos, statens database for evalueringer, med lenke til rapporten og siden svaret bygger på.',
   ex1In: 'Et spørsmål',
   ex1Out: 'Svar med kilder',
   ex2Job: 'Henter ut data',
@@ -116,9 +116,10 @@ export const start = defineNamespace({
     'Saksbehandleren trykker på en knapp i saken og får et utkast som viser til regelverket. Ingenting sendes før saksbehandleren har godkjent utkastet.',
   ex3In: 'Saken og vedleggene',
   ex3Out: 'Word-dokument fra mal',
-  ex3Risk: 'Høy. Krever godkjenning.',
+  ex3Risk: 'Høy, krever godkjenning',
   exIn: 'Inn',
   exOut: 'Ut',
+  exTrigger: 'Starter',
   exRunsIn: 'Kjører i',
   exRunsInValue: 'Velges per tjeneste',
   exRisk: 'Risiko',
@@ -139,17 +140,16 @@ export const start = defineNamespace({
     'Retningslinjene er ikke vedtatt ennå. Tekst merket «Ikke bestemt» er plassholdere.',
   dataReadMore: 'Les mer om hvordan data behandles',
   getStartedHeading: 'Kom i gang',
-  getStartedLead:
-    'Det tar vanligvis noen få virkedager (ikke bestemt) fra forespørsel til første tjeneste.',
+  getStartedLead: 'Vi har ikke fastsatt hvor lang tid godkjenningen tar.',
   step1Title: 'Be om tilgang',
   step1Body:
-    'Logg inn med Ansattporten og velg virksomheten. Fyll ut forespørselen og bekreft at du har lest utkastet til vilkår og databehandleravtale. Vilkårene er ikke bestemt ennå.',
+    'Logg inn med Ansattporten, innloggingen for ansatte i offentlige virksomheter, og velg virksomheten. Fyll ut forespørselen og bekreft at du har lest utkastet til vilkår og databehandleravtale.',
   step2Title: 'Digdir godkjenner',
   step2Body:
     'Digdir behandler forespørselen og registrerer virksomheten. Du ser status i portalen, og logger inn på nytt når forespørselen er godkjent.',
-  step3Title: 'Første administrator logger inn',
+  step3Title: 'Gi rettighet i Altinn',
   step3Body:
-    'Tilgangsstyreren i virksomheten gir en person rettigheten «Administrere tjenester» i Altinn. Den personen logger inn i portalen.',
+    'Den som styrer tilganger i Altinn hos dere, gir én person rettigheten «Administrere tjenester». Den personen logger inn i portalen.',
   step4Title: 'Lag den første tjenesten',
   step4Body:
     'Prøv en fellestjeneste, eller beskriv jobben og la assistenten hjelpe dere. Gi kolleger tilgang i Altinn når tjenesten er klar.',

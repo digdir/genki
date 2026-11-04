@@ -1,0 +1,45 @@
+id: docs-site
+plane: consumers
+name: Docs site pages
+note: One copy of the docs pages, figures and search
+icon: ui
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/docs-site'
+summary: The pages, figures and search of the docs site, rendered by the docs site on GitHub Pages
+  and by the portal's public pages.
+description: React pages for the overview, target picture, building blocks, service types, flows,
+  status labels, search and getting started, with the architecture figure, fullscreen figures and
+  a MiniSearch index over the shared content. The routing is configurable, so the docs site keeps
+  its own addresses and the portal serves the same pages under /about. The stylesheet is scoped
+  under one root class, and labels come in bokmål and English.
+responsibilities:
+  - Render the docs pages and figures from the shared content
+  - Search the content in the browser
+  - Route under a prefix chosen by the app
+files:
+  - packages/docs-site/src/DocsPage.tsx
+  - packages/docs-site/src/router.ts
+  - packages/docs-site/src/components/ArchitectureDiagram.tsx
+  - packages/docs-site/src/search/index.ts
+  - packages/docs-site/src/styles.css
+input: The shared content and a route
+output: Rendered pages
+replaces: []
+edges:
+  - to: docs-content
+    label: Content for every page
+    kind: call
+    target: call
+    witness:
+      file: packages/docs-site/src/search/index.ts
+      imports: '@genai/docs-content'
+  - to: i18n
+    label: Labels in bokmål and English
+    kind: call
+    target: call
+    witness:
+      file: packages/docs-site/src/i18n.ts
+      imports: '@genai/i18n'
+keywords: docs pages figures search minisearch fullscreen målbilde byggeklosser flyt shared

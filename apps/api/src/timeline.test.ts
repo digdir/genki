@@ -283,3 +283,63 @@ describe('run timeline cost', () => {
     expect(timeline).toMatchObject({ costMicroNok: 714, priced: true });
   });
 });
+
+describe('decisions in the timeline', () => {
+  const at = (seq: number, data: unknown) =>
+    ({ seq, ts: `2026-10-07T12:32:0${seq}.000Z`, type: 'kernel.notice', data }) as unknown as Event;
+  const decision = {
+    kind: 'decision',
+    rule: 'purpose-check',
+    operation: 'decide',
+    model: 'foundry-openai/gpt-6-luna',
+    question: 'within_purpose',
+    threshold: 0.8,
+    decidedBy: 'model',
+  };
+
+  it('the decision shows in the run timeline', () => {
+    const timeline = toTimeline(
+      task,
+      [
+        at(1, {
+          ...decision,
+          answer: 'uncertain',
+          probability: 0.62,
+          refusal: false,
+          outcome: 'person',
+        }),
+        at(2, { ...decision, answer: 'refused', refusal: true, outcome: 'person' }),
+        at(3, {
+          ...decision,
+          answer: 'within',
+          refusal: false,
+          outcome: 'continue',
+          decidedBy: 'person',
+        }),
+      ],
+      new Date('2026-10-07T12:32:04.000Z'),
+    );
+    const steps = timeline.steps.filter((s) => s.type === 'decision');
+    expect(steps.map((s) => [s.title, s.summary])).toEqual([
+      ['Beslutning om formålet', 'Usikkert'],
+      ['Beslutning om formålet', 'Modellen ville ikke svare'],
+      ['En person avgjorde formålet', 'Innenfor formålet'],
+    ]);
+    expect(steps[0]?.model).toBe('foundry-openai/gpt-6-luna');
+    expect(steps[0]?.blocks).toEqual([
+      {
+        kind: 'kv',
+        rows: [
+          ['Operasjon', 'decide'],
+          ['Spørsmål', 'within_purpose'],
+          ['Svar', 'Usikkert'],
+          ['Sannsynlighet', '0,62'],
+          ['Modellen ville ikke svare', 'Nei'],
+          ['Utfall', 'Sendt til en person'],
+        ],
+      },
+    ]);
+    expect(steps[1]?.blocks[0]?.rows).toContainEqual(['Modellen ville ikke svare', 'Ja']);
+    expect(steps[1]?.blocks[0]?.rows?.map((r) => r[0])).not.toContain('Sannsynlighet');
+  });
+});

@@ -47,6 +47,7 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   defaultPlatformTenant,
+  environmentTierOf,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
@@ -76,6 +77,7 @@ import { readTestSets, seedTestSets, testSetsOfServices } from './seed-test-sets
 import { readPipelineSeeds, seedPipelines } from './pipeline-seeds.js';
 import { operatorDirectory, operatorSubjectsFrom, splitOperators } from './operators.js';
 import { altinnPdpFrom, withPdpActions } from './altinn-pdp.js';
+import { gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { bootProblems, devModeWarning, isDevMode, knowledgeServerProblems } from './boot-guard.js';
 import { loginIssuers } from './login-issuers.js';
 import { documentMockRoutes } from './openapi/access.js';
@@ -112,7 +114,8 @@ const resource = process.env.ALTINN_RESOURCE ?? 'urn:altinn:resource:digdir-gena
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ msg, ...extra }));
 
-const refused = bootProblems(process.env);
+const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+const refused = [...bootProblems(process.env), ...gatewayUsage.problems];
 if (refused.length > 0) {
   log('refusing to start', { problems: refused });
   process.exit(1);
@@ -190,6 +193,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   testData,
   registeredClients,
   ...(trustedEntra ? { trustedEntra } : {}),
+  onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 if (mock)
   mockRegistration = {
@@ -415,9 +419,14 @@ if (lockdown)
     configuredKeys: configuredKeys.size,
   });
 
+const environmentTier = environmentTierOf(process.env);
+if (environmentTier === 'test')
+  log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
+  environmentTier,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -425,6 +434,7 @@ const platform = await createPlatform({
   reservedClientIds,
   ...(db ? { webhookDeliveries: db.webhookDeliveries } : {}),
   ...(db ? { triggerRuns: db.triggerRuns } : {}),
+  ...(db && gatewayUsage.config ? { gatewayUsage: db.usageBuckets } : {}),
   webhookEgress: mock
     ? { testOverride: { allowHttp: true, allowLoopback: true } }
     : { platformHosts: ['localhost', '127.0.0.1', `localhost:${port}`] },
@@ -565,11 +575,11 @@ const app = createApp(version, {
     settings,
     models: platform.models,
     admin,
-    tasks: kernelTaskReader(platform.kernel, {
-      kind: 'operator',
-      issuer: 'platform',
-      subject: 'task-reader',
-    }),
+    tasks: kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    ),
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,

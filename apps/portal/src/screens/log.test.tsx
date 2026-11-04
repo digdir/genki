@@ -40,6 +40,47 @@ describe('Logg: Kjøringer', () => {
     expectAccessible();
   });
 
+  it('an erased run says in an info note that its content was erased, when and why', async () => {
+    await renderAt('#/log/t8');
+
+    const note = await screen.findByRole('note', {
+      name: 'Innholdet i denne kjøringen er slettet',
+    });
+    expect(note.textContent).toMatch(/Samtalen ble slettet \d+\. \p{L}+ \d{4} kl\. 18\.41\./u);
+    expect(note.textContent).toContain('Bare status, tid, tokens og kostnad er tatt vare på.');
+    expect(within(await steps()).getByText('Svaret er slettet')).toBeTruthy();
+    expect(screen.queryByText('Innholdet er ikke tilgjengelig')).toBeNull();
+    expectAccessible();
+  });
+
+  it('says an erased run was removed after the retention period when that is why', async () => {
+    const [first] = logTimelines;
+    const kept = {
+      ...(first as TaskTimeline),
+      id: 'tr1',
+      erasure: { reason: 'retention' as const },
+    };
+    await renderAt('#/log/tr1', mockFetch(undefined, [...logTimelines, kept]));
+
+    const note = await screen.findByRole('note', {
+      name: 'Innholdet i denne kjøringen er slettet',
+    });
+    expect(note.textContent).toContain('Slettet etter lagringstiden.');
+  });
+
+  it('the run list marks erased runs with a tag where the input would be', async () => {
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/log';
+    render(<App auth={auth} fetch={mockFetch()} live />);
+
+    const list = await screen.findByRole('region', { name: 'Siste kjøringer' });
+    const erased = within(list).getByRole('link', { name: /Kunnskapsassistenten/ });
+    expect(within(erased).getByText('Innhold slettet')).toBeTruthy();
+    const other = within(list).getByRole('link', { name: /Vedtaksutkast/ });
+    expect(within(other).queryByText('Innhold slettet')).toBeNull();
+  });
+
   it('offers no trigger filter in live mode, where runs carry no trigger', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();

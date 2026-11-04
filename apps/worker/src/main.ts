@@ -53,6 +53,8 @@ import {
 } from '@genai/kernel';
 import { knowledgeListingOf } from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
+import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import { EgressGuard } from '@genai/providers-mcp-client';
 import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -89,6 +91,7 @@ import { knowledgeWork } from './knowledge-handlers.js';
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
+import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -177,6 +180,31 @@ if (knowledgeRefused.length > 0) {
   log('refusing to start', { problems: knowledgeRefused });
   process.exit(1);
 }
+const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+if (gatewayUsage.problems.length > 0) {
+  log('refusing to start', { problems: gatewayUsage.problems });
+  process.exit(1);
+}
+const egressOptions = { platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)] };
+const polledSources: PolledSource[] =
+  gatewayUsage.config && db
+    ? [
+        {
+          source: aiGatewayUsageSource(gatewayUsage.config, {
+            secrets: envSecrets(),
+            egress: new EgressGuard(egressOptions),
+          }),
+          since: gatewayUsage.config.since,
+        },
+      ]
+    : [];
+if (gatewayUsage.config && !db) log('gateway usage is off: it needs a database');
+const work = [
+  ...platformWork,
+  ...(db && polledSources.length > 0
+    ? [usagePollWork({ sources: polledSources, store: db.usageBuckets, log })]
+    : []),
+];
 // The queues are worked only once the worker has passed every refusal above.
 const jobError = (error: unknown) =>
   log('job queue error', {
@@ -321,7 +349,7 @@ const workerJobs = db
           }
         : {}),
       markerTimeoutMs: Number(process.env.MARKER_TIMEOUT_MS ?? defaultMarkerTimeoutMs),
-      work: [...platformWork, ...(knowledgeHandlers?.platform ?? [])],
+      work: [...work, ...(knowledgeHandlers?.platform ?? [])],
       ...(knowledgeHandlers
         ? {
             knowledgeWork: [
@@ -357,10 +385,12 @@ const nightWindowTimer = nightWindow
     )
   : undefined;
 const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
-if (!workerJobs) await workQueues(jobs, platformWork);
+if (!workerJobs) await workQueues(jobs, work);
+await scheduleUsagePolls(jobs, polledSources);
 log('jobs', {
   kind: db ? 'pg-boss' : 'memory',
-  queues: platformWork.length,
+  queues: work.length,
+  usageSources: polledSources.map((s) => s.source.id),
   knowledgeServer: Boolean(workerJobs?.knowledge),
 });
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
@@ -463,9 +493,7 @@ const runtime = await createRuntime({
     : {}),
   state: db?.state ?? new InMemoryStateStore(),
   blobStore: blob,
-  egress: {
-    platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)],
-  },
+  egress: egressOptions,
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
@@ -604,6 +632,7 @@ const retention = db
       settings,
       capabilities: () => runtime.store.capabilities(),
       threads: db.threadRetention,
+      outsideRun: db.outsideRunRetention,
       documents: blob,
       tenants: async () => (await db.tenants.list()).map((t) => t.orgNumber),
       ...(retentionLease ? { active: () => retentionLease.tryAcquire() } : {}),
@@ -613,6 +642,7 @@ const retention = db
           envelopes: run.envelopes,
           conversations: run.conversations,
           documents: run.documents,
+          outsideRunDays: run.outsideRunDays,
           groups: run.groups.length,
         }),
       onError: (error) => log('retention purge failed', { error: String(error) }),

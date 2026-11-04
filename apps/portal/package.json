@@ -12,6 +12,8 @@
     "@digdir/designsystemet-css": "^1.23.0",
     "@digdir/designsystemet-react": "^1.23.0",
     "@digdir/designsystemet-theme": "^1.11.0",
+    "@genai/docs-content": "0.0.0",
+    "@genai/docs-site": "0.0.0",
     "@genai/i18n": "0.0.0",
     "@genai/schema-forms": "0.0.0",
     "@navikt/aksel-icons": "^8.21.0",

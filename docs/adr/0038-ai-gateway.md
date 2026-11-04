@@ -1,6 +1,6 @@
 # 0038 The AI Gateway as a usage source, key issuer and model route
 
-Status: proposed, 2026-10-20 (amended 2026-11-03: contract written, sign-in, money, step 4 headers)
+Status: proposed, 2026-10-20 (amended 2026-11-03: contract written, sign-in, money, step 4 headers; step 1 built, 2026-11-03)
 
 ## Context
 
@@ -41,4 +41,5 @@ Rejected:
 - The model and embedding routers put the list price on each call's `costMicroNok` when the call is metered (#189), unless the provider already reported a cost, and leave a call on an unpriced model unpriced. A gateway that reports its charge per call therefore wins over the price list without a change to the routers.
 - To agree with the gateway team before step 1 is built: the client scope and when genki moves from the client key to Entra ID, how keys already handed out get a subject, whether `/v1/models` on the API and the OpenAI-compatible `/v1` on the gateway listener stay on separate hosts, a test gateway or credential per genki environment, and which of the contract's rules the gateway keeps in its API and which need a change to agentgateway itself. The subject kind `claim:<name>` is reserved for when the gateway accepts tokens on the model listener.
 - If the gateway gets screens of its own for people, it signs them in with Ansattporten as genki does, so both read a person's organisations from the same Altinn rights.
+- Built (step 1, #21): `port-usage`, `providers-ai-gateway`, the `usage-gateway-poll` queue, `usage_buckets`, `usage_unassigned`, `usage_marks` and `currency_rates`, and the sum with `bySource` on the usage routes and screen; `docs/api/gateway.md` lists where it differs from the design. Not built: Norges Bank rates, and steps 2 to 4.
 - The lab API is a prototype. genki builds against the contract and the fake, and runs against a real gateway only once it has sign-in.

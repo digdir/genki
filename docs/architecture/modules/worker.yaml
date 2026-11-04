@@ -42,6 +42,27 @@ input: Files in blob folders, schedules
 output: Results written back to blob storage
 replaces: []
 edges:
+  - to: port-usage
+    label: Polls usage sources into usage buckets
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/usage-poll.ts
+      imports: '@genai/port-usage'
+  - to: providers-ai-gateway
+    label: Reads usage from the AI gateway
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-ai-gateway'
+  - to: providers-mcp-client
+    label: Egress guard for the AI gateway
+    kind: call
+    target: call
+    witness:
+      file: apps/worker/src/main.ts
+      imports: '@genai/providers-mcp-client'
   - to: composition
     label: Builds its kernel through the shared runtime, so every strategy runs
     kind: call

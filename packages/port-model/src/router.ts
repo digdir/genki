@@ -1,17 +1,23 @@
-import { withListPrice, type Principal, type Ref } from '@genai/contracts';
+import { withListPrice, type Ref } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
   type Credential,
+  type Gate,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
+  type Shape,
 } from '@genai/kernel';
-import type {
-  DeploymentConfig,
-  DiscoverySource,
-  ModelAdapter,
-  ModelConnection,
-  ModelTransport,
+import { describedCall, describedSend, type DescriptorRegistry } from '@genai/operations';
+import {
+  errorFromStatus,
+  type DeploymentConfig,
+  type DiscoverySource,
+  type ModelAdapter,
+  type ModelConnection,
+  type ModelTransport,
 } from './adapter.js';
 import {
   parseCatalog,
@@ -19,21 +25,26 @@ import {
   type CatalogModel,
   type ModelCatalog,
 } from './catalog.js';
+import type { DecisionPort, DecisionRequest, DecisionResult } from './decision.js';
+import { unrecordedGovernance, type OperationGovernance, type OperationPort } from './operation.js';
+import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
+  defaultOperations,
   ModelError,
-  residencyAllows,
   type Capability,
   type ChatChunk,
   type ChatRequest,
   type ChatResult,
   type ModelPort,
+  type Operation,
   type Residency,
 } from './port.js';
 
 export interface ModelClassification {
   residency?: Residency;
   capabilities?: Capability[];
+  operations?: Operation[];
   enabled?: boolean;
   parameters?: ParameterRules;
   observed?: Partial<Record<TunableParameter, string>>;
@@ -56,8 +67,9 @@ export interface ModelRouterOptions {
   maxRetries?: number;
   timeoutMs?: number;
   onParameterDropped?: (model: string, parameter: TunableParameter) => void;
-  fetchFor?: (endpoint: string) => typeof fetch | undefined;
-  admits?: (principal: Principal) => boolean;
+  gate?: Gate;
+  descriptors?: DescriptorRegistry;
+  governance?: OperationGovernance;
 }
 
 export interface ModelPrice {
@@ -73,6 +85,8 @@ export interface ModelDescription {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  operations: Operation[];
+  descriptors?: { decide?: string | undefined };
   enabled: boolean;
   origin: 'catalog' | 'discovered';
   classified: boolean;
@@ -86,6 +100,12 @@ export interface RefreshResult {
   failed: { endpoint: string; error: string }[];
 }
 
+export interface LiveModel {
+  residency: Residency;
+  capabilities: Capability[];
+  operations: Operation[];
+}
+
 interface Route {
   model: CatalogModel;
   family?: string;
@@ -94,6 +114,29 @@ interface Route {
 }
 
 export const modelOutputCeiling = 16_384;
+
+export const catalogDescriptorProblems = (
+  catalog: ModelCatalog,
+  registry: DescriptorRegistry | undefined,
+): { path: string; message: string }[] =>
+  catalog.models.flatMap((model, index) =>
+    Object.entries(model.descriptors ?? {}).flatMap(([operation, id]) => {
+      if (!id) return [];
+      const path = `models.${index}.descriptors.${operation}`;
+      const descriptor = registry?.get(id);
+      const protocol = catalog.endpoints[model.endpoint]?.protocol;
+      const message = !descriptor
+        ? `no descriptor ${id}`
+        : descriptor.status !== 'typed'
+          ? `${id} is in review and serves no service yet`
+          : descriptor.operation !== operation
+            ? `${id} describes ${descriptor.operation}, not ${operation}`
+            : descriptor.api.protocol !== protocol
+              ? `${id} is for ${descriptor.api.protocol}, not ${protocol}`
+              : undefined;
+      return message ? [{ path, message }] : [];
+    }),
+  );
 
 const needed = (request: ChatRequest): Capability[] => [
   ...(request.tools?.length ? (['tools'] as const) : []),
@@ -115,9 +158,13 @@ export class ModelRouter implements PortProvider<ModelPort> {
   readonly #static = new Map<string, Route>();
   #discovered = new Map<string, Route>();
   #classes: Record<string, ModelClassification> = {};
-  readonly #live = new Map<string, { residency: Residency; capabilities: Capability[] }>();
+  readonly #live = new Map<string, LiveModel>();
+  readonly #gate: Gate;
+  readonly #continuations: Shape[];
 
   constructor(private readonly options: ModelRouterOptions) {
+    this.#continuations = options.adapters.flatMap((a) => (a.continuation ? [a.continuation] : []));
+    this.#gate = options.gate ?? createGate();
     this.#adapters = new Map(options.adapters.map((a) => [a.protocol, a]));
     this.#catalog = this.#load(options.catalog);
   }
@@ -134,6 +181,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
         `invalid model catalog: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
       );
     }
+    this.#checkDescriptors(result.catalog);
     const connections = new Map<string, ModelConnection>();
     const credentials = new Map<string, Credential>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
@@ -150,7 +198,6 @@ export class ModelRouter implements PortProvider<ModelPort> {
         endpoint.baseURL,
       );
       credentials.set(name, credential);
-      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -159,7 +206,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           options: adapter.endpointOptions.parse(endpoint.options),
           maxRetries: options.maxRetries ?? 3,
           timeoutMs: options.timeoutMs ?? 120_000,
-          ...(guarded ? { fetch: guarded } : {}),
+          fetch: this.#gate.egress(name),
         }),
       );
     }
@@ -195,6 +242,25 @@ export class ModelRouter implements PortProvider<ModelPort> {
     this.#load(catalog);
   }
 
+  #checkDescriptors(catalog: ModelCatalog) {
+    const problems = catalogDescriptorProblems(catalog, this.options.descriptors);
+    if (problems.length > 0)
+      throw new Error(
+        `invalid model catalog: ${problems.map((p) => `${p.path}: ${p.message}`).join('; ')}`,
+      );
+  }
+
+  #described(model: CatalogModel) {
+    const endpoint = this.#catalog.endpoints[model.endpoint] as CatalogEndpoint;
+    return {
+      baseURL: endpoint.baseURL,
+      credential: this.#credentials.get(model.endpoint) as Credential,
+      fetch: this.#gate.egress(model.endpoint),
+      timeoutMs: this.options.timeoutMs ?? 120_000,
+      protocol: endpoint.protocol,
+    };
+  }
+
   #modelOptions(endpoint: string, options: unknown) {
     const protocol = (this.#catalog.endpoints[endpoint] as CatalogEndpoint).protocol;
     return (this.#adapters.get(protocol) as ModelAdapter).modelOptions.parse(options ?? {});
@@ -210,6 +276,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...route.model,
       residency: c.residency ?? route.model.residency,
       capabilities: c.capabilities ?? route.model.capabilities,
+      operations: c.operations ?? route.model.operations,
       enabled: c.enabled ?? true,
       ...((c.parameters ?? route.model.parameters)
         ? { parameters: c.parameters ?? route.model.parameters }
@@ -222,7 +289,11 @@ export class ModelRouter implements PortProvider<ModelPort> {
     for (const route of this.#routes().values()) {
       const model = this.#effective(route);
       if (model.enabled)
-        this.#live.set(model.id, { residency: model.residency, capabilities: model.capabilities });
+        this.#live.set(model.id, {
+          residency: model.residency,
+          capabilities: model.capabilities,
+          operations: model.operations,
+        });
     }
   }
 
@@ -268,6 +339,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
               deployment: found.deployment,
               residency: 'global',
               capabilities: discovery.capabilities,
+              operations: [...defaultOperations],
               options: {},
             },
             ...(found.model ? { family: found.model } : {}),
@@ -316,6 +388,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
       ...(route.family ? { family: route.family } : {}),
       residency: model.residency,
       capabilities: model.capabilities,
+      operations: model.operations,
+      ...(model.descriptors ? { descriptors: model.descriptors } : {}),
       enabled: model.enabled,
       origin: route.origin,
       classified: Object.keys(this.#classes[model.id] ?? {}).some(
@@ -333,7 +407,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  models(): Map<string, { residency: Residency; capabilities: Capability[] }> {
+  models(): Map<string, LiveModel> {
     return this.#live;
   }
 
@@ -351,31 +425,24 @@ export class ModelRouter implements PortProvider<ModelPort> {
     await this.options.classifications?.save(model, next).catch(() => undefined);
   }
 
-  open(ref: Ref, ctx: PortContext): ModelPort {
-    if (this.options.admits && !this.options.admits(ctx.principal))
-      throw new ModelError('unauthorized', 'this caller may not use models in this environment');
+  #resolve(ref: Ref, ctx: PortContext, operation: Operation) {
     const route = this.#routes().get(ref.id);
     if (!route) throw new ModelError('bad_request', `no model ${ref.id} in the catalog`);
     const model = this.#effective(route);
-    if (!model.enabled) throw new ModelError('bad_request', `model ${model.id} is turned off`);
-    if (model.tenants && !model.tenants.includes(ref.tenant ?? ctx.tenant))
-      throw new ModelError('bad_request', `model ${model.id} is not shared with this tenant`);
-    if (this.options.maxResidency && !residencyAllows(this.options.maxResidency, model.residency))
-      throw new ModelError(
-        'residency',
-        `model ${model.id} runs outside ${this.options.maxResidency}`,
-      );
     const connection = this.#connections.get(model.endpoint) as ModelConnection;
     const deployment: DeploymentConfig = { deployment: model.deployment, options: route.options };
-    const modelRef: Ref = { kind: 'model', id: model.id };
-
-    const require = (request: ChatRequest, extra: Capability[] = []) => {
-      const missing = [...needed(request), ...extra].filter((c) => !model.capabilities.includes(c));
-      if (missing.length > 0)
-        throw new ModelError(
-          'unsupported',
-          `model ${model.id} does not support ${missing.join(', ')}`,
-        );
+    const target: GateTarget = {
+      port: operation === 'chat' ? 'model' : 'decision',
+      operation,
+      model: { kind: 'model', id: model.id },
+      endpoint: model.endpoint,
+      residency: model.residency,
+      admission: 'admitted',
+      enabled: model.enabled,
+      ...(model.tenants ? { tenants: model.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(this.options.maxResidency ? { routerResidency: this.options.maxResidency } : {}),
+      refuse: modelRefusal,
     };
     const failure = (error: unknown) => {
       if (error instanceof ModelError) return error;
@@ -383,9 +450,161 @@ export class ModelRouter implements PortProvider<ModelPort> {
       return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
     };
     const served = { id: model.id, endpoint: model.endpoint, deployment: model.deployment };
-    const meter = async (result: ChatResult) => {
-      await ctx.meter(withListPrice(result.usage, this.options.priceOf?.(model.id)), modelRef);
-      await ctx.provenance?.({ model: served });
+    const info = () => ({
+      id: model.id,
+      residency: model.residency,
+      capabilities: model.capabilities,
+      operations: model.operations,
+      ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+      ...(model.parameters ? { parameters: model.parameters } : {}),
+    });
+    const offers = (needed: string) => {
+      if (!(model.operations as readonly string[]).includes(needed))
+        throw new ModelError(
+          'unsupported',
+          `model ${model.id} does not offer the ${needed} operation`,
+        );
+    };
+    return { model, connection, deployment, target, failure, served, info, offers };
+  }
+
+  /** The kernel port `decision`: the decide operation on the same catalogue. */
+  decisions(): PortProvider<DecisionPort> {
+    return { open: (ref, ctx) => this.#openDecision(ref, ctx) };
+  }
+
+  #openDecision(ref: Ref, ctx: PortContext): DecisionPort {
+    const { model, connection, deployment, target, failure, served, info, offers } = this.#resolve(
+      ref,
+      ctx,
+      'decide',
+    );
+    const payload = {
+      ...decidePayload,
+      usage: (result: DecisionResult) =>
+        withListPrice(result.usage, this.options.priceOf?.(model.id)),
+      provenance: () => ({ model: served }),
+    };
+    return {
+      info,
+      decide: async (request: DecisionRequest) => {
+        offers('decide');
+        const described = model.descriptors?.decide
+          ? this.options.descriptors?.get(model.descriptors.decide)
+          : undefined;
+        const decide = described
+          ? async (config: DeploymentConfig, sent: DecisionRequest, signal: AbortSignal) =>
+              (
+                await describedSend<DecisionResult>(
+                  described,
+                  this.#described(model),
+                  config.deployment,
+                  sent,
+                  { signal, fail: errorFromStatus },
+                )
+              ).result
+          : connection.decide?.bind(connection);
+        if (!decide)
+          throw new ModelError(
+            'unsupported',
+            `the adapter for ${model.endpoint} does not implement the decide operation`,
+          );
+        const gated = described ? { ...target, descriptor: described.id } : target;
+        return this.#gate.call(ctx, gated, payload, request, async (sent) => {
+          try {
+            return await decide(deployment, sent, ctx.signal);
+          } catch (error) {
+            throw failure(error);
+          }
+        });
+      },
+    };
+  }
+
+  /** The kernel port `operation`: a descriptor call on a catalogue model, for the raw tier. */
+  operations(): PortProvider<OperationPort> {
+    return { open: (ref, ctx) => this.#openOperation(ref, ctx, 'raw') };
+  }
+
+  /** The kernel port `described`: a reviewed descriptor call from a service's `call-operation` step. */
+  described(): PortProvider<OperationPort> {
+    return { open: (ref, ctx) => this.#openOperation(ref, ctx, 'described') };
+  }
+
+  #openOperation(ref: Ref, ctx: PortContext, tier: 'raw' | 'described'): OperationPort {
+    const { model, target, served, info, offers } = this.#resolve(ref, ctx, 'chat');
+    const plain: GateTarget = { ...target };
+    Reflect.deleteProperty(plain, 'refuse');
+    const governance = this.options.governance ?? unrecordedGovernance;
+    return {
+      info,
+      call: async (id, input) => {
+        const descriptor = this.options.descriptors?.get(id);
+        if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
+        if (tier === 'described' && descriptor.status === 'review')
+          throw new ModelError(
+            'refused',
+            `${id} is in review; only an operator tries it, in the raw tier`,
+          );
+        offers(descriptor.operation);
+        const endpoint = this.#described(model);
+        if (endpoint.protocol !== descriptor.api.protocol)
+          throw new ModelError(
+            'unsupported',
+            `${id} is for ${descriptor.api.protocol}, and ${model.id} speaks ${endpoint.protocol}`,
+          );
+        const [maturity, processor] = await Promise.all([
+          governance.maturity(descriptor.operation),
+          governance.processor(model.endpoint),
+        ]);
+        return describedCall(
+          {
+            gate: this.#gate,
+            ctx,
+            target: {
+              ...plain,
+              port: tier === 'raw' ? 'operation' : 'described',
+              operation: descriptor.operation,
+              maturity,
+              synthetic: tier === 'raw',
+              processorRecord: processor !== undefined,
+              ...(tier === 'described' && processor?.acceptsUnmaskedInput
+                ? { unmaskedInput: true }
+                : {}),
+            },
+            descriptor,
+            endpoint,
+            deployment: model.deployment,
+            priced: (usage) => withListPrice(usage, this.options.priceOf?.(model.id)),
+            provenance: () => ({ model: served }),
+            fail: errorFromStatus,
+          },
+          input,
+        );
+      },
+    };
+  }
+
+  open(ref: Ref, ctx: PortContext): ModelPort {
+    const { model, connection, deployment, target, failure, served, info, offers } = this.#resolve(
+      ref,
+      ctx,
+      'chat',
+    );
+    const require = (request: ChatRequest, extra: Capability[] = []) => {
+      offers('chat');
+      const missing = [...needed(request), ...extra].filter((c) => !model.capabilities.includes(c));
+      if (missing.length > 0)
+        throw new ModelError(
+          'unsupported',
+          `model ${model.id} does not support ${missing.join(', ')}`,
+        );
+    };
+    const gate = this.#gate;
+    const payload = {
+      ...chatPayload(this.#continuations),
+      usage: (result: ChatResult) => withListPrice(result.usage, this.options.priceOf?.(model.id)),
+      provenance: () => ({ model: served }),
     };
     const observe = (result: ChatResult): ChatResult => {
       const { droppedParameters, ...rest } = result;
@@ -407,42 +626,38 @@ export class ModelRouter implements PortProvider<ModelPort> {
     };
 
     return {
-      info: () => ({
-        id: model.id,
-        residency: model.residency,
-        capabilities: model.capabilities,
-        ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
-        ...(model.parameters ? { parameters: model.parameters } : {}),
-      }),
+      info,
 
       chat: async (input) => {
         const request = bounded(input);
         require(request);
-        let result: ChatResult;
-        try {
-          result = await connection.chat(deployment, request, ctx.signal);
-        } catch (error) {
-          throw failure(error);
-        }
-        await meter(result);
+        const result = await gate.call(ctx, target, payload, request, async (sent) => {
+          try {
+            return await connection.chat(deployment, sent, ctx.signal);
+          } catch (error) {
+            throw failure(error);
+          }
+        });
         return observe(result);
       },
 
       chatStream: async function* (input): AsyncIterable<ChatChunk> {
         const request = bounded(input);
         require(request, ['stream']);
-        let result: ChatResult | undefined;
-        try {
-          for await (const chunk of connection.chatStream(deployment, request, ctx.signal)) {
-            if (chunk.kind === 'done') result = chunk.result;
-            else yield chunk;
+        const upstream = async function* (sent: ChatRequest): AsyncIterable<ChatChunk> {
+          let ended = false;
+          try {
+            for await (const chunk of connection.chatStream(deployment, sent, ctx.signal)) {
+              if (chunk.kind === 'done') ended = true;
+              yield chunk;
+            }
+          } catch (error) {
+            throw failure(error);
           }
-        } catch (error) {
-          throw failure(error);
-        }
-        if (!result) throw new ModelError('unavailable', 'the stream ended without a result');
-        await meter(result);
-        yield { kind: 'done', result: observe(result) };
+          if (!ended) throw new ModelError('unavailable', 'the stream ended without a result');
+        };
+        for await (const chunk of gate.stream(ctx, target, payload, request, upstream))
+          yield chunk.kind === 'done' ? { kind: 'done', result: observe(chunk.result) } : chunk;
       },
     };
   }

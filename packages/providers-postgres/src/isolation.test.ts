@@ -273,6 +273,7 @@ describe('row-level security under a non-superuser owner', () => {
     expect(unforced.rows.map((r) => r.relname)).toEqual([
       'change_versions',
       'content_keys',
+      'currency_rates',
       'erased_scopes',
       'events',
       'identities',
@@ -284,6 +285,7 @@ describe('row-level security under a non-superuser owner', () => {
       'setting_locks',
       'state',
       'tasks',
+      'usage_marks',
     ]);
   });
 

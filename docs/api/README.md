@@ -63,6 +63,34 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-03: the described tier, maturity per kind and processor records
+
+- A step flow may use the block `call-operation@1` with `params: { descriptor, model? }` and the descriptor's typed input as the step `input`; `model` is one of the service's models and defaults to its main model. The step answers `{ result }`. Publishing a service whose flow (or a subflow it reaches) has such a step answers `422` unless the descriptor is reviewed (`status` `described` or `typed`, not `review`), its operation kind is `production` in this environment, the model is one of the service's, within the service's residency, and its endpoint has a processor record. The same refusals hold when the step runs, so a kind moved back to test or a removed processor record stops the service at the next call; `kernel.gate.call` names `port: "described"` and the refusal (`maturity`, `processor`, `media`).
+- `GET /operator/operation-kinds` and `POST /operator/operation-kinds/{kind}/maturity` with `{ "maturity": "test" | "production" }` (operators, audited, `change-reason`): one operator moves a kind to production or back to test.
+- `GET /operator/processor-records`, and `GET`, `PUT` and `DELETE /operator/model-endpoints/{id}/processor-record` (operators, audited, `change-reason` on writes): `{ agreement, subProcessors: [{ name, location }], retention: { days, note? }, acceptsUnmaskedInput, unmaskedInputReason? }`. `acceptsUnmaskedInput: true` needs a reason and lets image, audio and file input through to a described operation on that endpoint; text is still masked.
+- An operation descriptor may have `status: described`: reviewed, served to services through `call-operation@1`, without types of Genki's own.
+
+### 2026-11-03: operation descriptors
+
+- `POST /operator/operations/{descriptor}/try` (operators, test only, audited admin task with `change-reason`): calls a descriptor on a catalogue model with synthetic data, masked and metered. See [operations.md](operations.md).
+- A model in the model catalogue may take `descriptors: { "decide": "<descriptor id>" }`, and an embedder in the embedding catalogue `descriptors: { "embed": "<descriptor id>" }`, to run that operation through the descriptor executor instead of the hand-written adapter. `GET /operator/models` shows `descriptors` when set. A catalogue that names an unknown descriptor, one in review, or one for another operation or protocol is refused.
+
+### 2026-11-03: decisions on the governed gate
+
+- A service definition takes `spec.decidesAboutPeople` (boolean). With it, publishing and `POST /definitions/validate` answer `422` unless `spec.riskClass` is `high`, the `human-approval` guardrail is set, and `pii-out-of-log` is not set, so the model input is kept for review.
+- The guardrail `purpose-check` asks a decision model whether the input is within the service's purpose: `{ "model", "threshold"?: 0.8, "uncertain"?: "person" | "allow", "refusal"?: "person" | "allow", "message"? }`. Publishing answers `422` when the model does not offer the `decide` operation or runs outside the service's residency. A refusal or an answer below the threshold interrupts the run for a person (`id: "purpose-review"`, resume with `{ "within": true | false }`); it is never turned into a refusal.
+- `GET /operator/models` lists `operations` per model, and `PATCH /operator/models/{id}` takes `operations: ["chat", "decide"]`. Without a value a model offers `chat` only.
+- `GET /tenants/{tenant}/tasks/{task}/timeline` shows each decision as a step of type `decision`.
+
+### 2026-11-03: usage from an AI gateway
+
+Only when an AI gateway is configured (`GATEWAY_USAGE_URL` and `GATEWAY_USAGE_CREDENTIAL`, see [gateway.md](gateway.md)); without one every answer is as before.
+
+- `totals`, `daily[].usage` on `GET /tenants/{tenant}/usage`, `usageThisMonth` on `GET /tenants/{tenant}/overview` and each `usage` on `GET /operator/usage` are the sum of genki's own usage and the gateway's. Each gains `bySource: [{ "source": "genki", "usage" }, { "source": "gateway", "usage" }]`.
+- `byModel` rows gain `source`, `genki` or `gateway`. The gateway's rows also come as `bySubject`: the owner (`subject`, or `null` for a key without one), `usage` in kroner, the amount the gateway charged as `cost: { currency, micros }`, and the latest `rate` used with its `rateDay`. A gateway amount with no rate counts as unpriced, never as 0 kr.
+- `byService`, `byProject`, `testing`, `ingestion` and `daily[].byService`/`daily[].byModel` stay genki's own: the gateway cannot see services, projects or test runs.
+- `GET /operator/usage/unassigned` lists this month's gateway rows that belong to no tenant. Operators only.
+
 ### 2026-10-26: rights stay within their scope
 
 - Saving or attaching an API key policy answers `403` when the policy's scopes need a right the person lacks: `admin` needs all five rights, `ingest` needs `manage-datasets`. API keys, machine clients and operators are unchanged.

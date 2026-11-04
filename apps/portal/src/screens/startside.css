@@ -391,3 +391,16 @@
 .start-footer-bar nav {
   gap: 8px 20px;
 }
+
+.start-preview {
+  background: var(--ds-color-neutral-background-tinted);
+  border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
+}
+
+.start-preview-bar {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 4px 16px;
+  display: flex;
+  justify-content: flex-end;
+}

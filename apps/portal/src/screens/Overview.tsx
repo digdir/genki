@@ -562,7 +562,9 @@ export const Overview = ({
                         </Tag>
                       </div>
                       <span className="meta-15">{j.meta}</span>
-                      <span className="body">{queued ? t('overview.restarting') : j.message}</span>
+                      <span className="ingest-message">
+                        {queued ? t('overview.restarting') : j.message}
+                      </span>
                       {queued ? null : (
                         <div className="actions">
                           {j.retryText ? (

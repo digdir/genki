@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@digdir/designsystemet-css';
 import '@digdir/designsystemet-theme/digdir.css';
+import '@genai/docs-site/styles.css';
 import './styles.css';
 import { App } from './App';
 

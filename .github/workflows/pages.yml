@@ -5,14 +5,15 @@ on:
     branches: [main]
     paths:
       - apps/docs/**
+      - packages/docs-content/**
+      - packages/docs-site/**
+      - packages/i18n/**
       - package-lock.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -39,6 +40,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     timeout-minutes: 5
     environment:
       name: github-pages

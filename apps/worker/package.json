@@ -19,8 +19,11 @@
     "@genai/port-blob": "0.0.0",
     "@genai/port-embedding": "0.0.0",
     "@genai/port-knowledge": "0.0.0",
+    "@genai/port-usage": "0.0.0",
+    "@genai/providers-ai-gateway": "0.0.0",
     "@genai/providers-documents": "0.0.0",
     "@genai/providers-langfuse": "0.0.0",
+    "@genai/providers-mcp-client": "0.0.0",
     "@genai/providers-pgboss": "0.0.0",
     "@genai/providers-postgres": "0.0.0",
     "yaml": "^2.9.1"

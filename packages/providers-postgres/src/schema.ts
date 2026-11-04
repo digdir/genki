@@ -66,6 +66,8 @@ const platformTables = [
   'judge_labels',
   'change_versions',
   'rate_limit_windows',
+  'usage_marks',
+  'currency_rates',
 ];
 
 const definerFunctions = [
@@ -88,6 +90,10 @@ const definerFunctions = [
   'report_job_ingestion_execution(text, jsonb, boolean)',
   'stop_job_ingestion_execution_at_budget(text, text)',
   'find_api_key_policy(text)',
+  'store_usage_bucket(text, timestamptz, boolean, jsonb)',
+  'usage_open_starts(text)',
+  'platform_usage_buckets(text[], timestamptz, timestamptz)',
+  'platform_usage_unassigned(timestamptz, timestamptz)',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -112,6 +118,121 @@ const publishedIsolation = (table: string, column: string) => [
   `drop policy if exists tenant_write on ${table}`,
   `create policy tenant_write on ${table} for insert
      with check (${column} = current_setting('app.tenant', true))`,
+];
+
+const usageFigures = `closed boolean not null,
+     input_tokens bigint not null,
+     output_tokens bigint not null,
+     cached_input_tokens bigint not null,
+     cache_write_tokens bigint not null,
+     requests bigint not null,
+     unpriced_requests bigint not null,
+     currency text not null,
+     micros bigint not null,
+     primary key (source, start, model, subject_kind, subject_id, subject_org)`;
+
+const usageColumns = `source, start, model, subject_kind, subject_id, subject_org, closed, input_tokens,
+  output_tokens, cached_input_tokens, cache_write_tokens, requests, unpriced_requests, currency, micros`;
+
+const incomingUsage = `jsonb_to_recordset(p_rows) as i(model text, subject_kind text, subject_id text,
+  subject_org text, org text, input_tokens bigint, output_tokens bigint, cached_input_tokens bigint,
+  cache_write_tokens bigint, requests bigint, unpriced_requests bigint, currency text, micros bigint)`;
+
+const differs = (table: string) => `exists (select from ${table} b
+  where b.source = p_source and b.start = p_start and b.model = i.model
+    and b.subject_kind = i.subject_kind and b.subject_id = i.subject_id
+    and b.subject_org = i.subject_org
+    and (b.input_tokens, b.output_tokens, b.cached_input_tokens, b.cache_write_tokens, b.requests,
+         b.unpriced_requests, b.currency, b.micros)
+        is distinct from
+        (i.input_tokens, i.output_tokens, i.cached_input_tokens, i.cache_write_tokens, i.requests,
+         i.unpriced_requests, i.currency, i.micros))`;
+
+const insertUsage = (table: string, assigned: boolean) => `insert into ${table} (${
+  assigned ? 'tenant, ' : ''
+}${usageColumns})
+  select ${assigned ? 't.org_number, ' : ''}p_source, p_start, i.model, i.subject_kind, i.subject_id,
+    i.subject_org, p_closed, i.input_tokens, i.output_tokens, i.cached_input_tokens,
+    i.cache_write_tokens, i.requests, i.unpriced_requests, i.currency, i.micros
+  from ${incomingUsage} left join tenants t on t.org_number = i.org
+  where t.org_number is ${assigned ? 'not ' : ''}null
+  on conflict do nothing`;
+
+/** Gateway usage per hour (docs/api/gateway.md, "Step 1 in genki: design"). */
+const usageMigrations = [
+  `create table if not exists usage_buckets (
+     tenant text not null,
+     source text not null,
+     start timestamptz not null,
+     model text not null,
+     subject_kind text not null,
+     subject_id text not null,
+     subject_org text not null,
+     ${usageFigures}
+   )`,
+  `create index if not exists usage_buckets_tenant_start on usage_buckets (tenant, start)`,
+  ...tenantIsolation('usage_buckets'),
+  `create table if not exists usage_unassigned (
+     source text not null,
+     start timestamptz not null,
+     model text not null,
+     subject_kind text not null,
+     subject_id text not null,
+     subject_org text not null,
+     ${usageFigures}
+   )`,
+  `alter table usage_unassigned enable row level security`,
+  `alter table usage_unassigned force row level security`,
+  `drop policy if exists platform_access on usage_unassigned`,
+  `create policy platform_access on usage_unassigned to current_user
+     using (${platformAccess}) with check (${platformAccess})`,
+  `create table if not exists usage_marks (
+     source text primary key,
+     closed_through timestamptz not null
+   )`,
+  `create table if not exists currency_rates (
+     currency text not null check (currency ~ '^[A-Z]{3}$'),
+     day date not null,
+     nok_per_unit numeric not null check (nok_per_unit > 0),
+     primary key (currency, day)
+   )`,
+  `create or replace function store_usage_bucket(
+       p_source text, p_start timestamptz, p_closed boolean, p_rows jsonb) returns integer
+     language plpgsql volatile security definer set search_path = public
+     as $$ declare differing integer; begin
+       perform require_platform_access();
+       delete from usage_buckets where source = p_source and start = p_start and not closed;
+       delete from usage_unassigned where source = p_source and start = p_start and not closed;
+       select count(*) into differing from ${incomingUsage}
+        where ${differs('usage_buckets')} or ${differs('usage_unassigned')};
+       ${insertUsage('usage_buckets', true)};
+       ${insertUsage('usage_unassigned', false)};
+       return differing;
+     end $$`,
+  `create or replace function usage_open_starts(p_source text) returns setof timestamptz
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select start from usage_buckets where source = p_source and not closed
+         union select start from usage_unassigned where source = p_source and not closed;
+     end $$`,
+  `create or replace function platform_usage_buckets(
+       p_tenants text[], p_from timestamptz, p_to timestamptz) returns setof usage_buckets
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from usage_buckets
+         where tenant = any(p_tenants) and start >= p_from and start < p_to
+         order by start, source, model, subject_kind, subject_id, subject_org;
+     end $$`,
+  `create or replace function platform_usage_unassigned(p_from timestamptz, p_to timestamptz)
+     returns setof usage_unassigned
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from usage_unassigned where start >= p_from and start < p_to
+         order by start, source, model, subject_kind, subject_id, subject_org;
+     end $$`,
 ];
 
 const migrations: string[] = [
@@ -853,6 +974,7 @@ const migrations: string[] = [
   `create index if not exists tasks_recent on tasks (created_at desc)`,
   `create index if not exists events_usage on events (task) where type = 'kernel.usage'`,
   `alter table tenant_settings add column if not exists version bigint not null default 0`,
+  `alter table erased_scopes add column if not exists reason text`,
   `create table if not exists platform_identity (
      singleton boolean primary key default true check (singleton),
      id uuid not null default gen_random_uuid(),
@@ -862,6 +984,7 @@ const migrations: string[] = [
   ...Object.entries(publishedTables).flatMap(([table, column]) =>
     publishedIsolation(table, column),
   ),
+  ...usageMigrations,
   ...appRole(runtimeRole),
   ...appRole(workerRole, runtimeRole),
   `grant select, insert, update, delete on ${[
@@ -870,6 +993,7 @@ const migrations: string[] = [
     ...kernelTables,
     ...platformTables,
   ].join(', ')} to ${runtimeRole}`,
+  `grant select on usage_buckets to ${runtimeRole}`,
   `grant usage on schema public to ${runtimeRole}`,
   `grant usage, select on all sequences in schema public to ${runtimeRole}`,
   ...definerFunctions.map((fn) => `revoke all on function ${fn} from public`),

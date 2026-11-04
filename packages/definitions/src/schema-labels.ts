@@ -245,6 +245,10 @@ const serviceNb = {
     label: 'Risikonivå etter KI-forordningen',
     values: { minimal: 'Minimal risiko', limited: 'Begrenset risiko', high: 'Høy risiko' },
   },
+  'spec.decidesAboutPeople': {
+    label: 'Tar tjenesten beslutninger om personer?',
+    help: 'Krever høy risiko, en person som godkjenner hvert resultat og at det modellen fikk, tas vare på.',
+  },
   'spec.riskConfirmation': { label: 'Bekreftelse av risikonivået' },
   'spec.riskConfirmation.by': { label: 'Bekreftet av' },
   'spec.riskConfirmation.at': { label: 'Bekreftet' },
@@ -358,6 +362,10 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.riskClass': {
     label: 'Risk level under the AI Act',
     values: { minimal: 'Minimal risk', limited: 'Limited risk', high: 'High risk' },
+  },
+  'spec.decidesAboutPeople': {
+    label: 'Does the service make decisions about people?',
+    help: 'Needs high risk, a person who approves each result, and the model input kept for review.',
   },
   'spec.riskConfirmation': { label: 'Confirmation of the risk level' },
   'spec.riskConfirmation.by': { label: 'Confirmed by' },
