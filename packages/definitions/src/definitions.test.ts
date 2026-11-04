@@ -1342,3 +1342,98 @@ describe('definition validation on arbitrary input', () => {
     );
   });
 });
+
+describe('decisions', () => {
+  const withDecider = {
+    ...plugins,
+    allowHighRisk: true,
+    guardrails: new Map([...plugins.guardrails, ['purpose-check', z.looseObject({})]]),
+    models: new Map([
+      ...plugins.models,
+      [
+        'foundry/gpt-6-luna',
+        { residency: 'norway' as const, capabilities: ['stream'], operations: ['chat', 'decide'] },
+      ],
+      [
+        'foundry/gpt-6-luna-eu',
+        { residency: 'eu' as const, capabilities: ['stream'], operations: ['chat', 'decide'] },
+      ],
+    ]),
+  };
+  const errors = (patch: Record<string, unknown>) => {
+    const result = validateDefinition(withSpec(patch), withDecider);
+    return result.ok ? [] : result.errors;
+  };
+  const kept = { 'pii-before-model': { categories: ['national-id'] } };
+
+  it('a service that decides about people cannot publish without risk class high and a human step', () => {
+    expect(errors({ decidesAboutPeople: true, guardrails: kept })).toEqual([
+      {
+        path: 'spec.riskClass',
+        message: 'a service that decides about people must have risk class high',
+      },
+      {
+        path: 'spec.guardrails.human-approval',
+        message:
+          'a service that decides about people needs a person to approve each result before it is final',
+      },
+    ]);
+    expect(
+      errors({
+        decidesAboutPeople: true,
+        riskClass: 'high',
+        guardrails: { ...kept, 'human-approval': true },
+      }),
+    ).toEqual([]);
+  });
+
+  it('a service that decides about people keeps the model input for review', () => {
+    expect(
+      errors({
+        decidesAboutPeople: true,
+        riskClass: 'high',
+        guardrails: { 'human-approval': true, 'pii-out-of-log': { categories: ['national-id'] } },
+      }).map((e) => e.path),
+    ).toEqual(['spec.guardrails.pii-out-of-log']);
+  });
+
+  it('a purpose check needs a model that offers decide inside the service residency', () => {
+    expect(errors({ guardrails: { 'purpose-check': { model: 'foundry/gpt-4o' } } })).toEqual([
+      {
+        path: 'spec.guardrails.purpose-check.model',
+        message: 'model foundry/gpt-4o does not offer the decide operation',
+      },
+    ]);
+    expect(errors({ guardrails: { 'purpose-check': { model: 'foundry/gpt-6-luna-eu' } } })).toEqual(
+      [
+        {
+          path: 'spec.guardrails.purpose-check.model',
+          message: 'model foundry/gpt-6-luna-eu runs in eu, outside norway',
+        },
+      ],
+    );
+    expect(errors({ guardrails: { 'purpose-check': { model: 'nobody/none' } } })).toEqual([
+      { path: 'spec.guardrails.purpose-check.model', message: 'unknown model nobody/none' },
+    ]);
+  });
+
+  it('a purpose check grants the service the decision port for its model, and nothing more', () => {
+    const result = validateDefinition(
+      withSpec({ guardrails: { 'purpose-check': { model: 'foundry/gpt-6-luna' } } }),
+      withDecider,
+    );
+    if (!result.ok || result.definition.kind !== 'Service') throw new Error('invalid');
+    const grants = toCapabilities(result.definition, 1)[0]?.capability.grants ?? [];
+    expect(grants.filter((g) => g.port === 'decision')).toEqual([
+      {
+        port: 'decision',
+        ref: { kind: 'model', id: 'foundry/gpt-6-luna', tenant: result.definition.metadata.tenant },
+      },
+    ]);
+    const plain = validateDefinition(withSpec({}), withDecider);
+    if (!plain.ok || plain.definition.kind !== 'Service') throw new Error('invalid');
+    expect(
+      toCapabilities(plain.definition, 1)[0]?.capability.grants.some((g) => g.port === 'decision'),
+    ).toBe(false);
+  });
+});

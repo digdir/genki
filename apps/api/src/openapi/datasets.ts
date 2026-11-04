@@ -1,7 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { sourceLinkRules } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
-import { capabilities, parameterRules, residencies } from '@genai/port-model';
+import { capabilities, operationKindPattern, parameterRules, residencies } from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
@@ -535,6 +535,7 @@ const PublicModel = z
     family: z.string().optional(),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
+    operations: z.array(z.string().regex(operationKindPattern)),
     parameters: parameterRules,
     price: Price.nullable(),
   })
@@ -1201,6 +1202,26 @@ const enrichmentRoutes: RouteConfig[] = (() => {
   ];
 })();
 
+const ProcessorRecordBody = z
+  .object({
+    agreement: z.string().describe('Reference to the data processing agreement'),
+    subProcessors: z
+      .array(z.object({ name: z.string(), location: z.string() }))
+      .describe('Sub-processors and where they process data'),
+    retention: z
+      .object({ days: z.number().int().min(0), note: z.string().optional() })
+      .describe('How long the provider keeps what it is sent'),
+  })
+  .openapi('ProcessorRecordInput');
+const ProcessorRecordView = z
+  .object({
+    endpoint: z.string(),
+    record: ProcessorRecordBody.nullable(),
+    by: z.string().optional(),
+    at: z.string().optional(),
+  })
+  .openapi('ProcessorRecord');
+
 const operatorModelRoutes: RouteConfig[] = [
   createRoute({
     method: 'post',
@@ -1229,6 +1250,57 @@ const operatorModelRoutes: RouteConfig[] = [
         description: 'Services or tenants use models from the endpoint',
         content: { 'application/problem+json': { schema: ModelEndpointInUse } },
       },
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/processor-records',
+    summary:
+      'Every model endpoint with its processor record, or null where it has none (operators)',
+    responses: {
+      200: json(z.object({ data: z.array(ProcessorRecordView) }), 'The endpoints'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/model-endpoints/{id}/processor-record',
+    summary: 'The processor record of a model endpoint (operators)',
+    request: { params: z.object({ id: param('sigma2') }) },
+    responses: {
+      200: json(ProcessorRecordView, 'The record'),
+      ...operatorOnly,
+      404: problem('The endpoint has no processor record'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/model-endpoints/{id}/processor-record',
+    summary:
+      'Record the data processing agreement, sub-processors and provider-side retention of a model endpoint (operators, audited). Without one, the endpoint cannot serve a service with real data.',
+    request: {
+      params: z.object({ id: param('sigma2') }),
+      headers: reasonHeader,
+      body: body(ProcessorRecordBody),
+    },
+    responses: {
+      200: audited(ProcessorRecordView, 'Recorded'),
+      400: problem('Invalid record or missing reason'),
+      ...operatorOnly,
+      404: problem('No such model endpoint'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/operator/model-endpoints/{id}/processor-record',
+    summary:
+      'Remove the processor record of a model endpoint, so it stops serving services with real data (operators, audited)',
+    request: { params: z.object({ id: param('sigma2') }), headers: reasonHeader },
+    responses: {
+      204: empty('Removed'),
+      400: problem('Missing reason'),
+      ...operatorOnly,
+      404: problem('The endpoint has no processor record'),
     },
   }),
   createRoute({

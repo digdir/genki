@@ -24,12 +24,14 @@ import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
+  createGate,
   createKernel,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
   type PolicyDecisionPoint,
   type PortContext,
+  type PortProvider,
   type SecretResolver,
   type StateStore,
   type Strategy,
@@ -45,8 +47,12 @@ import {
   type IndexWriterAdapter,
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
+import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
 import {
+  catalogDescriptorProblems,
+  ModelError,
   ModelRouter,
+  type OperationPort,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
@@ -99,6 +105,14 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
+import { outsideRun } from './outside-run.js';
+import { operationGovernance } from './operation-governance.js';
+import {
+  operationTryPolicy,
+  operationTryRunner,
+  operationTryStrategy,
+  type EnvironmentTier,
+} from './operation-try.js';
 import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
 import {
   guardedSend,
@@ -170,6 +184,27 @@ export interface PolicyParts {
   catalog(): CatalogRegistry | undefined;
 }
 
+/** The described port for published service versions only; a draft cannot run a call-operation step. */
+export const publishedOnly = (
+  provider: PortProvider<OperationPort>,
+  published: (task: string) => Promise<boolean>,
+): PortProvider<OperationPort> => ({
+  open: (ref, ctx) => {
+    const port = provider.open(ref, ctx);
+    return {
+      info: () => port.info(),
+      call: async (descriptor, input) => {
+        if (!(await published(ctx.task)))
+          throw new ModelError(
+            'refused',
+            'a call-operation step runs only in a published service version, not in a draft',
+          );
+        return port.call(descriptor, input);
+      },
+    };
+  },
+});
+
 export interface RuntimeInput {
   platformTenant: string;
   catalogs: Catalogs;
@@ -184,6 +219,9 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
+  published?: (capabilityId: string) => boolean;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -307,7 +345,18 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const descriptors = input.descriptors ?? loadDescriptors();
+  const environmentTier = input.environmentTier ?? 'production';
+  const governance = operationGovernance(configEntries, environmentTier);
+  const gate = createGate({
+    tier: environmentTier,
+    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
+    outside: outsideRun(input.log, input.now),
+  });
   const embedders = new EmbeddingRouter({
+    gate,
+    descriptors,
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
@@ -377,10 +426,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     input.onWarning,
   );
   const models = new ModelRouter({
+    gate,
+    descriptors,
+    governance,
     catalog: input.catalogs.models,
-    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     adapters: modelAdapters,
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => prices[id] as UsagePrice | undefined,
@@ -403,9 +453,9 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const rerank = new RerankRouter({
+    gate,
     catalog: input.catalogs.rerank,
     adapters: [colbert],
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
@@ -467,6 +517,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       retrieval: async (ctx, config) =>
         createRagRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig)),
       agent: agentLoop as Strategy<unknown>,
+      describedOperations: true,
     }),
   );
   const wrap = input.wrapStrategy ?? ((strategy: Strategy) => strategy);
@@ -491,6 +542,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       wrap(
         withHooks(
           guardStrategy(withSettings(settings, strategy), {
+            decisions: true,
             rules: ruleHooks,
             answerLanguage: async (ctx, request, config, question) =>
               answerLanguageFor(
@@ -552,6 +604,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const strategies: Strategy[] = [
     ...serviceStrategies,
     batchStrategy as Strategy,
+    operationTryStrategy(environmentTier) as Strategy,
     ...(input.extraStrategies?.({
       models,
       knowledge,
@@ -568,6 +621,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerank,
     tools,
     blob,
+    decision: models.decisions(),
+    operation: models.operations(),
+    described: publishedOnly(models.described(), async (task) => {
+      const capability = await capabilityOf(task);
+      return capability !== undefined && (input.published?.(capability) ?? true);
+    }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);
@@ -613,7 +672,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     strategies,
     capabilities: registry,
     ports,
-    policy,
+    policy: operationTryPolicy(policy),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),
@@ -679,7 +738,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     },
     store: configEntries,
     checks: {
-      models: (c) => problemsOf(parseCatalog(c, modelAdapters, [azureDeployments.kind])),
+      models: (c) => {
+        const parsed = parseCatalog(c, modelAdapters, [azureDeployments.kind]);
+        return parsed.ok
+          ? catalogDescriptorProblems(parsed.catalog, descriptors)
+          : problemsOf(parsed);
+      },
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
       rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),
     },
@@ -785,6 +849,7 @@ export const createRuntime = async (input: RuntimeInput) => {
 
   return {
     kernel,
+    gate,
     registry,
     ports,
     strategies,
@@ -825,6 +890,16 @@ export const createRuntime = async (input: RuntimeInput) => {
     sync,
     followKnowledge,
     quarantined: () => [...quarantine.values()],
+    descriptors,
+    environmentTier,
+    governance,
+    tryOperation: operationTryRunner({
+      kernel: () => kernel,
+      registry,
+      platformTenant,
+      tier: environmentTier,
+      ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    }),
   };
 };
 

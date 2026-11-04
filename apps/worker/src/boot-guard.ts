@@ -13,10 +13,18 @@ const markerTimeoutProblems = (env: Record<string, string | undefined>) => {
   return Number.isFinite(ms) && ms > 0 ? [] : ['MARKER_TIMEOUT_MS is a positive number'];
 };
 
+const vcoresProblems = (env: Record<string, string | undefined>) => {
+  if (env.KNOWLEDGE_VCORES === undefined) return [];
+  return /^[1-9]\d*$/.test(env.KNOWLEDGE_VCORES)
+    ? []
+    : ['KNOWLEDGE_VCORES is a positive whole number'];
+};
+
 export const workerBootProblems = (env: Record<string, string | undefined>): string[] => [
   ...platformTenantProblems(env),
   ...unmetOutsideDevMode(env, [databaseRequirement(env), traceContentRequirement(env)]),
   ...markerTimeoutProblems(env),
+  ...vcoresProblems(env),
 ];
 
 export const workerDevModeWarning =

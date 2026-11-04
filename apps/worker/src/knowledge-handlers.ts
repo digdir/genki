@@ -10,12 +10,15 @@ import {
   type RecordTransaction,
 } from '@genai/ingest';
 import {
+  heavyWorkStart,
+  knowledgeFillQueue,
   knowledgeIndexQueue,
   knowledgeIngestQueue,
   knowledgeKeys,
   type JobQueue,
   type QueueWork,
 } from '@genai/jobs';
+import { GenerationBusy } from '@genai/port-knowledge';
 import type { EmbeddingPort } from '@genai/port-embedding';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -26,7 +29,9 @@ export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
   records: DocumentRecords;
   /** The knowledge server's queue, where index jobs commit with their records. */
-  knowledge: Pick<JobQueue, 'send'>;
+  knowledge: Pick<JobQueue, 'send' | 'sendAgain'>;
+  /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
+  heavy: { threshold(): number; window(): string; now?: () => Date };
   /** The run's counts on the platform server. */
   runs: {
     report(id: string, counts: Record<string, number>, mode: 'set' | 'add'): Promise<void>;
@@ -77,14 +82,17 @@ const contextOf = (
   meter: async () => undefined,
 });
 
+/** A job that gives way to VACUUM is sent again this much later (ADR 0042, "Heavy work"). */
+export const givingWayMs = 2 * 60_000;
+
 /**
- * The worker's handlers of `knowledge.ingest` (platform server) and `knowledge.index` (knowledge
- * server), each behind the run's admission (ADR 0042, "Jobs"). Job data names a document only by
- * its record's number.
+ * The worker's handlers of `knowledge.ingest` (platform server), `knowledge.index` (knowledge
+ * server) and `knowledge.fill` (knowledge server, worked only in the night window), each behind the
+ * run's admission (ADR 0042, "Jobs"). Job data names a document only by its record's number.
  */
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
-): { platform: QueueWork[]; knowledge: QueueWork[] } => {
+): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const ingest = admittedWork(
     knowledgeIngestQueue,
     async ({ job, run }) => {
@@ -113,41 +121,70 @@ export const knowledgeWork = (
     deps.admission,
   );
 
-  const index = admittedWork(
-    knowledgeIndexQueue,
-    async ({ job, run, principal, cancelled }) => {
-      deps.bound?.();
-      if (await cancelled()) return;
-      const signal = job.signal;
-      const spec = await specOf(deps, run);
-      const { dataset } = datasetOf(deps, run, signal);
-      const tenant = tenantOf(run, deps.admission.platformTenant);
-      const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
-      const chunking = await deps.records.chunking(
-        job.data.generation,
-        run.pipeline,
-        chunkingOf(spec.chunking),
-      );
-      // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
-      const embedding = await deps.records.embedding(job.data.generation);
-      const embedder = embedding
-        ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
-        : undefined;
-      const outcome = await indexRecord({
-        records: deps.records,
-        listing,
-        dataset: run.dataset,
-        run: run.id,
-        record: job.data.record,
-        generation: job.data.generation,
-        chunking,
-        ...(embedder ? { embedder } : {}),
-      });
-      if (outcome === 'stored' || outcome === 'skipped')
-        await deps.runs.report(run.id, { [outcome]: 1 }, 'add');
-    },
-    deps.admission,
-  );
+  const documentWork = (queue: typeof knowledgeIndexQueue | typeof knowledgeFillQueue) =>
+    admittedWork(
+      queue,
+      async ({ job, run, principal, cancelled }) => {
+        deps.bound?.();
+        if (await cancelled()) return;
+        const now = deps.heavy.now?.() ?? new Date();
+        // A run that has written the heavy threshold sends its remaining documents to the window.
+        if (queue === knowledgeIndexQueue && (run.report?.chunks ?? 0) >= deps.heavy.threshold()) {
+          await deps.knowledge.send(knowledgeFillQueue, job.data, {
+            key: knowledgeKeys.fill(job.data.generation, job.data.record),
+            startAfter: heavyWorkStart(deps.heavy.window(), now),
+          });
+          return;
+        }
+        const signal = job.signal;
+        const spec = await specOf(deps, run);
+        const { dataset } = datasetOf(deps, run, signal);
+        const tenant = tenantOf(run, deps.admission.platformTenant);
+        const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
+        const chunking = await deps.records.chunking(
+          job.data.generation,
+          run.pipeline,
+          chunkingOf(spec.chunking),
+        );
+        // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
+        const embedding = await deps.records.embedding(job.data.generation);
+        const embedder = embedding
+          ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
+          : undefined;
+        let chunks = 0;
+        let outcome: Awaited<ReturnType<typeof indexRecord>>;
+        try {
+          outcome = await indexRecord({
+            records: deps.records,
+            listing,
+            dataset: run.dataset,
+            run: run.id,
+            record: job.data.record,
+            generation: job.data.generation,
+            chunking,
+            onStored: (n) => {
+              chunks = n;
+            },
+            ...(embedder ? { embedder } : {}),
+          });
+        } catch (error) {
+          if (!(error instanceof GenerationBusy)) throw error;
+          // VACUUM holds the generation: give way, and keep every retry.
+          await deps.knowledge.sendAgain(queue, job, {
+            key: knowledgeKeys.index(job.data.generation, job.data.record),
+            startAfter: new Date(now.getTime() + givingWayMs),
+          });
+          return;
+        }
+        if (outcome === 'stored') await deps.runs.report(run.id, { stored: 1, chunks }, 'add');
+        if (outcome === 'skipped') await deps.runs.report(run.id, { skipped: 1 }, 'add');
+      },
+      deps.admission,
+    );
 
-  return { platform: [ingest as QueueWork], knowledge: [index as QueueWork] };
+  return {
+    platform: [ingest as QueueWork],
+    knowledge: [documentWork(knowledgeIndexQueue) as QueueWork],
+    heavy: [documentWork(knowledgeFillQueue) as QueueWork],
+  };
 };

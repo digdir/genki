@@ -2152,6 +2152,7 @@
               'Authenticate callers and choose stores',
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
+              "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
             ],
             files: [
               'apps/api/src/main.ts',
@@ -2162,6 +2163,7 @@
               'apps/api/src/batch-runs.ts',
               'apps/api/src/projects.ts',
               'apps/api/src/task-export.ts',
+              'apps/api/src/operation-governance.ts',
             ],
             input: 'Environment and catalogs at boot; HTTP at runtime',
             output: 'A running platform on :8080',
@@ -2170,6 +2172,16 @@
               { module: 'setup', how: 'Bootstrap and wiring' },
             ],
             edges: [
+              {
+                to: 'operations',
+                label: 'Try a descriptor in review (raw tier)',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'apps/api/src/operator-operations.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'port-usage',
                 label: 'Sums genki and gateway usage',
@@ -2565,6 +2577,8 @@
               'Fire schedules from one worker at a time through a Postgres advisory lock',
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
+              'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
+              "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
               "Cancel a knowledge run whose document dead letters reach its pipeline's failure budget",
               'Check that the knowledge server is bound to its platform server, and answer /readyz with 503 while it is not',
             ],
@@ -2578,6 +2592,7 @@
               'apps/worker/src/knowledge-jobs.ts',
               'apps/worker/src/reconciler.ts',
               'apps/worker/src/knowledge-handlers.ts',
+              'apps/worker/src/heavy-work.ts',
             ],
             input: 'Files in blob folders, schedules',
             output: 'Results written back to blob storage',
@@ -2667,6 +2682,14 @@
                 witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-pgboss' },
               },
               {
+                to: 'providers-pgvector',
+                label:
+                  'Runs heavy work on the knowledge server (VACUUM, builds, REINDEX, the nightly checks)',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'apps/worker/src/main.ts', imports: '@genai/providers-pgvector' },
+              },
+              {
                 to: 'ingest',
                 label:
                   'Lists sources, plans runs against document records and indexes one document',
@@ -2723,7 +2746,10 @@
               'One runtime builder that both composition roots call. It builds the model, knowledge, rerank, embedding and tool routers, wraps every service strategy in settings, guardrails, hooks and document scope, applies the catalogs stored as config entries, compiles published services into capabilities with the platform cost limits and quarantines the ones that fail. The API adds HTTP, admin modules and platform strategies on top; the worker runs triggers on the same kernel.',
             responsibilities: [
               'Build routers, ports, strategies, registry and kernel from catalogs, secrets and stores',
+              'Create the one model gate, with lockdown admission, plug-in egress guards and the log for calls outside a run (outside-run:\u003ctenant>:\u003cday>)',
               'Wrap every service strategy in settings, guardrails, hooks and document scope',
+              "Run the raw tier, an operator's descriptor call as a kernel task of its own, in test only, on synthetic data with every PII category masked (ADR 0047)",
+              'Keep the maturity of each operation kind per environment, set by one operator and audited, and the processor record of each model endpoint, as config entries the gate reads at call (ADR 0047)',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
@@ -2738,11 +2764,24 @@
               'packages/composition/src/settings-runtime.ts',
               'packages/composition/src/document-scope.ts',
               'packages/composition/src/boot-guard.ts',
+              'packages/composition/src/outside-run.ts',
+              'packages/composition/src/operation-try.ts',
+              'packages/composition/src/operation-governance.ts',
             ],
             input: 'Catalogs, secrets, definition and config stores, policy',
             output: 'A kernel with every strategy registered, and the registries behind it',
             replaces: [],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/composition/src/runtime.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'port-model',
                 label: 'Model router and catalog parsing',
@@ -3129,10 +3168,15 @@
               'Run tasks and stream client events',
               'Enforce policy, tenant sharing and budgets',
               'Own the audit record and the SPI for ports and stores',
+              "Gate every model, decision, embedding and rerank call (ADR 0047) with admission, enabled, tenant sharing, residency, the payload guard, the closed payload shapes, the endpoint's egress guard, metering and the audit event kernel.gate.call, also for calls outside a run",
+              'Hold the closed payload shape of every operation and the one walker that masks, restores, finds media and validates with it',
             ],
             files: [
               'packages/kernel/src/kernel.ts',
               'packages/kernel/src/spi.ts',
+              'packages/kernel/src/gate.ts',
+              'packages/kernel/src/gate-contract.ts',
+              'packages/kernel/src/payload.ts',
               'packages/kernel/src/memory.ts',
               'packages/kernel/src/retention.ts',
               'packages/kernel/src/secrets.ts',
@@ -3146,7 +3190,7 @@
               { module: 'telemetry', how: 'Event log as the audit trail' },
             ],
             edges: [],
-            keywords: 'kernel task event log policy budget audit contracts spi',
+            keywords: 'kernel task event log policy budget audit contracts spi gate',
             schemas: [],
           },
           {
@@ -3357,6 +3401,7 @@
                           items: { type: 'string', enum: ['employees', 'public'] },
                         },
                         riskClass: { type: 'string', enum: ['minimal', 'limited', 'high'] },
+                        decidesAboutPeople: { type: 'boolean' },
                         riskConfirmation: {
                           type: 'object',
                           properties: {
@@ -3658,6 +3703,11 @@
                                 judge: { type: 'string', minLength: 1 },
                               },
                               additionalProperties: false,
+                            },
+                            operations: {
+                              type: 'object',
+                              propertyNames: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                              additionalProperties: { type: 'string', minLength: 1 },
                             },
                             residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
                           },
@@ -4441,7 +4491,7 @@
             packages: ['@genai/strategy-step-flow'],
             summary: 'Runs StepFlow definitions: blocks, repeat, forEach, switchOn and subflows.',
             description:
-              'A step has exactly one action and an onError policy (ADR 0007). Built-in blocks call models, classify, extract with cited sources, retrieve, list and read documents, build tables with a source per cell, route, ask for approval, run the agent loop or call a tool from a registered tool source.',
+              "A step has exactly one action and an onError policy (ADR 0007). Built-in blocks call models, classify, extract with cited sources, retrieve, list and read documents, build tables with a source per cell, route, ask for approval, run the agent loop, call a tool from a registered tool source or call a reviewed operation descriptor on one of the service's models.",
             responsibilities: [
               'Execute versioned step flows',
               'Built-in blocks and expressions',
@@ -4455,6 +4505,7 @@
               'packages/strategy-step-flow/src/blocks/documents.ts',
               'packages/strategy-step-flow/src/blocks/table.ts',
               'packages/strategy-step-flow/src/blocks/tools.ts',
+              'packages/strategy-step-flow/src/blocks/operation.ts',
             ],
             input: 'Flow ref + input',
             output: 'Flow result',
@@ -6001,7 +6052,7 @@
             packages: ['@genai/guardrails'],
             summary: 'Named guardrails that wrap every strategy and are enforced, not just stored.',
             description:
-              'pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and human-approval, each with its own schema. The composition root wraps every service strategy with them.',
+              'pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and human-approval, custom-rules and purpose-check, each with its own schema. The composition root wraps every service strategy with them.',
             responsibilities: [
               'Norwegian PII detection and redaction',
               'Require sources and language rules',
@@ -6010,6 +6061,7 @@
                   'house style and service text per answer language, on answer calls only',
               },
               'Human approval and refused topics',
+              'Purpose check through the decision port, where a refusal or an unsure answer goes to a person',
             ],
             files: [
               'packages/guardrails/src/strategy.ts',
@@ -6320,31 +6372,47 @@
             id: 'port-model',
             plane: 'ports',
             name: 'Model port',
-            note: 'chat · chatStream · router',
+            note: 'chat · chatStream · decide · router',
             icon: 'llm',
             color: '#74a7ff',
             status: 'Port',
             packages: ['@genai/port-model'],
             summary:
-              'One port for model calls; a router owns catalog, residency, capabilities, credentials and metering.',
+              'One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.',
             description:
               'Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.',
             responsibilities: [
               'Model catalog and discovery',
-              'Residency and capability checks',
-              'Refusing callers the environment does not admit (lockdown, ADR 0033)',
-              'Credential resolution and metering',
+              'Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and capability checks',
+              'The kernel port decision, the decide operation on the same catalogue (ADR 0047,',
+              'The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide through a typed descriptor when the catalogue opts in (ADR 0047,',
+              "The kernel port described, a reviewed descriptor call from a service's call-operation step, with the kind's maturity and whether the endpoint has a processor record on the gate target (ADR 0047,",
+              'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
+              'Credential resolution',
             ],
             files: [
               'packages/port-model/src/port.ts',
               'packages/port-model/src/router.ts',
+              'packages/port-model/src/gate.ts',
               'packages/port-model/src/catalog.ts',
+              'packages/port-model/src/decision.ts',
+              'packages/port-model/src/operation.ts',
               'packages/port-model/src/instructions.ts',
             ],
             input: 'Generic chat request',
-            output: 'Completion, deltas, usage',
+            output: 'Completion, deltas, decision answers, usage',
             replaces: [{ module: 'llm', how: 'Provider abstraction' }],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/port-model/src/router.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'plugins',
                 label: 'Model contract suite',
@@ -6473,6 +6541,22 @@
                               enum: ['stream', 'tools', 'json-schema', 'reasoning'],
                             },
                           },
+                          operations: {
+                            default: ['chat'],
+                            minItems: 1,
+                            type: 'array',
+                            items: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                          },
+                          descriptors: {
+                            type: 'object',
+                            properties: {
+                              decide: {
+                                type: 'string',
+                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                              },
+                            },
+                            additionalProperties: false,
+                          },
                           contextWindow: {
                             type: 'integer',
                             exclusiveMinimum: 0,
@@ -6595,6 +6679,168 @@
                       additionalProperties: { type: 'string', minLength: 1, maxLength: 65536 },
                     },
                   ],
+                },
+              },
+            ],
+          },
+          {
+            id: 'operations',
+            plane: 'ports',
+            name: 'Operation descriptors',
+            note: 'Descriptors · executor · operation@1',
+            icon: 'llm',
+            color: '#74a7ff',
+            status: 'Library',
+            packages: ['@genai/operations'],
+            summary:
+              'A new kind of model API as a reviewed descriptor file and recorded fixtures, run by one executor through the kernel gate.',
+            description:
+              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
+            responsibilities: [
+              'Load and validate descriptors, refusing URLs, credential headers and kept-out APIs',
+              'Map typed input to the wire request and the wire answer back, without code',
+              "Run a descriptor call through the gate with the endpoint's credential and egress guard",
+              'Prove each descriptor against recorded fixtures (operation@1)',
+            ],
+            files: [
+              'packages/operations/src/descriptor.ts',
+              'packages/operations/src/shape.ts',
+              'packages/operations/src/mapping.ts',
+              'packages/operations/src/executor.ts',
+              'packages/operations/src/registry.ts',
+              'packages/operations/src/contract.ts',
+            ],
+            input: 'A descriptor, a catalogue endpoint and typed input',
+            output: 'The typed result, usage and the count of dropped fields',
+            replaces: [],
+            edges: [
+              {
+                to: 'kernel',
+                label: 'The gate, closed shapes and credentials',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/operations/src/executor.ts', imports: '@genai/kernel' },
+              },
+            ],
+            keywords: 'operation descriptor executor raw tier operation@1 fixtures',
+            schemas: [
+              {
+                name: 'descriptor',
+                file: 'packages/operations/src/descriptor.ts',
+                export: 'descriptorFile',
+                schema: {
+                  $schema: 'https://json-schema.org/draft/2020-12/schema',
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                    },
+                    operation: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                    status: { type: 'string', enum: ['review', 'described', 'typed'] },
+                    summary: { type: 'string', minLength: 1, maxLength: 500 },
+                    api: {
+                      type: 'object',
+                      properties: {
+                        protocol: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                        version: { type: 'string', minLength: 1, maxLength: 64 },
+                        query: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9_-]+$' },
+                          additionalProperties: { type: 'string', maxLength: 200 },
+                        },
+                        headers: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                          additionalProperties: { type: 'string', maxLength: 200 },
+                        },
+                      },
+                      required: ['protocol', 'version'],
+                      additionalProperties: false,
+                    },
+                    auth: {
+                      default: { keyHeader: 'authorization' },
+                      type: 'object',
+                      properties: { keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' } },
+                      required: ['keyHeader'],
+                      additionalProperties: false,
+                    },
+                    request: {
+                      type: 'object',
+                      properties: {
+                        method: { type: 'string', enum: ['POST', 'PUT'] },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        body: {},
+                      },
+                      required: ['method', 'path', 'body'],
+                      additionalProperties: false,
+                    },
+                    input: {},
+                    output: {},
+                    wire: {
+                      type: 'object',
+                      properties: { request: {}, response: {} },
+                      required: ['request', 'response'],
+                      additionalProperties: false,
+                    },
+                    result: {},
+                    usage: {
+                      type: 'object',
+                      propertyNames: {
+                        type: 'string',
+                        enum: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
+                      },
+                      additionalProperties: {},
+                      required: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
+                    },
+                    stream: {
+                      anyOf: [
+                        { type: 'string', const: 'none' },
+                        {
+                          type: 'object',
+                          properties: {
+                            events: {
+                              type: 'object',
+                              propertyNames: { type: 'string', pattern: '^[a-z0-9._-]+$' },
+                              additionalProperties: {
+                                type: 'object',
+                                properties: {
+                                  shape: {},
+                                  delta: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$.*',
+                                  },
+                                  done: { type: 'boolean', const: true },
+                                },
+                                required: ['shape'],
+                                additionalProperties: false,
+                              },
+                            },
+                          },
+                          required: ['events'],
+                          additionalProperties: false,
+                        },
+                      ],
+                    },
+                  },
+                  required: [
+                    'id',
+                    'operation',
+                    'status',
+                    'summary',
+                    'api',
+                    'request',
+                    'input',
+                    'output',
+                    'wire',
+                    'result',
+                    'usage',
+                    'stream',
+                  ],
+                  additionalProperties: false,
                 },
               },
             ],
@@ -6804,8 +7050,12 @@
             packages: ['@genai/port-rerank'],
             summary: 'Reranks candidate passages through a catalog of rerank endpoints.',
             description:
-              'Same router shape as the model and knowledge ports; ColBERT is the first adapter.',
-            responsibilities: ['Rerank catalog', 'Rerank with timeouts and warnings'],
+              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
+            responsibilities: [
+              'Rerank catalog',
+              'Rerank with timeouts and warnings',
+              'Calls through the kernel gate',
+            ],
             files: [
               'packages/port-rerank/src/port.ts',
               'packages/port-rerank/src/router.ts',
@@ -6913,6 +7163,10 @@
                             type: 'string',
                             enum: ['degrade', 'fail'],
                           },
+                          tenants: {
+                            type: 'array',
+                            items: { type: 'string', pattern: '^\\d{9}$' },
+                          },
                           options: {
                             default: {},
                             type: 'object',
@@ -6942,11 +7196,11 @@
             packages: ['@genai/port-embedding'],
             summary: 'Turns text into vectors through a catalog of embedding models.',
             description:
-              'Same router shape as the model and rerank ports. Checks residency and dimensions, batches input and meters usage to the caller, so search engines without built-in embedding can use vectors.',
+              "Same router shape as the model and rerank ports. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search outside a run, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
             responsibilities: [
               'Embedding catalog',
-              'Residency and dimension checks',
-              'Batching and metering',
+              'Dimension checks and batching',
+              "Calls through the kernel gate, which applies the endpoint's egress guard",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
@@ -6957,6 +7211,16 @@
             output: 'Vectors',
             replaces: [{ module: 'rag', how: 'Embedding inside Typesense' }],
             edges: [
+              {
+                to: 'operations',
+                label: 'Descriptor executor and registry',
+                kind: 'call',
+                target: 'call',
+                witness: {
+                  file: 'packages/port-embedding/src/router.ts',
+                  imports: '@genai/operations',
+                },
+              },
               {
                 to: 'plugins',
                 label: 'Embedding contract suite',
@@ -7064,6 +7328,20 @@
                             type: 'integer',
                             exclusiveMinimum: 0,
                             maximum: 9007199254740991,
+                          },
+                          tenants: {
+                            type: 'array',
+                            items: { type: 'string', pattern: '^\\d{9}$' },
+                          },
+                          descriptors: {
+                            type: 'object',
+                            properties: {
+                              embed: {
+                                type: 'string',
+                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                              },
+                            },
+                            additionalProperties: false,
                           },
                           options: {
                             default: {},
@@ -7204,7 +7482,7 @@
             id: 'providers-openai',
             plane: 'providers',
             name: 'openai-chat adapter',
-            note: 'Chat, Responses + Foundry discovery',
+            note: 'Chat, Responses, Decisions + Foundry discovery',
             icon: 'llm',
             color: '#8fa8b3',
             status: 'Provider',
@@ -7215,11 +7493,13 @@
               'Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
             responsibilities: [
               'openai-chat protocol with per-model API selection and learned Responses recovery',
+              'The decide operation against the Azure OpenAI Decisions API, with a closed response shape',
               'Azure deployment discovery',
             ],
             files: [
               'packages/providers-openai/src/index.ts',
               'packages/providers-openai/src/responses.ts',
+              'packages/providers-openai/src/decisions.ts',
             ],
             input: 'Port request',
             output: 'OpenAI API call',
@@ -7257,7 +7537,7 @@
               },
               {
                 to: 'azure-foundry',
-                label: 'Chat completions, Responses and deployment listing',
+                label: 'Chat completions, Responses, Decisions and deployment listing',
                 kind: 'http',
                 target: 'http',
                 witness: {
@@ -8247,6 +8527,8 @@
               'Filters, facets, fetch and range',
               'Index writer with generations',
               'Autovacuum off and a VACUUM after each run with no write open (pgvector 0.8.2)',
+              'A per-generation advisory lock that writers take shared and VACUUM exclusively',
+              'Heavy work for the worker - builds, VACUUM, REINDEX, pg_prewarm, freeze ages and a recall sample',
             ],
             files: [
               'packages/providers-pgvector/src/engine.ts',
@@ -8258,6 +8540,7 @@
               'packages/providers-pgvector/src/knowledge-reads.ts',
               'packages/providers-pgvector/src/read-functions.ts',
               'packages/providers-pgvector/src/knowledge-records.ts',
+              'packages/providers-pgvector/src/heavy-work.ts',
             ],
             input: 'Searches and index documents',
             output: 'SQL',

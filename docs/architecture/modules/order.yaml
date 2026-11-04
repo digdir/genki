@@ -37,6 +37,7 @@
 - hooks
 - plugins
 - port-model
+- operations
 - port-knowledge
 - port-rerank
 - port-embedding

@@ -1,4 +1,4 @@
-import { nightWindowPattern } from '@genai/definitions';
+import { alwaysNightWindow, defaultNightWindow, nightWindowPattern } from '@genai/definitions';
 
 /** `knowledge.nightWindow` is written as "HH:MM-HH:MM" in this zone (ADR 0042, "Heavy work"). */
 export const nightWindowZone = 'Europe/Oslo';
@@ -53,7 +53,10 @@ const instantOf = (year: number, month: number, day: number, minuteOfDay: number
   return new Date(wall - offsetAt(new Date(first)));
 };
 
+const always = (window: string) => window === alwaysNightWindow;
+
 export const inNightWindow = (window: string, at: Date) => {
+  if (always(window)) return true;
   const { start, end } = parseNightWindow(window);
   const p = localParts(at);
   const now = p.hour * 60 + p.minute;
@@ -62,6 +65,7 @@ export const inNightWindow = (window: string, at: Date) => {
 
 /** The first window start at or after `at`. */
 export const nextNightWindowStart = (window: string, at: Date) => {
+  if (always(window)) return at;
   const { start } = parseNightWindow(window);
   const p = localParts(at);
   for (let day = 0; day < 3; day += 1) {
@@ -69,4 +73,26 @@ export const nextNightWindowStart = (window: string, at: Date) => {
     if (candidate.getTime() >= at.getTime()) return candidate;
   }
   throw new Error('no night window start within two days');
+};
+
+/** When heavy work sent at `at` may start: at once inside the window, else at its next start. */
+export const heavyWorkStart = (window: string, at: Date) =>
+  inNightWindow(window, at) ? at : nextNightWindowStart(window, at);
+
+/** The first window end after `at`, or nothing when the window is `always`. */
+export const nightWindowEnd = (window: string, at: Date): Date | undefined => {
+  if (always(window)) return undefined;
+  const { end } = parseNightWindow(window);
+  const p = localParts(at);
+  for (let day = 0; day < 3; day += 1) {
+    const candidate = instantOf(p.year, p.month, p.day + day, end);
+    if (candidate.getTime() > at.getTime()) return candidate;
+  }
+  throw new Error('no night window end within two days');
+};
+
+/** The cron line of the nightly checks: the window's start, or the default start for `always`. */
+export const nightlyCron = (window: string) => {
+  const { start } = parseNightWindow(always(window) ? defaultNightWindow : window);
+  return `${start % 60} ${Math.floor(start / 60)} * * *`;
 };

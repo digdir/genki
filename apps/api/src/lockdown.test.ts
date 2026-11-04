@@ -435,7 +435,7 @@ describe('lockdown', () => {
     },
   );
 
-  it('refuses a person at the model port even where no route is listed', async () => {
+  it('refuses a person at the model gate even where no route is listed', async () => {
     const { platform } = await boot(true);
     const context = (principal: Principal) => ({
       tenant: digdir,
@@ -452,12 +452,13 @@ describe('lockdown', () => {
       scopes: [configuredCredentialScope],
     };
 
-    expect(() => platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(person))).toThrow(
-      /may not use models/,
-    );
-    expect(() =>
-      platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(configured)),
-    ).not.toThrow();
+    const ask = (principal: Principal) =>
+      platform.models
+        .open({ kind: 'model', id: 'fake/gpt' }, context(principal))
+        .chat({ messages: [{ role: 'user', content: 'hei' }] });
+
+    await expect(ask(person)).rejects.toThrow(/may not use models/);
+    await expect(ask(configured)).resolves.toBeDefined();
   });
 
   it('refuses a person who runs a pipeline in lockdown', async () => {

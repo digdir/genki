@@ -43,7 +43,6 @@ Archive rules are not settled. The new arkivlova, in force from 1 January 2026, 
 - Not built:
   - The refusal of `norway` for datasets on engines genki runs, with a test that a `pgvector` dataset on the `platform` connection cannot be saved as `norway`, and one that a `norway` model can still be published.
   - The connector flow's default. `apps/api/src/connectors.ts` creates connector datasets on `platform-pg` as `norway`; that becomes `eu`. The portal's dataset form still offers "I Norge" for genki's own engines.
-  - Prod in West Europe. `infra/env/prod.bicepparam` and the prod section of `infra/README.md` change when prod is set up in `rg-genki-prod-weu`.
   - A move procedure in `infra/README.md`: copy the database, files and secrets, re-index `pgvector` if the embedding model changes, switch DNS and certificates, and delete the old resources and backups after verification. Genki test's move on 31 October 2026 followed these steps.
 - Datasets declared `norway` on genki's own engines are reclassified as `eu` only after their owner accepts it. Kudos, planned for the knowledge server in ADR 0042, is the known case. Until the owner accepts, a `norway` service that uses such a dataset is unpublished rather than widened silently.
 - ADR 0001 now says genki runs in Azure Container Apps in the EU/EEA, with the region set by operations (this record). ADR 0042 keeps the knowledge server in the platform's region.

@@ -54,4 +54,15 @@ describe('booting the worker', () => {
         expect.stringContaining('MARKER_TIMEOUT_MS'),
       ]);
   });
+
+  it('the worker refuses to start with a KNOWLEDGE_VCORES that is not a positive whole number', () => {
+    const base = { DATABASE_URL: 'postgres://x', PLATFORM_TENANT: '991825827' };
+    for (const value of ['four', '0', '-2', '2.5'])
+      expect(workerBootProblems({ ...base, KNOWLEDGE_VCORES: value })).toContain(
+        'KNOWLEDGE_VCORES is a positive whole number',
+      );
+    expect(workerBootProblems({ ...base, KNOWLEDGE_VCORES: '8' })).not.toContain(
+      'KNOWLEDGE_VCORES is a positive whole number',
+    );
+  });
 });

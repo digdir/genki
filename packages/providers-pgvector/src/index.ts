@@ -18,3 +18,4 @@ export {
   type PartitionOptions,
 } from './partitions.js';
 export { knowledgeRecordsOf } from './knowledge-records.js';
+export * from './heavy-work.js';

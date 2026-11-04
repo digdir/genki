@@ -100,6 +100,7 @@ export const serviceSpec = z.strictObject({
     .min(1)
     .default(['employees']),
   riskClass: z.enum(['minimal', 'limited', 'high']),
+  decidesAboutPeople: z.boolean().optional(),
   riskConfirmation: z
     .strictObject({
       by: z.string().min(1).optional(),
@@ -192,6 +193,9 @@ export const serviceSpec = z.strictObject({
         planner: z.string().min(1).optional(),
         judge: z.string().min(1).optional(),
       })
+      .optional(),
+    operations: z
+      .record(z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be an operation kind'), z.string().min(1))
       .optional(),
     residency: z.enum(residencies),
   }),
@@ -426,4 +430,13 @@ export const publicNamesOf = (definition: ServiceDefinition, v: Variant) => {
     (typeof v === 'string' ? undefined : v.publicName) ?? `${definition.metadata.id}__${id}`;
   const listed = typeof v === 'string' ? [] : v.aliases;
   return { primary, aliases: listed.map((a) => (typeof a === 'string' ? a : a.name)) };
+};
+
+/** The models a service names for one operation kind each, used only by its `call-operation` steps. */
+export const operationModelsOf = (model: { operations?: Record<string, string> | undefined }) =>
+  Object.values(model.operations ?? {});
+
+export const decisionModelOf = (spec: Pick<ServiceDefinition['spec'], 'guardrails'>) => {
+  const model = (spec.guardrails['purpose-check'] as { model?: unknown } | undefined)?.model;
+  return typeof model === 'string' && model ? model : undefined;
 };

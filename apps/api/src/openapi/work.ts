@@ -13,7 +13,7 @@ import {
 } from '@genai/eval';
 import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
-import { Problem, problemContent } from '../http.js';
+import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 
 const pathParam = (name: string, example: string) =>
@@ -96,6 +96,26 @@ const BySource = z
   .describe('The sum split per source; only when an AI gateway is configured');
 const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
 
+const OperationKind = z
+  .object({
+    kind: z.string(),
+    environment: z.enum(['test', 'production']),
+    maturity: z
+      .enum(['test', 'production'])
+      .describe('Governs descriptor calls of the kind (raw and described tiers) only'),
+    builtIn: z.boolean().describe('A kind Genki has its own types for, such as chat and decide'),
+    typed: z
+      .literal('production')
+      .optional()
+      .describe('Typed calls of a built-in kind are production by construction'),
+    by: z.string().optional().describe('The operator who last set the maturity'),
+    at: z.string().optional(),
+    descriptors: z.array(
+      z.object({ id: z.string(), status: z.enum(['review', 'described', 'typed']) }),
+    ),
+  })
+  .openapi('OperationKind');
+
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
 const TaskBase = z.object({
@@ -115,6 +135,7 @@ const TaskRow = TaskBase.extend({
     .string()
     .optional()
     .describe('The start of the input; only for callers with manage-services'),
+  erasure: RunErasure.optional(),
   actor: z.object({
     kind: z.enum(['api-key', 'person', 'system']),
     name: z.string().optional(),
@@ -1995,6 +2016,88 @@ const qualityRoutes: RouteConfig[] = [
         },
       },
       ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operations/{id}/try',
+    summary: 'Try an operation descriptor in review on a catalogue model (test only)',
+    description: described(
+      operator,
+      'Audited as an admin task, and the call is its own run, audited and metered.',
+      'Only where GENAI_ENV=test, on synthetic data. Every PII category is masked and media is refused. The id may contain slashes, such as example/classify@1.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          model: z.string().describe('A model from the model catalogue'),
+          input: z.unknown().describe("The descriptor's typed input"),
+          synthetic: z.literal(true),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        z.object({
+          task: z.string(),
+          descriptor: z.string(),
+          model: z.string(),
+          result: z.unknown(),
+        }),
+        'The typed result',
+      ),
+      400: problem('Invalid request, not synthetic, media, or a field outside the descriptor'),
+      401: problem('Not signed in'),
+      403: problem('Not an operator, not a test environment, or a login that is not admitted'),
+      404: problem('No such descriptor or model'),
+      502: problem('The provider failed'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-kinds',
+    summary: 'The operation kinds, their maturity in this environment and their descriptors',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          environment: z.enum(['test', 'production']),
+          governs: z
+            .literal('descriptor-calls')
+            .describe('Maturity governs descriptor calls only, never typed calls'),
+          data: z.array(OperationKind),
+        }),
+        'The kinds',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-kinds/{kind}/maturity',
+    summary: 'Move an operation kind to test or production in this environment',
+    description: described(
+      operator,
+      audited,
+      'One operator moves a kind to production or back to test; every change is audited with who, when and why. Asking for the maturity the kind already has changes nothing.',
+    ),
+    request: {
+      params: z.object({ kind: pathParam('kind', 'decide') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ maturity: z.enum(['test', 'production']) })),
+    },
+    responses: {
+      200: json(
+        OperationKind.extend({
+          step: z.enum(['promoted', 'demoted', 'unchanged']),
+        }),
+        'The kind after the change',
+      ),
+      400: problem('Invalid maturity or missing change reason'),
+      ...operatorOnly,
+      404: problem('No descriptor describes the kind'),
     },
   }),
   createRoute({

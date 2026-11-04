@@ -47,6 +47,7 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   defaultPlatformTenant,
+  environmentTierOf,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
@@ -192,6 +193,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   testData,
   registeredClients,
   ...(trustedEntra ? { trustedEntra } : {}),
+  onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 if (mock)
   mockRegistration = {
@@ -417,9 +419,14 @@ if (lockdown)
     configuredKeys: configuredKeys.size,
   });
 
+const environmentTier = environmentTierOf(process.env);
+if (environmentTier === 'test')
+  log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
+  environmentTier,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -568,11 +575,11 @@ const app = createApp(version, {
     settings,
     models: platform.models,
     admin,
-    tasks: kernelTaskReader(platform.kernel, {
-      kind: 'operator',
-      issuer: 'platform',
-      subject: 'task-reader',
-    }),
+    tasks: kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    ),
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
