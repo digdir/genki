@@ -9,6 +9,7 @@ import {
   createAuthenticator,
   createSigningKey,
   createTokenVerifier,
+  lockdownUserScope,
   trustedEntraScope,
   type IdentityTestDataInput,
   type SigningKey,
@@ -249,6 +250,35 @@ describe('operator mapping', () => {
     );
 
     expect(await principalOf(token)).toMatchObject({
+      kind: 'operator',
+      scopes: [trustedEntraScope],
+    });
+  });
+
+  it('makes a user-group login no operator, even through the console client, and a login in both groups an operator', async () => {
+    const userGroup = '789b5488-39ec-47b3-9217-840e5cd957fd';
+    const principalOf = callerWith(
+      [
+        ansattporten(realIssuer, {
+          trustedEntra: {
+            groups: [trustedGroup],
+            userGroups: [userGroup],
+            clientIds: [consoleClient],
+            tenant: '991825827',
+            resource,
+          },
+        }),
+      ],
+      operatorDirectory({}),
+    );
+    const login = (groups: string[], subject: string) =>
+      sign(realIssuer, { acr: 'entraid', client_id: consoleClient, groups }, subject);
+
+    expect(await principalOf(await login([userGroup], 'user'))).toMatchObject({
+      kind: 'employee',
+      scopes: [lockdownUserScope],
+    });
+    expect(await principalOf(await login([userGroup, trustedGroup], 'both'))).toMatchObject({
       kind: 'operator',
       scopes: [trustedEntraScope],
     });

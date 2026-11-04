@@ -62,6 +62,7 @@ export const audit = defineNamespace({
   actionOnboardingDecide: 'Avgjorde oppstartsforespørsel',
   actionOnboardingRequest: 'Ba om oppstart',
   actionPipelineCancel: 'Avbrøt innlesing',
+  actionJobsRedrive: 'Sendte feilede jobber tilbake',
   actionPlatformSecretSet: 'Lagret plattformhemmelighet',
   actionPluginRegister: 'Registrerte ekstern byggekloss',
   actionPluginRemove: 'Fjernet ekstern byggekloss',

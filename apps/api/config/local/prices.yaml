@@ -1,4 +1,4 @@
-# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, GlobalStandard, Sweden Central, 2026-10-08; gpt-5.6-terra DataZoneStandard, 2026-11-02
+# Azure Retail Prices API (prices.azure.com), NOK per 1,000 tokens, Sweden Central. GlobalStandard 2026-10-08; the genki-test-ai models 2026-11-02, DataZoneStandard where deployed so (gpt-5.4-nano and gpt-5.4-pro are GlobalStandard)
 models:
   foundry-openai/gpt-4.1: { inputPerThousand: 0.019, outputPerThousand: 0.0762 }
   foundry-openai/gpt-4.1-mini: { inputPerThousand: 0.0038, outputPerThousand: 0.0152 }
@@ -6,7 +6,17 @@ models:
   foundry-openai/gpt-4o-mini-2m-tps: { inputPerThousand: 0.0014, outputPerThousand: 0.0057 }
   foundry-openai/gpt-5: { inputPerThousand: 0.0119011, outputPerThousand: 0.0952085 }
   foundry-openai/gpt-5-mini: { inputPerThousand: 0.0023802, outputPerThousand: 0.0190417 }
+  foundry-openai/gpt-5.4: { inputPerThousand: 0.0254944, outputPerThousand: 0.1529666 }
+  foundry-openai/gpt-5.4-mini: { inputPerThousand: 0.0076483, outputPerThousand: 0.04589 }
+  foundry-openai/gpt-5.4-nano: { inputPerThousand: 0.0018541, outputPerThousand: 0.0115884 }
+  foundry-openai/gpt-5.4-pro: { inputPerThousand: 0.278121, outputPerThousand: 1.668726 }
+  foundry-openai/gpt-5.5: { inputPerThousand: 0.0509889, outputPerThousand: 0.3059331 }
   foundry-openai/gpt-5.6-terra: { inputPerThousand: 0.0203955, outputPerThousand: 0.1223732 }
+  foundry-openai/gpt-6-astra: { inputPerThousand: 0.1112484, outputPerThousand: 0.556242 }
+  foundry-openai/gpt-6-luna: { inputPerThousand: 0.0011125, outputPerThousand: 0.0055624 }
+  foundry-openai/gpt-6-sol: { inputPerThousand: 0.0222497, outputPerThousand: 0.1112484 }
+  foundry-openai/gpt-6.1-sol: { inputPerThousand: 0.0222497, outputPerThousand: 0.1112484 }
+  foundry-openai/gpt-6.1-terra: { inputPerThousand: 0.0111248, outputPerThousand: 0.0556242 }
   foundry-openai/gpt-oss-120b: { inputPerThousand: 0.0014, outputPerThousand: 0.0057 }
   foundry-openai/o1-mini-2m-tps: { inputPerThousand: 0.0105, outputPerThousand: 0.0419 }
   foundry-openai/o3: { inputPerThousand: 0.019, outputPerThousand: 0.0762 }

@@ -86,6 +86,7 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.onboarding.decide': 'audit.actionOnboardingDecide',
   'platform.onboarding.request': 'audit.actionOnboardingRequest',
   'platform.pipeline.cancel': 'audit.actionPipelineCancel',
+  'platform.jobs.redrive': 'audit.actionJobsRedrive',
   'platform.platform-secret.set': 'audit.actionPlatformSecretSet',
   'platform.plugin.register': 'audit.actionPluginRegister',
   'platform.plugin.remove': 'audit.actionPluginRemove',

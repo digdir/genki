@@ -16,7 +16,21 @@ Include as much of this as you can:
 - the configuration needed to reproduce it (for example dev mode on or off, Postgres or memory, which identity provider)
 - steps to reproduce, and a proof of concept if you have one
 
-We confirm that we received the report, keep you informed while we fix it, and ask you to give us reasonable time before you disclose it.
+## What happens next
+
+genki is run by a small team, so these are targets, not guarantees:
+
+1. **Acknowledge.** We confirm that we received the report within three working days.
+2. **Assess.** Within ten working days we tell you whether we can reproduce it, how severe we think it is, and what we plan to do. We may ask you questions on the way.
+3. **Fix.** We fix it privately, tracked in a GitHub security advisory, with a test that would have caught it. Serious issues come first. While the platform is not in production, we aim to fix within 30 days of the assessment, sooner for anything that crosses a tenant boundary or exposes a secret. We keep you informed while we work, and tell you if it will take longer.
+4. **Deploy.** The fix is merged to `main` and deployed to the test environment. Secrets that may have leaked are rotated.
+5. **Disclose.** We publish the advisory on this repository once the fix is deployed, normally within 90 days of your report. We agree the date with you, and ask you to wait for it before you disclose.
+
+The maintainers handle reports ([who maintains genki](CONTRIBUTING.md#who-maintains-genki)).
+
+## Credit
+
+We credit everyone who reports a vulnerability we fix, by name or handle, in the published advisory, unless you ask to stay anonymous. Tell us in the report how you want to be credited.
 
 ## Supported versions
 
@@ -42,3 +56,7 @@ Out of scope:
 - findings from automated scanners without a demonstrated impact
 
 Never commit a secret. If you find one in this repository or its history, report it as a vulnerability.
+
+## Security documentation
+
+What genki protects and what operators must configure is in [docs/security](docs/security/README.md). The threat model and the argument for why it holds are in the [assurance case](docs/security/assurance-case.md).
