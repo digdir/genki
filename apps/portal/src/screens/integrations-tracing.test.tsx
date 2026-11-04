@@ -483,6 +483,11 @@ describe('Integrasjoner: Langfuse, picked from lists', () => {
     }) as HTMLInputElement;
     expect(unknown.checked).toBe(true);
     fireEvent.click(unknown);
+    const again = () =>
+      within(form).getByRole('checkbox', { name: 'fqa (finnes ikke)' }) as HTMLInputElement;
+    fireEvent.click(again());
+    expect(again().checked).toBe(true);
+    fireEvent.click(again());
     reason();
     fireEvent.click(within(form).getByRole('button', { name: 'Lagre' }));
 
@@ -692,5 +697,22 @@ describe('Integrasjoner: Langfuse, picked from lists', () => {
     expect(within(form).getByRole('checkbox', { name: 'Rapportassistenten' })).toBeTruthy();
     expect(within(form).queryByRole('checkbox', { name: 'Postsortering' })).toBeNull();
     expect(within(form).getByRole('checkbox', { name: 'Møtereferat' })).toBeTruthy();
+  });
+
+  it('lets a service unticked by mistake be ticked again, archived or covered twice', async () => {
+    const services = [
+      { id: 'rapportassistenten', name: 'Rapportassistenten' },
+      { id: 'postsortering', name: 'Postsortering', lifecycle: 'archived' },
+    ];
+    const both = { ...own, services: ['rapportassistenten', 'postsortering'] };
+    const { form } = await editForm('etaten', { connections: [digdir, both], services });
+
+    for (const name of ['Rapportassistenten', 'Postsortering']) {
+      fireEvent.click(within(form).getByRole('checkbox', { name }));
+      const box = within(form).getByRole('checkbox', { name }) as HTMLInputElement;
+      expect(box.disabled).toBe(false);
+      fireEvent.click(box);
+      expect(box.checked).toBe(true);
+    }
   });
 });

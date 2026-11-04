@@ -39,6 +39,8 @@ interface Draft {
   /** A new secret key: stored for the host before the connection is saved, never shown again. */
   secret: string;
   services: string[];
+  /** The services the saved connection covers, which stay offered while unticked. */
+  servicesWas: string[];
   /** The residency the agency declares for its own Langfuse. */
   residency: Residency;
   /** The residency an operator set on Digdir's Langfuse; a new connection there starts global. */
@@ -70,6 +72,7 @@ const blank = (instance: TraceInstance | undefined, taken: string[]): Draft => {
     secretKey: '',
     secret: '',
     services: [],
+    servicesWas: [],
     residency: 'global',
     instanceResidency: 'global',
     content: false,
@@ -122,6 +125,7 @@ const draftOf = (c: TraceConnection, instance: TraceInstance | undefined): Draft
     secretKey: c.secretKey,
     secret: '',
     services: c.services,
+    servicesWas: c.services,
     residency: kind === 'own' ? c.residency : 'global',
     instanceResidency: c.instance ? c.residency : 'global',
     content: c.content,
@@ -499,7 +503,7 @@ export const LiveTracing = ({
             ) : null}
             {(services ?? [])
               // An archived service is offered only to a connection that already covers it.
-              .filter((s) => s.lifecycle !== 'archived' || draft.services.includes(s.id))
+              .filter((s) => s.lifecycle !== 'archived' || draft.servicesWas.includes(s.id))
               .map((s) => {
                 const taken = coveredBy(s.id);
                 const ticked = draft.services.includes(s.id);
@@ -508,21 +512,21 @@ export const LiveTracing = ({
                     key={s.id}
                     label={s.name}
                     description={taken ? t('integLangfuse.coveredBy', { id: taken }) : undefined}
-                    // A ticked one stays free to untick, even if another connection covers it too.
-                    disabled={taken !== undefined && !ticked}
+                    // One this connection covers stays free, even if another connection covers it too.
+                    disabled={taken !== undefined && !draft.servicesWas.includes(s.id)}
                     checked={ticked}
                     onChange={() => toggle(draft, s.id)}
                   />
                 );
               })}
             {/* An id saved before services were picked from this list, so it can be unticked. */}
-            {draft.services
+            {[...new Set([...draft.servicesWas, ...draft.services])]
               .filter((id) => !services?.some((s) => s.id === id))
               .map((id) => (
                 <Checkbox
                   key={id}
                   label={services ? t('integLangfuse.unknownService', { id }) : id}
-                  checked
+                  checked={draft.services.includes(id)}
                   onChange={() => toggle(draft, id)}
                 />
               ))}
