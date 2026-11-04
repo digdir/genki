@@ -268,9 +268,9 @@ export const serviceTypes: ServiceType[] = [
       'Automatisk saksbehandling av en kommunal søknad, med saksbehandler som godkjenner',
       'Kodeagenter for utviklere, på åpen modell og felles infrastruktur i Norge',
       'Høringsagent som oppsummerer og sorterer innspill',
-      'Agent som forbereder saksframlegg fra flere kilder',
+      'Saksstøtte i konsesjonsbehandling: komplett søknad, sorterte høringsinnspill, utkast til vurdering',
     ],
-    cases: ['postmottak-agent', 'kommunal-soknad', 'agentisk-utvikling'],
+    cases: ['postmottak-agent', 'kommunal-soknad', 'nve-konsesjon', 'agentisk-utvikling'],
   },
 ];
 

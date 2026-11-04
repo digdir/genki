@@ -1370,6 +1370,117 @@ const norskeModellerSetup: FlowStep[] = [
   },
 ];
 
+const nveKonsesjonSteps: FlowStep[] = [
+  {
+    id: 'soknad',
+    title: 'En konsesjonssøknad kommer inn',
+    text: 'En utbygger sender søknad om et vindkraftverk eller en ny kraftledning, med konsekvensutredning og kart. Søknaden registreres i NVEs saksbehandlingssystem, og saken starter.',
+    block: 'kanaler',
+    node: 'grensesnitt',
+  },
+  {
+    id: 'system',
+    title: 'Saksbehandlingssystemet starter agenten',
+    text: 'For hver ny sak kaller fagsystemet agenten over A2A med Maskinporten-token. Agenten kjører som systembruker for NVE, med rettighetene saken krever og ikke mer.',
+    block: 'tilgangsstyring',
+    node: 'tilgang',
+  },
+  {
+    id: 'tjeneste',
+    title: 'Agentdefinisjonen hentes',
+    text: 'En stegflyt: sjekk om søknaden er komplett, sorter høringsinnspill, finn sammenlignbare saker, lag utkast til vurdering, og stopp for saksbehandler. Risikoklassen er høy, så alle steg logges.',
+    block: 'definisjoner',
+    node: 'tjenester',
+  },
+  {
+    id: 'komplett',
+    title: 'Søknaden sjekkes mot kravene',
+    text: 'Agenten går gjennom søknaden mot NVEs veileder og utredningsprogrammet. Mangler, som en utredning av fugletrekk som ikke finnes, listes med henvisning, så NVE kan be om supplering før høringen i stedet for midt i den.',
+    block: 'rag',
+    node: 'data',
+  },
+  {
+    id: 'horing',
+    title: 'Høringsinnspillene sorteres',
+    text: 'Etter høringen ligger det flere hundre uttalelser fra kommuner, statsforvalter, reindriftsnæring, grunneiere og organisasjoner. Agenten sorterer dem etter tema, naturmangfold, landskap, reindrift, støy og nett, og oppsummerer hvert tema med kilde til hver uttalelse.',
+    block: 'agent-runtime',
+    node: 'kjerne',
+  },
+  {
+    id: 'verktoy',
+    title: 'Fakta hentes med verktøy',
+    text: 'Agenten slår opp tiltaksområdet i NVE Atlas og Naturbase, finner tidligere vedtak i lignende saker i arkivet, og henter produksjons- og nettdata, alle via OpenAPI-verktøy med lesetilgang.',
+    block: 'verktoy',
+    node: 'verktoy',
+  },
+  {
+    id: 'modell',
+    title: 'Modellen skriver utkast til vurdering',
+    text: 'KI-porten ruter til en modell med norsk residens. Utkastet går gjennom fordeler og ulemper tema for tema, viser til lovhjemmel, veileder og sammenlignbare vedtak, og merker hva som er usikkert.',
+    block: 'ki-gateway',
+    node: 'modeller',
+  },
+  {
+    id: 'godkjenning',
+    title: 'Saksbehandler vurderer og beslutter',
+    text: 'Utkastet legges i saken, merket som laget med KI. Saksbehandleren bruker tiden på skjønnet, avveiingen mellom fordeler og ulemper, og befaringen. Vedtaket er alltid NVEs eget.',
+    block: 'evals',
+    node: 'kvalitet',
+  },
+];
+
+const nveKonsesjonSetup: FlowStep[] = [
+  {
+    id: 'definisjon',
+    title: 'Beskriv stegflyten i portalen',
+    text: 'NVE definerer agenten med stegene sjekk, sorter, finn, skriv og stopp. Byggeassistenten foreslår, en fagperson på konsesjon godkjenner. Risikoklasse settes til høy.',
+    block: 'definisjoner',
+    node: 'tjenester',
+  },
+  {
+    id: 'data',
+    title: 'Legg inn regelverk, veiledere og tidligere vedtak',
+    text: 'Energiloven, vannressursloven, forskriftene, NVEs veiledere for søknad og konsekvensutredning og tidligere konsesjonsvedtak hentes inn som datasett, så hvert krav siteres fra gjeldende tekst.',
+    block: 'rag',
+    node: 'data',
+  },
+  {
+    id: 'verktoy',
+    title: 'Koble på kart, arkiv og høringsportal',
+    text: 'NVE Atlas, Naturbase, saksarkivet og høringsportalen registreres som OpenAPI-verktøy med manifest som bare gir lesetilgang.',
+    block: 'verktoy',
+    node: 'verktoy',
+  },
+  {
+    id: 'modell',
+    title: 'Velg modell med norsk residens',
+    text: 'Sakene inneholder opplysninger om grunneiere og reindrift. Katalogen filtreres på residens i Norge, og en modell som er god på lange dokumenter og verktøykall velges.',
+    block: 'ki-gateway',
+    node: 'modeller',
+  },
+  {
+    id: 'testsett',
+    title: 'Bygg testsett av avsluttede saker',
+    text: 'Saksbehandlere velger 40 avsluttede saker med kjent mangelliste, temasortering og vedtak. Dommere sjekker at agenten finner de samme manglene, ikke mister innspill, og viser til riktig hjemmel.',
+    block: 'evals',
+    node: 'kvalitet',
+  },
+  {
+    id: 'tilgang',
+    title: 'Gi fagsystemet rett til å starte agenten',
+    text: 'Saksbehandlingssystemets Maskinporten-klient registreres som systembruker. Saksbehandlerne på konsesjon får rett til å se og godkjenne utkast gjennom Altinn.',
+    block: 'tilgangsstyring',
+    node: 'tilgang',
+  },
+  {
+    id: 'publiser',
+    title: 'Publiser med porter og overvåk',
+    text: 'Publiseringsportene krever at testsettet bestås. Etter publisering følges hvor mye saksbehandler endrer utkastene, og tid fra søknad til vedtak, i dashboardet.',
+    block: 'evals',
+    node: 'kvalitet',
+  },
+];
+
 export const cases: Case[] = [
   {
     id: 'kunnskapsassistenten',
@@ -1418,6 +1529,14 @@ export const cases: Case[] = [
       'En tenkt agent som behandler søknader om parkeringstillatelse for forflytningshemmede: henter opplysninger, sjekker vilkår mot regelverket og skriver vedtaksutkast. Saksbehandler godkjenner, og bare klare tilfeller går raskt.',
     steps: kommunalSoknadSteps,
     setup: kommunalSoknadSetup,
+  },
+  {
+    id: 'nve-konsesjon',
+    name: 'Saksstøtte i konsesjonsbehandling',
+    intro:
+      'En tenkt agent som hjelper NVE i konsesjonsbehandlingen av vindkraft, vannkraft og nett: sjekker om søknaden er komplett, sorterer høringsinnspill etter tema og skriver utkast til vurdering med hjemmel og sammenlignbare vedtak. Saksbehandleren gjør skjønnet, og vedtaket er alltid NVEs eget.',
+    steps: nveKonsesjonSteps,
+    setup: nveKonsesjonSetup,
   },
   {
     id: 'agentisk-utvikling',
