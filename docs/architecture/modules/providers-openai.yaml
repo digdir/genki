@@ -1,7 +1,7 @@
 id: providers-openai
 plane: providers
 name: openai-chat adapter
-note: Chat, Responses + Foundry discovery
+note: Chat, Responses, Decisions + Foundry discovery
 icon: llm
 color: '#8fa8b3'
 status: Provider
@@ -13,10 +13,12 @@ description:
   deployments so models are discovered, not configured.
 responsibilities:
   - openai-chat protocol with per-model API selection and learned Responses recovery
+  - The decide operation against the Azure OpenAI Decisions API, with a closed response shape
   - Azure deployment discovery
 files:
   - packages/providers-openai/src/index.ts
   - packages/providers-openai/src/responses.ts
+  - packages/providers-openai/src/decisions.ts
 input: Port request
 output: OpenAI API call
 replaces:
@@ -45,7 +47,7 @@ edges:
       file: packages/providers-openai/src/index.ts
       imports: '@genai/port-model'
   - to: azure-foundry
-    label: Chat completions, Responses and deployment listing
+    label: Chat completions, Responses, Decisions and deployment listing
     kind: http
     target: http
     witness:

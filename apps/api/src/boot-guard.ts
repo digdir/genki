@@ -2,11 +2,12 @@ import {
   databaseRequirement,
   lockdownEntraProblems,
   platformTenantProblems,
+  traceContentRequirement,
   unmetOutsideDevMode,
 } from '@genai/composition';
 import { operatorSubjectProblems } from './operators.js';
 
-export { isDevMode, isProduction } from '@genai/composition';
+export { isDevMode, isProduction, knowledgeServerProblems } from '@genai/composition';
 
 type Env = Record<string, string | undefined>;
 
@@ -30,6 +31,7 @@ export const bootProblems = (env: Env): string[] => [
       problem:
         'set ALTINN_PDP_URL and its Altinn PDP settings; the mock Altinn rights run only with GENAI_DEV_MODE=true',
     },
+    traceContentRequirement(env),
   ]),
 ];
 

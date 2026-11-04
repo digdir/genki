@@ -1,6 +1,6 @@
 # 0023 Extension model
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (partly built; file stores and step blocks are core, operator-registered embedders not built, 2026-11-03). Proposed 2026-10-07
 
 Built: manifests with declared hosts and secrets, the registry, contract suites, the operator API, a contract run at operator registration that refuses the plug-in when a check fails, operator-registered model, reranker, search endpoint, tool source, agent and evaluator plug-ins feeding the live routers, catalogs and the remote-agent strategy through the change feed, per-tenant adoption of operator plug-ins before a service may use them, tenant registration of MCP, OpenAPI and A2A blocks with a contract test, webhook and built-in hooks with points before and after search and on feedback, Digdir promoting a tenant tool connection to the shared catalog, and manifest permissions enforced at registration, at publish and by the egress guard on every plug-in call.
 
@@ -8,11 +8,11 @@ Built: manifests with declared hosts and secrets, the registry, contract suites,
 
 The platform is built to take in new things as they appear, without reworking its architecture each time. Nothing a service can do is hard-coded; what is fixed is how new capabilities are plugged in.
 
-**Plug-in kinds.** Models, embedders, rerankers, search engines, file stores, tool sources, step blocks, hooks, agents and evaluators are each a kind with a versioned contract. A plug-in is registered through configuration and the API, with a manifest that names its kind, version, the capabilities it offers, the hosts and secrets it may use and the contract it claims to meet. A new kind is a core change (see below); a new plug-in of an existing kind is not. Operators register model, reranker, search endpoint, tool source, agent and evaluator plug-ins from outside under `/operator/plugins`; the routers and catalogs pick them up live. A remote-agent service names a registered agent by id (`config.agent`) instead of a URL, and its data location is checked against the service at publish.
+**Plug-in kinds.** Models, embedders, rerankers, search engines, tool sources, hooks, agents and evaluators are each a kind with a versioned contract. A plug-in is registered through configuration and the API, with a manifest that names its kind, version, the capabilities it offers, the hosts and secrets it may use and the contract it claims to meet. A new kind is a core change (see below); a new plug-in of an existing kind is not. Operators register model, reranker, search endpoint, tool source, agent and evaluator plug-ins from outside under `/operator/plugins`; the routers and catalogs pick them up live. Operator-registered embedders are not built: `POST /operator/plugins` stores an `embedding` manifest without a contract run, and nothing routes to it. A remote-agent service names a registered agent by id (`config.agent`) instead of a URL, and its data location is checked against the service at publish.
 
 Some extension points are not plug-in kinds, because the platform already takes them in another way:
 
-- Strategies and guardrails are code. Custom logic from outside runs as a remote agent, a tool source or a hook endpoint (0028), never as code loaded into the platform. The operator API refuses these kinds and says which route to use.
+- Strategies, guardrails, file stores and step blocks are code. A step from outside is a `tool@1` step against a tool source. Custom logic from outside runs as a remote agent, a tool source or a hook endpoint (0028), never as code loaded into the platform. The operator API refuses these kinds and says which route to use.
 - Skills use the Agent Skills format under `/tenants/{tenant}/skills`, triggers are part of a service definition (`spec.triggers`), and frontends are registered as clients under `/tenants/{tenant}/clients` with their own contract suite.
 - Optimisers and channels are core: the improvement loop and the exposures (chat, REST, MCP, A2A) change through the core lane.
 

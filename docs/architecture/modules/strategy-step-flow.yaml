@@ -10,8 +10,8 @@ packages:
 summary: 'Runs StepFlow definitions: blocks, repeat, forEach, switchOn and subflows.'
 description: A step has exactly one action and an onError policy (ADR 0007). Built-in blocks call
   models, classify, extract with cited sources, retrieve, list and read documents, build tables with a
-  source per cell, route, ask for approval, run the agent loop or call a tool from a registered tool
-  source.
+  source per cell, route, ask for approval, run the agent loop, call a tool from a registered tool
+  source or call a reviewed operation descriptor on one of the service's models.
 responsibilities:
   - Execute versioned step flows
   - Built-in blocks and expressions
@@ -24,6 +24,7 @@ files:
   - packages/strategy-step-flow/src/blocks/documents.ts
   - packages/strategy-step-flow/src/blocks/table.ts
   - packages/strategy-step-flow/src/blocks/tools.ts
+  - packages/strategy-step-flow/src/blocks/operation.ts
 input: Flow ref + input
 output: Flow result
 replaces:

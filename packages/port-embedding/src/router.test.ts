@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envSecrets } from '@genai/kernel';
+import { createGate, envSecrets } from '@genai/kernel';
 import { EmbeddingRouter, parseEmbeddingCatalog, type Residency } from './index.js';
 import { fakeEmbedder, fakeEmbeddingAdapter, fakeVector, testContext } from './testing.js';
 
@@ -106,18 +106,18 @@ describe('embedding router', () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it('refuses a model whose residency exceeds the request', () => {
+  it('refuses a model whose residency exceeds the request when it is called', async () => {
     const { router } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'global');
     const { router: strict } = setup({ residency: 'global' }, fakeEmbeddingAdapter(), 'eu');
 
-    expect(() => router.open(ref, testContext().ctx, { maxResidency: 'norway' })).toThrow(
-      expect.objectContaining({
-        code: 'residency',
-        message: expect.stringMatching(/outside norway/),
-      }),
-    );
-    expect(() => strict.open(ref, testContext().ctx)).toThrow(/outside eu/);
-    expect(() => router.open(ref, testContext().ctx)).not.toThrow();
+    await expect(
+      router.open(ref, testContext().ctx, { maxResidency: 'norway' }).embed(['hei']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    await expect(strict.open(ref, testContext().ctx).embed(['hei'])).rejects.toThrow(/outside eu/);
+    await expect(router.open(ref, testContext().ctx).embed(['hei'])).resolves.toBeDefined();
     expect(() => router.open({ kind: 'embedder', id: 'none' }, testContext().ctx)).toThrow(
       /no embedder none/,
     );
@@ -192,6 +192,72 @@ describe('embedding router', () => {
     await expect(
       setup({}, failing).router.open(ref, testContext(controller.signal).ctx).embed(['a']),
     ).rejects.toMatchObject({ code: 'cancelled' });
+  });
+});
+
+describe('embedding through the gate', () => {
+  it("an embedding call outside the service's residency is refused", async () => {
+    const { router, adapter } = setup({ residency: 'eu' });
+    const { ctx } = testContext();
+
+    await expect(
+      router.open(ref, { ...ctx, serviceResidency: 'norway' }).embed(['a']),
+    ).rejects.toMatchObject({
+      code: 'residency',
+      message: expect.stringMatching(/outside norway/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it('an embedding call is let through in lockdown for a login without model access, so search keeps working', async () => {
+    const adapter = fakeEmbeddingAdapter();
+    const router = new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [adapter],
+      secrets: envSecrets({}),
+      gate: createGate({ admits: () => false }),
+    });
+
+    await router.open(ref, testContext().ctx).embed(['a']);
+
+    expect(adapter.calls).toHaveLength(1);
+  });
+
+  it('an embedding call for a tenant the embedder is not shared with is refused', async () => {
+    const { router, adapter } = setup({ tenants: ['111222333'] });
+
+    await expect(router.open(ref, testContext().ctx).embed(['a'])).rejects.toMatchObject({
+      code: 'bad_request',
+      message: expect.stringMatching(/not shared/),
+    });
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it("embedding calls go through the gate's egress guard for the endpoint", async () => {
+    const given: (typeof fetch | undefined)[] = [];
+    const reached: string[] = [];
+    const guarded = (async (input: string) => {
+      reached.push(input);
+      return new Response();
+    }) as unknown as typeof fetch;
+    const adapter = fakeEmbeddingAdapter();
+    new EmbeddingRouter({
+      catalog: catalog(),
+      adapters: [
+        {
+          ...adapter,
+          connect: (endpoint: Parameters<typeof adapter.connect>[0]) => {
+            given.push(endpoint.fetch);
+            return adapter.connect(endpoint);
+          },
+        },
+      ],
+      secrets: envSecrets({}),
+      gate: createGate({ egress: (endpoint) => (endpoint === 'foundry' ? guarded : undefined) }),
+    });
+
+    await given[0]?.('https://foundry.example/embeddings');
+    expect(reached).toEqual(['https://foundry.example/embeddings']);
   });
 });
 

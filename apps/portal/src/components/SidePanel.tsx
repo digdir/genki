@@ -1,8 +1,10 @@
+import { XMarkIcon } from '@navikt/aksel-icons';
 import { Button, Heading } from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 import { useEscape, useNarrow } from '../hooks';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 
 export const SidePanel = ({
   title,
@@ -32,7 +34,8 @@ export const SidePanel = ({
       if (returnTo.current instanceof HTMLElement) returnTo.current.focus();
     };
   }, []);
-  return (
+  // In the body, so a sticky or scrolling column it opens from cannot paint over it.
+  return createPortal(
     <div
       ref={ref}
       role="dialog"
@@ -56,11 +59,12 @@ export const SidePanel = ({
           aria-label={t('common.close')}
           onClick={onClose}
         >
-          <Icon d={icons.close} />
+          <Icon icon={XMarkIcon} />
         </Button>
       </div>
       <div className="side-panel-body">{children}</div>
       {footer ? <div className="side-panel-foot">{footer}</div> : null}
-    </div>
+    </div>,
+    document.body,
   );
 };

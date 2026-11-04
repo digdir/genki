@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Input, Part } from '@genai/contracts';
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
+import type { Emitted, InvocationContext, Strategy, UseOptions } from '@genai/kernel';
 import type { ChatRequest, ChatResult, ModelPort } from '@genai/port-model';
+import { gatedFake } from '@genai/port-model/testing';
 import {
   assembleLanguage,
   guardStrategy,
@@ -68,7 +69,7 @@ const run = async (
       configHash: 'h',
     },
     capability: { oversight: { aiDisclosure: 'Svaret er laget med kunstig intelligens.' } },
-    use: async () => port,
+    use: async (_port: string, _ref: unknown, options?: UseOptions) => gatedFake(port, options),
     state: { checkpoint: async () => {} },
   } as unknown as InvocationContext;
   const strategy = guardStrategy(planningAndAnswering(seen, received), options);

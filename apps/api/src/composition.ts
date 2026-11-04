@@ -1,5 +1,8 @@
+import type { UsageReads } from '@genai/port-usage';
+import type { DescriptorRegistry } from '@genai/operations';
 import {
   type Catalogs,
+  type EnvironmentTier,
   createRuntime,
   defaultPlatformTenant,
   InMemoryConfigEntryStore,
@@ -118,10 +121,11 @@ import { datasetUploadsModule } from './dataset-uploads.js';
 import { type ApiLog } from './failure-log.js';
 import {
   indexIngestionBackend,
-  type IngestSourceOptions,
+  type IngestSourceConfig,
   type KudosAccess,
 } from './index-ingestion.js';
 import type { ExecutionStore } from './ingestion.js';
+import { logFailedIngestion } from './ingestion-failure-log.js';
 import { describeEngines } from './knowledge-engines.js';
 import {
   InMemoryEventLog,
@@ -148,7 +152,7 @@ import {
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
-import { type PgvectorEngineOptions } from '@genai/providers-pgvector';
+import { type KnowledgePools, type PgvectorEngineOptions } from '@genai/providers-pgvector';
 import { parquetReader } from '@genai/providers-parquet';
 import { postgresRowReader } from '@genai/providers-postgres-source';
 import {
@@ -200,6 +204,7 @@ import {
 } from './rate-limit.js';
 import { trackedWork } from './tracked-work.js';
 import { tenantGate } from './tenant-gate.js';
+import { compiledCapabilityCache } from './compiled-capabilities.js';
 import { defaultMonthlyTokens, quotaSettingKey } from './playground.js';
 import { originOf } from './draft-runner.js';
 import type { ChangeFeed } from './change-feed.js';
@@ -246,6 +251,9 @@ import { onboardingModule } from './onboarding.js';
 import { documentAccessRoutes } from './openapi/access.js';
 import { modelMatrixModule, releaseGate } from './model-matrix.js';
 import { operatorModelsModule } from './operator-models.js';
+import { operatorOperationsModule } from './operator-operations.js';
+import { describedStepProblems, operationGovernanceModule } from './operation-governance.js';
+import { operationDescriptorsModule } from './operation-descriptors.js';
 import { documentDatasetRoutes } from './openapi/datasets.js';
 import { declaredSecrets, PluginRegistry } from '@genai/plugins';
 import { anthropicPlugins } from '@genai/providers-anthropic/contract';
@@ -307,6 +315,9 @@ export const platformModules: PlatformModuleFactory[] = [
   triggersModule,
   serviceLifecycleModule,
   operatorModelsModule,
+  operatorOperationsModule,
+  operationGovernanceModule,
+  operationDescriptorsModule,
   modelMatrixModule,
   hooksModule,
   pluginsModule,
@@ -404,6 +415,7 @@ export interface PlatformInput {
   reservedClientIds?: string[];
   webhookDeliveries?: WebhookDeliveryStore;
   triggerRuns?: TriggerRunStore;
+  gatewayUsage?: UsageReads;
   webhookSend?: WebhookSender;
   webhookEgress?: EgressOptions;
   endpoints?: PlatformEndpoints;
@@ -419,6 +431,7 @@ export interface PlatformInput {
   labels?: LabelStore;
   configurables?: ConfigurablesInput;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
   embeddingAdapters?: EmbeddingAdapter[];
   searchOnlyClusters?: (string | undefined)[];
   ingestFolderRoot?: string;
@@ -436,6 +449,8 @@ export interface PlatformInput {
   kudos?: KudosAccess;
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
 }
 
 interface ServiceRequirementShape {
@@ -748,33 +763,39 @@ export const capabilityResolver = (
   };
 };
 
-type OptionCache = Map<string, { at: number; options: FacetCount[] }>;
+export type OptionCache = Map<string, { at: number; options: Promise<FacetCount[]> }>;
 
-const facetOptions = async (
+export const facetOptions = (
   knowledge: KnowledgeRouter,
   cache: OptionCache,
   principal: Principal,
   tenant: string,
   from: { dataset: string; facet: string },
-) => {
+): Promise<FacetCount[]> => {
   const key = `${tenant}|${from.dataset}|${from.facet}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < 5 * 60_000) return cached.options;
-  const port = knowledge.open(
-    { kind: 'dataset', id: from.dataset, tenant },
-    {
-      tenant,
-      principal,
-      task: `input-options-${crypto.randomUUID()}`,
-      signal: AbortSignal.timeout(5_000),
-      meter: async () => undefined,
-    },
-  );
-  const options = ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
-    value: String(v.value),
-    count: v.count,
-  }));
-  cache.set(key, { at: Date.now(), options });
+  const options = (async () => {
+    const port = knowledge.open(
+      { kind: 'dataset', id: from.dataset, tenant },
+      {
+        tenant,
+        principal,
+        task: `input-options-${crypto.randomUUID()}`,
+        signal: AbortSignal.timeout(5_000),
+        meter: async () => undefined,
+      },
+    );
+    return ((await port.facets([from.facet]))[from.facet] ?? []).map((v) => ({
+      value: String(v.value),
+      count: v.count,
+    }));
+  })();
+  const entry = { at: Date.now(), options };
+  cache.set(key, entry);
+  options.catch(() => {
+    if (cache.get(key) === entry) cache.delete(key);
+  });
   return options;
 };
 
@@ -978,6 +999,9 @@ export const createPlatform = async (input: PlatformInput) => {
     policy: ({ namesOf, catalog }) =>
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
     ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
+    ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    published: (capability) => originOf(capability) === 'service',
+    ...(input.descriptors ? { descriptors: input.descriptors } : {}),
     log: tracker.log,
     tasks: taskStore,
     prices,
@@ -1006,6 +1030,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
+    ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
     ...(input.searchOnlyClusters ? { searchOnlyClusters: input.searchOnlyClusters } : {}),
     ...(input.configurables?.catalogPolicy
@@ -1058,8 +1083,19 @@ export const createPlatform = async (input: PlatformInput) => {
     sync,
     blobStore,
   } = runtime;
+  const jobRuns = input.configurables?.jobRuns;
   const configurables = createConfigurables({
     ...input.configurables,
+    // Runs of datasets on the knowledge database run as jobs (issue 139); others stay in the API.
+    ...(jobRuns
+      ? {
+          jobRuns: {
+            ...jobRuns,
+            runsAsJobs: (dataset: string) =>
+              runtime.catalog.datasetOnKnowledgeServer(dataset) || jobRuns.runsAsJobs(dataset),
+          },
+        }
+      : {}),
     ...(input.lockdown ? { admitsIngestion: mayUseModels } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
     store: configEntries,
@@ -1069,7 +1105,7 @@ export const createPlatform = async (input: PlatformInput) => {
     platformTenant,
   });
   const databaseGuard = new EgressGuard(input.egress ?? {});
-  const ingestSources: IngestSourceOptions = {
+  const ingestSources: IngestSourceConfig = {
     uploads: blobStore,
     phrases: {
       ...(blobStore ? { blobs: blobStore } : {}),
@@ -1114,6 +1150,7 @@ export const createPlatform = async (input: PlatformInput) => {
     embeddingResidency,
     testSets: evalStores.testSets,
   });
+  if (input.logger) logFailedIngestion(config.ingestion, input.logger);
   const locationDeps = {
     catalog: config.catalog,
     engines: () => describeEngines(knowledgeAdapters, writerAdapters),
@@ -1142,20 +1179,33 @@ export const createPlatform = async (input: PlatformInput) => {
       const problems = checkFlow(d, blocks);
       return problems.length > 0 ? problems : undefined;
     }
-    if (d.kind === 'Service')
-      for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+    if (d.kind === 'Service') {
+      const flowOf = async (flowRef: string) => {
         const at = flowRef.lastIndexOf('@');
         const id = flowRef.slice(0, at);
         const version = Number(flowRef.slice(at + 1));
         const flow =
           (await store.get('StepFlow', d.metadata.tenant, id, version))?.definition ??
           (await runtime.sharedRecipe(d.metadata.tenant, id, version));
-        const problems =
-          flow?.kind === 'StepFlow'
-            ? [...flowInputProblems(d, flow, flowRef), ...flowTableProblems(d, flow, flowRef)]
-            : [];
+        return flow?.kind === 'StepFlow' ? flow : undefined;
+      };
+      for (const flowRef of new Set(flowUsesOf(d.spec).map((u) => u.flow))) {
+        const flow = await flowOf(flowRef);
+        const problems = flow
+          ? [
+              ...flowInputProblems(d, flow, flowRef),
+              ...flowTableProblems(d, flow, flowRef),
+              ...(await describedStepProblems(d, flow, flowRef, {
+                descriptors: runtime.descriptors,
+                governance: runtime.governance,
+                models: () => models.describe(),
+                flow: flowOf,
+              })),
+            ]
+          : [];
         if (problems.length > 0) return problems;
       }
+    }
     const configProblems = await config.publishProblems(d);
     if (configProblems.length > 0) return configProblems;
     const evaluation = (d.spec as { evaluation?: { testSets?: string[]; gates?: string[] } })
@@ -1204,17 +1254,22 @@ export const createPlatform = async (input: PlatformInput) => {
     ];
   };
 
+  const compiled = compiledCapabilityCache(() => store.capabilities());
+  const resync = async () => {
+    compiled.invalidate();
+    await sync();
+  };
   const definitions: DefinitionStore = {
     get: (...args) => store.get(...args),
     versions: (...args) => store.versions(...args),
     list: (...args) => store.list(...args),
     resolve: (...args) => store.resolve(...args),
-    capabilities: () => store.capabilities(),
+    capabilities: () => compiled.get(),
     publish: async (...args) => {
       const problems = await checkBeforePublish(args[0], args[1]);
       if (problems) return { ok: false, errors: problems };
       const result = await store.publish(...args);
-      if (result.ok) await sync();
+      if (result.ok) await resync();
       return result;
     },
   };
@@ -1375,7 +1430,7 @@ export const createPlatform = async (input: PlatformInput) => {
   });
 
   const directory = new TenantDirectory(input.tenantDirectory, async () => [
-    ...new Set((await store.capabilities()).map((c) => c.service.tenant)),
+    ...new Set((await definitions.capabilities()).map((c) => c.service.tenant)),
   ]);
   const toolConnections = {
     reload: async () => {
@@ -1571,6 +1626,7 @@ export const createPlatform = async (input: PlatformInput) => {
     knowledge: knowledgeAdapters,
     secrets: catalogSecrets,
     tenant: platformTenant,
+    gate: runtime.gate,
     ...(input.egress ? { egress: input.egress } : {}),
   };
   for (const plugin of [
@@ -1613,12 +1669,18 @@ export const createPlatform = async (input: PlatformInput) => {
       return (await pin(compiled, version))?.capability.descriptor.id;
     },
     kernel,
+    operations: {
+      tier: runtime.environmentTier,
+      descriptors: runtime.descriptors,
+      governance: runtime.governance,
+      try: runtime.tryOperation,
+    },
     enrichmentTask: enrichmentWork.run(() => kernel),
     tasks: taskIndex,
     task: async (id) => (await taskStore.get(id))?.task,
     events: (task) => log.read(task, 0, () => false),
     webhooks,
-    sync,
+    sync: resync,
     onChange: (topic, listener) => input.changes?.on(topic, listener) ?? (() => undefined),
     knowledgeAdapters,
     secrets: catalogSecrets,
@@ -1680,7 +1742,7 @@ export const createPlatform = async (input: PlatformInput) => {
   );
   if (input.verifyPluginsOnBoot)
     void pluginRegistry.verifyUnverified('boot').catch(() => undefined);
-  if (modules.some((m) => m.decorateCapability)) await sync();
+  if (modules.some((m) => m.decorateCapability)) await resync();
 
   const extensions = {
     ...adminExtensions({
@@ -1749,7 +1811,16 @@ export const createPlatform = async (input: PlatformInput) => {
         definitions,
         tasks: (tenant) => taskIndex.all(tenant),
         task: async (id) => (await taskStore.get(id))?.task,
+        ...(taskIndex.envelopes ? { taskEnvelopes: taskIndex.envelopes } : {}),
         events: (id) => log.read(id, 0, () => false),
+        ...(taskIndex.usageEvents ? { usageEvents: taskIndex.usageEvents } : {}),
+        ...(taskIndex.eventsOfType ? { eventsOfType: taskIndex.eventsOfType } : {}),
+        ...(taskStore.erasures
+          ? {
+              erasures: (tenant: string, ids: string[]) =>
+                taskStore.erasures?.(tenant, ids) ?? Promise.resolve([]),
+            }
+          : {}),
         apiKeys,
         connections,
         requirementFor:
@@ -1760,6 +1831,7 @@ export const createPlatform = async (input: PlatformInput) => {
           })),
         prices,
         ingestionUsage,
+        ...(input.gatewayUsage ? { gatewayUsage: input.gatewayUsage } : {}),
         projectTasks: (tenant) => projectTasks(configurables.store, tenant),
         serviceHealth: async (tenant, service) => {
           const found = await definitions.get('Service', tenant, service);
@@ -1822,12 +1894,13 @@ export const createPlatform = async (input: PlatformInput) => {
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
-        .map(({ id, family, residency: r, capabilities, parameters }) => ({
+        .map(({ id, family, residency: r, capabilities, operations, parameters }) => ({
           id,
           name: displayNames.get(id) ?? id,
           ...(family ? { family } : {}),
           residency: r,
           capabilities,
+          operations,
           parameters,
           price: prices[id] ?? null,
         }));
@@ -2073,6 +2146,7 @@ export const createPlatform = async (input: PlatformInput) => {
     embedders,
     writers,
     catalog: config.catalog,
+    descriptors: runtime.descriptors,
     ingestion: config.ingestion,
     gates: configurables.gates,
     guardrailRules: configurables.rules,
@@ -2080,7 +2154,7 @@ export const createPlatform = async (input: PlatformInput) => {
     prices,
     drafts,
     modules,
-    sync,
+    sync: resync,
     mount,
   };
 };

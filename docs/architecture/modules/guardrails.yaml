@@ -9,13 +9,14 @@ packages:
   - '@genai/guardrails'
 summary: Named guardrails that wrap every strategy and are enforced, not just stored.
 description: pii-before-model, pii-out-of-log, require-sources, language, refuse-topics and
-  human-approval, each with its own schema. The composition root wraps every service strategy with
+  human-approval, custom-rules and purpose-check, each with its own schema. The composition root wraps every service strategy with
   them.
 responsibilities:
   - Norwegian PII detection and redaction
   - Require sources and language rules
   - Language instructions: house style and service text per answer language, on answer calls only
   - Human approval and refused topics
+  - Purpose check through the decision port, where a refusal or an unsure answer goes to a person
 files:
   - packages/guardrails/src/strategy.ts
   - packages/guardrails/src/pii.ts

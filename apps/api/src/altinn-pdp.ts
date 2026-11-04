@@ -20,7 +20,12 @@ export type AltinnPdpChoice =
       authorization: AltinnAuthorization;
       app: ReturnType<typeof createMockAltinnPdp>['app'];
     }
-  | { kind: 'altinn'; authorization: AltinnAuthorization; baseURL: string };
+  | {
+      kind: 'altinn';
+      authorization: AltinnAuthorization;
+      baseURL: string;
+      warm: () => Promise<unknown>;
+    };
 
 export const altinnPdpSettings = [
   'ALTINN_PDP_URL',
@@ -73,6 +78,7 @@ export const altinnPdpFrom = (
   return {
     kind: 'altinn',
     baseURL,
+    warm: () => exchanged.token(),
     authorization: cachedAltinnAuthorization(
       httpAltinnAuthorization({
         baseURL,
