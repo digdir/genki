@@ -51,18 +51,19 @@ const kudosTexts = async (
 ): Promise<{ texts: string[]; skip?: SkipReason }> => {
   const files: { file: KudosFile; bytes: Uint8Array }[] = [];
   let skip: SkipReason | undefined;
+  let tooLarge = false;
   const limit = options.maxFileBytes;
   try {
     for (const file of doc.files ?? []) {
       if (limit !== undefined && Number(file.size ?? 0) > limit) {
-        skip = 'too_large';
+        tooLarge = true;
         continue;
       }
       try {
         files.push({ file, bytes: await options.fetchFile(file) });
       } catch (error) {
         if (!(error instanceof ResponseTooLarge)) throw error;
-        skip = 'too_large';
+        tooLarge = true;
       }
     }
   } catch (error) {
@@ -83,6 +84,8 @@ const kudosTexts = async (
       skip = error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed';
     }
   }
+  // A file left out for its size says more than a blank one beside it.
+  if (texts.length === 0 && tooLarge) return { texts, skip: 'too_large' };
   return texts.length === 0 && skip ? { texts, skip } : { texts };
 };
 

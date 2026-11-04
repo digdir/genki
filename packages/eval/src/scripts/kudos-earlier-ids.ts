@@ -8,6 +8,10 @@
  * About 10,000 ids take two to three hours at 4,500 requests an hour, then `check` lists the
  * indexed types once (about 300 requests) and reads the few documents the listing did not give.
  *
+ * An id whose redirect leads nowhere is resolved by its files instead, when one live document
+ * holds one of them (the test copy numbered some documents differently), and written to the map's
+ * `byFile` section, apart from the redirects.
+ *
  * `follow` reads today's ids and follows each `https://kudos.dfo.no/documents/<n>`, appending to
  * `.data/kudos-earlier-ids/redirects.jsonl`, so a stopped run goes on where it stopped. `check`
  * keeps a redirect only when a file sha256 of the old document is among the live document's files
@@ -22,6 +26,7 @@ import {
   kudosListing,
   kudosProd,
   kudosRateLimiter,
+  resolveByFiles,
   retryAfterMs,
   type EarlierIdsMap,
   type KudosDocument,
@@ -197,11 +202,14 @@ const check = async () => {
       console.error(JSON.stringify({ uuid, error: String(error) }));
     }
   }
-  const map: EarlierIdsMap = { ids: {}, unresolved: {} };
+  const map: EarlierIdsMap = { ids: {}, byFile: {}, unresolved: {} };
   for (const redirect of redirects) {
     const reason = reasonOf(redirect);
     if (reason || !redirect.uuid) {
-      map.unresolved[redirect.id] = reason ?? 'no document';
+      // Some documents of the test copy have no redirect on the live site; their files tell.
+      const byFiles = resolveByFiles(old.get(redirect.id) ?? { sha256: [] }, live.values());
+      if ('uuid' in byFiles) (map.byFile ??= {})[redirect.id] = byFiles.uuid;
+      else map.unresolved[redirect.id] = `${reason ?? 'no document'}; ${byFiles.reason}`;
       continue;
     }
     const doc = live.get(redirect.uuid);
@@ -213,13 +221,16 @@ const check = async () => {
     if ('uuid' in checked) map.ids[redirect.id] = checked.uuid;
     else map.unresolved[redirect.id] = checked.reason;
   }
-  const missing = [...old.keys()].filter((id) => !(id in map.ids) && !(id in map.unresolved));
+  const missing = [...old.keys()].filter(
+    (id) => !(id in map.ids) && !(id in (map.byFile ?? {})) && !(id in map.unresolved),
+  );
   for (const id of missing) map.unresolved[id] = 'not followed yet';
   writeFileSync(mapFile, `${JSON.stringify(map, null, 2)}\n`);
   console.log(
     JSON.stringify({
       ids: old.size,
       resolved: Object.keys(map.ids).length,
+      byFile: Object.keys(map.byFile ?? {}).length,
       unresolved: Object.keys(map.unresolved).length,
       out: mapFile,
     }),

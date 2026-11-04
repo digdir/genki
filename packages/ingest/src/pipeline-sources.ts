@@ -527,8 +527,9 @@ export const kudosListing = (client: ReturnType<typeof kudosClientFor>, filter: 
           if (fresh(doc)) yield doc;
         }
         const total = listed.total();
-        // Without a total nothing says the search came back whole.
-        reached = total !== undefined && seen.size >= total;
+        // Without a total nothing says the search came back whole, and no pass can.
+        if (total === undefined) break;
+        reached = seen.size >= total;
       }
       if (!reached) whole = false;
     }

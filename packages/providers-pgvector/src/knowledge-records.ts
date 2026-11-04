@@ -110,15 +110,6 @@ const writeRecord = async (
   write: RecordWrite,
 ) => {
   const { dataset, pipeline } = input;
-  if (write.kind === 'seen' && write.earlierIds) {
-    // Not a change of the document: its data version and generations stay as they are.
-    await client.query(
-      `update src_documents set earlier_ids = $3
-        where dataset = $1 and id = $2 and earlier_ids is distinct from $3::text[]`,
-      [dataset, write.id, write.earlierIds],
-    );
-    return;
-  }
   if (write.kind === 'seen' || write.kind === 'missing') return;
   if (write.kind === 'delete') {
     await client.query(
@@ -210,6 +201,18 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
         await client.query(
           `update src_documents set missing = missing + 1 where dataset = $1 and id = any($2::text[])`,
           [dataset, missing],
+        );
+      // Earlier ids of unchanged records, in one statement: not a change of the document, so its
+      // data version and generations stay as they are.
+      const earlier = plan.writes.flatMap((w) =>
+        w.kind === 'seen' && w.earlierIds ? [{ id: w.id, ids: w.earlierIds }] : [],
+      );
+      if (earlier.length > 0)
+        await client.query(
+          `update src_documents d set earlier_ids = x.ids
+             from jsonb_to_recordset($2::jsonb) as x(id text, ids text[])
+            where d.dataset = $1 and d.id = x.id and d.earlier_ids is distinct from x.ids`,
+          [dataset, JSON.stringify(earlier)],
         );
       if (plan.process.length === 0) return;
       const { rows } = await client.query<{ number: string }>(

@@ -294,6 +294,31 @@ describe('a Kudos listing', () => {
     expect(calls.filter((c) => c.pathname.includes('/filer/'))).toEqual([]);
   });
 
+  it('a Kudos document whose readable file is too large is skipped as too_large, not no_text', async () => {
+    const base = doc(3);
+    const file = base.files?.[0];
+    if (!file) throw new Error('the test document has no file');
+    const mixed = doc(3, {
+      files: [
+        { ...file, uuid: 'f3', size: 60 * 1024 * 1024 },
+        { ...file, uuid: 'f3b', url: `${file.url}?blank` },
+      ],
+    });
+    const { access } = fakeKudos({
+      docs: [mixed],
+      status: (url) => (url.search === '?blank' ? new Response(pdf('dokument 3')) : undefined),
+    });
+    const listing = await knowledgeListingOf(
+      spec({ types: ['Årsrapport'] }),
+      { kudos: access, converter: { toMarkdown: async () => '' } },
+      scope,
+      signal,
+    );
+    const [listed] = await all(listing);
+
+    expect((await listing.load(listed?.record ?? {})).skip).toBe('too_large');
+  });
+
   it('a Kudos pipeline lists only documents published between since and until', async () => {
     const docs = [
       doc(1, { publish_date: '2020-02-29' }),
@@ -332,11 +357,13 @@ describe('a Kudos listing', () => {
 
   it('a Kudos search without meta.total is never complete', async () => {
     const docs = [1, 2, 3, 4].map((n) => doc(n));
-    const { access } = fakeKudos({ docs, noTotal: true });
+    const { access, calls } = fakeKudos({ docs, noTotal: true });
     const listing = await listingFor({ types: ['Årsrapport'] }, access);
 
     expect(await all(listing)).toHaveLength(4);
     expect(listing.complete()).toBe(false);
+    // Another pass cannot make it complete, so it is walked once.
+    expect(calls.filter((c) => c.searchParams.get('page') === '1')).toHaveLength(1);
   });
 
   it('a Kudos listing from a later page walks once, from that page', async () => {
