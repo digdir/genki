@@ -681,21 +681,28 @@ export const integrationsArea = {
     idInvalid:
       'Bruk bare små bokstaver, tall og bindestrek, og start med en bokstav eller et tall, for eksempel etaten-langfuse.',
     host: 'Adresse',
-    hostHelp: 'For eksempel https://langfuse.digdir.cloud. Bare HTTPS.',
-    hostInvalid: 'Skriv hele adressen, for eksempel https://langfuse.digdir.cloud.',
+    hostHelp: 'For eksempel https://langfuse.etaten.no. Bare HTTPS.',
+    hostInvalid: 'Skriv hele adressen, for eksempel https://langfuse.etaten.no.',
     publicKey: 'Offentlig nøkkel',
     secret: 'Hemmelig nøkkel',
     secretHelp:
-      'Lagres som en hemmelighet som bare kan sendes til adressen over, og vises ikke igjen.',
+      'Lagres som en hemmelighet som bare kan sendes til denne Langfuse, og vises ikke igjen.',
     secretKeepHelp:
-      'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for adressen over.',
+      'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for denne Langfuse.',
     secretAgain:
       'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
+    which: 'Langfuse',
+    whichHelp: 'Digdirs Langfuse er {host}.',
+    instanceOption: 'Digdirs Langfuse',
+    ownOption: 'Egen Langfuse',
     servicesLabel: 'Tjenester',
-    servicesHelp: 'Tjenestenes id, skilt med komma. En tjeneste kan bare ha én kobling.',
+    servicesHelp: 'Tjenestene som sender testkjøringer hit. En tjeneste kan bare ha én kobling.',
+    coveredBy: 'Koblet til {id}',
+    unknownService: '{id} (finnes ikke)',
+    noServices: 'Virksomheten har ingen tjenester ennå.',
+    servicesFailed: 'Fikk ikke hentet tjenestene.',
     residency: 'Lagringssted',
-    residencyHelp:
-      'Hvor Langfuse lagrer det den får, og hvor dommernes modeller kjører. For Digdirs Langfuse setter Digdir dette.',
+    residencyHelp: 'Hvor Langfuse lagrer det den får, og hvor dommernes modeller kjører.',
     content: 'Send tekst',
     contentHelp:
       'Spørsmål, svar og det dommerne leser. Krever at Langfuse sletter det genki sletter og holder rådata i høyst 7 dager.',
