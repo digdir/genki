@@ -1,10 +1,11 @@
 import {
   Alert,
   Button,
-  Chip,
+  Fieldset,
   Heading,
   Link,
   Paragraph,
+  Radio,
   Spinner,
   Table,
   TableBody,
@@ -169,24 +170,22 @@ export const Questions = ({
           const label = `${id}-q${i}`;
           return (
             <li key={q.id}>
-              <span id={label} className="ax-question-label">
-                {i + 1}. {q.label}
-              </span>
-              <div role="group" aria-labelledby={label} className="ax-chips">
+              <Fieldset>
+                <Fieldset.Legend className="ax-question-label">
+                  {i + 1}. {q.label}
+                </Fieldset.Legend>
                 {[...q.options, ...(q.allowOther ? [otherKey] : [])].map((o) => (
-                  <Chip.Radio
+                  <Radio
                     key={o}
-                    data-size="sm"
                     name={label}
+                    value={o}
+                    label={o === otherKey ? t('assistant.other') : o}
                     checked={picked[q.id] === o}
-                    readOnly={done}
-                    aria-disabled={done || undefined}
-                    onChange={() => !done && setPicked((p) => ({ ...p, [q.id]: o }))}
-                  >
-                    {o === otherKey ? t('assistant.other') : o}
-                  </Chip.Radio>
+                    disabled={done}
+                    onChange={() => setPicked((p) => ({ ...p, [q.id]: o }))}
+                  />
                 ))}
-              </div>
+              </Fieldset>
               {picked[q.id] === otherKey ? (
                 <Textfield
                   data-size="sm"
