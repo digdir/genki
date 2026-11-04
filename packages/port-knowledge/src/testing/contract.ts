@@ -44,12 +44,18 @@ export interface KnowledgeTarget {
   secrets?: SecretResolver;
   /** A request this engine fails on its own, used to prove one failure becomes a warning. */
   failingRequest?: SearchRequest;
+  /** The generation the catalog names, for engines that read the generation the catalog names. */
+  generation?(): string | undefined;
   close?(): Promise<void>;
 }
 
 export interface IndexWriterTarget extends KnowledgeTarget {
   writer: IndexWriter;
   dataset: DatasetConfig;
+  /** Makes a promoted generation the one searches read by naming it in the catalog, as the knowledge database does. */
+  activate?(generation: string): void;
+  /** Decimal digits a stored vector keeps; half-precision storage keeps about three. */
+  vectorDigits?: number;
 }
 
 export const contractDocuments = (embedding?: DatasetEmbedding, documents = fixtureDocuments) =>
@@ -98,6 +104,7 @@ export const openTarget = (
           filters: dataset.filters,
           options: target.datasetOptions ?? {},
           ...(target.embedding ? { embedding: target.embedding } : {}),
+          ...(target.generation?.() ? { generation: target.generation() } : {}),
         },
       ],
     },
@@ -345,6 +352,7 @@ export const indexWriterContract = (
   describe(`index writer contract: ${name}`, () => {
     let runs = 0;
     let target: IndexWriterTarget;
+    let contractDataset: ContractDataset;
     let reader: KnowledgePort;
     let declared: Set<KnowledgeCapability>;
     const [first, second] = fixtureDocuments as [IndexDocument, IndexDocument];
@@ -362,9 +370,19 @@ export const indexWriterContract = (
       return hits.some((h) => h.document === document);
     };
 
+    const promote = async (generation: string) => {
+      const previous = await target.writer.promote(target.dataset, generation);
+      if (target.activate) {
+        target.activate(generation);
+        reader = openTarget(target, contractDataset);
+      }
+      return previous;
+    };
+
     beforeEach(async () => {
       runs += 1;
       const dataset = { id: `contract-writer/${slug(name)}-${runs}`, filters: fixtureFilters };
+      contractDataset = dataset;
       target = await setup({ dataset });
       reader = openTarget(target, dataset);
       declared = new Set(reader.info().capabilities ?? []);
@@ -386,7 +404,7 @@ export const indexWriterContract = (
         chunks: 2 + second.chunks.length,
         phrases: 1 + second.phrases.length,
       });
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       if (declared.has('fetch')) {
         const ids = first.chunks.map((c) => c.id);
         const fetched = await reader.fetch(ids);
@@ -402,27 +420,29 @@ export const indexWriterContract = (
     it('a new generation is invisible until promote', async () => {
       const [a, b] = [first.chunks[0]?.id ?? '', second.chunks[0]?.id ?? ''];
       await store('g1', first);
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       await store('g2', second);
       expect(await visible(a, first.id)).toBe(true);
       expect(await visible(b, second.id)).toBe(false);
-      await target.writer.promote(target.dataset, 'g2');
+      await promote('g2');
       expect(await visible(b, second.id)).toBe(true);
       expect(await visible(a, first.id)).toBe(false);
     });
 
-    it('promote returns the previous generation', async () => {
+    it('promote returns the previous generation', async (ctx) => {
+      // Where the catalog names the active generation, promote only readies it and knows no previous one.
+      if (target.activate) return ctx.skip();
       await store('g1', first);
       await store('g2', second);
-      expect(await target.writer.promote(target.dataset, 'g1')).toBeUndefined();
-      expect(await target.writer.promote(target.dataset, 'g2')).toBe('g1');
+      expect(await promote('g1')).toBeUndefined();
+      expect(await promote('g2')).toBe('g1');
     });
 
     it('read streams stored documents with vectors', async (ctx) => {
       const read = target.writer.read?.bind(target.writer);
       if (!read) return ctx.skip();
       await store('g1', first, second);
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       await store('g2', second);
       const expected = docs(first, second);
       const active = await collect(read(target.dataset));
@@ -432,7 +452,9 @@ export const indexWriterContract = (
         if (!vector) continue;
         const got = stored.get(id) ?? [];
         expect(got, id).toHaveLength(vector.length);
-        got.forEach((value, i) => expect(value).toBeCloseTo(vector[i] ?? 0, 5));
+        got.forEach((value, i) =>
+          expect(value).toBeCloseTo(vector[i] ?? 0, target.vectorDigits ?? 5),
+        );
       }
       expect((await collect(read(target.dataset, 'g2'))).map((d) => d.id)).toEqual([second.id]);
     });
@@ -460,6 +482,7 @@ export const indexWriterContract = (
               filters: target.dataset.filters,
               options: served === 'contract' ? datasetOptions() : {},
               ...(target.embedding ? { embedding: target.embedding } : {}),
+              ...(target.generation?.() ? { generation: target.generation() } : {}),
             },
           ],
         },
@@ -477,7 +500,7 @@ export const indexWriterContract = (
 
     it('drop refuses the generation the catalog serves', async () => {
       await store('g1', first);
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       await store('g2', second);
       const route = routed('contract').open(target.dataset.id, {
         signal: new AbortController().signal,
@@ -492,7 +515,7 @@ export const indexWriterContract = (
 
     it('drop removes an inactive generation', async () => {
       await store('g1', first);
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       const route = routed('elsewhere').openAt(
         target.dataset.id,
         'contract',
@@ -500,7 +523,7 @@ export const indexWriterContract = (
         { datasetOptions: datasetOptions() },
       );
       await route.writer.drop(target.dataset, 'g1', { force: true });
-      expect(await target.writer.active(target.dataset)).toBeUndefined();
+      if (!target.activate) expect(await target.writer.active(target.dataset)).toBeUndefined();
       const read = target.writer.read?.bind(target.writer);
       if (read) await expect(collect(read(target.dataset, 'g1'))).rejects.toThrow();
     });
@@ -508,7 +531,7 @@ export const indexWriterContract = (
     it('drop refuses the active generation', async () => {
       await store('g1', first);
       await store('g2', second);
-      await target.writer.promote(target.dataset, 'g1');
+      await promote('g1');
       await expect(target.writer.drop(target.dataset, 'g1')).rejects.toMatchObject({
         code: 'bad_request',
       });

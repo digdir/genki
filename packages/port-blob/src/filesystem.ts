@@ -74,8 +74,10 @@ export class FileSystemBlobStore implements BlobStore {
       let entries;
       try {
         entries = await readdir(dir, { withFileTypes: true });
-      } catch {
-        return [];
+      } catch (error) {
+        // A folder that is not there holds nothing; one that cannot be read must not look empty.
+        if ((error as { code?: string }).code === 'ENOENT') return [];
+        throw error;
       }
       const nested = await Promise.all(
         entries.map((e) =>

@@ -53,6 +53,8 @@ export const contractQueues = {
   expiring: contractQueue('expiring', { expireInSeconds: 11, retryLimit: 1 }),
   listed: contractQueue('listed'),
   alsoListed: contractQueue('also-listed'),
+  givingWay: contractQueue('giving-way', { policy: 'exclusive', retryLimit: 2 }),
+  retimed: contractQueue('retimed'),
 };
 
 export const waitFor = async <T>(
@@ -315,6 +317,41 @@ export const describeJobQueueContract = (
       await waitFor(() => order.length === 3);
       expect(order).toEqual(['10', '5', '1']);
     });
+
+    it('a writer sent again later uses none of its retries', async () => {
+      const attempts: { retryCount: number; at: number }[] = [];
+      const key = 'g-1#7';
+      await target.queue.work(q.givingWay, async (job) => {
+        attempts.push({ retryCount: job.retryCount, at: Date.now() });
+        if (attempts.length === 1)
+          await target.queue.sendAgain(q.givingWay, job, {
+            key,
+            startAfter: new Date(Date.now() + 1_500),
+          });
+      });
+      await target.queue.send(q.givingWay, { tenant: ORG_A, item: 'busy' }, { key });
+      await waitFor(() => attempts.length === 2, 20_000);
+      expect(attempts.map((a) => a.retryCount)).toEqual([0, 0]);
+      expect((attempts[1]?.at ?? 0) - (attempts[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_000);
+      expect(await deadLetters(q.givingWay)).toEqual([]);
+    }, 30_000);
+
+    it('moving the start of waiting jobs lets them start then', async () => {
+      const seen: string[] = [];
+      await target.queue.send(
+        q.retimed,
+        { tenant: ORG_A, item: 'tonight' },
+        { startAfter: new Date(Date.now() + 3_600_000) },
+      );
+      await target.queue.work(q.retimed, async (job) => {
+        seen.push(job.data.item);
+      });
+      await pause(1_000);
+      expect(seen).toEqual([]);
+      expect(await target.queue.retime([q.retimed], new Date())).toBe(1);
+      await waitFor(() => seen.length === 1);
+      expect(seen).toEqual(['tonight']);
+    }, 30_000);
 
     it('an attempt that runs past its expiry is aborted and retried', async () => {
       const attempts: string[] = [];

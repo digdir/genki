@@ -2,7 +2,6 @@ import { setting } from './runtime-config';
 import { Alert, Badge, Button, Popover, SkipLink } from '@digdir/designsystemet-react';
 import { LanguageChoice } from '@genai/i18n/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { isEntraLogin } from './auth';
 import { useT, type PlainKey, type T } from './i18n';
 import { useSupport } from './support';
 import { SupportDialog } from './support-dialog';
@@ -78,6 +77,7 @@ interface ShellProps {
   path: string;
   badges?: NavBadges;
   health?: (signal?: AbortSignal) => Promise<Health>;
+  readOnlyInLockdown?: (signal?: AbortSignal) => Promise<boolean>;
   children: ReactNode;
 }
 
@@ -102,29 +102,39 @@ const isCurrent = (item: NavItem, path: string) =>
 
 const LockdownBanner = ({
   health,
-  entra,
+  readOnlyInLockdown,
 }: {
   health: (signal?: AbortSignal) => Promise<Health>;
-  entra: boolean;
+  readOnlyInLockdown: (signal?: AbortSignal) => Promise<boolean>;
 }) => {
   const t = useT();
-  const [locked, setLocked] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    health(controller.signal).then(
-      (found) => setLocked(found.lockdown === true),
-      () => undefined,
-    );
+    health(controller.signal)
+      .then(async (found) => {
+        if (found.lockdown !== true) return;
+        if (await readOnlyInLockdown(controller.signal)) setReadOnly(true);
+      })
+      .catch(() => undefined);
     return () => controller.abort();
-  }, [health]);
-  return locked ? (
+  }, [health, readOnlyInLockdown]);
+  return readOnly ? (
     <Alert data-color="warning" data-size="sm" className="lockdown-banner">
-      {t(entra ? 'shell.lockdown' : 'shell.lockdownReadOnly')}
+      {t('shell.lockdownReadOnly')}
     </Alert>
   ) : null;
 };
 
-export const Shell = ({ session, onLogout, path, badges = {}, health, children }: ShellProps) => {
+export const Shell = ({
+  session,
+  onLogout,
+  path,
+  badges = {},
+  health,
+  readOnlyInLockdown,
+  children,
+}: ShellProps) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [extending, setExtending] = useState(false);
   const t = useT();
@@ -329,7 +339,9 @@ export const Shell = ({ session, onLogout, path, badges = {}, health, children }
         </nav>
         <main id="hovedinnhold" className="main" tabIndex={-1}>
           <div className="content">
-            {health ? <LockdownBanner health={health} entra={isEntraLogin(session.token)} /> : null}
+            {health && readOnlyInLockdown ? (
+              <LockdownBanner health={health} readOnlyInLockdown={readOnlyInLockdown} />
+            ) : null}
             {children}
           </div>
         </main>

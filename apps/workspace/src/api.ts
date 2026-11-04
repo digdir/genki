@@ -214,6 +214,14 @@ export const createWorkspaceApi = ({
       const body = (await readJson(response)) as { lockdown?: unknown } | undefined;
       return response.ok && body?.lockdown === true;
     },
+    readOnlyInLockdown: async (signal) => {
+      const response = await send(`${baseUrl}/me`, {
+        headers: headers(),
+        ...(signal ? { signal } : {}),
+      });
+      const body = (await readJson(response)) as { lockdownReadOnly?: unknown } | undefined;
+      return response.ok && body?.lockdownReadOnly === true;
+    },
     rights: async (tenant, signal) => {
       try {
         const rights = (await tenantCall('GET', tenant, 'me', { signal }))?.rights;

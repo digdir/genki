@@ -9,12 +9,15 @@ packages:
   - '@genai/port-embedding'
 summary: Turns text into vectors through a catalog of embedding models.
 description:
-  Same router shape as the model and rerank ports. Checks residency and dimensions, batches
-  input and meters usage to the caller, so search engines without built-in embedding can use vectors.
+  Same router shape as the model and rerank ports. Checks dimensions, batches input and calls
+  through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the
+  texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search
+  outside a run, so search engines without built-in embedding can use vectors. Embedding is open in
+  lockdown, as ADR 0033 intends.
 responsibilities:
   - Embedding catalog
-  - Residency and dimension checks
-  - Batching and metering
+  - Dimension checks and batching
+  - Calls through the kernel gate, which applies the endpoint's egress guard
 files:
   - packages/port-embedding/src/port.ts
   - packages/port-embedding/src/router.ts
@@ -25,6 +28,13 @@ replaces:
   - module: rag
     how: Embedding inside Typesense
 edges:
+  - to: operations
+    label: Descriptor executor and registry
+    kind: call
+    target: call
+    witness:
+      file: packages/port-embedding/src/router.ts
+      imports: '@genai/operations'
   - to: plugins
     label: Embedding contract suite
     kind: call

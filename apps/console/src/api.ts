@@ -278,6 +278,9 @@ export const createApiClient = ({
         headers: { 'change-reason': reason },
       }),
     health: (signal?: AbortSignal) => call<Health>('GET', '/health', { signal }),
+    readOnlyInLockdown: async (signal?: AbortSignal) =>
+      (await call<{ lockdownReadOnly?: boolean }>('GET', '/me', { signal })).lockdownReadOnly ===
+      true,
     askService: async (
       model: string,
       messages: ChatTurn[],

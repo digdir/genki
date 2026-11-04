@@ -4,6 +4,8 @@ export const trustedEntraScope = `${INTERNAL_GRANT_PREFIX}trusted-entra-login`;
 
 export const admittedCredentialScope = `${INTERNAL_GRANT_PREFIX}admitted-credential`;
 
+export const lockdownUserScope = `${INTERNAL_GRANT_PREFIX}lockdown-user`;
+
 export const ORGNO_AUTHORITY = 'iso6523-actorid-upis';
 
 export interface OrgNo {
