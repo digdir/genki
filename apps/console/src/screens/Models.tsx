@@ -28,6 +28,7 @@ import { EmptyState, ErrorState, Loading } from '../states';
 import type {
   Capability,
   ModelClassification,
+  ModelOperation,
   OperatorModel,
   RefreshResult,
   ModelPrice,
@@ -38,6 +39,7 @@ import {
   capabilityLabel,
   Endpoints,
   ModelForm,
+  operationLabel,
   PriceDialog,
   residencyLabel,
 } from './models/Endpoints';
@@ -53,6 +55,7 @@ export const priceText = (price: ModelPrice | null | undefined, f: Format, t: T)
     : t('models.unpriced');
 
 const capabilities = Object.keys(capabilityLabel) as Capability[];
+const operations = Object.keys(operationLabel) as ModelOperation[];
 const residencies = Object.keys(residencyLabel) as Residency[];
 
 const ModelRow = ({
@@ -163,6 +166,38 @@ const ModelRow = ({
               }
             />
           ))}
+        </Fieldset>
+        <Fieldset data-size="sm">
+          <FieldsetLegend>
+            {t('models.operations')}{' '}
+            <span className="visually-hidden">
+              {t('models.forModel', { model: model.deployment })}
+            </span>
+          </FieldsetLegend>
+          {operations.map((o) => {
+            const offered = model.operations ?? ['chat'];
+            const on = offered.includes(o);
+            return (
+              <Checkbox
+                key={o}
+                label={
+                  <>
+                    {t(operationLabel[o])}{' '}
+                    <span className="visually-hidden">
+                      {t('models.forModel', { model: model.deployment })}
+                    </span>
+                  </>
+                }
+                checked={on}
+                disabled={busy || (on && offered.length === 1)}
+                onChange={(e) =>
+                  onChange({
+                    operations: e.target.checked ? [...offered, o] : offered.filter((x) => x !== o),
+                  })
+                }
+              />
+            );
+          })}
         </Fieldset>
       </TableCell>
       <TableCell>

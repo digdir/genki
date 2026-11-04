@@ -1,3 +1,4 @@
+import { CodeIcon } from '@navikt/aksel-icons';
 import { Alert, Button, Paragraph } from '@digdir/designsystemet-react';
 import { intlLocale } from '@genai/i18n';
 import { useState } from 'react';
@@ -10,7 +11,7 @@ import type {
 } from '../../api/building-blocks';
 import { ApiCallPanel, type ApiCallPreview } from '../../components/ApiCall';
 import { ChangeLogged } from '../../components/ChangeLogged';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { permissionLabels } from '../../data/building-blocks';
 import { useT, type Format, type T } from '../../i18n';
 import { rightLabel, useRights } from '../../Shell';
@@ -69,7 +70,7 @@ export const ApiCallButton = ({ call }: { call: () => ApiCallPreview }) => {
   return (
     <>
       <Button variant="tertiary" data-size="sm" onClick={() => setOpen(call())}>
-        <Icon d={icons.code} size={18} />
+        <Icon icon={CodeIcon} size={18} />
         {t('common.apiCall')}
       </Button>
       {open ? <ApiCallPanel call={open} onClose={() => setOpen(null)} /> : null}

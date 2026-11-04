@@ -1,6 +1,7 @@
-import { Heading, List, Paragraph, SkipLink, Spinner } from '@digdir/designsystemet-react';
+import { Heading, List, Paragraph, Spinner } from '@digdir/designsystemet-react';
 import type { ApiClient } from '../api';
-import { access, logged, marking, stored, undecided } from '../data/data-handling';
+import { NotDecided } from '../components/NotDecided';
+import { access, logged, stored, undecided } from '../data/data-handling';
 import { useAsync, type AsyncState } from '../hooks';
 import { useT, type PlainKey } from '../i18n';
 import { modelLabel } from '../models';
@@ -57,7 +58,7 @@ const Processing = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
   );
 };
 
-const Content = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
+export const DataHandlingContent = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
   const t = useT();
   return (
     <div className="stack">
@@ -73,19 +74,30 @@ const Content = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
         <Processing {...(models ? { models } : {})} />
       </section>
       <Section id="logges-h" title="dataHandling.loggedHeading" items={logged} />
-      <Section id="merking-h" title="dataHandling.markingHeading" items={marking} />
+      <section aria-labelledby="merking-h" className="stack-sm">
+        <Heading level={2} data-size="sm" id="merking-h">
+          {t('dataHandling.markingHeading')}
+        </Heading>
+        <List.Unordered>
+          <List.Item>{t('dataHandling.marking1')}</List.Item>
+          <List.Item>
+            {t.rich('dataHandling.marking2', { code: (c) => <code>{c}</code> })}
+          </List.Item>
+        </List.Unordered>
+      </section>
       <section aria-labelledby="ikke-bestemt-h" className="stack-sm">
         <Heading level={2} data-size="sm" id="ikke-bestemt-h">
           {t('dataHandling.undecidedHeading')}
         </Heading>
-        <dl className="kv">
-          {undecided.map(([term, value]) => (
-            <div key={term} className="kv-row">
-              <dt>{t(term)}</dt>
-              <dd>{t(value)}</dd>
-            </div>
+        <List.Unordered aria-labelledby="ikke-bestemt-h">
+          {undecided.map((term) => (
+            <List.Item key={term}>
+              <span className="row-wrap">
+                {t(term)} <NotDecided />
+              </span>
+            </List.Item>
           ))}
-        </dl>
+        </List.Unordered>
       </section>
     </div>
   );
@@ -93,30 +105,5 @@ const Content = ({ models }: { models?: AsyncState<ModelOption[]> }) => {
 
 export const DataHandling = ({ api }: { api: ApiClient }) => {
   const [models] = useAsync((signal) => api.listModels({}, signal), [api]);
-  return <Content models={models} />;
-};
-
-export const PublicDataHandling = () => {
-  const t = useT();
-  return (
-    <div className="startside">
-      <SkipLink href="#hovedinnhold">{t('shell.skipToContent')}</SkipLink>
-      <header className="start-header">
-        <div className="start-header-bar">
-          <a className="brand" href="#/">
-            <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
-            <span className="brand-text">
-              <span className="brand-owner">{t('shell.owner')}</span>
-              <span className="brand-name">{t('shell.brandFull')}</span>
-            </span>
-          </a>
-        </div>
-      </header>
-      <main id="hovedinnhold" tabIndex={-1} className="start-main">
-        <div className="start-wrap start-section">
-          <Content />
-        </div>
-      </main>
-    </div>
-  );
+  return <DataHandlingContent models={models} />;
 };

@@ -61,6 +61,7 @@ export const audit = {
   actionOnboardingDecide: 'Decided onboarding request',
   actionOnboardingRequest: 'Requested onboarding',
   actionPipelineCancel: 'Cancelled ingestion run',
+  actionJobsRedrive: 'Sent failed jobs back',
   actionPlatformSecretSet: 'Saved platform secret',
   actionPluginRegister: 'Registered external building block',
   actionPluginRemove: 'Removed external building block',

@@ -3,7 +3,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { textPart, type Principal } from '@genai/contracts';
-import { createKernel, envSecrets } from '@genai/kernel';
+import { createGate, createKernel, envSecrets } from '@genai/kernel';
+import {
+  bundledDescriptorDir,
+  descriptorRegistry,
+  loadDescriptors,
+  parseDescriptor,
+} from '@genai/operations';
+import { contractFailures, fixturesFor, operationContract } from '@genai/operations/contract';
 import {
   ModelError,
   ModelRouter,
@@ -13,6 +20,7 @@ import {
   type ChatRequest,
   type ChatResult,
   type Credential,
+  type DecisionPort,
   type DeploymentConfig,
   type ModelAdapter,
   type ModelPort,
@@ -223,7 +231,7 @@ describe('model router', () => {
     expect(a.calls).toHaveLength(0);
   });
 
-  it('refuses an unknown model and a model outside the allowed residency', () => {
+  it('refuses an unknown model at open and a model outside the allowed residency at the gate', async () => {
     const a = recording('proto-a');
     const b = recording('proto-b');
     const norwayOnly = new ModelRouter({
@@ -235,11 +243,14 @@ describe('model router', () => {
     });
 
     expect(() => open(norwayOnly, 'c/none')).toThrow(ModelError);
-    expect(() => open(norwayOnly, 'b/large')).toThrow(/outside norway/);
+    await expect(
+      open(norwayOnly, 'b/large').chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/outside norway/);
     expect(open(norwayOnly, 'a/small').info()).toEqual({
       id: 'a/small',
       residency: 'norway',
       capabilities: ['stream'],
+      operations: ['chat'],
     });
   });
 
@@ -331,8 +342,8 @@ describe('model router', () => {
   it('lists the catalog for publish-time checks', () => {
     expect(setup().router.models()).toEqual(
       new Map([
-        ['a/small', { residency: 'norway', capabilities: ['stream'] }],
-        ['b/large', { residency: 'global', capabilities: ['tools'] }],
+        ['a/small', { residency: 'norway', capabilities: ['stream'], operations: ['chat'] }],
+        ['b/large', { residency: 'global', capabilities: ['tools'], operations: ['chat'] }],
       ]),
     );
   });
@@ -607,6 +618,7 @@ describe('model discovery', () => {
     expect(live.get('one/gpt-5-mini')).toEqual({
       residency: 'eu',
       capabilities: ['stream', 'tools', 'json-schema'],
+      operations: ['chat'],
     });
 
     const again = setup().router;
@@ -624,7 +636,9 @@ describe('model discovery', () => {
     await router.classify('two/claude-sonnet-5-5', { enabled: false });
 
     expect(router.models().has('two/claude-sonnet-5-5')).toBe(false);
-    expect(() => open(router, 'two/claude-sonnet-5-5')).toThrow(/turned off/);
+    await expect(
+      open(router, 'two/claude-sonnet-5-5').chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/turned off/);
     await router.classify('two/claude-sonnet-5-5', { enabled: true });
   });
 
@@ -681,8 +695,370 @@ describe('reloading the catalog', () => {
     expect((await own.chat({ messages: [{ role: 'user', content: 'hei' }] })).content).toBe(
       'proto-a:egen-dep',
     );
-    expect(() => router.open({ kind: 'model', id: '991825827/egen' }, testContext().ctx)).toThrow(
-      /not shared/,
+    await expect(
+      router
+        .open({ kind: 'model', id: '991825827/egen' }, testContext().ctx)
+        .chat({ messages: [{ role: 'user', content: 'hei' }] }),
+    ).rejects.toThrow(/not shared/);
+  });
+});
+
+describe('model calls through the gate', () => {
+  it('a payload with an image is refused before it leaves', async () => {
+    const { router, a } = setup();
+    const image = [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }];
+
+    await expect(
+      open(router, 'a/small').chat({
+        messages: [{ role: 'user', content: image as unknown as string }],
+      }),
+    ).rejects.toMatchObject({ code: 'refused', message: expect.stringMatching(/image/) });
+    expect(a.calls).toEqual([]);
+  });
+
+  it("a chat call outside the service's residency is refused", async () => {
+    const { router, b } = setup();
+    const { ctx } = testContext();
+
+    await expect(
+      open(router, 'b/large', { ...ctx, serviceResidency: 'eu' }).chat({ messages: [] }),
+    ).rejects.toMatchObject({ code: 'residency', message: 'model b/large runs outside eu' });
+    expect(b.calls).toEqual([]);
+  });
+
+  it('every gate call writes one kernel.gate.call audit event without payload text', async () => {
+    const { router } = setup();
+    const kari: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'kari',
+      tenant: '999888777',
+    };
+    const model = { kind: 'model', id: 'a/small', tenant: '999888777' };
+    const kernel = createKernel({
+      strategies: [
+        {
+          id: 'ask',
+          version: '1',
+          requires: { kernel: 1, ports: ['model'], features: [] },
+          run: async function* (ctx) {
+            const port = await ctx.use<ModelPort>('model', model, { serviceResidency: 'norway' });
+            await port.chat({ messages: [{ role: 'user', content: 'hemmelig spørsmål' }] });
+            for await (const chunk of port.chatStream({
+              messages: [{ role: 'user', content: 'hemmelig strøm' }],
+            }))
+              if (chunk.kind === 'done') yield { type: 'kernel.result', data: [] };
+          },
+        },
+      ],
+      capabilities: [
+        {
+          descriptor: {
+            id: 'ask',
+            version: '1',
+            tenant: '999888777',
+            title: 'ask',
+            description: 'ask',
+            input: {},
+            interaction: ['unary'],
+            accepts: [],
+            produces: [],
+            emits: [],
+            oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+          },
+          strategy: { id: 'ask', version: '1' },
+          config: {},
+          grants: [{ port: 'model', ref: model }],
+        },
+      ],
+      ports: { model: router },
+      policy: { decide: async () => ({ allow: true }) },
+    });
+
+    const run = await kernel.invoke(kari, 'ask', {});
+    await run.result;
+    const audit = [];
+    for await (const e of await kernel.events(kari, run.task, { audience: 'audit' }))
+      if (e.type === 'kernel.gate.call') audit.push(e.data);
+
+    expect(audit).toEqual([
+      {
+        port: 'model',
+        operation: 'chat',
+        model: 'a/small',
+        endpoint: 'one',
+        residency: 'norway',
+        outcome: 'ok',
+        usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
+      },
+      {
+        port: 'model',
+        operation: 'chat',
+        model: 'a/small',
+        endpoint: 'one',
+        residency: 'norway',
+        outcome: 'ok',
+        usage: { inputTokens: 3, outputTokens: 2, requests: 1 },
+      },
+    ]);
+    expect(JSON.stringify(audit)).not.toMatch(/hemmelig/);
+  });
+});
+
+describe('operations on the catalogue', () => {
+  const question = {
+    input: 'Kan jeg søke om dette?',
+    questions: [{ type: 'predicate' as const, name: 'purpose', instructions: 'I formålet?' }],
+  };
+  const decider = (operations?: string[]) => {
+    const a = recording('proto-a');
+    const decided: unknown[] = [];
+    const adapter: ModelAdapter = {
+      ...a.adapter,
+      connect: (endpoint) => ({
+        ...a.adapter.connect(endpoint as never),
+        decide: async (_model, request) => {
+          decided.push(request);
+          return {
+            answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+            usage: { inputTokens: 5, outputTokens: 0, requests: 1 },
+            servedModel: 'served',
+            calibrated: true,
+          };
+        },
+      }),
+    };
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            ...(operations ? { operations } : {}),
+          },
+        ],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+    });
+    return { router, decided, chats: a.calls };
+  };
+  const decide = (router: ModelRouter, ctx = testContext().ctx) =>
+    router.decisions().open({ kind: 'model', id: 'a/luna' }, ctx);
+
+  it('a catalogue model offers chat and nothing else unless an operator classifies more', async () => {
+    const { router, decided } = decider();
+    expect(router.models().get('a/luna')?.operations).toEqual(['chat']);
+    await expect(decide(router).decide(question)).rejects.toMatchObject({ code: 'unsupported' });
+    expect(decided).toEqual([]);
+
+    await router.classify('a/luna', { operations: ['chat', 'decide'] });
+    expect(router.describe()[0]?.operations).toEqual(['chat', 'decide']);
+    await expect(decide(router).decide(question)).resolves.toMatchObject({ calibrated: true });
+  });
+
+  it('a descriptor call on a model that does not offer its operation is refused', async () => {
+    const yaml = readFileSync(join(bundledDescriptorDir, 'openai', 'decide@1.yaml'), 'utf8');
+    const descriptor = parseDescriptor(yaml.replace('protocol: openai-chat', 'protocol: proto-a'));
+    const sent: unknown[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        answers: [{ type: 'predicate', name: 'purpose', probability: 0.9 }],
+        usage: { input_tokens: 5, output_tokens: 0 },
+      });
+    };
+    const { adapter } = recording('proto-a');
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [{ id: 'a/luna', endpoint: 'one', deployment: 'luna', residency: 'eu' }],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([descriptor]),
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    const call = (ports: ReturnType<ModelRouter['operations']>) =>
+      ports.open({ kind: 'model', id: 'a/luna' }, testContext().ctx).call(descriptor.id, question);
+    for (const ports of [router.operations(), router.described()])
+      await expect(call(ports)).rejects.toMatchObject({
+        code: 'unsupported',
+        message: 'model a/luna does not offer the decide operation',
+      });
+    expect(sent).toEqual([]);
+
+    await router.classify('a/luna', { operations: ['chat', 'decide'] });
+    await expect(call(router.operations())).resolves.toMatchObject({ calibrated: true });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('a model without the chat operation refuses chat as unsupported', async () => {
+    const { router, chats } = decider(['decide']);
+    await expect(
+      router.open({ kind: 'model', id: 'a/luna' }, testContext().ctx).chat({ messages: [] }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    expect(chats).toEqual([]);
+  });
+
+  it('an adapter that does not implement decide refuses decide as unsupported', async () => {
+    const { adapter } = recording('proto-a');
+    const router = new ModelRouter({
+      catalog: {
+        endpoints: { one: catalog.endpoints.one },
+        models: [
+          {
+            id: 'a/luna',
+            endpoint: 'one',
+            deployment: 'luna',
+            residency: 'eu',
+            operations: ['decide'],
+          },
+        ],
+      },
+      adapters: [adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+    });
+    await expect(decide(router).decide(question)).rejects.toMatchObject({
+      code: 'unsupported',
+      message: 'the adapter for one does not implement the decide operation',
+    });
+  });
+
+  it('the kernel port decision needs its own grant and passes the use:decision policy', async () => {
+    const { router } = decider(['chat', 'decide']);
+    const kari: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'kari',
+      tenant: '999888777',
+    };
+    const model = { kind: 'model', id: 'a/luna', tenant: '999888777' };
+    const asked: string[] = [];
+    const kernelWith = (grants: { port: string; ref: typeof model }[]) =>
+      createKernel({
+        strategies: [
+          {
+            id: 'decide',
+            version: '1',
+            requires: { kernel: 1, ports: ['model', 'decision'], features: [] },
+            run: async function* (ctx) {
+              const port = await ctx.use<DecisionPort>('decision', model);
+              const result = await port.decide(question);
+              yield { type: 'kernel.result', data: [textPart(JSON.stringify(result.answers))] };
+            },
+          },
+        ],
+        capabilities: [
+          {
+            descriptor: {
+              id: 'decide',
+              version: '1',
+              tenant: '999888777',
+              title: 'decide',
+              description: 'decide',
+              input: {},
+              interaction: ['unary'],
+              accepts: [],
+              produces: [],
+              emits: [],
+              oversight: { interrupts: false, riskClass: 'minimal', aiDisclosure: 'KI' },
+            },
+            strategy: { id: 'decide', version: '1' },
+            config: {},
+            grants,
+          },
+        ],
+        ports: { model: router, decision: router.decisions() },
+        policy: {
+          decide: async (_p, action) => {
+            asked.push(action);
+            return { allow: true };
+          },
+        },
+      });
+
+    const ungranted = kernelWith([{ port: 'model', ref: model }]);
+    const refused = await ungranted.invoke(kari, 'decide', {});
+    await expect(refused.result).rejects.toThrow(/no grant for decision/);
+
+    const granted = kernelWith([{ port: 'decision', ref: model }]);
+    const run = await granted.invoke(kari, 'decide', {});
+    await run.result;
+    expect(asked).toContain('use:decision');
+    const audit = [];
+    for await (const e of await granted.events(kari, run.task, { audience: 'audit' }))
+      if (e.type === 'kernel.gate.call') audit.push(e.data);
+    expect(audit).toEqual([
+      {
+        port: 'decision',
+        operation: 'decide',
+        model: 'a/luna',
+        endpoint: 'one',
+        residency: 'eu',
+        outcome: 'ok',
+        usage: { inputTokens: 5, outputTokens: 0, requests: 1 },
+      },
+    ]);
+  });
+});
+
+describe('a new operation kind from a descriptor alone', () => {
+  const fixtures = join(import.meta.dirname, '..', 'test-fixtures');
+  const registry = loadDescriptors(join(fixtures, 'descriptors'));
+  const id = 'example/classify@1';
+  const recorded = fixturesFor(join(fixtures, 'operations'), id);
+  const sorter = (operations: string[]) => ({
+    endpoints: { one: catalog.endpoints.one },
+    models: [
+      { id: 'a/sorter', endpoint: 'one', deployment: 'sorter', residency: 'eu', operations },
+    ],
+  });
+
+  it('a descriptor for a new kind runs on a model that declares it, with no code for the kind', async () => {
+    const descriptor = registry.get(id);
+    if (!descriptor) throw new Error(`${id} did not load`);
+    expect(descriptor.operation).toBe('classify');
+    expect(contractFailures(await operationContract(descriptor, recorded))).toEqual([]);
+    const fixture = recorded[0];
+    if (!fixture) throw new Error('no fixture');
+    const sent: unknown[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return Response.json(fixture.response.body);
+    };
+    const router = new ModelRouter({
+      catalog: sorter(['classify']),
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: registry,
+      governance: { maturity: async () => 'production', processorRecorded: async () => true },
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    for (const ports of [router.operations(), router.described()])
+      await expect(
+        ports.open({ kind: 'model', id: 'a/sorter' }, testContext().ctx).call(id, fixture.input),
+      ).resolves.toEqual(fixture.result);
+    expect(sent).toEqual([fixture.request.body, fixture.request.body]);
+  });
+
+  it('the catalogue refuses an operation kind no descriptor defines', async () => {
+    const options = {
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: registry,
+    };
+    expect(() => new ModelRouter({ ...options, catalog: sorter(['translate']) })).toThrow(
+      'no descriptor defines the translate operation',
     );
+    const router = new ModelRouter({ ...options, catalog: sorter(['chat']) });
+    await expect(router.classify('a/sorter', { operations: ['translate'] })).rejects.toMatchObject({
+      code: 'bad_request',
+    });
+    await router.classify('a/sorter', { operations: ['chat', 'classify'] });
+    expect(router.models().get('a/sorter')?.operations).toEqual(['chat', 'classify']);
   });
 });
