@@ -111,6 +111,8 @@ Keep every checkbox of the template, the `npm run check` one under How it was te
 
 For a visible UI change you exercised in the browser, add collapsed sections after More background, in the order under What and why. Default to two or three stills, before and after. Record a video only when stills cannot carry it: several steps, a drag or reorder, a transition.
 
+Above each still and each video, a bold label and two to four short bullets say what it shows and what to look at, so a reviewer knows before opening it. For a still, name what differs from before. For a video, one bullet per step, in the order they happen.
+
 Capture with a browser you can drive, such as the agent-browser CLI (`agent-browser skills get core` for usage): `agent-browser screenshot <dir>/after.png` for a still, `agent-browser record start <dir>/walkthrough.webm` and `agent-browser record stop` around a walkthrough (`--cursor` shows the pointer in drags). Take them on a stack of your own: `npm start`, or a second copy on other ports as under "Other ports" in `docs/development.md` when another stack already runs, so you never wait for or stop someone else's. Log in with the mock login, so no token, `.env.local` value or real person from Ansattporten is in the frame. Keep the files outside the repository.
 
 `gh pr create` and `gh pr edit` upload a file with `--attach <path>`, repeated per file (up to 50). Older gh versions lack the flag: check `gh pr edit --help`. Text after `#` is the alt text: `--attach '<dir>/after.png#After: the run shows the error'`. A reference to that path already in the body is rewritten in place to the uploaded file and keeps the alt text written there; an attachment the body does not reference is appended at the end. So write the body with the paths, in your own layout. A video has no alt text and renders as a player: put its path on a line of its own.
@@ -119,16 +121,30 @@ Capture with a browser you can drive, such as the agent-browser CLI (`agent-brow
 <details>
 <summary>:camera: Screenshots</summary>
 
-**Before:** a failed pipeline run shows only its status
+**Before**
+
+- A failed pipeline run shows only its status
+- Nothing says which document it stopped at
+
 ![Before: the failed run with its status only](<dir>/before.png)
 
-**After:** the run shows the error and the document it stopped at
+**After**
+
+- The run shows the converter's error under its status
+- The document it stopped at links to its page
+
 ![After: the failed run with the error and the document](<dir>/after.png)
 
 </details>
 
 <details>
 <summary>:movie_camera: Walkthrough</summary>
+
+**Retrying a failed run**
+
+- Opens the failed run from the pipeline list
+- Follows the link to the document it stopped at
+- Retries the run, which then shows as running
 
 <dir>/walkthrough.webm
 
