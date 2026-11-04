@@ -644,6 +644,25 @@ describe('knowledge.ingest and knowledge.index', () => {
     expect(ownerPrepares).toEqual([]);
   }, 60_000);
 
+  it("a cancelled run's ingest job prepares nothing", async () => {
+    const switched = await scenario({}, undefined, {
+      unprepared: true,
+      switched: { embedding: { model: 'fake/embed', dimensions: 3 }, options: {} },
+    });
+    const target = `g-20261104-c${String(datasets).padStart(5, '0')}`;
+    const run = await startRun(switched.dataset.id, { generation: target, engineSwitch: 'docs:1' });
+    await platform.pool.query(
+      `update ingestion_executions set cancel_requested_at = $2, cancelled_by = 'test' where id = $1`,
+      [run, new Date().toISOString()],
+    );
+    ownerPrepares.length = 0;
+    await handler(
+      switched.work.platform,
+      knowledgeIngestQueue.name,
+    )(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    expect(ownerPrepares).toEqual([]);
+  }, 60_000);
+
   it('the first ingest job prepares a generation that does not exist yet', async () => {
     // A dataset just published on the knowledge database: its catalog generation is not made yet.
     const fresh = await scenario({}, undefined, { unprepared: true });

@@ -205,6 +205,10 @@ export const knowledgeErrors = defineNamespace({
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
+  switchHold:
+    'datasettet {dataset} byttes til en annen søkemotor ({engineSwitch}); innlesingene kjører igjen når byttet er klart, tatt i bruk eller avsluttet',
+  generationNotBuilt:
+    'generasjonen {generation} ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
 });
 
 export const blockErrors = defineNamespace({

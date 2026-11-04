@@ -387,6 +387,14 @@ const EngineSwitch = z
       })
       .optional(),
     comparisonNote: z.string().optional(),
+    generation: z
+      .string()
+      .describe('The generation the switch fills; on the knowledge database, g-<yyyymmdd>-<6 hex>'),
+    failedDocuments: z
+      .number()
+      .int()
+      .optional()
+      .describe('Into the knowledge database: documents of the fill that could not be read in'),
     minimumReasonLength: z.number().int(),
     previousKeptUntil: z.string().optional(),
     canRollback: z.boolean(),
@@ -822,6 +830,10 @@ const engineRoutes = (base: Base): RouteConfig[] => {
       request: { params: switchParams, headers: reasonHeader },
       responses: {
         200: audited(EngineSwitch, 'Active'),
+        202: audited(
+          EngineSwitch,
+          'Into the knowledge database: activating; the platform publishes once the refresh runs have ended',
+        ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,
         409: problem('Not ready, the dataset changed, or the engine cannot be opened'),

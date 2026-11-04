@@ -28,6 +28,7 @@ import {
   type IngestionReport,
   type JobRunStore,
 } from './ingestion.js';
+import { translateMessage } from './i18n/index.js';
 import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 
 const digdir = '991825827';
@@ -57,11 +58,15 @@ const fakeWorker = () => {
   const executions = new InMemoryExecutionStore();
   const started: Execution[] = [];
   const drops: { tenant: string; dataset: string; generation: string }[] = [];
+  const hooks: { onStart?: (run: Execution) => Promise<void> } = {};
   const runs: JobRunStore = {
     start: async (input) => {
       const run: Execution = { ...input, status: 'running', runsAsJobs: true };
       await executions.save(run);
       started.push(run);
+      const onStart = hooks.onStart;
+      delete hooks.onStart;
+      await onStart?.(run);
       return { ok: true, value: run };
     },
     cancel: async (input) => {
@@ -94,6 +99,7 @@ const fakeWorker = () => {
     started,
     drops,
     end,
+    hooks,
     jobRuns: {
       runsAsJobs: () => false,
       runs,
@@ -596,7 +602,11 @@ describe('switching a dataset into the knowledge database', () => {
     const opened = await started(booted, 'holdt');
     const held = await execute();
     expect(held.status).toBe(409);
-    expect(JSON.stringify(await json(held))).toContain(opened.id);
+    const { errors } = await json<{ errors: { message: string }[] }>(held);
+    expect(errors[0]?.message).toContain(opened.id);
+    expect(translateMessage(errors[0]?.message ?? '', 'nb')).toContain(
+      'byttes til en annen søkemotor',
+    );
     await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', { stored: 1 });
     await followed(booted, 'holdt', opened.sid);
     // Ready waits for a person: runs go on into the current engine.
@@ -614,5 +624,85 @@ describe('switching a dataset into the knowledge database', () => {
     });
     expect(activating.status).toBe(202);
     expect(runOf(booted.worker, opened.id, 1)).toMatchObject({ engineSwitch: opened.id });
+  });
+
+  it('an instance that loses the publish to another finishes the activation', async () => {
+    const worker = fakeWorker();
+    const entries = new InMemoryConfigEntryStore();
+    const first = await boot({ worker, entries });
+    await folderDataset(first, 'to-instanser');
+    const opened = await toReady(first, 'to-instanser');
+    const generation = runOf(worker, opened.id)?.generation;
+    // The second instance has not seen the catalog change the first is about to make.
+    const second = await boot({ worker, entries });
+    await first.call(`${base('to-instanser')}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    await worker.end(runOf(worker, opened.id, 1), 'succeeded');
+    const before = first.platform.catalog.get('dataset', `${digdir}/to-instanser`);
+    await first.platform.catalog.publish({
+      kind: 'dataset',
+      scope: digdir,
+      id: 'to-instanser',
+      spec: { ...before?.spec, endpoint: 'knowledge-pg', generation },
+      by: 'workload:platform:engine-switch',
+      reason: 'Flytter til kunnskapsdatabasen',
+      ifVersion: before?.version ?? 0,
+      movedBySwitch: true,
+    });
+    await second.module.follow();
+    expect(await view(second, 'to-instanser', opened.sid)).toMatchObject({ state: 'active' });
+  });
+
+  it('an activation another instance published is finished by the next follow', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'halvveis');
+    const opened = await toReady(booted, 'halvveis');
+    const generation = runOf(booted.worker, opened.id)?.generation;
+    await booted.call(`${base('halvveis')}/engine-switches/${opened.sid}/activate`, { body: {} });
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded');
+    // The instance that published stopped before it saved the switch.
+    const before = booted.platform.catalog.get('dataset', `${digdir}/halvveis`);
+    await booted.platform.catalog.publish({
+      kind: 'dataset',
+      scope: digdir,
+      id: 'halvveis',
+      spec: { ...before?.spec, endpoint: 'knowledge-pg', generation },
+      by: 'workload:platform:engine-switch',
+      reason: 'Flytter til kunnskapsdatabasen',
+      movedBySwitch: true,
+    });
+    await booted.module.follow();
+    expect(await view(booted, 'halvveis', opened.sid)).toMatchObject({ state: 'active' });
+  });
+
+  it('runs a switch started while it was cancelled are cancelled too', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'avlyst-tidlig');
+    let sid = '';
+    booted.worker.hooks.onStart = async () => {
+      const [entry] = await booted.entries.latest({ kind: 'engine-switch' });
+      sid = String(entry?.id.split(':').pop());
+      await booted.call(`${base('avlyst-tidlig')}/engine-switches/${sid}/cancel`, { body: {} });
+    };
+    await startSwitch(booted, 'avlyst-tidlig');
+    const run = booted.worker.started.at(-1);
+    expect((await booted.worker.executions.get(run?.id ?? ''))?.cancelRequestedAt).toEqual(
+      expect.any(String),
+    );
+    expect((await view(booted, 'avlyst-tidlig', sid)).state).toBe('cancelled');
+  });
+
+  it('a switch shows the documents its fill wrote, even when it ends between two ticks', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'telling');
+    const opened = await started(booted, 'telling');
+    await booted.worker.end(runOf(booted.worker, opened.id), 'succeeded', {
+      new: 3,
+      stored: 2,
+      skipped: 1,
+    });
+    const ready = await followed(booted, 'telling', opened.sid);
+    expect(ready.progress).toMatchObject({ percent: 100, documents: 3, total: 3 });
   });
 });

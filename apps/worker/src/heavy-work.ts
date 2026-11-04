@@ -319,6 +319,8 @@ export const finishRun =
       const state = await deps.server.state(generation);
       if (state === undefined) return true;
       if (state === 'standalone') {
+        // A cancelled run's generation is dropped, not built.
+        if (run.cancelRequestedAt) return true;
         if (run.report?.buildSent) return { error: buildFailedMessage(generation) };
         if ((await deps.server.chunks(generation)) > deps.threshold()) {
           await sendHeavy(deps, {

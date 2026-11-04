@@ -32,7 +32,7 @@ export const operations = defineNamespace({
   switchBusy: 'Et bytte pågår allerede ({id}).',
   switchStalled: 'Overføringen stoppet. Start den på nytt.',
   switchKnowledgeCopy:
-    'Kopiering til kunnskapsdatabasen er ikke mulig: dokumentene der trenger dokumentposter, som bare innlesinger skriver. Les inn på nytt fra kilden.',
+    'Dokumentene i kunnskapsdatabasen trenger dokumentposter, som bare innlesinger skriver. Les inn på nytt fra kilden.',
   switchKnowledgeOnePipeline:
     'Et datasett i kunnskapsdatabasen fylles av én innlesing til medeiere er bygget; dette har {pipelines}.',
   switchKnowledgePhrases:

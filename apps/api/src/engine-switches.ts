@@ -914,7 +914,7 @@ export const createEngineSwitchesModule =
      * Starts one ingestion run per enabled pipeline into the switch's generation, for its fill or its
      * refresh, and records them on the switch; a run that cannot start fails the fill or the refresh.
      */
-    const startRuns = async (scope: string, id: string, by: string) => {
+    const startRuns = async (scope: string, id: string, by: string, principal?: Principal) => {
       const entry = (await store.history(kind, scope, id)).at(-1);
       if (!entry) return;
       const spec = entry.spec as EngineSwitchSpec;
@@ -925,13 +925,19 @@ export const createEngineSwitchesModule =
       let refused: string | undefined;
       for (const pipeline of pipelines) {
         const started = await deps.ingestion
-          .startSwitchRun({ pipeline, generation: spec.generation, engineSwitch: id, by })
+          .startSwitchRun({
+            pipeline,
+            generation: spec.generation,
+            engineSwitch: id,
+            by,
+            ...(principal ? { principal } : {}),
+          })
           .catch((error: unknown) => ({ ok: false as const, message: failure(error) }));
         if (started.ok) runs.push(started.value.id);
         else refused = started.message;
       }
       if (pipelines.length === 0) refused = t('operations.switchNoPipeline');
-      await update(
+      const saved = await update(
         scope,
         id,
         (s) =>
@@ -945,6 +951,12 @@ export const createEngineSwitchesModule =
         systemActor,
         refused ? 'Kjøringen kunne ikke starte' : 'Kjøringene er startet',
       );
+      // The switch was cancelled or changed while they started: nothing would follow them.
+      if (!saved)
+        for (const run of runs)
+          await deps.ingestion
+            .cancel({ dataset: spec.dataset, execution: run, by: systemActor })
+            .catch(() => undefined);
     };
 
     /** A fill that fails fails the switch; a refresh that fails puts it back to ready (ADR 0025). */
@@ -991,16 +1003,22 @@ export const createEngineSwitchesModule =
           systemActor,
           decision.reason,
         );
-      // An instance that stopped after publishing left the catalog naming the generation already.
-      if (item.spec.endpoint === spec.to && item.spec.generation === spec.generation) {
+      // Another instance, or one that stopped after publishing, may have published already: the
+      // stored catalog, not this instance's copy, says whether it names the generation.
+      const publishedBefore = async () => {
         const history = await catalog.history('dataset', item.id);
+        const latest = history.at(-1);
+        const named = latest?.spec as Record<string, unknown> | undefined;
+        if (!latest || named?.endpoint !== spec.to || named.generation !== spec.generation)
+          return false;
         await activated(
-          item,
+          { ...item, spec: named, version: latest.version },
           (history.find((v) => v.version === spec.datasetVersion)?.spec as
             Record<string, unknown> | undefined) ?? {},
         );
-        return;
-      }
+        return true;
+      };
+      if (await publishedBefore()) return;
       const sameEngine =
         sourceEngine(item) === catalog.get('knowledge-endpoint', spec.to)?.spec.engine;
       const next: Record<string, unknown> = {
@@ -1022,7 +1040,7 @@ export const createEngineSwitchesModule =
         },
         { engineSwitch: true },
       );
-      if (!result.ok)
+      if (!result.ok && !(await publishedBefore()))
         await update(
           scope,
           entry.id,
@@ -1095,6 +1113,8 @@ export const createEngineSwitchesModule =
             continue;
           }
           const failedDocuments = countOfReports(runs, ['failedDocuments']);
+          const written = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+          const listed = countOfReports(runs, ['new', 'changed', 'unchanged', 'deleted']);
           const comparing = await update(
             scope,
             entry.id,
@@ -1105,7 +1125,11 @@ export const createEngineSwitchesModule =
                     state: 'comparing',
                     filled: true,
                     heartbeatAt: now().toISOString(),
-                    progress: { ...s.progress, percent: 100 },
+                    progress: {
+                      percent: 100,
+                      documents: written,
+                      ...(listed > 0 ? { total: listed } : {}),
+                    },
                     ...(failedDocuments > 0 ? { failedDocuments } : {}),
                   }
                 : undefined,
@@ -1612,7 +1636,7 @@ export const createEngineSwitchesModule =
                 launch(g.tenant, id, spec.generation, spec.attempt);
                 return c.json(viewOf(saved), 202);
               }
-              await startRuns(g.tenant, id, actor(g.principal.actor ?? g.principal));
+              await startRuns(g.tenant, id, actor(g.principal.actor ?? g.principal), g.principal);
               const latest = (await store.history(kind, g.tenant, id)).at(-1) ?? saved;
               return c.json(viewOf(latest), 202);
             } catch (error) {
@@ -1705,7 +1729,12 @@ export const createEngineSwitchesModule =
             if (saved instanceof Response) return saved;
             const retriedSpec = saved.spec as EngineSwitchSpec;
             if (intoKnowledge(retriedSpec) && retriedSpec.state === 'running') {
-              await startRuns(g.tenant, g.entry.id, actor(g.principal.actor ?? g.principal));
+              await startRuns(
+                g.tenant,
+                g.entry.id,
+                actor(g.principal.actor ?? g.principal),
+                g.principal,
+              );
               const latest = (await store.history(kind, g.tenant, g.entry.id)).at(-1) ?? saved;
               return c.json(viewOf(latest), 202);
             }
@@ -1821,7 +1850,7 @@ export const createEngineSwitchesModule =
               ).catch((error: unknown) => refusalResponse(c, error));
               if (saved instanceof Response) return saved;
               // The refresh writes what changed in the source since the fill; the minute timer publishes after it.
-              await startRuns(g.tenant, g.entry.id, by);
+              await startRuns(g.tenant, g.entry.id, by, g.principal);
               const latest = (await store.history(kind, g.tenant, g.entry.id)).at(-1) ?? saved;
               return c.json(viewOf(latest), 202);
             }

@@ -381,7 +381,15 @@ export class IngestionService {
     generation: string;
     engineSwitch: string;
     by: string;
+    principal?: Principal;
   }): Promise<JobRunResult> {
+    // A switch's runs are admitted like any run: in lockdown only a configured key starts them.
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; a run of engine switch ${input.engineSwitch} by ${input.by} did not start`,
+      );
+      return { ok: false, message: ingestionLockedMessage };
+    }
     const jobs = this.options.jobs;
     if (!jobs) return { ok: false, message: 'runs on the knowledge database need the job queue' };
     const now = this.#now();

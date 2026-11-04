@@ -249,6 +249,21 @@ describe("a run's end", () => {
     expect(await finishRun(dropped.deps, async () => undefined)(run)).toBe(true);
   });
 
+  it('a cancelled run ends without building its standalone generation', async () => {
+    const cancelled = {
+      ...run,
+      generation: 'g-20261104-7f3c2a',
+      engineSwitch: 'docs:1',
+      cancelRequestedAt: '2026-11-04T10:00:00Z',
+    };
+    const standalone = deps({
+      server: server({ state: vi.fn(async () => 'standalone' as const) }),
+    });
+    expect(await finishRun(standalone.deps, async () => undefined)(cancelled)).toBe(true);
+    expect(standalone.deps.server.build).not.toHaveBeenCalled();
+    expect(standalone.sent).toEqual([]);
+  });
+
   it('a run on a standalone generation ends by building and attaching it, as a build job above the heavy threshold', async () => {
     const switched: DatasetConfig = { ...dataset, generation: 'g-20261104-7f3c2a' };
     const own = { ...run, generation: 'g-20261104-7f3c2a', engineSwitch: 'docs:1' };

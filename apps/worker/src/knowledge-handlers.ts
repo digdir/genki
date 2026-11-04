@@ -118,12 +118,14 @@ export const knowledgeWork = (
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const ingest = admittedWork(
     knowledgeIngestQueue,
-    async ({ job, run }) => {
+    async ({ job, run, cancelled }) => {
       deps.bound?.();
       const signal = job.signal;
       const spec = await specOf(deps, run);
       const { dataset, generation } = await datasetOf(deps, run, signal);
       // A switch's generation, or a new dataset's, is made by the first ingest job that writes it.
+      // A cancelled run makes nothing: its generation may already be dropped.
+      if (await cancelled()) return;
       if (deps.prepare && !(await deps.generationExists?.(generation)))
         await deps.prepare(dataset, generation);
       const tenant = tenantOf(run, deps.admission.platformTenant);

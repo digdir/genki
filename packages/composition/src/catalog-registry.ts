@@ -629,8 +629,6 @@ export class CatalogRegistry {
     by: string;
     reason: string;
     ifVersion?: number;
-    /** Only an engine switch's activation moves a dataset onto the knowledge server (ADR 0025). */
-    movedBySwitch?: boolean;
   }): Promise<CatalogResult> {
     return this.#serial(async () => {
       const id = this.qualify(input.scope, input.id);

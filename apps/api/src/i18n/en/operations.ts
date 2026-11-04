@@ -33,7 +33,7 @@ export const operations = {
   switchBusy: 'A switch is already running ({id}).',
   switchStalled: 'The transfer stopped. Start it again.',
   switchKnowledgeCopy:
-    'Copying is not possible into the knowledge database: its documents need document records, which only ingestion runs write. Re-ingest from the source.',
+    'Documents in the knowledge database need document records, which only ingestion runs write. Re-ingest from the source.',
   switchKnowledgeOnePipeline:
     'A dataset on the knowledge database is filled by one pipeline until co-owners are built; this one has {pipelines}.',
   switchKnowledgePhrases:

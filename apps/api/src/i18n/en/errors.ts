@@ -206,6 +206,10 @@ export const knowledgeErrors = {
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',
+  switchHold:
+    'the dataset {dataset} is being switched to another search engine ({engineSwitch}); its pipelines run again once the switch is ready, active or ended',
+  generationNotBuilt:
+    'the generation {generation} was not built: its build job ended without attaching it; retry the switch',
 } satisfies Translation<typeof source.knowledgeErrors>;
 
 export const blockErrors = {

@@ -11,7 +11,7 @@ import { fakeEmbeddingAdapter, testContext } from '@genai/port-embedding/testing
 import { knowledgeProfiles } from '@genai/port-knowledge';
 import { defaultPgvectorProfiles } from '@genai/providers-pgvector';
 import { createPool } from '@genai/providers-postgres';
-import { createAdmin } from './admin.js';
+import { createAdmin, engineSwitchPublisher } from './admin.js';
 import { loadCatalog } from './catalogs.js';
 import { createPlatform, type PlatformInput } from './composition.js';
 import type { JobRunStore } from './ingestion.js';
@@ -89,7 +89,7 @@ const boot = async (input: Partial<PlatformInput> = {}, { database = true } = {}
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
-  return { platform, call, warnings };
+  return { platform, call, warnings, admin };
 };
 
 const json = async <T = Record<string, unknown>>(res: Response) => (await res.json()) as T;
@@ -327,54 +327,46 @@ describe('pluggable search engines over the API', () => {
     });
 
     it('the catalog accepts a move onto the knowledge database only from an engine switch', async () => {
-      const { call, platform } = await boot({
+      const { call, platform, admin } = await boot({
         catalogs: knowledgeCatalogs,
         knowledgeServer: { reader: pool },
       });
       expect((await publish(call, 'digdir/flyttes', dataset('platform-pg'))).status).toBe(200);
-      // A caller of the API cannot claim to be the switch.
-      const claimed = await call('/operator/catalog/dataset/digdir%2Fflyttes', 'drift', {
-        method: 'PUT',
-        body: {
-          ...dataset('knowledge-pg', { generation: 'g-20261104-aa11bb' }),
-          engineSwitch: true,
-        },
-      });
-      expect(claimed.status).toBe(400);
-      const before = platform.catalog.get('dataset', 'digdir/flyttes');
-      const moved = await platform.catalog.publish({
+      const moving = (version: number) => ({
         kind: 'dataset',
-        scope: 'platform',
         id: 'digdir/flyttes',
-        spec: { ...before?.spec, endpoint: 'knowledge-pg', generation: 'g-20261104-aa11bb' },
-        by: 'operator:platform:engine-switch',
+        spec: dataset('knowledge-pg', { generation: 'g-20261104-aa11bb' }),
+        scope: 'platform',
+        tenant: digdir,
         reason: 'Byttet til kunnskapsdatabasen',
-        movedBySwitch: true,
+        ifVersion: version,
+        engineSwitch: true,
       });
+      // An operator who claims to be the switch is still refused.
+      const claimed = await admin.perform(
+        { ...(principals.drift as Principal), tenant: digdir },
+        'platform.catalog.publish',
+        moving(1),
+      );
+      expect(claimed.ok).toBe(false);
+      const moved = await admin.perform(
+        { ...engineSwitchPublisher('platform', digdir), tenant: digdir },
+        'platform.catalog.publish',
+        moving(1),
+      );
       expect(moved.ok).toBe(true);
       expect(platform.catalog.get('dataset', 'digdir/flyttes')?.spec).toMatchObject({
         endpoint: 'knowledge-pg',
         generation: 'g-20261104-aa11bb',
       });
-      const nameless = await platform.catalog.publish({
-        kind: 'dataset',
-        scope: 'platform',
-        id: 'digdir/flyttes-uten',
-        spec: dataset('platform-pg'),
-        by: 'operator:test:drift',
-        reason: 'Testendring',
-      });
-      expect(nameless.ok).toBe(true);
-      const withoutGeneration = await platform.catalog.publish({
-        kind: 'dataset',
-        scope: 'platform',
-        id: 'digdir/flyttes-uten',
-        spec: dataset('knowledge-pg'),
-        by: 'operator:platform:engine-switch',
-        reason: 'Byttet til kunnskapsdatabasen',
-        movedBySwitch: true,
-      });
-      expect(withoutGeneration.ok).toBe(false);
+      // Even the switch names the generation it filled.
+      expect((await publish(call, 'digdir/uten', dataset('platform-pg'))).status).toBe(200);
+      const nameless = await admin.perform(
+        { ...engineSwitchPublisher('platform', digdir), tenant: digdir },
+        'platform.catalog.publish',
+        { ...moving(1), id: 'digdir/uten', spec: dataset('knowledge-pg') },
+      );
+      expect(nameless.ok).toBe(false);
     });
   });
 
