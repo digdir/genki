@@ -4,6 +4,7 @@ import {
   JobQueueError,
   type DeadJob,
   type DeadLetterFilter,
+  type Job,
   type JobData,
   type JobHandler,
   type JobQueue,
@@ -271,11 +272,21 @@ export class PgBossJobQueue implements JobQueue {
   readonly #boss: PgBoss;
   readonly #reads: PgBossJobReads;
   readonly #pollingIntervalSeconds: number;
+  readonly #pool: Pool;
+  readonly #schema: string;
 
-  private constructor(boss: PgBoss, reads: PgBossJobReads, pollingIntervalSeconds: number) {
+  private constructor(
+    boss: PgBoss,
+    reads: PgBossJobReads,
+    pollingIntervalSeconds: number,
+    pool: Pool,
+    schema: string,
+  ) {
     this.#boss = boss;
     this.#reads = reads;
     this.#pollingIntervalSeconds = pollingIntervalSeconds;
+    this.#pool = pool;
+    this.#schema = schema;
   }
 
   static async start(pool: Pool, options: PgBossJobQueueOptions) {
@@ -315,6 +326,8 @@ export class PgBossJobQueue implements JobQueue {
       boss,
       new PgBossJobReads(pool, schema),
       options.pollingIntervalSeconds ?? 2,
+      pool,
+      schema,
     );
   }
 
@@ -359,6 +372,41 @@ export class PgBossJobQueue implements JobQueue {
 
   async unschedule(queue: QueueDefinition, key?: string) {
     await this.#boss.unschedule(queue.name, key);
+  }
+
+  async sendAgain<T extends JobData>(
+    queue: QueueDefinition<T>,
+    job: Job<T>,
+    options: { key?: string; startAfter: Date },
+  ) {
+    const client = await this.#pool.connect();
+    try {
+      await client.query('begin');
+      const db = adapter(client);
+      // Completed first, so the queue's key is free for the job sent again in the same transaction.
+      await this.#boss.complete(queue.name, job.id, null, { db });
+      const sent = await this.#boss.send(queue.name, admitPayload(queue, job.data), {
+        ...(options.key === undefined ? {} : { singletonKey: options.key }),
+        startAfter: options.startAfter,
+        db,
+      });
+      if (sent === null) throw new JobQueueError(`job ${job.id} could not be sent again`);
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async retime(queues: QueueDefinition[], startAfter: Date) {
+    const { rowCount } = await this.#pool.query(
+      `update ${this.#schema}.job set start_after = $2
+        where name = any($1) and state in ('created', 'retry')`,
+      [queues.map((q) => q.name), startAfter],
+    );
+    return rowCount ?? 0;
   }
 
   async cancel(queue: QueueDefinition, id: string) {

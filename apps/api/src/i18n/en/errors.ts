@@ -344,6 +344,9 @@ export const qualityErrors = {
   instructionsChanged: 'The instructions in the draft have changed since the suggestion was made.',
   notReleased: 'model {model} is not released yet; it is waiting for the quality matrix',
   modelToTest: 'the model to test is required',
+  descriptorsOperatorsOnly: 'only operators try descriptors in review',
+  descriptorsTestOnly: 'GENAI_ENV is not test',
+  noDescriptor: 'no descriptor {id}',
   modelInUse: 'the model in use is required',
   compareAnother: 'compare against another model',
   modelNotFound: 'Could not find the model',
@@ -418,6 +421,28 @@ export const qualityErrors = {
   noPendingShare: 'no pending share of {skill}',
 } satisfies Translation<typeof source.qualityErrors>;
 
+export const operationErrors = {
+  stepAt: '{at}: {message}',
+  fixedOperation:
+    'the operation and the model are fixed values, not filled in while the service runs',
+  noOperationDescriptor: 'there is no operation descriptor {id}',
+  descriptorInReview:
+    '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
+  kindInTest:
+    'the {operation} operation is in test in this environment; an operator must move it to production before a service can use it',
+  notServiceModel: "the model {modelId} is not one of the service's models",
+  noCatalogueModel: 'there is no model {modelId} in the catalogue',
+  modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  noProcessorRecordForService:
+    'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
+  operatorsGovernOperations: 'only operators govern operations',
+  noOperationDescriptors: 'this platform has no operation descriptors',
+  noDescriptorForKind: 'no descriptor describes {kind}',
+  maturityValues: 'maturity is test or production',
+  noProcessorRecord: '{id} has no processor record',
+  noModelEndpoint: 'no model endpoint {id}',
+} satisfies Translation<typeof source.operationErrors>;
+
 export const adapterErrors = {
   fillFormOrAsk: 'Fill in the form or write a question.',
   fieldList: '{name} must be a list of choices.',
@@ -479,6 +504,7 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,

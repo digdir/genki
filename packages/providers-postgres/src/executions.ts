@@ -15,6 +15,10 @@ export interface IngestionExecutionReport {
   changed?: number;
   deleted?: number;
   unchanged?: number;
+  /** Chunks the run's stored documents wrote: past `knowledge.heavyThreshold`, its documents wait for the window. */
+  chunks?: number;
+  /** Set when the run's `VACUUM (ANALYZE)` went as a `knowledge.build` job; it ends once that job has. */
+  vacuumSent?: number;
 }
 
 export interface IngestionExecution {

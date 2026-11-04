@@ -11,6 +11,7 @@ import type {
   Task,
   Usage,
 } from '@genai/contracts';
+import type { GateRecord, PayloadGuard, Residency, UseOptions } from './gate.js';
 
 export const KERNEL_MAJOR = 1;
 
@@ -65,6 +66,9 @@ export interface PortContext {
   meter(usage: Usage, model?: Ref): Promise<void>;
   outputLimit?(): number | undefined;
   provenance?(resource: ResourceProvenance): Promise<void>;
+  guards?: readonly PayloadGuard[];
+  serviceResidency?: Residency;
+  audit?(record: GateRecord): Promise<void>;
 }
 
 export interface PortProvider<P = unknown> {
@@ -96,7 +100,7 @@ export interface InvocationContext {
   signal: AbortSignal;
   budget: Budget;
   state: StateHandle;
-  use<P>(port: string, ref: Ref): Promise<P>;
+  use<P>(port: string, ref: Ref, options?: UseOptions): Promise<P>;
   invoke(capabilityId: string, input: Input): Promise<Run>;
 }
 

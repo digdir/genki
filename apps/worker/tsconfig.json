@@ -45,7 +45,16 @@
       "path": "../../packages/port-knowledge"
     },
     {
+      "path": "../../packages/port-usage"
+    },
+    {
+      "path": "../../packages/providers-ai-gateway"
+    },
+    {
       "path": "../../packages/providers-documents"
+    },
+    {
+      "path": "../../packages/providers-mcp-client"
     }
   ]
 }

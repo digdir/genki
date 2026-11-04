@@ -54,6 +54,7 @@ import {
   type Period,
 } from './usage/model';
 import { UsageChart } from './usage/UsageChart';
+import { UsageSources } from './usage/UsageSources';
 import './usage.css';
 
 type SortKey = 'name' | 'tok' | 'cost';
@@ -618,6 +619,8 @@ const UsageView = ({
         </div>
         <p className="meta">{t('usage.costNote')}</p>
       </section>
+
+      {project === undefined ? <UsageSources report={report} /> : null}
 
       {project === undefined && report.byProject?.length ? (
         <section aria-labelledby="prosjekt-h" className="stack-sm">

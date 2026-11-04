@@ -76,10 +76,18 @@ export interface Route {
   query: URLSearchParams;
 }
 
+const decoded = (segment: string) => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 export const parseRoute = (hash: string): Route => {
   const raw = hash.replace(/^#/, '') || '/';
   const [pathPart = '/', search = ''] = raw.split('?');
-  const segments = pathPart.split('/').filter(Boolean).map(decodeURIComponent);
+  const segments = pathPart.split('/').filter(Boolean).map(decoded);
   return { path: `/${segments.join('/')}`, segments, query: new URLSearchParams(search) };
 };
 

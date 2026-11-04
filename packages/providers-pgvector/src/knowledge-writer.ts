@@ -1,4 +1,5 @@
 import {
+  GenerationBusy,
   KnowledgeError,
   type DatasetConfig,
   type IndexDocument,
@@ -13,6 +14,7 @@ import {
   prepareGeneration,
   recipeOf,
 } from './partitions.js';
+import { tryGenerationWrite } from './heavy-work.js';
 import { transaction } from './schema.js';
 import { fieldsText } from './sql.js';
 
@@ -231,7 +233,10 @@ export const knowledgeWriterOf = <O extends Options>(
         via: 'partition' as const,
         ...(dataset.embedding ? { dimensions: dataset.embedding.dimensions } : {}),
       };
-      await transaction(owner, (client) => replaceDocument(client, target, doc));
+      await transaction(owner, async (client) => {
+        if (!(await tryGenerationWrite(client, generation))) throw new GenerationBusy(generation);
+        await replaceDocument(client, target, doc);
+      });
     },
     promote: async (dataset, generation) => {
       await begin();

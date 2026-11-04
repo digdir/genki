@@ -1,3 +1,4 @@
+import { untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
@@ -16,7 +17,6 @@ import {
   defaultGenerationPrompt,
   excerptCitationInstruction,
   sameLanguageRule,
-  untrustedData,
 } from './prompts.js';
 import { buildEvidencePlan } from './read-signals.js';
 import { json } from './structured.js';
@@ -255,7 +255,7 @@ export const formatSearchMetadataResults = (
     (omitted > 0
       ? ` Showing top ${shown.length} by rank; ${omitted} lower-ranked chunks omitted. Refine the query or read from the visible set.`
       : '') +
-    `\n${lines.join('\n')}`
+    `\n${untrustedData('search-results', lines.join('\n'))}`
   );
 };
 
@@ -604,7 +604,9 @@ const rerank = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome> 
       .slice(0, 3)
       .map((c, i) => `${i + 1}. ${c.content.slice(0, 80)}`)
       .join('; ');
-    return { content: `Reranked to top ${reranked.length} chunks. Top results: ${top}` };
+    return {
+      content: `Reranked to top ${reranked.length} chunks. Top results:\n${untrustedData('excerpts', top)}`,
+    };
   } catch (error) {
     if (env.signal.aborted) throw error;
     return {

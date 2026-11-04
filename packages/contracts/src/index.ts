@@ -116,6 +116,7 @@ export const kernelOwnedEventTypes = [
   'kernel.interrupt.resolved',
   'kernel.usage',
   'kernel.resource.used',
+  'kernel.gate.call',
   'kernel.error',
   'kernel.score',
   'kernel.feedback',

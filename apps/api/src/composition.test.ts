@@ -827,6 +827,7 @@ describe('the composed platform', () => {
       'foundry-openai/gpt-4o-2m-tps',
       'foundry-openai/gpt-5-mini',
       'foundry-openai/gpt-5.6-terra',
+      'foundry-openai/gpt-6-luna',
     ]);
     expect(await ids('?residency=norway')).toEqual([]);
 
@@ -867,11 +868,13 @@ describe('the composed platform', () => {
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
       expect.objectContaining({ price: null, name: expect.any(String) }),
+      expect.objectContaining({ price: null, name: expect.any(String) }),
     ]);
     expect(await list({ 'foundry-openai/gpt-4o-2m-tps': price })).toEqual([
       expect.objectContaining({ id: 'foundry-openai/gpt-4o-2m-tps', price }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5-mini', price: null }),
       expect.objectContaining({ id: 'foundry-openai/gpt-5.6-terra', price: null }),
+      expect.objectContaining({ id: 'foundry-openai/gpt-6-luna', price: null }),
     ]);
   });
 

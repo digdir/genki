@@ -1,4 +1,5 @@
 import {
+  GenerationBusy,
   KnowledgeError,
   tombstoneHash,
   type DocumentRecords,
@@ -8,6 +9,7 @@ import {
   type RecordWrite,
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
+import { generationWritable, tryGenerationWrite } from './heavy-work.js';
 import { deleteDocument, replaceDocument } from './knowledge-writer.js';
 import { transaction } from './schema.js';
 
@@ -61,8 +63,12 @@ const moveDataVersion = (client: PoolClient, generation: string) =>
     [generation],
   );
 
-/** Locks the generation, so index jobs of one generation move its data version one at a time. */
+/**
+ * Locks the generation, so index jobs of one generation move its data version one at a time, after
+ * its advisory lock shared: without that lock VACUUM holds the generation, and the job gives way.
+ */
 const lockGeneration = async (client: PoolClient, generation: string, dataset: string) => {
+  if (!(await tryGenerationWrite(client, generation))) throw new GenerationBusy(generation);
   const { rows } = await client.query<{ dataset: string; recipe: Record<string, unknown> }>(
     `select dataset, recipe from kn_generations where generation = $1 for update`,
     [generation],
@@ -232,6 +238,8 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       [generation, record.id, record.change],
     );
   },
+
+  writable: (generation) => generationWritable(writer, generation),
 
   find: async (number) => {
     const { rows } = await writer.query<RecordRow>(

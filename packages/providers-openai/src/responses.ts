@@ -1,5 +1,6 @@
 import {
   ModelError,
+  shape,
   type ChatChunk,
   type ChatRequest,
   type ChatResult,
@@ -45,6 +46,35 @@ const continuationSchema = z.union([
   z.object({ api: z.literal('openai-responses'), output: z.array(replayItemSchema) }),
   z.object({ api: z.literal('openai-responses'), reasoning: z.array(reasoningSchema) }),
 ]);
+
+const reasoningFields = {
+  id: shape.ref(),
+  summary: shape.array(shape.object({ type: shape.oneOf('summary_text'), text: shape.opaque })),
+  encrypted_content: shape.opaque,
+};
+
+export const responsesContinuation = shape.either(
+  shape.object({
+    api: shape.oneOf('openai-responses'),
+    output: shape.array(
+      shape.variant('type', {
+        reasoning: reasoningFields,
+        message: {
+          role: shape.oneOf('assistant'),
+          content: shape.opaque,
+          phase: shape.optional(
+            shape.either(shape.oneOf('commentary', 'final_answer'), shape.nothing),
+          ),
+        },
+        function_call: { call_id: shape.ref(), name: shape.plain(), arguments: shape.opaque },
+      }),
+    ),
+  }),
+  shape.object({
+    api: shape.oneOf('openai-responses'),
+    reasoning: shape.array(shape.variant('type', { reasoning: reasoningFields })),
+  }),
+);
 
 const replayOutput = (output: ResponseOutputItem[]): z.infer<typeof replayItemSchema>[] =>
   output.flatMap<z.infer<typeof replayItemSchema>>((item) => {

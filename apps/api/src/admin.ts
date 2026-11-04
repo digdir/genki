@@ -97,6 +97,7 @@ export interface ModelSummary {
   id: string;
   residency: string;
   capabilities: string[];
+  operations?: string[];
   enabled: boolean;
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
   parameters?: Record<string, unknown>;
@@ -113,6 +114,7 @@ export interface ModelAdmin {
     classification: {
       residency?: string;
       capabilities?: string[];
+      operations?: string[];
       enabled?: boolean;
       parameters?: Record<string, unknown>;
     },
