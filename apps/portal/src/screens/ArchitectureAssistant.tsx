@@ -47,6 +47,7 @@ export const ArchitectureAssistant = ({ api, tenant, tenantName }: ScreenProps) 
             api={api}
             tenant={tenant}
             tenantName={tenantName}
+            setupPlacement="send"
           />
         </>
       ) : (

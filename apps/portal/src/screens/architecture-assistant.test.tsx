@@ -60,6 +60,20 @@ describe('the architecture assistant page', () => {
     expect(screen.getByText(/Assistenten er under utprøving/)).toBeTruthy();
   });
 
+  it('keeps the setup in a closed menu beside Send until the person opens it', async () => {
+    await renderAt('#/architecture-assistant', fetchWith(withArchitectureService));
+
+    const menu = await screen.findByRole('button', { name: 'Oppsett' });
+    expect(menu.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Endre oppsett' })).toBeNull();
+
+    fireEvent.click(menu);
+
+    expect(menu.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Endre oppsett' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Svarspråk' })).toBeTruthy();
+  });
+
   it('explains that the service is missing instead of opening the chat when the organisation does not have it', async () => {
     await renderAt('#/architecture-assistant', fetchWith(examplePlaygroundOptions));
 

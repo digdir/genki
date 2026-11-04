@@ -65,6 +65,7 @@ export const playgroundUi = {
     refused: '{model} cannot be used in this setup.',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
     setupLabel: 'Setup {key}',
+    setupMenu: 'Setup',
     setupSessionNote: 'Changes here do not affect anything that is published.',
     endCompare: 'End comparison',
     compare: 'Compare',
@@ -96,6 +97,11 @@ export const playgroundUi = {
     metaData: 'Data',
     tokensInOut: '{input} in, {output} out',
     whatHappened: 'What happened',
+    whatIsHappening: 'What is happening',
+    whatIsHappeningCount: {
+      one: 'What is happening ({count} step)',
+      other: 'What is happening ({count} steps)',
+    },
     whatHappenedCount: {
       one: 'What happened ({count} step)',
       other: 'What happened ({count} steps)',

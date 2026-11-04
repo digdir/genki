@@ -64,6 +64,7 @@ export const playgroundUi = {
     refused: '{model} kan ikke brukes i dette oppsettet.',
     quotaUsedUp: 'Kvoten for måneden er brukt opp. {notStored}',
     setupLabel: 'Oppsett {key}',
+    setupMenu: 'Oppsett',
     setupSessionNote: 'Endringer her påvirker ikke noe som er publisert.',
     endCompare: 'Avslutt sammenligning',
     compare: 'Sammenlign',
@@ -95,6 +96,11 @@ export const playgroundUi = {
     metaData: 'Data',
     tokensInOut: '{input} inn, {output} ut',
     whatHappened: 'Hva skjedde',
+    whatIsHappening: 'Hva skjer',
+    whatIsHappeningCount: {
+      one: 'Hva skjer ({count} steg)',
+      other: 'Hva skjer ({count} steg)',
+    },
     whatHappenedCount: {
       one: 'Hva skjedde ({count} steg)',
       other: 'Hva skjedde ({count} steg)',

@@ -1,9 +1,11 @@
-import { Button, Spinner, Tag } from '@digdir/designsystemet-react';
-import { useEffect, useState } from 'react';
+import { ChevronDownIcon, ChevronUpIcon } from '@navikt/aksel-icons';
+import { Popover, Spinner, Tag } from '@digdir/designsystemet-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { PlaygroundResult, PlaygroundStreamEvent, RunStats } from '../../api/playground';
 import { useFormat } from '@genai/i18n/react';
 import { formatCount, formatSecondsShort } from '../../data/playground';
 import { useT } from '../../i18n';
+import { Icon } from '../Icon';
 import { Steps } from '../../screens/log/Steps';
 import { formatOffset } from '../../screens/log/format';
 import type { TimelineStep } from '../../types';
@@ -109,7 +111,15 @@ const statusTags = {
   failed: ['playground.runFailed', 'danger'],
 } as const;
 
-export const RunHeader = ({ run, result }: { run: LiveRun; result?: PlaygroundResult }) => {
+export const RunHeader = ({
+  run,
+  result,
+  children,
+}: {
+  run: LiveRun;
+  result?: PlaygroundResult;
+  children?: ReactNode;
+}) => {
   const t = useT();
   const f = useFormat();
   const running = run.status === 'running';
@@ -143,17 +153,18 @@ export const RunHeader = ({ run, result }: { run: LiveRun; result?: PlaygroundRe
           </div>
         ))}
       </dl>
+      {children}
     </div>
   );
 };
 
+/** The steps of a run, in a popup that opens from the run's status line and starts closed. */
 export const WhatHappened = ({ run, idPrefix }: { run: LiveRun; idPrefix: string }) => {
   const t = useT();
   const running = run.status === 'running';
-  const [expanded, setExpanded] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const [closed, setClosed] = useState<Set<string>>(new Set());
-  const show = expanded ?? running;
   const latest = running ? run.steps.findLast((s) => s.state === 'running')?.id : undefined;
   if (run.steps.length === 0) return null;
   const isOpen = (step: TimelineStep) =>
@@ -161,44 +172,55 @@ export const WhatHappened = ({ run, idPrefix }: { run: LiveRun; idPrefix: string
   const toggle = (index: number) => {
     const step = run.steps[index];
     if (!step) return;
-    const open = isOpen(step);
+    const wasOpen = isOpen(step);
     setOpened((s) => {
       const next = new Set(s);
-      if (open) next.delete(step.id);
+      if (wasOpen) next.delete(step.id);
       else next.add(step.id);
       return next;
     });
     setClosed((s) => {
       const next = new Set(s);
-      if (open) next.add(step.id);
+      if (wasOpen) next.add(step.id);
       else next.delete(step.id);
       return next;
     });
   };
   const bodyId = `${idPrefix}what`;
+  const label = t(running ? 'playground.whatIsHappening' : 'playground.whatHappened');
   return (
-    <div className="playground-what">
-      <Button
+    <Popover.TriggerContext>
+      <Popover.Trigger
         variant="tertiary"
         data-size="sm"
-        aria-expanded={show}
-        aria-controls={show ? bodyId : undefined}
-        onClick={() => setExpanded(!show)}
+        aria-expanded={open}
+        aria-controls={bodyId}
       >
-        {t('playground.whatHappenedCount', { count: run.steps.length })}
-      </Button>
-      {show ? (
-        <div id={bodyId}>
+        {t(running ? 'playground.whatIsHappeningCount' : 'playground.whatHappenedCount', {
+          count: run.steps.length,
+        })}
+        <Icon icon={open ? ChevronUpIcon : ChevronDownIcon} size={18} />
+      </Popover.Trigger>
+      <Popover
+        id={bodyId}
+        placement="bottom-start"
+        data-size="sm"
+        className="playground-what"
+        open={open}
+        onOpen={() => setOpen(true)}
+        onClose={() => setOpen(false)}
+      >
+        {open ? (
           <Steps
             steps={run.steps}
             isOpen={isOpen}
             onToggle={toggle}
-            label={t('playground.whatHappened')}
+            label={label}
             idPrefix={idPrefix}
           />
-        </div>
-      ) : null}
-    </div>
+        ) : null}
+      </Popover>
+    </Popover.TriggerContext>
   );
 };
 

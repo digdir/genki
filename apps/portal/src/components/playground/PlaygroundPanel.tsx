@@ -1,4 +1,4 @@
-import { XMarkIcon } from '@navikt/aksel-icons';
+import { ChevronDownIcon, ChevronUpIcon, CogIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -75,6 +75,8 @@ import { SetupForm } from './SetupForm';
 import './playground.css';
 
 export type PlaygroundLayout = 'side' | 'full';
+/** Where the setup sits: above the conversation, or in a menu beside Send that starts closed. */
+export type PlaygroundSetupPlacement = 'top' | 'send';
 export type PlaygroundContext = 'free' | 'service' | 'skill' | 'dataset';
 export type PlaygroundState = 'empty' | 'answer' | 'compare' | 'quota' | 'not-allowed' | 'error';
 
@@ -90,6 +92,7 @@ export interface PlaygroundPanelProps {
   tenantName?: string;
   serviceDraft?: ServiceDraft;
   timelinePanel?: boolean;
+  setupPlacement?: PlaygroundSetupPlacement;
 }
 
 export interface ServiceDraft {
@@ -283,6 +286,7 @@ export const PlaygroundPanel = ({
   tenantName: tenantNameProp,
   serviceDraft,
   timelinePanel = false,
+  setupPlacement = 'top',
 }: PlaygroundPanelProps) => {
   const t = useT();
   const f = useFormat();
@@ -309,6 +313,7 @@ export const PlaygroundPanel = ({
   const [b, setB] = useState<PlaygroundSetup | null>(null);
   const [answerLanguage, setAnswerLanguage] = useState<AnswerLanguage | ''>('');
   const [editing, setEditing] = useState<SetupKey | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
   const [draft, setDraft] = useState<PlaygroundSetup | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
@@ -833,26 +838,8 @@ export const PlaygroundPanel = ({
     lastMessage?.live?.a ??
     (lastMessage?.result ? runFromResult(lastMessage.result, Date.now()) : undefined);
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    ask(text);
-  };
-
-  return (
-    <section {...sectionProps}>
-      {header}
-      {quotaWarning !== null ? (
-        <Alert data-color="warning" data-size="sm">
-          <Paragraph data-size="sm">
-            {t.rich('playground.quotaBody', {
-              percent: quotaWarning,
-              tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
-              strong: (c) => <strong>{c}</strong>,
-              link: (c) => <Link href="#/statistics">{c}</Link>,
-            })}
-          </Paragraph>
-        </Alert>
-      ) : null}
+  const setupBlock = (
+    <>
       <SetupBar
         rows={[
           { key: 'a' as const, setup: a },
@@ -889,6 +876,52 @@ export const PlaygroundPanel = ({
           }}
         />
       ) : null}
+    </>
+  );
+  const setupOpen = setupPlacement === 'top' || showSetup || !!editing;
+  const setupId = `${id}-setup`;
+  const setupToggle =
+    setupPlacement === 'send' ? (
+      <Button
+        variant="secondary"
+        type="button"
+        aria-expanded={setupOpen}
+        aria-controls={setupOpen ? setupId : undefined}
+        onClick={() => {
+          if (setupOpen && editing) {
+            setEditing(null);
+            setDraft(null);
+          }
+          setShowSetup(!setupOpen);
+        }}
+      >
+        <Icon icon={CogIcon} size={18} />
+        {t('playground.setupMenu')}
+        <Icon icon={setupOpen ? ChevronUpIcon : ChevronDownIcon} size={18} />
+      </Button>
+    ) : null;
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    ask(text);
+  };
+
+  return (
+    <section {...sectionProps}>
+      {header}
+      {quotaWarning !== null ? (
+        <Alert data-color="warning" data-size="sm">
+          <Paragraph data-size="sm">
+            {t.rich('playground.quotaBody', {
+              percent: quotaWarning,
+              tokens: quotaTokensText(options.quota.monthlyTokens, f, t),
+              strong: (c) => <strong>{c}</strong>,
+              link: (c) => <Link href="#/statistics">{c}</Link>,
+            })}
+          </Paragraph>
+        </Alert>
+      ) : null}
+      {setupPlacement === 'top' ? setupBlock : null}
       {messages.length === 0 && !busy ? (
         <div className="playground-empty">
           <span className="playground-empty-title">
@@ -961,7 +994,11 @@ export const PlaygroundPanel = ({
                       const last = messages.at(-1)?.id === m.id;
                       return (
                         <div key={key} className="playground-run">
-                          {run ? <RunHeader run={run} {...(result ? { result } : {})} /> : null}
+                          {run ? (
+                            <RunHeader run={run} {...(result ? { result } : {})}>
+                              <WhatHappened run={run} idPrefix={`${m.id}-${key}-`} />
+                            </RunHeader>
+                          ) : null}
                           {result ? (
                             <AnswerCard
                               {...(label ? { label } : {})}
@@ -982,7 +1019,6 @@ export const PlaygroundPanel = ({
                               <LiveText run={run} />
                             </>
                           ) : null}
-                          {run ? <WhatHappened run={run} idPrefix={`${m.id}-${key}-`} /> : null}
                         </div>
                       );
                     })}
@@ -1026,6 +1062,11 @@ export const PlaygroundPanel = ({
               </Button>
             ) : null}
           </div>
+          {setupPlacement === 'send' && setupOpen ? (
+            <div id={setupId} className="playground-setup-menu">
+              {setupBlock}
+            </div>
+          ) : null}
           {isExtract ? (
             <div className="playground-input">
               <Field>
@@ -1063,6 +1104,7 @@ export const PlaygroundPanel = ({
                 >
                   {t('playground.useSampleFile')}
                 </Button>
+                {setupToggle}
               </div>
             </div>
           ) : (
@@ -1101,6 +1143,7 @@ export const PlaygroundPanel = ({
                   }}
                 />
               </Field>
+              {setupToggle}
               <Button variant="primary" type="submit" aria-disabled={cantSend ? true : undefined}>
                 {t('playground.send')}
               </Button>
