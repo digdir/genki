@@ -5,6 +5,7 @@ import { useAsync } from '../hooks';
 import { EmptyState, ErrorState, Loading } from '../states';
 import type { ConfigEntry } from '../types';
 import { PageHeader } from '../ui';
+import { EngineSwitchSection } from './config/EngineSwitch';
 import { Pipelines } from './config/Pipelines';
 import {
   localId,
@@ -90,10 +91,13 @@ const PlatformRegistry = ({ api, tab }: { api: ApiClient; tab: CatalogTab }) => 
       {...(tab.kind === 'dataset'
         ? {
             detail: (e: ConfigEntry) => (
-              <Pipelines
-                api={api}
-                base={`/operator/datasets/${encodeURIComponent(e.id)}/pipelines`}
-              />
+              <>
+                <Pipelines
+                  api={api}
+                  base={`/operator/datasets/${encodeURIComponent(e.id)}/pipelines`}
+                />
+                <EngineSwitchSection api={api} dataset={e.id} />
+              </>
             ),
           }
         : {})}

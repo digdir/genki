@@ -30,11 +30,12 @@ import {
   type JobRunStore,
 } from './ingestion.js';
 import { translateMessage } from './i18n/index.js';
-import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
+import { knowledgeEndpointsModule, type KnowledgeEndpointView } from './knowledge-endpoints.js';
 
 const digdir = '991825827';
 const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
+  drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
   // A Digdir login with Entra ID, which may use models in lockdown.
   entra: {
     kind: 'employee',
@@ -229,11 +230,11 @@ const boot = async (
   });
   const app = new Hono();
   platform.mount(app, admin);
-  const call = (path: string, init: { method?: string; body?: unknown } = {}) =>
+  const call = (path: string, init: { method?: string; body?: unknown; as?: string } = {}) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
-        authorization: `Bearer ${shared.as ?? 'kari'}`,
+        authorization: `Bearer ${init.as ?? shared.as ?? 'kari'}`,
         'content-type': 'application/json',
         'change-reason': encodeURIComponent('Flytter til kunnskapsdatabasen'),
       },
@@ -729,5 +730,99 @@ describe('switching a dataset into the knowledge database', () => {
     const opened = await started(booted, 'laast');
     expect(opened.state).toBe('running');
     expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
+  });
+});
+
+describe('operators switching a platform dataset into the knowledge database', () => {
+  const id = 'digdir/genki-docs';
+  const operatorBase = `/operator/datasets/${encodeURIComponent(id)}`;
+  const platformFolderDataset = async ({ call }: Booted) => {
+    const created = await call('/operator/datasets', {
+      body: {
+        id,
+        name: 'GenKI-dokumentasjonen',
+        residency: 'norway',
+        index: { endpoint: 'platform-pg' },
+        embedding,
+      },
+    });
+    expect(created.status).toBe(201);
+    const saved = await call(`${operatorBase}/pipelines`, {
+      body: { id: 'genki-docs', name: 'Dokumentasjonen', source: { kind: 'folder', path: '.' } },
+    });
+    expect(saved.status).toBe(201);
+  };
+  const operatorStart = async (booted: Booted) => {
+    const response = await booted.call(`${operatorBase}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(response.status).toBe(202);
+    return json<EngineSwitchView>(response);
+  };
+  const operatorView = async (booted: Booted, sid: string) =>
+    json<EngineSwitchView>(await booted.call(`${operatorBase}/engine-switches/${sid}`));
+
+  it('an operator switches a platform dataset into the knowledge database through ingestion runs', async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const opened = await operatorStart(booted);
+    const run = runOf(booted.worker, opened.id);
+    expect(run).toMatchObject({
+      dataset: id,
+      pipeline: 'genki-docs',
+      engineSwitch: opened.id,
+      generation: opened.generation,
+    });
+    await booted.worker.end(run, 'succeeded', { stored: 3 });
+    await booted.module.follow();
+    let seen = await operatorView(booted, opened.sid);
+    for (let i = 0; i < 200 && seen.state === 'comparing'; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      seen = await operatorView(booted, opened.sid);
+    }
+    expect(seen.state).toBe('ready');
+    const activated = await booted.call(`${operatorBase}/engine-switches/${opened.sid}/activate`, {
+      body: {},
+    });
+    expect(activated.status).toBe(202);
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded', { stored: 0 });
+    await booted.module.follow();
+    expect((await operatorView(booted, opened.sid)).state).toBe('active');
+    expect(
+      await json<DatasetEngineView>(await booted.call(`${operatorBase}/engine`)),
+    ).toMatchObject({ endpoint: 'knowledge-pg' });
+    expect(booted.platform.catalog.get('dataset', id)).toMatchObject({
+      by: 'operator:platform:engine-switch',
+      spec: { endpoint: 'knowledge-pg', generation: opened.generation },
+    });
+  });
+
+  it("an endpoint's view lists the datasets on it with their owner and pipeline count", async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const asKari: Booted['call'] = (path, init = {}) => booted.call(path, { ...init, as: 'kari' });
+    await folderDataset({ ...booted, call: asKari }, 'veiledning');
+    const { data } = await json<{ data: KnowledgeEndpointView[] }>(
+      await booted.call('/operator/knowledge/endpoints'),
+    );
+    expect(data.find((e) => e.id === 'platform-pg')?.datasets).toEqual([
+      { id: `${digdir}/veiledning`, scope: digdir, name: 'Veiledning', pipelines: 1 },
+      { id, scope: 'platform', name: 'GenKI-dokumentasjonen', pipelines: 1 },
+    ]);
+    expect(data.find((e) => e.id === 'knowledge-pg')?.datasets).toEqual([]);
+  });
+
+  it("a cancelled platform switch's generation is dropped", async () => {
+    const booted = await boot({ as: 'drift' });
+    await platformFolderDataset(booted);
+    const opened = await operatorStart(booted);
+    const cancelled = await booted.call(`${operatorBase}/engine-switches/${opened.sid}/cancel`, {
+      body: {},
+    });
+    expect(cancelled.status).toBe(200);
+    await booted.module.sweep();
+    expect(booted.worker.drops).toEqual([
+      { tenant: 'platform', dataset: id, generation: opened.generation },
+    ]);
   });
 });

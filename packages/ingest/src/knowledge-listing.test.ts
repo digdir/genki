@@ -12,7 +12,12 @@ import {
 } from './pipeline-sources.js';
 
 const signal = new AbortController().signal;
-const scope = { tenant: '991825827', dataset: '991825827/docs' };
+const scope = {
+  tenant: '991825827',
+  dataset: '991825827/docs',
+  owner: '991825827',
+  pipeline: 'docs',
+};
 
 const spec = (source: Record<string, unknown>) => pipelineSpec.parse({ name: 'Docs', source });
 
@@ -168,6 +173,58 @@ describe('knowledge listings', () => {
       { name: 'a.md', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
     ]);
     expect((await listing.load(first(docs).record)).texts.join('')).toContain('Innhold a.');
+  });
+
+  it("a folder document's id on the knowledge database is folder: with its scope, pipeline id and path", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'docs', 'adr'), { recursive: true });
+    await writeFile(join(root, 'docs', 'adr', '0042.md'), '# ADR\n\nInnhold.');
+    const platform = await knowledgeListingOf(
+      spec({ kind: 'folder', path: '.' }),
+      { folderRoot: root },
+      {
+        tenant: '991825827',
+        dataset: 'digdir/genki-docs',
+        owner: 'platform',
+        pipeline: 'genki-docs',
+      },
+      signal,
+    );
+    const [doc] = await all(platform);
+    expect(doc?.id).toBe('folder:platform/genki-docs/docs/adr/0042.md');
+    const loaded = await platform.load(first([doc]).record);
+    expect(loaded.key).toBe('folder:platform/genki-docs/docs/adr/0042.md');
+    expect(loaded.docNum).toBe('folder:platform/genki-docs/docs/adr/0042.md');
+
+    const tenant = await knowledgeListingOf(
+      spec({ kind: 'folder', path: 'docs' }),
+      { folderRoot: root },
+      scope,
+      signal,
+    );
+    expect((await all(tenant)).map((d) => d.id)).toEqual(['folder:991825827/docs/adr/0042.md']);
+  });
+
+  it('a folder document keeps its id when the folder root moves', async () => {
+    const ids = async () => {
+      const root = await mkdtemp(join(tmpdir(), 'listing-'));
+      await mkdir(join(root, 'docs'));
+      await writeFile(join(root, 'docs', 'a.md'), '# A\n\nInnhold a.');
+      const listing = await knowledgeListingOf(
+        spec({ kind: 'folder', path: 'docs' }),
+        { folderRoot: root },
+        scope,
+        signal,
+      );
+      const doc = first(await all(listing));
+      const loaded = await listing.load(doc.record);
+      const { id, doc_num, path } = loaded.stored?.([]) ?? {};
+      return { id: doc.id, docNum: loaded.docNum, stored: { id, doc_num, path } };
+    };
+    const [laptop, test] = [await ids(), await ids()];
+    expect(laptop.id).toBe(test.id);
+    expect(laptop.docNum).toBe(test.docNum);
+    expect(laptop.stored).toEqual(test.stored);
   });
 
   it('an upload listing gives the blob store hash without reading the file', async () => {

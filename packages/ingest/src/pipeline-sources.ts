@@ -19,7 +19,7 @@ import {
   websiteSkipReasonFor,
 } from './documents.js';
 import { episerverPages, episerverSource, filterEpiserverPages } from './episerver.js';
-import { findFolderFiles, pathToDoc, type FolderEntry } from './folder.js';
+import { findFolderFiles, type FolderEntry } from './folder.js';
 import {
   displayNames,
   fetchKudosFile,
@@ -35,6 +35,7 @@ import { huggingFaceSource, parquetMapping, parquetTableName } from './parquet.j
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
 import type { IngestSource, SkippedDocument } from './pipeline.js';
 import {
+  folderDocumentId,
   folderSource,
   kudosSource,
   uploadDocumentId,
@@ -556,6 +557,17 @@ export const knowledgeSourceRefusal = (kind: PipelineSpec['source']['kind']) =>
     : `a source of kind ${kind} cannot fill a dataset on the knowledge database yet`;
 
 /**
+ * Whom a knowledge listing lists for: `tenant` reads uploads and connections, `owner` (`platform`
+ * or the organisation number, as the dataset's scope) and `pipeline` name folder documents.
+ */
+export interface KnowledgeListingScope {
+  tenant: string;
+  dataset: string;
+  owner: string;
+  pipeline: string;
+}
+
+/**
  * Lists a pipeline's source for a run on the knowledge database without fetching what it can
  * compare by its listing, and loads one document from its record for an index job (ADR 0042).
  */
@@ -594,7 +606,7 @@ const listingOf = (
 export const knowledgeListingOf = async (
   spec: PipelineSpec,
   options: IngestSourceOptions,
-  scope: { tenant: string; dataset: string },
+  scope: KnowledgeListingScope,
   signal: AbortSignal,
 ): Promise<Listing> => {
   const source = spec.source;
@@ -670,6 +682,7 @@ export const knowledgeListingOf = async (
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
     const name = (path: string) => relative(root, path).split(sep).join('/');
+    const idOf = (path: string) => folderDocumentId(scope.owner, scope.pipeline, name(path));
     const list = async () =>
       (await findFolderFiles(root, 'all')).filter((e) =>
         selected(name(e.path), source.include, source.exclude),
@@ -683,13 +696,14 @@ export const knowledgeListingOf = async (
         ...(source.titleFrom ? { titleFrom: source.titleFrom } : {}),
         ...(source.extensions ? { extensions: source.extensions } : {}),
         ...(converter ? { converter } : {}),
+        documentId: idOf,
       });
     return listingOf(
       'listed',
       async function* () {
         for (const entry of await list())
           yield {
-            id: pathToDoc(entry).id,
+            id: idOf(entry.path),
             record: { path: entry.path, lastmod: entry.lastmod },
             metadata: { path: name(entry.path) },
             files: [{ name: name(entry.path), sha256: sha256Of(await readFile(entry.path)) }],

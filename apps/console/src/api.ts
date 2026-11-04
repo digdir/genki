@@ -41,6 +41,8 @@ import type {
   TenantDefinitionHistory,
   EndpointTestResult,
   KnowledgeEndpoint,
+  DatasetEngine,
+  EngineSwitch,
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
@@ -611,6 +613,37 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    datasetEngine: (dataset: string, signal?: AbortSignal) =>
+      call<DatasetEngine>('GET', `/operator/datasets/${encodeURIComponent(dataset)}/engine`, {
+        signal,
+      }),
+    engineSwitch: (dataset: string, sid: string, signal?: AbortSignal) =>
+      call<EngineSwitch>(
+        'GET',
+        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches/${encodeURIComponent(sid)}`,
+        { signal },
+      ),
+    startEngineSwitch: (
+      dataset: string,
+      body: { to: string; method: 'reingest'; embedding?: { model: string; dimensions: number } },
+      reason: string,
+    ) =>
+      call<EngineSwitch>(
+        'POST',
+        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches`,
+        { body, headers: { 'change-reason': reason } },
+      ),
+    engineSwitchAction: (
+      dataset: string,
+      sid: string,
+      action: 'retry' | 'cancel' | 'activate' | 'rollback',
+      reason: string,
+    ) =>
+      call<EngineSwitch>(
+        'POST',
+        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches/${encodeURIComponent(sid)}/${action}`,
+        { body: {}, headers: { 'change-reason': reason } },
+      ),
     knowledgeSecrets: async (signal?: AbortSignal) =>
       (await call<{ data: StoredSecret[] }>('GET', '/operator/knowledge/secrets', { signal })).data,
     testKnowledgeEndpoint: (spec: Record<string, unknown>) =>

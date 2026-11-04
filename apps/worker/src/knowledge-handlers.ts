@@ -5,6 +5,7 @@ import {
   ingestListing,
   pipelineSpec,
   type DocumentRecords,
+  type KnowledgeListingScope,
   type Listing,
   type PipelineSpec,
   type RecordTransaction,
@@ -51,7 +52,7 @@ export interface KnowledgeHandlerDeps {
   generationExists?(generation: string): Promise<boolean>;
   listingOf(
     spec: PipelineSpec,
-    scope: { tenant: string; dataset: string },
+    scope: KnowledgeListingScope,
     signal: AbortSignal,
   ): Promise<Listing>;
   embedder(dataset: DatasetConfig, ctx: PortContext): EmbeddingPort | undefined;
@@ -64,6 +65,14 @@ const tenantOf = (run: IngestionExecution, platformTenant: string) => {
   const scope = executionScope(run.dataset);
   return scope === 'platform' ? platformTenant : scope;
 };
+
+/** Whom a run's listing lists for; folder documents are named by the dataset's own scope. */
+const listingScope = (run: IngestionExecution, platformTenant: string): KnowledgeListingScope => ({
+  tenant: tenantOf(run, platformTenant),
+  dataset: run.dataset,
+  owner: executionScope(run.dataset),
+  pipeline: run.pipeline,
+});
 
 const specOf = async (deps: KnowledgeHandlerDeps, run: IngestionExecution) => {
   const parsed = pipelineSpec.safeParse(await deps.pipeline(run));
@@ -128,8 +137,11 @@ export const knowledgeWork = (
       if (await cancelled()) return;
       if (deps.prepare && !(await deps.generationExists?.(generation)))
         await deps.prepare(dataset, generation);
-      const tenant = tenantOf(run, deps.admission.platformTenant);
-      const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
+      const listing = await deps.listingOf(
+        spec,
+        listingScope(run, deps.admission.platformTenant),
+        signal,
+      );
       await deps.records.chunking(generation, run.pipeline, chunkingOf(spec.chunking));
       await ingestListing({
         records: deps.records,
@@ -168,7 +180,11 @@ export const knowledgeWork = (
         const spec = await specOf(deps, run);
         const { dataset } = await datasetOf(deps, run, signal);
         const tenant = tenantOf(run, deps.admission.platformTenant);
-        const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
+        const listing = await deps.listingOf(
+          spec,
+          listingScope(run, deps.admission.platformTenant),
+          signal,
+        );
         const chunking = await deps.records.chunking(
           job.data.generation,
           run.pipeline,
