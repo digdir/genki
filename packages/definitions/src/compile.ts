@@ -3,6 +3,7 @@ import type { Capability } from '@genai/kernel';
 import { resolvePrompts, type PromptFiles } from './prompts.js';
 import {
   decisionModelOf,
+  operationModelsOf,
   publicNamesOf,
   toolRef,
   variantChatOf,
@@ -89,6 +90,9 @@ export const toCapabilities = (
           id !== undefined && id !== model.primary && id !== spec.model.fallback,
       ),
     ];
+    const operationGrants = [...new Set(operationModelsOf(spec.model))].filter(
+      (id) => !modelGrants.includes(id),
+    );
     const capability: Capability = {
       descriptor,
       strategy: { id: strategy.id, version: String(strategy.version) },
@@ -114,7 +118,10 @@ export const toCapabilities = (
           : []),
         ...modelGrants.map((id) => ({ port: 'model', ref: ref('model', id) })),
         ...(strategy.id === 'step-flow'
-          ? modelGrants.map((id) => ({ port: 'described', ref: ref('model', id) }))
+          ? [...modelGrants, ...operationGrants].map((id) => ({
+              port: 'described',
+              ref: ref('model', id),
+            }))
           : []),
         ...(decisionModelOf(spec)
           ? [{ port: 'decision', ref: ref('model', decisionModelOf(spec) as string) }]

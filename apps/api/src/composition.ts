@@ -998,6 +998,7 @@ export const createPlatform = async (input: PlatformInput) => {
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
     ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
     log: tracker.log,
     tasks: taskStore,

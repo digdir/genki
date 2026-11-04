@@ -85,7 +85,7 @@ describe('the operation@1 suite', () => {
 });
 
 const imageYaml = `
-id: example/image@1
+id: example/generate-image@1
 operation: generate-image
 status: review
 summary: A made-up image API for the operation@1 suite.

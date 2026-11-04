@@ -79,6 +79,47 @@ describe('operation descriptors', () => {
     );
   });
 
+  it('a descriptor whose input can choose the model is refused', () => {
+    expect(refused(embedYaml.replace('model: $deployment', 'model: $input.model'))).toMatch(
+      /request.body.model must be \$deployment/,
+    );
+    expect(
+      refused(
+        embedYaml
+          .replace('status: typed', 'status: review')
+          .replace(
+            '      encoding_format: { enum: [float] }',
+            '      encoding_format: { enum: [float] }\n      options?: { object: { deployment: plain } }',
+          ),
+      ),
+    ).toMatch(/may name the model only at the top/);
+    expect(
+      refused(
+        embedYaml.replace(
+          '  body:\n    model: $deployment\n    input: $input\n    encoding_format: float',
+          '  body: $input',
+        ),
+      ),
+    ).toMatch(/request.body.model must be \$deployment/);
+  });
+
+  it('a descriptor id names the operation it describes', () => {
+    expect(refused(embedYaml.replace('operation: embed', 'operation: classify'))).toMatch(
+      /a descriptor id names its operation/,
+    );
+  });
+
+  it('a descriptor that declares stream events is refused until streaming is built', () => {
+    expect(
+      refused(
+        embedYaml.replace(
+          'stream: none',
+          'stream:\n  events:\n    done:\n      shape: { object: { usage: plain } }\n      done: true',
+        ),
+      ),
+    ).toMatch(/stream must be none/);
+  });
+
   it('a mapping copies, defaults, omits and orders without code', () => {
     const scope = {
       response: {

@@ -1,7 +1,7 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
 import { sourceLinkRules } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
-import { capabilities, operations, parameterRules, residencies } from '@genai/port-model';
+import { capabilities, operationKindPattern, parameterRules, residencies } from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
@@ -535,7 +535,7 @@ const PublicModel = z
     family: z.string().optional(),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)),
-    operations: z.array(z.enum(operations)),
+    operations: z.array(z.string().regex(operationKindPattern)),
     parameters: parameterRules,
     price: Price.nullable(),
   })
@@ -1211,16 +1211,6 @@ const ProcessorRecordBody = z
     retention: z
       .object({ days: z.number().int().min(0), note: z.string().optional() })
       .describe('How long the provider keeps what it is sent'),
-    acceptsUnmaskedInput: z
-      .boolean()
-      .default(false)
-      .describe(
-        'Whether image, audio and file input, which cannot be masked, may go to this endpoint',
-      ),
-    unmaskedInputReason: z
-      .string()
-      .optional()
-      .describe('Required when acceptsUnmaskedInput is true'),
   })
   .openapi('ProcessorRecordInput');
 const ProcessorRecordView = z

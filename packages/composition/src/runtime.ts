@@ -31,6 +31,7 @@ import {
   type Kernel,
   type PolicyDecisionPoint,
   type PortContext,
+  type PortProvider,
   type SecretResolver,
   type StateStore,
   type Strategy,
@@ -49,7 +50,9 @@ import {
 import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
 import {
   catalogDescriptorProblems,
+  ModelError,
   ModelRouter,
+  type OperationPort,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
@@ -181,6 +184,27 @@ export interface PolicyParts {
   catalog(): CatalogRegistry | undefined;
 }
 
+/** The described port for published service versions only; a draft cannot run a call-operation step. */
+export const publishedOnly = (
+  provider: PortProvider<OperationPort>,
+  published: (task: string) => Promise<boolean>,
+): PortProvider<OperationPort> => ({
+  open: (ref, ctx) => {
+    const port = provider.open(ref, ctx);
+    return {
+      info: () => port.info(),
+      call: async (descriptor, input) => {
+        if (!(await published(ctx.task)))
+          throw new ModelError(
+            'refused',
+            'a call-operation step runs only in a published service version, not in a draft',
+          );
+        return port.call(descriptor, input);
+      },
+    };
+  },
+});
+
 export interface RuntimeInput {
   platformTenant: string;
   catalogs: Catalogs;
@@ -197,6 +221,7 @@ export interface RuntimeInput {
   admitsModelUse?: (principal: Principal) => boolean;
   environmentTier?: EnvironmentTier;
   descriptors?: DescriptorRegistry;
+  published?: (capabilityId: string) => boolean;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -598,7 +623,10 @@ export const createRuntime = async (input: RuntimeInput) => {
     blob,
     decision: models.decisions(),
     operation: models.operations(),
-    described: models.described(),
+    described: publishedOnly(models.described(), async (task) => {
+      const capability = await capabilityOf(task);
+      return capability !== undefined && (input.published?.(capability) ?? true);
+    }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);

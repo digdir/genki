@@ -63,11 +63,20 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-04: new operation kinds from a descriptor, and the last checks on call-operation
+
+- A catalogue model's `operations` may list `chat`, `decide` or any kind a registered descriptor defines; any other kind is refused in the catalogue and in `PATCH /operator/models/{id}` (`422`, `errors[0].path: "operations"`). `GET /models` lists every kind a model offers.
+- A service may name a model used only for an operation kind: `spec.model.operations: { <kind>: <model> }`. The model must offer the kind and lie within the service's residency; a `call-operation@1` step without `params.model` uses it for its descriptor's kind before the main model.
+- Publishing a service with a `call-operation` step answers `422` unless it has the `pii-before-model` guardrail, and when the descriptor's kind is `decide` (served only through `purpose-check`).
+- A draft (builder, playground, skill test, assistant) cannot run a `call-operation` step; the step fails as refused.
+- Image, audio and file input to a descriptor call is always refused. The processor record no longer has `acceptsUnmaskedInput` or `unmaskedInputReason`; a `PUT` with either answers `400`.
+- `GET /operator/operation-kinds` lists `chat` and `decide` always, with `builtIn: true` and `typed: "production"`, and says `governs: "descriptor-calls"`: maturity governs descriptor calls only.
+
 ### 2026-11-03: the described tier, maturity per kind and processor records
 
 - A step flow may use the block `call-operation@1` with `params: { descriptor, model? }` and the descriptor's typed input as the step `input`; `model` is one of the service's models and defaults to its main model. The step answers `{ result }`. Publishing a service whose flow (or a subflow it reaches) has such a step answers `422` unless the descriptor is reviewed (`status` `described` or `typed`, not `review`), its operation kind is `production` in this environment, the model is one of the service's, within the service's residency, and its endpoint has a processor record. The same refusals hold when the step runs, so a kind moved back to test or a removed processor record stops the service at the next call; `kernel.gate.call` names `port: "described"` and the refusal (`maturity`, `processor`, `media`).
 - `GET /operator/operation-kinds` and `POST /operator/operation-kinds/{kind}/maturity` with `{ "maturity": "test" | "production" }` (operators, audited, `change-reason`): one operator moves a kind to production or back to test.
-- `GET /operator/processor-records`, and `GET`, `PUT` and `DELETE /operator/model-endpoints/{id}/processor-record` (operators, audited, `change-reason` on writes): `{ agreement, subProcessors: [{ name, location }], retention: { days, note? }, acceptsUnmaskedInput, unmaskedInputReason? }`. `acceptsUnmaskedInput: true` needs a reason and lets image, audio and file input through to a described operation on that endpoint; text is still masked.
+- `GET /operator/processor-records`, and `GET`, `PUT` and `DELETE /operator/model-endpoints/{id}/processor-record` (operators, audited, `change-reason` on writes): `{ agreement, subProcessors: [{ name, location }], retention: { days, note? }, acceptsUnmaskedInput, unmaskedInputReason? }`. `acceptsUnmaskedInput: true` needs a reason and lets image, audio and file input through to a described operation on that endpoint; text is still masked. (Removed 2026-11-04.)
 - An operation descriptor may have `status: described`: reviewed, served to services through `call-operation@1`, without types of Genki's own.
 
 ### 2026-11-03: operation descriptors

@@ -435,6 +435,10 @@ export const operationErrors = {
   modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
   noProcessorRecordForService:
     'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
+  decideOnlyThroughPurposeCheck:
+    'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+  callOperationNeedsMasking:
+    'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
   operatorsGovernOperations: 'only operators govern operations',
   noOperationDescriptors: 'this platform has no operation descriptors',
   noDescriptorForKind: 'no descriptor describes {kind}',

@@ -106,7 +106,6 @@ export interface GateTarget {
   maturity?: Maturity;
   synthetic?: boolean;
   processorRecord?: boolean;
-  unmaskedInput?: boolean;
   refuse?: (refusal: GateRefusal, message: string) => Error;
 }
 
@@ -191,7 +190,6 @@ export const createGate = (options: GateOptions = {}): Gate => {
   };
 
   const inShape = <Req, Res>(
-    target: GateTarget,
     payload: GatePayload<Res>,
     body: unknown,
     map?: (text: string) => string,
@@ -200,7 +198,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
       side: 'request',
       ...(map ? { map } : {}),
     });
-    if (walked.media.length > 0 && target.unmaskedInput !== true)
+    if (walked.media.length > 0)
       throw new GateError(
         'media',
         'the payload has image, audio or file content, which cannot be masked',
@@ -235,7 +233,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     payload: GatePayload<Res>,
     request: Req,
   ) => {
-    inShape(target, payload, request);
+    inShape(payload, request);
     const guards = distinct(ctx.guards ?? []);
     const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
     const call: GateCall = {
@@ -244,10 +242,10 @@ export const createGate = (options: GateOptions = {}): Gate => {
       model: target.model.id,
     };
     let body: Req = maskers.length
-      ? inShape(target, payload, request, (text) => maskers.reduce((t, m) => m.mask(t), text))
+      ? inShape(payload, request, (text) => maskers.reduce((t, m) => m.mask(t), text))
       : request;
     for (const guard of guards) if (guard.request) body = (await guard.request(call, body)) as Req;
-    body = inShape(target, payload, body);
+    body = inShape(payload, body);
     const restoring = maskers.filter((m) => m.unmask);
     const restore = (text: string) =>
       restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);

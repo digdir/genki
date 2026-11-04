@@ -633,9 +633,10 @@ const ModelClassificationBody = z
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
     operations: z
-      .array(z.enum(['chat', 'decide']))
+      .array(z.string().regex(/^[a-z][a-z0-9-]*$/))
       .min(1)
-      .optional(),
+      .optional()
+      .describe('chat, decide, or a kind a registered operation descriptor defines'),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })
