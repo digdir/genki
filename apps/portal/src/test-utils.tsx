@@ -22,6 +22,17 @@ export const renderAt = async (path: string, fetch: typeof globalThis.fetch = mo
   return { auth, ...result };
 };
 
+export const heldFetch = (pattern: RegExp, base: typeof globalThis.fetch = mockFetch()) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (pattern.test(url)) await held;
+    return base(input, init);
+  };
+  return { fetch, release: () => act(release) };
+};
+
 export const failingFetch =
   (pattern: RegExp, status = 503, base: typeof globalThis.fetch = mockFetch()): typeof fetch =>
   async (input, init) => {

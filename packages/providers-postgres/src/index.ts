@@ -27,8 +27,10 @@ import { PostgresTenantSecrets } from './secrets.js';
 import { PostgresSettingsStore } from './settings.js';
 import { PostgresChangeFeed } from './change-feed.js';
 import { PostgresIngestionExecutions } from './executions.js';
+import { PostgresUsageBuckets } from './usage.js';
 import { PostgresRateLimiter } from './rate-limits.js';
 import {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -42,8 +44,13 @@ export {
 } from './pool.js';
 export {
   cachedEntraPassword,
+  knowledgeIdentityTokenSource,
+  knowledgeLocalLogins,
+  knowledgeReadSourceFromEnv,
+  knowledgeSourceFromEnv,
   managedIdentityTokenSource,
   postgresSourceFromEnv,
+  type KnowledgeLogin,
   usesEntraPostgres,
   type AccessToken,
   type TokenSource,
@@ -56,9 +63,11 @@ export {
 export { PostgresClients } from './clients.js';
 export { PostgresWebhookDeliveries } from './webhook-deliveries.js';
 export { PostgresTriggerRuns } from './trigger-runs.js';
+export { PostgresUsageBuckets } from './usage.js';
 export { PostgresLeaderLease } from './leader-lease.js';
 export { PostgresRateLimiter, type PostgresRateDecision } from './rate-limits.js';
 export {
+  PostgresOutsideRunRetention,
   PostgresRetentionStore,
   PostgresThreadErasure,
   PostgresThreadRetention,
@@ -90,7 +99,7 @@ export { erased, PostgresEventLog } from './event-log.js';
 export { PostgresIdentities } from './identities.js';
 export { PostgresModelClassifications } from './models.js';
 export { ContentKeys } from './keys.js';
-export { grantRuntimeRole, migrate, runtimeRole, workerRole } from './schema.js';
+export { grantRuntimeRole, migrate, platformId, runtimeRole, workerRole } from './schema.js';
 export {
   PostgresStateStore,
   PostgresTaskStore,
@@ -116,6 +125,19 @@ export {
   type IngestionExecutionReport,
   type IngestionExecutionStatus,
 } from './executions.js';
+export {
+  ingestSender,
+  ingestStillEndingMessage,
+  PostgresJobRunRecords,
+  PostgresJobRuns,
+  queuedRunExistsMessage,
+  sentBackMessage,
+  type IngestSender,
+  type JobRunRequest,
+  type JobRunResult,
+  type QueuedRunRules,
+  type RunOutcome,
+} from './job-runs.js';
 
 const runtimePoolFor = (owner: Pool, role: string) =>
   withClientErrorListener(
@@ -187,7 +209,9 @@ export const createPostgresStores = async (
     configEntries: new PostgresConfigEntries(pool),
     ingestionExecutions: new PostgresIngestionExecutions(pool),
     rateLimits: new PostgresRateLimiter(pool),
+    usageBuckets: new PostgresUsageBuckets(pool),
     retention: new PostgresRetentionStore(pool),
+    outsideRunRetention: new PostgresOutsideRunRetention(pool),
     threadRetention: new PostgresThreadRetention(pool, keys),
     threadErasure: new PostgresThreadErasure(pool, keys),
     erase: (tenant: string, scope: string) => keys.erase(tenant, scope),

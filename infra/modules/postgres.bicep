@@ -8,14 +8,22 @@ param storageSizeGB int
 param backupRetentionDays int
 param geoRedundantBackup string
 param highAvailability string
-param databaseName string
+
+@description('The databases to create; outputs name the first.')
+param databaseNames array
 param delegatedSubnetId string
 param privateDnsZoneId string
 param adminGroupObjectId string
 param adminGroupName string
-param appIdentityPrincipalId string
-param appIdentityName string
-param appIdentityIsAdmin bool
+
+@description('Managed identities that are Entra admins beside the group: { principalId, name }.')
+param identityAdmins array = []
+
+@description('The azure.extensions allowlist, comma separated.')
+param extensions string = 'VECTOR'
+
+@description('shared_preload_libraries; empty leaves the server default. Static: it takes effect after a restart.')
+param sharedPreloadLibraries string = ''
 
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
@@ -40,18 +48,26 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   }
 }
 
-resource extensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
+resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
   parent: server
   name: 'azure.extensions'
-  properties: { value: 'VECTOR', source: 'user-override' }
+  properties: { value: extensions, source: 'user-override' }
 }
 
-resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
+resource preload 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = if (!empty(sharedPreloadLibraries)) {
   parent: server
-  name: databaseName
-  properties: { charset: 'UTF8', collation: 'en_US.utf8' }
-  dependsOn: [extensions]
+  name: 'shared_preload_libraries'
+  properties: { value: sharedPreloadLibraries, source: 'user-override' }
+  dependsOn: [extensionsConfig]
 }
+
+@batchSize(1)
+resource databases 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = [for database in databaseNames: {
+  parent: server
+  name: database
+  properties: { charset: 'UTF8', collation: 'en_US.utf8' }
+  dependsOn: [extensionsConfig, preload]
+}]
 
 resource groupAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
   parent: server
@@ -61,20 +77,21 @@ resource groupAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@20
     principalName: adminGroupName
     tenantId: subscription().tenantId
   }
-  dependsOn: [database]
+  dependsOn: [databases]
 }
 
-resource appAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = if (appIdentityIsAdmin) {
+@batchSize(1)
+resource admins 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = [for admin in identityAdmins: {
   parent: server
-  name: appIdentityPrincipalId
+  name: admin.principalId
   properties: {
     principalType: 'ServicePrincipal'
-    principalName: appIdentityName
+    principalName: admin.name
     tenantId: subscription().tenantId
   }
   dependsOn: [groupAdmin]
-}
+}]
 
 output name string = server.name
 output fqdn string = server.properties.fullyQualifiedDomainName
-output databaseName string = database.name
+output databaseName string = databaseNames[0]

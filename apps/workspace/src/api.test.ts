@@ -455,6 +455,15 @@ describe('the locked environment flag', () => {
     expect(calls[0]?.url).toBe('/api/health');
   });
 
+  it('reads from /me whether the login is read-only in lockdown', async () => {
+    const { calls, fetcher } = recorder(() =>
+      Response.json({ organisations: [], lockdownReadOnly: true }),
+    );
+
+    expect(await client(fetcher).readOnlyInLockdown?.()).toBe(true);
+    expect(calls[0]?.url).toBe('/api/me');
+  });
+
   it('treats a missing flag as not locked', async () => {
     const { fetcher } = recorder(() => Response.json({ status: 'ok', version: 't' }));
 

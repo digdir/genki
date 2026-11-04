@@ -1,4 +1,22 @@
 import {
+  BulletListIcon,
+  CheckmarkIcon,
+  ChevronDownIcon,
+  CpuIcon,
+  ExclamationmarkTriangleIcon,
+  FileCheckmarkIcon,
+  FileXMarkIcon,
+  FileTextIcon,
+  InformationSquareIcon,
+  LightningIcon,
+  MagnifyingGlassIcon,
+  PersonCheckmarkIcon,
+  QuestionmarkCircleIcon,
+  ShieldIcon,
+  TasklistIcon,
+  WrenchIcon,
+} from '@navikt/aksel-icons';
+import {
   Alert,
   Button,
   Field,
@@ -9,31 +27,30 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon, type IconComponent } from '../../components/Icon';
 import { useFormat } from '@genai/i18n/react';
 import { approvalDetails } from '../../data/log';
 import { useT, type PlainKey } from '../../i18n';
 import type { TimelineBlock, TimelineStep } from '../../types';
 import { formatDuration, formatOffset } from './format';
 
-export const stepIcons: Record<string, string> = {
-  trigger: 'M13 3L5 14h6l-1 7 8-11h-6z',
-  plan: 'M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01',
-  search: 'M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 0 1 0-13z M15.5 15.5L20 20',
-  read: 'M6 3h9l3 3v15H6z M9 10h6 M9 14h6 M9 18h4',
-  tool: 'M9 3v5 M15 3v5 M7 8h10v4a5 5 0 0 1-10 0z M12 17v4',
-  model: 'M7 7h10v10H7z M10 3v4 M14 3v4 M10 17v4 M14 17v4 M3 10h4 M3 14h4 M17 10h4 M17 14h4',
-  guard: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
-  approval: 'M9 11a3 3 0 1 0 0-6a3 3 0 0 0 0 6z M3 20a6 6 0 0 1 12 0 M15 12l2 2 4-4',
-  document: 'M6 3h9l3 3v15H6z M14 3v4h4 M9 13l2 2 4-4',
-  result: 'M5 12l5 5 9-10',
-  error: 'M12 4l9 16H3z M12 10v4 M12 17h.01',
-  step: 'M4 6h16 M4 12h10 M4 18h6',
-  note: 'M12 3a9 9 0 1 1 0 18a9 9 0 0 1 0-18z M12 11v5 M12 8h.01',
-  searchnote:
-    'M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 0 1 0-13z M15.5 15.5L20 20 M10.5 8v3 M10.5 13.5h.01',
+export const stepIcons: Record<string, IconComponent> = {
+  trigger: LightningIcon,
+  plan: TasklistIcon,
+  search: MagnifyingGlassIcon,
+  read: FileTextIcon,
+  tool: WrenchIcon,
+  model: CpuIcon,
+  guard: ShieldIcon,
+  approval: PersonCheckmarkIcon,
+  document: FileCheckmarkIcon,
+  result: CheckmarkIcon,
+  error: ExclamationmarkTriangleIcon,
+  step: BulletListIcon,
+  note: InformationSquareIcon,
+  searchnote: FileXMarkIcon,
 };
-const unknownIcon = 'M12 3a9 9 0 1 1 0 18a9 9 0 0 1 0-18z M8 12h.01 M12 12h.01 M16 12h.01';
+const unknownIcon = QuestionmarkCircleIcon;
 
 export const stepTypes: Record<string, PlainKey> = {
   trigger: 'steps.typeTrigger',
@@ -266,7 +283,7 @@ export const Steps = ({
                   dashed ? 'dashed' : '',
                 ].join(' ')}
               >
-                <Icon d={stepIcons[step.type] ?? unknownIcon} size={18} strokeWidth={1.6} />
+                <Icon icon={stepIcons[step.type] ?? unknownIcon} size={18} />
               </span>
               {i < steps.length - 1 ? <span className="log-step-line" /> : null}
             </div>
@@ -309,7 +326,7 @@ export const Steps = ({
                       <span>{t('logSteps.tokens', { count: step.tokens })}</span>
                     ) : null}
                     <span className={open ? 'chevron open' : 'chevron'}>
-                      <Icon d={icons.chevronDown} size={18} />
+                      <Icon icon={ChevronDownIcon} size={18} />
                     </span>
                   </span>
                 </button>

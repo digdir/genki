@@ -222,6 +222,58 @@ describe('knowledge router', () => {
     expect(served).toEqual([{ index: { dataset: 'digdir/kudos', engine: 'stub' } }]);
   });
 
+  it('the knowledge port refuses more citations than its cap', async () => {
+    const { adapter } = stub();
+    const looked: number[] = [];
+    const citing: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => ({
+        ...adapter.connect(endpoint),
+        resolveCitations: async (_dataset, ids) => {
+          looked.push(ids.length);
+          return ids.map((cited) => ({ cited, status: 'unknown' as const }));
+        },
+      }),
+    };
+    const port = kudos(router(citing, { maxLimit: 5 }));
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `d${i}`);
+    expect(await port.resolveCitations?.(ids(10))).toHaveLength(10);
+    await expect(port.resolveCitations?.(ids(11))).rejects.toThrow(
+      'too many ids in one citation lookup',
+    );
+    expect(looked).toEqual([10]);
+  });
+
+  it('provenance records the data version of the server that answered', async () => {
+    const { adapter } = stub();
+    const served: unknown[] = [];
+    const answered = new WeakMap<object, number>();
+    const versioned: typeof adapter = {
+      ...adapter,
+      connect: (endpoint) => {
+        const inner = adapter.connect(endpoint);
+        return {
+          ...inner,
+          search: async (dataset, requests, signal) => {
+            answered.set(dataset, 41);
+            return inner.search(dataset, requests, signal);
+          },
+          served: async (dataset) => {
+            const dataVersion = answered.get(dataset);
+            return { generation: 'g7', ...(dataVersion === undefined ? {} : { dataVersion }) };
+          },
+        };
+      },
+    };
+    const ctx = { ...context(), provenance: async (r: unknown) => void served.push(r) };
+
+    await kudos(router(versioned), ctx).search({ query: 'a' });
+
+    expect(served).toEqual([
+      { index: { dataset: 'digdir/kudos', engine: 'stub', generation: 'g7', dataVersion: 41 } },
+    ]);
+  });
+
   it('accepts filters of the declared kinds and refuses anything else before searching', async () => {
     const { adapter, searches } = stub();
     const port = kudos(router(adapter));
@@ -281,6 +333,38 @@ describe('knowledge router', () => {
       orgs_short: [{ value: 'Digdir', count: 3 }],
     });
     expect(other).toEqual(['fetch:c1,c2', 'range:d1:0-5', 'facets:orgs_short']);
+  });
+
+  it('a router that did not allow a dataset never sets it in `app.datasets`', async () => {
+    const allowed: (string[] | undefined)[] = [];
+    const base = stub().adapter;
+    const adapter: typeof base = {
+      ...base,
+      connect: (endpoint) => {
+        const inner = base.connect(endpoint);
+        return {
+          ...inner,
+          search: (dataset, requests, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.search(dataset, requests, signal);
+          },
+          fetch: (dataset, ids, signal) => {
+            allowed.push(dataset.allowed);
+            return inner.fetch(dataset, ids, signal);
+          },
+        };
+      },
+    };
+    const r = router(adapter);
+    expect(() =>
+      r.open({ kind: 'dataset', id: 'nav/internal', tenant: '991825827' }, context()),
+    ).toThrow(/not shared/);
+    expect(allowed).toEqual([]);
+    const port = r.open({ kind: 'dataset', id: 'digdir/kudos' }, context());
+    await port.search({ query: 'x' });
+    await port.fetch(['c1']);
+    expect(allowed).toEqual([['digdir/kudos'], ['digdir/kudos']]);
+    expect(r.datasetConfigs().map((d) => d.config.allowed)).toEqual([undefined, undefined]);
   });
 
   it('keeps a dataset shared with named tenants away from everyone else', async () => {

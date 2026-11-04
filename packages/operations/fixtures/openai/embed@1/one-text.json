@@ -1,0 +1,34 @@
+{
+  "source": "the example response in the OpenAI embeddings API reference (create embeddings), with a shortened vector",
+  "deployment": "text-embedding-3-small",
+  "input": ["The food was delicious and the waiter..."],
+  "request": {
+    "method": "POST",
+    "path": "/embeddings",
+    "body": {
+      "model": "text-embedding-3-small",
+      "input": ["The food was delicious and the waiter..."],
+      "encoding_format": "float"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "object": "embedding",
+          "embedding": [0.0023064255, -0.009327292, -0.0028842222],
+          "index": 0
+        }
+      ],
+      "model": "text-embedding-3-small",
+      "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+    }
+  },
+  "result": {
+    "vectors": [[0.0023064255, -0.009327292, -0.0028842222]],
+    "usage": { "inputTokens": 8 }
+  },
+  "usage": { "inputTokens": 8, "requests": 1 }
+}

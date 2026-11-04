@@ -29,6 +29,7 @@
     "@genai/identity": "0.0.0",
     "@genai/jobs": "0.0.0",
     "@genai/kernel": "0.0.0",
+    "@genai/operations": "0.0.0",
     "@genai/port-blob": "0.0.0",
     "@genai/port-embedding": "0.0.0",
     "@genai/port-knowledge": "0.0.0",

@@ -322,6 +322,12 @@ export const createEngineSwitchesModule =
 
     const sourceEngine = (item: CatalogItem) =>
       catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec.engine;
+    // pgvector on the platform database and on the knowledge server is one engine with two stores.
+    const connectionOf = (spec: Record<string, unknown> | undefined) =>
+      (spec?.options as { connection?: unknown } | undefined)?.connection ?? 'platform';
+    const sharesStorage = (item: CatalogItem, target: CatalogItem) =>
+      connectionOf(catalog.get('knowledge-endpoint', String(item.spec.endpoint))?.spec) ===
+      connectionOf(target.spec);
 
     const exporterOf = (item: CatalogItem, signal: AbortSignal) => {
       try {
@@ -392,7 +398,11 @@ export const createEngineSwitchesModule =
         throw new Refusal(409, t('operations.switchWriteKeyRequired'));
       if (!deps.writers.engines().includes(engine))
         throw new Refusal(409, t('operations.switchCannotWrite'));
-      if (engine === sourceEngine(item) && engineOf(deps, engine)?.builtin)
+      if (
+        engine === sourceEngine(item) &&
+        engineOf(deps, engine)?.builtin &&
+        sharesStorage(item, target)
+      )
         throw new Refusal(409, t('operations.switchSharedStorage'));
       const description = engineOf(deps, engine);
       const needsVectors = description?.writer?.needsVectors ?? false;

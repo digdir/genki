@@ -49,6 +49,7 @@ export const problems = {
   onlyOperatorsModels: 'Only operators manage models',
   onlyOperatorsSeeTenants: 'Only operators see every tenant',
   onlyOperatorsListTenants: 'Only operators list tenants',
+  onlyOperatorsUnassignedUsage: 'Only operators read unassigned usage',
   onlyOperatorsDefaults: 'Only operators change platform defaults',
   invalidSetting: 'Invalid setting',
   invalidPin: 'Invalid pin',

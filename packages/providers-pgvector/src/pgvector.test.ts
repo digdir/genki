@@ -52,7 +52,7 @@ const config = (id: string, extra: Partial<DatasetConfig> = {}): DatasetConfig =
 });
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = new pg.Pool({ connectionString: container.getConnectionUri() });
 }, 120_000);
 

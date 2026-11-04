@@ -1,0 +1,44 @@
+id: providers-ai-gateway
+plane: providers
+name: AI gateway
+note: Usage over HTTP
+icon: gateway
+color: '#8fa8b3'
+status: Provider
+packages:
+  - '@genai/providers-ai-gateway'
+summary: Reads usage per hour from an AI gateway that implements genki's gateway contract.
+description: Calls the gateway's usage route through the egress guard with a client key resolved
+  from a secret:// reference, with its own timeout, and checks every answer against the contract.
+responsibilities:
+  - Gateway usage route over HTTP
+  - Client key from a secret reference
+  - Settings from the environment
+files:
+  - packages/providers-ai-gateway/src/usage.ts
+input: Usage query
+output: Usage rows
+replaces: []
+edges:
+  - to: kernel
+    label: Secret references
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-ai-gateway/src/usage.ts
+      imports: '@genai/kernel'
+  - to: port-usage
+    label: Usage source and contract
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-ai-gateway/src/usage.ts
+      imports: '@genai/port-usage'
+  - to: providers-mcp-client
+    label: Egress guard
+    kind: call
+    target: call
+    witness:
+      file: packages/providers-ai-gateway/src/usage.ts
+      imports: '@genai/providers-mcp-client'
+keywords: ai gateway usage http egress

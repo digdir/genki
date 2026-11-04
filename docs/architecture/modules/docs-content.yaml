@@ -1,0 +1,28 @@
+id: docs-content
+plane: consumers
+name: Docs content
+note: One copy of the Norwegian platform content
+icon: ui
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/docs-content'
+summary: The building blocks, flows, service types and target picture, in Norwegian, rendered by
+  the shared docs pages in the docs site and the portal.
+description: Plain data with no React and no styling. The docs site on GitHub Pages and the
+  portal's public pages under /about render the same content, so a change to a decision and to
+  the text that explains it lands in one place.
+responsibilities:
+  - Hold the building blocks, their parts, the flows and the service types
+  - Hold the target picture
+  - Link each building block to its ADRs and packages
+files:
+  - packages/docs-content/src/blocks.ts
+  - packages/docs-content/src/components.ts
+  - packages/docs-content/src/malbilde.ts
+  - packages/docs-content/src/service-types.ts
+input: Content written from the README and the ADRs
+output: Typed content for the docs site and the portal
+replaces: []
+edges: []
+keywords: docs content data norwegian byggeklosser målbilde flyt shared

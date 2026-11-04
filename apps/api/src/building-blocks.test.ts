@@ -57,6 +57,7 @@ const model = (id: string, residency: ModelDescription['residency']): ModelDescr
   deployment: id.split('/')[1] ?? id,
   residency,
   capabilities: ['stream'],
+  operations: ['chat'],
   enabled: true,
   origin: 'discovered',
   classified: true,

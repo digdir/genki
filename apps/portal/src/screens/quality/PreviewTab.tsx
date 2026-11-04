@@ -1,10 +1,9 @@
+import { ThumbDownIcon, ThumbUpIcon } from '@navikt/aksel-icons';
 import { Button, Chip, Field, Fieldset, Label, Textarea } from '@digdir/designsystemet-react';
 import { useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 
-const thumb =
-  'M7 11v9H4v-9z M7 11l4-7c1.5 0 2.5 1 2.5 2.5V10h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.3 20H7';
 const reasons = [
   ['wrong', 'quality.reasonWrong'],
   ['noSource', 'quality.reasonNoSource'],
@@ -67,7 +66,7 @@ export const PreviewTab = () => {
                 aria-disabled={c.sent || undefined}
                 onClick={() => vote('up')}
               >
-                <Icon d={thumb} size={18} />
+                <Icon icon={ThumbUpIcon} size={18} />
                 {t('quality.yes')}
               </Button>
               <Button
@@ -77,9 +76,7 @@ export const PreviewTab = () => {
                 aria-disabled={c.sent || undefined}
                 onClick={() => vote('down')}
               >
-                <span className="flip">
-                  <Icon d={thumb} size={18} />
-                </span>
+                <Icon icon={ThumbDownIcon} size={18} />
                 {t('quality.no')}
               </Button>
             </div>
