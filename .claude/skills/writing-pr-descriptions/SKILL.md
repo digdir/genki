@@ -21,6 +21,7 @@ Write it as short bullets a reviewer takes in at a glance, never paragraphs:
 - Link the issue: `Closes #41` when the merge finishes it, `Part of #41` when its acceptance criteria need work after the merge, such as a deploy, checks on Azure or a timed restore. A merge closes an issue its PR says `Closes` to, before that work is done.
 - Hold scope. Work that belongs elsewhere gets its own PR and a last bullet: "Not in this PR: ...".
 - After later pushes, rewrite the section so it describes the PR as it stands.
+- **Order**: Why, What changes, diagrams, More background, Screenshots, Walkthrough, then the issue line. Collapse only what a reviewer may skip (More background, Screenshots, Walkthrough) in `<details>`; the rest stays open.
 
 For #127:
 
@@ -44,11 +45,11 @@ For #127:
 Closes #127
 ```
 
-The diff carries the how. Explanations, mental models and reference tables belong in code, docs or an ADR, where they outlive the PR. The exception is a diagram, see below: it shows the reviewer the change faster than prose and replaces paragraphs rather than adding to them.
+The diff carries the how. Explanations, mental models and reference tables belong in code, docs or an ADR, where they outlive the PR. The exception is a diagram, see below: it shows the reviewer the change faster than prose and replaces bullets rather than adding to them.
 
 ## Diagrams
 
-When the PR changes how something behaves over time or across parts, show it as a before/after diagram under the end-state paragraph, in What and why. GitHub draws Mermaid code blocks; raw SVG is stripped. A PR that only renames, restyles or edits docs gets none.
+When the PR changes how something behaves over time or across parts, show it as a before/after diagram after the What changes bullets, in What and why. GitHub draws Mermaid code blocks; raw SVG is stripped. A PR that only renames, restyles or edits docs gets none.
 
 Pick the kind by what changes:
 
@@ -104,19 +105,19 @@ stateDiagram-v2
 
 ## Checklist
 
-Keep every line of the template. Tick a line when it holds or does not apply. Tick "`npm run check` passes" only after running it, with `(docs only)` when only docs changed. A line that does not hold stays unticked, with the reason under the list.
+Keep every checkbox of the template, the `npm run check` one under How it was tested included. Tick a line when it holds or does not apply. Tick "`npm run check` passes" only after running it, with `(docs only)` when only docs changed. A line that does not hold stays unticked, with the reason under the list.
 
 ## Screenshots
 
-For a visible UI change you exercised in the browser, add collapsed sections at the end of What and why, before How it was tested. Default to two or three stills, before and after. Record a video only when stills cannot carry it: several steps, a drag or reorder, a transition.
+For a visible UI change you exercised in the browser, add collapsed sections after More background, in the order under What and why. Default to two or three stills, before and after. Record a video only when stills cannot carry it: several steps, a drag or reorder, a transition.
 
 Capture with a browser you can drive, such as the agent-browser CLI (`agent-browser skills get core` for usage): `agent-browser screenshot <dir>/after.png` for a still, `agent-browser record start <dir>/walkthrough.webm` and `agent-browser record stop` around a walkthrough (`--cursor` shows the pointer in drags). Take them on a stack of your own: `npm start`, or a second copy on other ports as under "Other ports" in `docs/development.md` when another stack already runs, so you never wait for or stop someone else's. Log in with the mock login, so no token, `.env.local` value or real person from Ansattporten is in the frame. Keep the files outside the repository.
 
 `gh pr create` and `gh pr edit` upload a file with `--attach <path>`, repeated per file (up to 50). Older gh versions lack the flag: check `gh pr edit --help`. Text after `#` is the alt text: `--attach '<dir>/after.png#After: the run shows the error'`. A reference to that path already in the body is rewritten in place to the uploaded file and keeps the alt text written there; an attachment the body does not reference is appended at the end. So write the body with the paths, in your own layout. A video has no alt text and renders as a player: put its path on a line of its own.
 
-```html
+```markdown
 <details>
-<summary>:camera_with_flash: Screenshots</summary>
+<summary>:camera: Screenshots</summary>
 
 **Before:** a failed pipeline run shows only its status
 ![Before: the failed run with its status only](<dir>/before.png)
