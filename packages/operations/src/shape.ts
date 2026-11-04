@@ -1,4 +1,4 @@
-import { shape, type Shape } from '@genai/kernel';
+import { mediaTypePattern, mediaTypesOf, shape, type Shape } from '@genai/kernel';
 
 export class DescriptorError extends Error {
   constructor(message: string) {
@@ -110,6 +110,12 @@ export const shapeOf = (spec: unknown, at = 'shape'): Shape => {
     const min = limit(isRecord(spec.plain) ? spec.plain.min : undefined, `${at}.plain.min`);
     return shape.plain(min);
   }
+  if ('media' in spec) {
+    only(spec, ['media'], at);
+    if (typeof spec.media !== 'string' || !mediaTypePattern.test(spec.media.toLowerCase()))
+      throw new DescriptorError(`${at}.media: must be one media type, such as type/subtype`);
+    return shape.media(spec.media.toLowerCase());
+  }
   if ('ref' in spec) {
     only(spec, ['ref'], at);
     if (typeof spec.ref !== 'string') throw new DescriptorError(`${at}.ref: must be a pattern`);
@@ -149,6 +155,8 @@ export const fieldNames = (s: Shape): string[] => {
       return [];
   }
 };
+
+export const holdsMedia = (s: Shape): boolean => mediaTypesOf(s).length > 0;
 
 export const holdsJson = (s: Shape): boolean => {
   switch (s.kind) {

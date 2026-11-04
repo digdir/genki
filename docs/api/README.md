@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-04: media output from operations
+
+- A descriptor marks an output field as media (`{ media: <type/subtype> }`). The gate counts its bytes (`mediaBytes` in `kernel.gate.call`), refuses it whole over the cap for its type (`refusal: "media"`), and keeps it as a blob of the run; the run result, later steps and the timeline hold a reference, never the bytes. Which types are kept and their caps are deployment configuration (`GENAI_MEDIA_OUTPUT_TYPES`, `GENAI_MEDIA_OUTPUT_MAX_BYTES`), see [Operations](operations.md).
+- `POST /v1/chat/completions` answers with `attachments: [{ type, id, mediaType, bytes, sha256, step?, url }]` next to `citations` when steps of the run made media; a stream sends them in one frame before `finish_reason: "stop"`. The field is additive; OpenAI clients ignore it.
+- `GET /v1/tasks/{task}/media/{id}` serves the bytes, with the media type as `content-type`, to a caller that may read the run (`404` otherwise, `401` without credentials). It is part of the `openai` channel.
+- A step-flow step notice carries `media: [{ id, mediaType, bytes }]`, and the task timeline lists media under the step and the answer.
+
 ### 2026-11-04: operators upload operation descriptors
 
 - `PUT /operator/operation-descriptors/{id}` (operators, audited, `change-reason`): uploads a descriptor with 1 to 20 recorded fixtures, at most 512 KiB. The loader rules and `operation@1` run first; a failure answers `422` with every reason. It answers `201` (`step: "uploaded"`) or `200` (`step: "replaced"`, while still in review), and `409` for a bundled id or an upload that is already described.

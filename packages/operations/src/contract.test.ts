@@ -228,3 +228,40 @@ describe('descriptor fields that would switch off masking or carry media', () =>
       expect(audit[0]).toMatchObject({ outcome: 'refused', refusal: 'shape' });
     });
 });
+
+describe('media output in descriptors', () => {
+  const mediaYaml = (type: string) =>
+    imageYaml.replace(
+      'images: { array: { object: { b64: plain } } }',
+      `images: { array: { object: { b64: { media: ${type} } } } }`,
+    );
+
+  it('a descriptor that marks its output as media of any media type passes operation@1', async () => {
+    for (const type of ['image/png', 'audio/wav', 'video/mp4', 'application/pdf', 'text/csv'])
+      expect(await failedChecks(mediaYaml(type))).toEqual([]);
+  });
+
+  it('a descriptor whose media output is not base64 fails operation@1', async () => {
+    const descriptor = parseDescriptor(mediaYaml('image/png'));
+    const fixture = {
+      ...imageFixture,
+      response: { body: { data: [{ b64_json: 'ikke base64!' }] } },
+      result: { images: [{ b64: 'ikke base64!' }], usage: { requests: 1 } },
+    };
+    const failed = contractFailures(await operationContract(descriptor, [fixture]));
+    expect(failed.map((f) => f.check)).toContain(
+      'one-image: the recorded response maps to the typed result',
+    );
+  });
+
+  it('a descriptor may not declare media in its input or wire request', () => {
+    expect(() => parseDescriptor(imageField('{ media: image/png }'))).toThrow(
+      'media is output only',
+    );
+  });
+
+  it('a media marker names one media type', () => {
+    for (const type of ['image', 'image/*', '"image/png; charset=x"'])
+      expect(() => parseDescriptor(mediaYaml(type))).toThrow('must be one media type');
+  });
+});

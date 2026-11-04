@@ -1,4 +1,5 @@
 import type { Event, Part } from '@genai/contracts';
+import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
 import { failureOf, failureReason } from './failures.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
@@ -74,6 +75,32 @@ export const retrievalMime = 'application/vnd.genai.retrieval+json';
 export const sourcesMime = 'application/vnd.genai.sources+json';
 
 type Data = Record<string, unknown>;
+
+const mediaBlock = (media: { id: string; mediaType: string; bytes: number }[]): TimelineBlock[] =>
+  media.length
+    ? [
+        {
+          kind: 'list',
+          label: t('steps.media'),
+          items: media.map((m): [string, string] => [
+            m.mediaType,
+            t('steps.mediaBytes', { bytes: m.bytes, id: m.id }),
+          ]),
+        },
+      ]
+    : [];
+
+const mediaOfNotice = (value: unknown) =>
+  Array.isArray(value)
+    ? value.flatMap((m) => {
+        const v = (m ?? {}) as Record<string, unknown>;
+        return typeof v.id === 'string' &&
+          typeof v.mediaType === 'string' &&
+          typeof v.bytes === 'number'
+          ? [{ id: v.id, mediaType: v.mediaType, bytes: v.bytes }]
+          : [];
+      })
+    : [];
 
 const record = (v: unknown): Data =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {};
@@ -1000,7 +1027,7 @@ export class RunMapper {
       ...(open && ms === undefined && data.status !== 'started'
         ? { durationSeconds: round(at - open.at) }
         : timing),
-      blocks: [],
+      blocks: mediaBlock(mediaOfNotice(data.media)),
     };
     if (open) {
       this.steps[this.steps.indexOf(open)] = step;
@@ -1319,6 +1346,7 @@ export class RunMapper {
       : fields !== undefined && !text.trim()
         ? [{ kind: 'kv', label: t('steps.fields'), rows: fieldRows(fields) }]
         : [{ kind: 'answer', text, ...(sources.length ? { sources } : {}) }];
+    blocks.push(...mediaBlock(mediaAttachments(parts)));
     this.add({
       id: `e${e.seq}`,
       type: 'result',

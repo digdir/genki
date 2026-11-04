@@ -188,6 +188,18 @@ const ChatRequest = z
   .passthrough()
   .openapi('ChatRequest');
 
+const Attachment = z
+  .object({
+    type: z.string().describe('The top-level media type, such as `image` or `audio`.'),
+    id: z.string(),
+    mediaType: z.string().openapi({ example: 'image/png' }),
+    bytes: z.number().int(),
+    sha256: z.string(),
+    step: z.string().optional().describe('The step in the service that made it.'),
+    url: z.string().openapi({ example: '/v1/tasks/6f1c.../media/0b9e...' }),
+  })
+  .openapi('Attachment');
+
 const ChatResponse = z
   .object({
     id: z.string(),
@@ -205,6 +217,12 @@ const ChatResponse = z
     conversation_id: z.string().optional(),
     citations: z.array(z.string()).optional(),
     sources: z.array(Source).optional(),
+    attachments: z
+      .array(Attachment)
+      .optional()
+      .describe(
+        'Media that steps of the run made, each fetched from its `url` with the same credential.',
+      ),
     no_answer: z.boolean().optional(),
     notice: z.string().optional(),
     table: z
@@ -305,6 +323,28 @@ export const frontendRoutes: RouteConfig[] = [
       409: v1Error('version_not_found'),
       413: v1Error('document_too_large, request_too_large'),
       503: v1Error('service_paused'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/v1/tasks/{task}/media/{id}',
+    summary: 'Fetch media an answer returned in `attachments`',
+    request: {
+      params: z.object({
+        task: z.string().openapi({ param: { name: 'task', in: 'path' } }),
+        id: z.string().openapi({ param: { name: 'id', in: 'path' } }),
+      }),
+    },
+    responses: {
+      200: {
+        description:
+          'The bytes, with the media type as `content-type`. Only a caller that may read the run gets them.',
+        content: {
+          'application/octet-stream': { schema: z.string().openapi({ format: 'binary' }) },
+        },
+      },
+      401: v1Error('Invalid or missing credentials'),
+      404: v1Error('not_found: no such media, or the caller may not read the run'),
     },
   }),
   createRoute({

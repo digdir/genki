@@ -9,7 +9,7 @@ import {
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { rootsOf } from './mapping.js';
-import { DescriptorError, fieldNames, holdsJson, shapeOf } from './shape.js';
+import { DescriptorError, fieldNames, holdsJson, holdsMedia, shapeOf } from './shape.js';
 
 export const descriptorIdPattern = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*@[1-9]\d*$/;
 
@@ -211,6 +211,10 @@ export const toDescriptor = (value: unknown): Descriptor => {
     usage: d.usage,
     stream: 'none',
   };
+  if (holdsMedia(descriptor.input) || holdsMedia(descriptor.wire.request))
+    throw new DescriptorError(
+      `${at}: media is output only; a descriptor declares no media in its input or wire request`,
+    );
   if (
     descriptor.status !== 'typed' &&
     (holdsJson(descriptor.input) || holdsJson(descriptor.wire.request))

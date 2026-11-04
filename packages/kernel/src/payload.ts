@@ -1,5 +1,8 @@
+import { decodeBase64, isMediaRef, mediaRefKind, type MediaRef } from './media.js';
+
 export type Shape =
   | { kind: 'text' }
+  | { kind: 'media'; type: string }
   | { kind: 'plain'; min?: number }
   | { kind: 'opaque' }
   | { kind: 'ref'; pattern?: RegExp }
@@ -21,6 +24,8 @@ export interface OperationShape {
 
 /** Text that may hold personal data: masked, restored and the only place media can hide. */
 export const text: Shape = { kind: 'text' };
+/** Encoded media of one media type: refused in a request, kept as a blob of the run in a result. */
+export const media = (type: string): Shape => ({ kind: 'media', type });
 /** A string written by a service or a tool: kept as it is, but a URL or encoded data is refused in a request. */
 export const plain = (min?: number): Shape => ({ kind: 'plain', ...(min ? { min } : {}) });
 /** State the provider issued and an adapter replays unread, such as an encrypted reasoning blob. */
@@ -60,12 +65,20 @@ const providerObjectId =
 export interface WalkOptions {
   side: 'request' | 'result';
   map?: (text: string) => string;
+  keepMedia?: boolean;
+}
+
+export interface MediaFound {
+  path: string;
+  ref: MediaRef;
+  body: Uint8Array;
 }
 
 export interface Walked<T = unknown> {
   value: T;
   problems: string[];
   media: string[];
+  outputs: MediaFound[];
   dropped: number;
 }
 
@@ -87,6 +100,7 @@ const where = (path: string) => path || 'payload';
 const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: string): Walked<T> => {
   const problems: string[] = [];
   const media: string[] = [];
+  const outputs: MediaFound[] = [];
   let dropped = 0;
   const request = options.side === 'request';
 
@@ -103,6 +117,28 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
           return v;
         }
         return problem('must be text');
+      case 'media': {
+        if (request) {
+          media.push(where(path));
+          return v;
+        }
+        if (isMediaRef(v))
+          return v.mediaType === s.type ? v : problem(`must be ${s.type}, not ${v.mediaType}`);
+        if (typeof v !== 'string') return problem(`must be encoded ${s.type}`);
+        const body = decodeBase64(v);
+        if (!body) return problem(`must be base64 encoded ${s.type}`);
+        if (!options.keepMedia) return v;
+        const ref: MediaRef = {
+          kind: mediaRefKind,
+          mediaType: s.type,
+          bytes: body.byteLength,
+          sha256: '',
+          tenant: '',
+          path: '',
+        };
+        outputs.push({ path: where(path), ref, body });
+        return ref;
+      }
       case 'plain':
         if (typeof v !== 'string') return problem('must be a string');
         if (s.min && v.length < s.min) return problem(`must have at least ${s.min} characters`);
@@ -186,13 +222,33 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
         if (!chosen) return problem('has no shape');
         problems.push(...chosen.problems);
         media.push(...chosen.media);
+        outputs.push(...chosen.outputs);
         dropped += chosen.dropped;
         return chosen.value;
       }
     }
   };
 
-  return { value: visit(shape, value, base) as T, problems, media, dropped };
+  return { value: visit(shape, value, base) as T, problems, media, outputs, dropped };
+};
+
+export const mediaTypesOf = (s: Shape): string[] => {
+  switch (s.kind) {
+    case 'media':
+      return [s.type];
+    case 'object':
+      return [...new Set(Object.values(s.fields).flatMap(mediaTypesOf))];
+    case 'array':
+      return mediaTypesOf(s.item);
+    case 'optional':
+      return mediaTypesOf(s.shape);
+    case 'variant':
+      return [...new Set(Object.values(s.options).flatMap(mediaTypesOf))];
+    case 'either':
+      return [...new Set(s.options.flatMap(mediaTypesOf))];
+    default:
+      return [];
+  }
 };
 
 /** Walks a value through its closed shape: validates, finds media, maps text and drops what the shape does not know. */

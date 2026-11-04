@@ -1,3 +1,4 @@
+import { mediaRefsIn } from '@genai/kernel';
 import type { OperationPort } from '@genai/port-model';
 import { z } from 'zod';
 import type { Block } from '../blocks.js';
@@ -36,6 +37,8 @@ export const callOperationBlock: Block<Record<string, unknown>, z.infer<typeof o
       tenant: ctx.config.model?.tenant ?? ctx.invocation.tenant,
     });
     yield* [];
-    return { result: await port.call(params.descriptor, input) };
+    const result = await port.call(params.descriptor, input);
+    for (const ref of mediaRefsIn(result)) ref.step ??= ctx.step;
+    return { result };
   },
 };

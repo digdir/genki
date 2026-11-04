@@ -16,7 +16,7 @@ import {
   type Part,
   type Principal,
 } from '@genai/contracts';
-import { KernelError, type Kernel, type Run } from '@genai/kernel';
+import { KernelError, mediaAttachments, type Kernel, type Run } from '@genai/kernel';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
@@ -207,6 +207,24 @@ export const generatedHeaders = (models: string[], version?: number): Record<str
   ...(version === undefined ? {} : { 'genai-service-version': String(version) }),
 });
 
+export interface MediaReader {
+  get(tenant: string, path: string): Promise<{ body: Uint8Array; contentType: string } | undefined>;
+}
+
+export const mediaRoute = (task: string, id: string) =>
+  `/v1/tasks/${encodeURIComponent(task)}/media/${encodeURIComponent(id)}`;
+
+export const attachmentsOf = (parts: Part[], task: string) =>
+  mediaAttachments(parts).map((a) => ({
+    type: a.mediaType.slice(0, a.mediaType.indexOf('/')),
+    id: a.id,
+    mediaType: a.mediaType,
+    bytes: a.bytes,
+    sha256: a.sha256,
+    ...(a.step ? { step: a.step } : {}),
+    url: mediaRoute(task, a.id),
+  }));
+
 export interface Authenticator {
   authenticate(request: Request): Promise<Principal | undefined>;
 }
@@ -230,6 +248,7 @@ export interface OpenAiAdapterOptions {
   };
   conversations?: AskConversations;
   documents?: RuntimeDocumentStore;
+  media?: MediaReader;
   filterIssues?: (
     principal: Principal,
     entry: ModelEntry,
@@ -544,6 +563,31 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       onError: (c) => fail(c, 'request_too_large', tooLarge(bodyLimits.chat), 413),
     }),
   );
+  app.get('/v1/tasks/:task/media/:id', async (c) => {
+    const notFound = () => fail(c, 'not_found', 'No such media for this caller', 404);
+    let found: Part[] | undefined;
+    try {
+      found = (await kernel.task(c.get('principal'), c.req.param('task'))).result;
+    } catch (error) {
+      if (error instanceof KernelError && ['not_found', 'forbidden'].includes(error.code))
+        return notFound();
+      throw error;
+    }
+    const attachment = mediaAttachments(found ?? []).find((a) => a.id === c.req.param('id'));
+    const blob = attachment && (await options.media?.get(attachment.tenant, attachment.path));
+    if (!attachment || !blob) return notFound();
+    return new Response(blob.body as Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers: {
+        'content-type': attachment.mediaType,
+        'content-length': String(blob.body.byteLength),
+        'cache-control': 'private, no-store',
+        'content-security-policy': "default-src 'none'; sandbox",
+        'x-content-type-options': 'nosniff',
+      },
+    });
+  });
+
   app.post('/v1/chat/completions', async (c) => {
     const principal = c.get('principal');
     let body: Record<string, unknown>;
@@ -747,6 +791,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       return c.json(failureError(outcome.events, outcome.error), 500);
     }
     const { citations, sources } = sourcesBundle(outcome.parts);
+    const media = attachmentsOf(outcome.parts, run.task);
     const usage = await usageOf(kernel, principal, run.task);
     if (conversationId)
       await options.conversations
@@ -773,6 +818,7 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       ...(conversationId ? { conversation_id: conversationId } : {}),
       ...(citations.length ? { citations } : {}),
       ...(sources.length ? { sources } : {}),
+      ...(media.length ? { attachments: media } : {}),
       ...noAnswerMarker(outcome.parts),
       ...tableMarker(outcome.parts),
       ai_generated: true,
@@ -870,6 +916,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
             if (!live) sourcesChunk();
             const table = tableMarker(parts);
             if (table.table) send(chunk({}, null, table));
+            const attachments = attachmentsOf(parts, run.task);
+            if (attachments.length) send(chunk({}, null, { attachments }));
             answer.settle(answerOf(parts));
             if (live) sourcesChunk();
             if (noAnswerOf(parts)) send(chunk({}, null, noAnswerMarker(parts)));

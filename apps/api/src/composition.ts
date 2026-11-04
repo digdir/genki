@@ -134,6 +134,7 @@ import {
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type MediaOutputConfig,
   type PolicyDecisionPoint,
   type SecretResolver,
   type StateStore,
@@ -396,6 +397,7 @@ export interface PlatformInput {
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
   blobStore?: BlobStore;
+  mediaOutput?: MediaOutputConfig;
   egress?: EgressOptions;
   catalogSkips?: string[];
   evaluators?: Map<string, Evaluator>;
@@ -1027,6 +1029,7 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.egress ? { egress: input.egress } : {}),
     ...(input.blobStore ? { blobStore: input.blobStore } : {}),
+    ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
@@ -1939,6 +1942,12 @@ export const createPlatform = async (input: PlatformInput) => {
         modelsOf,
         conversations: conversationTurns(conversations, callerOf, conversationId),
         ...(blobStore ? { documents: runtimeDocumentStore(blobStore) } : {}),
+        media: {
+          get: async (tenant, path) => {
+            const found = await blobStore.get({ tenant, path });
+            return found && { body: found.body, contentType: found.info.contentType };
+          },
+        },
         filterIssues: async (principal, entry, filters) =>
           askFilterIssues(knowledge, principal, entry, filters),
         serviceSchema: async (entry) => {

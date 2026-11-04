@@ -1,5 +1,6 @@
 import type { Principal, Ref, ResourceProvenance, Usage } from '@genai/contracts';
-import { walk, type OperationShape } from './payload.js';
+import type { MediaOutput } from './media.js';
+import { mediaTypesOf, walk, type OperationShape, type Walked } from './payload.js';
 import type { PortContext } from './spi.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -88,6 +89,7 @@ export interface GateRecord {
   refusal?: GateRefusal | 'guard';
   usage?: Usage;
   dropped?: number;
+  mediaBytes?: number;
 }
 
 export interface GateTarget {
@@ -129,6 +131,7 @@ export interface GateOptions {
   egress?: (endpoint: string) => typeof fetch | undefined;
   outside?: OutsideRun;
   tier?: EnvironmentTier;
+  media?: MediaOutput;
 }
 
 export interface Gate {
@@ -189,6 +192,15 @@ export const createGate = (options: GateOptions = {}): Gate => {
       );
   };
 
+  const mediaAdmitted = <Res>(payload: GatePayload<Res>) => {
+    for (const type of mediaTypesOf(payload.shape.result))
+      if (!options.media?.allows(type))
+        throw new GateError(
+          'media',
+          `this environment keeps no ${type} output; an operator allows the media type first`,
+        );
+  };
+
   const inShape = <Req, Res>(
     payload: GatePayload<Res>,
     body: unknown,
@@ -215,10 +227,12 @@ export const createGate = (options: GateOptions = {}): Gate => {
     payload: GatePayload<Res>,
     result: unknown,
     map?: (text: string) => string,
+    keepMedia = false,
   ) => {
     const walked = walk<Res>(payload.shape.result, result, {
       side: 'result',
       ...(map ? { map } : {}),
+      ...(keepMedia ? { keepMedia } : {}),
     });
     if (walked.problems.length > 0)
       throw new ShapeError(
@@ -299,6 +313,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
   ) => {
     try {
       admit(ctx, target);
+      mediaAdmitted(payload);
       return await guarded(ctx, target, payload, request);
     } catch (error) {
       if (!(error instanceof GateError)) {
@@ -316,10 +331,11 @@ export const createGate = (options: GateOptions = {}): Gate => {
     record: ReturnType<typeof recorder>,
   ) => {
     try {
-      const walked = answered(payload, result);
+      const walked = answered(payload, result, undefined, true);
       return {
         result: walked.value,
         dropped: walked.dropped + (payload.dropped?.(walked.value) ?? 0),
+        outputs: walked.outputs,
       };
     } catch (error) {
       await record('failed');
@@ -327,24 +343,60 @@ export const createGate = (options: GateOptions = {}): Gate => {
     }
   };
 
+  const oversized = (outputs: Walked['outputs']) => {
+    for (const found of outputs) {
+      const type = found.ref.mediaType;
+      if (!options.media?.allows(type))
+        return `${found.path}: this environment keeps no ${type} output`;
+      const cap = options.media.maxBytes(type);
+      if (found.body.byteLength > cap)
+        return `${found.path}: ${found.body.byteLength} bytes of ${type} is over the cap of ${cap} bytes`;
+    }
+    return undefined;
+  };
+
+  const keep = async (ctx: PortContext, outputs: Walked['outputs']) => {
+    for (const found of outputs) {
+      const kept = await (options.media as MediaOutput).keep(ctx, found.body, found.ref.mediaType);
+      Object.assign(found.ref, kept);
+    }
+  };
+
   const settle = async <Res>(
     ctx: PortContext,
     target: GateTarget,
     payload: GatePayload<Res>,
-    answer: { result: Res; dropped: number },
+    answer: { result: Res; dropped: number; outputs: Walked['outputs'] },
     record: ReturnType<typeof recorder>,
   ) => {
     const usage = payload.usage?.(answer.result);
-    const { dropped } = answer;
+    const { dropped, outputs } = answer;
+    const mediaBytes = outputs.reduce((sum, o) => sum + o.body.byteLength, 0);
+    const refused = oversized(outputs);
+    let outcome: GateRecord['outcome'] = refused ? 'refused' : 'ok';
     try {
       if (usage) {
         await ctx.meter(usage, target.model);
         await outside(ctx)?.meter(ctx, usage, target.model);
       }
+      if (refused) {
+        const message = `the answer was refused: ${refused}`;
+        throw target.refuse?.('media', message) ?? new GateError('media', message);
+      }
+      if (outputs.length > 0)
+        await keep(ctx, outputs).catch((error: unknown) => {
+          outcome = 'failed';
+          throw error;
+        });
       const provenance = payload.provenance?.(answer.result);
       if (provenance) await ctx.provenance?.(provenance);
     } finally {
-      await record('ok', { ...(usage ? { usage } : {}), ...(dropped ? { dropped } : {}) });
+      await record(outcome, {
+        ...(refused ? { refusal: 'media' as const } : {}),
+        ...(usage ? { usage } : {}),
+        ...(dropped ? { dropped } : {}),
+        ...(outputs.length ? { mediaBytes } : {}),
+      });
     }
   };
 

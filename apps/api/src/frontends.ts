@@ -224,7 +224,7 @@ const problem = (
 
 const channelPaths = {
   mcp: ['POST /api/mcp'],
-  openai: ['GET /v1/models', 'POST /v1/chat/completions'],
+  openai: ['GET /v1/models', 'POST /v1/chat/completions', 'GET /v1/tasks/{task}/media/{id}'],
   rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
   conversations: ['GET /api/conversations', 'POST /api/conversations'],
   feedback: ['POST /api/feedback'],
