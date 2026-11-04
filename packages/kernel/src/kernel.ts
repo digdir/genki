@@ -25,6 +25,7 @@ import {
   type TaskStore,
 } from './memory.js';
 import { DeltaCoalescer } from './deltas.js';
+import type { UseOptions } from './gate.js';
 import {
   KERNEL_MAJOR,
   KernelError,
@@ -633,7 +634,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           await persist(l);
         },
       },
-      use: async <P>(port: string, ref: Ref) => {
+      use: async <P>(port: string, ref: Ref, useOptions: UseOptions = {}) => {
         if (!l.strategy.requires.ports.includes(port)) {
           throw new KernelError(
             'forbidden',
@@ -663,6 +664,11 @@ export const createKernel = (options: KernelOptions): Kernel => {
           meter: (usage, model) => chargeLive(l, usage, { port, ref, ...(model ? { model } : {}) }),
           outputLimit: () => outputLimit(l),
           provenance: (resource) => recordResource(l, resource),
+          ...(useOptions.guards?.length ? { guards: useOptions.guards } : {}),
+          ...(useOptions.serviceResidency ? { serviceResidency: useOptions.serviceResidency } : {}),
+          audit: async (record) => {
+            await emit(l, { type: 'kernel.gate.call', data: record, audience: 'audit' }, 'kernel');
+          },
         };
         return provider.open(ref, portContext) as P;
       },

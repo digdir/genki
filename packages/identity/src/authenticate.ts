@@ -51,7 +51,7 @@ export const actingForHeader = 'genai-acting-for';
 export const createAuthenticator = (options: AuthenticatorOptions) => {
   const header = options.actingForHeader ?? actingForHeader;
 
-  const check = async (request: Request): Promise<AuthenticationResult> => {
+  const checkOnce = async (request: Request): Promise<AuthenticationResult> => {
     const bearer = bearerOf(request);
     const xApiKey = request.headers.get('x-api-key') ?? undefined;
     const wanted = request.headers.get(header)?.trim() || undefined;
@@ -91,6 +91,15 @@ export const createAuthenticator = (options: AuthenticatorOptions) => {
         };
       return { ok: false, status: 401, code: 'invalid_token' };
     }
+  };
+
+  const checked = new WeakMap<Request, Promise<AuthenticationResult>>();
+  const check = (request: Request): Promise<AuthenticationResult> => {
+    const known = checked.get(request);
+    if (known) return known;
+    const result = checkOnce(request);
+    checked.set(request, result);
+    return result;
   };
 
   return {

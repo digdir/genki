@@ -65,6 +65,16 @@ const nb = {
       reasoning: 'Resonnerer',
     },
   },
+  operations: {
+    label: 'Operasjoner',
+    help: 'Hva utrullingen kan brukes til. Uten verdi bare samtale.',
+    values: { chat: 'Samtale', decide: 'Beslutninger' },
+  },
+  descriptors: {
+    label: 'Beskrivelser',
+    help: 'Kjør en operasjon gjennom en gjennomgått beskrivelse i stedet for den håndskrevne adapteren.',
+  },
+  'descriptors.decide': { label: 'Beskrivelse for beslutninger' },
   contextWindow: { label: 'Kontekstvindu (tokens)' },
   maxOutputTokens: { label: 'Mest svar modellen kan gi (tokens)' },
   parameters: { label: 'Regler for parametere' },
@@ -124,6 +134,16 @@ const en: Record<keyof typeof nb, LabelText> = {
       reasoning: 'Reasons',
     },
   },
+  operations: {
+    label: 'Operations',
+    help: 'What the deployment can be used for. Without a value, chat only.',
+    values: { chat: 'Chat', decide: 'Decisions' },
+  },
+  descriptors: {
+    label: 'Descriptors',
+    help: 'Run an operation through a reviewed descriptor instead of the hand-written adapter.',
+  },
+  'descriptors.decide': { label: 'Descriptor for decisions' },
   contextWindow: { label: 'Context window (tokens)' },
   maxOutputTokens: { label: 'Most output the model can give (tokens)' },
   parameters: { label: 'Parameter rules' },

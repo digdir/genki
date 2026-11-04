@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockFetch } from '../mock';
-import { expectAccessible, failingFetch, renderAt } from '../test-utils';
+import { expectAccessible, failingFetch, heldFetch, renderAt } from '../test-utils';
 import type { UsageReport } from '../types';
 
 beforeAll(() => {
@@ -46,11 +46,13 @@ const table = async (name = 'Fordelt på tjeneste') => {
 
 describe('Forbruk', () => {
   it('shows quota, KPIs, chart and the service table from the usage API', async () => {
-    const { calls, fetch } = recording();
+    const held = heldFetch(/\/usage\?days=190$/);
+    const { calls, fetch } = recording(held.fetch);
     await renderAt('#/statistics', fetch);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Statistikk' })).toBeTruthy();
-    expect(screen.getByText('Henter forbruk')).toBeTruthy();
+    expect(await screen.findByText('Henter forbruk')).toBeTruthy();
+    await held.release();
     const region = await table();
     expect(calls.some((c) => /\/tenants\/[^/]+\/usage\?days=190$/.test(c))).toBe(true);
 
@@ -298,6 +300,56 @@ describe('Forbruk', () => {
     fireEvent.change(screen.getByLabelText('Prosjekt'), { target: { value: '' } });
     expect(await table('Fordelt på prosjekt')).toBeTruthy();
     await expectAccessible();
+  });
+
+  it('shows the source of each model row and the share of the total from genki and the AI gateway', async () => {
+    const usage = (tokens: number, cost: number) => ({
+      inputTokens: tokens * 0.8,
+      outputTokens: tokens * 0.2,
+      requests: tokens / 1000,
+      costMicroNok: cost,
+    });
+    const report: UsageReport = {
+      ...emptyReport,
+      totals: {
+        ...usage(1_000_000, 4_000_000),
+        bySource: [
+          { source: 'genki', usage: usage(750_000, 3_000_000) },
+          { source: 'gateway', usage: usage(250_000, 1_000_000) },
+        ],
+      },
+      daily: [{ date: '2026-10-05', usage: usage(1_000_000, 4_000_000) }],
+      byModel: [
+        { model: 'foundry-openai/gpt-4.1-mini', source: 'genki', usage: usage(750_000, 3_000_000) },
+        { model: 'gpt-6.1-sol', source: 'gateway', usage: usage(250_000, 1_000_000) },
+      ],
+    };
+    await renderAt(
+      '#/statistics',
+      mockFetch(undefined, undefined, undefined, undefined, { usage: report }),
+    );
+
+    const sources = await table('Fordelt på kilde');
+    expect(
+      within(sources)
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Genki.*75 %$/),
+      expect.stringMatching(/^AI-gateway.*25 %$/),
+    ]);
+    const models = await table('Modeller etter kilde');
+    expect(
+      within(models).getByRole('rowheader', { name: 'gpt-6.1-sol' }).closest('tr')?.textContent,
+    ).toContain('AI-gateway');
+    await expectAccessible();
+  });
+
+  it('shows no source section when no AI gateway is configured', async () => {
+    await renderAt('#/statistics', recording().fetch);
+    await table();
+    expect(screen.queryByRole('region', { name: 'Fordelt på kilde' })).toBeNull();
   });
 
   it('shows an error with retry when the usage API fails', async () => {

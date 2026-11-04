@@ -15,7 +15,7 @@ import {
 } from '@genai/eval';
 import { customRuleSpec, ruleKinds } from '@genai/guardrails';
 import { hookPoints, hookSpec } from '@genai/hooks';
-import { Problem, problemContent } from '../http.js';
+import { Problem, problemContent, RunErasure } from '../http.js';
 import type { PlatformModuleFactory } from '../platform-modules.js';
 import { sinkJudgeFields } from './services.js';
 
@@ -96,7 +96,86 @@ const Usage = z
     unpricedTokens: z.number().int(),
   })
   .openapi('UsageTotals');
-const UsageWithRuns = Usage.extend({ runs: z.number().int() });
+const BySource = z
+  .array(z.object({ source: z.enum(['genki', 'gateway']), usage: Usage }))
+  .optional()
+  .describe('The sum split per source; only when an AI gateway is configured');
+const UsageWithRuns = Usage.extend({ runs: z.number().int(), bySource: BySource });
+
+const OperationKind = z
+  .object({
+    kind: z.string(),
+    environment: z.enum(['test', 'production']),
+    maturity: z
+      .enum(['test', 'production'])
+      .describe('Governs descriptor calls of the kind (raw and described tiers) only'),
+    builtIn: z.boolean().describe('A kind Genki has its own types for, such as chat and decide'),
+    typed: z
+      .literal('production')
+      .optional()
+      .describe('Typed calls of a built-in kind are production by construction'),
+    by: z.string().optional().describe('The operator who last set the maturity'),
+    at: z.string().optional(),
+    descriptors: z.array(
+      z.object({ id: z.string(), status: z.enum(['review', 'described', 'typed']) }),
+    ),
+  })
+  .openapi('OperationKind');
+
+const OperationDescriptorView = z
+  .object({
+    id: z.string().describe('<provider>/<kind>@<version>'),
+    operation: z.string(),
+    status: z.enum(['review', 'described', 'typed']),
+    source: z
+      .enum(['bundled', 'uploaded'])
+      .describe('Bundled with Genki in packages/operations, or uploaded by an operator'),
+    summary: z.string(),
+    protocol: z.string().nullable(),
+    fixtures: z.number().int().describe('How many recorded fixtures prove it'),
+    contract: z
+      .object({
+        suite: z.literal('operation@1'),
+        checks: z.number().int(),
+        passed: z.boolean(),
+        failures: z.array(z.object({ check: z.string(), problems: z.array(z.string()) })),
+      })
+      .nullable()
+      .describe('operation@1 run now against its fixtures; null without fixtures'),
+    problems: z
+      .array(z.string())
+      .optional()
+      .describe('Why a stored upload no longer loads; it is then left out of the registry'),
+    version: z.number().int().optional().describe('The version of the upload in the config store'),
+    by: z.string().optional(),
+    at: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .openapi('OperationDescriptor');
+
+const OperationFixture = z
+  .object({
+    name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
+    source: z.string().optional().describe('Where the recording comes from'),
+    deployment: z.string(),
+    input: z.unknown().describe("The descriptor's typed input"),
+    request: z.object({
+      method: z.string(),
+      path: z.string(),
+      query: z.record(z.string(), z.string()).optional(),
+      body: z.unknown(),
+    }),
+    response: z.object({ status: z.number().int().optional(), body: z.unknown() }),
+    result: z.unknown(),
+    usage: z.object({
+      inputTokens: z.number().int().optional(),
+      outputTokens: z.number().int().optional(),
+      cachedInputTokens: z.number().int().optional(),
+      requests: z.number().int().optional(),
+    }),
+    dropped: z.number().int().optional(),
+  })
+  .openapi('OperationFixture');
 
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
@@ -117,6 +196,7 @@ const TaskRow = TaskBase.extend({
     .string()
     .optional()
     .describe('The start of the input; only for callers with manage-services'),
+  erasure: RunErasure.optional(),
   actor: z.object({
     kind: z.enum(['api-key', 'person', 'system']),
     name: z.string().optional(),
@@ -764,12 +844,16 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks',
-    summary: "The tenant's service runs, newest first",
+    summary: "The tenant's service runs, or its playground runs, newest first",
     description: described(member, notAudited),
     request: {
       params: z.object({ tenant }),
       headers: readHeaders,
       query: z.object({
+        origin: z
+          .enum(['playground'])
+          .optional()
+          .describe('playground lists playground runs instead of service runs'),
         status: taskStatus.optional(),
         service: z.string().optional(),
         from: z.string().optional().describe('ISO time, inclusive'),
@@ -800,7 +884,7 @@ const taskRoutes: RouteConfig[] = [
   createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks/{task}',
-    summary: 'One service run',
+    summary: 'One service run or playground run',
     description: described(member, notAudited),
     request: { params: z.object({ tenant, task }), headers: readHeaders },
     responses: { 200: json(TaskRow, 'Run'), ...memberRead },
@@ -2165,6 +2249,205 @@ const qualityRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'post',
+    path: '/operator/operations/{id}/try',
+    summary: 'Try an operation descriptor in review on a catalogue model (test only)',
+    description: described(
+      operator,
+      'Audited as an admin task, and the call is its own run, audited and metered.',
+      'Only where GENAI_ENV=test, on synthetic data. Every PII category is masked and media is refused. The id may contain slashes, such as example/classify@1.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          model: z.string().describe('A model from the model catalogue'),
+          input: z.unknown().describe("The descriptor's typed input"),
+          synthetic: z.literal(true),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        z.object({
+          task: z.string(),
+          descriptor: z.string(),
+          model: z.string(),
+          result: z.unknown(),
+        }),
+        'The typed result',
+      ),
+      400: problem('Invalid request, not synthetic, media, or a field outside the descriptor'),
+      401: problem('Not signed in'),
+      403: problem('Not an operator, not a test environment, or a login that is not admitted'),
+      404: problem('No such descriptor or model'),
+      502: problem('The provider failed'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-kinds',
+    summary: 'The operation kinds, their maturity in this environment and their descriptors',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({
+          environment: z.enum(['test', 'production']),
+          governs: z
+            .literal('descriptor-calls')
+            .describe('Maturity governs descriptor calls only, never typed calls'),
+          data: z.array(OperationKind),
+        }),
+        'The kinds',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-kinds/{kind}/maturity',
+    summary: 'Move an operation kind to test or production in this environment',
+    description: described(
+      operator,
+      audited,
+      'One operator moves a kind to production or back to test; every change is audited with who, when and why. Asking for the maturity the kind already has changes nothing.',
+    ),
+    request: {
+      params: z.object({ kind: pathParam('kind', 'decide') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ maturity: z.enum(['test', 'production']) })),
+    },
+    responses: {
+      200: json(
+        OperationKind.extend({
+          step: z.enum(['promoted', 'demoted', 'unchanged']),
+        }),
+        'The kind after the change',
+      ),
+      400: problem('Invalid maturity or missing change reason'),
+      ...operatorOnly,
+      404: problem('No descriptor describes the kind'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors',
+    summary: 'The bundled and uploaded operation descriptors, with operation@1 on their fixtures',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(z.object({ data: z.array(OperationDescriptorView) }), 'The descriptors'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'One operation descriptor; an upload with its document and fixtures',
+    description: described(
+      operator,
+      notAudited,
+      'The id may contain slashes, such as example/classify@1.',
+    ),
+    request: { params: z.object({ id: pathParam('id', 'example/classify@1') }) },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          document: z.record(z.string(), z.unknown()).optional(),
+          fixtureCases: z.array(OperationFixture).optional(),
+        }),
+        'The descriptor',
+      ),
+      ...operatorOnly,
+      404: problem('No such descriptor'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Upload an operation descriptor with its recorded fixtures, without a deploy',
+    description: described(
+      operator,
+      audited,
+      'The loader rules and operation@1, with the masking probe, run on the fixtures before anything is stored. An upload starts in review: an operator tries it in the raw tier (test only). It cannot replace a bundled descriptor, nor a described upload; upload a new version instead. At most 20 fixtures and 512 KiB.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          descriptor: z
+            .union([z.string(), z.record(z.string(), z.unknown())])
+            .describe('The descriptor as YAML or JSON text, or as a JSON object'),
+          fixtures: z.array(OperationFixture).min(1).max(20),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({ step: z.literal('replaced') }),
+        'An upload in review replaced',
+      ),
+      201: json(OperationDescriptorView.extend({ step: z.literal('uploaded') }), 'Uploaded'),
+      400: problem('Missing change reason, or a body that is not JSON'),
+      ...operatorOnly,
+      409: problem('A bundled descriptor, or a described upload, has the id'),
+      413: problem('The body is larger than 512 KiB'),
+      422: problem(
+        'The descriptor breaks a loader rule, a fixture is malformed, or operation@1 fails; errors lists every reason',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-descriptors/{id}/status',
+    summary: 'Move an uploaded descriptor to described, or back to review',
+    description: described(
+      operator,
+      audited,
+      'One operator decides. Described lets a service use it in a call-operation step when the kind is production and the endpoint has a processor record. Typed is never set here: it means Genki has its own code for the operation. Moving back to review stops services at their next call.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ status: z.enum(['review', 'described']) })),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          step: z.enum(['described', 'back-to-review', 'unchanged']),
+        }),
+        'The descriptor after the change',
+      ),
+      400: problem('Invalid status or missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
+      422: problem('The stored upload no longer passes the loader rules'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Withdraw an uploaded descriptor',
+    description: described(
+      operator,
+      audited,
+      'The history stays in the config store. A service step that uses it is refused at its next call, as when a kind is moved back to test.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      204: { description: 'Withdrawn' },
+      400: problem('Missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
+    },
+  }),
+  createRoute({
     method: 'get',
     path: '/operator/quality/matrix/runs/{id}',
     summary: 'One quality matrix run with scores per test set',
@@ -2231,7 +2514,7 @@ const qualityRoutes: RouteConfig[] = [
 
 const Day = z.object({
   date: z.string(),
-  usage: Usage,
+  usage: Usage.extend({ bySource: BySource }),
   byService: z.record(z.string(), UsageWithRuns),
   byModel: z.record(z.string(), Usage),
 });
@@ -2241,12 +2524,32 @@ const TenantUsage = z
     from: z.string(),
     to: z.string(),
     priced: z.boolean(),
-    totals: UsageWithRuns,
+    totals: UsageWithRuns.describe('The sum of genki and the AI gateway, when one is configured'),
     daily: z.array(Day),
     byService: z.array(
       z.object({ service: z.string(), usage: UsageWithRuns, title: z.string().optional() }),
     ),
-    byModel: z.array(z.object({ model: z.string(), usage: Usage })),
+    byModel: z.array(
+      z.object({
+        model: z.string(),
+        source: z.enum(['genki', 'gateway']).optional(),
+        usage: Usage,
+      }),
+    ),
+    bySubject: z
+      .array(
+        z.object({
+          subject: z
+            .object({ kind: z.string(), id: z.string(), org: z.string().optional() })
+            .nullable(),
+          usage: Usage,
+          cost: z.object({ currency: z.string(), micros: z.number().int() }),
+          rate: z.number().nullable().describe('Kroner per unit of the currency, at rateDay'),
+          rateDay: z.string().nullable(),
+        }),
+      )
+      .optional()
+      .describe("The AI gateway's rows per owner, in the currency it charged"),
     byProject: z.array(z.object({ project: z.string(), usage: UsageWithRuns, name: z.string() })),
     project: z.string().optional(),
     ingestion: z.object({
@@ -2312,6 +2615,19 @@ const operationsRoutes: RouteConfig[] = [
           data: z.array(z.object({ orgNumber: z.string(), usage: UsageWithRuns })),
         }),
         'Usage',
+      ),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/usage/unassigned',
+    summary: 'AI gateway usage this month that belongs to no tenant',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(
+        z.object({ from: z.string(), to: z.string(), data: z.array(z.unknown()) }),
+        'Usage rows',
       ),
       ...operatorOnly,
     },

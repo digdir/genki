@@ -1,6 +1,18 @@
+import {
+  BranchingIcon,
+  CodeIcon,
+  KeyHorizontalIcon,
+  LightningIcon,
+  LinkIcon,
+  MonitorIcon,
+  RouterIcon,
+  ShieldIcon,
+  TimelineIcon,
+  VitalsIcon,
+} from '@navikt/aksel-icons';
 import { Heading, Paragraph } from '@digdir/designsystemet-react';
 import type { ReactNode } from 'react';
-import { Icon } from '../components/Icon';
+import { Icon, type IconComponent } from '../components/Icon';
 import { NotAvailable } from '../components/NotAvailable';
 import { useT, type PlainKey } from '../i18n';
 import type { ScreenProps } from '../screen';
@@ -12,7 +24,7 @@ interface Tool {
   id: string;
   label: PlainKey;
   desc?: PlainKey;
-  icon: string;
+  icon: IconComponent;
   /** Where the content lives today, until it moves in here. */
   links?: readonly (readonly [string, PlainKey])[];
 }
@@ -21,7 +33,7 @@ const statusTool: Tool = {
   id: 'status',
   label: 'devTools.status',
   desc: 'devTools.statusDesc',
-  icon: 'M3 12h4l3-7 4 14 3-7h4',
+  icon: VitalsIcon,
 };
 
 const tools: readonly Tool[] = [
@@ -30,56 +42,56 @@ const tools: readonly Tool[] = [
     id: 'keys',
     label: 'devTools.keys',
     desc: 'devTools.keysDesc',
-    icon: 'M14 10a4 4 0 1 0-4 4l2 2h2v2h2v2h4v-4z',
+    icon: KeyHorizontalIcon,
   },
   {
     id: 'frontends',
     label: 'devTools.frontends',
     desc: 'devTools.frontendsDesc',
-    icon: 'M4 5h16v11H4zM8 20h8M12 16v4',
+    icon: MonitorIcon,
   },
   {
     id: 'systems',
     label: 'devTools.systems',
     desc: 'devTools.systemsDesc',
-    icon: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
+    icon: RouterIcon,
   },
   {
     id: 'triggers',
     label: 'devTools.triggers',
     desc: 'devTools.triggersDesc',
-    icon: 'M13 3L5 14h6l-1 7 8-11h-6z',
+    icon: LightningIcon,
   },
   {
     id: 'step-flows',
     label: 'devTools.stepFlows',
     desc: 'devTools.stepFlowsDesc',
-    icon: 'M5 5h5v5H5zM14 14h5v5h-5zM10 7.5h4v9',
+    icon: BranchingIcon,
     links: [['#/step-flows', 'devTools.openStepFlows']],
   },
   {
     id: 'hooks',
     label: 'devTools.hooks',
-    icon: 'M10 4v8a4 4 0 1 0 8 0M18 12l-2-2M18 12l2-2',
+    icon: LinkIcon,
   },
   {
     id: 'runs',
     label: 'integrations.tabTracing',
     desc: 'devTools.runsDesc',
-    icon: 'M4 6h16M4 12h10M4 18h6',
+    icon: TimelineIcon,
     links: [['#/log', 'devTools.openLog']],
   },
   {
     id: 'guardrails',
     label: 'devTools.guardrails',
     desc: 'devTools.guardrailsDesc',
-    icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+    icon: ShieldIcon,
   },
   {
     id: 'api',
     label: 'devTools.api',
     desc: 'devTools.apiDesc',
-    icon: 'M8 7l-5 5 5 5M16 7l5 5-5 5',
+    icon: CodeIcon,
     links: [
       ['#/developer/api/code', 'integrations.callFromCode'],
       ['#/api-reference', 'devTools.openApiReference'],
@@ -114,7 +126,7 @@ export const DeveloperToolsFrame = ({
                     aria-current={active ? 'page' : undefined}
                     className={active ? 'active' : undefined}
                   >
-                    <Icon d={tool.icon} />
+                    <Icon icon={tool.icon} />
                     {t(tool.label)}
                   </a>
                 </li>
@@ -166,7 +178,7 @@ export const DeveloperTools = ({
         </IntegrationTab.Provider>
       ) : current.links ? (
         <div className="empty-state">
-          <Icon d={current.icon} size={32} />
+          <Icon icon={current.icon} size={32} />
           <Paragraph>{t('devTools.livesElsewhere')}</Paragraph>
           {current.links.map(([href, label]) => (
             <a key={href} className="ds-button" data-variant="secondary" data-size="sm" href={href}>

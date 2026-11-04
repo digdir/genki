@@ -1,6 +1,12 @@
 import type { Ref } from '@genai/contracts';
 import {
+  createGate,
   credentialFor,
+  rerankShape,
+  type Gate,
+  type GatePayload,
+  type GateRefusal,
+  type GateTarget,
   type PortContext,
   type PortProvider,
   type SecretResolver,
@@ -19,7 +25,7 @@ export interface RerankRouterOptions {
   timeoutMs?: number;
   maxDocuments?: number;
   onWarning?: (message: string) => void;
-  fetchFor?: (endpoint: string) => typeof fetch | undefined;
+  gate?: Gate;
 }
 
 interface Route {
@@ -28,7 +34,21 @@ interface Route {
   connection: RerankConnection;
 }
 
-const order: Residency[] = ['norway', 'eu', 'global'];
+const refusalCodes: Record<GateRefusal, RerankError['code']> = {
+  admission: 'unauthorized',
+  disabled: 'bad_request',
+  'not-shared': 'forbidden',
+  residency: 'residency',
+  maturity: 'forbidden',
+  processor: 'forbidden',
+  media: 'bad_request',
+  shape: 'bad_request',
+};
+
+const rerankPayload: GatePayload<Ranked[]> = {
+  shape: rerankShape,
+  usage: () => ({ requests: 1 }),
+};
 
 const valid = (ranking: Ranked[], count: number) =>
   ranking.filter((r) => Number.isInteger(r.index) && r.index >= 0 && r.index < count);
@@ -36,8 +56,10 @@ const valid = (ranking: Ranked[], count: number) =>
 export class RerankRouter implements PortProvider<RerankPort> {
   readonly #routes = new Map<string, Route>();
   readonly #warned = new Set<string>();
+  readonly #gate: Gate;
 
   constructor(private readonly options: RerankRouterOptions) {
+    this.#gate = options.gate ?? createGate();
     this.reload(options.catalog);
   }
 
@@ -53,7 +75,6 @@ export class RerankRouter implements PortProvider<RerankPort> {
     const connections = new Map<string, RerankConnection>();
     for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
       const adapter = adapters.get(endpoint.engine) as RerankAdapter;
-      const guarded = options.fetchFor?.(name);
       connections.set(
         name,
         adapter.connect({
@@ -66,7 +87,7 @@ export class RerankRouter implements PortProvider<RerankPort> {
           ),
           options: adapter.endpointOptions.parse(endpoint.options),
           timeoutMs: options.timeoutMs ?? 10_000,
-          ...(guarded ? { fetch: guarded } : {}),
+          fetch: this.#gate.egress(name),
         }),
       );
     }
@@ -103,9 +124,24 @@ export class RerankRouter implements PortProvider<RerankPort> {
     if (!route) throw new RerankError('bad_request', `no reranker ${ref.id} in the catalog`);
     const { reranker, config, connection } = route;
     const max = this.options.maxResidency;
-    if (max && order.indexOf(reranker.residency) > order.indexOf(max))
-      throw new RerankError('residency', `reranker ${reranker.id} runs outside ${max}`);
     const maxDocuments = this.options.maxDocuments ?? 200;
+    const refusals = new WeakSet<RerankError>();
+    const target: GateTarget = {
+      port: 'rerank',
+      operation: 'rerank',
+      model: { kind: 'reranker', id: reranker.id },
+      endpoint: reranker.endpoint,
+      residency: reranker.residency,
+      admission: 'admitted',
+      ...(reranker.tenants ? { tenants: reranker.tenants } : {}),
+      tenant: ref.tenant ?? ctx.tenant,
+      ...(max ? { routerResidency: max } : {}),
+      refuse: (refusal, message) => {
+        const error = new RerankError(refusalCodes[refusal], message);
+        refusals.add(error);
+        return error;
+      },
+    };
 
     return {
       info: () => ({
@@ -118,9 +154,12 @@ export class RerankRouter implements PortProvider<RerankPort> {
           throw new RerankError('bad_request', `at most ${maxDocuments} documents per rerank`);
         if (request.documents.length === 0) return { ranking: [] };
         try {
-          const ranking = await connection.rerank(config, request, ctx.signal);
+          const ranking = await this.#gate.call(ctx, target, rerankPayload, request, (sent) =>
+            connection.rerank(config, sent, ctx.signal),
+          );
           return { ranking: valid(ranking, request.documents.length) };
         } catch (error) {
+          if (error instanceof RerankError && refusals.has(error)) throw error;
           if (ctx.signal.aborted) throw new RerankError('cancelled', 'the rerank was cancelled');
           const failure =
             error instanceof RerankError

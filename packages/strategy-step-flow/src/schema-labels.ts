@@ -89,6 +89,11 @@ const nb = {
   'inOrder.field': { label: 'Feltet i datasettet' },
   'inOrder.values': { label: 'Verdier, i rekkefølge' },
   keepOrder: { label: 'Behold rekkefølgen fra søket' },
+  descriptor: {
+    label: 'Operasjon',
+    help: 'En gjennomgått beskrivelse av operasjonen, for eksempel openai/decide@1.',
+  },
+  model: { label: 'Modell', help: 'En av modellene til tjenesten. Tom betyr hovedmodellen.' },
   answerLength: {
     label: 'Lengde på svaret',
     values: { short: 'Kort', medium: 'Middels', long: 'Langt' },
@@ -151,6 +156,11 @@ const en: Record<keyof typeof nb, LabelText> = {
   'inOrder.field': { label: 'Field in the dataset' },
   'inOrder.values': { label: 'Values, in order' },
   keepOrder: { label: 'Keep the order from the search' },
+  descriptor: {
+    label: 'Operation',
+    help: 'A reviewed operation descriptor, for example openai/decide@1.',
+  },
+  model: { label: 'Model', help: "One of the service's models. Empty means the main model." },
   answerLength: {
     label: 'Length of the answer',
     values: { short: 'Short', medium: 'Medium', long: 'Long' },
@@ -181,6 +191,7 @@ export const blockSchemaLabels: SchemaLabels = {
     agent: title('La modellen søke selv', 'Let the model search by itself'),
     answer: title('Svar', 'Answer'),
     approval: title('Godkjenning', 'Approval'),
+    'call-operation': title('Kall en operasjon', 'Call an operation'),
     classify: title('Klassifiser', 'Classify'),
     documents: title('Hent dokumenter', 'Fetch documents'),
     'evidence-gate': title('Sjekk grunnlaget', 'Check the evidence'),
