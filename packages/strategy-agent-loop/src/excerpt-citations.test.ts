@@ -72,7 +72,7 @@ describe('citing excerpts, not documents', () => {
     );
 
     expect(synthPrompts(out)[0]).toContain(
-      '[1] Sykefraværet var 5,1 prosent.\n\nTurnover var 8 prosent.\n\n[2] Budsjettet var 120 millioner.',
+      '[1] <untrusted_data kind="source" id="d1" title="Rapport 1">\nSykefraværet var 5,1 prosent.\n\nTurnover var 8 prosent.\n</untrusted_data>\n\n[2] <untrusted_data kind="source" id="d3" title="Rapport 3">\nBudsjettet var 120 millioner.\n</untrusted_data>',
     );
     expect(out.meta).toEqual({
       citations: [
