@@ -48,6 +48,7 @@ export const problems = defineNamespace({
   onlyOperatorsModels: 'Bare operatører forvalter modeller',
   onlyOperatorsSeeTenants: 'Bare operatører ser alle virksomheter',
   onlyOperatorsListTenants: 'Bare operatører lister virksomheter',
+  onlyOperatorsUnassignedUsage: 'Bare operatører leser forbruk som ikke hører til en virksomhet',
   onlyOperatorsDefaults: 'Bare operatører endrer standardverdier for plattformen',
   invalidSetting: 'Ugyldig innstilling',
   invalidPin: 'Ugyldig festing',

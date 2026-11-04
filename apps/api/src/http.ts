@@ -17,6 +17,19 @@ export const Problem = z
   })
   .openapi('Problem');
 
+export const RunErasure = z
+  .object({
+    reason: z.enum(['conversation-deleted', 'retention', 'erased']).openapi({
+      description:
+        'conversation-deleted: the conversation was deleted; retention: removed after the retention period; erased: recorded before the reason was kept',
+    }),
+    at: z.string().optional().openapi({ description: 'When the content was erased, if known' }),
+  })
+  .openapi('RunErasure', {
+    description:
+      "The run's content (input, steps, answer) was erased on purpose; status, time, tokens and cost remain",
+  });
+
 export const problemContent = { 'application/problem+json': { schema: Problem } };
 
 export const problems = {

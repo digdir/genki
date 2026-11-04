@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -22,7 +23,7 @@ import {
   type CatalogProposal,
   type ConnectorView,
 } from '../../api/building-blocks';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { navigate } from '../../hooks';
 import { useT } from '../../i18n';
 import {
@@ -245,7 +246,7 @@ export const BlockList = ({
           <ApiCallButton call={listCall} />
           {rights.canRegister ? (
             <Button variant="secondary" onClick={() => navigate('/building-blocks/new')}>
-              <Icon d={icons.plus} />
+              <Icon icon={PlusIcon} />
               {t('blocks.addOwn')}
             </Button>
           ) : null}

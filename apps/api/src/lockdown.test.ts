@@ -13,6 +13,7 @@ import { InMemoryExecutionStore, InMemoryIngestionBackend, IngestionService } fr
 import {
   configuredCredentialScope,
   entraNotTrustedType,
+  lockdownUserScope,
   lockedEnvironmentType,
   mayUseModels,
   trustedEntraScope,
@@ -38,6 +39,15 @@ const principals: Record<string, Principal> = {
     tenant: digdir,
     authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
     scopes: [trustedEntraScope],
+  },
+  user: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'user-subject',
+    assurance: 'entraid',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [lockdownUserScope],
   },
 };
 const operators = operatorDirectory({});
@@ -425,7 +435,7 @@ describe('lockdown', () => {
     },
   );
 
-  it('refuses a person at the model port even where no route is listed', async () => {
+  it('refuses a person at the model gate even where no route is listed', async () => {
     const { platform } = await boot(true);
     const context = (principal: Principal) => ({
       tenant: digdir,
@@ -442,12 +452,13 @@ describe('lockdown', () => {
       scopes: [configuredCredentialScope],
     };
 
-    expect(() => platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(person))).toThrow(
-      /may not use models/,
-    );
-    expect(() =>
-      platform.models.open({ kind: 'model', id: 'fake/gpt' }, context(configured)),
-    ).not.toThrow();
+    const ask = (principal: Principal) =>
+      platform.models
+        .open({ kind: 'model', id: 'fake/gpt' }, context(principal))
+        .chat({ messages: [{ role: 'user', content: 'hei' }] });
+
+    await expect(ask(person)).rejects.toThrow(/may not use models/);
+    await expect(ask(configured)).resolves.toBeDefined();
   });
 
   it('refuses a person who runs a pipeline in lockdown', async () => {
@@ -745,6 +756,58 @@ describe('lockdown', () => {
     expect(await json(res)).toMatchObject({
       type: entraNotTrustedType,
       title: expect.stringContaining('Entra ID'),
+    });
+  });
+
+  it('tells /me in lockdown that a login is read-only, and only then', async () => {
+    const locked = await boot(true);
+    const open = await boot(false);
+    const readOnly = async (send: typeof locked.send, who: string) =>
+      (await json<{ lockdownReadOnly?: boolean }>(await send('/me', who))).lockdownReadOnly;
+
+    expect(
+      await Promise.all(['entra', 'user', 'kari'].map((who) => readOnly(locked.send, who))),
+    ).toEqual([undefined, undefined, true]);
+    expect(await readOnly(open.send, 'kari')).toBeUndefined();
+  });
+
+  it('lets a user-group login change configuration, run models and ingestion, and create an admitted key in lockdown', async () => {
+    const { chat, createKey, dataset, execute, ingestion, model, send } = await boot(true);
+    await dataset();
+    const runs = [
+      `/tenants/${digdir}/playground/runs`,
+      `/tenants/${digdir}/definitions/test-run`,
+      `/tenants/${digdir}/services/klarsprak/eval-runs`,
+    ];
+
+    const ran = await chat('user');
+    const ingested = await execute('user');
+    const { key } = await createKey('user');
+    const viaKey = await chat(key);
+    const others = await Promise.all(runs.map((path) => send(path, 'user', { body: {}, reason })));
+
+    expect(ran.status).toBe(200);
+    expect(model.seen.length).toBeGreaterThan(0);
+    expect(ingested.status).toBe(202);
+    expect(ingestion.jobs).toMatchObject([{ admitted: true }]);
+    expect(viaKey.status).toBe(200);
+    for (const res of others)
+      expect((await res.clone().json()) as unknown).not.toMatchObject({
+        type: lockedEnvironmentType,
+      });
+  });
+
+  it('never makes a user-group login an operator', async () => {
+    const { send } = await boot(true);
+
+    const tenants = await send('/operator/tenants', 'user');
+    const me = await json(await send('/me', 'user'));
+
+    expect(tenants.status).toBe(403);
+    expect(me).toEqual({
+      organisations: [
+        { orgNumber: digdir, name: expect.any(String), rights: [...PLATFORM_RIGHTS] },
+      ],
     });
   });
 

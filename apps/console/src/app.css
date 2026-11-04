@@ -27,6 +27,17 @@ body {
   z-index: 30;
 }
 
+:focus-visible {
+  outline: 3px solid var(--ds-color-focus-outer);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--ds-color-focus-inner);
+}
+
+.header :focus-visible {
+  outline-color: var(--ds-color-neutral-base-contrast-default);
+  box-shadow: none;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -74,7 +85,7 @@ body {
 }
 
 .brand-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
 }
 

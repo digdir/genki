@@ -57,9 +57,12 @@ export const endpointProblems = (body: Record<string, unknown>): Problem[] => {
 
 const modelsUsedBy = (config: unknown) => {
   const model = record(config).model as ServiceModels | undefined;
-  return [model?.primary, model?.fallback, ...Object.values(model?.roles ?? {})].filter(
-    (m): m is string => typeof m === 'string',
-  );
+  return [
+    model?.primary,
+    model?.fallback,
+    ...Object.values(model?.roles ?? {}),
+    ...Object.values(model?.operations ?? {}),
+  ].filter((m): m is string => typeof m === 'string');
 };
 
 export const operatorModelsModule: PlatformModuleFactory = (deps) => ({

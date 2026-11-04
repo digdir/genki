@@ -352,6 +352,16 @@ describe('bringing your own logic', () => {
     );
   });
 
+  it('answers a remote agent without a config with validation errors instead of throwing', async () => {
+    const { platform } = await boot();
+    const service = remoteService('http://127.0.0.1:9/turn');
+    (service.spec.strategy as { config: unknown }).config = null;
+
+    const published = await platform.definitions.publish(service, 'test', 'test');
+
+    expect(published.ok).toBe(false);
+  });
+
   it('lets a step flow call a registered tool source, shows the call in the timeline and hands the result to the model', async () => {
     const { platform, app, as, secret, steps, model } = await boot();
     const called: unknown[] = [];

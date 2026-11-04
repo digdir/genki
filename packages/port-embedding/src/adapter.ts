@@ -8,6 +8,7 @@ export interface EmbeddingEndpointConfig<O = unknown> {
   options: O;
   maxRetries: number;
   timeoutMs: number;
+  fetch?: typeof fetch;
 }
 
 export interface EmbeddingModelConfig<O = unknown> {

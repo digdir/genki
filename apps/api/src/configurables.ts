@@ -12,6 +12,7 @@ import type { Residency } from '@genai/port-model';
 import type { Env, Hono, Schema } from 'hono';
 import type { Admin } from './admin.js';
 import { configAdminHandlers, ingestionTarget, registerConfigRoutes } from './config-routes.js';
+import { connectorSecretOf } from './connectors.js';
 import { platformScope, type ConfigEntryStore } from './config-store.js';
 import {
   InMemoryExecutionStore,
@@ -19,6 +20,7 @@ import {
   pendingIngestionBackend,
   type ExecutionStore,
   type IngestionBackend,
+  type JobRuns,
 } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
 import { createGateRegistry } from './scoped-registry.js';
@@ -35,6 +37,8 @@ export interface ConfigurablesInput {
   now?: () => Date;
   scheduleIntervalMs?: number;
   admitsIngestion?: (principal: Principal | undefined) => boolean;
+  /** Runs of these datasets are knowledge jobs (ADR 0042). */
+  jobRuns?: JobRuns;
   onWarning?: (message: string) => void;
   /** Why a gate on this metric cannot be saved, when it cannot. */
   gateProblem?: (gate: string, metric: string) => string | undefined;
@@ -104,13 +108,16 @@ export const createConfigurables = (
       backend: input.ingestion ?? deps.ingestion ?? pendingIngestionBackend(),
       ...(input.now ? { now: input.now } : {}),
       ...(input.admitsIngestion ? { admits: input.admitsIngestion } : {}),
+      ...(input.jobRuns ? { jobs: input.jobRuns } : {}),
       ...(input.onWarning ? { onRefused: input.onWarning, onError: input.onWarning } : {}),
     });
-    await ingestion
-      .failStaleRuns()
-      .catch((error: unknown) =>
-        input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
-      );
+    const closeStaleRuns = () =>
+      ingestion
+        .failStaleRuns()
+        .catch((error: unknown) =>
+          input.onWarning?.(`could not close stale ingestion runs: ${String(error)}`),
+        );
+    await closeStaleRuns();
     const configDeps = {
       catalog,
       gates,
@@ -122,6 +129,7 @@ export const createConfigurables = (
       ...(deps.routers.writers ? { writers: deps.routers.writers } : {}),
       ...(deps.embeddingResidency ? { embeddingResidency: deps.embeddingResidency } : {}),
       documentCount: cachedDocumentCount(deps.routers.knowledge),
+      connectorSecret: connectorSecretOf(store),
       ...(input.gateProblem ? { gateProblem: input.gateProblem } : {}),
     };
 
@@ -195,6 +203,7 @@ export const createConfigurables = (
         if (interval > 0 && !ticking) {
           ticking = true;
           setInterval(() => void runSchedules().catch(() => undefined), interval).unref();
+          setInterval(() => void closeStaleRuns(), interval).unref();
         }
       },
     };

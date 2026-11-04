@@ -129,7 +129,7 @@ const searched = (collection: string, q: string) => {
 };
 
 beforeAll(async () => {
-  container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
+  container = await new PostgreSqlContainer('pgvector/pgvector:0.8.2-pg17').start();
   pool = createPool({ connectionString: container.getConnectionUri() });
   typesenseServer = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://typesense');

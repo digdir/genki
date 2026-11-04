@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Event, Principal, Task } from '@genai/contracts';
 import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { apiKeyDigest, createAuthenticator, InMemoryApiKeys, keyReaches } from '@genai/identity';
+import { InMemoryUsageBuckets, memoryUsageSource, pollUsage } from '@genai/port-usage';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import { createAdmin } from '../admin.js';
 import {
@@ -27,10 +28,11 @@ const task = (
   tenant: string,
   at: string,
   status: Task['status'] = 'completed',
+  capability = `${tenant}/klarsprak/default`,
 ): Task => ({
   id,
   service: {
-    capability: { id: `${tenant}/klarsprak/default`, version: '1' },
+    capability: { id: capability, version: '1' },
     strategy: { id: 'single-call', version: '1' },
     configHash: 'h',
   },
@@ -132,6 +134,19 @@ const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> 
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     });
   return { send, admin, legacy, store, keys };
+};
+
+const withPlaygroundRuns = () => {
+  const tasks = [
+    task('t1', digdir, '2026-10-05T09:00:00Z'),
+    task('p1', digdir, '2026-10-06T09:00:00Z', 'completed', 'platform/draft/playground/p1'),
+    task('p2', other, '2026-10-06T09:30:00Z', 'completed', 'platform/draft/playground/p2'),
+  ];
+  return setup({
+    tasks: () =>
+      tasks.map((t) => ({ task: t.id, tenant: t.tenant, status: t.status, at: t.createdAt })),
+    task: async (id: string) => tasks.find((t) => t.id === id),
+  });
 };
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -308,6 +323,30 @@ describe('portal routes', () => {
     expect(all.data.map((t) => t.id)).toEqual(['t2', 't1']);
     expect(failed.data.map((t) => t.id)).toEqual(['t2']);
     expect(none.data).toEqual([]);
+  });
+
+  it('lists playground runs only when asked for them, without other tenants', async () => {
+    const { send } = await withPlaygroundRuns();
+    const services = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'kari'),
+    );
+    const playground = await json<{ data: { id: string }[] }>(
+      await send(`/tenants/${digdir}/tasks?origin=playground`, 'kari'),
+    );
+
+    expect(services.data.map((t) => t.id)).toEqual(['t1']);
+    expect(playground.data.map((t) => t.id)).toEqual(['p1']);
+  });
+
+  it('reads a playground run by id like a service run, but not one from another tenant', async () => {
+    const { send } = await withPlaygroundRuns();
+
+    const own = await send(`/tenants/${digdir}/tasks/p1`, 'kari');
+    const foreign = await send(`/tenants/${digdir}/tasks/p2`, 'kari');
+
+    expect(own.status).toBe(200);
+    expect(await json<{ id: string }>(own)).toMatchObject({ id: 'p1' });
+    expect(foreign.status).toBe(404);
   });
 
   it('adds up usage per day, service and model, and prices model tokens', async () => {
@@ -848,6 +887,32 @@ describe('service summaries and run headers', () => {
     expect(byId(reader.data, 't1')).not.toHaveProperty('excerpt');
   });
 
+  it('the run list marks erased runs instead of showing an empty input', async () => {
+    const asked: [string, string[]][] = [];
+    const { send } = await prepare({
+      erasures: async (tenant, ids) => {
+        asked.push([tenant, ids]);
+        return [{ task: 't1', reason: 'conversation-deleted', at: '2026-11-03T17:41:00.000Z' }];
+      },
+    });
+
+    const list = await json<{ data: Record<string, unknown>[] }>(
+      await send(`/tenants/${digdir}/tasks`, 'kari'),
+    );
+    const one = await json<Record<string, unknown>>(
+      await send(`/tenants/${digdir}/tasks/t1`, 'erik'),
+    );
+
+    const t1 = list.data.find((r) => r.id === 't1');
+    expect(t1).toMatchObject({
+      erasure: { reason: 'conversation-deleted', at: '2026-11-03T17:41:00.000Z' },
+    });
+    expect(t1).not.toHaveProperty('excerpt');
+    expect(list.data.find((r) => r.id === 't2')).not.toHaveProperty('erasure');
+    expect(one).toMatchObject({ erasure: { reason: 'conversation-deleted' } });
+    expect(asked.every(([tenant]) => tenant === digdir)).toBe(true);
+  });
+
   it('shows the API key by its name, and the document title of a batch item instead of the whole prompt', async () => {
     const { send, keys } = await prepare({
       events: async function* (id): AsyncIterable<Event> {
@@ -890,4 +955,330 @@ describe('service summaries and run headers', () => {
       actor: { kind: 'api-key', name: 'Fagsystemet' },
     });
   });
+});
+
+describe('the dashboard on a busy tenant', () => {
+  const busy = async () => {
+    const tasks = Array.from({ length: 3000 }, (_, i) =>
+      task(
+        `b${i}`,
+        digdir,
+        new Date(Date.parse('2026-10-01T00:00:00Z') + i * 150_000).toISOString(),
+        i % 100 === 0 ? 'failed' : 'completed',
+      ),
+    );
+    const calls = { envelopes: 0, usage: 0, inputs: 0 };
+    const env = await setup({
+      tasks: () => {
+        throw new Error('the dashboard must not list task rows one by one');
+      },
+      task: async () => {
+        throw new Error('the dashboard must not read tasks one by one');
+      },
+      events: () => {
+        throw new Error('the dashboard must not read the event log task by task');
+      },
+      taskEnvelopes: async (tenant, query) => {
+        calls.envelopes++;
+        return tasks
+          .filter((t) => t.tenant === tenant && (!query.since || t.createdAt >= query.since))
+          .reverse()
+          .slice(0, query.limit ?? 1000);
+      },
+      usageEvents: async (ids) => {
+        calls.usage++;
+        return ids.map((id) => ({
+          task: id,
+          data: {
+            usage: { inputTokens: 1000, outputTokens: 200, requests: 1 },
+            model: { kind: 'model', id: 'foundry/gpt-4o' },
+          },
+        }));
+      },
+      eventsOfType: async (ids, type) => {
+        calls.inputs++;
+        return ids.map(
+          (id) =>
+            ({
+              task: id,
+              seq: 0,
+              type,
+              v: 1,
+              ts: '2026-10-01T00:00:00Z',
+              actor: { kind: 'kernel', id: 'kernel' },
+              data: { input: { data: { query: `question ${id}` } } },
+            }) as Event,
+        );
+      },
+    });
+    return { ...env, calls };
+  };
+
+  it('builds the overview from a few batched queries and counts every task of the month, past the newest thousand', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{
+      recentTasks: { id: string; usage: { inputTokens: number } }[];
+      usageThisMonth: { inputTokens: number; runs: number };
+      review: { failedTasksLastDay: number };
+    }>(await send(`/tenants/${digdir}/overview`, 'kari'));
+
+    expect(body.usageThisMonth.runs).toBe(3000);
+    expect(body.usageThisMonth.inputTokens).toBe(3_000_000);
+    expect(body.recentTasks.map((t) => t.id)).toEqual([
+      'b2999',
+      'b2998',
+      'b2997',
+      'b2996',
+      'b2995',
+    ]);
+    expect(body.recentTasks[0]?.usage.inputTokens).toBe(1000);
+    expect(body.review.failedTasksLastDay).toBe(4);
+    expect(calls.envelopes).toBe(5);
+    expect(calls.usage).toBe(2);
+    expect(calls.inputs).toBe(0);
+  });
+
+  it('builds the usage report from one envelope query per origin and one usage query', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{ totals: { runs: number; inputTokens: number } }>(
+      await send(`/tenants/${digdir}/usage?days=30`, 'kari'),
+    );
+
+    expect(body.totals.runs).toBe(3000);
+    expect(body.totals.inputTokens).toBe(3_000_000);
+    expect(calls).toEqual({ envelopes: 2, usage: 1, inputs: 0 });
+  });
+
+  it('lists tasks from one envelope query and one input query, without decrypting tasks one by one', async () => {
+    const { send, calls } = await busy();
+    const body = await json<{ data: { id: string; excerpt?: string }[]; total: number }>(
+      await send(`/tenants/${digdir}/tasks?status=completed`, 'kari'),
+    );
+
+    expect(body.total).toBe(990);
+    expect(body.data).toHaveLength(100);
+    expect(body.data[0]).toMatchObject({ id: 'b2999', excerpt: 'question b2999' });
+    expect(calls).toEqual({ envelopes: 1, usage: 1, inputs: 1 });
+  });
+});
+
+describe('usage from an AI gateway', () => {
+  const direct = 'foundry/gpt-4o';
+  const routed = 'gateway/gpt-6.1-sol';
+  const price = { inputPerThousand: 0.0238, outputPerThousand: 0.0952 };
+  const genkiCost = Math.round((0.0238 + 0.2 * 0.0952) * 1_000_000);
+  const usdNok = 10;
+
+  const genkiCall = (id: string, model: string, at: string) => ({
+    task: task(id, digdir, at),
+    event: {
+      task: id,
+      seq: 3,
+      type: 'kernel.usage',
+      v: 1,
+      ts: at,
+      actor: { kind: 'kernel', id: 'kernel' },
+      data: {
+        usage: { inputTokens: 1000, outputTokens: 200, requests: 1 },
+        model: { kind: 'model', id: model },
+      },
+    } as Event,
+  });
+
+  /** Three calls for one tenant: its own gateway key, genki direct, and genki through its gateway key. */
+  const threeCalls = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> = {}) => {
+    let now = new Date('2026-10-06T08:00:00Z');
+    const gateway = memoryUsageSource({ now: () => now });
+    gateway.addKey({ id: 'tenant-key', subject: { kind: 'service', id: 'ka', org: digdir } });
+    gateway.addKey({
+      id: 'genki-key',
+      subject: { kind: 'org', id: '974760673' },
+      consumer: 'genki',
+    });
+    gateway.record({
+      key: 'tenant-key',
+      model: 'gpt-6.1-sol',
+      at: '2026-10-06T08:10:00Z',
+      inputTokens: 500,
+      outputTokens: 50,
+      costMicros: 2000,
+    });
+    gateway.record({
+      key: 'genki-key',
+      model: routed,
+      at: '2026-10-06T08:20:00Z',
+      inputTokens: 1000,
+      outputTokens: 200,
+      costMicros: 5000,
+      genkiTenant: digdir,
+    });
+    const store = new InMemoryUsageBuckets(() => [digdir, other]);
+    store.setRates([{ currency: 'USD', day: '2026-10-01', nokPerUnit: usdNok }]);
+    now = new Date('2026-10-06T12:00:00Z');
+    await pollUsage(gateway, store, {
+      firstStart: new Date('2026-10-06T00:00:00Z'),
+      now: () => now,
+    });
+    const calls = [
+      genkiCall('own', direct, '2026-10-06T08:15:00Z'),
+      genkiCall('through', routed, '2026-10-06T08:20:00Z'),
+    ];
+    const rows: PortalTaskRow[] = calls.map((c) => ({
+      task: c.task.id,
+      tenant: digdir,
+      status: 'completed',
+      at: c.task.createdAt,
+    }));
+    return setup({
+      tasks: () => rows,
+      task: async (id) => calls.find((c) => c.task.id === id)?.task,
+      events: async function* (id): AsyncIterable<Event> {
+        const found = calls.find((c) => c.task.id === id);
+        if (found) yield found.event;
+      },
+      prices: { [direct]: price, [routed]: price },
+      gatewayUsage: store,
+      ...extra,
+    });
+  };
+
+  type Totals = {
+    inputTokens: number;
+    outputTokens: number;
+    costMicroNok: number | null;
+    bySource?: { source: string; usage: Totals }[];
+  };
+  type Report = {
+    totals: Totals;
+    daily: { date: string; usage: Totals }[];
+    byModel: { model: string; source?: string; usage: Totals }[];
+    bySubject?: {
+      subject: { kind: string; id: string } | null;
+      cost: { currency: string; micros: number };
+      rate: number | null;
+      rateDay: string | null;
+    }[];
+  };
+
+  it('a call is counted once whether genki or the gateway measured it', async () => {
+    const { send } = await threeCalls();
+    const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=1`, 'kari'));
+
+    expect(body.totals).toMatchObject({
+      inputTokens: 500 + 1000 + 1000,
+      outputTokens: 50 + 200 + 200,
+      costMicroNok: 2000 * usdNok + genkiCost + genkiCost,
+    });
+    expect(body.totals.bySource?.map((s) => [s.source, s.usage.inputTokens])).toEqual([
+      ['genki', 2000],
+      ['gateway', 500],
+    ]);
+  });
+
+  it("counts the cost of a call through the gateway from the gateway once genki's endpoint runs through it", async () => {
+    const { send } = await threeCalls({ throughGateway: (model) => model === routed });
+    const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=1`, 'kari'));
+
+    expect(body.totals).toMatchObject({
+      inputTokens: 500 + 1000 + 1000,
+      outputTokens: 50 + 200 + 200,
+      costMicroNok: 2000 * usdNok + genkiCost + 5000 * usdNok,
+    });
+  });
+
+  it('marks each model row with its source and shows gateway rows per owner with the amount, rate and day', async () => {
+    const { send } = await threeCalls();
+    const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=1`, 'kari'));
+
+    expect(body.byModel.map((r) => [r.source, r.model])).toEqual([
+      ['genki', direct],
+      ['genki', routed],
+      ['gateway', 'gpt-6.1-sol'],
+    ]);
+    expect(body.bySubject).toEqual([
+      {
+        subject: { kind: 'service', id: 'ka', org: digdir },
+        usage: expect.objectContaining({ inputTokens: 500, costMicroNok: 20_000 }),
+        cost: { currency: 'USD', micros: 2000 },
+        rate: usdNok,
+        rateDay: '2026-10-01',
+      },
+    ]);
+    expect(body.daily.at(-1)?.usage.bySource?.[1]?.usage.inputTokens).toBe(500);
+  });
+
+  it('counts a gateway amount without a rate as unpriced in kroner, never as 0', async () => {
+    const store = await threeRows();
+    const { send: withoutRate } = await threeCalls({
+      gatewayUsage: {
+        tenantRows: (...args) => store.tenantRows(...args),
+        unassignedRows: async () => [],
+        rates: async () => [],
+      },
+    });
+    const body = await json<Report & { priced: boolean }>(
+      await withoutRate(`/tenants/${digdir}/usage?days=1`, 'kari'),
+    );
+
+    expect(body.priced).toBe(false);
+    expect(body.totals.bySource?.[1]?.usage).toMatchObject({ costMicroNok: null });
+    expect(body.totals.costMicroNok).toBe(2 * genkiCost);
+  });
+
+  it("leaves usage genki's own, with no source fields, when no gateway is configured", async () => {
+    const { send } = await setup();
+    const body = await json<Report>(await send(`/tenants/${digdir}/usage?days=3`, 'kari'));
+
+    expect(body.totals.bySource).toBeUndefined();
+    expect(body.bySubject).toBeUndefined();
+    expect(body.byModel.every((r) => r.source === undefined)).toBe(true);
+  });
+
+  it('gives operators both sources for every tenant from one gateway read', async () => {
+    let reads = 0;
+    const store = await threeRows();
+    const counted = await threeCalls({
+      gatewayUsage: {
+        tenantRows: (...args) => {
+          reads += 1;
+          return store.tenantRows(...args);
+        },
+        unassignedRows: () => store.unassignedRows(new Date(0), new Date()),
+        rates: () => store.rates(),
+      },
+    });
+    const body = await json<{ data: { orgNumber: string; usage: Totals }[] }>(
+      await counted.send(`/operator/usage?tenants=${digdir},${other}`, 'operator'),
+    );
+
+    expect(reads).toBe(1);
+    expect(body.data.map((d) => [d.orgNumber, d.usage.bySource?.[1]?.usage.inputTokens])).toEqual([
+      [digdir, 500],
+      [other, 0],
+    ]);
+    expect((await counted.send('/operator/usage/unassigned', 'kari')).status).toBe(403);
+    expect((await counted.send('/operator/usage/unassigned', 'operator')).status).toBe(200);
+  });
+
+  const threeRows = async () => {
+    let now = new Date('2026-10-06T08:00:00Z');
+    const gateway = memoryUsageSource({ now: () => now });
+    gateway.addKey({ id: 'tenant-key', subject: { kind: 'service', id: 'ka', org: digdir } });
+    gateway.record({
+      key: 'tenant-key',
+      model: 'gpt-6.1-sol',
+      at: '2026-10-06T08:10:00Z',
+      inputTokens: 500,
+      outputTokens: 50,
+      costMicros: 2000,
+    });
+    const store = new InMemoryUsageBuckets(() => [digdir, other]);
+    store.setRates([{ currency: 'USD', day: '2026-10-01', nokPerUnit: usdNok }]);
+    now = new Date('2026-10-06T12:00:00Z');
+    await pollUsage(gateway, store, {
+      firstStart: new Date('2026-10-06T00:00:00Z'),
+      now: () => now,
+    });
+    return store;
+  };
 });

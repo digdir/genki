@@ -20,6 +20,7 @@ import {
   runtimeDocumentTypes,
 } from './runtime-documents.js';
 import { digdir, files, klarsprak } from './testkit.js';
+import { kernelTaskReader, toTimeline } from './timeline.js';
 
 const servers: FakeServer[] = [];
 afterEach(async () => {
@@ -139,7 +140,7 @@ const boot = async () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { send, model, blobs, log, tasks };
+  return { send, model, blobs, log, tasks, platform };
 };
 
 const encoded = (text: string) => Buffer.from(text, 'utf8').toString('base64');
@@ -273,6 +274,37 @@ describe('documents an employee attaches to a question', () => {
 
     expect(await inputOf(gone)).toEqual({ erased: true });
     expect(JSON.stringify(await inputOf(kept))).toContain('Fristen er 2. april.');
+  });
+
+  it('a run whose conversation was deleted reads as erased, with the time it was erased', async () => {
+    const { send, tasks, platform } = await boot();
+    const gone = await converse(send, 'Fristen er 1. mars.');
+    const kept = await converse(send, 'Fristen er 2. april.');
+    const reader = kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    );
+    const timelineOf = async (thread: string) => {
+      const id = tasks.all().find((t) => t.task.thread === thread)?.task.id ?? '';
+      const task = await reader.task(id);
+      if (!task) throw new Error(`no task for ${thread}`);
+      const erasure = await reader.erasure?.(digdir, id);
+      return toTimeline(task, await reader.events(id), new Date(), undefined, {
+        ...(erasure ? { erasure } : {}),
+      });
+    };
+    const before = Date.now();
+
+    await send(`/api/conversations/${gone}`, 'frontend', undefined, 'DELETE');
+
+    const erased = await timelineOf(gone);
+    expect(erased.erasure).toEqual({ reason: 'conversation-deleted', at: expect.any(String) });
+    expect(Date.parse(erased.erasure?.at ?? '')).toBeGreaterThanOrEqual(before - 1000);
+    expect(erased.steps.at(-1)).toMatchObject({ type: 'result', summary: 'Svaret er slettet' });
+    expect(erased.steps.some((s) => s.title === 'Innholdet er ikke tilgjengelig')).toBe(false);
+    expect(erased).toMatchObject({ status: 'completed', inputTokens: 10, outputTokens: 5 });
+    expect((await timelineOf(kept)).erasure).toBeUndefined();
   });
 
   it('deleting a conversation leaves other conversations’ documents alone', async () => {

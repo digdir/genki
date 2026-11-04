@@ -1,3 +1,10 @@
+import type {
+  EnvironmentTier,
+  LiveDescriptorRegistry,
+  OperationGovernanceStore,
+  OperationTry,
+  OperationTryOutcome,
+} from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
 import type {
   DefinitionStore,
@@ -21,7 +28,7 @@ import type { ConfigEntryStore } from './config-store.js';
 import type { ApiLog } from './failure-log.js';
 import type { DraftDecoration, DraftRunner, ModelPrice } from './draft-runner.js';
 import type { TaskIndex } from './extensions.js';
-import type { IngestSourceOptions } from './index-ingestion.js';
+import type { IngestSourceConfig } from './index-ingestion.js';
 import type { IngestionService } from './ingestion.js';
 import type { EngineDescription } from './knowledge-engines.js';
 import type { SearchModuleExtras } from './knowledge-endpoints.js';
@@ -79,6 +86,12 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   traceDeliveries?: TraceDeliveryStore;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
+  operations?: {
+    tier: EnvironmentTier;
+    descriptors: LiveDescriptorRegistry;
+    governance: OperationGovernanceStore;
+    try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
+  };
   enrichmentTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;
@@ -86,7 +99,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   webhooks: ReturnType<typeof createWebhooks>;
   sync(): Promise<void>;
   onChange(topic: ChangeTopic, listener: () => void | Promise<void>): () => void;
-  ingestSources?: IngestSourceOptions;
+  ingestSources?: IngestSourceConfig;
   vault?: {
     set(tenant: string, name: string, value: string): Promise<string>;
     delete(tenant: string, name: string): Promise<void>;
