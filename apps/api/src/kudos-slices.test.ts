@@ -84,6 +84,17 @@ describe('Kudos slices', () => {
     if (!closed.ok) expect(closed.errors[0]?.message).toMatch(/en sluttdato settes \(2024-12-31\)/);
   });
 
+  it('a pipeline change that moves a Kudos pipeline to another KUDOS profile is refused', async () => {
+    const ingestion = await service();
+    const saved = await save(ingestion, { ...slice, profile: 'preprod' });
+
+    expect(saved.ok).toBe(false);
+    if (!saved.ok) {
+      expect(saved.errors[0]?.path).toBe('spec.source.profile');
+      expect(saved.errors[0]?.message).toMatch(/kilden flyttes fra prod til preprod/);
+    }
+  });
+
   it('a pipeline change that widens a Kudos slice is saved', async () => {
     const ingestion = await service();
     for (const source of [

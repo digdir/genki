@@ -166,6 +166,8 @@ export class HttpStatusError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The response's `Retry-After`, for a caller that waits it out. */
+    readonly retryAfter?: string,
   ) {
     super(message);
   }
@@ -237,6 +239,7 @@ export const guardedFetchStream = async (
         throw new HttpStatusError(
           response.status,
           `Website answered HTTP ${response.status} for ${current}`,
+          response.headers.get('retry-after') ?? undefined,
         );
       }
       const reader = response.body?.getReader();

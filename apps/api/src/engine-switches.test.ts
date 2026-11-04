@@ -67,7 +67,7 @@ const kudosPage = {
     },
     { id: 8, title: 'Årsrapport', type: 'Årsrapport', publish_date: '2025-03-01', files: [] },
   ],
-  meta: { current_page: 1, last_page: 1 },
+  meta: { current_page: 1, last_page: 1, total: 2 },
 };
 // The estimate reads the first page in KUDOS's own order; a listing names its order.
 const kudosPages: Record<string, unknown> = {

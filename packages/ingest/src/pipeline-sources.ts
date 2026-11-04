@@ -26,6 +26,7 @@ import {
   fillInKudosFields,
   KudosNotFound,
   kudosClient,
+  retryAfterMs,
   kudosProfiles,
   type KudosDocument,
   type KudosProfile,
@@ -236,6 +237,9 @@ export const kudosNarrowing = (
     path: `spec.source.${field}`,
     message: `Et utvalg fra Kudos kan bare utvides: ${change}. Det som faller utenfor, ville blitt slettet etter to fullstendige innlesinger. Lag en ny innlesing for et smalere utvalg.`,
   });
+  // Another KUDOS instance lists other documents: everything listed so far would be deleted.
+  if (after.profile !== before.profile)
+    return refuse('profile', `kilden flyttes fra ${before.profile} til ${after.profile}`);
   if (after.since && (!before.since || after.since > before.since))
     return refuse(
       'since',
@@ -509,25 +513,52 @@ export const kudosListing = (client: ReturnType<typeof kudosClientFor>, filter: 
       complete = true;
       return;
     }
-    let whole = (filter.startingPage ?? 1) <= 1;
+    // A listing from a later page never sees the pages before it: one pass, never complete.
+    const startingPage = filter.startingPage ?? 1;
+    const passes = startingPage > 1 ? 1 : kudosListingPasses;
+    let whole = startingPage <= 1;
     for (const search of kudosSearches(filter)) {
       const seen = new Set<string>();
       let reached = false;
-      for (let pass = 0; pass < kudosListingPasses && !reached; pass++) {
-        const first = pass === 0 ? (filter.startingPage ?? 1) : 1;
-        const listed = client.listing({ ...search, sort: passOrder(pass) }, first);
+      for (let pass = 0; pass < passes && !reached; pass++) {
+        const listed = client.listing({ ...search, sort: passOrder(pass) }, startingPage);
         for await (const doc of listed.documents) {
           seen.add(String(doc.uuid ?? doc.id));
           if (fresh(doc)) yield doc;
         }
         const total = listed.total();
-        reached = total === undefined || seen.size >= total;
+        // Without a total nothing says the search came back whole.
+        reached = total !== undefined && seen.size >= total;
       }
       if (!reached) whole = false;
     }
     complete = whole;
   };
   return { documents, complete: () => complete };
+};
+
+/** 429s in a row a file download waits out before it fails. */
+const maxDownloadRateLimited = 5;
+
+/** Downloads one Kudos file under the limiter; a 429 waits as long as `Retry-After` asks. */
+const kudosDownload = async (
+  limiter: KudosRateLimiter,
+  download: () => Promise<Uint8Array>,
+): Promise<Uint8Array> => {
+  for (let limited = 0; ; limited++) {
+    await limiter.take();
+    try {
+      return await download();
+    } catch (error) {
+      if (
+        !(error instanceof HttpStatusError) ||
+        error.status !== 429 ||
+        limited >= maxDownloadRateLimited
+      )
+        throw error;
+      limiter.pause(retryAfterMs(error.retryAfter ?? null));
+    }
+  }
 };
 
 const kudosDocuments = (client: ReturnType<typeof kudosClientFor>, filter: KudosFilter) =>
@@ -682,16 +713,19 @@ export const sourceOf = async (
     profile: kudosProfileFor(kudos, source.profile),
     maxFileBytes: maxDocumentBytes,
     fetchFile: (file) =>
-      fetchKudosFile(file, async (url) => {
-        await (kudos.limiter ?? processKudosLimiter).take();
-        return (
-          await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-            ...options.web,
-            signal,
-            ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-          })
-        ).bytes;
-      }),
+      fetchKudosFile(file, (url) =>
+        kudosDownload(
+          kudos.limiter ?? processKudosLimiter,
+          async () =>
+            (
+              await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
+                ...options.web,
+                signal,
+                ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+              })
+            ).bytes,
+        ),
+      ),
     converter,
   });
 };
@@ -924,16 +958,19 @@ export const knowledgeListingOf = async (
           profile,
           maxFileBytes: maxDocumentBytes,
           fetchFile: (file) =>
-            fetchKudosFile(file, async (url) => {
-              await limiter.take();
-              return (
-                await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
-                  ...options.web,
-                  signal,
-                  ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
-                })
-              ).bytes;
-            }),
+            fetchKudosFile(file, (url) =>
+              kudosDownload(
+                limiter,
+                async () =>
+                  (
+                    await guardedFetchBytes(url, filePolicy, maxDocumentBytes, {
+                      ...options.web,
+                      signal,
+                      ...(kudos.fetch ? { fetch: kudos.fetch } : {}),
+                    })
+                  ).bytes,
+              ),
+            ),
           converter,
         }),
         'the document',

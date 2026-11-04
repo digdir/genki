@@ -457,7 +457,7 @@ describe('index ingestion', () => {
             doc(1, 'Tildelingsbrev', '2025-02-01', 'Digitaliseringsdirektoratet'),
             doc(2, 'Årsrapport', '2025-03-01', 'Digitaliseringsdirektoratet'),
           ],
-          meta: { current_page: 1, last_page: 2 },
+          meta: { current_page: 1, last_page: 2, total: 4 },
         },
       'https://kudos.dfo.no/api/v0/documents?page=2&per_page=50&type=Tildelingsbrev&actor_name=Digitaliseringsdirektoratet&published_year_from=2024&sort=newest':
         {
@@ -465,7 +465,7 @@ describe('index ingestion', () => {
             doc(3, 'Tildelingsbrev', '2020-01-01', 'Digitaliseringsdirektoratet'),
             doc(4, 'Tildelingsbrev', '2025-05-01', 'Skatteetaten'),
           ],
-          meta: { current_page: 2, last_page: 2 },
+          meta: { current_page: 2, last_page: 2, total: 4 },
         },
     };
     const fetched: string[] = [];

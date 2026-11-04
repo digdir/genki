@@ -126,7 +126,7 @@ describe('knowledge listings', () => {
         return new Response(
           JSON.stringify({
             data: [{ id: page, uuid: `u-${page}`, type: 'Årsrapport', title: `Rapport ${page}` }],
-            meta: { current_page: page, last_page: 4 },
+            meta: { current_page: page, last_page: 4, total: 4 },
           }),
         );
       }) as typeof fetch,

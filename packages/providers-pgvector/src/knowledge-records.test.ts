@@ -169,6 +169,29 @@ describe('document records on the knowledge server', () => {
     expect(rows[0]?.last).toBe('5');
   });
 
+  it('a seen record takes the earlier ids its listing carries, without a new change', async () => {
+    const name = 'digdir/earlier-seen';
+    const generation = await freshGeneration(name);
+    await records.apply({ dataset: name, pipeline: 'p1', generation, plan: newDocs('a') }, noSend);
+    const before = await changes(name);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'p1',
+        generation,
+        plan: plan([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]),
+      },
+      noSend,
+    );
+
+    const { rows } = await admin.query<{ earlier_ids: string[] }>(
+      `select earlier_ids from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.earlier_ids).toEqual(['377252']);
+    expect(await changes(name)).toEqual(before);
+  });
+
   it('an earlier id resolves to its document, for 377252', async () => {
     const name = 'digdir/earlier';
     const generation = await freshGeneration(name);

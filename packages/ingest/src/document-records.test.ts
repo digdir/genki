@@ -49,6 +49,17 @@ describe('planRun', () => {
     expect(second.counts.deleted).toBe(1);
   });
 
+  it('an unchanged record takes the earlier ids its listing now carries, without being processed', () => {
+    const plan = planRun([{ ...listed('a'), earlierIds: ['377252'] }], [owned('a')], {
+      complete: true,
+      deletes: 'listed',
+    });
+
+    expect(plan.writes).toEqual([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]);
+    expect(plan.process).toEqual([]);
+    expect(plan.counts.unchanged).toBe(1);
+  });
+
   it('an incomplete listing deletes nothing', () => {
     const plan = planRun([listed('a')], [owned('a'), owned('b', { missing: 5 })], {
       complete: false,

@@ -43,6 +43,8 @@ interface FakeKudos {
   order?: (docs: KudosDocument[], sort: string) => KudosDocument[];
   perPage?: number;
   status?: (url: URL, attempt: number) => Response | undefined;
+  /** Leave `meta.total` out, as an older KUDOS did. */
+  noTotal?: boolean;
 }
 
 const fakeKudos = (fake: FakeKudos) => {
@@ -85,7 +87,12 @@ const fakeKudos = (fake: FakeKudos) => {
       const last = Math.max(1, Math.ceil(ordered.length / perPage));
       return Response.json({
         data: ordered.slice((page - 1) * perPage, page * perPage),
-        meta: { current_page: page, last_page: last, per_page: perPage, total: matching.length },
+        meta: {
+          current_page: page,
+          last_page: last,
+          per_page: perPage,
+          ...(fake.noTotal ? {} : { total: matching.length }),
+        },
       });
     }
     const file = fake.docs.flatMap((d) => d.files ?? []).find((f) => f.url === url.href);
@@ -321,5 +328,65 @@ describe('a Kudos listing', () => {
 
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.path).toEqual(['source', 'documents', 1]);
+  });
+
+  it('a Kudos search without meta.total is never complete', async () => {
+    const docs = [1, 2, 3, 4].map((n) => doc(n));
+    const { access } = fakeKudos({ docs, noTotal: true });
+    const listing = await listingFor({ types: ['Årsrapport'] }, access);
+
+    expect(await all(listing)).toHaveLength(4);
+    expect(listing.complete()).toBe(false);
+  });
+
+  it('a Kudos listing from a later page walks once, from that page', async () => {
+    const docs = [1, 2, 3, 4].map((n) => doc(n));
+    const { access, calls } = fakeKudos({ docs });
+    const listing = await listingFor({ types: ['Årsrapport'], startingPage: 2 }, access);
+
+    expect((await all(listing)).map((d) => d.id)).toEqual([`kudos:${uuid(3)}`, `kudos:${uuid(4)}`]);
+    expect(listing.complete()).toBe(false);
+    expect(calls.filter((c) => c.searchParams.get('page') === '1')).toEqual([]);
+  });
+
+  it("a Kudos listing carries each document's earlier ids from the map", async () => {
+    const { access } = fakeKudos({ docs: [doc(1), doc(2)] });
+    const earlierIds = new Map([[`kudos:${uuid(1)}`, ['377252']]]);
+    const listed = await all(
+      await listingFor({ types: ['Årsrapport'] }, { ...access, earlierIds }),
+    );
+
+    expect(listed.map((d) => d.earlierIds)).toEqual([['377252'], undefined]);
+  });
+
+  it('a Kudos file download takes a turn from the limiter', async () => {
+    const { access, calls } = fakeKudos({ docs: [doc(1)] });
+    let turns = 0;
+    const limiter = { take: async () => void turns++, pause: () => undefined };
+    const listing = await listingFor({ types: ['Årsrapport'] }, { ...access, limiter });
+    const [listed] = await all(listing);
+    await listing.load(listed?.record ?? {});
+
+    expect(calls.some((c) => c.pathname.includes('/filer/'))).toBe(true);
+    expect(turns).toBe(calls.length);
+  });
+
+  it('a Kudos file download waits as long as Retry-After asks after a 429', async () => {
+    const paused: number[] = [];
+    const { access } = fakeKudos({
+      docs: [doc(1)],
+      status: (url, attempt) =>
+        url.pathname.includes('/filer/') && attempt === 1
+          ? new Response('', { status: 429, headers: { 'retry-after': '20' } })
+          : undefined,
+    });
+    const limiter = { take: async () => undefined, pause: (ms: number) => void paused.push(ms) };
+    const listing = await listingFor({ types: ['Årsrapport'] }, { ...access, limiter });
+    const [listed] = await all(listing);
+    const loaded = await listing.load(listed?.record ?? {});
+
+    expect(paused).toEqual([20_000]);
+    expect(loaded.skip).toBeUndefined();
+    expect(loaded.texts).toEqual(['Tekst fra rapporten.']);
   });
 });

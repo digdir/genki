@@ -14,7 +14,7 @@
  * (today's index was filled from KUDOS's test copy) and writes
  * `packages/ingest/src/kudos-earlier-ids.json`.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   checkEarlierId,
@@ -22,13 +22,14 @@ import {
   kudosListing,
   kudosProd,
   kudosRateLimiter,
+  retryAfterMs,
   type EarlierIdsMap,
   type KudosDocument,
 } from '@genai/ingest';
 
 const root = join(import.meta.dirname, '..', '..', '..', '..');
 const envFile = join(root, '.env.local');
-if (existsSync(envFile)) process.loadEnvFile(envFile);
+if (readIfThere(envFile) !== undefined) process.loadEnvFile(envFile);
 
 const cache = join(root, '.data', 'kudos-earlier-ids');
 const oldFile = join(cache, 'old.json');
@@ -66,6 +67,16 @@ interface Redirect {
   uuid?: string;
 }
 
+/** The file's text, or undefined when it is not there yet. */
+function readIfThere(file: string) {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
 const typesense = async (path: string) => {
   const baseURL = process.env.TYPESENSE_URL;
   const key = process.env.TYPESENSE_KEY;
@@ -78,7 +89,8 @@ const typesense = async (path: string) => {
 
 /** The ids of today's index: every document, and every document its chunks name. */
 const readOld = async (): Promise<OldDocument[]> => {
-  if (existsSync(oldFile)) return JSON.parse(readFileSync(oldFile, 'utf8')) as OldDocument[];
+  const cached = readIfThere(oldFile);
+  if (cached !== undefined) return JSON.parse(cached) as OldDocument[];
   const byId = new Map<string, OldDocument>();
   const exported = await typesense(
     `/collections/${collections.docs}/documents/export?include_fields=id,files`,
@@ -105,12 +117,10 @@ const readOld = async (): Promise<OldDocument[]> => {
 };
 
 const readLines = <T>(file: string): T[] =>
-  existsSync(file)
-    ? readFileSync(file, 'utf8')
-        .split('\n')
-        .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as T)
-    : [];
+  (readIfThere(file) ?? '')
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l) as T);
 
 const uuidPattern = /\/dokument\/([0-9a-f-]{36})(?:[/?#]|$)/;
 
@@ -124,7 +134,7 @@ const followOne = async (id: string): Promise<Redirect> => {
       });
       await response.body?.cancel();
       if (response.status === 429) {
-        limiter.pause(Number(response.headers.get('retry-after') ?? 60) * 1000);
+        limiter.pause(retryAfterMs(response.headers.get('retry-after')));
         continue;
       }
       if (response.status >= 500 && attempt < 3) continue;
@@ -205,7 +215,7 @@ const check = async () => {
   }
   const missing = [...old.keys()].filter((id) => !(id in map.ids) && !(id in map.unresolved));
   for (const id of missing) map.unresolved[id] = 'not followed yet';
-  writeFileSync(mapFile, `${JSON.stringify(map, null, 1)}\n`);
+  writeFileSync(mapFile, `${JSON.stringify(map, null, 2)}\n`);
   console.log(
     JSON.stringify({
       ids: old.size,

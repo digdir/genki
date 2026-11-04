@@ -110,6 +110,15 @@ const writeRecord = async (
   write: RecordWrite,
 ) => {
   const { dataset, pipeline } = input;
+  if (write.kind === 'seen' && write.earlierIds) {
+    // Not a change of the document: its data version and generations stay as they are.
+    await client.query(
+      `update src_documents set earlier_ids = $3
+        where dataset = $1 and id = $2 and earlier_ids is distinct from $3::text[]`,
+      [dataset, write.id, write.earlierIds],
+    );
+    return;
+  }
   if (write.kind === 'seen' || write.kind === 'missing') return;
   if (write.kind === 'delete') {
     await client.query(
