@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InMemoryBlobStore } from '@genai/port-blob';
 import { describe, expect, it } from 'vitest';
+import { documentId } from './ids.js';
 import { PageGone, type ListedDocument, type Listing } from './document-records.js';
 import {
   knowledgeListingOf,
@@ -12,12 +13,7 @@ import {
 } from './pipeline-sources.js';
 
 const signal = new AbortController().signal;
-const scope = {
-  tenant: '991825827',
-  dataset: '991825827/docs',
-  owner: '991825827',
-  pipeline: 'docs',
-};
+const scope = { tenant: '991825827', dataset: '991825827/docs', owner: '991825827' };
 
 const spec = (source: Record<string, unknown>) => pipelineSpec.parse({ name: 'Docs', source });
 
@@ -175,26 +171,21 @@ describe('knowledge listings', () => {
     expect((await listing.load(first(docs).record)).texts.join('')).toContain('Innhold a.');
   });
 
-  it("a folder document's id on the knowledge database is folder: with its scope, pipeline id and path", async () => {
+  it("a folder document's id is folder: with its owner and a hash of its path from the folder root", async () => {
     const root = await mkdtemp(join(tmpdir(), 'listing-'));
     await mkdir(join(root, 'docs', 'adr'), { recursive: true });
     await writeFile(join(root, 'docs', 'adr', '0042.md'), '# ADR\n\nInnhold.');
     const platform = await knowledgeListingOf(
       spec({ kind: 'folder', path: '.' }),
       { folderRoot: root },
-      {
-        tenant: '991825827',
-        dataset: 'digdir/genki-docs',
-        owner: 'platform',
-        pipeline: 'genki-docs',
-      },
+      { tenant: '991825827', dataset: 'digdir/genki-docs', owner: 'platform' },
       signal,
     );
     const [doc] = await all(platform);
-    expect(doc?.id).toBe('folder:platform/genki-docs/docs/adr/0042.md');
+    expect(doc?.id).toBe(`folder:platform/${documentId('docs/adr/0042.md')}`);
     const loaded = await platform.load(first([doc]).record);
-    expect(loaded.key).toBe('folder:platform/genki-docs/docs/adr/0042.md');
-    expect(loaded.docNum).toBe('folder:platform/genki-docs/docs/adr/0042.md');
+    expect(loaded.key).toBe(doc?.id);
+    expect(loaded.docNum).toBe(doc?.id);
 
     const tenant = await knowledgeListingOf(
       spec({ kind: 'folder', path: 'docs' }),
@@ -202,7 +193,43 @@ describe('knowledge listings', () => {
       scope,
       signal,
     );
-    expect((await all(tenant)).map((d) => d.id)).toEqual(['folder:991825827/docs/adr/0042.md']);
+    expect((await all(tenant)).map((d) => d.id)).toEqual([
+      `folder:991825827/${documentId('docs/adr/0042.md')}`,
+    ]);
+  });
+
+  it("a folder document's id names no path", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'handbok'));
+    await writeFile(join(root, 'handbok', 'permisjon-ola-nordmann.md'), '# Permisjon\n\nInnhold.');
+    const [doc] = await all(
+      await knowledgeListingOf(
+        spec({ kind: 'folder', path: 'handbok' }),
+        { folderRoot: root },
+        scope,
+        signal,
+      ),
+    );
+    expect(doc?.id).toMatch(/^folder:991825827\/[0-9a-f]+$/);
+    expect(doc?.id).not.toContain('ola');
+  });
+
+  it('two folder pipelines over one file give it the same id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'listing-'));
+    await mkdir(join(root, 'docs', 'adr'), { recursive: true });
+    await writeFile(join(root, 'docs', 'adr', '0042.md'), '# ADR\n\nInnhold.');
+    const idsOf = async (path: string) =>
+      (
+        await all(
+          await knowledgeListingOf(
+            spec({ kind: 'folder', path }),
+            { folderRoot: root },
+            scope,
+            signal,
+          ),
+        )
+      ).map((d) => d.id);
+    expect(await idsOf('.')).toEqual(await idsOf('docs/adr'));
   });
 
   it('a folder document keeps its id when the folder root moves', async () => {

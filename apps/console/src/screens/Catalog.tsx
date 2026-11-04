@@ -96,7 +96,10 @@ const PlatformRegistry = ({ api, tab }: { api: ApiClient; tab: CatalogTab }) => 
                   api={api}
                   base={`/operator/datasets/${encodeURIComponent(e.id)}/pipelines`}
                 />
-                <EngineSwitchSection api={api} dataset={e.id} />
+                <EngineSwitchSection
+                  api={api}
+                  base={`/operator/datasets/${encodeURIComponent(e.id)}`}
+                />
               </>
             ),
           }
@@ -148,10 +151,16 @@ const TenantRegistry = ({
       {...(tab.kind === 'dataset'
         ? {
             detail: (e: ConfigEntry) => (
-              <Pipelines
-                api={api}
-                base={`${base}/datasets/${encodeURIComponent(localId(e))}/pipelines`}
-              />
+              <>
+                <Pipelines
+                  api={api}
+                  base={`${base}/datasets/${encodeURIComponent(localId(e))}/pipelines`}
+                />
+                <EngineSwitchSection
+                  api={api}
+                  base={`${base}/datasets/${encodeURIComponent(localId(e))}`}
+                />
+              </>
             ),
           }
         : {})}

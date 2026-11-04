@@ -558,13 +558,12 @@ export const knowledgeSourceRefusal = (kind: PipelineSpec['source']['kind']) =>
 
 /**
  * Whom a knowledge listing lists for: `tenant` reads uploads and connections, `owner` (`platform`
- * or the organisation number, as the dataset's scope) and `pipeline` name folder documents.
+ * or the organisation number, as the dataset's scope) names folder documents.
  */
 export interface KnowledgeListingScope {
   tenant: string;
   dataset: string;
   owner: string;
-  pipeline: string;
 }
 
 /**
@@ -682,7 +681,9 @@ export const knowledgeListingOf = async (
     const root = inside(options.folderRoot ?? '', source.path);
     if (!options.folderRoot || !root) throw new Error('the folder is not allowed');
     const name = (path: string) => relative(root, path).split(sep).join('/');
-    const idOf = (path: string) => folderDocumentId(scope.owner, scope.pipeline, name(path));
+    const fromRoot = resolve(options.folderRoot);
+    const idOf = (path: string) =>
+      folderDocumentId(scope.owner, relative(fromRoot, path).split(sep).join('/'));
     const list = async () =>
       (await findFolderFiles(root, 'all')).filter((e) =>
         selected(name(e.path), source.include, source.exclude),

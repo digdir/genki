@@ -771,6 +771,24 @@ export interface EngineSwitch {
   failedDocuments?: number;
   minimumReasonLength: number;
   canRollback: boolean;
+  comparison?: {
+    cases: number;
+    hitAt5: [number, number];
+    meanRank: [number | null, number | null];
+    verdict: 'same' | 'better' | 'worse';
+  };
+  comparisonNote?: string;
+}
+
+/** What a re-ingest into an endpoint would cost, or why it cannot run (ADR 0025). */
+export interface SwitchEstimate {
+  basis: { documents: number; counted: boolean };
+  reingest: {
+    available: boolean;
+    reason?: string;
+    costNok: { min: number; max: number };
+    durationMinutes: { min: number; max: number };
+  };
 }
 
 /** The engine a platform dataset searches now, and the switch it is in, if any. */

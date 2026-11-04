@@ -12,6 +12,7 @@ interface Call {
   path: string;
   body: unknown;
   reason: string;
+  session: string | null;
 }
 
 type Handler = (call: Call) => [number, unknown];
@@ -27,6 +28,7 @@ const platform = (routes: Record<string, Handler>) => {
       path,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       reason: decodeURIComponent(new Headers(init?.headers).get('change-reason') ?? ''),
+      session: new Headers(init?.headers).get('support-session'),
     };
     calls.push(call);
     const handler = routes[`${method} ${path}`];
@@ -109,8 +111,25 @@ const sequence = (...states: [string, Record<string, unknown>?][]) => {
   };
 };
 
+const estimate = (reingest: Record<string, unknown> = {}) => ({
+  dataset,
+  from: 'platform-pg',
+  to: 'knowledge-pg',
+  estimate: true,
+  basis: { documents: 301, counted: true },
+  copy: { available: false, costNok: { min: 0, max: 0 }, durationMinutes: { min: 0, max: 0 } },
+  reingest: {
+    available: true,
+    costNok: { min: 1, max: 3 },
+    durationMinutes: { min: 2, max: 6 },
+    ...reingest,
+  },
+});
+const estimateRoute = `GET ${base}/engine-switches/estimate?to=knowledge-pg&method=reingest`;
+
 const startMove = async (reason = 'Flytter dokumentasjonen til kunnskapsdatabasen') => {
   fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+  await screen.findByText(/Innlesing på nytt/);
   fireEvent.change(screen.getByLabelText('Begrunnelse'), { target: { value: reason } });
   fireEvent.click(screen.getByRole('button', { name: 'Start flyttingen' }));
 };
@@ -120,6 +139,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches`]: () => [202, switchView('running')],
       [`GET ${base}/engine-switches/s1`]: sequence(
         ['running'],
@@ -127,7 +147,7 @@ describe('engine switch of a platform dataset in the console', () => {
         ['ready', { failedDocuments: 2 }],
       ),
     });
-    render(<EngineSwitchSection api={api} dataset={dataset} pollMs={1} />);
+    render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
 
     expect(await screen.findByText(/Søkemotor nå: platform-pg/)).toBeTruthy();
     await startMove();
@@ -145,8 +165,9 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
     });
-    render(<EngineSwitchSection api={api} dataset={dataset} />);
+    render(<EngineSwitchSection api={api} base={base} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
     const target = screen.getByLabelText('Til søkemotor');
@@ -162,6 +183,7 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [200, engine],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches/s1/activate`]: () => [202, switchView('activating')],
       [`GET ${base}/engine-switches/s1`]: () => {
         engine = engineOn('knowledge-pg', {
@@ -175,7 +197,7 @@ describe('engine switch of a platform dataset in the console', () => {
         return [200, switchView('active', { canRollback: true })];
       },
     });
-    render(<EngineSwitchSection api={api} dataset={dataset} pollMs={1} />);
+    render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Ta i bruk' }));
     expect(calls.some((c) => c.path.endsWith('/activate'))).toBe(false);
@@ -204,12 +226,13 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [200, engine],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches/s1/rollback`]: () => {
         engine = engineOn('platform-pg');
         return [200, switchView('rolled_back')];
       },
     });
-    render(<EngineSwitchSection api={api} dataset={dataset} />);
+    render(<EngineSwitchSection api={api} base={base} />);
 
     expect(await screen.findByText(/platform-pg beholdes til 18\.11\.2026/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Begrunnelse'), {
@@ -230,26 +253,159 @@ describe('engine switch of a platform dataset in the console', () => {
     const { api } = platform({
       [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
       [`POST ${base}/engine-switches`]: () => [
         409,
         {
-          title: 'Kan ikke bytte søkemotor',
+          title: 'Vektormodellen foundry/text-embedding-3-small er ikke satt opp på plattformen.',
+          status: 409,
           errors: [
             {
-              path: 'id',
+              path: 'embedding',
               message:
-                'et datasett i kunnskapsdatabasen fylles av én innlesing til medeiere er bygget; det har genki-docs, ekstra',
+                'Vektormodellen foundry/text-embedding-3-small er ikke satt opp på plattformen.',
             },
           ],
         },
       ],
     });
-    render(<EngineSwitchSection api={api} dataset={dataset} />);
+    render(<EngineSwitchSection api={api} base={base} />);
 
     await startMove();
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('det har genki-docs, ekstra');
+    expect(alert.textContent).toBe(
+      'Vektormodellen foundry/text-embedding-3-small er ikke satt opp på plattformen.',
+    );
     expect(screen.getByText(/Søkemotor nå: platform-pg/)).toBeTruthy();
+  });
+
+  it('the estimate shows before a move starts', async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, estimate()],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    expect(
+      await screen.findByText('Innlesing på nytt: 1–3 kr, 2–6 min (301 dokumenter)'),
+    ).toBeTruthy();
+  });
+
+  it('a move the estimate refuses cannot start', async () => {
+    const { api, calls } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('platform-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [
+        200,
+        estimate({ available: false, reason: 'søkefraser kan ikke fylle et datasett her ennå' }),
+      ],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    expect(await screen.findByText(/søkefraser kan ikke fylle/)).toBeTruthy();
+    const start = screen.getByRole('button', { name: 'Start flyttingen' }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('the comparison shows when the switch is ready', async () => {
+    const comparison = {
+      testSets: ['genki-docs-sporsmal'],
+      cases: 10,
+      k: 5,
+      hitAt5: [90, 80],
+      meanRank: [1.4, 1.3],
+      latencyMs: [120, 80],
+      errors: [0, 0],
+      verdict: 'worse',
+      examples: [],
+    };
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [
+        200,
+        engineOn('platform-pg', {
+          activeSwitch: switchView('ready', { comparison, minimumReasonLength: 20 }),
+        }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    expect(
+      await screen.findByText(
+        'Treff blant de fem første: platform-pg 90 %, knowledge-pg 80 % (10 spørsmål)',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Den nye søkemotoren treffer dårligere/)).toBeTruthy();
+  });
+
+  it("an agency's dataset is moved through its own routes under a support session", async () => {
+    const agency = '/tenants/405003309/datasets/notater';
+    const { api, calls } = platform({
+      [`GET ${agency}/engine`]: () => [200, engineOn('platform-pg')],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [`GET ${agency}/engine-switches/estimate?to=knowledge-pg&method=reingest`]: () => [
+        200,
+        estimate(),
+      ],
+      [`POST ${agency}/engine-switches`]: () => [202, switchView('running')],
+      [`GET ${agency}/engine-switches/s1`]: () => [200, switchView('ready')],
+    });
+    api.holdSupport('405003309', 'support-1');
+    render(<EngineSwitchSection api={api} base={agency} pollMs={1} />);
+
+    await startMove();
+
+    expect(await screen.findByText('Klar til å tas i bruk')).toBeTruthy();
+    const start = calls.find((c) => c.method === 'POST');
+    expect(start?.path).toBe(`${agency}/engine-switches`);
+    expect(start?.session).toBe('support-1');
+  });
+
+  it('a running move can be cancelled with a reason', async () => {
+    const { api, calls } = platform({
+      [`GET ${base}/engine`]: () => [
+        200,
+        engineOn('platform-pg', { activeSwitch: switchView('running') }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [`GET ${base}/engine-switches/s1`]: () => [200, switchView('running')],
+      [`POST ${base}/engine-switches/s1/cancel`]: () => [200, switchView('cancelled')],
+    });
+    render(<EngineSwitchSection api={api} base={base} pollMs={60_000} />);
+
+    fireEvent.change(await screen.findByLabelText('Begrunnelse'), {
+      target: { value: 'Startet mot feil søkemotor' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt flyttingen' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith('/cancel'))?.reason).toBe(
+        'Startet mot feil søkemotor',
+      ),
+    );
+  });
+
+  it("a failed fill shows the worker's error under a Norwegian lead", async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [
+        200,
+        engineOn('platform-pg', {
+          activeSwitch: switchView('failed', {
+            error: { message: 'listing the source failed after its retries', percent: 0 },
+          }),
+        }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    expect(
+      await screen.findByText('Innlesingen stoppet. Feilmeldingen fra plattformen:'),
+    ).toBeTruthy();
+    expect(screen.getByText('listing the source failed after its retries')).toBeTruthy();
   });
 });

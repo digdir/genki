@@ -71,7 +71,6 @@ const listingScope = (run: IngestionExecution, platformTenant: string): Knowledg
   tenant: tenantOf(run, platformTenant),
   dataset: run.dataset,
   owner: executionScope(run.dataset),
-  pipeline: run.pipeline,
 });
 
 const specOf = async (deps: KnowledgeHandlerDeps, run: IngestionExecution) => {

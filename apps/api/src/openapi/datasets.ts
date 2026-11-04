@@ -299,6 +299,17 @@ const KnowledgeEndpoint = z
     writeKeyRequired: z.boolean(),
     capabilities: CapabilitySummary,
     datasetCount: z.number().int(),
+    datasets: z
+      .array(
+        z.object({
+          id: z.string(),
+          scope: z.string(),
+          name: z.string(),
+          pipelines: z.number().int(),
+        }),
+      )
+      .optional()
+      .openapi({ description: 'The datasets on the endpoint; only in the operator listing' }),
     status: z.enum(['ok', 'unused', 'skipped']),
     shared: z.boolean(),
     version: z.number().int(),

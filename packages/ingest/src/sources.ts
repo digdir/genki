@@ -180,10 +180,12 @@ export interface FolderSourceOptions {
 
 /**
  * A folder document's id on the knowledge database (ADR 0042): its owner (`platform` or the
- * organisation number), the pipeline that lists it, and its path inside the pipeline's folder.
+ * organisation number) and a hash of its path from the folder root, so it is the same on every
+ * machine, two pipelines that list the same file name the same document, and no path (which can
+ * name a person) reaches a stored answer.
  */
-export const folderDocumentId = (owner: string, pipeline: string, path: string) =>
-  `folder:${owner}/${pipeline}/${path}`;
+export const folderDocumentId = (owner: string, path: string) =>
+  `folder:${owner}/${documentId(path)}`;
 
 const readFolderEntry = async (
   options: FolderSourceOptions,

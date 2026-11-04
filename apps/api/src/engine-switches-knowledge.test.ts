@@ -230,13 +230,17 @@ const boot = async (
   });
   const app = new Hono();
   platform.mount(app, admin);
-  const call = (path: string, init: { method?: string; body?: unknown; as?: string } = {}) =>
+  const call = (
+    path: string,
+    init: { method?: string; body?: unknown; as?: string; session?: string } = {},
+  ) =>
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
         authorization: `Bearer ${init.as ?? shared.as ?? 'kari'}`,
         'content-type': 'application/json',
         'change-reason': encodeURIComponent('Flytter til kunnskapsdatabasen'),
+        ...(init.session ? { 'support-session': init.session } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -810,6 +814,30 @@ describe('operators switching a platform dataset into the knowledge database', (
       { id, scope: 'platform', name: 'GenKI-dokumentasjonen', pipelines: 1 },
     ]);
     expect(data.find((e) => e.id === 'knowledge-pg')?.datasets).toEqual([]);
+  });
+
+  it("an operator under a support session switches an agency's dataset into the knowledge database", async () => {
+    const booted = await boot({ as: 'drift' });
+    const asKari: Booted['call'] = (path, init = {}) => booted.call(path, { ...init, as: 'kari' });
+    await folderDataset({ ...booted, call: asKari }, 'byraets');
+    const refused = await booted.call(`${base('byraets')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+    });
+    expect(refused.status).toBe(404);
+    const opened = await booted.admin.openSupportSession(
+      principals.drift as Principal,
+      digdir,
+      'Flytter testdata til kunnskapsdatabasen',
+      30,
+    );
+    if (!opened.ok) throw new Error('no support session');
+    const started = await booted.call(`${base('byraets')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'reingest', embedding },
+      session: opened.value.id,
+    });
+    expect(started.status).toBe(202);
+    const view = await json<EngineSwitchView>(started);
+    expect(runOf(booted.worker, view.id)).toMatchObject({ dataset: `${digdir}/byraets` });
   });
 
   it("a cancelled platform switch's generation is dropped", async () => {

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  documentId,
   knowledgeListingOf,
   pipelineSpec,
   type IngestSourceOptions,
@@ -138,11 +139,13 @@ const scenario = async (
     unprepared?: boolean;
     /** How the dataset differs at an engine switch's endpoint, for runs that name the switch. */
     switched?: Partial<DatasetConfig>;
+    /** A platform dataset, such as digdir/genki-docs, instead of one of the organisation's. */
+    platform?: boolean;
   } = {},
 ) => {
   datasets += 1;
   const dataset: DatasetConfig = {
-    id: `${ORG}/docs-${datasets}`,
+    id: extra.platform ? `digdir/docs-${datasets}` : `${ORG}/docs-${datasets}`,
     filters: {},
     options: {},
     generation: `g-handlers-${datasets}`,
@@ -423,6 +426,21 @@ describe('knowledge.ingest and knowledge.index', () => {
     const v = await versions(s.dataset.id, s.generation);
     expect(v?.data_version).toBe(v?.last_change);
     expect(v?.last_change).toBe('3');
+  }, 60_000);
+
+  it("a folder dataset's documents get ids by its owner: platform or the organisation number", async () => {
+    const s = await scenario({}, undefined, { platform: true });
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(s);
+    expect((await docsIn(s.generation)).map((d) => d.id)).toEqual([
+      `folder:platform/${documentId(`docs-${datasets}/a.md`)}`,
+    ]);
+    const tenant = await scenario();
+    await tenant.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(tenant);
+    expect((await docsIn(tenant.generation)).map((d) => d.id)).toEqual([
+      `folder:${ORG}/${documentId(`docs-${datasets}/a.md`)}`,
+    ]);
   }, 60_000);
 
   it("a run's report counts new, changed, deleted, unchanged, stored, skipped and failed documents", async () => {

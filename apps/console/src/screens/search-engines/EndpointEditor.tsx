@@ -82,11 +82,13 @@ const EndpointDatasets = ({
         <ul className="service-list">
           {datasets.map((d) => (
             <li key={d.id}>
-              <strong>{d.name}</strong>
-              {` · ${d.scope === 'platform' ? t('config.platform') : tenantName(d.scope)} · ${t(
-                'searchEngines.pipelineCount',
-                { count: d.pipelines },
-              )}`}
+              <span>
+                <strong>{d.name}</strong>
+                {` · ${d.scope === 'platform' ? t('config.platform') : tenantName(d.scope)} · ${t(
+                  'searchEngines.pipelineCount',
+                  { count: d.pipelines },
+                )}`}
+              </span>
             </li>
           ))}
         </ul>

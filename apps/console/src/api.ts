@@ -43,6 +43,7 @@ import type {
   KnowledgeEndpoint,
   DatasetEngine,
   EngineSwitch,
+  SwitchEstimate,
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
@@ -613,37 +614,36 @@ export const createApiClient = ({
           signal,
         })
       ).data,
-    datasetEngine: (dataset: string, signal?: AbortSignal) =>
-      call<DatasetEngine>('GET', `/operator/datasets/${encodeURIComponent(dataset)}/engine`, {
-        signal,
-      }),
-    engineSwitch: (dataset: string, sid: string, signal?: AbortSignal) =>
-      call<EngineSwitch>(
+    /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
+    datasetEngine: (base: string, signal?: AbortSignal) =>
+      call<DatasetEngine>('GET', `${base}/engine`, { signal }),
+    engineSwitchEstimate: (base: string, to: string, signal?: AbortSignal) =>
+      call<SwitchEstimate>(
         'GET',
-        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches/${encodeURIComponent(sid)}`,
+        `${base}/engine-switches/estimate?to=${encodeURIComponent(to)}&method=reingest`,
         { signal },
       ),
+    engineSwitch: (base: string, sid: string, signal?: AbortSignal) =>
+      call<EngineSwitch>('GET', `${base}/engine-switches/${encodeURIComponent(sid)}`, { signal }),
     startEngineSwitch: (
-      dataset: string,
+      base: string,
       body: { to: string; method: 'reingest'; embedding?: { model: string; dimensions: number } },
       reason: string,
     ) =>
-      call<EngineSwitch>(
-        'POST',
-        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches`,
-        { body, headers: { 'change-reason': reason } },
-      ),
+      call<EngineSwitch>('POST', `${base}/engine-switches`, {
+        body,
+        headers: { 'change-reason': reason },
+      }),
     engineSwitchAction: (
-      dataset: string,
+      base: string,
       sid: string,
       action: 'retry' | 'cancel' | 'activate' | 'rollback',
       reason: string,
     ) =>
-      call<EngineSwitch>(
-        'POST',
-        `/operator/datasets/${encodeURIComponent(dataset)}/engine-switches/${encodeURIComponent(sid)}/${action}`,
-        { body: {}, headers: { 'change-reason': reason } },
-      ),
+      call<EngineSwitch>('POST', `${base}/engine-switches/${encodeURIComponent(sid)}/${action}`, {
+        body: {},
+        headers: { 'change-reason': reason },
+      }),
     knowledgeSecrets: async (signal?: AbortSignal) =>
       (await call<{ data: StoredSecret[] }>('GET', '/operator/knowledge/secrets', { signal })).data,
     testKnowledgeEndpoint: (spec: Record<string, unknown>) =>
