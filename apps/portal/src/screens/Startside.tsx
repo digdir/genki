@@ -8,7 +8,7 @@ import {
   SkipLink,
   Tag,
 } from '@digdir/designsystemet-react';
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { NotDecided } from '../components/NotDecided';
 import { access, dataHandlingPath, logged, stored } from '../data/data-handling';
@@ -27,7 +27,7 @@ import './startside.css';
 
 const below = (px: number) => window.innerWidth < px;
 
-const useBelow = (px: number) => {
+export const useBelow = (px: number) => {
   const [value, setValue] = useState(() => below(px));
   useEffect(() => {
     const update = () => setValue(below(px));
@@ -37,7 +37,7 @@ const useBelow = (px: number) => {
   return value;
 };
 
-const jumpTo = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+export const jumpTo = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
   event.preventDefault();
   const target = document.getElementById(id);
   if (!target) return;
@@ -62,10 +62,12 @@ export const Startside = ({
   onLogin,
   busy,
   failed,
+  preview,
 }: {
   onLogin: () => void;
   busy: boolean;
   failed: boolean;
+  preview?: ReactNode;
 }) => {
   const t = useT();
   const narrow = useBelow(1000);
@@ -91,6 +93,7 @@ export const Startside = ({
     <div className="startside">
       <SkipLink href="#hovedinnhold">{t('shell.skipToContent')}</SkipLink>
       <header className="start-header">
+        {preview}
         <div className="start-header-bar">
           <a className="brand" href="#hovedinnhold" onClick={jumpTo('hovedinnhold')}>
             <img src="/emblem-felleslosning.svg" alt="" width={32} height={32} />
@@ -361,8 +364,6 @@ export const Startside = ({
             {t('start.operatedBy')}
           </span>
           <nav aria-label={t('start.footer')} className="row-wrap">
-            <a href="#/privacy">{t('start.privacy')}</a>
-            <a href="#/accessibility">{t('start.accessibility')}</a>
             <a href="#/contact">{t('start.contact')}</a>
           </nav>
         </div>

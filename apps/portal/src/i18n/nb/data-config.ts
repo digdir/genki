@@ -119,8 +119,6 @@ export const sharedServices = defineNamespace({
   notPriced: 'Ikke beregnet',
   input: 'Inn',
   output: 'Ut',
-  model: 'Modell',
-  quality: 'Kvalitet',
   scoreOf: '{score} av 100',
   notMeasured: 'Ikke målt',
   per1000: 'Per 1 000 kjøringer',

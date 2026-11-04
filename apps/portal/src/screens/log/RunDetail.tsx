@@ -5,6 +5,7 @@ import {
   Field,
   Heading,
   Label,
+  Paragraph,
   Select,
   Spinner,
   Tag,
@@ -29,13 +30,41 @@ import {
 import { useT } from '../../i18n';
 import { useAsync } from '../../hooks';
 import { ErrorState, Loading } from '../../states';
-import type { TaskStatus, TaskTimeline, TimelineStep } from '../../types';
+import type { RunErasure, TaskStatus, TaskTimeline, TimelineStep } from '../../types';
 import { actorText, formatDuration, relativeTime, whole } from './format';
 import { notPricedLabel, serviceLabel, statusOf } from '../../format';
 import { BatchView } from './BatchView';
 import { Steps } from './Steps';
 
 type Flash = { text: string; color: 'success' | 'info' } | undefined;
+
+const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
+  const t = useT();
+  const f = useFormat();
+  const when = erasure.at ? f.dateTime(erasure.at) : undefined;
+  const reason =
+    erasure.reason === 'conversation-deleted'
+      ? when
+        ? t('logRun.erasedConversation', { when })
+        : t('logRun.erasedConversationUndated')
+      : erasure.reason === 'retention'
+        ? when
+          ? t('logRun.erasedRetention', { when })
+          : t('logRun.erasedRetentionUndated')
+        : when
+          ? t('logRun.erasedOther', { when })
+          : t('logRun.erasedOtherUndated');
+  return (
+    <Alert data-color="info" data-size="sm" role="note" aria-labelledby="erased-h">
+      <Heading level={3} data-size="2xs" id="erased-h">
+        {t('logRun.erasedTitle')}
+      </Heading>
+      <Paragraph data-size="sm">
+        {reason} {t('logRun.erasedKept')}
+      </Paragraph>
+    </Alert>
+  );
+};
 
 const pseudonymOf = (caller: string) => /\((A-[A-Z0-9]{4})\)/.exec(caller)?.[1];
 
@@ -407,7 +436,8 @@ export const RunDetail = ({
           </div>
         </div>
         <span className="log-meta">{meta}</span>
-        {excerpt ? <p className="meta">{excerpt}</p> : null}
+        {run.erasure ? <ErasedNotice erasure={run.erasure} /> : null}
+        {excerpt && !run.erasure ? <p className="meta">{excerpt}</p> : null}
         <ul aria-label={t('logRun.tracing')} className="plain-list log-traces">
           {traces.map((t) => (
             <li key={t.note}>

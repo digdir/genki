@@ -77,4 +77,7 @@ export const platformBlocks = defineNamespace({
   blockToolName: 'Kall et verktøy',
   blockToolDescription:
     'Kaller ett verktøy fra en registrert verktøykilde med verdier fra flyten, og gir resultatet videre til stegene etter.',
+  blockCallOperationName: 'Kall en operasjon',
+  blockCallOperationDescription:
+    'Kaller en gjennomgått type modellkall på en av modellene til tjenesten, med verdier fra flyten. Kallet følger rammene til tjenesten og blir maskert, målt og logget.',
 });

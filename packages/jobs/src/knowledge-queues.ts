@@ -22,11 +22,12 @@ const dropPayload = z.union([
 ]);
 const convertPayload = z.strictObject({ run: id, tenant, file: sha256 });
 const documentPayload = z.strictObject({ run: id, tenant, generation: id, record: id });
-const buildPayload = z.strictObject({
-  tenant,
-  generation: id,
-  kind: z.enum(['index', 'catch-up', 'vacuum', 'reindex']),
-});
+/** A `vacuum` that ends an ingestion run names the run, which stays open until the job ends. */
+const buildKind = z.enum(['index', 'catch-up', 'vacuum', 'freeze', 'reindex']);
+const buildPayload = z.union([
+  z.strictObject({ tenant, generation: id, kind: buildKind }),
+  z.strictObject({ tenant, generation: id, kind: z.literal('vacuum'), run: id }),
+]);
 const nightlyPayload = z.strictObject({});
 
 const retried = { retryLimit: 2, retryDelaySeconds: 30, retryBackoff: true } as const;
@@ -119,6 +120,17 @@ export const knowledgeBuildQueue = defineQueue({
   deadLetter: false,
 });
 
+/** Nightly at the window's start: the freeze check and the recall check (ADR 0042, "Heavy work"). */
+export const knowledgeCheckQueue = defineQueue({
+  name: 'knowledge.check',
+  policy: 'singleton',
+  payload: nightlyPayload,
+  expireInSeconds: 2 * hour,
+  heartbeatSeconds: minute,
+  retryLimit: 2,
+  deadLetter: false,
+});
+
 export const knowledgeCleanupQueue = defineQueue({
   name: 'knowledge.cleanup',
   policy: 'singleton',
@@ -153,9 +165,13 @@ export const knowledgeServerQueues = (markerTimeoutMs: number): QueueDefinition[
   knowledgeIndexQueue,
   knowledgeFillQueue,
   knowledgeBuildQueue,
+  knowledgeCheckQueue,
   knowledgeCleanupQueue,
   knowledgeExportQueue,
 ];
+
+/** Heavy queues: sent to start at the window and worked only inside it (ADR 0042, "Jobs"). */
+export const heavyQueueNames = ['knowledge.build', 'knowledge.fill'] as const;
 
 /** The queues whose jobs belong to an ingestion run and name it under `run`. */
 export const runQueueNames = [
@@ -164,6 +180,7 @@ export const runQueueNames = [
   'knowledge.convert',
   'knowledge.index',
   'knowledge.fill',
+  'knowledge.build',
 ] as const;
 
 /** Each queue's key, given with every send (ADR 0042, "Jobs"). */
@@ -177,6 +194,7 @@ export const knowledgeKeys = {
   index: (generation: string, record: string) => `${generation}#${record}`,
   fill: (generation: string, record: string) => `${generation}#${record}`,
   build: () => 'knowledge-server',
+  check: () => 'knowledge-server',
 } as const;
 
 /** Uploads before ingestion runs before candidates; pg-boss takes the highest first. */

@@ -64,6 +64,7 @@ export const modelRunRoutes = new Set([
     .filter(([, kind]) => kind === 'run')
     .map(([route]) => route),
   'POST /operator/quality/matrix/runs',
+  'POST /operator/operations/:id{.+}/try',
   'POST /tenants/:tenant/projects/:project/runs',
   'POST /tenants/:tenant/projects/:project/runs/:run/retry',
   'POST /tenants/:tenant/services/:id/batch-runs',

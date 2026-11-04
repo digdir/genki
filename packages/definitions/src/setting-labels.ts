@@ -116,7 +116,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'knowledge.nightWindow': {
       label: 'Nattvindu for tungt arbeid',
-      help: 'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00.',
+      help: 'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+    },
+    'knowledge.heavyThreshold': {
+      label: 'Grense for tungt arbeid (tekstbiter)',
+      help: 'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
     },
     'knowledge.switchRetentionDays': {
       label: 'Dager forrige søkemotor beholdes',
@@ -306,7 +310,11 @@ export const settingSchemaLabels: SchemaLabels = {
     },
     'knowledge.nightWindow': {
       label: 'Night window for heavy work',
-      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00.',
+      help: 'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+    },
+    'knowledge.heavyThreshold': {
+      label: 'Heavy work threshold (chunks)',
+      help: 'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
     },
     'knowledge.switchRetentionDays': {
       label: 'Days the previous search engine is kept',
@@ -551,6 +559,12 @@ export const settingSchemaLabels: SchemaLabels = {
       },
     },
     'knowledge.nightWindow': {
+      'x-group': {
+        nb: 'Søk',
+        en: 'Search',
+      },
+    },
+    'knowledge.heavyThreshold': {
       'x-group': {
         nb: 'Søk',
         en: 'Search',

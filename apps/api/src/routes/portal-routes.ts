@@ -12,7 +12,20 @@ import {
   type KeyPolicy,
   type StoredApiKey,
 } from '@genai/identity';
+import type { TaskErasure } from '@genai/kernel';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
+import {
+  combine,
+  genkiCostCounts,
+  genkiSource,
+  inNok,
+  type AssignedUsageRow,
+  type CountingRule,
+  type CurrencyRate,
+  type Money,
+  type UsageReads,
+  type UsageSubject,
+} from '@genai/port-usage';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant, tenantAccess } from '../access.js';
 import { defaultKeyCallsPerMinute } from '../rate-limit.js';
@@ -27,6 +40,7 @@ import {
 import { requireRight, rightRefused, type Right } from '../rights.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
+import { erasureOf } from '../timeline.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 
@@ -160,6 +174,7 @@ export interface PortalRouteDeps {
   events?(task: string): AsyncIterable<Event>;
   usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
   eventsOfType?(tasks: string[], type: string): Promise<Event[]>;
+  erasures?(tenant: string, tasks: string[]): Promise<TaskErasure[]>;
   apiKeys: TenantApiKeys;
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
@@ -174,6 +189,8 @@ export interface PortalRouteDeps {
   traces?: { enabled: boolean; content: boolean };
   qualityWarnings?(tenant: string): Promise<{ service: string; message: string }[]>;
   drafts?: DraftRunner;
+  gatewayUsage?: UsageReads;
+  throughGateway?(model: string): boolean;
   now?(): Date;
   newKey?(): string;
   newId?(): string;
@@ -356,6 +373,40 @@ export const tallyOf = (usage: Usage, price?: ModelPrice): Tally => {
     unpricedTokens: known ? 0 : tokensOf(usage),
   };
 };
+
+const minus = (t: Tally): Tally => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  requests: 0,
+  pricedMicroNok: -t.pricedMicroNok,
+  unpricedTokens: -t.unpricedTokens,
+});
+
+export const gatewaySource = 'gateway';
+
+const gatewayTally = (row: AssignedUsageRow, rates: readonly CurrencyRate[]) => {
+  const converted = inNok(row.cost, row.start.slice(0, 10), rates);
+  const tokens = row.inputTokens + row.outputTokens;
+  const nothingPriced = row.requests > 0 && row.unpricedRequests >= row.requests;
+  return {
+    tally: {
+      inputTokens: row.inputTokens,
+      outputTokens: row.outputTokens,
+      requests: row.requests,
+      pricedMicroNok: converted?.micros ?? 0,
+      unpricedTokens: converted && !nothingPriced ? 0 : tokens,
+    },
+    rate: converted?.rate,
+  };
+};
+
+const subjectKey = (s: UsageSubject | undefined, currency: string) =>
+  [s?.kind ?? '', s?.id ?? '', s?.org ?? '', currency].join('\u0000');
+
+export interface GatewayWindow {
+  rows: AssignedUsageRow[];
+  rates: CurrencyRate[];
+}
 
 const add = (a: Tally, b: Tally): Tally => ({
   inputTokens: a.inputTokens + b.inputTokens,
@@ -661,11 +712,16 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     withInput: boolean,
     withUsage: boolean,
   ) => {
-    const [actors, usage, inputs] = await Promise.all([
+    const [actors, usage, inputs, erased] = await Promise.all([
       taskActors(tasks, tenant),
       withUsage ? usageByTask(tasks.map((t) => t.id)) : new Map<string, ModelUsage[]>(),
       withInput ? inputTexts(tasks.map((t) => t.id)) : new Map<string, string>(),
+      deps.erasures?.(
+        tenant,
+        tasks.map((t) => t.id),
+      ) ?? [],
     ]);
+    const erasures = new Map(erased.map((e) => [e.task, erasureOf(e)]));
     const names = new Map(
       await Promise.all(
         [...new Set(tasks.map((t) => serviceOf(caps, t.service.capability.id)))].map(
@@ -682,17 +738,41 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     );
     return tasks.map((t) => {
       const base = taskBase(caps, t);
-      const excerpt = withInput ? excerptOf(inputs.get(t.id) ?? '') : '';
+      const erasure = erasures.get(t.id);
+      const excerpt = withInput && !erasure ? excerptOf(inputs.get(t.id) ?? '') : '';
       return {
         ...(withUsage ? taskRow(caps, t, usage.get(t.id)) : base),
         serviceName: names.get(base.service) ?? base.service,
         ...(excerpt ? { excerpt } : {}),
+        ...(erasure ? { erasure } : {}),
         actor: actors.get(t.id) ?? { kind: 'system' as const },
       };
     });
   };
 
-  const usageOver = async (tenant: string, from: Date, to: Date, project?: string) => {
+  const counting: CountingRule = { throughGateway: deps.throughGateway ?? (() => false) };
+
+  const gatewayWindow = async (tenants: string[], from: Date, to: Date): Promise<GatewayWindow> => {
+    if (!deps.gatewayUsage) return { rows: [], rates: [] };
+    const [rows, rates] = await Promise.all([
+      deps.gatewayUsage.tenantRows(tenants, from, new Date(to.getTime() + 1)),
+      deps.gatewayUsage.rates(),
+    ]);
+    return { rows, rates };
+  };
+
+  const usageOver = async (
+    tenant: string,
+    from: Date,
+    to: Date,
+    project?: string,
+    preloaded?: Promise<GatewayWindow>,
+  ) => {
+    const withGateway = deps.gatewayUsage !== undefined;
+    const gatewayRead =
+      withGateway && project === undefined
+        ? (preloaded ?? gatewayWindow([tenant], from, to))
+        : undefined;
     const [all, projectTasks] = await Promise.all([
       deps.definitions.capabilities(),
       deps.projectTasks?.(tenant),
@@ -744,6 +824,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       bump(inner, key, tally);
     };
     const count = (key: string) => runs.set(key, (runs.get(key) ?? 0) + 1);
+    const replaceCost = (date: string, model: string, used: Tally) => {
+      if (genkiCostCounts(model, counting)) return;
+      totals = add(totals, minus(used));
+      bump(daily, date, minus(used));
+      bump(byModel, model, minus(used));
+      bumpOn(dailyModel, date, model, minus(used));
+    };
     for (const t of tasks) {
       const { tally, models } = taskTally(t, usage.get(t.id));
       const date = day(t.createdAt);
@@ -767,6 +854,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const used = tallyOf(m.usage, deps.prices?.[m.model]);
         bump(byModel, m.model, used);
         bumpOn(dailyModel, date, m.model, used);
+        replaceCost(date, m.model, used);
       }
     }
     let testing = empty();
@@ -781,6 +869,7 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
         const used = tallyOf(m.usage, deps.prices?.[m.model]);
         bump(byModel, m.model, used);
         bumpOn(dailyModel, day(t.createdAt), m.model, used);
+        replaceCost(day(t.createdAt), m.model, used);
       }
     }
     let ingestion = empty();
@@ -793,7 +882,46 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       bump(byModel, run.model, tally);
       bumpOn(dailyModel, day(run.at), run.model, tally);
       bump(byDataset, run.dataset, tally);
+      replaceCost(day(run.at), run.model, tally);
     }
+    const genkiTotals = totals;
+    const genkiDaily = new Map(daily);
+    const gatewayByModel = new Map<string, Tally>();
+    const gatewayDaily = new Map<string, Tally>();
+    let gatewayTotals = empty();
+    const bySubject = new Map<
+      string,
+      { subject?: UsageSubject; tally: Tally; cost: Money; rate?: CurrencyRate }
+    >();
+    const gateway = gatewayRead ? await gatewayRead : undefined;
+    for (const row of combine(gateway?.rows ?? [], counting) as AssignedUsageRow[]) {
+      const { tally, rate } = gatewayTally(row, gateway?.rates ?? []);
+      const date = day(row.start);
+      gatewayTotals = add(gatewayTotals, tally);
+      totals = add(totals, tally);
+      bump(daily, date, tally);
+      bump(gatewayDaily, date, tally);
+      bump(gatewayByModel, row.model ?? '', tally);
+      const key = subjectKey(row.subject, row.cost.currency);
+      const entry = bySubject.get(key) ?? {
+        ...(row.subject ? { subject: row.subject } : {}),
+        tally: empty(),
+        cost: { currency: row.cost.currency, micros: 0 },
+      };
+      entry.tally = add(entry.tally, tally);
+      entry.cost.micros += row.cost.micros;
+      if (rate && (!entry.rate || rate.day > entry.rate.day)) entry.rate = rate;
+      bySubject.set(key, entry);
+    }
+    const sources = (genki: Tally, outside: Tally) =>
+      withGateway
+        ? {
+            bySource: [
+              { source: genkiSource, usage: usageView(genki) },
+              { source: gatewaySource, usage: usageView(outside) },
+            ],
+          }
+        : {};
     const views = (map: Map<string, Tally> | undefined, runsOf?: (key: string) => number) =>
       Object.fromEntries(
         [...(map ?? [])].map(([key, tally]) => [
@@ -810,7 +938,10 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       const d = day(at.toISOString());
       days.push({
         date: d,
-        usage: usageView(daily.get(d) ?? empty()),
+        usage: {
+          ...usageView(daily.get(d) ?? empty()),
+          ...sources(genkiDaily.get(d) ?? empty(), gatewayDaily.get(d) ?? empty()),
+        },
         byService: views(dailyService.get(d), (s) => runs.get(`day|${d}|${s}`) ?? 0),
         byModel: views(dailyModel.get(d)),
       });
@@ -828,14 +959,36 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
       from: from.toISOString(),
       to: to.toISOString(),
       priced: totals.unpricedTokens === 0,
-      totals: { ...usageView(totals), runs: runs.get('') ?? 0 },
+      totals: {
+        ...usageView(totals),
+        runs: runs.get('') ?? 0,
+        ...sources(genkiTotals, gatewayTotals),
+      },
       daily: days,
       byService: rows(byService, 'service').map((r) => ({
         ...r,
         usage: { ...r.usage, runs: runs.get(`service|${r.service}`) ?? 0 },
         ...(titles.has(r.service) ? { title: titles.get(r.service) } : {}),
       })),
-      byModel: rows(byModel, 'model'),
+      byModel: withGateway
+        ? [
+            ...rows(byModel, 'model').map((r) => ({ ...r, source: genkiSource })),
+            ...rows(gatewayByModel, 'model').map((r) => ({ ...r, source: gatewaySource })),
+          ]
+        : rows(byModel, 'model'),
+      ...(withGateway
+        ? {
+            bySubject: [...bySubject.values()]
+              .sort((a, b) => b.tally.inputTokens - a.tally.inputTokens)
+              .map((entry) => ({
+                subject: entry.subject ?? null,
+                usage: usageView(entry.tally),
+                cost: entry.cost,
+                rate: entry.rate?.nokPerUnit ?? null,
+                rateDay: entry.rate?.day ?? null,
+              })),
+          }
+        : {}),
       byProject: rows(byProject, 'project').map((r) => ({
         ...r,
         usage: { ...r.usage, runs: runs.get(`project|${r.project}`) ?? 0 },
@@ -1067,18 +1220,43 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     ].slice(0, 200);
     const to = now();
     const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
+    const fresh = (orgNumber: string) => {
+      const cached = monthlyUsage.get(`${orgNumber}:${from.toISOString()}`);
+      return !cached || to.getTime() - cached.at >= monthlyUsageTtlMs;
+    };
+    const uncached = tenants.filter(fresh);
+    const gatewayRows =
+      deps.gatewayUsage && uncached.length > 0 ? gatewayWindow(uncached, from, to) : undefined;
+    gatewayRows?.catch(() => undefined);
     const data = await Promise.all(
       tenants.map(async (orgNumber) => {
         const key = `${orgNumber}:${from.toISOString()}`;
         const cached = monthlyUsage.get(key);
         if (cached && to.getTime() - cached.at < monthlyUsageTtlMs)
           return { orgNumber, usage: await cached.totals };
-        const totals = usageOver(orgNumber, from, to).then((u) => u.totals);
+        const own = gatewayRows?.then((w) => ({
+          rows: w.rows.filter((r) => r.tenant === orgNumber),
+          rates: w.rates,
+        }));
+        const totals = usageOver(orgNumber, from, to, undefined, own).then((u) => u.totals);
         monthlyUsage.set(key, { at: to.getTime(), totals });
         totals.catch(() => monthlyUsage.delete(key));
         return { orgNumber, usage: await totals };
       }),
     );
+    return c.json({ from: from.toISOString(), to: to.toISOString(), data });
+  });
+
+  app.get('/operator/usage/unassigned', async (c) => {
+    const principal = await deps.authenticate(c.req.raw);
+    if (!principal) return problem(c, 401, 'Unauthorized');
+    if (principal.kind !== 'operator')
+      return problem(c, 403, 'Only operators read unassigned usage');
+    const to = now();
+    const from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
+    const data = deps.gatewayUsage
+      ? await deps.gatewayUsage.unassignedRows(from, new Date(to.getTime() + 1))
+      : [];
     return c.json({ from: from.toISOString(), to: to.toISOString(), data });
   });
 

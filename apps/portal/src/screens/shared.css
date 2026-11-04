@@ -84,33 +84,15 @@
   line-height: 1.55;
 }
 
-.cap-figures {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.cap-action {
   margin-top: auto;
-}
-
-.cap-figures > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: var(--ds-border-radius-md);
-  background: var(--ds-color-neutral-background-tinted);
-}
-
-.cap-figures .meta {
-  font-size: 13px;
-}
-
-.cap-figure {
-  font-size: 18px;
-  font-weight: 600;
+  align-self: flex-start;
 }
 
 .score-note {
-  font-size: 13px;
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--ds-color-warning-text-default);
 }
 

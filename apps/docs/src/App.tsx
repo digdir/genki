@@ -6,21 +6,16 @@ import {
   SunIcon,
 } from '@navikt/aksel-icons';
 import { useEffect, useState } from 'react';
-import { links } from './data/blocks';
-import { BlockDetail } from './pages/BlockDetail';
-import { Blocks } from './pages/Blocks';
-import { ComponentDetail } from './pages/ComponentDetail';
-import { CaseFlow } from './pages/CaseFlow';
-import { Services } from './pages/Services';
-import { ServiceTypeDetail } from './pages/ServiceTypeDetail';
-import { ServiceTypes } from './pages/ServiceTypes';
-import { SearchPage } from './pages/SearchPage';
-import { StatusPage } from './pages/StatusPage';
-import { SearchDialog } from './components/SearchDialog';
-import { GetStarted } from './pages/GetStarted';
-import { Overview } from './pages/Overview';
-import { Malbilde } from './pages/Malbilde';
-import { href, useRoute, type Route } from './router';
+import { links } from '@genai/docs-content';
+import {
+  DocsPage,
+  DocsSiteRoot,
+  href,
+  SearchDialog,
+  useRoute,
+  useSearchShortcut,
+  type Route,
+} from '@genai/docs-site';
 
 type Scheme = 'light' | 'dark';
 
@@ -42,7 +37,7 @@ const navItems: { label: string; route: Route }[] = [
   { label: 'Målbilde', route: { page: 'malbilde' } },
   { label: 'Byggeklosser', route: { page: 'byggeklosser' } },
   { label: 'Flyt', route: { page: 'tjenester' } },
-  { label: 'Kom i gang', route: { page: 'kom-i-gang' } },
+  { label: 'For utviklere', route: { page: 'kom-i-gang' } },
 ];
 
 /** Digdirs D-merke, i Digdir-blått. */
@@ -60,159 +55,114 @@ function Logo() {
 export function App() {
   const route = useRoute();
   const [scheme, toggle] = useColorScheme();
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  // Ctrl+K eller Cmd+K åpner søket fra hvor som helst.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setSearchOpen(true);
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
-
-  let page: React.ReactNode;
-  switch (route.page) {
-    case 'byggeklosser':
-      page = route.id ? (
-        route.sub ? (
-          <ComponentDetail blockId={route.id} id={route.sub} />
-        ) : (
-          <BlockDetail id={route.id} />
-        )
-      ) : (
-        <Blocks />
-      );
-      break;
-    case 'tjenester':
-      page = route.id ? <CaseFlow id={route.id} del={route.del} steg={route.steg} /> : <Services />;
-      break;
-    case 'typer':
-      page = route.id ? <ServiceTypeDetail id={route.id} /> : <ServiceTypes />;
-      break;
-    case 'sok':
-      page = <SearchPage q={route.q} />;
-      break;
-    case 'status':
-      page = <StatusPage id={route.id} />;
-      break;
-    case 'malbilde':
-      page = <Malbilde />;
-      break;
-    case 'kom-i-gang':
-      page = <GetStarted />;
-      break;
-    default:
-      page = <Overview />;
-  }
+  const [searchOpen, setSearchOpen] = useSearchShortcut();
 
   // Nøkkel per sidetype, ikke per id: forrige/neste innen samme side beholder figuren i stedet for å tegne den på nytt.
   const pageKey = route.page;
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="app-header-inner">
-          <a className="brand" href="#/">
-            <Logo />
-            <span>Genki</span>
-          </a>
-          <nav className="nav" aria-label="Hovedmeny">
-            {navItems.map((item) => (
-              <a
-                key={item.label}
-                href={href(item.route)}
-                aria-current={item.route.page === route.page ? 'page' : undefined}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-          <Button
-            variant="tertiary"
-            icon
-            onClick={() => setSearchOpen(true)}
-            aria-label="Søk (Ctrl+K)"
-            title="Søk (Ctrl+K)"
-          >
-            <MagnifyingGlassIcon aria-hidden />
-          </Button>
-          <Dropdown.TriggerContext>
-            <Dropdown.Trigger variant="tertiary" icon aria-label="Mer" title="Mer">
-              <MenuElipsisHorizontalIcon aria-hidden />
-            </Dropdown.Trigger>
-            <Dropdown placement="bottom-end" data-size="sm">
-              <Dropdown.Heading>Utforsk</Dropdown.Heading>
-              <Dropdown.List>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={href({ page: 'typer' })}>Typer KI-tjenester</a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={href({ page: 'status' })}>Merkelapper</a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={href({ page: 'byggeklosser', id: 'sprakmodeller' })}>
-                      Språkmodeller og katalog
-                    </a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-              </Dropdown.List>
-              <Dropdown.Heading>Genki på GitHub</Dropdown.Heading>
-              <Dropdown.List>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={links.repo}>Kildekoden</a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={links.adr}>Arkitekturbeslutninger (ADR)</a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-                <Dropdown.Item>
-                  <Dropdown.Button asChild>
-                    <a href={links.api}>API-dokumentasjon</a>
-                  </Dropdown.Button>
-                </Dropdown.Item>
-              </Dropdown.List>
-            </Dropdown>
-          </Dropdown.TriggerContext>
-          <Button
-            variant="tertiary"
-            icon
-            onClick={toggle}
-            aria-label={scheme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
-            title={scheme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
-          >
-            {scheme === 'dark' ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
-          </Button>
-        </div>
-      </header>
-      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
-      <main>
-        <div key={pageKey} className="page-enter">
-          {page}
-        </div>
-      </main>
-      <footer className="app-footer">
-        <div className="app-footer-inner">
-          <Paragraph data-size="sm" style={{ margin: 0 }}>
-            Genki er en åpen fellesløsning fra Digdir (MIT-lisens), under utvikling. Innholdet her
-            er hentet fra <a href={links.repo}>repoet</a> og dets ADR-er per oktober 2026.
-          </Paragraph>
-          <Paragraph data-size="sm" style={{ margin: 0 }}>
-            Bygd med <a href={links.designsystemet}>Designsystemet</a>.
-          </Paragraph>
-        </div>
-      </footer>
-    </div>
+    <DocsSiteRoot>
+      <div className="app">
+        <header className="app-header">
+          <div className="app-header-inner">
+            <a className="brand" href="#/">
+              <Logo />
+              <span>Genki</span>
+            </a>
+            <nav className="nav" aria-label="Hovedmeny">
+              {navItems.map((item) => (
+                <a
+                  key={item.label}
+                  href={href(item.route)}
+                  aria-current={item.route.page === route.page ? 'page' : undefined}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+            <Button
+              variant="tertiary"
+              icon
+              onClick={() => setSearchOpen(true)}
+              aria-label="Søk (Ctrl+K)"
+              title="Søk (Ctrl+K)"
+            >
+              <MagnifyingGlassIcon aria-hidden />
+            </Button>
+            <Dropdown.TriggerContext>
+              <Dropdown.Trigger variant="tertiary" icon aria-label="Mer" title="Mer">
+                <MenuElipsisHorizontalIcon aria-hidden />
+              </Dropdown.Trigger>
+              <Dropdown placement="bottom-end" data-size="sm">
+                <Dropdown.Heading>Utforsk</Dropdown.Heading>
+                <Dropdown.List>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={href({ page: 'typer' })}>Typer KI-tjenester</a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={href({ page: 'status' })}>Merkelapper</a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={href({ page: 'byggeklosser', id: 'sprakmodeller' })}>
+                        Språkmodeller og katalog
+                      </a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                </Dropdown.List>
+                <Dropdown.Heading>Genki på GitHub</Dropdown.Heading>
+                <Dropdown.List>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={links.repo}>Kildekoden</a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={links.adr}>Arkitekturbeslutninger (ADR)</a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                  <Dropdown.Item>
+                    <Dropdown.Button asChild>
+                      <a href={links.api}>API-dokumentasjon</a>
+                    </Dropdown.Button>
+                  </Dropdown.Item>
+                </Dropdown.List>
+              </Dropdown>
+            </Dropdown.TriggerContext>
+            <Button
+              variant="tertiary"
+              icon
+              onClick={toggle}
+              aria-label={scheme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
+              title={scheme === 'dark' ? 'Bytt til lyst tema' : 'Bytt til mørkt tema'}
+            >
+              {scheme === 'dark' ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
+            </Button>
+          </div>
+        </header>
+        <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
+        <main>
+          <div key={pageKey} className="page-enter">
+            <DocsPage route={route} />
+          </div>
+        </main>
+        <footer className="app-footer">
+          <div className="app-footer-inner">
+            <Paragraph data-size="sm" style={{ margin: 0 }}>
+              Genki er en åpen fellesløsning fra Digdir (MIT-lisens), under utvikling. Innholdet her
+              er hentet fra <a href={links.repo}>repoet</a> og dets ADR-er per oktober 2026.
+            </Paragraph>
+            <Paragraph data-size="sm" style={{ margin: 0 }}>
+              Bygd med <a href={links.designsystemet}>Designsystemet</a>.
+            </Paragraph>
+          </div>
+        </footer>
+      </div>
+    </DocsSiteRoot>
   );
 }
