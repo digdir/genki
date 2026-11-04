@@ -550,7 +550,11 @@ describe('lockdown', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
+    // Refused as ingestion, not only as a change to configuration.
+    expect(await json(res)).toMatchObject({
+      type: lockedEnvironmentType,
+      title: expect.stringMatching(/innlesing|ingestion/),
+    });
     expect(model.seen).toHaveLength(0);
   });
 

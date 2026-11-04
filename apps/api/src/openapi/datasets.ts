@@ -832,7 +832,7 @@ const engineRoutes = (base: Base): RouteConfig[] => {
         200: audited(EngineSwitch, 'Active'),
         202: audited(
           EngineSwitch,
-          'Into the knowledge database: activating; the platform publishes once the refresh runs have ended',
+          'Into the knowledge database: activating; the platform publishes once the refresh runs have succeeded',
         ),
         400: problem('Reason too short, or the change was refused'),
         ...failures,

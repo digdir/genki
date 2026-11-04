@@ -36,7 +36,7 @@ import {
 import { writeKeyEngines } from './knowledge-engines.js';
 import type { MountDeps, ModuleDeps, PlatformModule } from './platform-modules.js';
 import { enterTenant } from './access.js';
-import { t } from './i18n/index.js';
+import { t, translateMessage } from './i18n/index.js';
 import { changeReasonOf, isReasonLongEnough, minimumReasonLength, reasonTooShort } from './http.js';
 
 export const switchStates = [
@@ -1092,9 +1092,11 @@ export const createEngineSwitchesModule =
         );
         const stopped = runs.find((r) => r.status === 'failed' || r.status === 'cancelled');
         if (stopped || runs.length < ids.length) {
-          const message =
+          const message = translateMessage(
             stopped?.error ??
-            t('operations.switchRunCancelled', { run: stopped?.id ?? ids[0] ?? '' });
+              t('operations.switchRunCancelled', { run: stopped?.id ?? ids[0] ?? '' }),
+            'nb',
+          );
           await update(
             scope,
             entry.id,

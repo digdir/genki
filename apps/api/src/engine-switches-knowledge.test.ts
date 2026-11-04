@@ -12,6 +12,7 @@ import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
 import type { KnowledgePort } from '@genai/port-knowledge';
 import { createPool } from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
+import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
 import { InMemoryConfigEntryStore } from './config-store.js';
@@ -34,6 +35,15 @@ import { knowledgeEndpointsModule } from './knowledge-endpoints.js';
 const digdir = '991825827';
 const principals: Record<string, Principal> = {
   kari: { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir },
+  // A Digdir login with Entra ID, which may use models in lockdown.
+  entra: {
+    kind: 'employee',
+    issuer: 'test',
+    subject: 'entra',
+    tenant: digdir,
+    authorizedFor: [{ org: digdir, actions: [...PLATFORM_RIGHTS] }],
+    scopes: [trustedEntraScope],
+  },
 };
 const embedding = { model: 'fake/embed', dimensions: 8 };
 
@@ -119,6 +129,8 @@ const boot = async (
     clock?: { now: Date };
     /** A comparison whose searches never answer, as on an instance that stopped. */
     hang?: boolean;
+    lockdown?: boolean;
+    as?: string;
   } = {},
 ) => {
   const entries = shared.entries ?? new InMemoryConfigEntryStore();
@@ -173,6 +185,7 @@ const boot = async (
     knowledgePool: pool,
     knowledgeServer: { reader: pool },
     ingestFolderRoot: folder,
+    ...(shared.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
     embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
     ingestionExecutions: worker.executions,
     configurables: { store: entries, jobRuns: worker.jobRuns },
@@ -220,7 +233,7 @@ const boot = async (
     app.request(path, {
       method: init.method ?? (init.body === undefined ? 'GET' : 'POST'),
       headers: {
-        authorization: 'Bearer kari',
+        authorization: `Bearer ${shared.as ?? 'kari'}`,
         'content-type': 'application/json',
         'change-reason': encodeURIComponent('Flytter til kunnskapsdatabasen'),
       },
@@ -418,12 +431,16 @@ describe('switching a dataset into the knowledge database', () => {
       runOf(booted.worker, failing.id),
       'failed',
       {},
-      'listing the source failed after its retries',
+      'the generation g-20261104-aa11bb was not built: its build job ended without attaching it; retry the switch',
     );
     await booted.module.follow();
     expect(await view(booted, 'feil', failing.sid)).toMatchObject({
       state: 'failed',
-      error: { message: 'listing the source failed after its retries' },
+      // The switch keeps its messages in bokmål, as it does when it stalls.
+      error: {
+        message:
+          'generasjonen g-20261104-aa11bb ble ikke bygget: byggejobben sluttet uten å koble den til; prøv byttet på nytt',
+      },
     });
 
     await folderDataset(booted, 'avbrutt');
@@ -704,5 +721,13 @@ describe('switching a dataset into the knowledge database', () => {
     });
     const ready = await followed(booted, 'telling', opened.sid);
     expect(ready.progress).toMatchObject({ percent: 100, documents: 3, total: 3 });
+  });
+
+  it("an admitted login in lockdown starts a switch's runs", async () => {
+    const booted = await boot({ lockdown: true, as: 'entra' });
+    await folderDataset(booted, 'laast');
+    const opened = await started(booted, 'laast');
+    expect(opened.state).toBe('running');
+    expect(runOf(booted.worker, opened.id)).toMatchObject({ engineSwitch: opened.id });
   });
 });
