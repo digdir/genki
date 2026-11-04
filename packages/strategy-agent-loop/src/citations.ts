@@ -147,7 +147,12 @@ export const numberByExcerpt = <C extends Numberable>(docs: C[]) => {
   for (const d of docs) groups.set(documentKey(d), [...(groups.get(documentKey(d)) ?? []), d]);
   const ordered = [...groups.values()].flat();
   return {
-    context: ordered.map((c, i) => `[${i + 1}] ${stripPageMarkers(c.content)}`).join('\n\n'),
+    context: ordered
+      .map(
+        (c, i) =>
+          `[${i + 1}] ${untrustedData('source', stripPageMarkers(c.content), { id: documentKey(c), title: c.title })}`,
+      )
+      .join('\n\n'),
     index: new Map(ordered.map((c, i) => [i + 1, c.chunkId])) as CitationIndex,
     chunks: ordered,
   };

@@ -11,7 +11,7 @@ The agent loop numbers documents for the model: `numberByDocument` gives one `[N
 ## Decision
 
 - **A service chooses what a marker points to,** with `spec.strategy.config.citeBy` in the `agent-loop` strategy: `document` (the default, as before) or `excerpt`. Nothing changes for a service that does not set it.
-- **With `excerpt`, every excerpt in the context has its own number.** `numberByExcerpt` numbers the excerpts `[1]`, `[2]`, … with a document's excerpts next to each other, and the instruction tells the model to cite the excerpt a claim rests on, also when two excerpts come from the same document.
+- **With `excerpt`, every excerpt in the context has its own number.** `numberByExcerpt` numbers the excerpts `[1]`, `[2]`, … with a document's excerpts next to each other, and the instruction tells the model to cite the excerpt a claim rests on, also when two excerpts come from the same document. Each excerpt is framed as untrusted data the way a document's text is (#280), carrying the id of the document it comes from.
 - **Validation and backfill work per excerpt,** through the same index: a chunk id the model writes becomes the marker of that excerpt, an uncited answer is re-synthesised from what was read with excerpt numbers, and a marker that leads to no excerpt is removed from the answer (notice `answer-discarded`, reason `unknown-markers`). No marker the reader sees leads nowhere.
 - **The mapping is in the output.** The answer part's `meta` has `citations: [{ index, chunkId, document }]` and `citeBy: 'excerpt'`.
   - `/v1`: a top-level `markers: [{ marker, chunk_id, document }]` in marker order, with `marker` a string as written in the answer without brackets. `sources[]` stays one per cited document: `index` is its lowest marker, `markers` the markers that cite it, and `excerpts[].markers` the markers that cite each excerpt. The top-level `citations` (links people can open) is unchanged.
@@ -46,7 +46,7 @@ A replay of the answer step, 2026-11-03.
 
 Every number in a cited sentence is in the text the marker leads to: 276 of 276 by excerpt, and 305 of 305 by document, where that text is the whole document.
 
-Not measured: the whole loop against live retrieval (search, reading, backfill), other models, and a service's own instructions.
+Not measured: the whole loop against live retrieval (search, reading, backfill), other models, and a service's own instructions. The replay also ran before #280 framed source text as untrusted data; both modes frame it now, so the comparison holds, but the absolute numbers were measured without the frame.
 
 ## Consequences
 
