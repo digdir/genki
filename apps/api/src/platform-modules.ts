@@ -1,11 +1,11 @@
 import type {
   EnvironmentTier,
+  LiveDescriptorRegistry,
   OperationGovernanceStore,
   OperationTry,
   OperationTryOutcome,
 } from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
-import type { DescriptorRegistry } from '@genai/operations';
 import type {
   DefinitionStore,
   PluginSchemas,
@@ -71,7 +71,7 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   kernel: Kernel;
   operations?: {
     tier: EnvironmentTier;
-    descriptors: DescriptorRegistry;
+    descriptors: LiveDescriptorRegistry;
     governance: OperationGovernanceStore;
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };

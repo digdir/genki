@@ -619,6 +619,7 @@ const stopFollowingChanges = db
           await following.run();
         },
       },
+      descriptors: runtime.descriptors,
       definitions: { sync: following.run },
       models: runtime.models,
       toolConnections: { reload: loadToolConnections },

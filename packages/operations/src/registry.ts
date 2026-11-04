@@ -4,10 +4,13 @@ import { parseDescriptor, type Descriptor } from './descriptor.js';
 import { DescriptorError } from './shape.js';
 
 export const bundledDescriptorDir = join(import.meta.dirname, '..', 'descriptors');
+export const bundledFixtureDir = join(import.meta.dirname, '..', 'fixtures');
 
 export interface DescriptorRegistry {
   get(id: string): Descriptor | undefined;
   list(): Descriptor[];
+  /** Reads descriptors uploaded since the last read; a registry of files alone has none. */
+  refresh?(): Promise<void>;
 }
 
 export const descriptorRegistry = (descriptors: readonly Descriptor[]): DescriptorRegistry => {

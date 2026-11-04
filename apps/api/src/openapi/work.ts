@@ -116,6 +116,61 @@ const OperationKind = z
   })
   .openapi('OperationKind');
 
+const OperationDescriptorView = z
+  .object({
+    id: z.string().describe('<provider>/<kind>@<version>'),
+    operation: z.string(),
+    status: z.enum(['review', 'described', 'typed']),
+    source: z
+      .enum(['bundled', 'uploaded'])
+      .describe('Bundled with Genki in packages/operations, or uploaded by an operator'),
+    summary: z.string(),
+    protocol: z.string().nullable(),
+    fixtures: z.number().int().describe('How many recorded fixtures prove it'),
+    contract: z
+      .object({
+        suite: z.literal('operation@1'),
+        checks: z.number().int(),
+        passed: z.boolean(),
+        failures: z.array(z.object({ check: z.string(), problems: z.array(z.string()) })),
+      })
+      .nullable()
+      .describe('operation@1 run now against its fixtures; null without fixtures'),
+    problems: z
+      .array(z.string())
+      .optional()
+      .describe('Why a stored upload no longer loads; it is then left out of the registry'),
+    version: z.number().int().optional().describe('The version of the upload in the config store'),
+    by: z.string().optional(),
+    at: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .openapi('OperationDescriptor');
+
+const OperationFixture = z
+  .object({
+    name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
+    source: z.string().optional().describe('Where the recording comes from'),
+    deployment: z.string(),
+    input: z.unknown().describe("The descriptor's typed input"),
+    request: z.object({
+      method: z.string(),
+      path: z.string(),
+      query: z.record(z.string(), z.string()).optional(),
+      body: z.unknown(),
+    }),
+    response: z.object({ status: z.number().int().optional(), body: z.unknown() }),
+    result: z.unknown(),
+    usage: z.object({
+      inputTokens: z.number().int().optional(),
+      outputTokens: z.number().int().optional(),
+      cachedInputTokens: z.number().int().optional(),
+      requests: z.number().int().optional(),
+    }),
+    dropped: z.number().int().optional(),
+  })
+  .openapi('OperationFixture');
+
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
 const TaskBase = z.object({
@@ -2098,6 +2153,123 @@ const qualityRoutes: RouteConfig[] = [
       400: problem('Invalid maturity or missing change reason'),
       ...operatorOnly,
       404: problem('No descriptor describes the kind'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors',
+    summary: 'The bundled and uploaded operation descriptors, with operation@1 on their fixtures',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(z.object({ data: z.array(OperationDescriptorView) }), 'The descriptors'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'One operation descriptor; an upload with its document and fixtures',
+    description: described(
+      operator,
+      notAudited,
+      'The id may contain slashes, such as example/classify@1.',
+    ),
+    request: { params: z.object({ id: pathParam('id', 'example/classify@1') }) },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          document: z.record(z.string(), z.unknown()).optional(),
+          fixtureCases: z.array(OperationFixture).optional(),
+        }),
+        'The descriptor',
+      ),
+      ...operatorOnly,
+      404: problem('No such descriptor'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Upload an operation descriptor with its recorded fixtures, without a deploy',
+    description: described(
+      operator,
+      audited,
+      'The loader rules and operation@1, with the masking probe, run on the fixtures before anything is stored. An upload starts in review: an operator tries it in the raw tier (test only). It cannot replace a bundled descriptor, nor a described upload; upload a new version instead. At most 20 fixtures and 512 KiB.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          descriptor: z
+            .union([z.string(), z.record(z.string(), z.unknown())])
+            .describe('The descriptor as YAML or JSON text, or as a JSON object'),
+          fixtures: z.array(OperationFixture).min(1).max(20),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({ step: z.literal('replaced') }),
+        'An upload in review replaced',
+      ),
+      201: json(OperationDescriptorView.extend({ step: z.literal('uploaded') }), 'Uploaded'),
+      400: problem('Missing change reason, or a body that is not JSON'),
+      ...operatorOnly,
+      409: problem('A bundled descriptor, or a described upload, has the id'),
+      413: problem('The body is larger than 512 KiB'),
+      422: problem(
+        'The descriptor breaks a loader rule, a fixture is malformed, or operation@1 fails; errors lists every reason',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-descriptors/{id}/status',
+    summary: 'Move an uploaded descriptor to described, or back to review',
+    description: described(
+      operator,
+      audited,
+      'One operator decides. Described lets a service use it in a call-operation step when the kind is production and the endpoint has a processor record. Typed is never set here: it means Genki has its own code for the operation. Moving back to review stops services at their next call.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ status: z.enum(['review', 'described']) })),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          step: z.enum(['described', 'back-to-review', 'unchanged']),
+        }),
+        'The descriptor after the change',
+      ),
+      400: problem('Invalid status or missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
+      422: problem('The stored upload no longer passes the loader rules'),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Withdraw an uploaded descriptor',
+    description: described(
+      operator,
+      audited,
+      'The history stays in the config store. A service step that uses it is refused at its next call, as when a kind is moved back to test.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      204: { description: 'Withdrawn' },
+      400: problem('Missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
     },
   }),
   createRoute({

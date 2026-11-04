@@ -233,12 +233,13 @@ export const toDescriptor = (value: unknown): Descriptor => {
   return descriptor;
 };
 
-export const parseDescriptor = (text: string): Descriptor => {
-  let value: unknown;
+/** Parses descriptor text, YAML or JSON, without checking it. */
+export const descriptorDocument = (text: string): unknown => {
   try {
-    value = parseYaml(text);
+    return parseYaml(text);
   } catch (error) {
     throw new DescriptorError(`not valid YAML: ${(error as Error).message}`);
   }
-  return toDescriptor(value);
 };
+
+export const parseDescriptor = (text: string): Descriptor => toDescriptor(descriptorDocument(text));

@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-04: operators upload operation descriptors
+
+- `PUT /operator/operation-descriptors/{id}` (operators, audited, `change-reason`): uploads a descriptor with 1 to 20 recorded fixtures, at most 512 KiB. The loader rules and `operation@1` run first; a failure answers `422` with every reason. It answers `201` (`step: "uploaded"`) or `200` (`step: "replaced"`, while still in review), and `409` for a bundled id or an upload that is already described.
+- `POST /operator/operation-descriptors/{id}/status` with `{ "status": "review" | "described" }` and `DELETE /operator/operation-descriptors/{id}` (operators, audited, `change-reason`).
+- `GET /operator/operation-descriptors` and `GET /operator/operation-descriptors/{id}`: bundled and uploaded descriptors with `source`, `status`, `fixtures` and `contract`.
+- An uploaded descriptor's kind counts as a known operation kind at once, in `PATCH /operator/models/{id}`, `GET /operator/operation-kinds` and the raw and described tiers, without a restart.
+
 ### 2026-11-04: new operation kinds from a descriptor, and the last checks on call-operation
 
 - A catalogue model's `operations` may list `chat`, `decide` or any kind a registered descriptor defines; any other kind is refused in the catalogue and in `PATCH /operator/models/{id}` (`422`, `errors[0].path: "operations"`). `GET /models` lists every kind a model offers.
