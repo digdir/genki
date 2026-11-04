@@ -1,3 +1,4 @@
+import { ChevronLeftIcon, PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -12,15 +13,13 @@ import {
   Textarea,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import type { SharedCapability } from '../../data/shared-services';
 import { useT, type T } from '../../i18n';
 import { requestExample, responseExample, type CodeLanguage } from './code';
-
-const back = 'M15 6l-6 6 6 6';
 
 type Status = 'idle' | 'running' | 'done';
 
@@ -157,7 +156,7 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
   return (
     <div className="stack">
       <a href="#/shared-services" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('sharedServices.back')}
       </a>
       <div className="page-head">
@@ -173,39 +172,47 @@ export const SharedServiceDetail = ({ api, capability: c, publicName }: Props) =
           </p>
         </div>
         <a className="ds-button" data-variant="primary" href={builderHref}>
-          <Icon d={icons.plus} />
+          <Icon icon={PlusIcon} />
           {t('sharedServices.useInService')}
         </a>
       </div>
       <dl className="facts">
-        {[
-          [t('sharedServices.input'), c.input],
-          [t('sharedServices.output'), c.output],
-          [t('sharedServices.modelAndData'), modelAndData(t, c)],
+        {(
           [
-            t('sharedServices.qualityOnTestSet'),
-            c.score
-              ? t('sharedServices.scoreOf', { score: c.score })
-              : t('sharedServices.notMeasured'),
-          ],
-          ...(c.price === '–'
-            ? []
-            : [
-                [
-                  t('sharedServices.per1000'),
-                  t('sharedServices.priceWithNote', {
-                    price: c.price,
-                    note: c.priceNote.toLowerCase(),
-                  }),
-                ],
-              ]),
-        ].map(([l, v]) => (
+            [t('sharedServices.input'), c.input],
+            [t('sharedServices.output'), c.output],
+            [t('sharedServices.modelAndData'), modelAndData(t, c)],
+            [
+              t('sharedServices.qualityOnTestSet'),
+              <>
+                {c.score
+                  ? t('sharedServices.scoreOf', { score: c.score })
+                  : t('sharedServices.notMeasured')}
+                {c.scoreNote ? <span className="score-note">{c.scoreNote}</span> : null}
+              </>,
+            ],
+            ...(c.price === '–'
+              ? []
+              : [
+                  [
+                    t('sharedServices.per1000'),
+                    t('sharedServices.priceWithNote', {
+                      price: c.price,
+                      note: c.priceNote.toLowerCase(),
+                    }),
+                  ],
+                ]),
+          ] as [string, ReactNode][]
+        ).map(([l, v]) => (
           <div key={l}>
             <dt>{l}</dt>
             <dd className="fact-text">{v}</dd>
           </div>
         ))}
       </dl>
+      {c.score || c.price !== '–' ? (
+        <p className="meta footnote">{t('sharedServices.footnote')}</p>
+      ) : null}
       {c.scoreAlert ? (
         <Alert data-color="warning" data-size="sm">
           {c.scoreAlert}

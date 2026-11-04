@@ -1,3 +1,4 @@
+import { ChevronDownIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -14,7 +15,7 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { NotDecided } from '../../components/NotDecided';
 import {
   qualityCases,
@@ -699,7 +700,7 @@ export const TestSetsTab = ({
                       </Tag>
                     </span>
                     <span className={o ? 'chevron up' : 'chevron'}>
-                      <Icon d={icons.chevronDown} size={18} />
+                      <Icon icon={ChevronDownIcon} size={18} />
                     </span>
                   </button>
                   {o ? (

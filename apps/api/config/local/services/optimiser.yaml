@@ -4,7 +4,7 @@ metadata: { tenant: '991825827', id: optimiser, name: Forbedringstjeneste }
 spec:
   purpose: Foreslår en endring i instruksjonene til en tjeneste ut fra tilbakemeldinger og feilede testtilfeller. Endringen havner bare i utkastet.
   audience: [employees]
-  riskClass: minimal
+  riskClass: limited
   input: { accepts: [application/json] }
   output: { kind: answer }
   strategy:

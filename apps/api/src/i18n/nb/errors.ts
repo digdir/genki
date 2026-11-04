@@ -9,6 +9,20 @@ export const catalogErrors = defineNamespace({
   facetsList: 'fasetter er en liste med feltnavn',
   facetsFilter: 'fasetter må også være filterfelt: {missing}',
   runsInside: '{engine} kjører inne i plattformen og tar ikke {key}',
+  moveWithEngineSwitch:
+    'flytt et datasett til kunnskapsdatabasen med et bytte av søkemotor, som fyller en generasjon først',
+  generationOfAnother: '{generation} er generasjonen til et annet datasett',
+  knowledgeWrittenByWorker: 'kunnskapsdata skrives av bakgrunnstjenesten',
+  knowledgePhrases:
+    'søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene har dem',
+  knowledgeOnePipeline:
+    'et datasett i kunnskapsdatabasen fylles av én pipeline til medeiere er bygget; det har {pipelines}',
+  knowledgeChunking:
+    'oppdeling endres gjennom en ny generasjon, som ikke er bygget ennå; datasettets generasjon beholder oppdelingen den ble fylt med',
+  knowledgeSourceKind:
+    'en kilde av typen {kind} kan ikke fylle et datasett i kunnskapsdatabasen ennå',
+  knowledgeBusy: 'kunnskapsserveren er opptatt, prøv igjen',
+  noKnowledgeServer: 'ingen kunnskapsserver er satt opp',
   onlyPlatformShared: 'bare plattformens endepunkter deles',
   tenantEndpointsModels: 'virksomhetens endepunkter lister modellene sine eksplisitt',
   tenantEndpointsAuth: 'virksomhetens endepunkter bruker api-key eller bearer',
@@ -197,6 +211,8 @@ export const knowledgeErrors = defineNamespace({
   datasetChangedEngine: 'Datasettet er endret siden søkemotoren ble tatt i bruk.',
   previousNotRestored: 'Den forrige søkemotoren kunne ikke tas i bruk igjen',
   pipelineOff: 'innlesingen er slått av',
+  notSendRunBack: 'du har ikke lov til å sende denne kjøringen tilbake',
+  onlyJobRunsSentBack: 'bare en kjøring som går som jobber, kan sendes tilbake',
   datasetGone: 'datasettet finnes ikke lenger',
   parquetOneLocation: 'en Parquet-kilde trenger nøyaktig én av url, urls og huggingface',
   parquetGlob: 'må være et .parquet-filmønster',
@@ -226,6 +242,13 @@ export const knowledgeErrors = defineNamespace({
   enrichmentWriteFailed: 'Spørsmålene kunne ikke lagres',
   enrichmentModelRefused: 'Modellen kan ikke brukes',
   enrichmentUncounted: 'Bruken av modellen kan ikke telles, så det blir ikke foreslått spørsmål',
+  jobRunQueuedExists:
+    'en kjøring av {dataset}/{pipeline} venter allerede på den åpne; vent på den eller avbryt den',
+  jobRunNotSentBack: 'bare en avsluttet kjøring som går som jobber, kan sendes tilbake',
+  jobRunOpen:
+    '{dataset}/{pipeline} har en åpen kjøring; vent på den eller avbryt den før du sender denne tilbake',
+  ingestStillEnding:
+    'den siste innlesingsjobben for {dataset}/{pipeline} avslutter fortsatt; start kjøringen igjen om et minutt',
   noRunningIngestion: 'ingen pågående innlesing {execution}',
   ingestionRunLocked:
     'datasettet {dataset} leses allerede inn av kjøring {execution}; vent til den er ferdig eller avbryt den',
@@ -372,6 +395,9 @@ export const qualityErrors = defineNamespace({
   instructionsChanged: 'Instruksjonene i utkastet er endret siden forslaget ble laget.',
   notReleased: 'modellen {model} er ikke sluppet ennå; den venter på kvalitetsmatrisen',
   modelToTest: 'modellen som skal testes, er påkrevd',
+  descriptorsOperatorsOnly: 'bare operatører prøver beskrivelser under gjennomgang',
+  descriptorsTestOnly: 'GENAI_ENV er ikke test',
+  noDescriptor: 'ingen beskrivelse {id}',
   modelInUse: 'modellen som er i bruk, er påkrevd',
   compareAnother: 'sammenlign med en annen modell',
   modelNotFound: 'Fant ikke modellen',
@@ -453,6 +479,45 @@ export const qualityErrors = defineNamespace({
   noPendingShare: 'ingen ventende deling av {skill}',
 });
 
+export const operationErrors = defineNamespace({
+  stepAt: '{at}: {message}',
+  fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
+  noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  descriptorInReview:
+    '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
+  kindInTest:
+    'operasjonen {operation} er i test i dette miljøet; en operatør må flytte den til produksjon før en tjeneste kan bruke den',
+  notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
+  noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
+  modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
+  noProcessorRecordForService:
+    'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
+  decideOnlyThroughPurposeCheck:
+    'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
+  callOperationNeedsMasking:
+    'et call-operation-steg trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
+  operatorsGovernOperations: 'bare operatører styrer operasjoner',
+  noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
+  noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',
+  maturityValues: 'modenheten er test eller production',
+  noProcessorRecord: '{id} har ingen databehandleropplysninger',
+  noModelEndpoint: 'ingen modellendepunkt {id}',
+  operatorsManageDescriptors: 'bare operatører forvalter operasjonsbeskrivelser',
+  descriptorBundled: '{id} følger med Genki; last opp en ny versjon i stedet',
+  descriptorUploadTooLarge: 'en opplasting er på høyst {size} KiB',
+  descriptorDescribedInUse: '{id} er beskrevet og kan være i bruk; last opp en ny versjon i stedet',
+  bodyNotJson: 'innholdet er ikke JSON',
+  uploadStatusValues:
+    'status er review eller described; typed betyr at Genki har egen kode for operasjonen',
+  descriptorIsMapping: 'en beskrivelse er et sett med felter',
+  uploadNeverTyped:
+    'typed betyr at Genki har egen kode for operasjonen, så en opplasting er aldri typed',
+  uploadStartsInReview:
+    'en opplastet beskrivelse starter under gjennomgang; en operatør flytter den til described etterpå',
+  descriptorCalled: 'beskrivelsen heter {id}',
+  fixturesCalledTwice: 'to opptak heter {names}',
+});
+
 export const adapterErrors = defineNamespace({
   fillFormOrAsk: 'Fyll ut skjemaet eller skriv et spørsmål.',
   fieldList: '{name} må være en liste med valg.',
@@ -517,6 +582,7 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,

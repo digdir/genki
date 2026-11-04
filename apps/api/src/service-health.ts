@@ -13,6 +13,7 @@ export interface ServiceModels {
   primary?: string;
   fallback?: string;
   roles?: Record<string, string | undefined>;
+  operations?: Record<string, string>;
   residency?: string;
 }
 
@@ -49,7 +50,9 @@ export const serviceHealth = (
   const primary = models?.primary ? byId.get(models.primary) : undefined;
   const others = [
     models?.fallback,
-    ...Object.values(models?.roles ?? {}).filter((id) => id !== models?.primary),
+    ...[...Object.values(models?.roles ?? {}), ...Object.values(models?.operations ?? {})].filter(
+      (id) => id !== models?.primary,
+    ),
   ].filter((id): id is string => typeof id === 'string');
   for (const id of new Set(others))
     if (byId.get(id)?.enabled === false)

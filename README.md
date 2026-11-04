@@ -1,12 +1,21 @@
 <div align="center">
 
-<img src="docs/images/genki.png" alt="Genki" width="520">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/genki-dark.png">
+  <img src="docs/images/genki.png" alt="Genki" width="520">
+</picture>
 
 [![Status: under development](https://img.shields.io/badge/status-under%20development-E5AA20)](#status)
-[![Node 24](https://img.shields.io/badge/node-24-0062BA)](mise.toml)
+[![CI](https://img.shields.io/github/actions/workflow/status/digdir/genki/ci.yml?branch=main&label=ci)](https://github.com/digdir/genki/actions/workflows/ci.yml?query=branch%3Amain)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/digdir/genki/badge)](https://scorecard.dev/viewer/?uri=github.com/digdir/genki)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16298/badge)](https://www.bestpractices.dev/projects/16298)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-1E2B3C)](LICENSE)
+<br>
+[![Node 24](https://img.shields.io/badge/node-24-0062BA)](mise.toml)
+[![Built with TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178C6)](https://www.typescriptlang.org)
+[![Built with Designsystemet](https://img.shields.io/badge/built%20with-Designsystemet-0062BA)](https://designsystemet.no)
 
-[Run it](#run-it-locally) · [How it works](#how-it-works) · [Build on it](#build-on-it) · [API](docs/api/README.md) · [Decisions](docs/adr/) · [Contributing](CONTRIBUTING.md)
+[Run it](#run-it-locally) · [How it works](#how-it-works) · [Build on it](#build-on-it) · [API](docs/api/README.md) · [Decisions](docs/adr/) · [Docs site (Norwegian)](https://digdir.github.io/genki/) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -23,6 +32,18 @@ It provides:
 - **Datasets and ingestion** on Typesense, pgvector, Postgres, HTTP or MCP, with reranking
 - **Quality checks**: test sets, judges and publishing gates, plus a parity harness that compares answers with [digdir-headless-rag](https://github.com/digdir/digdir-headless-rag)
 
+## Quickstart
+
+You need [mise](https://mise.jdx.dev) and a running Docker. No secrets.
+
+```sh
+git clone https://github.com/digdir/genki.git && cd genki
+mise trust && mise install   # Node 24, pinned in mise.toml
+npm start                    # Postgres in Docker, then the API and the three apps
+```
+
+Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and pick **Lokal testchat**. [Run it locally](#run-it-locally) has the details.
+
 ## About the name
 
 **genki** means generative AI in two languages:
@@ -32,6 +53,13 @@ It provides:
   - 元 (_gen_) is the root or source: the models and human knowledge.
   - 気 (_ki_) is energy: the potential they unlock.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/genki-name-dark.svg">
+    <img src="docs/images/genki-name.svg" alt="元気: 元 (gen), the source, flows into 気 (ki), energy. Gen + KI is Norwegian for generative AI." width="320">
+  </picture>
+</p>
+
 > [!NOTE]
 > The code uses the plain English `genai` prefix, for example `@genai/client` and `GENAI_DEV_MODE`.
 
@@ -39,6 +67,7 @@ It provides:
 
 | Doc                                                                          | Use it for                                                                                                                                                                           |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [digdir.github.io/genki](https://digdir.github.io/genki/)                    | The documentation site, in Norwegian: building blocks, flows and the target picture, for leaders, service owners and architects. Source in [`apps/docs`](apps/docs/)                 |
 | [`docs/development.md`](docs/development.md)                                 | Running locally in detail: ports, dev mode, test persons, secrets, tests, package layout                                                                                             |
 | [`docs/api/README.md`](docs/api/README.md)                                   | The HTTP API: sign-in, rights, errors, and a guide per area                                                                                                                          |
 | [`docs/build-a-frontend.md`](docs/build-a-frontend.md)                       | The shortest path to your own frontend                                                                                                                                               |
@@ -46,11 +75,16 @@ It provides:
 | [`docs/bring-your-own-logic.md`](docs/bring-your-own-logic.md)               | A tool step or a whole engine you run yourself                                                                                                                                       |
 | [`docs/architecture/system-atlas.html`](docs/architecture/system-atlas.html) | Every module, what it does and what it talks to. Open it locally in a browser                                                                                                        |
 | [`docs/adr/`](docs/adr/)                                                     | Architecture decisions. Start with [0001](docs/adr/0001-foundations.md), [0023](docs/adr/0023-extension-model.md) and [0031](docs/adr/0031-services-variants-and-ways-of-working.md) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks and pull requests                                                                                                                                                   |
+| [`docs/security/`](docs/security/README.md)                                  | What genki protects, what operators must configure, key rotation and hardening                                                                                                       |
+| [`docs/security/assurance-case.md`](docs/security/assurance-case.md)         | The threat model, trust boundaries and why the security requirements hold                                                                                                            |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks, coding standards and pull requests                                                                                                                                 |
+| [`ROADMAP.md`](ROADMAP.md)                                                   | What the next year intends, and what genki will not do                                                                                                                               |
+| [`SECURITY.md`](SECURITY.md)                                                 | Reporting a vulnerability, and what happens next                                                                                                                                     |
+| [`ACCESSIBILITY.md`](ACCESSIBILITY.md)                                       | Our accessibility commitment, where we are, known limitations, and how to report a barrier                                                                                           |
 
 ## Repository layout
 
-- **`apps/`**: the API, the worker, the portal, the workspace, the console, and `parity` (compares answers with headless-rag)
+- **`apps/`**: the API, the worker, the portal, the workspace, the console, `docs` (the documentation site), and `parity` (compares answers with headless-rag)
 - **`apps/api/config/local/`**: the definitions the API publishes at startup: services, flows, models, prices, datasets, test persons. Services in `dev-services/` are published only in development mode
 - **`packages/`**: the kernel, definitions, ports, providers, strategies, channel adapters and platform services, each behind a contract ([layout](docs/development.md#repository-layout))
 - **`docs/`**: the API guides, frontend contract, ADRs and the System Atlas
@@ -79,12 +113,17 @@ This installs Node 24, pinned in `mise.toml`. Run `mise trust` once per clone: w
 npm start
 ```
 
+**Docker must be running** before you start, or setup stops at Postgres. If a port is already taken, `dev:all` refuses to start and names the port; [docs/development.md](docs/development.md) shows how to move every port.
+
+<details>
+<summary><strong>What npm start does</strong></summary>
+
 This runs two steps, which you can also run on their own:
 
-1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432`, and creates `.env.local` with a local database, generated keys and the local test model. It is safe to run again: an existing `.env.local` is never changed, only checked, and setup names the settings it lacks.
+1. `npm run setup` installs dependencies, starts Postgres (with pgvector) in Docker on `127.0.0.1:55432` and the knowledge server on `127.0.0.1:55433`, creates `.env.local` with a local database, generated keys and the local test model, and sets up the knowledge server. It is safe to run again: in an existing `.env.local` it only adds the knowledge settings that are absent, and names the other settings it lacks.
 2. `npm run dev:all` starts the API, portal, console and workspace in one terminal, with prefixed output. At startup the API runs database migrations and publishes the definitions in `apps/api/config/local`.
 
-**Docker must be running** before you start, or setup stops at Postgres. If a port is already taken, `dev:all` refuses to start and names the port; [docs/development.md](docs/development.md) shows how to move every port.
+</details>
 
 ### 3. Open the apps
 
@@ -95,7 +134,10 @@ This runs two steps, which you can also run on their own:
 | <http://localhost:5174>           | Console       | Digdir operators: tenants, models, shared services    |
 | <http://localhost:8080/reference> | API reference | Developers: every operation, searchable               |
 
-### 4. Log in
+### Next steps
+
+<details>
+<summary><strong>4. Log in</strong></summary>
 
 Each app sends you to a mock Ansattporten with a list of test persons. Pick one:
 
@@ -111,17 +153,26 @@ Rights come from a mock Altinn. The test persons are in `apps/api/config/local/i
 
 The mock login only exists in development mode (`GENAI_DEV_MODE=true`), which `npm start` turns on. Without it, the API refuses to start until a real database, login provider and Altinn are configured.
 
-### 5. Ask something
+</details>
+
+<details>
+<summary><strong>5. Ask something</strong></summary>
 
 In the workspace, pick **Lokal testchat** and write a message. It answers with what you wrote. That is on purpose: the local test model echoes, so you can try login, chat, conversations and feedback without a real model or any cost.
 
-### 6. Build a service
+</details>
+
+<details>
+<summary><strong>6. Build a service</strong></summary>
 
 In the portal, open **Tjenester** (Services) and choose **Ny tjeneste** (New service). Describe what the service is for, pick a model, try it in the playground, and publish it. Publishing gives it a version number and records who published it and why. It then shows up in the workspace for the people it is offered to.
 
 On a fresh clone the only model is the local echo model, so every answer repeats the question. That is enough to try the whole path from draft to published service.
 
-### 7. Call it from your own code
+</details>
+
+<details>
+<summary><strong>7. Call it from your own code</strong></summary>
 
 Everything the apps do goes through the same API. Setup put an API key in `.env.local` as `DEV_API_KEY`:
 
@@ -133,7 +184,10 @@ curl -s http://localhost:8080/v1/chat/completions \
 
 See [Build on it](#build-on-it) for the other channels.
 
-### 8. Add real models and search
+</details>
+
+<details>
+<summary><strong>8. Add real models and search</strong></summary>
 
 The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need real models and search. Without those settings they are skipped and logged at startup, so **Lokal testchat** is the only service until you add them.
 
@@ -145,7 +199,10 @@ The example services, such as Kunnskapsassistenten, Klarspråk and Nynorsk, need
 
 Every setting is listed in [`.env.example`](.env.example), with what happens when it is empty. Restart after you change `.env.local`.
 
-### 9. Stop it
+</details>
+
+<details>
+<summary><strong>9. Stop it</strong></summary>
 
 Press Ctrl-C in the terminal running `npm start`. That stops the API and the apps. Postgres keeps running in Docker and keeps your data, so starting again picks up where you left off. To stop Postgres too:
 
@@ -159,12 +216,17 @@ To throw the database away as well and start from nothing:
 docker compose down -v
 ```
 
+</details>
+
 ---
 
 ## How it works
 
 <p align="center">
-  <img src="docs/images/architecture.svg" alt="Architecture: sign-in and access on the left; interfaces and channels, AI services, the kernel and ways of working, and data and tools stacked in the middle on an application platform; model routing and the models on the right" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
+    <img src="docs/images/architecture.svg" alt="Architecture: sign-in and access on the left; interfaces and channels, AI services, the kernel and ways of working, and data and tools stacked in the middle on an application platform; model routing and the models on the right" width="100%">
+  </picture>
 </p>
 
 | Part            | Role                                                                                                                                                          |
@@ -180,7 +242,10 @@ docker compose down -v
 Digdir runs the platform and chooses the models. Your organisation adds its data and builds services. People and systems use the services wherever you offer them, and their feedback goes into the next version.
 
 <p align="center">
-  <img src="docs/images/how-you-use-it.svg" alt="Three rows. Digdir, in the console: approves organisations, chooses models and prices, runs the platform. Your organisation, in the portal or through the API: 1 add data, 2 build a service, 3 test, 4 publish, 5 offer it, 6 follow up, then improve and publish a new version. Users and systems: employees in the workspace, your own frontend, and AI tools and agents, who send feedback back" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/how-you-use-it-dark.svg">
+    <img src="docs/images/how-you-use-it.svg" alt="Three rows. Digdir, in the console: approves organisations, chooses models and prices, runs the platform. Your organisation, in the portal or through the API: 1 add data, 2 build a service, 3 test, 4 publish, 5 offer it, 6 follow up, then improve and publish a new version. Users and systems: employees in the workspace, your own frontend, and AI tools and agents, who send feedback back" width="100%">
+  </picture>
 </p>
 
 ### Five words
@@ -371,3 +436,9 @@ Contributions are welcome.
 3. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
 Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). genki is released under the [MIT licence](LICENSE).
+
+---
+
+<p align="center">
+  Made by <a href="https://www.digdir.no">Digdir</a>, the Norwegian Digitalisation Agency, for the Norwegian public sector.
+</p>

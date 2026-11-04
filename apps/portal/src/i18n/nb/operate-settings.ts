@@ -455,6 +455,8 @@ const settingDefs = defineNamespace({
   synthesis_instructions_label: 'Systemledetekst for svaret',
   synthesis_temperature_label: 'Temperatur for svaret',
   synthesis_temperature_desc: 'Tomt bruker standarden til arbeidsmåten.',
+  knowledge_nightWindow_label: 'Nattvindu for tungt arbeid',
+  knowledge_heavyThreshold_label: 'Grense for tungt arbeid (tekstbiter)',
   knowledge_switchRetentionDays_label: 'Dager forrige søkemotor beholdes',
   assistant_enabled_label: 'Byggeassistenten er på',
   assistant_dailyTokens_label: 'Tokens per dag for assistenten',
@@ -504,6 +506,10 @@ const settingDefs = defineNamespace({
     'Ledetekst som erstatter den innebygde for å lage svaret. Tomt bruker den innebygde.',
   synthesis_instructions_desc:
     'Systemledetekst som erstatter den innebygde for modellen som svarer. Tomt bruker den innebygde.',
+  knowledge_nightWindow_desc:
+    'Tidsrom (norsk tid) der indeksbygg, store innlesinger og VACUUM kjøres, skrevet som 01:00-06:00, eller «always» for å la dem kjøre når som helst, som før lansering.',
+  knowledge_heavyThreshold_desc:
+    'Antall tekstbiter et indeksbygg, en innlesing eller en VACUUM må gå over for å vente til nattvinduet.',
   knowledge_switchRetentionDays_desc:
     'Dager den forrige kopien i søkemotoren beholdes etter at et datasett bytter søkemotor.',
   assistant_enabled_desc: 'Tilby byggeassistenten i byggeren for tjenester.',

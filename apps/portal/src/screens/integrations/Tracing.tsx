@@ -1,3 +1,4 @@
+import { PadlockLockedIcon, VitalsIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -19,9 +20,6 @@ import { Icon } from '../../components/Icon';
 import { highRiskServices, traceServices, traceTools } from '../../data/integrations';
 import { useT } from '../../i18n';
 import { IntegrationTab } from '../developer-routes';
-
-const lock = 'M7 11V8a5 5 0 0 1 10 0v3 M5 11h14v10H5z';
-const pulse = 'M4 12h4l3-7 4 14 3-7h2';
 
 interface Connection {
   status: 'ok' | 'feil';
@@ -170,7 +168,7 @@ export const Tracing = ({
         {t('integTracing.sourceNote')}
       </Alert>
       <div role="note" className="int-rule">
-        <Icon d={lock} />
+        <Icon icon={PadlockLockedIcon} />
         <span>{t.rich('integTracing.fixedRule', { strong: (c) => <strong>{c}</strong> })}</span>
       </div>
       <div aria-live="polite">
@@ -327,7 +325,7 @@ export const Tracing = ({
                     {help ? t(help) : null}
                     {isStored ? (
                       <span className="int-stored">
-                        <Icon d={lock} size={18} />
+                        <Icon icon={PadlockLockedIcon} size={18} />
                         {t('integTracing.storedInVault')}
                       </span>
                     ) : null}
@@ -486,7 +484,7 @@ export const Tracing = ({
             [t('integTracing.exampleSentDigdir'), t('integTracing.openDigdir')],
           ].map(([note, link]) => (
             <span key={link} className="row-wrap small">
-              <Icon d={pulse} size={16} />
+              <Icon icon={VitalsIcon} size={16} />
               {note}
               <a href="#/log">{link}</a>
             </span>

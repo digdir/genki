@@ -72,10 +72,12 @@ describe('cancelling an ingestion run', () => {
     const errors: string[] = [];
     const { service, started } = await start(new RefusesCancelled(), errors);
 
-    service.cancel({ dataset, execution: started.value.id, by: 'kari' });
+    await service.cancel({ dataset, execution: started.value.id, by: 'kari' });
 
     await expect(started.done).resolves.toMatchObject({ status: 'cancelled' });
     expect(errors).toEqual([expect.stringContaining('was not saved')]);
-    expect(service.cancel({ dataset, execution: started.value.id, by: 'kari' }).ok).toBe(false);
+    expect((await service.cancel({ dataset, execution: started.value.id, by: 'kari' })).ok).toBe(
+      false,
+    );
   });
 });

@@ -213,6 +213,24 @@ const rules: Rule[] = [
   [/^model (\S+) cannot call tools$/, (m) => `Modellen «${m[1]}» kan ikke bruke verktøy.`],
   [/^high-risk services are not offered yet$/, () => 'Tjenester med høy risiko tilbys ikke ennå.'],
   [
+    /^model (\S+) does not offer the decide operation$/,
+    (m) => `Modellen «${m[1]}» kan ikke ta beslutninger.`,
+  ],
+  [
+    /^a service that decides about people must have risk class high$/,
+    () => 'En tjeneste som tar beslutninger om personer, må ha høy risiko.',
+  ],
+  [
+    /^a service that decides about people needs a person to approve each result before it is final$/,
+    () =>
+      'En tjeneste som tar beslutninger om personer, trenger at en person godkjenner hvert resultat før det er endelig.',
+  ],
+  [
+    /^a service that decides about people must keep the model input for review, so it cannot remove personal data from the run log$/,
+    () =>
+      'En tjeneste som tar beslutninger om personer, må ta vare på det modellen fikk, så den kan ikke fjerne personopplysninger fra kjøringsloggen.',
+  ],
+  [
     /^services for the public are not offered yet$/,
     () => 'Tjenester for innbyggere tilbys ikke ennå.',
   ],

@@ -1,11 +1,13 @@
 import { secretRefPattern, type Credential } from '@genai/kernel';
 import { z } from 'zod';
 import type {
+  CitationResolution,
   DocumentPage,
   DocumentsRequest,
   FacetValue,
   FieldFilter,
   FilterValue,
+  FilterValueType,
   Hit,
   KnowledgeCapability,
   Residency,
@@ -38,6 +40,11 @@ export interface DatasetConfig<O = unknown> {
   filters: Record<string, FieldFilter>;
   options: O;
   embedding?: DatasetEmbedding;
+  valueTypes?: Record<string, FilterValueType>;
+  /** The generation the catalog names as active, for engines that keep generations by name. */
+  generation?: string;
+  /** The datasets the router allowed this read, set by the router only after its tenant and residency checks. */
+  allowed?: string[];
 }
 
 export interface DatasetDraft {
@@ -72,6 +79,11 @@ export interface KnowledgeConnection<D = unknown> {
     request: DocumentsRequest,
     signal: AbortSignal,
   ): Promise<DocumentPage>;
+  resolveCitations?(
+    dataset: DatasetConfig<D>,
+    ids: string[],
+    signal: AbortSignal,
+  ): Promise<CitationResolution[]>;
   export?: KnowledgeExport<D>;
   served?(dataset: DatasetConfig<D>, signal: AbortSignal): Promise<ServedIndex>;
 }
@@ -79,6 +91,8 @@ export interface KnowledgeConnection<D = unknown> {
 export interface ServedIndex {
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the server that answered the last read made with this same dataset config. */
+  dataVersion?: number;
 }
 
 export interface KnowledgeExport<D = unknown> {

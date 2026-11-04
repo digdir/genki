@@ -1,0 +1,51 @@
+id: openai/embed@1
+operation: embed
+status: typed
+summary: Embeddings on an OpenAI-compatible endpoint, as the hand-written openai-embeddings adapter sends them.
+api:
+  protocol: openai-embeddings
+  version: v1
+auth:
+  keyHeader: authorization
+request:
+  method: POST
+  path: /embeddings
+  body:
+    model: $deployment
+    input: $input
+    encoding_format: float
+input: [text]
+output:
+  object:
+    vectors: [[number]]
+    usage:
+      object:
+        inputTokens: { number: { min: 0 } }
+wire:
+  request:
+    object:
+      model: plain
+      input: [text]
+      encoding_format: { enum: [float] }
+  response:
+    object:
+      object?: plain
+      model?: plain
+      data:
+        array:
+          object:
+            object?: plain
+            index: { number: { integer: true, min: 0 } }
+            embedding: [number]
+      usage?:
+        object:
+          prompt_tokens: { number: { integer: true, min: 0 } }
+          total_tokens?: { number: { integer: true, min: 0 } }
+result:
+  vectors: { $each: $response.data, $sort: index, $map: $item.embedding }
+  usage:
+    inputTokens: { $from: $response.usage.prompt_tokens, $default: 0 }
+usage:
+  inputTokens: { $from: $response.usage.prompt_tokens, $default: 0 }
+  requests: 1
+stream: none
