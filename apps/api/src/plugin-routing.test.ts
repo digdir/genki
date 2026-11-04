@@ -10,6 +10,8 @@ import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { openAiChatFixture } from '@genai/providers-openai/contract';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { appendVersion, platformScope } from './config-store.js';
+import { externalPluginKind } from './external-plugins.js';
 
 const other = '999888777';
 const third = '974760673';
@@ -726,15 +728,30 @@ describe('per-tenant adoption of operator plug-ins', () => {
 });
 
 describe('egress on plug-in calls', () => {
-  it('sends every call to a plug-in model through the egress guard, while the contract run does not', async () => {
-    const { platform, register, adopt } = await boot({ timeoutMs: 3000 });
+  it('sends the contract run of a plug-in model through the egress guard, so a refused host cannot be registered', async () => {
+    const { register } = await boot({ timeoutMs: 3000 });
     const model = await modelServer('Hei fra leverandøren');
-    expect((await register(modelPlugin(model.url))).status).toBe(201);
+    expect((await register(modelPlugin(model.url))).status).toBe(422);
+    expect(model.seen).toEqual([]);
+  });
+
+  it('sends every call to a plug-in model through the egress guard', async () => {
+    const { platform, adopt } = await boot({ timeoutMs: 3000 });
+    const model = await modelServer('Hei fra leverandøren');
+    await appendVersion(platform.configEntries, {
+      kind: externalPluginKind,
+      scope: platformScope,
+      id: 'model.leverandor',
+      spec: modelPlugin(model.url),
+      deleted: false,
+      by: 'operator:test:drift',
+      reason: 'Ny byggekloss fra en leverandør',
+    });
+    await platform.catalog.refresh();
     await adopt('kari', other, 'model', 'model.leverandor');
     const port = platform.models.open({ kind: 'model', id: 'model.leverandor' }, ctx);
-    const before = model.seen.length;
     await expect(port.chat({ messages: [{ role: 'user', content: 'Hei' }] })).rejects.toThrow();
-    expect(model.seen.length).toBe(before);
+    expect(model.seen).toEqual([]);
   });
 });
 

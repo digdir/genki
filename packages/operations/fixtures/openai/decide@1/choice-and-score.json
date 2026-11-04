@@ -1,0 +1,233 @@
+{
+  "source": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/decisions#ask-multiple-questions",
+  "deployment": "gpt-6-luna",
+  "input": {
+    "input": "I was charged twice for my order.",
+    "questions": [
+      {
+        "type": "choice",
+        "name": "department",
+        "instructions": "Which department should handle this complaint?",
+        "choices": [
+          {
+            "value": "billing",
+            "description": "Payments and refunds."
+          },
+          {
+            "value": "technical",
+            "description": "Product problems."
+          },
+          {
+            "value": "shipping",
+            "description": "Delivery and tracking."
+          },
+          {
+            "value": "other",
+            "description": "All other requests."
+          }
+        ]
+      },
+      {
+        "type": "score",
+        "name": "severity",
+        "instructions": "How severe is this issue?",
+        "levels": [
+          {
+            "label": "Cosmetic",
+            "description": "No lost functionality."
+          },
+          {
+            "label": "Workaround available",
+            "description": "A task fails, but another way works."
+          },
+          {
+            "label": "Fully blocked",
+            "description": "A task fails with no workaround."
+          }
+        ]
+      }
+    ]
+  },
+  "request": {
+    "method": "POST",
+    "path": "/decisions",
+    "body": {
+      "model": "gpt-6-luna",
+      "input": "I was charged twice for my order.",
+      "questions": [
+        {
+          "type": "choice",
+          "name": "department",
+          "instructions": "Which department should handle this complaint?",
+          "choices": [
+            {
+              "value": "billing",
+              "description": "Payments and refunds."
+            },
+            {
+              "value": "technical",
+              "description": "Product problems."
+            },
+            {
+              "value": "shipping",
+              "description": "Delivery and tracking."
+            },
+            {
+              "value": "other",
+              "description": "All other requests."
+            }
+          ]
+        },
+        {
+          "type": "score",
+          "name": "severity",
+          "instructions": "How severe is this issue?",
+          "levels": [
+            {
+              "label": "Cosmetic",
+              "description": "No lost functionality."
+            },
+            {
+              "label": "Workaround available",
+              "description": "A task fails, but another way works."
+            },
+            {
+              "label": "Fully blocked",
+              "description": "A task fails with no workaround."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "model": "gpt-6-luna",
+      "answers": [
+        {
+          "type": "choice",
+          "name": "department",
+          "choice": "billing",
+          "probabilities": [
+            {
+              "value": "billing",
+              "probability": 0.95
+            },
+            {
+              "value": "technical",
+              "probability": 0.02
+            },
+            {
+              "value": "shipping",
+              "probability": 0.01
+            },
+            {
+              "value": "other",
+              "probability": 0.02
+            }
+          ],
+          "confidence": 0.93
+        },
+        {
+          "type": "score",
+          "name": "severity",
+          "score": 1.1,
+          "probabilities": [
+            {
+              "value": 0,
+              "label": "Cosmetic",
+              "probability": 0.1
+            },
+            {
+              "value": 1,
+              "label": "Workaround available",
+              "probability": 0.7
+            },
+            {
+              "value": 2,
+              "label": "Fully blocked",
+              "probability": 0.2
+            }
+          ],
+          "confidence": 0.55
+        }
+      ],
+      "usage": {
+        "input_tokens": 241,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 241
+      }
+    }
+  },
+  "result": {
+    "answers": [
+      {
+        "type": "choice",
+        "name": "department",
+        "choice": "billing",
+        "probabilities": [
+          {
+            "value": "billing",
+            "probability": 0.95
+          },
+          {
+            "value": "technical",
+            "probability": 0.02
+          },
+          {
+            "value": "shipping",
+            "probability": 0.01
+          },
+          {
+            "value": "other",
+            "probability": 0.02
+          }
+        ],
+        "confidence": 0.93
+      },
+      {
+        "type": "score",
+        "name": "severity",
+        "score": 1.1,
+        "probabilities": [
+          {
+            "value": 0,
+            "label": "Cosmetic",
+            "probability": 0.1
+          },
+          {
+            "value": 1,
+            "label": "Workaround available",
+            "probability": 0.7
+          },
+          {
+            "value": 2,
+            "label": "Fully blocked",
+            "probability": 0.2
+          }
+        ],
+        "confidence": 0.55
+      }
+    ],
+    "usage": {
+      "inputTokens": 241,
+      "outputTokens": 0,
+      "requests": 1
+    },
+    "servedModel": "gpt-6-luna",
+    "calibrated": true
+  },
+  "usage": {
+    "inputTokens": 241,
+    "outputTokens": 0,
+    "requests": 1
+  }
+}

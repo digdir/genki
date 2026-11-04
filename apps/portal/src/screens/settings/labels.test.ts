@@ -160,3 +160,41 @@ describe('setting descriptions', () => {
     );
   });
 });
+
+describe('knowledge settings', () => {
+  it('knowledge.heavyThreshold and knowledge.nightWindow are labelled in the console and the portal in bokmål and English', () => {
+    const names = {
+      nb: ['Grense for tungt arbeid (tekstbiter)', 'Nattvindu for tungt arbeid'],
+      en: ['Heavy work threshold (chunks)', 'Night window for heavy work'],
+    };
+    const { rows } = mergeRows(
+      ['knowledge.heavyThreshold', 'knowledge.nightWindow'].map((key) => ({
+        key,
+        description: 'API text',
+        category: 'knowledge',
+        axis: 'service' as const,
+        sensitivity: 'normal' as const,
+        default: key === 'knowledge.nightWindow' ? '01:00-06:00' : 100000,
+        settableAt: ['platform' as const],
+      })),
+      undefined,
+      '999888777',
+      true,
+    );
+    for (const locale of ['nb', 'en'] as const) {
+      const tr = translator(locale);
+      const labels = ['knowledge.heavyThreshold', 'knowledge.nightWindow'].map((key) => {
+        const row = rows.find((r) => r.apiKey === key);
+        return row && settingLabel(tr, row);
+      });
+      expect(labels, locale).toEqual(names[locale]);
+      expect(
+        ['knowledge.heavyThreshold', 'knowledge.nightWindow'].every((key) => {
+          const row = rows.find((r) => r.apiKey === key);
+          return row && settingDesc(tr, row) !== 'API text';
+        }),
+        locale,
+      ).toBe(true);
+    }
+  });
+});

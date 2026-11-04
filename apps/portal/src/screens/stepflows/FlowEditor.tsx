@@ -1,3 +1,4 @@
+import { CheckmarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Badge,
@@ -14,7 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { ApiCallLink } from '../../components/ApiCall';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { blocks, serviceOfFlow, type Flow, type RunOverlay, type Step } from '../../data/stepflows';
 import { useT, type PlainKey } from '../../i18n';
 import { BlockPicker } from './BlockPicker';
@@ -301,7 +302,7 @@ export const FlowEditor = ({
           </Alert>
         ) : (
           <p role="status" className="flow-valid">
-            <Icon d={icons.check} size={18} strokeWidth={2} />
+            <Icon icon={CheckmarkIcon} size={18} />
             {t('stepflows.flowValid')}
           </p>
         )}

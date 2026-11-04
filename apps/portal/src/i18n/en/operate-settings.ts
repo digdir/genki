@@ -463,6 +463,8 @@ const settingDefs = {
   synthesis_instructions_label: 'System prompt for the answer',
   synthesis_temperature_label: 'Temperature for the answer',
   synthesis_temperature_desc: 'Empty uses the default of the workflow.',
+  knowledge_nightWindow_label: 'Night window for heavy work',
+  knowledge_heavyThreshold_label: 'Heavy work threshold (chunks)',
   knowledge_switchRetentionDays_label: 'Days the previous search engine is kept',
   assistant_enabled_label: 'The build assistant is on',
   assistant_dailyTokens_label: 'Tokens per day for the assistant',
@@ -511,6 +513,10 @@ const settingDefs = {
     'Replacement prompt for writing the answer. Empty uses the built-in prompt.',
   synthesis_instructions_desc:
     'Replacement system prompt for the answering model. Empty uses the built-in prompt.',
+  knowledge_nightWindow_desc:
+    'Hours (Norwegian time) in which index builds, large fills and VACUUM run, written as 01:00-06:00, or "always" to let them run at any hour, as before a launch.',
+  knowledge_heavyThreshold_desc:
+    'Chunks an index build, a fill or a VACUUM must go over to wait for the night window.',
   knowledge_switchRetentionDays_desc:
     'Days the previous search engine copy is kept after a dataset switches engine.',
   assistant_enabled_desc: 'Offer the builder assistant in the service builder.',

@@ -22,7 +22,13 @@ import type {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
-import { responsesParams, responsesResult, responsesStream } from './responses.js';
+import { decisionsBody, decisionsPath, decisionsResult } from './decisions.js';
+import {
+  responsesContinuation,
+  responsesParams,
+  responsesResult,
+  responsesStream,
+} from './responses.js';
 
 const withoutTrailingSlashes = (url: string) => {
   let end = url.length;
@@ -118,6 +124,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
   protocol: 'openai-chat',
   endpointOptions,
   modelOptions,
+  continuation: responsesContinuation,
 
   connect(endpoint: EndpointConfig) {
     const client = new OpenAI({
@@ -224,6 +231,18 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
             servedModel: response.model,
             ...(dropped.length ? { droppedParameters: dropped } : {}),
           };
+        } catch (error) {
+          throw toModelError(error, signal);
+        }
+      },
+
+      decide: async (model, request, signal) => {
+        try {
+          const raw = await client.post<unknown>(decisionsPath, {
+            body: decisionsBody(model, request),
+            signal,
+          });
+          return decisionsResult(model, request, raw);
         } catch (error) {
           throw toModelError(error, signal);
         }
