@@ -277,6 +277,19 @@ describe('lockdown', () => {
     expect(JSON.stringify(await res.json())).toContain('Hei.');
   });
 
+  it('lets a trusted Entra login create an organisation-wide key in its own organisation, though it is an operator', async () => {
+    const { chat, send } = await boot(true);
+
+    const created = await send(`/tenants/${digdir}/api-keys`, 'entra', {
+      body: { name: 'KA test', agents: ['klarsprak'] },
+      reason,
+    });
+    const { key } = await json<{ key: string }>(created);
+
+    expect(created.status).toBe(201);
+    expect((await chat(key)).status).toBe(200);
+  });
+
   it('keeps a key admitted after an Entra user rotates it', async () => {
     const { chat, createKey, send } = await boot(true);
     const { apiKey } = await createKey('entra');

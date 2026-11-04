@@ -1140,11 +1140,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   app.post('/tenants/:tenant/api-keys', async (c) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');
-    if (principal.kind === 'operator')
-      return access(principal, c.req.param('tenant') ?? '', c.req.raw)
-        ? problem(c, 403, 'API-nøkler lages av virksomheten selv')
-        : problem(c, 404, 'Not found');
     const tenant = c.req.param('tenant') ?? '';
+    if (principal.kind === 'operator') {
+      // An operator who is also one of the organisation's own people (a trusted
+      // Entra login in its platform organisation, ADR 0033) acts as that person.
+      const acting = access(principal, tenant, c.req.raw);
+      if (!acting) return problem(c, 404, 'Not found');
+      if (acting.kind === 'operator')
+        return problem(c, 403, 'API-nøkler lages av virksomheten selv');
+    }
     if (!isReasonLongEnough(reasonOf(c)))
       return problem(c, 400, 'Invalid request', [
         { path: 'change-reason', message: reasonTooShort },

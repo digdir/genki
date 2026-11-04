@@ -70,6 +70,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `GET /v1/tasks/{task}/media/{id}` serves the bytes, with the media type as `content-type`, to a caller that may read the run (`404` otherwise, `401` without credentials). It is part of the `openai` channel.
 - A step-flow step notice carries `media: [{ id, mediaType, bytes }]`, and the task timeline lists media under the step and the answer.
 
+### 2026-11-04: trusted Entra logins create organisation-wide keys
+
+- `POST /tenants/{tenant}/api-keys` answers `201` for an operator who is also one of the organisation's own people, such as a trusted Entra login in the platform organisation ([ADR 0033](../adr/0033-locked-test-environment.md)), as `POST /tenants/{tenant}/services/{service}/api-keys` already did. It used to answer `403`. An operator in a support session still gets `403`, and other operators `404`.
+
 ### 2026-11-04: operators upload operation descriptors
 
 - `PUT /operator/operation-descriptors/{id}` (operators, audited, `change-reason`): uploads a descriptor with 1 to 20 recorded fixtures, at most 512 KiB. The loader rules and `operation@1` run first; a failure answers `422` with every reason. It answers `201` (`step: "uploaded"`) or `200` (`step: "replaced"`, while still in review), and `409` for a bundled id or an upload that is already described.
