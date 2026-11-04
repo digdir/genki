@@ -55,6 +55,7 @@ export type TenantApiKey = StoredApiKey & {
   prefix?: string;
   lastFour?: string;
   createdAt?: string;
+  usageCount?: number;
   rotatedFrom?: string;
 };
 
@@ -211,6 +212,7 @@ export const keyView = (key: TenantApiKey) => ({
   service: boundService(key) ?? null,
   client: key.clientId ?? null,
   lastUsedAt: key.lastUsedAt ?? null,
+  usageCount: key.usageCount ?? null,
   policy: key.policy?.id ?? null,
   rotatedFrom: key.rotatedFrom ?? null,
   prefix: key.prefix ?? null,

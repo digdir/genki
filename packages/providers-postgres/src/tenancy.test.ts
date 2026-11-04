@@ -315,6 +315,8 @@ describe('API keys', () => {
       scopes: ['query'],
       datasets: [],
       agents: [AGENT],
+      createdAt: expect.any(String),
+      usageCount: 0,
     });
     expect(await keys.usage(ORG_A, 'key-ka')).toEqual({
       count: 2,
@@ -349,6 +351,30 @@ describe('API keys', () => {
       service: 'kunnskapsassistenten',
     });
     expect(verified.grants.allowedOverrides).toEqual(['retrieval.*', 'answer.language']);
+  });
+
+  it('records each verified call as the runtime role, and lists the key with when it was made, last used and how often', async () => {
+    const keys = new PostgresApiKeys(runtime);
+    await keys.add({
+      id: 'key-used',
+      name: 'Brukt',
+      digest: apiKeyDigest('gk_used_key'),
+      tenant: ORG_A,
+      scopes: ['query'],
+      datasets: ['*'],
+      agents: ['*'],
+      createdAt: '2026-10-01T08:00:00Z',
+    });
+
+    await verifyApiKey(keys, 'gk_used_key', new Date('2026-11-03T13:00:00Z'));
+    await verifyApiKey(keys, 'gk_used_key', new Date('2026-11-03T13:02:00Z'));
+
+    const listed = (await keys.list(ORG_A)).find((k) => k.id === 'key-used');
+    expect(listed).toMatchObject({
+      createdAt: '2026-10-01T08:00:00.000Z',
+      lastUsedAt: '2026-11-03T13:02:00.000Z',
+      usageCount: 2,
+    });
   });
 
   it('keeps the calls per minute of a key', async () => {

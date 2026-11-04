@@ -353,6 +353,8 @@ export interface ApiKeyView {
   service?: string | null;
   policy?: string | null;
   createdAt: string | null;
+  lastUsedAt?: string | null;
+  usageCount?: number | null;
   expiresAt: string | null;
   revokedAt: string | null;
 }

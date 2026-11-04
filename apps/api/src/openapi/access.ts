@@ -72,6 +72,11 @@ const ApiKey = z
     service: z.string().nullable().describe('Set when the key is bound to one service.'),
     client: z.string().nullable(),
     lastUsedAt: z.string().nullable(),
+    usageCount: z
+      .number()
+      .int()
+      .nullable()
+      .describe('Authenticated calls made with the key, when the key store counts them.'),
     policy: z.string().nullable().describe('Id of the key policy attached to the key.'),
     rotatedFrom: z.string().nullable(),
     prefix: z.string().nullable().describe('First seven characters of the key.'),

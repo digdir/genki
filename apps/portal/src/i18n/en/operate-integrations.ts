@@ -361,7 +361,6 @@ export const integrationsArea = {
   },
   integKeys: {
     loading: 'Loading API keys',
-    notUsedYet: 'not used yet',
     createdToday: 'today by you',
     rotatedToday: 'rotated today by you',
     unknownDate: 'unknown date',
@@ -400,6 +399,8 @@ export const integrationsArea = {
     revokedStatus: 'Revoked',
     prefixCreated: '{prefix}… · created {created}',
     rateLastUsed: '{rate} calls per minute · last used {last}',
+    rateNotUsed: '{rate} calls per minute · not used yet',
+    callsTotal: { one: '{count} call in total', other: '{count} calls in total' },
     editAccess: 'Edit access',
     rotate: 'Rotate',
     revoke: 'Revoke',

@@ -358,7 +358,6 @@ export const integrationsArea = {
   }),
   integKeys: defineNamespace({
     loading: 'Henter API-nøkler',
-    notUsedYet: 'ikke brukt ennå',
     createdToday: 'i dag av deg',
     rotatedToday: 'rotert i dag av deg',
     unknownDate: 'ukjent dato',
@@ -398,6 +397,8 @@ export const integrationsArea = {
     revokedStatus: 'Trukket tilbake',
     prefixCreated: '{prefix}… · laget {created}',
     rateLastUsed: '{rate} kall per minutt · sist brukt {last}',
+    rateNotUsed: '{rate} kall per minutt · ikke brukt ennå',
+    callsTotal: { one: '{count} kall totalt', other: '{count} kall totalt' },
     editAccess: 'Endre tilgang',
     rotate: 'Roter',
     revoke: 'Trekk tilbake',
