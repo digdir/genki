@@ -35,6 +35,7 @@ export const models = defineNamespace({
   operations: 'Kall den tar imot',
   operationChat: 'Samtale',
   operationDecide: 'Avgjørelser',
+  operationInTest: 'i test',
   inUse: '{model} er i bruk',
   edit: 'Rediger',
   editModel: 'Rediger {model}',

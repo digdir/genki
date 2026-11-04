@@ -27,6 +27,7 @@ import type {
   SupportSessionRow,
   RunningTask,
   EffectiveSettings,
+  OperationKind,
   OperationsOverview,
   SettingOverrides,
   SettingsGrid,
@@ -266,6 +267,8 @@ export const createApiClient = ({
     },
     listModels: async (signal?: AbortSignal) =>
       (await call<{ data: OperatorModel[] }>('GET', '/operator/models', { signal })).data,
+    operationKinds: async (signal?: AbortSignal) =>
+      (await call<{ data: OperationKind[] }>('GET', '/operator/operation-kinds', { signal })).data,
     refreshModels: (reason: string) =>
       call<RefreshResult>('POST', '/operator/models/refresh', {
         headers: { 'change-reason': reason },
