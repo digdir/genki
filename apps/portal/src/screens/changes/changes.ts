@@ -36,6 +36,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.operations.descriptor-upload': 'changes.descriptorUpload',
   'platform.operations.descriptor-status': 'changes.descriptorStatus',
   'platform.operations.descriptor-withdraw': 'changes.descriptorWithdraw',
+  'platform.operations.descriptor-fixture': 'changes.descriptorFixture',
   'platform.task.review.approve': 'changes.taskReviewApprove',
   'platform.task.review.edit': 'changes.taskReviewEdit',
   'platform.clients.remove': 'changes.clientsRemove',

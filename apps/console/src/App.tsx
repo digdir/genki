@@ -10,6 +10,7 @@ import { Catalog } from './screens/Catalog';
 import { BuildingBlocks } from './screens/BuildingBlocks';
 import { Diagnostics } from './screens/Diagnostics';
 import { Models } from './screens/Models';
+import { ModelOperations } from './screens/ModelOperations';
 import { Onboarding } from './screens/Onboarding';
 import { Operations } from './screens/Operations';
 import { PlatformDefaults } from './screens/PlatformDefaults';
@@ -228,6 +229,7 @@ export const App = ({ auth, fetch: send, baseUrl = '/api', live = false }: Props
     ),
     '/onboarding': () => <Onboarding api={api} live={live} />,
     '/models': () => <Models api={api} />,
+    '/model-operations': () => <ModelOperations api={api} />,
     '/catalog': () => <Catalog api={api} tab={params.get('tab') ?? undefined} />,
     '/policies': () => <Policies api={api} tab={params.get('tab') ?? undefined} />,
     '/building-blocks': () => (

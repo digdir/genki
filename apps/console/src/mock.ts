@@ -18,6 +18,7 @@ import {
   exampleTracing,
 } from './example-data';
 import { fixtureSchemaFetch } from '@genai/schema-forms/fixtures';
+import { operationsMock } from './screens/models/operations-mock';
 import { queueMock } from './screens/queue/mock';
 import { searchEnginesMock } from './screens/search-engines/mock';
 import { translator } from './i18n';
@@ -107,7 +108,7 @@ export const exampleOperationKinds: OperationKind[] = [
     kind: 'generate-image',
     builtIn: false,
     maturity: 'test',
-    descriptors: [{ id: 'foundry-openai/generate-image@1', status: 'review' }],
+    descriptors: [{ id: 'openai/generate-image@1', status: 'review', protocol: 'openai-chat' }],
   },
 ];
 
@@ -619,6 +620,7 @@ export const mockFetch = (
   };
 
   const decisions = queueMock(record);
+  const operations = operationsMock(() => current);
   const endpointKey = '/operator/catalog/entries?kind=model-endpoint';
   const modelRoute = (
     path: string,
@@ -797,6 +799,8 @@ export const mockFetch = (
     }
     const schemaReply = method === 'GET' ? schemaFixtures(path) : undefined;
     if (schemaReply !== undefined) return json(schemaReply);
+    const operationReply = operations(path, method, reason, body);
+    if (operationReply) return operationReply;
     const queueReply = decisions(path, method, reason, body);
     if (queueReply) return queueReply;
     const modelReply = modelRoute(path, method, reason, body);
@@ -1033,12 +1037,6 @@ export const mockFetch = (
         : notFound();
     }
     if (path === '/operator/models' && method === 'GET') return json({ data: current });
-    if (path === '/operator/operation-kinds' && method === 'GET')
-      return json({
-        environment: 'test',
-        governs: 'descriptor-calls',
-        data: exampleOperationKinds,
-      });
     if (path === '/operator/models/refresh' && method === 'POST')
       return reason ? json(refresh) : json({ error: 'a change reason is required' }, 400);
     if (path.startsWith('/operator/models/') && method === 'PATCH') {

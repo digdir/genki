@@ -16,11 +16,12 @@ import {
   TableHead,
   TableHeaderCell,
   TableRow,
-  Textarea,
+  Tag,
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
-import { useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useAsync } from '../../hooks';
 import { ApiError, type ApiClient } from '../../api';
 import { useFormat } from '@genai/i18n/react';
 import { useT, type PlainKey, type T } from '../../i18n';
@@ -28,6 +29,7 @@ import { useTenantNames } from '../../tenant-names';
 import type {
   Capability,
   ConfigEntry,
+  EndpointProcessorRecord,
   ModelPrice,
   ModelProtocol,
   OperatorModel,
@@ -43,7 +45,8 @@ import {
   VisuallyHidden,
   type InUse,
 } from '../../ui';
-import { minimumReasonLength } from '../../reason';
+import { ProcessorRecordForm } from './ProcessorRecord';
+import { reasonError, ReasonField } from './reason-field';
 
 export const protocolLabel: Record<ModelProtocol, PlainKey> = {
   'openai-chat': 'endpoints.protocolOpenai',
@@ -69,37 +72,6 @@ const problemText = (error: unknown, fallback: string) => {
   if (!(error instanceof ApiError)) return fallback;
   const details = (error.problem?.errors ?? []).map((e) => e.message).join('. ');
   return [error.problem?.title, details].filter(Boolean).join(': ') || fallback;
-};
-
-const reasonError = (reason: string, t: T) =>
-  reason.trim().length < minimumReasonLength
-    ? t('endpoints.reasonError', { min: minimumReasonLength })
-    : undefined;
-
-const ReasonField = ({
-  value,
-  error,
-  onChange,
-}: {
-  value: string;
-  error: string | undefined;
-  onChange: (value: string) => void;
-}) => {
-  const t = useT();
-  const id = useId();
-  return (
-    <div className="field">
-      <Label htmlFor={id}>{t('common.reason')}</Label>
-      <Textarea
-        id={id}
-        rows={2}
-        value={value}
-        aria-invalid={error ? true : undefined}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {error ? <ValidationMessage>{error}</ValidationMessage> : null}
-    </div>
-  );
 };
 
 const specOf = (entry: ConfigEntry, t: T) => {
@@ -531,6 +503,7 @@ export const Endpoints = ({
   onAdded,
   onRemoved,
   onAddModel,
+  onProcessorSaved,
 }: {
   api: ApiClient;
   endpoints: ConfigEntry[];
@@ -538,11 +511,16 @@ export const Endpoints = ({
   onAdded: () => void;
   onRemoved: (id: string) => void;
   onAddModel: (endpoint: string) => void;
+  onProcessorSaved: (id: string) => void;
 }) => {
   const t = useT();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | undefined>();
   const [inUse, setInUse] = useState<InUse[] | undefined>();
+  const [recording, setRecording] = useState<string | undefined>();
+  const [records, reloadRecords] = useAsync((signal) => api.processorRecords(signal), [api]);
+  const recordOf = (id: string): EndpointProcessorRecord | undefined =>
+    records.status === 'ready' ? records.data.find((r) => r.endpoint === id) : undefined;
   const tenantName = useTenantNames(api);
 
   const remove = async (reason: string) => {
@@ -582,6 +560,7 @@ export const Endpoints = ({
                 <TableHeaderCell scope="col">{t('endpoints.colProtocol')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('endpoints.colSecret')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('endpoints.colModels')}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t('endpoints.colProcessor')}</TableHeaderCell>
                 <TableHeaderCell scope="col">
                   <VisuallyHidden>{t('endpoints.colActions')}</VisuallyHidden>
                 </TableHeaderCell>
@@ -602,7 +581,37 @@ export const Endpoints = ({
                     <TableCell>{spec.secret ?? t('endpoints.noSecret')}</TableCell>
                     <TableCell>{models.filter((m) => m.endpoint === e.id).length}</TableCell>
                     <TableCell>
+                      {records.status === 'ready' ? (
+                        <span className="two-line">
+                          {recordOf(e.id)?.record ? (
+                            <Tag data-size="sm" data-color="success">
+                              {t('endpoints.processorRecorded')}
+                            </Tag>
+                          ) : (
+                            <Tag data-size="sm" data-color="warning">
+                              {t('endpoints.processorMissing')}
+                            </Tag>
+                          )}
+                          <span className="meta">
+                            {recordOf(e.id)?.record
+                              ? t('endpoints.processorRecordedHint')
+                              : t('endpoints.processorMissingHint')}
+                          </span>
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
                       <span className="row-actions">
+                        <Button
+                          variant="tertiary"
+                          data-size="sm"
+                          aria-label={t('endpoints.processorOpenFor', { id: e.id })}
+                          onClick={() => setRecording(e.id)}
+                        >
+                          {recordOf(e.id)?.record
+                            ? t('endpoints.processorChange')
+                            : t('endpoints.processorAdd')}
+                        </Button>
                         <Button
                           variant="tertiary"
                           data-size="sm"
@@ -631,6 +640,19 @@ export const Endpoints = ({
           </Table>
         </TableRegion>
       )}
+      {recording ? (
+        <ProcessorRecordForm
+          api={api}
+          endpoint={recording}
+          current={recordOf(recording)}
+          onClose={() => setRecording(undefined)}
+          onSaved={() => {
+            setRecording(undefined);
+            onProcessorSaved(recording);
+            reloadRecords();
+          }}
+        />
+      ) : null}
       {adding ? (
         <EndpointForm
           api={api}

@@ -45,9 +45,26 @@ describe('operation kinds in the model form', () => {
     expect(toggleOperation(['chat'], 'chat', true)).toEqual(['chat']);
   });
 
-  it('labels built-in kinds in the language and shows other kinds by name', () => {
+  it('labels built-in and well-known kinds in the language and shows other kinds by name', () => {
     expect(operationName('decide', translator('nb'))).toBe('Avgjørelser');
     expect(operationName('decide', translator('en'))).toBe('Decisions');
-    expect(operationName('generate-image', translator('en'))).toBe('generate-image');
+    expect(operationName('generate-image', translator('nb'))).toBe('Bildegenerering');
+    expect(operationName('generate-image', translator('en'))).toBe('Image generation');
+    expect(operationName('summarize-table', translator('en'))).toBe('summarize-table');
+    expect(operationName('toString', translator('en'))).toBe('toString');
+  });
+
+  it('a descriptor kind is offered only where one of its descriptors speaks the model protocol', () => {
+    expect(
+      operationChoices(exampleOperationKinds, ['chat'], 'openai-chat').map((c) => c.kind),
+    ).toEqual(['chat', 'decide', 'generate-image']);
+    expect(
+      operationChoices(exampleOperationKinds, ['chat'], 'anthropic-messages').map((c) => c.kind),
+    ).toEqual(['chat', 'decide']);
+    expect(
+      operationChoices(exampleOperationKinds, ['generate-image'], 'anthropic-messages').map(
+        (c) => c.kind,
+      ),
+    ).toContain('generate-image');
   });
 });

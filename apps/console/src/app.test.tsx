@@ -363,10 +363,10 @@ describe('modeller', () => {
 
     const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
     await screen.findAllByText('i test');
-    expect(box('generate-image i test for gpt-4.1').checked).toBe(false);
+    expect(box('Bildegenerering i test for gpt-4.1').checked).toBe(false);
     expect(box('Samtale for gpt-image-1.5').checked).toBe(false);
     expect(box('Avgjørelser for gpt-image-1.5').checked).toBe(false);
-    expect(box('generate-image i test for gpt-image-1.5').checked).toBe(true);
+    expect(box('Bildegenerering i test for gpt-image-1.5').checked).toBe(true);
   });
 
   it('a kind the model offers is kept when another kind is ticked', async () => {
@@ -399,11 +399,11 @@ describe('modeller', () => {
     await modelTable();
 
     const offered = screen.getByRole('checkbox', {
-      name: 'generate-image for gpt-image-1.5',
+      name: 'Bildegenerering for gpt-image-1.5',
     }) as HTMLInputElement;
     expect(offered.checked).toBe(true);
     expect(offered.disabled).toBe(true);
-    expect(screen.queryByRole('checkbox', { name: 'generate-image for gpt-4.1' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Bildegenerering for gpt-4.1' })).toBeNull();
   });
 
   it('an uploaded kind appears without a console change', async () => {
@@ -420,7 +420,13 @@ describe('modeller', () => {
               kind: 'transcribe-audio',
               builtIn: false,
               maturity: 'production',
-              descriptors: [{ id: 'foundry-openai/transcribe-audio@1', status: 'described' }],
+              descriptors: [
+                {
+                  id: 'openai/transcribe-audio@1',
+                  status: 'described',
+                  protocol: 'openai-chat',
+                },
+              ],
             },
           ],
         });
@@ -428,8 +434,50 @@ describe('modeller', () => {
     );
     await modelTable();
 
-    await screen.findAllByText('transcribe-audio');
-    expect(screen.getByRole('checkbox', { name: 'transcribe-audio for gpt-4.1' })).toBeTruthy();
+    await screen.findAllByText('Transkribering');
+    expect(screen.getByRole('checkbox', { name: 'Transkribering for gpt-4.1' })).toBeTruthy();
+  });
+
+  it('a descriptor kind is offered on a model only where one of its descriptors speaks the model protocol', async () => {
+    await signedIn('#/models');
+    await modelTable();
+
+    await screen.findAllByText('i test');
+    expect(
+      screen.getByRole('checkbox', { name: 'Bildegenerering i test for gpt-4.1' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Bildegenerering i test for claude-sonnet-5-5' }),
+    ).toBeNull();
+    expect(
+      screen.getByRole('checkbox', { name: 'Avgjørelser for claude-sonnet-5-5' }),
+    ).toBeTruthy();
+  });
+
+  it('a refused model change is shown next to the control it concerns', async () => {
+    await signedIn('#/models', [operatorRole], async (input, init) =>
+      init?.method === 'PATCH'
+        ? Response.json(
+            {
+              title: 'The change is invalid',
+              status: 422,
+              errors: [
+                { path: 'operations', message: 'no descriptor defines the classify operation' },
+              ],
+            },
+            { status: 422 },
+          )
+        : mockFetch()(input, init),
+    );
+    await modelTable();
+    giveReason();
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Avgjørelser for gpt-4o-2M-tps' }));
+    const message = await screen.findByText(/no descriptor defines the classify operation/);
+    const fieldset = message.closest('fieldset') as HTMLElement;
+    expect(
+      within(fieldset).getByRole('checkbox', { name: 'Avgjørelser for gpt-4o-2M-tps' }),
+    ).toBeTruthy();
   });
 
   it('retires a model only through a dialog that says services pause instead of switching', async () => {

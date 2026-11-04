@@ -108,9 +108,21 @@ const messageOf = async (response: Response) => {
   return `the provider answered ${response.status}`;
 };
 
+/** One call as a fixture records it: the masked typed input, the wire request and the raw answer. */
+export interface WireExchange {
+  deployment: string;
+  input: unknown;
+  request: { method: string; path: string; query?: Record<string, string>; body: unknown };
+  response: { status: number; body: unknown };
+  result: unknown;
+  usage: Usage;
+  dropped: number;
+}
+
 export interface SendOptions {
   signal?: AbortSignal;
   fail?: (status: number | undefined, message: string) => Error;
+  observe?: (exchange: WireExchange) => void;
 }
 
 /** Sends a typed input that the gate has already held to its shape, and maps the answer back. */
@@ -147,7 +159,22 @@ export const describedSend = async <Res = unknown>(
   } catch {
     throw fail(undefined, `the provider did not answer ${descriptor.id} with JSON`);
   }
-  return wireAnswer<Res>(descriptor, raw, input, deployment);
+  const answer = wireAnswer<Res>(descriptor, raw, input, deployment);
+  options.observe?.({
+    deployment,
+    input,
+    request: {
+      method: request.method,
+      path: request.path,
+      ...(Object.keys(request.query).length ? { query: request.query } : {}),
+      body: request.body,
+    },
+    response: { status: response.status, body: raw },
+    result: answer.result,
+    usage: answer.usage,
+    dropped: answer.dropped,
+  });
+  return answer;
 };
 
 export interface DescribedCall {
@@ -160,6 +187,7 @@ export interface DescribedCall {
   priced?: (usage: Usage) => Usage;
   provenance?: () => ResourceProvenance | undefined;
   fail?: SendOptions['fail'];
+  observe?: SendOptions['observe'];
 }
 
 /** The one executor: a descriptor call through the gate, held to the descriptor's own shapes. */
@@ -184,6 +212,7 @@ export const describedCall = async <Res = unknown>(
       answered = await describedSend<Res>(descriptor, call.endpoint, call.deployment, sent, {
         signal: call.ctx.signal,
         ...(call.fail ? { fail: call.fail } : {}),
+        ...(call.observe ? { observe: call.observe } : {}),
       });
       return answered.result;
     },

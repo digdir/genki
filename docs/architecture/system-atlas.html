@@ -1657,6 +1657,7 @@
             responsibilities: [
               'Tenant and shared-service administration',
               'Model classification by residency and capability',
+              'New kinds of model API from descriptors (upload, try with made-up data, record fixtures from tries, approve or withdraw), kind maturity and processor records (ADR 0047)',
               'Operations and support sessions',
             ],
             files: [
@@ -2153,7 +2154,7 @@
               'Run a published service over a document set, with a cost estimate, a cost cap and a retry list',
               'Keep projects of document selections, and subscriptions that run a service on new documents under a monthly cost cap',
               "Let operators set the maturity of operation kinds and the processor records of model endpoints, and refuse a service's call-operation step at publish unless both allow it (ADR 0047)",
-              'Let operators upload operation descriptors with their fixtures, checked by the loader rules and operation@1 before they are stored, and move or withdraw them, audited (ADR 0047)',
+              'Let operators upload operation descriptors with their fixtures, checked by the loader rules and operation@1 before they are stored, record fixtures from their synthetic tries in test, and move or withdraw them, audited (ADR 0047)',
             ],
             files: [
               'apps/api/src/main.ts',
@@ -6706,6 +6707,7 @@
               'Map typed input to the wire request and the wire answer back, without code',
               "Run a descriptor call through the gate with the endpoint's credential and egress guard",
               'Prove each descriptor against recorded fixtures (operation@1)',
+              'Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture',
             ],
             files: [
               'packages/operations/src/descriptor.ts',

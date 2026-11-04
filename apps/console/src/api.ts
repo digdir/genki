@@ -27,8 +27,18 @@ import type {
   SupportSessionRow,
   RunningTask,
   EffectiveSettings,
+  DescriptorDetail,
+  DescriptorStatus,
+  DescriptorUpload,
+  EndpointProcessorRecord,
+  Maturity,
+  OperationDescriptor,
   OperationKind,
+  OperationKinds,
   OperationsOverview,
+  OperationTryResult,
+  ProcessorRecord,
+  WireExchange,
   SettingOverrides,
   SettingsGrid,
   TaskTimeline,
@@ -269,6 +279,71 @@ export const createApiClient = ({
       (await call<{ data: OperatorModel[] }>('GET', '/operator/models', { signal })).data,
     operationKinds: async (signal?: AbortSignal) =>
       (await call<{ data: OperationKind[] }>('GET', '/operator/operation-kinds', { signal })).data,
+    operationKindsOverview: (signal?: AbortSignal) =>
+      call<OperationKinds>('GET', '/operator/operation-kinds', { signal }),
+    setKindMaturity: (kind: string, maturity: Maturity, reason: string) =>
+      call<OperationKind>(
+        'POST',
+        `/operator/operation-kinds/${encodeURIComponent(kind)}/maturity`,
+        {
+          body: { maturity },
+          headers: { 'change-reason': reason },
+        },
+      ),
+    operationDescriptors: async (signal?: AbortSignal) =>
+      (
+        await call<{ data: OperationDescriptor[] }>('GET', '/operator/operation-descriptors', {
+          signal,
+        })
+      ).data,
+    operationDescriptor: (id: string, signal?: AbortSignal) =>
+      call<DescriptorDetail>('GET', `/operator/operation-descriptors/${id}`, { signal }),
+    uploadDescriptor: (id: string, upload: DescriptorUpload, reason: string) =>
+      call<OperationDescriptor>('PUT', `/operator/operation-descriptors/${id}`, {
+        body: upload,
+        headers: { 'change-reason': reason },
+      }),
+    setDescriptorStatus: (id: string, status: Exclude<DescriptorStatus, 'typed'>, reason: string) =>
+      call<OperationDescriptor>('POST', `/operator/operation-descriptors/${id}/status`, {
+        body: { status },
+        headers: { 'change-reason': reason },
+      }),
+    withdrawDescriptor: (id: string, reason: string) =>
+      call<unknown>('DELETE', `/operator/operation-descriptors/${id}`, {
+        headers: { 'change-reason': reason },
+      }),
+    tryOperation: (id: string, model: string, input: unknown, reason: string) =>
+      call<OperationTryResult>('POST', `/operator/operations/${id}/try`, {
+        body: { model, input, synthetic: true },
+        headers: { 'change-reason': reason },
+      }),
+    recordFixture: (
+      id: string,
+      fixture: { task: string; name: string; exchange: WireExchange },
+      reason: string,
+    ) =>
+      call<OperationDescriptor>('POST', `/operator/operation-descriptors/${id}/fixtures`, {
+        body: fixture,
+        headers: { 'change-reason': reason },
+      }),
+    processorRecords: async (signal?: AbortSignal) =>
+      (
+        await call<{ data: EndpointProcessorRecord[] }>('GET', '/operator/processor-records', {
+          signal,
+        })
+      ).data,
+    saveProcessorRecord: (endpoint: string, record: ProcessorRecord, reason: string) =>
+      call<EndpointProcessorRecord>(
+        'PUT',
+        `/operator/model-endpoints/${encodeURIComponent(endpoint)}/processor-record`,
+        { body: record, headers: { 'change-reason': reason } },
+      ),
+    removeProcessorRecord: (endpoint: string, reason: string) =>
+      call<unknown>(
+        'DELETE',
+        `/operator/model-endpoints/${encodeURIComponent(endpoint)}/processor-record`,
+        { headers: { 'change-reason': reason } },
+      ),
     refreshModels: (reason: string) =>
       call<RefreshResult>('POST', '/operator/models/refresh', {
         headers: { 'change-reason': reason },

@@ -453,6 +453,14 @@ export const operationErrors = defineNamespace({
   descriptorBundled: '{id} følger med Genki; last opp en ny versjon i stedet',
   descriptorUploadTooLarge: 'en opplasting er på høyst {size} KiB',
   descriptorDescribedInUse: '{id} er beskrevet og kan være i bruk; last opp en ny versjon i stedet',
+  descriptorNoFixturesYet:
+    '{id} har ingen testtilfeller ennå; lagre ett fra et forsøk før den beskrives',
+  fixturesFromTriesInTest: 'testtilfeller lagres fra forsøk, bare i test',
+  descriptorBundledFixtures: '{id} følger med Genki; testtilfellene endres gjennom en pull request',
+  notAFinishedTry: '{task} er ikke et fullført forsøk med {id}',
+  exchangeNotTheTry: 'utvekslingen er ikke den dette forsøket sendte og fikk',
+  fixtureNameTaken: '{id} har allerede et testtilfelle som heter {name}',
+  descriptorFixturesAtMost: 'en beskrivelse har høyst {maxDescriptorFixtures} testtilfeller',
   bodyNotJson: 'innholdet er ikke JSON',
   uploadStatusValues:
     'status er review eller described; typed betyr at Genki har egen kode for operasjonen',

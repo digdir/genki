@@ -63,6 +63,14 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-04: fixtures recorded from tries
+
+- `PUT /operator/operation-descriptors/{id}` takes 0 to 20 fixtures; `fixtures` may be left out. An upload without fixtures stays in review, and `POST /operator/operation-descriptors/{id}/status` with `described` answers `422` (`errors[0].path: "fixtures"`) until it has fixtures that pass `operation@1`.
+- `POST /operator/operations/{descriptor}/try` also answers `exchange`: `{ deployment, input, request: { method, path, query?, body }, response: { status, body }, result, usage, dropped }`, with the input masked and media still encoded. The field is additive.
+- `POST /operator/operation-descriptors/{id}/fixtures` with `{ task, name, exchange }` and `change-reason` (operators, test only, audited) records a try as a fixture of an upload in review. It answers `201` (`step: "fixture-recorded"`), `403` outside test, `409` for a bundled descriptor or a described upload, and `422` when the task is not a finished try of the descriptor, the exchange is not the one it answered, the name is taken, or `operation@1` fails.
+- `GET /operator/operation-descriptors/{id}` adds `usedBy: [{ tenant, service, version }]`, the published services whose step flows call the descriptor, and `input`, its typed input shape.
+- Each descriptor in `GET /operator/operation-kinds` adds `protocol`.
+
 ### 2026-11-04: media output from operations
 
 - A descriptor marks an output field as media (`{ media: <type/subtype> }`). The gate counts its bytes (`mediaBytes` in `kernel.gate.call`), refuses it whole over the cap for its type (`refusal: "media"`), and keeps it as a blob of the run; the run result, later steps and the timeline hold a reference, never the bytes. Which types are kept and their caps are deployment configuration (`GENAI_MEDIA_OUTPUT_TYPES`, `GENAI_MEDIA_OUTPUT_MAX_BYTES`), see [Operations](operations.md).

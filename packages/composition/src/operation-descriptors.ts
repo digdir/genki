@@ -33,7 +33,7 @@ export interface UploadProblem {
 
 export const DescriptorUploadBody = z.strictObject({
   descriptor: z.union([z.string().min(1), z.record(z.string(), z.unknown())]),
-  fixtures: z.array(OperationFixtureSpec).min(1).max(maxDescriptorFixtures),
+  fixtures: z.array(OperationFixtureSpec).max(maxDescriptorFixtures).default([]),
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -62,7 +62,7 @@ export type UploadCheck =
   | { ok: true; upload: UploadedDescriptor; descriptor: Descriptor; checks: number }
   | { ok: false; problems: UploadProblem[] };
 
-/** The loader rules and `operation@1` with the masking probe, run on an upload before it is stored. */
+/** The loader rules, and `operation@1` with the masking probe on any fixtures, run on an upload before it is stored. */
 export const checkDescriptorUpload = async (id: string, body: unknown): Promise<UploadCheck> => {
   const refuse = (problems: UploadProblem[]): UploadCheck => ({ ok: false, problems });
   const parsed = DescriptorUploadBody.safeParse(body);
@@ -116,6 +116,7 @@ export const checkDescriptorUpload = async (id: string, body: unknown): Promise<
     if (!(error instanceof DescriptorError)) throw error;
     return refuse(error.message.split('; ').map((message) => ({ path: 'descriptor', message })));
   }
+  if (fixtures.length === 0) return { ok: true, upload, descriptor, checks: 0 };
   const results = await operationContract(descriptor, fixtures);
   const failed = contractFailures(results);
   if (failed.length > 0)
