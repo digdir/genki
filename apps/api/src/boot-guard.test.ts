@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bootProblems } from './boot-guard.js';
+import { bootProblems, knowledgeServerProblems } from './boot-guard.js';
 
 const real = {
   ANSATTPORTEN_ISSUER: 'https://ansattporten.no',
@@ -71,6 +71,26 @@ describe('booting the API', () => {
     expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
   });
 
+  it('refuses to start when LOCKDOWN_USER_GROUPS lists something that is not a group id', () => {
+    const userGroup = '789b5488-39ec-47b3-9217-840e5cd957fd';
+
+    expect(
+      bootProblems({ ...real, LOCKDOWN_USER_GROUPS: `${userGroup}, genki-test-users` }),
+    ).toEqual([expect.stringContaining('genki-test-users')]);
+    expect(bootProblems({ ...real, LOCKDOWN_USER_GROUPS: userGroup })).toEqual([]);
+  });
+
+  it('startup refuses lockdown user groups without a client allowlist', () => {
+    const locked = {
+      ...real,
+      GENAI_LOCKDOWN: 'true',
+      LOCKDOWN_USER_GROUPS: '789b5488-39ec-47b3-9217-840e5cd957fd',
+    };
+
+    expect(bootProblems(locked)).toEqual([expect.stringContaining('OPERATOR_CLIENT_IDS')]);
+    expect(bootProblems({ ...locked, OPERATOR_CLIENT_IDS: 'console,portal' })).toEqual([]);
+  });
+
   it('startup refuses bare OPERATOR_SUBJECTS outside dev mode', () => {
     const pair = 'https://test.ansattporten.no|subject-1';
 
@@ -96,6 +116,14 @@ describe('booting the API', () => {
     expect(bootProblems({ ...real, OPERATOR_SUBJECTS: pair })).toEqual([
       expect.stringContaining('OPERATOR_CLIENT_IDS'),
     ]);
+  });
+
+  it('sends prompt content to the trace sink only in dev mode', () => {
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'true' })).toEqual([
+      expect.stringContaining('TRACES_CONTENT'),
+    ]);
+    expect(bootProblems({ ...real, TRACES_CONTENT: 'false' })).toEqual([]);
+    expect(bootProblems({ ...dev, TRACES_CONTENT: 'true' })).toEqual([]);
   });
 
   it('names every missing setting when none is set', () => {
@@ -128,5 +156,19 @@ describe('booting the API', () => {
       expect(bootProblems({ ...flag, ...dev, ...real })).toEqual([
         expect.stringContaining('GENAI_DEV_MODE'),
       ]);
+  });
+
+  it('an endpoint set to `knowledge` without a knowledge server stops the API outside development mode', () => {
+    const catalog = {
+      endpoints: { 'knowledge-pg': { engine: 'pgvector', options: { connection: 'knowledge' } } },
+      datasets: [],
+    };
+    expect(knowledgeServerProblems(real, catalog)).toEqual([
+      expect.stringContaining('KNOWLEDGE_PGHOST'),
+    ]);
+    expect(
+      knowledgeServerProblems({ ...real, KNOWLEDGE_PGHOST: 'knowledge.example' }, catalog),
+    ).toEqual([]);
+    expect(knowledgeServerProblems(real, { endpoints: {}, datasets: [] })).toEqual([]);
   });
 });

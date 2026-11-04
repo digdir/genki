@@ -1,5 +1,12 @@
+import { withModelAdmission } from '@genai/composition';
 import type { Evaluator } from '@genai/eval';
-import { envSecrets, secretRefPattern, type PortContext, type SecretResolver } from '@genai/kernel';
+import {
+  envSecrets,
+  secretRefPattern,
+  type Gate,
+  type PortContext,
+  type SecretResolver,
+} from '@genai/kernel';
 import {
   declaredHosts,
   declaredSecrets,
@@ -192,12 +199,20 @@ export interface ExternalTargetOptions {
   secrets: SecretResolver;
   egress?: EgressOptions;
   tenant: string;
+  gate: Gate;
 }
 
-const contextFor = (tenant: string, signal: AbortSignal): PortContext => ({
+const pluginVerificationSubject = 'plugin-verification';
+
+const contextFor = (tenant: string, plugin: string, signal: AbortSignal): PortContext => ({
   tenant,
-  principal: { kind: 'operator', issuer: 'platform', subject: 'contract-tests', tenant },
-  task: 'contract',
+  principal: withModelAdmission({
+    kind: 'agency-system',
+    issuer: 'platform',
+    subject: pluginVerificationSubject,
+    tenant,
+  }),
+  task: `${pluginVerificationSubject}:${plugin}`,
   signal,
   meter: async () => undefined,
 });
@@ -268,6 +283,11 @@ export const externalTarget =
     const secrets: SecretResolver = endpoint.auth
       ? declaredSecrets(manifest, options.secrets)
       : envSecrets({ NO_KEY: 'none' });
+    const egress = new EgressGuard(options.egress ?? {}).fetch(
+      manifestAllow(manifest, endpoint.baseURL),
+    );
+    const gate: Gate = { ...options.gate, egress: () => egress };
+    const contextOf = (signal: AbortSignal) => contextFor(options.tenant, manifest.id, signal);
     if (manifest.kind === 'model') {
       const adapter = options.models.find((a) => a.protocol === endpoint.protocol);
       if (!adapter) return undefined;
@@ -299,11 +319,12 @@ export const externalTarget =
               },
               adapters: [adapter],
               secrets,
+              gate,
               maxRetries: 0,
               timeoutMs: 30_000,
             });
             const metered: ReturnType<ModelContractSubject['open']>['metered'] = [];
-            const ctx = contextFor(options.tenant, signal);
+            const ctx = contextOf(signal);
             ctx.meter = async (usage, model) => {
               metered.push({ usage, ...(model ? { model } : {}) });
             };
@@ -338,11 +359,9 @@ export const externalTarget =
               },
               adapters: [adapter],
               secrets,
+              gate,
               timeoutMs: 30_000,
-            }).open(
-              { kind: 'reranker', id: 'contract/reranker' },
-              contextFor(options.tenant, signal),
-            ),
+            }).open({ kind: 'reranker', id: 'contract/reranker' }, contextOf(signal)),
         } satisfies RerankContractSubject,
       });
     }
@@ -411,10 +430,7 @@ export const externalTarget =
         subject: {
           query: endpoint.query ?? 'test',
           open: (signal = new AbortController().signal) =>
-            router.open(
-              { kind: 'dataset', id: 'contract/search' },
-              contextFor(options.tenant, signal),
-            ),
+            router.open({ kind: 'dataset', id: 'contract/search' }, contextOf(signal)),
         } satisfies SearchEndpointSubject,
       });
     }

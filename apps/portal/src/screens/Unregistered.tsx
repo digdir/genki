@@ -30,7 +30,7 @@ import { translator, useT, type T } from '../i18n';
 import type { Organisation } from '../types';
 import './access.css';
 
-export const tenantNotRegistered = 'urn:genai:problem:tenant-not-registered';
+export { tenantNotRegistered } from '../problem-types';
 
 const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const purposeMinimum = 20;

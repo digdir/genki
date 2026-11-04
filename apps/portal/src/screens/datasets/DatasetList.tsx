@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -8,7 +9,7 @@ import {
   Textfield,
 } from '@digdir/designsystemet-react';
 import { useState } from 'react';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import {
   sourceKeys,
   statusColors,
@@ -82,7 +83,7 @@ export const DatasetList = ({
         </div>
         {canCreate ? (
           <Button variant="primary" onClick={() => navigate('/datasets/new')}>
-            <Icon d={icons.plus} />
+            <Icon icon={PlusIcon} />
             {t('datasets.new')}
           </Button>
         ) : null}

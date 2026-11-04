@@ -1,0 +1,44 @@
+id: admin-mcp
+plane: consumers
+name: Admin MCP
+note: Coding agents work on genki
+icon: chart
+color: '#f2b84b'
+status: App
+packages:
+  - '@genai/admin-mcp'
+summary: A local MCP server that lets coding agents list, read, validate, publish and try services through the API, as the person who logged in.
+description:
+  Runs on the developer's machine over stdio and calls the public API only (ADR 0046). The
+  person logs in through the browser with Ansattporten, PKCE and a localhost callback, and the token
+  stays in memory. Tools list services, read a definition as YAML, validate and publish it with a
+  change reason, run the playground with a compared setup, and list and read runs with their
+  timelines. Secrets, keys, rights and operator routes are left out.
+responsibilities:
+  - MCP tools over the definition, playground and task routes
+  - Browser login with PKCE and a localhost callback
+  - Validate before publish, and a required change reason
+files:
+  - apps/admin-mcp/src/main.ts
+  - apps/admin-mcp/src/tools.ts
+  - apps/admin-mcp/src/login.ts
+  - apps/admin-mcp/src/protocol.ts
+input: Tool calls from a coding agent
+output: Requests to the API as the person who logged in
+replaces: []
+edges:
+  - to: api
+    label: 'Definitions, playground runs and run timelines'
+    kind: http
+    target: http
+    witness:
+      file: apps/admin-mcp/src/tools.ts
+      contains: /definitions/validate
+  - to: ansattporten
+    label: Browser login with PKCE
+    kind: http
+    target: http
+    witness:
+      file: apps/admin-mcp/src/login.ts
+      contains: code_challenge
+keywords: admin mcp coding agent claude code copilot publish validate playground timeline

@@ -1,9 +1,10 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { secretRefPattern } from '@genai/kernel';
+import { descriptorIdPattern } from '@genai/operations';
 import type { ModelAdapter } from './adapter.js';
 import { parameterRules } from './parameters.js';
-import { capabilities, residencies } from './port.js';
+import { capabilities, defaultOperations, operationKindPattern, residencies } from './port.js';
 
 const id = z.string().regex(/^[a-z0-9][a-z0-9._/-]*$/);
 const secret = z.string().regex(secretRefPattern, 'must be a secret:// reference');
@@ -37,6 +38,10 @@ const model = z.strictObject({
   family: z.string().min(1).optional(),
   residency: z.enum(residencies),
   capabilities: z.array(z.enum(capabilities)).default([]),
+  operations: z.array(z.string().regex(operationKindPattern)).min(1).default(defaultOperations),
+  descriptors: z
+    .strictObject({ decide: z.string().regex(descriptorIdPattern).optional() })
+    .optional(),
   contextWindow: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),

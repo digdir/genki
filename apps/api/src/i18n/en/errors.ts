@@ -10,6 +10,20 @@ export const catalogErrors = {
   facetsList: 'facets are a list of field names',
   facetsFilter: 'facets must be filter fields too: {missing}',
   runsInside: '{engine} runs inside the platform and takes no {key}',
+  moveWithEngineSwitch:
+    'move a dataset onto the knowledge database with an engine switch, which fills a generation first',
+  generationOfAnother: '{generation} is the generation of another dataset',
+  knowledgeWrittenByWorker: 'knowledge data is written by the worker',
+  knowledgePhrases:
+    'search phrases cannot fill a dataset on the knowledge database until recipes hold them',
+  knowledgeOnePipeline:
+    'a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has {pipelines}',
+  knowledgeChunking:
+    "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
+  knowledgeSourceKind:
+    'a source of kind {kind} cannot fill a dataset on the knowledge database yet',
+  knowledgeBusy: 'the knowledge server is busy, try again',
+  noKnowledgeServer: 'no knowledge server configured',
   onlyPlatformShared: 'only platform endpoints are shared',
   tenantEndpointsModels: 'tenant endpoints list their models explicitly',
   tenantEndpointsAuth: 'tenant endpoints use api-key or bearer',
@@ -170,6 +184,8 @@ export const knowledgeErrors = {
   datasetChangedEngine: 'The dataset has changed since the search engine was put into use.',
   previousNotRestored: 'The previous search engine could not be put back into use',
   pipelineOff: 'the pipeline is turned off',
+  notSendRunBack: 'not allowed to send this run back',
+  onlyJobRunsSentBack: 'only a run that runs as jobs can be sent back',
   datasetGone: 'the dataset is gone',
   parquetOneLocation: 'a Parquet source needs exactly one of url, urls and huggingface',
   parquetGlob: 'must be a .parquet glob',
@@ -199,6 +215,13 @@ export const knowledgeErrors = {
   enrichmentWriteFailed: 'The questions could not be stored',
   enrichmentModelRefused: 'The model cannot be used',
   enrichmentUncounted: 'Model use cannot be counted, so no questions are proposed',
+  jobRunQueuedExists:
+    'a run of {dataset}/{pipeline} already waits for the open one; wait for it or cancel it',
+  jobRunNotSentBack: 'only an ended run that runs as jobs can be sent back',
+  jobRunOpen:
+    '{dataset}/{pipeline} has an open run; wait for it or cancel it before sending this one back',
+  ingestStillEnding:
+    'the last ingest job of {dataset}/{pipeline} is still ending; start the run again in a minute',
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',
@@ -340,6 +363,9 @@ export const qualityErrors = {
   instructionsChanged: 'The instructions in the draft have changed since the suggestion was made.',
   notReleased: 'model {model} is not released yet; it is waiting for the quality matrix',
   modelToTest: 'the model to test is required',
+  descriptorsOperatorsOnly: 'only operators try descriptors in review',
+  descriptorsTestOnly: 'GENAI_ENV is not test',
+  noDescriptor: 'no descriptor {id}',
   modelInUse: 'the model in use is required',
   compareAnother: 'compare against another model',
   modelNotFound: 'Could not find the model',
@@ -419,6 +445,46 @@ export const qualityErrors = {
   noPendingShare: 'no pending share of {skill}',
 } satisfies Translation<typeof source.qualityErrors>;
 
+export const operationErrors = {
+  stepAt: '{at}: {message}',
+  fixedOperation:
+    'the operation and the model are fixed values, not filled in while the service runs',
+  noOperationDescriptor: 'there is no operation descriptor {id}',
+  descriptorInReview:
+    '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
+  kindInTest:
+    'the {operation} operation is in test in this environment; an operator must move it to production before a service can use it',
+  notServiceModel: "the model {modelId} is not one of the service's models",
+  noCatalogueModel: 'there is no model {modelId} in the catalogue',
+  modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  noProcessorRecordForService:
+    'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
+  decideOnlyThroughPurposeCheck:
+    'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+  callOperationNeedsMasking:
+    'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
+  operatorsGovernOperations: 'only operators govern operations',
+  noOperationDescriptors: 'this platform has no operation descriptors',
+  noDescriptorForKind: 'no descriptor describes {kind}',
+  maturityValues: 'maturity is test or production',
+  noProcessorRecord: '{id} has no processor record',
+  noModelEndpoint: 'no model endpoint {id}',
+  operatorsManageDescriptors: 'only operators manage operation descriptors',
+  descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
+  descriptorUploadTooLarge: 'an upload is at most {size} KiB',
+  descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  bodyNotJson: 'the body is not JSON',
+  uploadStatusValues:
+    'status is review or described; typed means Genki has its own code for the operation',
+  descriptorIsMapping: 'a descriptor is a mapping of fields',
+  uploadNeverTyped:
+    'typed means Genki has its own code for the operation, so an upload is never typed',
+  uploadStartsInReview:
+    'an uploaded descriptor starts in review; an operator moves it to described after',
+  descriptorCalled: 'the descriptor is called {id}',
+  fixturesCalledTwice: 'two fixtures are called {names}',
+} satisfies Translation<typeof source.operationErrors>;
+
 export const adapterErrors = {
   fillFormOrAsk: 'Fill in the form or write a question.',
   fieldList: '{name} must be a list of choices.',
@@ -480,6 +546,7 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,

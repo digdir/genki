@@ -30,7 +30,12 @@ export const openAiEmbeddings: EmbeddingAdapter<EndpointOptions, ModelOptions> =
     const client = new OpenAI({
       baseURL: endpoint.baseURL,
       apiKey: 'replaced-by-fetch',
-      fetch: authenticatedFetch(endpoint.credential, 'authorization', ['authorization']),
+      fetch: authenticatedFetch(
+        endpoint.credential,
+        'authorization',
+        ['authorization'],
+        endpoint.fetch,
+      ),
       maxRetries: endpoint.maxRetries,
       timeout: endpoint.timeoutMs,
       ...(endpoint.options.apiVersion

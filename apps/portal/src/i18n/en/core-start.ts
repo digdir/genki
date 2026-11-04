@@ -25,14 +25,14 @@ export const dataHandling = {
   stored3: 'The content is deleted when the content key is deleted.',
   access1: 'Administrators at the organisation see feedback in aggregate and without names.',
   access2:
-    "Operators at Digdir see content only through a support session. The support session is time-limited, has a reason and is shown in the organisation's log.",
+    'Operators at Digdir see content only through a support session. The support session is time-limited, has a reason and is shown in the organisation’s log.',
   access3:
     'In a support session Digdir can change the setup on behalf of the organisation. Each change is shown in the log as "Change from Digdir", with the name of the person who made it. Digdir never creates API keys for the organisation.',
-  logged1: "Every run is recorded in the organisation's run log.",
-  logged2: "The platform's operational logs do not contain questions or answers.",
+  logged1: 'Every run is recorded in the organisation’s run log.',
+  logged2: 'The platform’s operational logs do not contain questions or answers.',
   marking1: 'Answers from the platform are labelled "Answer made with AI" on screen.',
   marking2:
-    'In API responses the answer is marked with the field ai_generated and the header genai-generated-by.',
+    'In API responses the answer is marked with the field <code>ai_generated</code> and the header <code>genai-generated-by</code>.',
   undecidedStorage: 'How long the content is stored',
   undecidedDpa: 'Data processing agreement',
   notDecidedYet: 'Not decided yet',
@@ -40,7 +40,7 @@ export const dataHandling = {
   storageTime: 'How long data is stored',
   storageTimeBody: 'Datasets are stored until the organisation deletes them.',
   storageTimePlaceholder:
-    '[Placeholder: retention time for questions, answers and logs, and what happens to data when an organisation stops using the platform.]',
+    'How long questions, answers and logs are stored, and what happens to data when an agency stops using the platform, has not been decided yet.',
 } satisfies Translation<typeof dataHandlingSource>;
 
 export const start = {
@@ -73,8 +73,7 @@ export const start = {
   what3Body:
     'Each service gets a risk level under the AI Act. Filtering of personal data, requirements for sources and approval by a person follow from the risk level. Every run is logged, so you can see how an answer came about.',
   sharedHeading: 'Shared services',
-  sharedSub:
-    'Digdir runs and tests these. All organisations can use them as soon as they have access.',
+  sharedSub: 'Digdir runs and tests these. All agencies can use them as soon as they have access.',
   shared1Title: 'Plain language',
   shared1Body: 'Rewrites text so it is easier to understand, without changing the content.',
   shared1Example: 'Used, for example, on decision letters before they are sent.',
@@ -97,13 +96,12 @@ export const start = {
     'Reads documents and fills in the fields you define, such as names, amounts and dates.',
   shared6Example: 'Used, for example, on applications and invoices.',
   examplesHeading: 'Three examples',
-  examplesSub:
-    'Imagined services in an imagined organisation, Testetaten, to show what is possible.',
+  examplesSub: 'Imagined services in an imagined agency, Testetaten, to show what is possible.',
   ex1Job: 'Answers',
   ex1Trigger: 'Chat',
   ex1Title: 'Ask the reports',
   ex1Body:
-    'Employees ask questions on the intranet and get answers from evaluations in Kudos, with a link to the report and the page the answer is based on.',
+    'Employees ask questions on the intranet and get answers from evaluations in Kudos, the government’s database of evaluations, with a link to the report and the page the answer is based on.',
   ex1In: 'A question',
   ex1Out: 'Answer with sources',
   ex2Job: 'Extracts data',
@@ -120,9 +118,10 @@ export const start = {
     'The caseworker presses a button in the case and gets a draft that refers to the regulations. Nothing is sent until the caseworker has approved the draft.',
   ex3In: 'The case and the attachments',
   ex3Out: 'Word document from a template',
-  ex3Risk: 'High. Requires approval.',
+  ex3Risk: 'High, requires approval',
   exIn: 'In',
   exOut: 'Out',
+  exTrigger: 'Starts',
   exRunsIn: 'Runs in',
   exRunsInValue: 'Chosen per service',
   exRisk: 'Risk',
@@ -131,29 +130,28 @@ export const start = {
     'You pay for tokens, which are pieces of text the model reads and writes. A question with an answer and sources usually uses 3,000 to 6,000 tokens.',
   pricesNotDecided: 'Prices per model are not decided yet.',
   priceQuota:
-    'Each organisation gets a quota per month, and can set its own limits per service. You can see usage and cost in the portal at all times.',
+    'Each agency gets a quota per month, and can set its own limits per service. You can see usage and cost in the portal at all times.',
   termsHeading: 'Terms',
-  term1: 'The terms are accepted by a person who can bind the organisation.',
+  term1: 'The terms are accepted by a person who can bind the agency.',
   term2:
-    'The organisation is the controller for the content of its own services. Digdir is the processor.',
-  term3: 'The organisation assesses the risk level of each service under the AI Act.',
+    'The agency is the controller for the content of its own services. Digdir is the processor.',
+  term3: 'The agency assesses the risk level of each service under the AI Act.',
   term4: "Digdir gives at least 60 days' notice before a model is phased out.",
   howDataLink: 'How data is handled',
   dataNotAdopted:
     'The guidelines have not been adopted yet. Text marked "Not decided" is placeholder text.',
   dataReadMore: 'Read more about how data is handled',
   getStartedHeading: 'Get started',
-  getStartedLead:
-    'It usually takes a few working days (not decided) from request to first service.',
+  getStartedLead: 'We have not set how long approval takes.',
   step1Title: 'Request access',
   step1Body:
-    'Sign in with Ansattporten and choose the organisation. Fill in the request and confirm that you have read the draft terms and data processing agreement. The terms are not decided yet.',
+    'Sign in with Ansattporten, the sign-in for employees in public agencies, and choose your agency. Fill in the request and confirm that you have read the draft terms and data processing agreement.',
   step2Title: 'Digdir approves',
   step2Body:
-    'Digdir processes the request and registers the organisation. You see the status in the portal, and sign in again when the request is approved.',
-  step3Title: 'The first administrator signs in',
+    'Digdir processes the request and registers the agency. You see the status in the portal, and sign in again when the request is approved.',
+  step3Title: 'Grant the right in Altinn',
   step3Body:
-    'The access manager at the organisation gives a person the right "Manage services" in Altinn. That person signs in to the portal.',
+    'The person who manages access in Altinn at your agency gives one person the right “Manage services”. That person signs in to the portal.',
   step4Title: 'Build the first service',
   step4Body:
     'Try a shared service, or describe the job and let the assistant help you. Give colleagues access in Altinn when the service is ready.',
