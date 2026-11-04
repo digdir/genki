@@ -15,6 +15,7 @@ import { actorOf, AdminRefused, refusedBy, type AdminHandler } from './admin.js'
 import { allowOf, traceConnectionKind, tracingEgress } from '@genai/composition';
 import { appendVersion, type ConfigEntryStore } from './config-store.js';
 import { changeReasonOf, isReasonLongEnough, problem, reasonTooShort } from './http.js';
+import type { DefinitionStore } from '@genai/definitions';
 import type { TraceDeliveryStore } from '@genai/jobs';
 import type { PlatformModuleFactory } from './platform-modules.js';
 import { datasetsOf, traceDatasets } from './trace-datasets.js';
@@ -74,6 +75,8 @@ const errorsOf = (error: z.ZodError) =>
 export const traceConnections = (
   deps: {
     configEntries: ConfigEntryStore;
+    /** A connection covers only the tenant's own services. */
+    definitions: Pick<DefinitionStore, 'get'>;
     tenantSecrets?: TenantSecrets;
     egress: ReturnType<typeof tracingEgress>;
     deliveries?: Pick<TraceDeliveryStore, 'markPending' | 'outstanding'>;
@@ -225,6 +228,10 @@ export const traceConnections = (
     const hostRefused = await hostProblem(next.host);
     if (hostRefused) errors.push({ path: 'connection.host', message: hostRefused });
     for (const service of next.services) {
+      if (!(await deps.definitions.get('Service', tenant, service))) {
+        errors.push({ path: 'connection.services', message: `no service ${service}` });
+        continue;
+      }
       const covering = await coveringService(tenant, service);
       if (covering && covering.id !== next.id)
         errors.push({
@@ -554,6 +561,7 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
   const connections = traceConnections(
     {
       configEntries: deps.configEntries,
+      definitions: deps.definitions,
       ...(deps.tenantSecrets ? { tenantSecrets: deps.tenantSecrets } : {}),
       ...(deps.traceDeliveries ? { deliveries: deps.traceDeliveries } : {}),
       egress: tracingEgress(deps.egressOptions ?? {}, options.devMode),
@@ -626,6 +634,15 @@ export const traceConnectionsModule: PlatformModuleFactory = (deps) => {
               .filter((d) => d.connection === connection.id)
               .map(({ service, testSet, name, id }) => ({ service, testSet, name, id })),
           })),
+          // So the portal can offer Digdir's Langfuse before any connection to it exists.
+          ...(options.instance
+            ? {
+                instance: {
+                  host: origin(options.instance),
+                  content: options.instanceReceivesContent === true,
+                },
+              }
+            : {}),
         });
       });
 

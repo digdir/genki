@@ -693,8 +693,16 @@ export const integrationsArea = {
     secretKeepHelp:
       'Leave it empty to keep the stored key. It is stored for the address above only.',
     secretAgain: 'Enter the secret key again when the address changes, so it is only sent there.',
+    which: 'Langfuse',
+    whichHelp: "Digdir's Langfuse is {host}.",
+    instanceOption: "Digdir's Langfuse",
+    ownOption: 'Your own Langfuse',
     servicesLabel: 'Services',
-    servicesHelp: "The services' ids, separated by commas. A service can have only one connection.",
+    servicesHelp:
+      'The services that send their test runs here. A service can have only one connection.',
+    coveredBy: 'Connected to {id}',
+    unknownService: '{id} (does not exist)',
+    noServices: 'The organisation has no services yet.',
     residency: 'Residency',
     residencyHelp:
       "Where Langfuse stores what it receives, and where its judges' models run. Digdir sets this for Digdir's Langfuse.",

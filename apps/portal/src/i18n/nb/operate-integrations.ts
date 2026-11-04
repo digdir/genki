@@ -691,8 +691,15 @@ export const integrationsArea = {
       'La feltet stå tomt for å beholde nøkkelen som er lagret. Den lagres bare for adressen over.',
     secretAgain:
       'Skriv inn den hemmelige nøkkelen på nytt når adressen endres, så den bare sendes dit.',
+    which: 'Langfuse',
+    whichHelp: 'Digdirs Langfuse er {host}.',
+    instanceOption: 'Digdirs Langfuse',
+    ownOption: 'Egen Langfuse',
     servicesLabel: 'Tjenester',
-    servicesHelp: 'Tjenestenes id, skilt med komma. En tjeneste kan bare ha én kobling.',
+    servicesHelp: 'Tjenestene som sender testkjøringer hit. En tjeneste kan bare ha én kobling.',
+    coveredBy: 'Koblet til {id}',
+    unknownService: '{id} (finnes ikke)',
+    noServices: 'Virksomheten har ingen tjenester ennå.',
     residency: 'Lagringssted',
     residencyHelp:
       'Hvor Langfuse lagrer det den får, og hvor dommernes modeller kjører. For Digdirs Langfuse setter Digdir dette.',
