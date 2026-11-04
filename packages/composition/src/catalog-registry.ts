@@ -510,6 +510,8 @@ export class CatalogRegistry {
     by: string;
     reason: string;
     ifVersion?: number;
+    /** Only an engine switch's activation moves a dataset onto the knowledge server (ADR 0025). */
+    movedBySwitch?: boolean;
   }): Promise<CatalogResult> {
     return this.#serial(async () => {
       const id = this.qualify(input.scope, input.id);
@@ -535,7 +537,7 @@ export class CatalogRegistry {
       );
       if (errors.length > 0) return { ok: false, errors };
       if (input.kind === 'dataset') {
-        const problem = this.#nameGeneration(spec, existing?.spec);
+        const problem = this.#nameGeneration(spec, existing?.spec, input.movedBySwitch === true);
         if (problem) return { ok: false, errors: [problem] };
       }
       const candidate = new Map(this.#slots);
@@ -563,14 +565,36 @@ export class CatalogRegistry {
     return record(record(slot?.spec).options).connection === 'knowledge';
   }
 
+  /** A new generation id, `g-<yyyymmdd>-<6 hex>`, that no dataset's entry names. */
+  newGeneration(): string {
+    const day = (this.#options.now?.() ?? new Date())
+      .toISOString()
+      .slice(0, 10)
+      .replaceAll('-', '');
+    for (;;) {
+      const generation = `g-${day}-${randomBytes(3).toString('hex')}`;
+      if (!this.generationTaken(generation)) return generation;
+    }
+  }
+
+  /** Whether a dataset's entry names this generation, which is then no one else's to fill. */
+  generationTaken(generation: string, except?: string) {
+    return [...this.#slots.values()].some(
+      (slot) =>
+        slot.kind === 'dataset' && slot.id !== except && slot.spec.generation === generation,
+    );
+  }
+
   /** A dataset on the knowledge server is read by the generation its entry names. */
   #nameGeneration(
     spec: Record<string, unknown>,
     previous: Record<string, unknown> | undefined,
+    movedBySwitch = false,
   ): CatalogProblem | undefined {
     if (!this.#onKnowledgeServer(spec.endpoint)) return undefined;
-    // A moved dataset would go live on a generation nothing has filled, named or not.
-    if (previous && previous.endpoint !== spec.endpoint)
+    // A moved dataset would go live on a generation nothing has filled, named or not; only an
+    // engine switch fills one first, and its activation names it (ADR 0025).
+    if (previous && previous.endpoint !== spec.endpoint && !(movedBySwitch && spec.generation))
       return {
         path: 'spec.endpoint',
         message:
@@ -594,11 +618,7 @@ export class CatalogRegistry {
       spec.generation = previous.generation;
       return undefined;
     }
-    const day = (this.#options.now?.() ?? new Date())
-      .toISOString()
-      .slice(0, 10)
-      .replaceAll('-', '');
-    spec.generation = `g-${day}-${randomBytes(3).toString('hex')}`;
+    spec.generation = this.newGeneration();
     return undefined;
   }
 
@@ -609,6 +629,8 @@ export class CatalogRegistry {
     by: string;
     reason: string;
     ifVersion?: number;
+    /** Only an engine switch's activation moves a dataset onto the knowledge server (ADR 0025). */
+    movedBySwitch?: boolean;
   }): Promise<CatalogResult> {
     return this.#serial(async () => {
       const id = this.qualify(input.scope, input.id);

@@ -153,7 +153,7 @@ describe('pluggable search engines over the API', () => {
       return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
     };
 
-    it('a switch from the platform database to the knowledge database is refused in bokmål as written by the worker, not as shared storage', async () => {
+    it('copy from the platform database to the knowledge database is refused in bokmål for its document records, not as shared storage', async () => {
       const { call } = await boot({
         embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
         catalogs: {
@@ -187,7 +187,9 @@ describe('pluggable search engines over the API', () => {
       const { title } = await json<{ title: string }>(started);
       expect(title).not.toContain('deler lagring');
       // The app's locale middleware puts the refusal into bokmål through the catalogue.
-      expect(translateMessage(title, 'nb')).toBe('kunnskapsdata skrives av bakgrunnstjenesten');
+      expect(translateMessage(title, 'nb')).toContain(
+        'dokumentposter, som bare innlesinger skriver',
+      );
     });
 
     it('runs of a dataset on connection knowledge run as jobs', async () => {
@@ -322,6 +324,57 @@ describe('pluggable search engines over the API', () => {
       );
       expect(named.status).toBe(400);
       expect(JSON.stringify(named.body)).toContain('engine switch');
+    });
+
+    it('the catalog accepts a move onto the knowledge database only from an engine switch', async () => {
+      const { call, platform } = await boot({
+        catalogs: knowledgeCatalogs,
+        knowledgeServer: { reader: pool },
+      });
+      expect((await publish(call, 'digdir/flyttes', dataset('platform-pg'))).status).toBe(200);
+      // A caller of the API cannot claim to be the switch.
+      const claimed = await call('/operator/catalog/dataset/digdir%2Fflyttes', 'drift', {
+        method: 'PUT',
+        body: {
+          ...dataset('knowledge-pg', { generation: 'g-20261104-aa11bb' }),
+          engineSwitch: true,
+        },
+      });
+      expect(claimed.status).toBe(400);
+      const before = platform.catalog.get('dataset', 'digdir/flyttes');
+      const moved = await platform.catalog.publish({
+        kind: 'dataset',
+        scope: 'platform',
+        id: 'digdir/flyttes',
+        spec: { ...before?.spec, endpoint: 'knowledge-pg', generation: 'g-20261104-aa11bb' },
+        by: 'operator:platform:engine-switch',
+        reason: 'Byttet til kunnskapsdatabasen',
+        movedBySwitch: true,
+      });
+      expect(moved.ok).toBe(true);
+      expect(platform.catalog.get('dataset', 'digdir/flyttes')?.spec).toMatchObject({
+        endpoint: 'knowledge-pg',
+        generation: 'g-20261104-aa11bb',
+      });
+      const nameless = await platform.catalog.publish({
+        kind: 'dataset',
+        scope: 'platform',
+        id: 'digdir/flyttes-uten',
+        spec: dataset('platform-pg'),
+        by: 'operator:test:drift',
+        reason: 'Testendring',
+      });
+      expect(nameless.ok).toBe(true);
+      const withoutGeneration = await platform.catalog.publish({
+        kind: 'dataset',
+        scope: 'platform',
+        id: 'digdir/flyttes-uten',
+        spec: dataset('knowledge-pg'),
+        by: 'operator:platform:engine-switch',
+        reason: 'Byttet til kunnskapsdatabasen',
+        movedBySwitch: true,
+      });
+      expect(withoutGeneration.ok).toBe(false);
     });
   });
 

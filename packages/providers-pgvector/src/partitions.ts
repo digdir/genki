@@ -288,6 +288,10 @@ export const prepareGeneration = (
         );
         // Keys and per-document lookups up front, so each store replaces a document without a scan.
         await client.query(`alter table ${name} add primary key (generation, id)`);
+        // Index jobs fill it before it is attached: rows only, never its definition (ADR 0042).
+        await client.query(
+          `grant select, insert, update, delete on ${name} to ${knowledgeRoles.writer}`,
+        );
       }
       await client.query(
         `create index ${partitionOf('kn_chunks', generation)}_doc on ${partitionOf('kn_chunks', generation)} (generation, doc_id, position)`,

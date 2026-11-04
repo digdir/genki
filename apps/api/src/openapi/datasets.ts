@@ -236,6 +236,11 @@ const Execution = z
       .describe('Runs as knowledge jobs in the worker and ends when its jobs have ended'),
     admittedAt: z.string().optional().describe('When the API last admitted the run'),
     cancelRequestedAt: z.string().optional(),
+    generation: z
+      .string()
+      .optional()
+      .describe("The generation an engine switch's run writes into, on the knowledge database"),
+    engineSwitch: z.string().optional().describe('The engine switch that started the run'),
   })
   .openapi('IngestionExecution');
 const PipelineEstimate = z

@@ -40,6 +40,15 @@ export interface KnowledgeHandlerDeps {
   pipeline(run: IngestionExecution): Promise<unknown>;
   /** The dataset as the catalog names it now, with its active generation. */
   dataset(id: string, signal: AbortSignal): DatasetConfig | undefined;
+  /**
+   * The dataset at its engine switch's endpoint, for a run the switch started: its options and
+   * embedding come from the switch, since the catalog still names the previous engine (ADR 0025).
+   */
+  switchDataset?(run: IngestionExecution, signal: AbortSignal): Promise<DatasetConfig | undefined>;
+  /** Makes a generation that does not exist yet, standalone, as the knowledge server's owner. */
+  prepare?(dataset: DatasetConfig, generation: string): Promise<void>;
+  /** Whether the generation exists, read as the writer, so only a missing one needs the owner. */
+  generationExists?(generation: string): Promise<boolean>;
   listingOf(
     spec: PipelineSpec,
     scope: { tenant: string; dataset: string },
@@ -62,11 +71,25 @@ const specOf = async (deps: KnowledgeHandlerDeps, run: IngestionExecution) => {
   return parsed.data;
 };
 
-const datasetOf = (deps: KnowledgeHandlerDeps, run: IngestionExecution, signal: AbortSignal) => {
-  const dataset = deps.dataset(run.dataset, signal);
-  if (!dataset?.generation)
+/** The dataset a run writes, and the generation: the one its record names, else the active one. */
+const datasetOf = async (
+  deps: KnowledgeHandlerDeps,
+  run: IngestionExecution,
+  signal: AbortSignal,
+) => {
+  const dataset = run.engineSwitch
+    ? await deps.switchDataset?.(run, signal)
+    : deps.dataset(run.dataset, signal);
+  if (!dataset)
+    throw new Error(
+      run.engineSwitch
+        ? `the engine switch ${run.engineSwitch} of dataset ${run.dataset} is gone`
+        : `dataset ${run.dataset} is not on the knowledge database`,
+    );
+  const generation = run.generation ?? dataset.generation;
+  if (!generation)
     throw new Error(`dataset ${run.dataset} names no generation on the knowledge database`);
-  return { dataset, generation: dataset.generation };
+  return { dataset: { ...dataset, generation }, generation };
 };
 
 const contextOf = (
@@ -99,7 +122,10 @@ export const knowledgeWork = (
       deps.bound?.();
       const signal = job.signal;
       const spec = await specOf(deps, run);
-      const { generation } = datasetOf(deps, run, signal);
+      const { dataset, generation } = await datasetOf(deps, run, signal);
+      // A switch's generation, or a new dataset's, is made by the first ingest job that writes it.
+      if (deps.prepare && !(await deps.generationExists?.(generation)))
+        await deps.prepare(dataset, generation);
       const tenant = tenantOf(run, deps.admission.platformTenant);
       const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
       await deps.records.chunking(generation, run.pipeline, chunkingOf(spec.chunking));
@@ -138,7 +164,7 @@ export const knowledgeWork = (
         }
         const signal = job.signal;
         const spec = await specOf(deps, run);
-        const { dataset } = datasetOf(deps, run, signal);
+        const { dataset } = await datasetOf(deps, run, signal);
         const tenant = tenantOf(run, deps.admission.platformTenant);
         const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
         const chunking = await deps.records.chunking(

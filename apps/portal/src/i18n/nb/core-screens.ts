@@ -130,6 +130,7 @@ export const changes = defineNamespace({
   datasetUploadDelete: 'slettet en opplastet fil fra',
   defaultSet: 'endret plattformstandarden',
   engineSwitchCancel: 'avbrøt bytte av søkemotor for',
+  engineSwitchActivate: 'tok i bruk ny søkemotor for',
   engineSwitchRetry: 'prøvde bytte av søkemotor på nytt for',
   engineSwitchStart: 'startet bytte av søkemotor for',
   evalRun: 'kjørte testsettet',

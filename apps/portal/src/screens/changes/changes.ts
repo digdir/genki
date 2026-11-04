@@ -43,6 +43,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.dataset.upload.delete': 'changes.datasetUploadDelete',
   'platform.default.set': 'changes.defaultSet',
   'platform.engine-switch.cancel': 'changes.engineSwitchCancel',
+  'platform.engine-switch.activate': 'changes.engineSwitchActivate',
   'platform.engine-switch.retry': 'changes.engineSwitchRetry',
   'platform.engine-switch.start': 'changes.engineSwitchStart',
   'platform.eval.run': 'changes.evalRun',

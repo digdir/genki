@@ -34,6 +34,8 @@ export interface RecallSample {
 
 /** The knowledge server's heavy work, as the worker's owner login runs it (ADR 0042, "Heavy work"). */
 export interface HeavyServer {
+  /** Whether a generation is standalone, attached or being dropped; nothing when it does not exist. */
+  state(generation: string): Promise<'standalone' | 'attached' | 'detaching' | undefined>;
   chunks(generation: string): Promise<number>;
   vacuum(generation: string, options: VacuumOptions): Promise<void>;
   build(dataset: DatasetConfig, generation: string, options: MaintenanceOptions): Promise<void>;
@@ -58,6 +60,11 @@ export interface HeavyDeps {
   threshold(): number;
   /** The catalog's datasets on the knowledge database, each with its active generation. */
   datasets(): DatasetConfig[];
+  /**
+   * The dataset an open engine switch fills a generation for, at the switch's endpoint: the
+   * catalog does not name it until the switch is activated (ADR 0025).
+   */
+  datasetOfGeneration?(generation: string): Promise<DatasetConfig | undefined>;
   /** `KNOWLEDGE_VCORES`: the server's vCores, for build parallelism. */
   vcores?: number;
   now?: () => Date;
@@ -145,6 +152,8 @@ export const runVacuum = async (
 };
 
 const datasetConfig = async (deps: HeavyDeps, generation: string) => {
+  const switched = await deps.datasetOfGeneration?.(generation);
+  if (switched) return switched;
   const id = await deps.server.datasetOf(generation);
   const dataset = deps.datasets().find((d) => d.id === id);
   if (!dataset) throw new Error(`generation ${generation} belongs to no dataset the catalog names`);
@@ -186,9 +195,16 @@ export const buildWork = (deps: HeavyDeps) =>
         Math.max(end.getTime() + buildOverrunMs - started.getTime(), 0),
       );
     try {
-      if (kind === 'index')
+      if (kind === 'index') {
         await deps.server.build(await datasetConfig(deps, generation), generation, options);
-      else if (kind === 'reindex') await deps.server.reindex(generation, options);
+        // A build that ends a run is that run's last step, so it also leaves the planner statistics.
+        if ('run' in job.data)
+          await deps.server.vacuum(generation, {
+            ...options,
+            analyze: true,
+            throttled: !inNightWindow(deps.window(), nowOf(deps)),
+          });
+      } else if (kind === 'reindex') await deps.server.reindex(generation, options);
       else
         await deps.server.vacuum(generation, {
           ...options,
@@ -278,21 +294,55 @@ export const heavyWindow = (deps: HeavyDeps, work: { build: QueueWork; fill: Que
   };
 };
 
+export const buildFailedMessage = (generation: string) =>
+  `the generation ${generation} was not built: its build job ended without attaching it; retry the switch`;
+
 /**
- * The reconciler's last step of a run whose jobs have ended: its `VACUUM (ANALYZE)` of the dataset's
- * active generation, or the `knowledge.build` job for it, after which the run ends once that job
- * has. A VACUUM that fails, as one that waited too long for writers, is tried again on the next pass.
+ * The reconciler's last step of a run whose jobs have ended, on the generation the run wrote: its
+ * own, or else the dataset's active one. A standalone generation is built and attached, at once at
+ * or below the heavy threshold and as a `knowledge.build` job naming the run above it; an attached
+ * one gets its `VACUUM (ANALYZE)`, or the `knowledge.build` job for it. The run ends once that job
+ * has. A step that fails, as a VACUUM that waited too long for writers, is tried again on the next
+ * pass; a build job that ended without attaching fails the run.
  */
 export const finishRun =
   (
     deps: HeavyDeps,
     report: (id: string, counts: Record<string, number>, mode: 'add') => Promise<void>,
   ) =>
-  async (run: IngestionExecution): Promise<boolean> => {
+  async (run: IngestionExecution): Promise<boolean | { error: string }> => {
     if (run.report?.vacuumSent) return true;
-    const generation = deps.datasets().find((d) => d.id === run.dataset)?.generation;
+    const generation =
+      run.generation ?? deps.datasets().find((d) => d.id === run.dataset)?.generation;
     if (!generation) return true;
     try {
+      const state = await deps.server.state(generation);
+      if (state === undefined) return true;
+      if (state === 'standalone') {
+        if (run.report?.buildSent) return { error: buildFailedMessage(generation) };
+        if ((await deps.server.chunks(generation)) > deps.threshold()) {
+          await sendHeavy(deps, {
+            tenant: tenantOf(run.dataset),
+            generation,
+            kind: 'index',
+            run: run.id,
+          });
+          await report(run.id, { buildSent: 1 }, 'add');
+          return false;
+        }
+        await deps.server.build(
+          await datasetConfig(deps, generation),
+          generation,
+          maintenance(deps),
+        );
+        await deps.server.vacuum(generation, {
+          analyze: true,
+          throttled: !inNightWindow(deps.window(), nowOf(deps)),
+        });
+        return true;
+      }
+      // The build job that attached it also ran its VACUUM (ANALYZE).
+      if (run.report?.buildSent) return true;
       if ((await runVacuum(deps, run, generation)) === 'done') return true;
       await report(run.id, { vacuumSent: 1 }, 'add');
       return false;

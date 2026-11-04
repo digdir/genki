@@ -31,6 +31,7 @@ import {
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
@@ -98,9 +99,17 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
       queue = undefined;
       throw error;
     }));
-  return new PostgresJobRuns(runtimePool, {
-    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
-  });
+  return {
+    runs: new PostgresJobRuns(runtimePool, {
+      send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+    }),
+    // A generation an engine switch left on the knowledge server is dropped by the worker (ADR 0025).
+    drop: async (input: { tenant: string; dataset: string; generation: string }) => {
+      await (
+        await started()
+      ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
+    },
+  };
 };
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
@@ -453,7 +462,7 @@ const platform = await createPlatform({
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
     // The platform adds every dataset on `connection: knowledge` (createPlatform).
-    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
+    ...(db ? { jobRuns: { runsAsJobs: () => false, ...knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT

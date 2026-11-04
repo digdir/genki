@@ -131,6 +131,7 @@ export const adminActionRights: Readonly<
   'platform.engine-switch.start': datasetWrite,
   'platform.engine-switch.retry': datasetWrite,
   'platform.engine-switch.cancel': datasetWrite,
+  'platform.engine-switch.activate': datasetWrite,
   'platform.testcase.propose': 'manage-services',
   'platform.testcase.review': 'manage-services',
   'platform.service.risk.confirm': 'manage-services',

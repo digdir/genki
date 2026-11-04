@@ -135,6 +135,7 @@ export const changes = {
   datasetUploadDelete: 'deleted an uploaded file from',
   defaultSet: 'changed the platform default',
   engineSwitchCancel: 'cancelled the search engine switch for',
+  engineSwitchActivate: 'adopted the new search engine for',
   engineSwitchRetry: 'retried the search engine switch for',
   engineSwitchStart: 'started the search engine switch for',
   evalRun: 'ran the test set',

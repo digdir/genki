@@ -870,6 +870,24 @@ const migrations: string[] = [
   `create or replace trigger ingestion_executions_admission
      before insert or update on ingestion_executions
      for each row execute function refuse_worker_admission()`,
+  // A switch's runs write into the switch's generation (ADR 0025); where a run writes is the API's call.
+  `alter table ingestion_executions
+     add column if not exists generation text,
+     add column if not exists engine_switch text`,
+  `create or replace function refuse_worker_generation() returns trigger
+     language plpgsql as $$ begin
+       if current_user = '${workerRole}' and (
+            (tg_op = 'INSERT' and (new.generation is not null or new.engine_switch is not null))
+         or (tg_op = 'UPDATE' and (new.generation is distinct from old.generation
+                                   or new.engine_switch is distinct from old.engine_switch))) then
+         raise exception 'only the API names the generation and the engine switch of an ingestion run'
+           using errcode = 'insufficient_privilege';
+       end if;
+       return new;
+     end $$`,
+  `create or replace trigger ingestion_executions_generation
+     before insert or update on ingestion_executions
+     for each row execute function refuse_worker_generation()`,
   `create table if not exists knowledge_job_requests (
      id text primary key,
      scope text not null,

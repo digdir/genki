@@ -12,7 +12,12 @@ import { residencies, type Residency } from '@genai/port-model';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { z } from 'zod';
 import { enterTenant, tenantAccess } from './access.js';
-import type { Admin, AdminHandler, AdminOutcome } from './admin.js';
+import {
+  isEngineSwitchPublisher,
+  type Admin,
+  type AdminHandler,
+  type AdminOutcome,
+} from './admin.js';
 import {
   catalogKinds,
   type CatalogItem,
@@ -212,6 +217,9 @@ export const configAdminHandlers = (deps: ConfigDeps): Record<string, AdminHandl
       by: actor(principal),
       reason: input.reason,
       ...ifVersionOf(input),
+      ...(input.engineSwitch === true && isEngineSwitchPublisher(principal)
+        ? { movedBySwitch: true }
+        : {}),
     });
     if (!result.ok) return { ok: false, errors: result.errors, target };
     return {

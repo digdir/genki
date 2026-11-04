@@ -19,6 +19,8 @@ export interface IngestionExecutionReport {
   chunks?: number;
   /** Set when the run's `VACUUM (ANALYZE)` went as a `knowledge.build` job; it ends once that job has. */
   vacuumSent?: number;
+  /** Set when the build that attaches the run's standalone generation went as a `knowledge.build` job. */
+  buildSent?: number;
 }
 
 export interface IngestionExecution {
@@ -39,6 +41,10 @@ export interface IngestionExecution {
   admittedAt?: string;
   cancelRequestedAt?: string;
   cancelledBy?: string;
+  /** The generation the run writes into; without it, the dataset's active one. Only the API sets it. */
+  generation?: string;
+  /** The engine switch that started the run, which no hold of that switch stops. Only the API sets it. */
+  engineSwitch?: string;
 }
 
 export interface Row {
@@ -58,6 +64,8 @@ export interface Row {
   admitted_at?: string | null;
   cancel_requested_at?: string | null;
   cancelled_by?: string | null;
+  generation?: string | null;
+  engine_switch?: string | null;
 }
 
 export const executionScope = (dataset: string) => /^(\d{9})\//.exec(dataset)?.[1] ?? 'platform';
@@ -78,6 +86,8 @@ export const toExecution = (row: Row): IngestionExecution => ({
   ...(row.admitted_at ? { admittedAt: row.admitted_at } : {}),
   ...(row.cancel_requested_at ? { cancelRequestedAt: row.cancel_requested_at } : {}),
   ...(row.cancelled_by ? { cancelledBy: row.cancelled_by } : {}),
+  ...(row.generation ? { generation: row.generation } : {}),
+  ...(row.engine_switch ? { engineSwitch: row.engine_switch } : {}),
 });
 
 export class PostgresIngestionExecutions {

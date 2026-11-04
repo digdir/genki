@@ -59,7 +59,7 @@ import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
 import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
-import { knowledgeHeavyWork } from '@genai/providers-pgvector';
+import { knowledgeHeavyWork, prepareGeneration } from '@genai/providers-pgvector';
 import {
   createPostgresStores,
   executionScope,
@@ -87,6 +87,7 @@ import {
   watchKnowledgeBinding,
 } from './knowledge-binding.js';
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
+import { dropWork } from './knowledge-drop.js';
 import { knowledgeWork } from './knowledge-handlers.js';
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
@@ -259,6 +260,50 @@ const knowledgeServerDatasets = (): DatasetConfig[] => {
       }
     });
 };
+/** An engine switch's spec, as far as the worker reads it (apps/api/src/engine-switches.ts). */
+interface SwitchSpec {
+  dataset: string;
+  to: string;
+  state: string;
+  generation: string;
+  embedding?: DatasetConfig['embedding'];
+  options?: Record<string, unknown>;
+}
+const openSwitchStates = ['running', 'failed', 'comparing', 'ready', 'activating'];
+/** The dataset at a switch's endpoint, filling the switch's generation (ADR 0025). */
+const switchedDataset = (spec: SwitchSpec, signal: AbortSignal): DatasetConfig | undefined => {
+  try {
+    const { dataset } = runtimeFor('read the catalog').writers.openAt(
+      spec.dataset,
+      spec.to,
+      { signal },
+      {
+        ...(spec.embedding ? { embedding: spec.embedding } : {}),
+        ...(spec.options ? { datasetOptions: spec.options } : {}),
+      },
+    );
+    return { ...dataset, generation: spec.generation };
+  } catch {
+    return undefined;
+  }
+};
+const switchOfRun = async (run: { dataset: string; engineSwitch?: string }) => {
+  if (!db || !run.engineSwitch) return undefined;
+  const entry = (
+    await db.configEntries.history('engine-switch', executionScope(run.dataset), run.engineSwitch)
+  ).at(-1);
+  return entry && !entry.deleted ? (entry.spec as SwitchSpec) : undefined;
+};
+const switchOfGeneration = async (generation: string) => {
+  if (!db) return undefined;
+  const entry = (await db.configEntries.latest({ kind: 'engine-switch' })).find(
+    (e) =>
+      !e.deleted &&
+      (e.spec as SwitchSpec).generation === generation &&
+      openSwitchStates.includes((e.spec as SwitchSpec).state),
+  );
+  return entry?.spec as SwitchSpec | undefined;
+};
 const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
   ? {
       server: knowledgeHeavyWork(knowledgeServer.pools.owner),
@@ -271,6 +316,10 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       },
       ...heavySettings,
       datasets: knowledgeServerDatasets,
+      datasetOfGeneration: async (generation) => {
+        const spec = await switchOfGeneration(generation);
+        return spec && switchedDataset(spec, AbortSignal.timeout(10_000));
+      },
       ...(knowledgeVcores === undefined ? {} : { vcores: knowledgeVcores }),
       log,
     }
@@ -309,6 +358,28 @@ const knowledgeHandlers =
             return undefined;
           }
         },
+        switchDataset: async (run, signal) => {
+          const spec = await switchOfRun(run);
+          return spec && spec.dataset === run.dataset ? switchedDataset(spec, signal) : undefined;
+        },
+        generationExists: async (generation: string) =>
+          Boolean(
+            (
+              await knowledgeWriter.query(`select 1 from kn_generations where generation = $1`, [
+                generation,
+              ])
+            ).rowCount,
+          ),
+        ...(knowledgeServer?.pools.owner
+          ? {
+              prepare: (dataset: DatasetConfig, generation: string) =>
+                prepareGeneration(
+                  knowledgeServer.pools.owner as Parameters<typeof prepareGeneration>[0],
+                  dataset,
+                  generation,
+                ),
+            }
+          : {}),
         listingOf: (spec, scope, signal) =>
           knowledgeListingOf(
             spec,
@@ -349,7 +420,20 @@ const workerJobs = db
           }
         : {}),
       markerTimeoutMs: Number(process.env.MARKER_TIMEOUT_MS ?? defaultMarkerTimeoutMs),
-      work: [...work, ...(knowledgeHandlers?.platform ?? [])],
+      work: [
+        ...work,
+        ...(knowledgeHandlers?.platform ?? []),
+        ...(knowledgeServer?.pools.owner
+          ? [
+              dropWork({
+                datasets: knowledgeServerDatasets,
+                server: knowledgeHeavyWork(knowledgeServer.pools.owner),
+                bound: () => knowledgeBinding.knowledgeBound(),
+                log,
+              }),
+            ]
+          : []),
+      ],
       ...(knowledgeHandlers
         ? {
             knowledgeWork: [

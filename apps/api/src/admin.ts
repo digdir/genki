@@ -184,6 +184,23 @@ export const platformActor = (subject: string, tenant: string): Principal => ({
   tenant,
 });
 
+const engineSwitchSubject = 'engine-switch';
+
+/**
+ * Who publishes an engine switch's activation once its refresh has run (ADR 0025): the platform,
+ * with the reason of the person who activated it. A platform dataset is an operator's to change.
+ */
+export const engineSwitchPublisher = (scope: string, tenant: string): Principal =>
+  scope === 'platform'
+    ? { kind: 'operator', issuer: 'platform', subject: engineSwitchSubject }
+    : platformActor(engineSwitchSubject, tenant);
+
+/** Only the engine switch itself, never a caller of the API, carries this principal. */
+export const isEngineSwitchPublisher = (principal: Principal) =>
+  principal.issuer === 'platform' &&
+  principal.subject === engineSwitchSubject &&
+  (principal.kind === 'workload' || principal.kind === 'operator');
+
 export type AdminWork<T> = () => Promise<{
   value: T;
   target: string;

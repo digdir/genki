@@ -31,4 +31,11 @@ export const operations = defineNamespace({
   switchNoPipeline: 'Datasettet har ingen innlesing å kjøre.',
   switchBusy: 'Et bytte pågår allerede ({id}).',
   switchStalled: 'Overføringen stoppet. Start den på nytt.',
+  switchKnowledgeCopy:
+    'Kopiering til kunnskapsdatabasen er ikke mulig: dokumentene der trenger dokumentposter, som bare innlesinger skriver. Les inn på nytt fra kilden.',
+  switchKnowledgeOnePipeline:
+    'Et datasett i kunnskapsdatabasen fylles av én innlesing til medeiere er bygget; dette har {pipelines}.',
+  switchKnowledgePhrases:
+    'Søkefraser kan ikke fylle et datasett i kunnskapsdatabasen før oppskriftene holder dem ({pipeline}).',
+  switchRunCancelled: 'Kjøringen {run} ble avbrutt.',
 });
