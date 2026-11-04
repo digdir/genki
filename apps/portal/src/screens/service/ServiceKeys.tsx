@@ -22,7 +22,7 @@ import { reasonProblem } from '../../components/ReasonField';
 
 export const problemText = (error: unknown, t: T) =>
   error instanceof ApiError
-    ? (error.problem?.errors?.map((e) => e.message).join(' ') ?? error.message)
+    ? (error.problem?.errors?.map((e) => e.message).join(' ') || error.message)
     : t('serviceKeys.wrong');
 
 export const ServiceKeys = ({
