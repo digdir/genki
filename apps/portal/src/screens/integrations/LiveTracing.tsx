@@ -92,8 +92,13 @@ const originOf = (host: string) => {
   }
 };
 
+/** Digdir's address as the connection was saved with it, so an edit does not move it. */
 const hostOf = (d: Draft, instance: TraceInstance | undefined) =>
-  d.kind === 'instance' && instance ? instance.host : d.host;
+  d.kind === 'instance' && instance
+    ? originOf(d.storedHost) === originOf(instance.host)
+      ? d.storedHost
+      : instance.host
+    : d.host;
 
 /** A key must be entered for a new connection, and again when the address changes. */
 const needsKey = (d: Draft, instance: TraceInstance | undefined) => {
@@ -156,9 +161,13 @@ export const LiveTracing = ({
     async (signal) => {
       const [listing, services] = await Promise.all([
         api.tracing.listing(tenant, signal),
-        api.services(tenant, signal),
+        // Without the services the connections still show; the form keeps the ones saved.
+        api.services(tenant, signal).then(
+          (r) => r.data,
+          () => undefined,
+        ),
       ]);
-      return { connections: listing.data, instance: listing.instance, services: services.data };
+      return { connections: listing.data, instance: listing.instance, services };
     },
     [api, tenant, round],
   );
@@ -483,29 +492,36 @@ export const LiveTracing = ({
           <Fieldset>
             <Fieldset.Legend>{t('integLangfuse.servicesLabel')}</Fieldset.Legend>
             <Fieldset.Description>{t('integLangfuse.servicesHelp')}</Fieldset.Description>
-            {services.length === 0 ? (
+            {services === undefined ? (
+              <Paragraph data-size="sm">{t('integLangfuse.servicesFailed')}</Paragraph>
+            ) : services.length === 0 ? (
               <Paragraph data-size="sm">{t('integLangfuse.noServices')}</Paragraph>
             ) : null}
-            {services.map((s) => {
-              const taken = coveredBy(s.id);
-              return (
-                <Checkbox
-                  key={s.id}
-                  label={s.name}
-                  description={taken ? t('integLangfuse.coveredBy', { id: taken }) : undefined}
-                  disabled={taken !== undefined}
-                  checked={draft.services.includes(s.id)}
-                  onChange={() => toggle(draft, s.id)}
-                />
-              );
-            })}
+            {(services ?? [])
+              // An archived service is offered only to a connection that already covers it.
+              .filter((s) => s.lifecycle !== 'archived' || draft.services.includes(s.id))
+              .map((s) => {
+                const taken = coveredBy(s.id);
+                const ticked = draft.services.includes(s.id);
+                return (
+                  <Checkbox
+                    key={s.id}
+                    label={s.name}
+                    description={taken ? t('integLangfuse.coveredBy', { id: taken }) : undefined}
+                    // A ticked one stays free to untick, even if another connection covers it too.
+                    disabled={taken !== undefined && !ticked}
+                    checked={ticked}
+                    onChange={() => toggle(draft, s.id)}
+                  />
+                );
+              })}
             {/* An id saved before services were picked from this list, so it can be unticked. */}
             {draft.services
-              .filter((id) => !services.some((s) => s.id === id))
+              .filter((id) => !services?.some((s) => s.id === id))
               .map((id) => (
                 <Checkbox
                   key={id}
-                  label={t('integLangfuse.unknownService', { id })}
+                  label={services ? t('integLangfuse.unknownService', { id }) : id}
                   checked
                   onChange={() => toggle(draft, id)}
                 />
@@ -541,12 +557,6 @@ export const LiveTracing = ({
               onChange={(e) => setDraft({ ...draft, content: e.target.checked })}
             />
           ) : null}
-          <Switch
-            label={t('integLangfuse.labels')}
-            description={t('integLangfuse.labelsHelp')}
-            checked={draft.labels}
-            onChange={(e) => setDraft({ ...draft, labels: e.target.checked })}
-          />
           {draft.kind === 'own' && draft.content ? (
             <Checkbox
               label={t('integLangfuse.declaration')}
@@ -554,6 +564,12 @@ export const LiveTracing = ({
               onChange={(e) => setDraft({ ...draft, erasureDeclared: e.target.checked })}
             />
           ) : null}
+          <Switch
+            label={t('integLangfuse.labels')}
+            description={t('integLangfuse.labelsHelp')}
+            checked={draft.labels}
+            onChange={(e) => setDraft({ ...draft, labels: e.target.checked })}
+          />
           <ReasonField value={reason} onChange={setReason} showError={tried} />
           <div className="row-gap">
             <Button type="submit" variant="primary" disabled={busy}>
