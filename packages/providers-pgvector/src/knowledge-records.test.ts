@@ -194,6 +194,37 @@ describe('document records on the knowledge server', () => {
     expect((await changes(name)).map(([id]) => id)).not.toContain('x');
   });
 
+  it('the writer fills a standalone generation but cannot change its tables', async () => {
+    const name = 'digdir/standalone';
+    const generation = 'g-records-standalone';
+    await prepareGeneration(owner, dataset(name), generation);
+    await records.apply(
+      { dataset: name, pipeline: 'docs', generation, plan: newDocs('a', 'b') },
+      noSend,
+    );
+    await records.replace(await recordOf(name, 'a'), generation, { document: doc('a') });
+    await records.replace(await recordOf(name, 'b'), generation, { document: doc('b') });
+    await records.remove(await recordOf(name, 'b'), generation);
+    const { rows } = await admin.query<{ doc_id: string }>(
+      `select distinct doc_id from ${partitionOf('kn_chunks', generation)} order by doc_id`,
+    );
+    expect(rows.map((r) => r.doc_id)).toEqual(['a']);
+    const writer = worker.pools.writer as pg.Pool;
+    for (const sql of [
+      `alter table ${partitionOf('kn_chunks', generation)} add column extra text`,
+      `drop table ${partitionOf('kn_docs', generation)}`,
+      `create index on ${partitionOf('kn_chunks', generation)} (text)`,
+    ])
+      await expect(writer.query(sql)).rejects.toThrow(/must be owner|permission denied/);
+    await attachGeneration(owner, dataset(name), generation);
+    await records.replace(await recordOf(name, 'a'), generation, { document: doc('a', 'Ny') });
+    const { rows: after } = await admin.query<{ text: string }>(
+      `select text from kn_chunks where generation = $1 and doc_id = 'a' order by position`,
+      [generation],
+    );
+    expect(after.map((r) => r.text)).toEqual(['Ny 0', 'Ny 1']);
+  });
+
   it('a document is replaced in one transaction', async () => {
     const name = 'digdir/replace';
     const generation = await freshGeneration(name);

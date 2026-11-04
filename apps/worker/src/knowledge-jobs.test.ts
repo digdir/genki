@@ -224,6 +224,7 @@ describe('the worker and the knowledge queues', () => {
     ]);
     expect(await names(knowledgeDb())).toEqual([
       'knowledge.build',
+      'knowledge.check',
       'knowledge.cleanup',
       'knowledge.convert',
       'knowledge.export',
@@ -279,6 +280,60 @@ describe('the worker and the knowledge queues', () => {
       client.release();
     }
     expect((await run(id))?.admitted_at).toBeNull();
+  });
+
+  it('only the API sets the generation and the switch a run names', async () => {
+    const at = pipeline();
+    const started = await apiRuns.start({
+      id: crypto.randomUUID(),
+      ...at,
+      pipelineVersion: 1,
+      backend: 'index-writer',
+      startedBy: 'employee:test:kari',
+      startedAt: new Date().toISOString(),
+      admittedAt: new Date().toISOString(),
+      generation: 'g-20261104-7f3c2a',
+      engineSwitch: 'kudos-1:1',
+    });
+    if (!started.ok) throw new Error(started.message);
+    expect(started.value).toMatchObject({
+      generation: 'g-20261104-7f3c2a',
+      engineSwitch: 'kudos-1:1',
+    });
+    expect(await records.find(started.value.id)).toMatchObject({
+      generation: 'g-20261104-7f3c2a',
+      engineSwitch: 'kudos-1:1',
+    });
+    const asWorker = async (sql: string, values: unknown[]) => {
+      const client = await worker.runtimePool.connect();
+      try {
+        await client.query('begin');
+        await client.query(`select set_config('app.tenant', $1, true)`, [ORG]);
+        return await client.query(sql, values);
+      } finally {
+        await client.query('rollback');
+        client.release();
+      }
+    };
+    await expect(
+      asWorker(`update ingestion_executions set generation = 'g-20261104-000000' where id = $1`, [
+        started.value.id,
+      ]),
+    ).rejects.toThrow(/only the API names/);
+    await expect(
+      asWorker(`update ingestion_executions set engine_switch = 'other:1' where id = $1`, [
+        started.value.id,
+      ]),
+    ).rejects.toThrow(/only the API names/);
+    await expect(
+      asWorker(
+        `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
+           status, started_by, started_at, runs_as_jobs, generation)
+         values ($1, $2, $3, 'other', 1, 'x', 'queued', 'worker', '2026-11-02T00:00:00Z', true,
+           'g-20261104-000000')`,
+        [crypto.randomUUID(), ORG, at.dataset],
+      ),
+    ).rejects.toThrow(/only the API names/);
   });
 
   it("the end of a run starts its pipeline's queued run", async () => {

@@ -28,6 +28,7 @@ import { EmptyState, ErrorState, Loading } from '../states';
 import type {
   Capability,
   ModelClassification,
+  OperationKind,
   OperatorModel,
   RefreshResult,
   ModelPrice,
@@ -41,6 +42,12 @@ import {
   PriceDialog,
   residencyLabel,
 } from './models/Endpoints';
+import {
+  offeredOperations,
+  operationChoices,
+  operationName,
+  toggleOperation,
+} from '../model-operations';
 import { ParametersDialog, parameterNames, RejectedHint, ruleText } from './models/Parameters';
 import { reasonProblem, reasonTooShort } from '../reason';
 
@@ -57,6 +64,7 @@ const residencies = Object.keys(residencyLabel) as Residency[];
 
 const ModelRow = ({
   model,
+  kinds,
   busy,
   error,
   onChange,
@@ -65,6 +73,7 @@ const ModelRow = ({
   onParameters,
 }: {
   model: OperatorModel;
+  kinds: OperationKind[] | undefined;
   busy: boolean;
   error: string | undefined;
   onChange: (change: ModelClassification) => void;
@@ -75,6 +84,7 @@ const ModelRow = ({
   const t = useT();
   const f = useFormat();
   const fieldId = `residency-${model.id.replace(/[^a-z0-9]/gi, '-')}`;
+  const offered = offeredOperations(model);
   return (
     <TableRow>
       <TableCell>
@@ -164,6 +174,40 @@ const ModelRow = ({
             />
           ))}
         </Fieldset>
+        <Fieldset data-size="sm">
+          <FieldsetLegend>
+            {t('models.operations')}{' '}
+            <span className="visually-hidden">
+              {t('models.forModel', { model: model.deployment })}
+            </span>
+          </FieldsetLegend>
+          {operationChoices(kinds, offered).map(({ kind, maturity }) => {
+            const on = offered.includes(kind);
+            return (
+              <Checkbox
+                key={kind}
+                label={
+                  <>
+                    {operationName(kind, t)}{' '}
+                    {maturity === 'test' ? (
+                      <>
+                        <span className="muted">{t('models.operationInTest')}</span>{' '}
+                      </>
+                    ) : null}
+                    <span className="visually-hidden">
+                      {t('models.forModel', { model: model.deployment })}
+                    </span>
+                  </>
+                }
+                checked={on}
+                disabled={busy || (on && offered.length === 1)}
+                onChange={(e) =>
+                  onChange({ operations: toggleOperation(offered, kind, e.target.checked) })
+                }
+              />
+            );
+          })}
+        </Fieldset>
       </TableCell>
       <TableCell>
         <Switch
@@ -222,6 +266,7 @@ export const Models = ({ api }: { api: ApiClient }) => {
   const [pricing, setPricing] = useState<OperatorModel | undefined>();
   const [parametersOf, setParametersOf] = useState<OperatorModel | undefined>();
   const [endpoints, reloadEndpoints] = useAsync((signal) => api.modelEndpoints(signal), [api]);
+  const [kinds] = useAsync((signal) => api.operationKinds(signal), [api]);
   const flash = useFlash();
   const tenantName = useTenantNames(api);
   const endpointIds =
@@ -363,6 +408,7 @@ export const Models = ({ api }: { api: ApiClient }) => {
                 <ModelRow
                   key={m.id}
                   model={m}
+                  kinds={kinds.status === 'ready' ? kinds.data : undefined}
                   busy={busy.has(m.id)}
                   error={errors[m.id]}
                   onChange={(c) => onChange(m, c)}

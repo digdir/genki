@@ -1,4 +1,5 @@
 import {
+  GenerationBusy,
   KnowledgeError,
   tombstoneHash,
   type DocumentRecords,
@@ -8,6 +9,7 @@ import {
   type RecordWrite,
 } from '@genai/port-knowledge';
 import type { Pool, PoolClient } from 'pg';
+import { generationWritable, tryGenerationWrite } from './heavy-work.js';
 import { deleteDocument, replaceDocument } from './knowledge-writer.js';
 import { transaction } from './schema.js';
 
@@ -61,19 +63,28 @@ const moveDataVersion = (client: PoolClient, generation: string) =>
     [generation],
   );
 
-/** Locks the generation, so index jobs of one generation move its data version one at a time. */
+/**
+ * Locks the generation, so index jobs of one generation move its data version one at a time, after
+ * its advisory lock shared: without that lock VACUUM holds the generation, and the job gives way.
+ */
 const lockGeneration = async (client: PoolClient, generation: string, dataset: string) => {
-  const { rows } = await client.query<{ dataset: string; recipe: Record<string, unknown> }>(
-    `select dataset, recipe from kn_generations where generation = $1 for update`,
-    [generation],
-  );
+  if (!(await tryGenerationWrite(client, generation))) throw new GenerationBusy(generation);
+  const { rows } = await client.query<{
+    dataset: string;
+    recipe: Record<string, unknown>;
+    state: string;
+  }>(`select dataset, recipe, state from kn_generations where generation = $1 for update`, [
+    generation,
+  ]);
   const found = rows[0];
   if (!found || found.dataset !== dataset)
     throw new KnowledgeError(
       'bad_request',
       `generation ${generation} is not a generation of ${dataset}`,
     );
-  return found.recipe;
+  // A generation not attached yet is filled through its own tables, which the writer may fill.
+  const via = found.state === 'standalone' ? ('partition' as const) : ('parent' as const);
+  return { recipe: found.recipe, via };
 };
 
 const writeFiles = async (
@@ -233,6 +244,8 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     );
   },
 
+  writable: (generation) => generationWritable(writer, generation),
+
   find: async (number) => {
     const { rows } = await writer.query<RecordRow>(
       `select ${recordColumns} from src_documents where number = $1::bigint`,
@@ -243,7 +256,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   replace: (record, generation, result) =>
     transaction(writer, async (client) => {
-      const recipe = await lockGeneration(client, generation, record.dataset);
+      const { recipe, via } = await lockGeneration(client, generation, record.dataset);
       const { rows: current } = await client.query<{ change: string }>(
         `select change::text from src_documents where number = $1::bigint for update`,
         [record.number],
@@ -257,12 +270,12 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
             dataset: record.dataset,
             generation,
             config: String(recipe.textSearchConfig ?? 'norwegian'),
-            via: 'parent',
+            via,
             ...(embedding?.dimensions ? { dimensions: embedding.dimensions } : {}),
           },
           { ...result.document, id: record.id },
         );
-      else await deleteDocument(client, { generation, via: 'parent' }, record.id);
+      else await deleteDocument(client, { generation, via }, record.id);
       await client.query(
         `insert into kn_applied (generation, dataset, id, change) values ($1, $2, $3, $4)
            on conflict (generation, id) do update set change = excluded.change, applied_at = now()`,
@@ -283,8 +296,8 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
 
   remove: (record, generation) =>
     transaction(writer, async (client) => {
-      await lockGeneration(client, generation, record.dataset);
-      await deleteDocument(client, { generation, via: 'parent' }, record.id);
+      const { via } = await lockGeneration(client, generation, record.dataset);
+      await deleteDocument(client, { generation, via }, record.id);
       await client.query(`delete from kn_applied where generation = $1 and id = $2`, [
         generation,
         record.id,

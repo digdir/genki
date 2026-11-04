@@ -12,6 +12,7 @@ import {
   type KeyPolicy,
   type StoredApiKey,
 } from '@genai/identity';
+import type { TaskErasure } from '@genai/kernel';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import {
   combine,
@@ -39,6 +40,7 @@ import {
 import { requireRight, rightRefused, type Right } from '../rights.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from '../http.js';
 import { failureOf, failureReason } from '../failures.js';
+import { erasureOf } from '../timeline.js';
 import type { ServiceHealth } from '../service-health.js';
 import { pausedMessage, type LifecycleView } from '../service-lifecycle.js';
 
@@ -172,6 +174,7 @@ export interface PortalRouteDeps {
   events?(task: string): AsyncIterable<Event>;
   usageEvents?(tasks: string[]): Promise<{ task: string; data: unknown }[]>;
   eventsOfType?(tasks: string[], type: string): Promise<Event[]>;
+  erasures?(tenant: string, tasks: string[]): Promise<TaskErasure[]>;
   apiKeys: TenantApiKeys;
   connections: ConnectionRegistry;
   requirementFor(tenant: string, service: string): ServiceRequirement;
@@ -709,11 +712,16 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     withInput: boolean,
     withUsage: boolean,
   ) => {
-    const [actors, usage, inputs] = await Promise.all([
+    const [actors, usage, inputs, erased] = await Promise.all([
       taskActors(tasks, tenant),
       withUsage ? usageByTask(tasks.map((t) => t.id)) : new Map<string, ModelUsage[]>(),
       withInput ? inputTexts(tasks.map((t) => t.id)) : new Map<string, string>(),
+      deps.erasures?.(
+        tenant,
+        tasks.map((t) => t.id),
+      ) ?? [],
     ]);
+    const erasures = new Map(erased.map((e) => [e.task, erasureOf(e)]));
     const names = new Map(
       await Promise.all(
         [...new Set(tasks.map((t) => serviceOf(caps, t.service.capability.id)))].map(
@@ -730,11 +738,13 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
     );
     return tasks.map((t) => {
       const base = taskBase(caps, t);
-      const excerpt = withInput ? excerptOf(inputs.get(t.id) ?? '') : '';
+      const erasure = erasures.get(t.id);
+      const excerpt = withInput && !erasure ? excerptOf(inputs.get(t.id) ?? '') : '';
       return {
         ...(withUsage ? taskRow(caps, t, usage.get(t.id)) : base),
         serviceName: names.get(base.service) ?? base.service,
         ...(excerpt ? { excerpt } : {}),
+        ...(erasure ? { erasure } : {}),
         actor: actors.get(t.id) ?? { kind: 'system' as const },
       };
     });
@@ -1130,11 +1140,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   app.post('/tenants/:tenant/api-keys', async (c) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');
-    if (principal.kind === 'operator')
-      return access(principal, c.req.param('tenant') ?? '', c.req.raw)
-        ? problem(c, 403, 'API-nøkler lages av virksomheten selv')
-        : problem(c, 404, 'Not found');
     const tenant = c.req.param('tenant') ?? '';
+    if (principal.kind === 'operator') {
+      // An operator who is also one of the organisation's own people (a trusted
+      // Entra login in its platform organisation, ADR 0033) acts as that person.
+      const acting = access(principal, tenant, c.req.raw);
+      if (!acting) return problem(c, 404, 'Not found');
+      if (acting.kind === 'operator')
+        return problem(c, 403, 'API-nøkler lages av virksomheten selv');
+    }
     if (!isReasonLongEnough(reasonOf(c)))
       return problem(c, 400, 'Invalid request', [
         { path: 'change-reason', message: reasonTooShort },

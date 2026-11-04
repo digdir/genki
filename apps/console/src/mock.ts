@@ -29,6 +29,7 @@ import type {
   Capability,
   ModelPrice,
   DefaultVersion,
+  OperationKind,
   OperatorModel,
   QualityOverview,
   RefreshResult,
@@ -55,6 +56,7 @@ const baseModels: OperatorModel[] = [
     family: 'gpt-4o',
     residency: 'global',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat'],
     enabled: true,
     origin: 'discovered',
     classified: false,
@@ -66,6 +68,7 @@ const baseModels: OperatorModel[] = [
     family: 'gpt-4.1',
     residency: 'eu',
     capabilities: ['stream', 'tools', 'json-schema'],
+    operations: ['chat', 'decide'],
     enabled: true,
     origin: 'discovered',
     classified: true,
@@ -82,6 +85,29 @@ const baseModels: OperatorModel[] = [
     enabled: false,
     origin: 'discovered',
     classified: true,
+  },
+  {
+    id: 'foundry-openai/gpt-image-1.5',
+    endpoint: 'foundry-openai',
+    deployment: 'gpt-image-1.5',
+    family: 'gpt-image-1.5',
+    residency: 'global',
+    capabilities: [],
+    operations: ['generate-image'],
+    enabled: true,
+    origin: 'catalog',
+    classified: true,
+  },
+];
+
+export const exampleOperationKinds: OperationKind[] = [
+  { kind: 'chat', builtIn: true, maturity: 'test', typed: 'production', descriptors: [] },
+  { kind: 'decide', builtIn: true, maturity: 'test', typed: 'production', descriptors: [] },
+  {
+    kind: 'generate-image',
+    builtIn: false,
+    maturity: 'test',
+    descriptors: [{ id: 'foundry-openai/generate-image@1', status: 'review' }],
   },
 ];
 
@@ -1007,6 +1033,12 @@ export const mockFetch = (
         : notFound();
     }
     if (path === '/operator/models' && method === 'GET') return json({ data: current });
+    if (path === '/operator/operation-kinds' && method === 'GET')
+      return json({
+        environment: 'test',
+        governs: 'descriptor-calls',
+        data: exampleOperationKinds,
+      });
     if (path === '/operator/models/refresh' && method === 'POST')
       return reason ? json(refresh) : json({ error: 'a change reason is required' }, 400);
     if (path.startsWith('/operator/models/') && method === 'PATCH') {

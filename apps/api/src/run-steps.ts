@@ -1,4 +1,5 @@
 import type { Event, Part } from '@genai/contracts';
+import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
 import { failureOf, failureReason } from './failures.js';
 import { requestLocale, t, type ApiKey } from './i18n/index.js';
@@ -74,6 +75,32 @@ export const retrievalMime = 'application/vnd.genai.retrieval+json';
 export const sourcesMime = 'application/vnd.genai.sources+json';
 
 type Data = Record<string, unknown>;
+
+const mediaBlock = (media: { id: string; mediaType: string; bytes: number }[]): TimelineBlock[] =>
+  media.length
+    ? [
+        {
+          kind: 'list',
+          label: t('steps.media'),
+          items: media.map((m): [string, string] => [
+            m.mediaType,
+            t('steps.mediaBytes', { bytes: m.bytes, id: m.id }),
+          ]),
+        },
+      ]
+    : [];
+
+const mediaOfNotice = (value: unknown) =>
+  Array.isArray(value)
+    ? value.flatMap((m) => {
+        const v = (m ?? {}) as Record<string, unknown>;
+        return typeof v.id === 'string' &&
+          typeof v.mediaType === 'string' &&
+          typeof v.bytes === 'number'
+          ? [{ id: v.id, mediaType: v.mediaType, bytes: v.bytes }]
+          : [];
+      })
+    : [];
 
 const record = (v: unknown): Data =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {};
@@ -276,6 +303,7 @@ export interface RunMapperOptions {
   details?: boolean;
   usage?: boolean;
   startedAt?: string;
+  erased?: boolean;
 }
 
 export class RunMapper {
@@ -283,6 +311,7 @@ export class RunMapper {
   readonly hits = new Map<string, HitView>();
   private readonly details: boolean;
   private readonly usageShown: boolean;
+  private readonly erased: boolean;
   private start: number | undefined;
   private prev: number | undefined;
   private out: RunChange[] = [];
@@ -297,6 +326,8 @@ export class RunMapper {
   private readonly warnings: string[] = [];
   private readonly byModel = new Map<string, ModelTokens>();
   private errorStep: TimelineStep | undefined;
+  private unreadableStep: TimelineStep | undefined;
+  private unreadableCount = 0;
   private readonly errors: Event[] = [];
   private trigger: TimelineStep | undefined;
   private channel: 'answer' | 'reasoning' = 'answer';
@@ -312,6 +343,7 @@ export class RunMapper {
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
     this.usageShown = options.usage ?? true;
+    this.erased = options.erased ?? false;
     if (options.startedAt) this.start = Date.parse(options.startedAt);
   }
 
@@ -355,6 +387,7 @@ export class RunMapper {
         this.usage(e, ts, prev, data);
         break;
       case 'kernel.interrupt':
+        if (this.erased && data.erased === true) break;
         this.add({
           id: `e${e.seq}`,
           type: 'approval',
@@ -495,11 +528,31 @@ export class RunMapper {
     });
   }
 
+  private unreadable(e: Event, ts: number) {
+    const last = this.steps.at(-1);
+    if (last && last === this.unreadableStep) {
+      this.unreadableCount += 1;
+      last.summary = t('steps.unreadableSteps', { count: this.unreadableCount });
+      last.durationSeconds = round(this.offset(ts) - last.at);
+      return void this.emit(last);
+    }
+    this.unreadableCount = 1;
+    this.unreadableStep = this.add({
+      id: `e${e.seq}`,
+      type: 'note',
+      title: t('steps.contentUnavailable'),
+      summary: t('steps.unreadableSteps', { count: 1 }),
+      at: this.offset(ts),
+      blocks: [],
+    });
+  }
+
   private rawOf(value: unknown) {
     return this.details ? { raw: value } : {};
   }
 
   private notice(e: Event, ts: number, prev: number, data: Data) {
+    if (data.erased === true) return this.erased ? undefined : this.unreadable(e, ts);
     const event = str(data.event);
     const stage = str(data.stage);
     const kind = str(data.kind);
@@ -521,6 +574,7 @@ export class RunMapper {
     if (stage === 'citations') return this.citations(e, ts, prev, data);
     if (stage === 'answer-discarded') return this.discarded(e, ts, data);
     if (stage === 'exhausted' || stage === 'recovered-empty') return this.exhausted(e, ts, data);
+    if (kind === 'decision') return this.decision(e, ts, data);
     if (kind === 'documents')
       return void this.add(
         this.completed(e, ts, prev, {
@@ -768,6 +822,50 @@ export class RunMapper {
     this.add(step, true);
   }
 
+  private decision(e: Event, ts: number, data: Data) {
+    const answer = str(data.answer);
+    const outcome = str(data.outcome);
+    const probability = num(data.probability);
+    const refusal = data.refusal === true;
+    const byPerson = data.decidedBy === 'person';
+    const answers: Record<string, ApiKey> = {
+      within: 'steps.decisionWithin',
+      outside: 'steps.decisionOutside',
+      uncertain: 'steps.decisionUncertain',
+      refused: 'steps.decisionRefused',
+    };
+    const outcomes: Record<string, ApiKey> = {
+      continue: 'steps.decisionContinue',
+      refuse: 'steps.decisionRefuse',
+      person: 'steps.decisionPerson',
+    };
+    const rows: [string, string][] = [
+      [t('steps.decisionOperation'), str(data.operation) ?? 'decide'],
+      [t('steps.decisionQuestion'), str(data.question) ?? ''],
+      [
+        t('steps.decisionAnswer'),
+        answer && answers[answer] ? plain(answers[answer]) : (answer ?? ''),
+      ],
+      ...(probability === undefined
+        ? []
+        : ([[t('steps.decisionProbability'), decimal(probability)]] as [string, string][])),
+      [t('steps.decisionRefusal'), refusal ? t('steps.decisionYes') : t('steps.decisionNo')],
+      ...(outcome && outcomes[outcome]
+        ? ([[t('steps.decisionOutcome'), plain(outcomes[outcome])]] as [string, string][])
+        : []),
+    ];
+    this.add({
+      id: `e${e.seq}`,
+      type: 'decision',
+      title: byPerson ? t('steps.decisionByPerson') : t('steps.decisionTitle'),
+      summary: answer && answers[answer] ? plain(answers[answer]) : t('steps.decisionTitle'),
+      at: this.offset(ts),
+      blocks: [{ kind: 'kv', rows }],
+      ...(str(data.model) && !byPerson ? { model: str(data.model) as string } : {}),
+      ...this.rawOf(data),
+    });
+  }
+
   private rerank(e: Event, ts: number, prev: number, data: Data) {
     const ms = num(data.ms);
     const fallback = data.fallback === true;
@@ -929,7 +1027,7 @@ export class RunMapper {
       ...(open && ms === undefined && data.status !== 'started'
         ? { durationSeconds: round(at - open.at) }
         : timing),
-      blocks: [],
+      blocks: mediaBlock(mediaOfNotice(data.media)),
     };
     if (open) {
       this.steps[this.steps.indexOf(open)] = step;
@@ -1211,6 +1309,7 @@ export class RunMapper {
   }
 
   private result(e: Event, ts: number, prev: number) {
+    if (record(e.data).erased === true) return this.erasedResult(e, ts);
     const parts = Array.isArray(e.data) ? (e.data as Part[]) : [];
     const retrieval = record(jsonOf(parts, retrievalMime));
     const attribution = record(retrieval.attribution);
@@ -1247,6 +1346,7 @@ export class RunMapper {
       : fields !== undefined && !text.trim()
         ? [{ kind: 'kv', label: t('steps.fields'), rows: fieldRows(fields) }]
         : [{ kind: 'answer', text, ...(sources.length ? { sources } : {}) }];
+    blocks.push(...mediaBlock(mediaAttachments(parts)));
     this.add({
       id: `e${e.seq}`,
       type: 'result',
@@ -1258,6 +1358,19 @@ export class RunMapper {
           : t('runs.delivered'),
       at: this.offset(ts),
       blocks,
+    });
+  }
+
+  private erasedResult(e: Event, ts: number) {
+    if (!this.erased) return this.unreadable(e, ts);
+    for (const s of this.steps) this.close(s, ts);
+    this.add({
+      id: `e${e.seq}`,
+      type: 'result',
+      title: t('runs.answer'),
+      summary: t('steps.answerErased'),
+      at: this.offset(ts),
+      blocks: [],
     });
   }
 

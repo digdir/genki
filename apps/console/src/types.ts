@@ -36,6 +36,16 @@ export interface Problem {
 export type Residency = 'norway' | 'eu' | 'global';
 
 export type Capability = 'stream' | 'tools' | 'json-schema' | 'reasoning';
+export type BuiltInOperation = 'chat' | 'decide';
+export type ModelOperation = string;
+
+export interface OperationKind {
+  kind: ModelOperation;
+  builtIn: boolean;
+  maturity: 'test' | 'production';
+  typed?: 'production';
+  descriptors: { id: string; status: string }[];
+}
 
 export interface ModelUsage {
   tenant: string;
@@ -50,6 +60,7 @@ export interface OperatorModel {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  operations?: ModelOperation[];
   enabled: boolean;
   origin: 'catalog' | 'discovered';
   classified: boolean;
@@ -71,6 +82,7 @@ export interface ModelPrice {
 export interface ModelClassification {
   residency?: Residency;
   capabilities?: Capability[];
+  operations?: ModelOperation[];
   enabled?: boolean;
   parameters?: ParameterRules;
 }

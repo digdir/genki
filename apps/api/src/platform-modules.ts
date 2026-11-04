@@ -1,3 +1,10 @@
+import type {
+  EnvironmentTier,
+  LiveDescriptorRegistry,
+  OperationGovernanceStore,
+  OperationTry,
+  OperationTryOutcome,
+} from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
 import type {
   DefinitionStore,
@@ -62,6 +69,12 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   drafts: DraftRunner;
   pinService?(tenant: string, service: string, version: number): Promise<string | undefined>;
   kernel: Kernel;
+  operations?: {
+    tier: EnvironmentTier;
+    descriptors: LiveDescriptorRegistry;
+    governance: OperationGovernanceStore;
+    try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
+  };
   enrichmentTask?: TrackedWork;
   tasks: TaskIndex;
   task(id: string): Promise<Task | undefined>;

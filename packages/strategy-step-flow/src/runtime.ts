@@ -4,7 +4,16 @@ import {
   type FlowStep,
   type StepFlowDefinition,
 } from '@genai/definitions';
-import type { Emitted, InvocationContext, Strategy } from '@genai/kernel';
+import {
+  mediaAttachments,
+  mediaIdOf,
+  mediaPart,
+  mediaRefsIn,
+  type Emitted,
+  type InvocationContext,
+  type MediaRef,
+  type Strategy,
+} from '@genai/kernel';
 import { languageInstructionsConfig, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import { isPause, type BlockRegistry, type FlowRuntimeConfig } from './blocks.js';
@@ -46,6 +55,7 @@ export interface StepFlowOptions {
   now?: () => Date;
   maxSteps?: number;
   maxDepth?: number;
+  describedOperations?: boolean;
 }
 
 interface Progress {
@@ -109,6 +119,14 @@ export const resultParts = (value: unknown): Part[] => {
   )
     return (value as { parts: Part[] }).parts;
   return [{ mime: 'application/json', body: { kind: 'json', json: value } }];
+};
+
+const withMedia = (parts: Part[], progress: Progress): Part[] => {
+  const returned = new Set(mediaAttachments(parts).map((a) => `${a.tenant}/${a.path}`));
+  const made = mediaRefsIn(Object.values(progress.done).map((r) => r.output)).filter(
+    (ref) => !returned.has(`${ref.tenant}/${ref.path}`),
+  );
+  return made.length ? [...parts, ...made.map(mediaPart)] : parts;
 };
 
 const matches = (when: unknown, value: unknown) =>
@@ -208,7 +226,8 @@ class Runner {
     frame.steps[step.id] = record;
     this.progress.done[key] = record;
     await this.save();
-    yield this.notice(step, key, action, record.status, Date.now() - started);
+    const media = step.block ? mediaRefsIn(record.output) : [];
+    yield this.notice(step, key, action, record.status, Date.now() - started, media);
     return record.output;
   }
 
@@ -218,6 +237,7 @@ class Runner {
     action: string,
     status: string,
     ms?: number,
+    media: MediaRef[] = [],
   ): Emitted {
     return {
       type: 'kernel.notice',
@@ -229,6 +249,15 @@ class Runner {
         ...(step.block ? { block: step.block } : {}),
         status,
         ...(ms === undefined ? {} : { ms }),
+        ...(media.length
+          ? {
+              media: media.map((m) => ({
+                id: mediaIdOf(m.path),
+                mediaType: m.mediaType,
+                bytes: m.bytes,
+              })),
+            }
+          : {}),
       },
     };
   }
@@ -457,7 +486,7 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
             steps: frame.steps,
           })
         : last;
-      yield { type: 'kernel.result', data: resultParts(value) };
+      yield { type: 'kernel.result', data: withMedia(resultParts(value), progress) };
     } catch (error) {
       if (error instanceof Paused) return;
       throw error;
@@ -467,7 +496,11 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
   return {
     id: 'step-flow',
     version: '1',
-    requires: { kernel: 1, ports: ['model', 'tools'], features: ['checkpoint', 'interrupts'] },
+    requires: {
+      kernel: 1,
+      ports: ['model', 'tools', ...(options.describedOperations ? ['described'] : [])],
+      features: ['checkpoint', 'interrupts'],
+    },
     run: (ctx, input, raw) =>
       execute(ctx, input, raw, { version: 1, input, done: {}, executed: 0 }, undefined),
     resume: (ctx, checkpoint, response, raw) => {

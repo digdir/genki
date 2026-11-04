@@ -250,7 +250,15 @@ export const RunsTab = ({
                             {triggerLabel(extras.triggerKind, t)}
                           </Tag>
                         ) : null}
-                        {live ? (row.excerpt ?? '') : (extras?.triggerDetail ?? row.id)}
+                        {row.erasure ? (
+                          <Tag data-size="sm" data-color="neutral">
+                            {t('logRuns.erased')}
+                          </Tag>
+                        ) : live ? (
+                          (row.excerpt ?? '')
+                        ) : (
+                          (extras?.triggerDetail ?? row.id)
+                        )}
                       </span>
                       <span className="log-run-when">
                         {live

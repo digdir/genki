@@ -94,6 +94,7 @@ describe('planRun', () => {
         return true;
       },
       fail: async () => undefined,
+      writable: async () => true,
     } as unknown as DocumentRecords;
     const outcome = await indexRecord({
       records,
@@ -147,6 +148,7 @@ describe('planRun', () => {
       find: async () => record,
       replace: async () => false,
       fail: async (_r: unknown, reason: string) => void failed.push(reason),
+      writable: async () => true,
     } as unknown as DocumentRecords;
     await expect(
       indexRecord({
@@ -247,6 +249,7 @@ describe('ingestListing', () => {
     const records = {
       owned: async () => [owned('a')],
       apply,
+      writable: async () => true,
     } as unknown as DocumentRecords;
     const counts = await ingestListing({
       records,

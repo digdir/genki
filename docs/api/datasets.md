@@ -37,6 +37,8 @@ Disabling a pipeline starts nothing and keeps its documents. A run's `report` co
 
 To move a dataset to another engine: `GET .../engine-switches/estimate`, `POST .../engine-switches`, then `.../activate`, and `.../rollback` while the old engine is kept. Start, retry, cancel, activate and rollback all take the reason from the `change-reason` header only; a `reason` in the body is ignored. Activating needs a longer reason when the new engine scores worse.
 
+A switch into the knowledge database (an endpoint with `connection: knowledge`) re-ingests only: `method: copy` is refused, and so is a dataset with more than one pipeline, search phrases or a source the knowledge database does not take yet, with the reason in the estimate. Its fill and the refresh before activation are ingestion runs that name the switch and its generation (`generation`, `engineSwitch` on the run). While they run, the dataset's other runs are refused with `409`. `activate` answers `202` with the state `activating`; the switch becomes `active` once the refresh has run and the catalog names the generation. The switch view carries `generation`, and `failedDocuments` when documents of the fill could not be read in.
+
 ## Parquet pipelines
 
 A pipeline source can read one public https Parquet file with `url`, or a Hugging Face file with `huggingface: { dataset, file, revision }` (`revision` defaults to `main`). Sharded tables use `urls: [...]` plus a stable `table` name, or `huggingface: { dataset, table, files }`, where `files` is an explicit path list or a glob such as `data/train-*.parquet`. Give each config/split its own table name. Keep that name when updating shard layouts so document ids stay stable.

@@ -10,12 +10,15 @@ import {
   type RecordTransaction,
 } from '@genai/ingest';
 import {
+  heavyWorkStart,
+  knowledgeFillQueue,
   knowledgeIndexQueue,
   knowledgeIngestQueue,
   knowledgeKeys,
   type JobQueue,
   type QueueWork,
 } from '@genai/jobs';
+import { GenerationBusy } from '@genai/port-knowledge';
 import type { EmbeddingPort } from '@genai/port-embedding';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -26,7 +29,9 @@ export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
   records: DocumentRecords;
   /** The knowledge server's queue, where index jobs commit with their records. */
-  knowledge: Pick<JobQueue, 'send'>;
+  knowledge: Pick<JobQueue, 'send' | 'sendAgain'>;
+  /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
+  heavy: { threshold(): number; window(): string; now?: () => Date };
   /** The run's counts on the platform server. */
   runs: {
     report(id: string, counts: Record<string, number>, mode: 'set' | 'add'): Promise<void>;
@@ -35,6 +40,15 @@ export interface KnowledgeHandlerDeps {
   pipeline(run: IngestionExecution): Promise<unknown>;
   /** The dataset as the catalog names it now, with its active generation. */
   dataset(id: string, signal: AbortSignal): DatasetConfig | undefined;
+  /**
+   * The dataset at its engine switch's endpoint, for a run the switch started: its options and
+   * embedding come from the switch, since the catalog still names the previous engine (ADR 0025).
+   */
+  switchDataset?(run: IngestionExecution, signal: AbortSignal): Promise<DatasetConfig | undefined>;
+  /** Makes a generation that does not exist yet, standalone, as the knowledge server's owner. */
+  prepare?(dataset: DatasetConfig, generation: string): Promise<void>;
+  /** Whether the generation exists, read as the writer, so only a missing one needs the owner. */
+  generationExists?(generation: string): Promise<boolean>;
   listingOf(
     spec: PipelineSpec,
     scope: { tenant: string; dataset: string },
@@ -57,11 +71,25 @@ const specOf = async (deps: KnowledgeHandlerDeps, run: IngestionExecution) => {
   return parsed.data;
 };
 
-const datasetOf = (deps: KnowledgeHandlerDeps, run: IngestionExecution, signal: AbortSignal) => {
-  const dataset = deps.dataset(run.dataset, signal);
-  if (!dataset?.generation)
+/** The dataset a run writes, and the generation: the one its record names, else the active one. */
+const datasetOf = async (
+  deps: KnowledgeHandlerDeps,
+  run: IngestionExecution,
+  signal: AbortSignal,
+) => {
+  const dataset = run.engineSwitch
+    ? await deps.switchDataset?.(run, signal)
+    : deps.dataset(run.dataset, signal);
+  if (!dataset)
+    throw new Error(
+      run.engineSwitch
+        ? `the engine switch ${run.engineSwitch} of dataset ${run.dataset} is gone`
+        : `dataset ${run.dataset} is not on the knowledge database`,
+    );
+  const generation = run.generation ?? dataset.generation;
+  if (!generation)
     throw new Error(`dataset ${run.dataset} names no generation on the knowledge database`);
-  return { dataset, generation: dataset.generation };
+  return { dataset: { ...dataset, generation }, generation };
 };
 
 const contextOf = (
@@ -77,21 +105,29 @@ const contextOf = (
   meter: async () => undefined,
 });
 
+/** A job that gives way to VACUUM is sent again this much later (ADR 0042, "Heavy work"). */
+export const givingWayMs = 2 * 60_000;
+
 /**
- * The worker's handlers of `knowledge.ingest` (platform server) and `knowledge.index` (knowledge
- * server), each behind the run's admission (ADR 0042, "Jobs"). Job data names a document only by
- * its record's number.
+ * The worker's handlers of `knowledge.ingest` (platform server), `knowledge.index` (knowledge
+ * server) and `knowledge.fill` (knowledge server, worked only in the night window), each behind the
+ * run's admission (ADR 0042, "Jobs"). Job data names a document only by its record's number.
  */
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
-): { platform: QueueWork[]; knowledge: QueueWork[] } => {
+): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
   const ingest = admittedWork(
     knowledgeIngestQueue,
-    async ({ job, run }) => {
+    async ({ job, run, cancelled }) => {
       deps.bound?.();
       const signal = job.signal;
       const spec = await specOf(deps, run);
-      const { generation } = datasetOf(deps, run, signal);
+      const { dataset, generation } = await datasetOf(deps, run, signal);
+      // A switch's generation, or a new dataset's, is made by the first ingest job that writes it.
+      // A cancelled run makes nothing: its generation may already be dropped.
+      if (await cancelled()) return;
+      if (deps.prepare && !(await deps.generationExists?.(generation)))
+        await deps.prepare(dataset, generation);
       const tenant = tenantOf(run, deps.admission.platformTenant);
       const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
       await deps.records.chunking(generation, run.pipeline, chunkingOf(spec.chunking));
@@ -113,41 +149,70 @@ export const knowledgeWork = (
     deps.admission,
   );
 
-  const index = admittedWork(
-    knowledgeIndexQueue,
-    async ({ job, run, principal, cancelled }) => {
-      deps.bound?.();
-      if (await cancelled()) return;
-      const signal = job.signal;
-      const spec = await specOf(deps, run);
-      const { dataset } = datasetOf(deps, run, signal);
-      const tenant = tenantOf(run, deps.admission.platformTenant);
-      const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
-      const chunking = await deps.records.chunking(
-        job.data.generation,
-        run.pipeline,
-        chunkingOf(spec.chunking),
-      );
-      // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
-      const embedding = await deps.records.embedding(job.data.generation);
-      const embedder = embedding
-        ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
-        : undefined;
-      const outcome = await indexRecord({
-        records: deps.records,
-        listing,
-        dataset: run.dataset,
-        run: run.id,
-        record: job.data.record,
-        generation: job.data.generation,
-        chunking,
-        ...(embedder ? { embedder } : {}),
-      });
-      if (outcome === 'stored' || outcome === 'skipped')
-        await deps.runs.report(run.id, { [outcome]: 1 }, 'add');
-    },
-    deps.admission,
-  );
+  const documentWork = (queue: typeof knowledgeIndexQueue | typeof knowledgeFillQueue) =>
+    admittedWork(
+      queue,
+      async ({ job, run, principal, cancelled }) => {
+        deps.bound?.();
+        if (await cancelled()) return;
+        const now = deps.heavy.now?.() ?? new Date();
+        // A run that has written the heavy threshold sends its remaining documents to the window.
+        if (queue === knowledgeIndexQueue && (run.report?.chunks ?? 0) >= deps.heavy.threshold()) {
+          await deps.knowledge.send(knowledgeFillQueue, job.data, {
+            key: knowledgeKeys.fill(job.data.generation, job.data.record),
+            startAfter: heavyWorkStart(deps.heavy.window(), now),
+          });
+          return;
+        }
+        const signal = job.signal;
+        const spec = await specOf(deps, run);
+        const { dataset } = await datasetOf(deps, run, signal);
+        const tenant = tenantOf(run, deps.admission.platformTenant);
+        const listing = await deps.listingOf(spec, { tenant, dataset: run.dataset }, signal);
+        const chunking = await deps.records.chunking(
+          job.data.generation,
+          run.pipeline,
+          chunkingOf(spec.chunking),
+        );
+        // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
+        const embedding = await deps.records.embedding(job.data.generation);
+        const embedder = embedding
+          ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
+          : undefined;
+        let chunks = 0;
+        let outcome: Awaited<ReturnType<typeof indexRecord>>;
+        try {
+          outcome = await indexRecord({
+            records: deps.records,
+            listing,
+            dataset: run.dataset,
+            run: run.id,
+            record: job.data.record,
+            generation: job.data.generation,
+            chunking,
+            onStored: (n) => {
+              chunks = n;
+            },
+            ...(embedder ? { embedder } : {}),
+          });
+        } catch (error) {
+          if (!(error instanceof GenerationBusy)) throw error;
+          // VACUUM holds the generation: give way, and keep every retry.
+          await deps.knowledge.sendAgain(queue, job, {
+            key: knowledgeKeys.index(job.data.generation, job.data.record),
+            startAfter: new Date(now.getTime() + givingWayMs),
+          });
+          return;
+        }
+        if (outcome === 'stored') await deps.runs.report(run.id, { stored: 1, chunks }, 'add');
+        if (outcome === 'skipped') await deps.runs.report(run.id, { skipped: 1 }, 'add');
+      },
+      deps.admission,
+    );
 
-  return { platform: [ingest as QueueWork], knowledge: [index as QueueWork] };
+  return {
+    platform: [ingest as QueueWork],
+    knowledge: [documentWork(knowledgeIndexQueue) as QueueWork],
+    heavy: [documentWork(knowledgeFillQueue) as QueueWork],
+  };
 };

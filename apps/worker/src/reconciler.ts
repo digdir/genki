@@ -41,6 +41,12 @@ export interface ReconcilerDeps {
   now?: () => Date;
   /** The pipeline's `maxDocumentFailures` for a run: its document dead letters before it stops. */
   failureBudget?: (run: IngestionExecution) => Promise<number>;
+  /**
+   * The run's last step once its jobs have ended, its build or `VACUUM (ANALYZE)`: true when it ran
+   * and the run may end, false when it went as a `knowledge.build` job, which keeps the run open
+   * (ADR 0042, "Heavy work"), and an error when the run fails with it.
+   */
+  finishing?: (run: IngestionExecution) => Promise<boolean | { error: string }>;
 }
 
 export interface Reconciled {
@@ -127,19 +133,26 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
       }
     }
     if (stopping.cancelRequestedAt)
-      for (const server of deps.servers) result.dropped += await server.cancel(run.id);
+      // A cancelled run still ends with its VACUUM, so its build job is kept (ADR 0042, "Heavy work").
+      for (const server of deps.servers)
+        result.dropped += await server.cancel(run.id, { except: ['knowledge.build'] });
     // One server after the other, the platform server first: an ingest job sends its last
     // document jobs before it completes, so a count taken in this order cannot miss both.
     let open = 0;
     for (const server of deps.servers) open += await server.open(run.id);
     if (open > 0) continue;
+    const finished = deps.finishing ? await deps.finishing(stopping) : true;
+    if (finished === false) continue;
     const dead: Record<string, number> = {};
     for (const server of deps.servers)
       for (const [queue, count] of Object.entries(await server.deadLetters(run.id)))
         dead[queue] = (dead[queue] ?? 0) + count;
+    const outcome = outcomeOf(stopping, dead);
     const { ended, started } = await deps.records.end(
       stopping,
-      outcomeOf(stopping, dead),
+      finished !== true && outcome.status === 'succeeded'
+        ? { ...outcome, status: 'failed', error: finished.error }
+        : outcome,
       at,
       rules,
     );
@@ -147,13 +160,20 @@ export const reconcileKnowledgeRuns = async (deps: ReconcilerDeps): Promise<Reco
     if (started) result.started.push(started);
   }
 
+  const open = await deps.records.open();
   const live = new Set(
-    (await deps.records.open())
-      .filter((run) => run.status !== 'queued' && !run.cancelRequestedAt)
-      .map((run) => run.id),
+    open.filter((run) => run.status !== 'queued' && !run.cancelRequestedAt).map((run) => run.id),
+  );
+  // A cancelled run that is still open keeps its VACUUM until it ends (ADR 0042, "Heavy work").
+  const cancelling = new Set(
+    open.filter((run) => run.status === 'running' && run.cancelRequestedAt).map((run) => run.id),
   );
   for (const [i, server] of deps.servers.entries())
     for (const run of jobRuns[i] ?? [])
-      if (!live.has(run)) result.dropped += await server.cancel(run);
+      if (!live.has(run))
+        result.dropped += await server.cancel(
+          run,
+          cancelling.has(run) ? { except: ['knowledge.build'] } : {},
+        );
   return result;
 };

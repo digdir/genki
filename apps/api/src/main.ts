@@ -31,6 +31,7 @@ import {
   PostgresJobRuns,
   postgresSourceFromEnv,
 } from '@genai/providers-postgres';
+import { knowledgeDropQueue, knowledgeKeys } from '@genai/jobs';
 import { PgBossJobQueue } from '@genai/providers-pgboss';
 import { parse as parseYaml } from 'yaml';
 import { FileSystemBlobStore } from '@genai/port-blob';
@@ -47,6 +48,7 @@ import {
   knowledgeServerEndpoints,
   savedKnowledgeCatalog,
   defaultPlatformTenant,
+  environmentTierOf,
   openKnowledgePools,
   ownedByPlatformTenant,
   platformTenantFrom,
@@ -97,9 +99,17 @@ const knowledgeJobRuns = (runtimePool: Parameters<typeof PgBossJobQueue.start>[0
       queue = undefined;
       throw error;
     }));
-  return new PostgresJobRuns(runtimePool, {
-    send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
-  });
+  return {
+    runs: new PostgresJobRuns(runtimePool, {
+      send: async (run, transaction) => ingestSender(await started()).send(run, transaction),
+    }),
+    // A generation an engine switch left on the knowledge server is dropped by the worker (ADR 0025).
+    drop: async (input: { tenant: string; dataset: string; generation: string }) => {
+      await (
+        await started()
+      ).send(knowledgeDropQueue, input, { key: knowledgeKeys.drop(input.dataset) });
+    },
+  };
 };
 
 const envFile = join(import.meta.dirname, '..', '..', '..', '.env.local');
@@ -192,6 +202,7 @@ const { trusted, mock, mockIssuer } = await loginIssuers({
   testData,
   registeredClients,
   ...(trustedEntra ? { trustedEntra } : {}),
+  onKeysNotFetched: (fields) => log('login keys not fetched', fields),
 });
 if (mock)
   mockRegistration = {
@@ -417,9 +428,14 @@ if (lockdown)
     configuredKeys: configuredKeys.size,
   });
 
+const environmentTier = environmentTierOf(process.env);
+if (environmentTier === 'test')
+  log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
+  environmentTier,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,
@@ -446,7 +462,7 @@ const platform = await createPlatform({
     gateSeed: seedList('gates.yaml'),
     ruleSeed: seedList('guardrail-rules.yaml'),
     // The platform adds every dataset on `connection: knowledge` (createPlatform).
-    ...(db ? { jobRuns: { runsAsJobs: () => false, runs: knowledgeJobRuns(db.runtimePool) } } : {}),
+    ...(db ? { jobRuns: { runsAsJobs: () => false, ...knowledgeJobRuns(db.runtimePool) } } : {}),
   },
   traces: () =>
     traces && process.env.TRACES_ENDPOINT
@@ -568,11 +584,11 @@ const app = createApp(version, {
     settings,
     models: platform.models,
     admin,
-    tasks: kernelTaskReader(platform.kernel, {
-      kind: 'operator',
-      issuer: 'platform',
-      subject: 'task-reader',
-    }),
+    tasks: kernelTaskReader(
+      platform.kernel,
+      { kind: 'operator', issuer: 'platform', subject: 'task-reader' },
+      tasks,
+    ),
     tenantDirectory: () => platform.directory.list(),
     organisationName: (orgNumber) =>
       (testData.organisations ?? []).find((o) => o.orgno === orgNumber)?.name,
@@ -670,6 +686,7 @@ if (db)
     settings,
     supportSessions: db.adminRecords,
     catalog: platform.catalog,
+    descriptors: platform.descriptors,
     definitions: platform,
     models: platform.models,
     toolConnections: platform.toolConnections,

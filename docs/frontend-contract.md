@@ -38,6 +38,7 @@ Rate limits apply per key. `401` means no or bad credentials, `403` a key that m
 | Datasets and the filter fields they declare | `GET /api/datasets`, `GET /api/datasets/{id}`                                                                   |
 | Facet values to build filters               | `GET /api/facets?tenant=&dataset-config-key=&fields=a,b&filter=<json>`                                          |
 | Feedback                                    | `POST /api/feedback` with `{ "task": "<genai-task header>", "rating": "up" or "down", "comment"?, "reasons"? }` |
+| Media an answer returned                    | `GET /v1/tasks/{task}/media/{id}`, the `url` of an item in `attachments` (see Media in an answer)               |
 
 OpenAPI: the platform document is served at `/openapi.json`; the per-key tool document is at `/api/tools/openapi.json`. The `/v1` routes follow OpenAI's own schema, and the extensions are the fields listed here.
 
@@ -297,6 +298,32 @@ Send the chosen values with the question as `filters`: `{ "fields": [{ "field", 
 - Existing fields (`source`, `document`, `metadata`, `excerpt`) are kept for OpenAI and Open WebUI clients. Note that `document` there is still the list of passage texts, which is why the document id is `document_id`. The top-level `citations` lists only links people can open, so it does not line up with `sources`; resolve `[N]` by `index`, never by position in `citations`.
 - An answer without citations still lists up to 10 retrieved sources, one per document, without `index`.
 - No answer: `no_answer: true` and a `notice` text to show instead of the answer.
+
+### Media in an answer
+
+A service whose steps make media, such as an image, a sound or a PDF, returns it next to `citations` as `attachments`. The text answer is unchanged, so OpenAI clients that do not know the field work as before.
+
+```json
+{
+  "choices": [{ "message": { "role": "assistant", "content": "Her er figuren." } }],
+  "attachments": [
+    {
+      "type": "image",
+      "id": "0b9e6c1a-4f1e-4a7e-9a55-2f0d7f6c1b2e",
+      "mediaType": "image/png",
+      "bytes": 48213,
+      "sha256": "9f2c…",
+      "step": "diagram",
+      "url": "/v1/tasks/6f1c2d3e-…/media/0b9e6c1a-4f1e-4a7e-9a55-2f0d7f6c1b2e"
+    }
+  ]
+}
+```
+
+- `type` is the part of `mediaType` before the slash (`image`, `audio`, `video`, `application`, `text`): pick the element from it, and use `mediaType` for the exact type. `step` is the step in the service that made it.
+- Fetch the bytes with `GET <url>` on the platform, with the same credential that asked (`X-API-Key` or the user's token). It answers the bytes with the media type as `content-type`, `cache-control: private, no-store`, and `404` to a caller that may not read the run. There are no public links: a browser frontend fetches it with its token and shows it from a blob URL; a server frontend fetches it and passes it on to its own user.
+- In a stream, `attachments` comes in one frame of its own before the frame with `finish_reason: "stop"`.
+- Only media types the deployment allows are made at all; a service step that would make another type fails before the model is called.
 
 ### Errors
 

@@ -114,6 +114,26 @@ param knowledgePostgresHighAvailability string = 'Disabled'
 param knowledgeAddressPrefix string = '10.42.0.0/24'
 
 param logRetentionInDays int = 30
+
+@description('Alert rules, the API availability test and the action group. See docs/runbook.md.')
+param alertsEnabled bool = false
+
+@description('Email addresses for alerts, comma separated. Empty means alerts fire without notifying anyone.')
+param alertEmails string = ''
+
+@description('How often the availability test calls /health, in seconds.')
+@allowed([300, 900])
+param healthCheckFrequencySeconds int = 300
+
+param alertThresholds object = {
+  errorRatePercent: 5
+  errorRateMinRequests: 20
+  modelFailures: 5
+  ingestionFailures: 1
+  altinnFailures: 3
+  loginKeyFailures: 1
+}
+
 param minReplicas int = 1
 param maxReplicas int = 3
 param cpu string = '0.5'
@@ -383,6 +403,24 @@ module apps 'modules/containerapps.bicep' = {
     maxReplicas: maxReplicas
     cpu: cpu
     memory: memory
+  }
+}
+
+module alerts 'modules/alerts.bicep' = if (alertsEnabled) {
+  name: 'alerts'
+  params: {
+    name: baseName
+    environmentName: environmentName
+    location: location
+    tags: allTags
+    workspaceId: monitoring.outputs.workspaceId
+    insightsName: monitoring.outputs.insightsName
+    apiAppName: apps.outputs.appName
+    workerAppName: apps.outputs.workerName
+    healthUrl: 'https://${customDomainsStage == 'certificates' && !empty(hostnames.api) ? hostnames.api : apps.outputs.fqdn}/health'
+    emails: alertEmails
+    healthCheckFrequencySeconds: healthCheckFrequencySeconds
+    thresholds: alertThresholds
   }
 }
 
