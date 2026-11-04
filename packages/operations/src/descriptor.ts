@@ -42,6 +42,34 @@ const keptOutFields = new Set([
   'url',
 ]);
 const urlLike = /[a-z][a-z0-9+.-]*:\/\//i;
+const modelFieldNames = new Set(['model', 'model_id', 'deployment', 'deployment_id', 'engine']);
+
+/** The top-level wire request fields that name the model; the executor always sets them to the catalogue deployment. */
+export const modelFieldsOf = (wireRequest: Shape): string[] =>
+  wireRequest.kind === 'object'
+    ? Object.keys(wireRequest.fields).filter((f) => modelFieldNames.has(f))
+    : [];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const checkModelFields = (at: string, wireRequest: Shape, body: unknown) => {
+  const top = modelFieldsOf(wireRequest);
+  const nested = (
+    wireRequest.kind === 'object'
+      ? Object.values(wireRequest.fields).flatMap(fieldNames)
+      : fieldNames(wireRequest)
+  ).filter((f) => modelFieldNames.has(f));
+  if (nested.length > 0)
+    throw new DescriptorError(
+      `${at}: wire.request may name the model only at the top, as $deployment (${nested.join(', ')})`,
+    );
+  for (const field of top)
+    if (!isRecord(body) || body[field] !== '$deployment')
+      throw new DescriptorError(
+        `${at}: request.body.${field} must be $deployment; the input never chooses the model`,
+      );
+};
 
 const literal = z.string().max(200);
 
@@ -87,12 +115,6 @@ export const descriptorFile = z.strictObject({
   ]),
 });
 
-export interface StreamEvent {
-  shape: Shape;
-  delta?: string;
-  done?: true;
-}
-
 export interface Descriptor {
   id: string;
   operation: string;
@@ -111,7 +133,7 @@ export interface Descriptor {
   wire: { request: Shape; response: Shape };
   result: unknown;
   usage: Record<string, unknown>;
-  stream: 'none' | { events: Record<string, StreamEvent> };
+  stream: 'none';
 }
 
 const strings = (value: unknown): string[] => {
@@ -147,6 +169,15 @@ export const toDescriptor = (value: unknown): Descriptor => {
       throw new DescriptorError(`${at}: api.headers.${name}: credentials come from the endpoint`);
   if (keptOutPath.test(d.request.path) || d.request.path.includes('..'))
     throw new DescriptorError(`${at}: request.path ${d.request.path} is kept out of descriptors`);
+  const named = /^[^/]+\/([^@]+)@/.exec(d.id)?.[1];
+  if (named !== d.operation)
+    throw new DescriptorError(
+      `${at}: a descriptor id names its operation, <provider>/${d.operation}@<version>`,
+    );
+  if (d.stream !== 'none')
+    throw new DescriptorError(
+      `${at}: stream must be none; Genki does not stream descriptor calls yet`,
+    );
   const placeholders = [...d.request.path.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]);
   if (placeholders.some((p) => p !== 'deployment'))
     throw new DescriptorError(`${at}: request.path may only hold {deployment}`);
@@ -157,21 +188,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
   const kept = fieldNames(wire.request).filter((f) => keptOutFields.has(f));
   if (kept.length > 0)
     throw new DescriptorError(`${at}: wire.request may not carry ${kept.join(', ')}`);
-  const stream: Descriptor['stream'] =
-    d.stream === 'none'
-      ? 'none'
-      : {
-          events: Object.fromEntries(
-            Object.entries(d.stream.events).map(([name, e]) => [
-              name,
-              {
-                shape: shapeOf(e.shape, `${at}: stream.events.${name}`),
-                ...(e.delta ? { delta: e.delta } : {}),
-                ...(e.done ? { done: true as const } : {}),
-              },
-            ]),
-          ),
-        };
+  checkModelFields(at, wire.request, d.request.body);
   checkRoots(d.request.body, ['input', 'deployment', 'item'], `${at}: request.body`);
   checkRoots(d.usage, ['response', 'item'], `${at}: usage`);
   checkRoots(
@@ -192,7 +209,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
     wire,
     result: d.result,
     usage: d.usage,
-    stream,
+    stream: 'none',
   };
   if (
     descriptor.status !== 'typed' &&

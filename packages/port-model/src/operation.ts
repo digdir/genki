@@ -6,16 +6,12 @@ export interface OperationPort {
   call(descriptor: string, input: unknown): Promise<unknown>;
 }
 
-export interface ProcessorFacts {
-  acceptsUnmaskedInput: boolean;
-}
-
 export interface OperationGovernance {
   maturity(kind: string): Promise<Maturity>;
-  processor(endpoint: string): Promise<ProcessorFacts | undefined>;
+  processorRecorded(endpoint: string): Promise<boolean>;
 }
 
 export const unrecordedGovernance: OperationGovernance = {
   maturity: async () => 'test',
-  processor: async () => undefined,
+  processorRecorded: async () => false,
 };

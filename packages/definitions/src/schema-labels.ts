@@ -304,6 +304,10 @@ const serviceNb = {
   'spec.model.roles.synthesis': { label: 'Modell som skriver svaret' },
   'spec.model.roles.planner': { label: 'Modell som planlegger søket' },
   'spec.model.roles.judge': { label: 'Modell som vurderer' },
+  'spec.model.operations': {
+    label: 'Modell per operasjon',
+    help: 'Modellen et call-operation-steg bruker for hver type operasjon, når steget ikke velger selv.',
+  },
   'spec.model.residency': {
     label: 'Hvor data behandles',
     values: { norway: 'Norge', eu: 'EU/EØS', global: 'Globalt' },
@@ -422,6 +426,10 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.model.roles.synthesis': { label: 'Model that writes the answer' },
   'spec.model.roles.planner': { label: 'Model that plans the search' },
   'spec.model.roles.judge': { label: 'Model that judges' },
+  'spec.model.operations': {
+    label: 'Model per operation',
+    help: 'The model a call-operation step uses for each kind of operation, when the step names none.',
+  },
   'spec.model.residency': {
     label: 'Where data is processed',
     values: { norway: 'Norway', eu: 'EU/EEA', global: 'Global' },
@@ -501,6 +509,7 @@ const serviceMeta: Record<string, PropertyMeta> = {
   'spec.model.roles.synthesis': { 'x-widget': 'model', 'x-options': models },
   'spec.model.roles.planner': { 'x-widget': 'model', 'x-options': models },
   'spec.model.roles.judge': { 'x-widget': 'model', 'x-options': models },
+  'spec.model.operations': { 'x-advanced': true },
   'spec.variants.model': { 'x-widget': 'model', 'x-options': models },
   'spec.guardrails': { ...guards, 'x-order': 60 },
   'spec.exposure': { ...start, 'x-order': 70 },

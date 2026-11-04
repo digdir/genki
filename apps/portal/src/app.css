@@ -773,10 +773,19 @@ code {
   border-bottom: 1px solid var(--ds-color-neutral-border-subtle);
 }
 
+.side-panel-head > .ds-button {
+  flex-shrink: 0;
+}
+
 .side-panel-title {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+}
+
+.side-panel-title .ds-heading {
+  overflow-wrap: anywhere;
 }
 
 .side-panel-body {

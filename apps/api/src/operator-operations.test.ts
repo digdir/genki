@@ -7,7 +7,7 @@ import { bootPlatform, digdir } from './testkit.js';
 
 const classify = parseDescriptor(`
 id: example/classify@1
-operation: chat
+operation: classify
 status: review
 summary: A made-up classification API, to try a new kind.
 api:
@@ -79,7 +79,15 @@ const boot = async (environmentTier?: 'test' | 'production', lockdown = false) =
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
       },
-      models: [{ id: 'lab/small', endpoint: 'lab', deployment: 'small', residency: 'norway' }],
+      models: [
+        {
+          id: 'lab/small',
+          endpoint: 'lab',
+          deployment: 'small',
+          residency: 'norway',
+          operations: ['chat', 'classify'],
+        },
+      ],
     },
   });
   return { ...booted, server };
@@ -189,7 +197,7 @@ describe('the raw tier', () => {
       events.push(e);
     expect(events.find((e) => e.type === 'kernel.gate.call')?.data).toEqual({
       port: 'operation',
-      operation: 'chat',
+      operation: 'classify',
       model: 'lab/small',
       endpoint: 'lab',
       descriptor: 'example/classify@1',

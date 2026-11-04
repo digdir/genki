@@ -32,6 +32,7 @@ import { applyParameterRules, type ParameterRules, type TunableParameter } from 
 import {
   defaultOperations,
   ModelError,
+  operationKinds,
   type Capability,
   type ChatChunk,
   type ChatRequest,
@@ -118,8 +119,9 @@ export const modelOutputCeiling = 16_384;
 export const catalogDescriptorProblems = (
   catalog: ModelCatalog,
   registry: DescriptorRegistry | undefined,
-): { path: string; message: string }[] =>
-  catalog.models.flatMap((model, index) =>
+): { path: string; message: string }[] => [
+  ...unknownOperationProblems(catalog, registry),
+  ...catalog.models.flatMap((model, index) =>
     Object.entries(model.descriptors ?? {}).flatMap(([operation, id]) => {
       if (!id) return [];
       const path = `models.${index}.descriptors.${operation}`;
@@ -136,7 +138,24 @@ export const catalogDescriptorProblems = (
               : undefined;
       return message ? [{ path, message }] : [];
     }),
+  ),
+];
+
+const unknownOperations = (operations: readonly string[], known: readonly string[]) =>
+  operations.filter((o) => !known.includes(o));
+
+const unknownOperationProblems = (
+  catalog: ModelCatalog,
+  registry: DescriptorRegistry | undefined,
+): { path: string; message: string }[] => {
+  const known = operationKinds(registry);
+  return catalog.models.flatMap((model, index) =>
+    unknownOperations(model.operations, known).map((o) => ({
+      path: `models.${index}.operations`,
+      message: `no descriptor defines the ${o} operation`,
+    })),
   );
+};
 
 const needed = (request: ChatRequest): Capability[] => [
   ...(request.tools?.length ? (['tools'] as const) : []),
@@ -362,6 +381,15 @@ export class ModelRouter implements PortProvider<ModelPort> {
   async classify(id: string, classification: ModelClassification): Promise<ModelDescription> {
     const route = this.#routes().get(id);
     if (!route) throw new ModelError('bad_request', `no model ${id}`);
+    const unknown = unknownOperations(
+      classification.operations ?? [],
+      operationKinds(this.options.descriptors),
+    );
+    if (unknown.length > 0)
+      throw new ModelError(
+        'bad_request',
+        `no descriptor defines the ${unknown.join(', ')} operation`,
+      );
     const next = { ...this.#classes[id], ...classification };
     if (classification.parameters && next.observed) {
       const set = new Set(Object.keys(classification.parameters));
@@ -553,9 +581,9 @@ export class ModelRouter implements PortProvider<ModelPort> {
             'unsupported',
             `${id} is for ${descriptor.api.protocol}, and ${model.id} speaks ${endpoint.protocol}`,
           );
-        const [maturity, processor] = await Promise.all([
+        const [maturity, processorRecord] = await Promise.all([
           governance.maturity(descriptor.operation),
-          governance.processor(model.endpoint),
+          governance.processorRecorded(model.endpoint),
         ]);
         return describedCall(
           {
@@ -567,10 +595,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
               operation: descriptor.operation,
               maturity,
               synthetic: tier === 'raw',
-              processorRecord: processor !== undefined,
-              ...(tier === 'described' && processor?.acceptsUnmaskedInput
-                ? { unmaskedInput: true }
-                : {}),
+              processorRecord,
             },
             descriptor,
             endpoint,

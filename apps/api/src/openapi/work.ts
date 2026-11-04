@@ -100,7 +100,14 @@ const OperationKind = z
   .object({
     kind: z.string(),
     environment: z.enum(['test', 'production']),
-    maturity: z.enum(['test', 'production']),
+    maturity: z
+      .enum(['test', 'production'])
+      .describe('Governs descriptor calls of the kind (raw and described tiers) only'),
+    builtIn: z.boolean().describe('A kind Genki has its own types for, such as chat and decide'),
+    typed: z
+      .literal('production')
+      .optional()
+      .describe('Typed calls of a built-in kind are production by construction'),
     by: z.string().optional().describe('The operator who last set the maturity'),
     at: z.string().optional(),
     descriptors: z.array(
@@ -2057,6 +2064,9 @@ const qualityRoutes: RouteConfig[] = [
       200: json(
         z.object({
           environment: z.enum(['test', 'production']),
+          governs: z
+            .literal('descriptor-calls')
+            .describe('Maturity governs descriptor calls only, never typed calls'),
           data: z.array(OperationKind),
         }),
         'The kinds',

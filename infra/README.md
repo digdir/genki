@@ -52,7 +52,7 @@ The server allows the `vector` extension through its `azure.extensions` setting 
 
 ## Knowledge server
 
-Each environment has a knowledge server of its own (ADR 0042), set up as its platform server is: private access in a delegated subnet, its own private DNS zone, Entra ID auth only. Each holds only its own environment's data and is bound to its own platform server. Test's starts now; prod's is in the template, switched on with the same steps when genki prod runs.
+Each environment has a knowledge server of its own (ADR 0042), set up as its platform server is: private access in a delegated subnet, its own private DNS zone, Entra ID auth only. Each holds only its own environment's data and is bound to its own platform server. Test's has run since 2026-11-04; prod's is in the template, switched on with the same steps when genki prod runs.
 
 | Resource                                           | Notes                                                                                                                                                                                                                     |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -78,7 +78,8 @@ Per environment, test first. The steps infra cannot do run in the `knowledge-ser
 0. **A release with the setup script:** run `deploy.yml` with this change, stage still `none`. The job runs `scripts/knowledge-server-setup.ts` from the worker image, and `infra.yml` reuses the image that runs.
 1. **`server`:** set `KNOWLEDGE_SERVER_STAGE=server`, run infra with what-if, read it, then without. Then run `knowledge-server` with `restart`, which restarts the server only while `shared_preload_libraries` waits for it.
 2. **The database:** run `knowledge-server` with `setup`. It starts the job `genai-<env>-knowledge-setup`, waits for it and prints its log (below), and fails when the job does.
-3. **`apps`:** set `KNOWLEDGE_SERVER_STAGE=apps` and run infra. Then run `knowledge-server` with `check`: the server, its settings and Entra admins, both sides of the peering, the last job run, the apps' revisions and the API's `/health`. It fails on a server that is not ready, a restart still waiting, a peering side that is not `Connected`, an unhealthy revision or a `/health` other than 200. If the worker's new revision never becomes ready because the probe cannot reach a worker without ingress, set `server` again and run infra, which takes the probe out.
+3. **`apps`:** set `KNOWLEDGE_SERVER_STAGE=apps` and run infra. Then run `knowledge-server` with `check`: the server, its settings and Entra admins, both sides of the peering, the last job run, the apps' revisions and the API's `/health`. It fails on a server that is not ready, a restart still waiting, a peering side that is not `Connected`, an unhealthy revision or a `/health` other than 200.
+4. **The peering through a redeploy:** run infra once more, then `check` again: both sides of the peering stay `Connected`. Infra redeploys `genai-<env>-vnet` without its peerings, and from `apps` on the apps reach the knowledge server only through them.
 
 A job run is safe to repeat: logins that exist are kept, and the setup changes nothing it already set.
 
@@ -105,15 +106,22 @@ az postgres flexible-server show -g <resource group> -n genai-<env>-knowledge-re
 az postgres flexible-server delete -g <resource group> -n genai-<env>-knowledge-restore-drill --yes
 ```
 
-The restored server keeps neither the source's parameters nor its network rules, so a real restore sets `azure.extensions` and `shared_preload_libraries` again, and the template must then name the new server. Time for the empty server: not yet measured.
+The restored server keeps neither the source's parameters nor its network rules, so a real restore sets `azure.extensions` and `shared_preload_libraries` again, and the template must then name the new server. Test's empty server took 615 s (10 min 15 s) to restore, on 2026-11-04.
+
+### Checked on test
+
+Test went through the stages on 2026-11-04. What the documentation left open:
+
+- **The peering survives an infra run:** after the second run at `apps`, `check` showed both sides `Connected`. The what-if lists changes under `virtualNetworkPeerings` that the deploy does not make ([arm-template-whatif #278](https://github.com/Azure/arm-template-whatif/issues/278)), so read `check`, not the what-if.
+- **The readiness probe reaches the worker without ingress:** the worker's revision with the probe is Healthy.
+- **The knowledge admin may revoke `CONNECT` on the database the template created:** the first `setup` left `connect` with only the two logins and `azure_pg_admin`.
+- **Two servers can share the delegated subnet and the private DNS zone:** the restore drill's server reached Ready in them.
+- **`setup` reads a finished job's log** from the job's log stream (`az containerapp job logs show`).
 
 ### Open
 
-- Whether a run of `infra.yml` or `deploy.yml`, both of which redeploy `genai-<env>-vnet` without peerings, drops the knowledge peering on it until the same run makes it again. From `apps` on, the API and the worker reach the knowledge server only through it, so this would happen on every release. Microsoft's documentation does not say. The reports found are what-if noise: a network's what-if lists changes under `virtualNetworkPeerings` while the deploy keeps the peering ([arm-template-whatif #278](https://github.com/Azure/arm-template-whatif/issues/278)). So after the second `server` run, check both sides rather than the what-if alone: `az network vnet peering list -g <resource group> --vnet-name genai-<env>-vnet -o table`, and the same for `genai-<env>-knowledge-vnet`, both `Connected`. If a side is gone or `Disconnected`, stay at `server` until the template keeps the peering through a redeploy.
-- Whether Azure's Readiness probe reaches the worker, which has no ingress: the Container Apps documentation does not say.
-- How the `setup` action reads a finished job's log: it tries the job's log stream (`az containerapp job logs show`), then the `ContainerAppConsoleLogs` table in Log Analytics. The documentation names neither for a finished job; the job's status decides the run either way.
-- Whether the knowledge admin may revoke `CONNECT` on a database the template created: the setup fails with the grant it could not remove if not.
-- Whether two servers may share one delegated subnet and one private DNS zone, as the restore drill does: not checked in the documentation.
+- Whether the peering drops for a moment during a run: `check` sees only the state after it. A `deploy.yml` run, which deploys the same template, has not been checked at `apps` yet.
+- The `setup` action's fallback to the `ContainerAppConsoleLogs` table in Log Analytics has not run, since the log stream answered.
 
 ## Settings and secrets
 

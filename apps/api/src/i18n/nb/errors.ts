@@ -439,6 +439,10 @@ export const operationErrors = defineNamespace({
   modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
   noProcessorRecordForService:
     'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
+  decideOnlyThroughPurposeCheck:
+    'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
+  callOperationNeedsMasking:
+    'et call-operation-steg trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
   operatorsGovernOperations: 'bare operatører styrer operasjoner',
   noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
   noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',

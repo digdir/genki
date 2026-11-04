@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { textPart, type Principal } from '@genai/contracts';
 import { createGate, createKernel, envSecrets } from '@genai/kernel';
-import { bundledDescriptorDir, descriptorRegistry, parseDescriptor } from '@genai/operations';
+import {
+  bundledDescriptorDir,
+  descriptorRegistry,
+  loadDescriptors,
+  parseDescriptor,
+} from '@genai/operations';
+import { contractFailures, fixturesFor, operationContract } from '@genai/operations/contract';
 import {
   ModelError,
   ModelRouter,
@@ -997,5 +1003,62 @@ describe('operations on the catalogue', () => {
         usage: { inputTokens: 5, outputTokens: 0, requests: 1 },
       },
     ]);
+  });
+});
+
+describe('a new operation kind from a descriptor alone', () => {
+  const fixtures = join(import.meta.dirname, '..', 'test-fixtures');
+  const registry = loadDescriptors(join(fixtures, 'descriptors'));
+  const id = 'example/classify@1';
+  const recorded = fixturesFor(join(fixtures, 'operations'), id);
+  const sorter = (operations: string[]) => ({
+    endpoints: { one: catalog.endpoints.one },
+    models: [
+      { id: 'a/sorter', endpoint: 'one', deployment: 'sorter', residency: 'eu', operations },
+    ],
+  });
+
+  it('a descriptor for a new kind runs on a model that declares it, with no code for the kind', async () => {
+    const descriptor = registry.get(id);
+    if (!descriptor) throw new Error(`${id} did not load`);
+    expect(descriptor.operation).toBe('classify');
+    expect(contractFailures(await operationContract(descriptor, recorded))).toEqual([]);
+    const fixture = recorded[0];
+    if (!fixture) throw new Error('no fixture');
+    const sent: unknown[] = [];
+    const egress: typeof fetch = async (_url, init) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return Response.json(fixture.response.body);
+    };
+    const router = new ModelRouter({
+      catalog: sorter(['classify']),
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: registry,
+      governance: { maturity: async () => 'production', processorRecorded: async () => true },
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+    for (const ports of [router.operations(), router.described()])
+      await expect(
+        ports.open({ kind: 'model', id: 'a/sorter' }, testContext().ctx).call(id, fixture.input),
+      ).resolves.toEqual(fixture.result);
+    expect(sent).toEqual([fixture.request.body, fixture.request.body]);
+  });
+
+  it('the catalogue refuses an operation kind no descriptor defines', async () => {
+    const options = {
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: registry,
+    };
+    expect(() => new ModelRouter({ ...options, catalog: sorter(['translate']) })).toThrow(
+      'no descriptor defines the translate operation',
+    );
+    const router = new ModelRouter({ ...options, catalog: sorter(['chat']) });
+    await expect(router.classify('a/sorter', { operations: ['translate'] })).rejects.toMatchObject({
+      code: 'bad_request',
+    });
+    await router.classify('a/sorter', { operations: ['chat', 'classify'] });
+    expect(router.models().get('a/sorter')?.operations).toEqual(['chat', 'classify']);
   });
 });

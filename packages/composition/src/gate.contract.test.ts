@@ -62,7 +62,7 @@ const without = (value: Record<string, unknown>, key: string) => {
 
 const classifyDescriptor = parseDescriptor(`
 id: example/classify@1
-operation: chat
+operation: classify
 status: review
 summary: A made-up classification API for the gate contract.
 api:
@@ -479,7 +479,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
 
   const descriptorLane = (tier: 'operation' | 'described'): GateLane => ({
     port: tier,
-    operation: 'chat',
+    operation: 'classify',
     admission: 'admitted',
     tenant,
     has: { ...has, enabled: true, provenance: true },
@@ -503,6 +503,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
+              operations: ['chat', 'classify'],
               ...w.shared,
             },
           ],
@@ -514,7 +515,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
         ]),
         governance: {
           maturity: async () => 'production',
-          processor: async () => ({ acceptsUnmaskedInput: false }),
+          processorRecorded: async () => true,
         },
         ...(setup.routerResidency ? { maxResidency: setup.routerResidency } : {}),
         classifications: {

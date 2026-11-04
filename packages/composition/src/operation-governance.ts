@@ -38,21 +38,14 @@ export const maturityStep = (state: MaturityState, wanted: Maturity): MaturitySt
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
-export const ProcessorRecordSpec = z
-  .strictObject({
-    agreement: text(500),
-    subProcessors: z.array(z.strictObject({ name: text(200), location: text(100) })).max(50),
-    retention: z.strictObject({
-      days: z.number().int().min(0).max(3650),
-      note: text(1000).optional(),
-    }),
-    acceptsUnmaskedInput: z.boolean().default(false),
-    unmaskedInputReason: text(1000).optional(),
-  })
-  .refine((r) => !r.acceptsUnmaskedInput || r.unmaskedInputReason !== undefined, {
-    message: 'say why this endpoint may take image, audio and file input that cannot be masked',
-    path: ['unmaskedInputReason'],
-  });
+export const ProcessorRecordSpec = z.strictObject({
+  agreement: text(500),
+  subProcessors: z.array(z.strictObject({ name: text(200), location: text(100) })).max(50),
+  retention: z.strictObject({
+    days: z.number().int().min(0).max(3650),
+    note: text(1000).optional(),
+  }),
+});
 
 export type ProcessorRecord = z.infer<typeof ProcessorRecordSpec>;
 
@@ -88,10 +81,7 @@ export const operationGovernance = (
         (await store.latest({ kind: maturityEntryKind, scope: tier })).map((e) => maturityOf(e.id)),
       ),
     processorRecord,
-    processor: async (endpoint) => {
-      const record = await processorRecord(endpoint);
-      return record ? { acceptsUnmaskedInput: record.spec.acceptsUnmaskedInput } : undefined;
-    },
+    processorRecorded: async (endpoint) => (await processorRecord(endpoint)) !== undefined,
     processorRecords: async () =>
       (await store.latest({ kind: processorRecordKind, scope: platformScope })).filter(
         (e) => !e.deleted,
