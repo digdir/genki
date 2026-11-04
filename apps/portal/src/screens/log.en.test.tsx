@@ -34,6 +34,17 @@ describe('Log in English', () => {
     expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
   });
 
+  it('says in English that an erased run had its content erased, and marks it in the list', async () => {
+    await open('#/log/t8');
+
+    const note = await screen.findByRole('note', { name: 'The content of this run was erased' });
+    expect(note.textContent).toContain('The conversation was deleted on');
+    expect(note.textContent).toContain('Only status, time, tokens and cost are kept.');
+    const list = await screen.findByRole('region', { name: 'Latest runs' });
+    const link = within(list).getByRole('link', { name: /Kunnskapsassistenten/ });
+    expect(within(link).getByText('Content erased')).toBeTruthy();
+  });
+
   it('shows the changes tab in English', async () => {
     await open('#/log?tab=changes');
     expect(await screen.findByText('Type of change')).toBeTruthy();

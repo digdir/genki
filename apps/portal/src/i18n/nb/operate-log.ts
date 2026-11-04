@@ -51,6 +51,7 @@ export const logArea = {
     actorApiKey: 'API-nøkkel {name}',
     actorApiKeyUnnamed: 'API-nøkkel',
     actorSystem: 'Systembruker',
+    erased: 'Innhold slettet',
   }),
   logBatch: defineNamespace({
     waiting: 'Venter',
@@ -150,5 +151,14 @@ export const logArea = {
     reasonOrder: 'Pålegg fra tilsyn eller domstol',
     approvalNote:
       'Godkjenninger vises alltid med navn. Det er ansvar for beslutninger, ikke overvåking.',
+    erasedTitle: 'Innholdet i denne kjøringen er slettet',
+    erasedConversation: 'Samtalen ble slettet {when}.',
+    erasedConversationUndated: 'Samtalen ble slettet.',
+    erasedRetention: 'Slettet etter lagringstiden, {when}.',
+    erasedRetentionUndated: 'Slettet etter lagringstiden.',
+    erasedOther: 'Slettet {when}.',
+    erasedOtherUndated: 'Innholdet er slettet.',
+    erasedKept:
+      'Det som ble sendt inn, stegene og svaret er borte. Bare status, tid, tokens og kostnad er tatt vare på.',
   }),
 } as const;

@@ -16,9 +16,4 @@ export const access: PlainKey[] = [
 
 export const logged: PlainKey[] = ['dataHandling.logged1', 'dataHandling.logged2'];
 
-export const marking: PlainKey[] = ['dataHandling.marking1', 'dataHandling.marking2'];
-
-export const undecided: readonly (readonly [PlainKey, PlainKey])[] = [
-  ['dataHandling.undecidedStorage', 'dataHandling.notDecidedYet'],
-  ['dataHandling.undecidedDpa', 'dataHandling.notDecidedYet'],
-];
+export const undecided: PlainKey[] = ['dataHandling.undecidedStorage', 'dataHandling.undecidedDpa'];

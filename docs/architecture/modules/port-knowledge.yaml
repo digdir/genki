@@ -21,6 +21,8 @@ files:
   - packages/port-knowledge/src/port.ts
   - packages/port-knowledge/src/router.ts
   - packages/port-knowledge/src/catalog.ts
+  - packages/port-knowledge/src/records.ts
+  - packages/port-knowledge/src/tombstone.ts
 input: Query + filters
 output: Hits
 replaces:

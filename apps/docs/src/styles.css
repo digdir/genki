@@ -1,0 +1,137 @@
+:root {
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-feature-settings: 'cv05' 1;
+  --app-max-width: 1200px;
+  --app-gutter: var(--ds-size-5);
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--ds-color-background-default);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ds-color-background-default) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--ds-color-border-subtle);
+}
+
+.app-header-inner {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--ds-size-3) var(--app-gutter);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-4);
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-size-2);
+  text-decoration: none;
+  color: var(--ds-color-neutral-text-default);
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.brand svg {
+  width: 32px;
+  height: 32px;
+}
+
+.nav {
+  display: flex;
+  gap: var(--ds-size-1);
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+
+.nav a {
+  text-decoration: none;
+  padding: var(--ds-size-2) var(--ds-size-3);
+  border-radius: var(--ds-border-radius-md);
+  color: var(--ds-color-neutral-text-subtle);
+  font-weight: 500;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.nav a:hover {
+  background: var(--ds-color-neutral-surface-hover);
+  color: var(--ds-color-neutral-text-default);
+}
+
+.nav a[aria-current='page'] {
+  background: var(--ds-color-accent-surface-tinted);
+  color: var(--ds-color-accent-text-default);
+}
+
+/* Sidebytte: kort toning uten forskyvning, nok til å se at siden byttet. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.page-enter {
+  animation: page-enter 0.15s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--ds-size-8) var(--app-gutter) var(--ds-size-14);
+}
+
+.app-footer {
+  border-top: 1px solid var(--ds-color-border-subtle);
+  padding: var(--ds-size-6) var(--app-gutter);
+  color: var(--ds-color-neutral-text-subtle);
+}
+
+.app-footer-inner {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-4);
+  justify-content: space-between;
+}

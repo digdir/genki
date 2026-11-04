@@ -83,7 +83,7 @@ export const RunsTab = ({
   const names: Record<string, string> = services.status === 'ready' ? services.data : {};
   const serviceLabel = (id: string) => names[id] ?? serviceLabelOf(id);
   const titleOf = (row: TaskRow) => row.serviceName ?? serviceLabel(row.service);
-  const [state, retry] = useAsync(
+  const [state, retry, pending] = useAsync(
     async (signal) => ({
       n: applied.n,
       ...(await api.tasks(
@@ -96,6 +96,7 @@ export const RunsTab = ({
       )),
     }),
     [api, tenant, applied.status, applied.service, applied.n],
+    { keepPreviousFor: tenant },
   );
 
   const rows: TaskRow[] =
@@ -225,7 +226,7 @@ export const RunsTab = ({
             <Paragraph>{t('logRuns.empty')}</Paragraph>
           ) : null}
           {rows.length > 0 ? (
-            <ul className="plain-list log-runs">
+            <ul className="plain-list log-runs" aria-busy={pending || undefined}>
               {rows.map((row) => {
                 const extras = live ? undefined : runExtras[row.id];
                 const status = statusOf(overrides[row.id] ?? row.status, t);
@@ -249,7 +250,15 @@ export const RunsTab = ({
                             {triggerLabel(extras.triggerKind, t)}
                           </Tag>
                         ) : null}
-                        {live ? (row.excerpt ?? '') : (extras?.triggerDetail ?? row.id)}
+                        {row.erasure ? (
+                          <Tag data-size="sm" data-color="neutral">
+                            {t('logRuns.erased')}
+                          </Tag>
+                        ) : live ? (
+                          (row.excerpt ?? '')
+                        ) : (
+                          (extras?.triggerDetail ?? row.id)
+                        )}
                       </span>
                       <span className="log-run-when">
                         {live

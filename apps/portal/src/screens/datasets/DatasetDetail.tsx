@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronLeftIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -32,10 +33,6 @@ import { sourceOf } from './DatasetList';
 import { count } from './model';
 import { SearchEngine } from './SearchEngine';
 import './search-engine.css';
-
-const back = 'M15 6l-6 6 6 6';
-const chevron = 'M6 9l6 6 6-6';
-const play = 'M7 5l12 7-12 7z';
 
 export type DetailTab = 'ingestions' | 'filters' | 'source';
 
@@ -95,7 +92,7 @@ const RunItem = ({
           </span>
         </span>
         <span className={open ? 'chevron up' : 'chevron'}>
-          <Icon d={chevron} size={18} />
+          <Icon icon={ChevronDownIcon} size={18} />
         </span>
       </button>
       {running ? (
@@ -332,7 +329,7 @@ export const DatasetDetail = ({
   return (
     <div className="stack dataset-page">
       <a href="#/datasets" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="page-head">
@@ -348,7 +345,7 @@ export const DatasetDetail = ({
         </div>
         <div className="actions">
           <Button variant="secondary" aria-pressed={trying} onClick={() => setTrying((x) => !x)}>
-            <Icon d={play} />
+            <Icon icon={PlayIcon} />
             {t('datasets.try')}
           </Button>
           {editable ? (

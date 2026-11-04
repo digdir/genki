@@ -29,9 +29,11 @@ import {
   problemContent,
   problems,
   reasonTooShort,
+  RunErasure,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
+import { readOnlyInLockdown } from './lockdown.js';
 import { toTimeline, type TaskReader } from './timeline.js';
 import type { ActorNames } from './actor-names.js';
 
@@ -58,6 +60,7 @@ export interface PlatformApiOptions {
   lifecycle?: (tenant: string, service: string) => Promise<{ state: string }>;
   names?: ActorNames;
   now?: () => Date;
+  lockdown?: boolean;
 }
 
 const tenantParam = z
@@ -262,6 +265,7 @@ const Timeline = z
     costOre: z.number().optional(),
     costMicroNok: z.number().int().nullable().optional(),
     priced: z.boolean().optional(),
+    erasure: RunErasure.optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -309,7 +313,16 @@ const routes = {
     summary:
       'The organisations the signed-in person may act for, with names and rights, for logins whose token lists none',
     responses: {
-      200: json(z.object({ organisations: z.array(MyOrganisation) }), 'Organisations'),
+      200: json(
+        z.object({
+          organisations: z.array(MyOrganisation),
+          lockdownReadOnly: z.literal(true).optional().openapi({
+            description:
+              'Present only in a locked environment when the login may only read: not a trusted Entra login and not in LOCKDOWN_USER_GROUPS',
+          }),
+        }),
+        'Organisations',
+      ),
       401: problems[401],
     },
   }),
@@ -603,6 +616,7 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
+    operations: z.array(z.string()).optional(),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
@@ -618,6 +632,11 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
+    operations: z
+      .array(z.string().regex(/^[a-z][a-z0-9-]*$/))
+      .min(1)
+      .optional()
+      .describe('chat, decide, or a kind a registered operation descriptor defines'),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })
@@ -788,6 +807,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const lacking =
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
+    const erasure = await options.tasks.erasure?.(tenant, task);
     return c.json(
       toTimeline(
         found,
@@ -797,6 +817,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         {
           details: requireRight(acting, tenant, 'manage-services').ok,
           usage: startedBy(found, principal) || seesUsage(acting, tenant),
+          ...(erasure ? { erasure } : {}),
         },
       ),
       200,
@@ -841,6 +862,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
             ].find((name) => name && name !== orgNumber) ?? orgNumber,
           rights: [...rightsOf(principal, orgNumber)],
         })),
+        ...(options.lockdown && readOnlyInLockdown(principal) ? { lockdownReadOnly: true } : {}),
       },
       200,
     );

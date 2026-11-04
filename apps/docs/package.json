@@ -1,0 +1,27 @@
+{
+  "name": "@genai/docs",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "Dokumentasjonssiden: byggeklossene, flytene og målbildet for Genki, på norsk",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@digdir/designsystemet-css": "^1.23.0",
+    "@digdir/designsystemet-react": "^1.23.0",
+    "@digdir/designsystemet-theme": "^1.11.0",
+    "@genai/docs-content": "0.0.0",
+    "@genai/docs-site": "0.0.0",
+    "@navikt/aksel-icons": "^8.21.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2"
+  }
+}
