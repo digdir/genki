@@ -273,16 +273,19 @@ describe('row-level security under a non-superuser owner', () => {
     expect(unforced.rows.map((r) => r.relname)).toEqual([
       'change_versions',
       'content_keys',
+      'currency_rates',
       'erased_scopes',
       'events',
       'identities',
       'judge_labels',
       'model_classifications',
+      'platform_identity',
       'rate_limit_windows',
       'setting_default_versions',
       'setting_locks',
       'state',
       'tasks',
+      'usage_marks',
     ]);
   });
 

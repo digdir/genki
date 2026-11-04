@@ -148,5 +148,13 @@ export const usageArea = {
     quotaUnknown: 'Kvoten er ikke oppgitt.',
     quotaIs: 'Kvoten for {tenant} er {millions} millioner tokens per måned.',
     createService: 'Lag en tjeneste',
+    bySource: 'Fordelt på kilde',
+    modelsBySource: 'Modeller etter kilde',
+    source: 'Kilde',
+    share: 'Andel',
+    sourceGenki: 'Genki',
+    sourceGateway: 'AI-gateway',
+    sourceNote:
+      'Summen tar med kall gjennom AI-gatewayen, også de som ikke gikk gjennom Genki. Hvert kall telles én gang. Gatewayens beløp er regnet om til kroner med kursen for dagen.',
   }),
 } as const;

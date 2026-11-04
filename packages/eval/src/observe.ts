@@ -5,11 +5,21 @@ export interface ObservedSource extends SourceRef {
   url?: string;
 }
 
+export interface ObservedDecision {
+  rule?: string;
+  question: string;
+  answer: string;
+  probability?: number;
+  refusal: boolean;
+  outcome?: string;
+}
+
 export interface Observation {
   answer: string;
   retrieved: ObservedSource[];
   citations: ObservedSource[];
   fields?: Record<string, unknown>;
+  decisions?: ObservedDecision[];
 }
 
 export type Observe = (parts: Part[], events: Event[]) => Observation;
@@ -59,7 +69,27 @@ export const defaultObserve: Observe = (parts, events) => {
     ...parts.flatMap((p) => asSources(p.meta?.retrieved)),
   ];
   const citations = parts.flatMap((p) => asSources(p.meta?.citations));
-  return { answer, retrieved, citations, ...(fields ? { fields } : {}) };
+  const decisions = events.flatMap((e): ObservedDecision[] => {
+    const d = e.data as Record<string, unknown> | undefined;
+    if (e.type !== 'kernel.notice' || d?.kind !== 'decision') return [];
+    return [
+      {
+        ...(typeof d.rule === 'string' ? { rule: d.rule } : {}),
+        question: String(d.question ?? ''),
+        answer: String(d.answer ?? ''),
+        ...(typeof d.probability === 'number' ? { probability: d.probability } : {}),
+        refusal: d.refusal === true,
+        ...(typeof d.outcome === 'string' ? { outcome: d.outcome } : {}),
+      },
+    ];
+  });
+  return {
+    answer,
+    retrieved,
+    citations,
+    ...(fields ? { fields } : {}),
+    ...(decisions.length ? { decisions } : {}),
+  };
 };
 
 export const sameSource = (expected: SourceRef, actual: SourceRef) => {

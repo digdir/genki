@@ -72,13 +72,18 @@ describe('the GenKI docs bundle', () => {
 
   it('is searchable in test and prod because the database server allows the vector extension', () => {
     expect(read('infra/modules/postgres.bicep')).toMatch(
-      /name: 'azure\.extensions'\s+properties: \{ value: '[A-Z_,]*VECTOR[A-Z_,]*'/,
+      /param extensions string = '[A-Z_,]*VECTOR[A-Z_,]*'/,
     );
+    const platformServer = read('infra/main.bicep').match(
+      /module postgres 'modules\/postgres\.bicep' = \{[\s\S]*?\n\}/,
+    )?.[0];
+    expect(platformServer).toBeDefined();
+    expect(platformServer).not.toMatch(/extensions:/);
   });
 
   it('sets the extension list as a user override, the only source Azure Postgres accepts for it', () => {
     expect(read('infra/modules/postgres.bicep')).toMatch(
-      /name: 'azure\.extensions'\s+properties: \{ value: '[A-Z_,]*', source: 'user-override' \}/,
+      /name: 'azure\.extensions'\s+properties: \{ value: extensions, source: 'user-override' \}/,
     );
   });
 });

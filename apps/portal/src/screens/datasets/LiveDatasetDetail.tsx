@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronLeftIcon, PlayIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -63,9 +64,6 @@ import { SearchEngine } from './SearchEngine';
 import { Uploads } from './Uploads';
 import './search-engine.css';
 
-const back = 'M15 6l-6 6 6 6';
-const chevron = 'M6 9l6 6 6-6';
-const play = 'M7 5l12 7-12 7z';
 const years = ['2010', '2015', '2018', '2020', '2022', '2024'];
 
 export const pollMs = 1500;
@@ -118,7 +116,7 @@ const Run = ({
           <span>{t('datasets.skippedCount', { amount: f.number(skippedCount(run)) })}</span>
         </span>
         <span className={open ? 'chevron up' : 'chevron'}>
-          <Icon d={chevron} size={18} />
+          <Icon icon={ChevronDownIcon} size={18} />
         </span>
       </button>
       {open ? (
@@ -598,7 +596,7 @@ const Loaded = ({
   return (
     <div className="stack dataset-page">
       <a href="#/datasets" className="back-link">
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="page-head">
@@ -614,7 +612,7 @@ const Loaded = ({
         </div>
         <div className="actions">
           <Button variant="secondary" aria-pressed={trying} onClick={() => setTrying((x) => !x)}>
-            <Icon d={play} />
+            <Icon icon={PlayIcon} />
             {t('datasets.try')}
           </Button>
           {canEdit && pipeline ? (

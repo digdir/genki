@@ -1,3 +1,4 @@
+import { CheckmarkIcon, XMarkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -13,7 +14,7 @@ import {
 import { useId, useState } from 'react';
 import { useT } from '../i18n';
 import { ApiCallLink, type ApiCallPreview } from './ApiCall';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 import { reasonProblem } from './ReasonField';
 
 export interface QualityGate {
@@ -214,7 +215,7 @@ export const PublishSummary = ({
             <li key={g.name} className={g.passed ? undefined : 'failed'}>
               <div className="row-wrap">
                 <Tag data-size="sm" data-color={g.passed ? 'success' : 'danger'}>
-                  <Icon d={g.passed ? icons.check : icons.close} size={14} strokeWidth={2} />
+                  <Icon icon={g.passed ? CheckmarkIcon : XMarkIcon} size={14} />
                   {g.passed ? t('publish.passed') : t('publish.notPassed')}
                 </Tag>
                 <span className="gate-name">{g.name}</span>

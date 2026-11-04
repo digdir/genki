@@ -113,7 +113,9 @@ describe('live Testsett', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Publisert versjon' }));
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(writes().at(-1)).toMatchObject({
       method: 'POST',
       path: '/tenants/999888777/services/rapportassistenten/eval-runs',
@@ -149,7 +151,9 @@ describe('live Testsett', () => {
 
     expect(screen.queryByRole('checkbox', { name: /Send kjøringen til Langfuse/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
-    await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(writes().at(-1)?.body).not.toHaveProperty('trace');
   });
 
@@ -192,7 +196,9 @@ describe('live Testsett', () => {
     expect((send as HTMLInputElement).checked).toBe(false);
     fireEvent.click(send);
     fireEvent.click(screen.getByRole('button', { name: 'Start kjøringen' }));
-    await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(writes().at(-1)?.body).toMatchObject({ trace: true });
 
     fireEvent.click(screen.getByRole('button', { name: 'Kjør testsettet' }));
@@ -238,7 +244,9 @@ describe('live Testsett', () => {
         },
       ],
     });
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     const rows = (await within(history).findAllByRole('row')).slice(1) as HTMLElement[];
 
     fireEvent.click(
@@ -261,7 +269,9 @@ describe('live Testsett', () => {
     const run = screen.getByRole('button', { name: 'Kjør testsettet' });
     fireEvent.click(run);
     fireEvent.click(await screen.findByRole('button', { name: 'Start kjøringen' }));
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     expect(await within(history).findByText('Kjører')).toBeTruthy();
     await waitFor(() => expect(run.getAttribute('aria-disabled')).toBe('true'));
   });
@@ -585,7 +595,9 @@ describe('live Testsett: Langfuse-dommere', () => {
   };
   const openResult = async (run: NonNullable<QualityMockOptions['runs']>[number] = judgedRun) => {
     await openLive('', { runs: [run] });
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
     return screen.findByRole('region', { name: 'Resultat per testtilfelle' });
@@ -731,7 +743,9 @@ describe('live Testsett: Langfuse-dommere', () => {
   });
   const costLine = async (run: ReturnType<typeof costedRun>) => {
     await openLive('', { runs: [run] });
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
     const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
@@ -765,7 +779,9 @@ describe('live Testsett: Langfuse-dommere', () => {
         },
       ],
     });
-    const history = await screen.findByRole('region', { name: 'Kjøringer av testsettet' });
+    const history = await screen
+      .findAllByRole('region', { name: 'Kjøringer av testsettet' })
+      .then((found) => found[0] as HTMLElement);
     const row = (await within(history).findAllByRole('row'))[1] as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /^Vis resultatet fra/ }));
     const langfuse = await screen.findByRole('region', { name: 'Langfuse-dommere' });
