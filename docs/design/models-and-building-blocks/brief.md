@@ -4,7 +4,7 @@ Brief for the screens of ADR 0050, built on ADR 0048 and ADR 0049. It is a propo
 
 ## The problem
 
-- The step-flow editor is reached only inside one service (Oppsett → Arbeidsmåte), and looks like part of a service even when none is involved. Step flows are reusable and belong in Byggeklosser.
+- The step-flow editor is reached only inside one service (Oppsett → Arbeidsmåte), and looks like part of a service even when none is involved. Step flows are reusable and belong in the library under Utviklerverktøy → Stegflyter (ADR 0037), which Byggeklosser links to.
 - Byggeklosser lists step flows but does not open them, and step types such as «Kall en operasjon» are mixed in with step flows.
 - Service owners do not see the connection, region, price or processor record of a model.
 - In the console an endpoint is locked to one API («OpenAI-kompatibel (Chat Completions)»). A connection now offers many APIs, and each model binds one API per kind of call.
@@ -25,12 +25,12 @@ Brief for the screens of ADR 0050, built on ADR 0048 and ADR 0049. It is a propo
 
 ### Portal (service owner)
 
-1. **Byggeklosser, overview.** Kinds: Stegflyter, Stegtyper, Modeller, Ferdigheter, Verktøy, Vern, Dommere, Datasett, Fellestjenester. A block with an editor opens it from the list.
-2. **Stegflyter** (`/building-blocks/step-flows`). The organisation's own and Digdir's flows, the current version, «Brukes av» (services and the version each has pinned), and «Ny stegflyt», which asks for a name first.
+1. **Byggeklosser, overview.** Kinds: Stegflyter, Stegtyper, Modeller, Ferdigheter, Verktøy, Vern, Dommere, Datasett, Fellestjenester. Each kind opens the place its blocks are made; Stegflyter opens the library in Utviklerverktøy.
+2. **Utviklerverktøy → Stegflyter** (`/developer/step-flows`). The organisation's own and Digdir's flows, the current version, «Brukes av» (services and the version each has pinned), and «Ny stegflyt», which asks for a name first.
 3. **Step-flow editor without a service.** Name, purpose, diagram and YAML, run a test, versions, and «Bruk i en tjeneste» (dialog: pick a service, pin a version). No «I tjenesten» tabs.
 4. **The same editor opened from a service.** Clear context: «Tilbake til {tjeneste}» and «Fest denne versjonen i tjenesten».
-5. **Service → Oppsett → Arbeidsmåte.** A searchable picker for flow and version, a summary of the steps, and «Rediger stegflyten».
-6. **Service → Oppsett → Modell.** A model picker with the facts per model: provider and connection, where data is processed, price per unit, processor record (registrert / mangler). Below it, «Modell per type kall» for each kind the flow uses.
+5. **Service → Utviklerverktøy → Stegflyt.** A searchable picker for flow and version, a summary of the steps, and «Rediger stegflyten».
+6. **Service → Utviklerverktøy → Modell og arbeidsmåte.** A model picker with the facts per model: provider and connection, where data is processed, price per unit, processor record (registrert / mangler). Below it, «Modell per type kall» for each kind the flow uses.
 7. **Byggeklosser → Modell, detail.** The same facts, plus the kinds the model offers and the API bound for each.
 
 ### Console (platform team)
