@@ -62,6 +62,7 @@ import type {
   AnswerSource,
   BlockApprovalRequest,
   ChatTurn,
+  ModelApi,
   ModelEndpointInput,
   ModelSettings,
   PlatformProposal,
@@ -831,11 +832,18 @@ export const createApiClient = ({
           { signal },
         )
       ).data.filter((e) => !e.scope || e.scope === 'platform'),
-    addModelEndpoint: (endpoint: ModelEndpointInput, reason: string) =>
+    addModelEndpoint: (id: string, endpoint: ModelEndpointInput, reason: string) =>
       call<unknown>('POST', '/operator/model-endpoints', {
+        body: { id, ...endpoint },
+        headers: { 'change-reason': reason },
+      }),
+    updateModelEndpoint: (id: string, endpoint: ModelEndpointInput, reason: string) =>
+      call<unknown>('PUT', `/operator/model-endpoints/${encodeURIComponent(id)}`, {
         body: endpoint,
         headers: { 'change-reason': reason },
       }),
+    modelApis: async (signal?: AbortSignal) =>
+      (await call<{ data: ModelApi[] }>('GET', '/operator/apis', { signal })).data,
     deleteModelEndpoint: (id: string, reason: string) =>
       call<unknown>('DELETE', `/operator/model-endpoints/${encodeURIComponent(id)}`, {
         headers: { 'change-reason': reason },

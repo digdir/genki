@@ -169,7 +169,7 @@ const bundledView = async (descriptor: Descriptor) => {
     status: descriptor.status,
     source: 'bundled' as const,
     summary: descriptor.summary,
-    protocol: descriptor.api.protocol,
+    family: descriptor.api.family,
     fixtures: fixtures.length,
     contract: await contractView(descriptor, fixtures),
   };
@@ -187,7 +187,7 @@ const uploadedView = async (
     status: entry.spec.status,
     source: 'uploaded' as const,
     summary: typeof document.summary === 'string' ? document.summary : '',
-    protocol: loaded?.api.protocol ?? null,
+    family: loaded?.api.family ?? null,
     fixtures: entry.spec.fixtures.length,
     contract: loaded ? await contractView(loaded, entry.spec.fixtures) : null,
     ...(loadProblem ? { problems: [loadProblem] } : {}),

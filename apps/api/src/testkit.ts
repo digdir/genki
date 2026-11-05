@@ -202,7 +202,7 @@ export const setup = (
 export const fakeModels = {
   endpoints: {
     fake: {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modell.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },

@@ -3,11 +3,11 @@ import { resolveCatalog } from './catalogs.js';
 
 const raw = {
   endpoints: {
-    listing: { protocol: 'openai-chat', baseURL: '${OPENAI_URL}' },
+    listing: { baseURL: '${OPENAI_URL}', families: { openai: '' } },
     claude: {
-      protocol: 'anthropic-messages',
       baseURL: '${CLAUDE_URL}',
-      discovery: { source: 'azure-deployments', from: 'listing' },
+      families: { anthropic: '' },
+      discovery: [{ source: 'azure-deployments', from: 'listing' }],
     },
   },
   models: [{ id: 'pinned', endpoint: 'listing', deployment: '${PINNED}' }],
@@ -36,5 +36,44 @@ describe('catalog loading', () => {
 
     expect(skipped).toEqual(['endpoint listing', 'endpoint claude', 'models pinned']);
     expect(catalog).toMatchObject({ endpoints: {}, models: [] });
+  });
+
+  it('drops a family whose base is not set, with the rules and models bound to it, and keeps the connection', () => {
+    const { catalog, skipped } = resolveCatalog(
+      {
+        endpoints: {
+          foundry: {
+            baseURL: '${OPENAI_URL}',
+            families: { openai: '', anthropic: '${CLAUDE_URL}' },
+            discovery: [
+              { source: 'azure-deployments', apis: { chat: 'openai/chat-completions@1' } },
+              { source: 'azure-deployments', apis: { chat: 'anthropic/messages@1' } },
+            ],
+          },
+        },
+        models: [
+          { id: 'gpt', endpoint: 'foundry', deployment: 'gpt' },
+          {
+            id: 'claude',
+            endpoint: 'foundry',
+            deployment: 'claude',
+            apis: { chat: 'anthropic/messages@1' },
+          },
+        ],
+      },
+      'models',
+      { OPENAI_URL: 'https://a.example/openai/v1' },
+    );
+
+    expect(skipped).toEqual(['endpoint foundry family anthropic', 'models claude']);
+    expect(catalog).toMatchObject({
+      endpoints: {
+        foundry: {
+          families: { openai: '' },
+          discovery: [{ apis: { chat: 'openai/chat-completions@1' } }],
+        },
+      },
+      models: [{ id: 'gpt' }],
+    });
   });
 });

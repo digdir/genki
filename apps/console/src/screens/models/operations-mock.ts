@@ -47,7 +47,7 @@ const seed = (): Entry[] => [
     status: 'typed',
     source: 'bundled',
     summary: 'Azure OpenAI Decisions API',
-    protocol: 'openai-chat',
+    family: 'openai',
     fixtures: 4,
     contract: passed(4),
     input: {
@@ -65,7 +65,7 @@ const seed = (): Entry[] => [
     status: 'typed',
     source: 'bundled',
     summary: 'OpenAI embeddings',
-    protocol: 'openai-chat',
+    family: 'openai',
     fixtures: 2,
     contract: passed(2),
     input: { kind: 'object', fields: { input: { kind: 'array', item: { kind: 'text' } } } },
@@ -77,7 +77,7 @@ const seed = (): Entry[] => [
     status: 'described',
     source: 'uploaded',
     summary: 'A classification API for sorting incoming mail',
-    protocol: 'openai-chat',
+    family: 'openai',
     fixtures: 1,
     contract: passed(1),
     input: classifyInput,
@@ -101,7 +101,7 @@ const seed = (): Entry[] => [
     status: 'review',
     source: 'uploaded',
     summary: 'Image generation through the Images API',
-    protocol: 'openai-chat',
+    family: 'openai',
     fixtures: 0,
     contract: null,
     input: imageInput,
@@ -166,7 +166,7 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
         ...(builtIn ? { typed: 'production' as const } : {}),
         descriptors: entries
           .filter((e) => e.operation === kind)
-          .map((e) => ({ id: e.id, status: e.status, protocol: e.protocol ?? '' })),
+          .map((e) => ({ id: e.id, status: e.status, family: e.family ?? '' })),
       };
     });
   };
@@ -258,7 +258,7 @@ export const operationsMock = (models: () => OperatorModel[], environment: Matur
       status: 'review',
       source: 'uploaded',
       summary: typeof d.summary === 'string' ? d.summary : '',
-      protocol: 'openai-chat',
+      family: 'openai',
       fixtures: fixtureCases.length,
       contract: passed(fixtureCases.length),
       input: before?.input ?? { kind: 'object', fields: { text: { kind: 'text' } } },

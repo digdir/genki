@@ -90,7 +90,7 @@ operation: generate-image
 status: review
 summary: A made-up image API for the operation@1 suite.
 api:
-  protocol: openai-chat
+  family: openai
   version: v1
 request:
   method: POST

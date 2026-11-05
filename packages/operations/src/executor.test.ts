@@ -10,7 +10,7 @@ operation: classify
 status: review
 summary: A made-up classification API, used to try a new kind.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
   headers:
     example-beta: classify-2026-10-01

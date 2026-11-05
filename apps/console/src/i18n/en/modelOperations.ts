@@ -58,7 +58,7 @@ export const modelOperations = {
   nextNone: 'Nothing. It changes through Genki.',
   kind: 'Kind',
   source: 'Source',
-  protocol: 'Protocol',
+  family: 'API family',
   unknown: 'Unknown',
   lastChange: 'Last changed',
   lastChangeLine: 'by {who}, {when}',

@@ -3,7 +3,7 @@ operation: embed
 status: typed
 summary: Embeddings on an OpenAI-compatible endpoint, as the hand-written openai-embeddings adapter sends them.
 api:
-  protocol: openai-embeddings
+  family: openai
   version: v1
 auth:
   keyHeader: authorization

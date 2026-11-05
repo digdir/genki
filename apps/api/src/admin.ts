@@ -98,6 +98,7 @@ export interface ModelSummary {
   id: string;
   residency: string;
   capabilities: string[];
+  apis?: Record<string, string>;
   operations?: string[];
   enabled: boolean;
   price?: { inputPerThousand: number; outputPerThousand: number } | null;
@@ -115,7 +116,7 @@ export interface ModelAdmin {
     classification: {
       residency?: string;
       capabilities?: string[];
-      operations?: string[];
+      apis?: Record<string, string>;
       enabled?: boolean;
       parameters?: Record<string, unknown>;
     },
@@ -442,7 +443,7 @@ export const createAdmin = (options: AdminOptions) => {
       if (after instanceof ModelError)
         return {
           ok: false,
-          errors: [{ path: 'operations', message: after.message }],
+          errors: [{ path: 'apis', message: after.message }],
           target,
           audit: platformWide,
         };

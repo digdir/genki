@@ -49,7 +49,7 @@ export interface OperationKind {
   typed?: 'production';
   by?: string;
   at?: string;
-  descriptors: { id: string; status: string; protocol?: string }[];
+  descriptors: { id: string; status: string; family?: string }[];
 }
 
 export interface OperationKinds {
@@ -70,7 +70,7 @@ export interface OperationDescriptor {
   status: DescriptorStatus;
   source: 'bundled' | 'uploaded';
   summary: string;
-  protocol: string | null;
+  family: string | null;
   fixtures: number;
   contract: DescriptorContract | null;
   problems?: string[];
@@ -160,6 +160,7 @@ export interface OperatorModel {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  apis?: ApiBindings;
   operations?: ModelOperation[];
   enabled: boolean;
   origin: 'catalog' | 'discovered';
@@ -182,7 +183,7 @@ export interface ModelPrice {
 export interface ModelClassification {
   residency?: Residency;
   capabilities?: Capability[];
-  operations?: ModelOperation[];
+  apis?: ApiBindings;
   enabled?: boolean;
   parameters?: ParameterRules;
 }
@@ -1038,13 +1039,22 @@ export interface QuarantinedDefinition {
   at: string;
 }
 
-export type ModelProtocol = 'openai-chat' | 'anthropic-messages';
+export type ApiBindings = Record<ModelOperation, string>;
+
+export interface ModelApi {
+  id: string;
+  kind: ModelOperation;
+  family: string;
+  source: 'built-in' | 'bundled' | 'uploaded';
+  status: string;
+  summary?: string;
+  models: string[];
+}
 
 export interface ModelEndpointInput {
-  id: string;
-  protocol: ModelProtocol;
   baseURL: string;
-  auth: { kind: 'api-key' | 'bearer'; secret: string };
+  auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
+  families: Record<string, string>;
 }
 
 export interface ModelSettings {

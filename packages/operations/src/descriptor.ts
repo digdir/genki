@@ -73,13 +73,33 @@ const checkModelFields = (at: string, wireRequest: Shape, body: unknown) => {
 
 const literal = z.string().max(200);
 
+export const apiFamilyPattern = /^[a-z][a-z0-9-]*$/;
+
+/** The API family each endpoint protocol of ADR 0021 became (ADR 0048). */
+export const legacyProtocolFamilies: Readonly<Record<string, string>> = {
+  'openai-chat': 'openai',
+  'anthropic-messages': 'anthropic',
+  'openai-embeddings': 'openai',
+};
+
+export const familyOfProtocol = (protocol: string) => legacyProtocolFamilies[protocol] ?? protocol;
+
+const withFamily = (value: unknown): unknown => {
+  if (!isRecord(value) || !isRecord(value.api) || !('protocol' in value.api)) return value;
+  const { protocol, ...api } = value.api;
+  return {
+    ...value,
+    api: 'family' in api ? value.api : { family: familyOfProtocol(String(protocol)), ...api },
+  };
+};
+
 export const descriptorFile = z.strictObject({
   id: z.string().regex(descriptorIdPattern),
   operation: z.string().regex(/^[a-z][a-z0-9-]*$/),
   status: z.enum(descriptorStatuses),
   summary: z.string().min(1).max(500),
   api: z.strictObject({
-    protocol: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
+    family: z.string().regex(apiFamilyPattern),
     version: z.string().min(1).max(64),
     query: z.record(z.string().regex(/^[a-z0-9_-]+$/i), literal).default({}),
     headers: z.record(z.string().regex(/^[a-z0-9-]+$/i), literal).default({}),
@@ -121,7 +141,7 @@ export interface Descriptor {
   status: DescriptorStatus;
   summary: string;
   api: {
-    protocol: string;
+    family: string;
     version: string;
     query: Record<string, string>;
     headers: Record<string, string>;
@@ -151,7 +171,7 @@ const checkRoots = (template: unknown, allowed: string[], at: string) => {
 
 /** Validates a parsed descriptor and turns its shapes into the kernel's closed shapes. */
 export const toDescriptor = (value: unknown): Descriptor => {
-  const parsed = descriptorFile.safeParse(value);
+  const parsed = descriptorFile.safeParse(withFamily(value));
   if (!parsed.success)
     throw new DescriptorError(
       parsed.error.issues
@@ -169,11 +189,6 @@ export const toDescriptor = (value: unknown): Descriptor => {
       throw new DescriptorError(`${at}: api.headers.${name}: credentials come from the endpoint`);
   if (keptOutPath.test(d.request.path) || d.request.path.includes('..'))
     throw new DescriptorError(`${at}: request.path ${d.request.path} is kept out of descriptors`);
-  const named = /^[^/]+\/([^@]+)@/.exec(d.id)?.[1];
-  if (named !== d.operation)
-    throw new DescriptorError(
-      `${at}: a descriptor id names its operation, <provider>/${d.operation}@<version>`,
-    );
   if (d.stream !== 'none')
     throw new DescriptorError(
       `${at}: stream must be none; Genki does not stream descriptor calls yet`,

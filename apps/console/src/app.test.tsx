@@ -328,105 +328,131 @@ describe('modeller', () => {
     ]);
   });
 
-  it('shows the calls a model serves and sets them, never leaving a model with none', async () => {
+  const select = (name: string | RegExp) =>
+    screen.getByRole('combobox', { name }) as HTMLSelectElement;
+  const patches = (calls: { method: string; path: string; body?: unknown }[]) =>
+    calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body]);
+
+  it('a model binds one API per kind, and a change is sent as its bindings', async () => {
     const { calls, fetch } = recording();
     await signedIn('#/models', [operatorRole], fetch);
     await modelTable();
     giveReason();
 
-    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
-    expect(box('Avgjørelser for gpt-4.1').checked).toBe(true);
-    expect(box('Samtale for gpt-4o-2M-tps').disabled).toBe(true);
-    expect(box('Samtale for claude-sonnet-5-5').checked).toBe(true);
+    await waitFor(() => expect(select('Samtale for gpt-4.1').disabled).toBe(false));
+    expect(select('Samtale for gpt-4.1').value).toBe('openai/chat-completions@1');
+    expect(select('Avgjørelser for gpt-4.1').value).toBe('openai/decide@1');
+    const none = within(select('Samtale for gpt-4o-2M-tps')).getByRole('option', {
+      name: 'Ikke i bruk',
+    }) as HTMLOptionElement;
+    expect(none.disabled).toBe(true);
 
-    fireEvent.click(box('Avgjørelser for gpt-4o-2M-tps'));
-    await waitFor(() => expect(box('Avgjørelser for gpt-4o-2M-tps').checked).toBe(true));
+    fireEvent.change(select('Samtale for gpt-4o-2M-tps'), {
+      target: { value: 'openai/responses@1' },
+    });
+    await waitFor(() =>
+      expect(select('Samtale for gpt-4o-2M-tps').value).toBe('openai/responses@1'),
+    );
 
-    expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
-      ['/api/operator/models/foundry-openai/gpt-4o-2m-tps', { operations: ['chat', 'decide'] }],
+    expect(patches(calls)).toEqual([
+      [
+        '/api/operator/models/foundry-openai/gpt-4o-2m-tps',
+        { apis: { chat: 'openai/responses@1' } },
+      ],
     ]);
   });
 
-  const withKinds = (
+  it('a model is offered only the APIs in the families its connection offers', async () => {
+    await signedIn('#/models');
+    await modelTable();
+    await waitFor(() => expect(select('Samtale for claude-sonnet-5-5').disabled).toBe(false));
+
+    const options = (name: string) => [...select(name).options].map((o) => o.value).filter(Boolean);
+    expect(options('Samtale for claude-sonnet-5-5')).toEqual(['anthropic/messages@1']);
+    expect(options('Samtale for gpt-4.1')).toEqual([
+      'openai/chat-completions@1',
+      'openai/responses@1',
+    ]);
+    expect(
+      screen.queryByRole('combobox', { name: 'Avgjørelser for claude-sonnet-5-5' }),
+    ).toBeNull();
+    expect(select('Bildegenerering i test for gpt-4.1').value).toBe('');
+  });
+
+  it('binding another kind keeps the kinds the model already binds', async () => {
+    const { calls, fetch } = recording();
+    await signedIn('#/models', [operatorRole], fetch);
+    await modelTable();
+    giveReason();
+    await waitFor(() => expect(select('Samtale for gpt-image-1.5').disabled).toBe(false));
+
+    fireEvent.change(select('Samtale for gpt-image-1.5'), {
+      target: { value: 'openai/chat-completions@1' },
+    });
+    await waitFor(() =>
+      expect(select('Samtale for gpt-image-1.5').value).toBe('openai/chat-completions@1'),
+    );
+    fireEvent.change(select('Samtale for gpt-image-1.5'), { target: { value: '' } });
+    await waitFor(() => expect(select('Samtale for gpt-image-1.5').value).toBe(''));
+
+    expect(patches(calls)).toEqual([
+      [
+        '/api/operator/models/foundry-openai/gpt-image-1.5',
+        {
+          apis: {
+            'generate-image': 'openai/generate-image@1',
+            chat: 'openai/chat-completions@1',
+          },
+        },
+      ],
+      [
+        '/api/operator/models/foundry-openai/gpt-image-1.5',
+        { apis: { 'generate-image': 'openai/generate-image@1' } },
+      ],
+    ]);
+  });
+
+  const answering = (
+    route: string,
     answer: (base: typeof fetch, input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   ): typeof fetch => {
     const base = mockFetch();
     return async (input, init) =>
-      String(input).endsWith('/operator/operation-kinds')
-        ? answer(base, input, init)
-        : base(input, init);
+      String(input).endsWith(route) ? answer(base, input, init) : base(input, init);
   };
 
-  it('the model form lists every operation kind the platform knows', async () => {
-    await signedIn('#/models');
-    await modelTable();
-
-    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
-    await screen.findAllByText('i test');
-    expect(box('Bildegenerering i test for gpt-4.1').checked).toBe(false);
-    expect(box('Samtale for gpt-image-1.5').checked).toBe(false);
-    expect(box('Avgjørelser for gpt-image-1.5').checked).toBe(false);
-    expect(box('Bildegenerering i test for gpt-image-1.5').checked).toBe(true);
-  });
-
-  it('a kind the model offers is kept when another kind is ticked', async () => {
-    const { calls, fetch } = recording();
-    await signedIn('#/models', [operatorRole], fetch);
-    await modelTable();
-    giveReason();
-
-    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Samtale for gpt-image-1.5' }));
-    await waitFor(() => expect(box('Samtale for gpt-image-1.5').checked).toBe(true));
-    fireEvent.click(box('Samtale for gpt-image-1.5'));
-    await waitFor(() => expect(box('Samtale for gpt-image-1.5').checked).toBe(false));
-
-    expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
-      [
-        '/api/operator/models/foundry-openai/gpt-image-1.5',
-        { operations: ['generate-image', 'chat'] },
-      ],
-      ['/api/operator/models/foundry-openai/gpt-image-1.5', { operations: ['generate-image'] }],
-    ]);
-  });
-
-  it('a kind the model offers is shown checked when the kinds list fails to load', async () => {
+  it('a bound API is shown, and cannot be changed, when the API list fails to load', async () => {
     await signedIn(
       '#/models',
       [operatorRole],
-      withKinds(async () => Response.json({ title: 'Unavailable', status: 503 }, { status: 503 })),
+      answering('/operator/apis', async () =>
+        Response.json({ title: 'Unavailable', status: 503 }, { status: 503 }),
+      ),
     );
     await modelTable();
 
-    const offered = screen.getByRole('checkbox', {
-      name: 'Bildegenerering for gpt-image-1.5',
-    }) as HTMLInputElement;
-    expect(offered.checked).toBe(true);
-    expect(offered.disabled).toBe(true);
-    expect(screen.queryByRole('checkbox', { name: 'Bildegenerering for gpt-4.1' })).toBeNull();
+    const bound = await screen.findByRole('combobox', { name: /^Bildegenerering.*gpt-image-1.5$/ });
+    expect((bound as HTMLSelectElement).value).toBe('openai/generate-image@1');
+    expect((bound as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByRole('combobox', { name: /^Bildegenerering.*gpt-4.1$/ })).toBeNull();
   });
 
-  it('an uploaded kind appears without a console change', async () => {
+  it('an uploaded API appears without a console change', async () => {
     await signedIn(
       '#/models',
       [operatorRole],
-      withKinds(async (base, input, init) => {
+      answering('/operator/apis', async (base, input, init) => {
         const known = (await (await base(input, init)).json()) as { data: unknown[] };
         return Response.json({
-          ...known,
           data: [
             ...known.data,
             {
+              id: 'openai/transcribe-audio@1',
               kind: 'transcribe-audio',
-              builtIn: false,
-              maturity: 'production',
-              descriptors: [
-                {
-                  id: 'openai/transcribe-audio@1',
-                  status: 'described',
-                  protocol: 'openai-chat',
-                },
-              ],
+              family: 'openai',
+              source: 'uploaded',
+              status: 'described',
+              models: [],
             },
           ],
         });
@@ -434,24 +460,12 @@ describe('modeller', () => {
     );
     await modelTable();
 
-    await screen.findAllByText('Transkribering');
-    expect(screen.getByRole('checkbox', { name: 'Transkribering for gpt-4.1' })).toBeTruthy();
-  });
-
-  it('a descriptor kind is offered on a model only where one of its descriptors speaks the model protocol', async () => {
-    await signedIn('#/models');
-    await modelTable();
-
-    await screen.findAllByText('i test');
     expect(
-      screen.getByRole('checkbox', { name: 'Bildegenerering i test for gpt-4.1' }),
+      await screen.findByRole('combobox', { name: 'Transkribering for gpt-4.1' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('checkbox', { name: 'Bildegenerering i test for claude-sonnet-5-5' }),
+      screen.queryByRole('combobox', { name: 'Transkribering for claude-sonnet-5-5' }),
     ).toBeNull();
-    expect(
-      screen.getByRole('checkbox', { name: 'Avgjørelser for claude-sonnet-5-5' }),
-    ).toBeTruthy();
   });
 
   it('a refused model change is shown next to the control it concerns', async () => {
@@ -461,9 +475,7 @@ describe('modeller', () => {
             {
               title: 'The change is invalid',
               status: 422,
-              errors: [
-                { path: 'operations', message: 'no descriptor defines the classify operation' },
-              ],
+              errors: [{ path: 'apis.decide', message: 'no API openai/decide@9' }],
             },
             { status: 422 },
           )
@@ -471,12 +483,15 @@ describe('modeller', () => {
     );
     await modelTable();
     giveReason();
+    await waitFor(() => expect(select('Avgjørelser for gpt-4o-2M-tps').disabled).toBe(false));
 
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Avgjørelser for gpt-4o-2M-tps' }));
-    const message = await screen.findByText(/no descriptor defines the classify operation/);
+    fireEvent.change(select('Avgjørelser for gpt-4o-2M-tps'), {
+      target: { value: 'openai/decide@1' },
+    });
+    const message = await screen.findByText(/no API openai\/decide@9/);
     const fieldset = message.closest('fieldset') as HTMLElement;
     expect(
-      within(fieldset).getByRole('checkbox', { name: 'Avgjørelser for gpt-4o-2M-tps' }),
+      within(fieldset).getByRole('combobox', { name: 'Avgjørelser for gpt-4o-2M-tps' }),
     ).toBeTruthy();
   });
 
@@ -558,11 +573,15 @@ describe('modeller', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Legg til modellendepunkt' }));
     const panel = screen.getByRole('dialog', { name: 'Legg til modellendepunkt' });
     fireEvent.change(within(panel).getByLabelText('Navn'), { target: { value: 'foundry-eu' } });
-    fireEvent.change(within(panel).getByLabelText('Protokoll'), {
-      target: { value: 'anthropic-messages' },
-    });
     fireEvent.change(within(panel).getByLabelText('Adresse (base URL)'), {
       target: { value: 'https://eu.foundry.example' },
+    });
+    await waitFor(() =>
+      expect(within(panel).getAllByRole('option', { name: 'anthropic' }).length).toBeGreaterThan(0),
+    );
+    fireEvent.change(within(panel).getByLabelText('Familie'), { target: { value: 'anthropic' } });
+    fireEvent.change(within(panel).getByLabelText('Sti eller adresse'), {
+      target: { value: '/anthropic' },
     });
     fireEvent.change(within(panel).getByLabelText('Navn på hemmeligheten'), {
       target: { value: 'foundry-eu-key' },
@@ -583,15 +602,49 @@ describe('modeller', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Legg til endepunkt' }));
     const table = await screen.findByRole('region', { name: 'Modellendepunkter' });
     const row = (await within(table).findByText('foundry-eu')).closest('tr') as HTMLElement;
-    expect(within(row).getByText('Anthropic-kompatibel (Messages)')).toBeTruthy();
+    expect(within(row).getByText('anthropic')).toBeTruthy();
     expect(within(row).getByText('foundry-eu-key')).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
       id: 'foundry-eu',
-      protocol: 'anthropic-messages',
       baseURL: 'https://eu.foundry.example',
       auth: { kind: 'api-key', secret: 'secret://platform/foundry-eu-key' },
+      families: { anthropic: '/anthropic' },
     });
     expect(document.body.textContent).not.toContain('sk-hemmelig');
+  });
+
+  it('edits a connection in place, with an API family added to the one it offers', async () => {
+    const { calls, fetch } = recorded();
+    await signedIn('#/models', [operatorRole], fetch);
+
+    const table = await screen.findByRole('region', { name: 'Modellendepunkter' });
+    fireEvent.click(within(table).getByRole('button', { name: 'Rediger foundry-openai' }));
+    const panel = screen.getByRole('dialog', { name: 'Rediger foundry-openai' });
+    expect((within(panel).getByLabelText('Navn') as HTMLInputElement).readOnly).toBe(true);
+    expect((within(panel).getByLabelText('Navn på hemmeligheten') as HTMLInputElement).value).toBe(
+      'foundry-openai-key',
+    );
+    await waitFor(() =>
+      expect(within(panel).getAllByRole('option', { name: 'anthropic' }).length).toBeGreaterThan(0),
+    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til familie' }));
+    const bases = within(panel).getAllByLabelText('Sti eller adresse');
+    fireEvent.change(bases[1] as HTMLElement, { target: { value: '/anthropic' } });
+    fillReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre endepunkt' }));
+
+    const row = (await within(table).findByText('openai, anthropic')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('foundry-openai')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')).toEqual({
+      method: 'PUT',
+      path: '/operator/model-endpoints/foundry-openai',
+      body: {
+        baseURL: 'https://foundry.example',
+        auth: { kind: 'api-key', secret: 'secret://platform/foundry-openai-key' },
+        families: { openai: '', anthropic: '/anthropic' },
+      },
+      reason: 'Ny avtale med leverandøren',
+    });
   });
 
   it('lists the services that still use an endpoint instead of removing it', async () => {

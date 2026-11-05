@@ -9,7 +9,7 @@ operation: ${operation}
 status: ${status}
 summary: A made-up image generation API.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -69,12 +69,12 @@ const boot = async () => {
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: 'https://modell.example.no/v1',
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
         other: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: 'https://annen.example.no/v1',
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },

@@ -138,6 +138,13 @@ export const describedStepProblems = async (
         refuse(`there is no model ${modelId} in the catalogue`);
         continue;
       }
+      const bound = model.apis[descriptor.operation];
+      if (bound !== id)
+        refuse(
+          bound
+            ? `the model ${modelId} binds ${bound} for ${descriptor.operation}, not ${id}`
+            : `the model ${modelId} binds no API for ${descriptor.operation}`,
+        );
       if (!residencyAllows(service.spec.model.residency, model.residency))
         refuse(
           `the model ${modelId} runs in ${model.residency}, outside ${service.spec.model.residency}`,
@@ -161,7 +168,7 @@ const maturityView = (state: MaturityState, descriptors: DescriptorRegistry) => 
   descriptors: descriptors
     .list()
     .filter((d) => d.operation === state.kind)
-    .map((d) => ({ id: d.id, status: d.status, protocol: d.api.protocol })),
+    .map((d) => ({ id: d.id, status: d.status, family: d.api.family })),
 });
 
 const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | undefined) => ({

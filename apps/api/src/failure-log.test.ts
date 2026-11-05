@@ -29,7 +29,7 @@ describe('the API log', () => {
         models: {
           endpoints: {
             fake: {
-              protocol: 'openai-chat',
+              families: { openai: '' },
               baseURL: `${model.url}/v1`,
               auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
             },

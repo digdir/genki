@@ -102,6 +102,10 @@ export const catalogErrors = {
   hooksOff: 'hooks are off',
   endpointId: 'lowercase letters, digits, dots, dashes',
   httpsAddress: 'an HTTPS address without credentials',
+  familyAndBase: 'name at least one API family and its base',
+  noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
+  familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
   endpointExists: 'The endpoint already exists',
@@ -437,6 +441,8 @@ export const operationErrors = {
   notServiceModel: "the model {modelId} is not one of the service's models",
   noCatalogueModel: 'there is no model {modelId} in the catalogue',
   modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  modelBindsOther: 'the model {modelId} binds {bound} for {operation}, not {id}',
+  modelBindsNone: 'the model {modelId} binds no API for {operation}',
   noProcessorRecordForService:
     'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
   decideOnlyThroughPurposeCheck:

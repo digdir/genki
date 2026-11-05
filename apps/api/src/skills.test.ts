@@ -134,7 +134,7 @@ const boot = async () => {
   const models = resolveCatalog(yaml('models.yaml'), 'models', env).catalog as ModelCatalog;
   const privateModel = {
     id: `${other}/norsk-7b`,
-    endpoint: 'foundry-openai',
+    endpoint: 'foundry',
     deployment: 'norsk-7b',
     residency: 'norway' as const,
     capabilities: ['stream' as const, 'json-schema' as const],
