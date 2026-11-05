@@ -241,6 +241,7 @@ import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
+import { stepOperationsModule } from './step-operations.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
 import { definitionCompletionModule } from './definition-completion.js';
 import { skillsModule } from './skills.js';
@@ -301,6 +302,7 @@ export const platformModules: PlatformModuleFactory[] = [
   governanceModule,
   serviceTemplateModule,
   stepBlocksModule,
+  stepOperationsModule,
   recipesModule,
   strategyCatalogueModule,
   definitionCompletionModule,

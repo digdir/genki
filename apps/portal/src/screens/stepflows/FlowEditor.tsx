@@ -15,6 +15,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type ApiClient } from '../../api';
 import { ApiCallLink } from '../../components/ApiCall';
+import { needsRight, useRights } from '../../Shell';
+import { useAsync } from '../../hooks';
+import { isOperationStep } from '../../data/step-operations';
+import type { PortalRight } from '../../types';
 import { Icon } from '../../components/Icon';
 import { blocks, serviceOfFlow, type Flow, type RunOverlay, type Step } from '../../data/stepflows';
 import { useT, type PlainKey } from '../../i18n';
@@ -23,6 +27,7 @@ import { parseYaml, toYaml } from '../../yaml';
 import { Diagram } from './Diagram';
 import { SelectField } from './fields';
 import {
+  allSteps,
   analyse,
   errorCount,
   findStep,
@@ -43,6 +48,20 @@ const runStatusKey = {
   Feilet: 'stepflows.runStatusFailed',
 } as const satisfies Record<RunOverlay['status'], PlainKey>;
 
+const rights: readonly PortalRight[] = [
+  'use-services',
+  'manage-services',
+  'manage-datasets',
+  'register-building-blocks',
+  'view-usage',
+];
+
+export const missingRight = (error: unknown): PortalRight | undefined => {
+  if (!(error instanceof ApiError) || error.status !== 403) return undefined;
+  const named = error.problem?.errors?.find((e) => e.path === 'right')?.message;
+  return rights.find((r) => r === named);
+};
+
 export type Flash = { text: string; color: 'success' | 'info' | 'warning' | 'danger' } | undefined;
 
 interface Props {
@@ -51,6 +70,7 @@ interface Props {
   flows: Record<string, Flow>;
   flow: Flow;
   serviceName?: string;
+  serviceId?: string;
   showPicker: boolean;
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
@@ -65,6 +85,7 @@ export const FlowEditor = ({
   flows,
   flow,
   serviceName,
+  serviceId,
   showPicker,
   initialTab,
   initialOverlay,
@@ -91,7 +112,38 @@ export const FlowEditor = ({
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const analysis = useMemo(() => analyse(flow, flows, subOpen, t), [flow, flows, subOpen, t]);
+  const [purposeErr, setPurposeErr] = useState('');
+  const canSave = useRights().has('manage-services');
+  const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
+  const [guardrails] = useAsync(
+    async (signal) =>
+      serviceId
+        ? Object.keys(
+            (
+              (await api.getDefinition(tenant, 'Service', serviceId, signal)).latest.definition
+                .spec as { guardrails?: Record<string, unknown> } | undefined
+            )?.guardrails ?? {},
+          )
+        : undefined,
+    [api, tenant, serviceId],
+  );
+  const ops = useMemo(
+    () => ({
+      operations: operations.status === 'ready' ? operations.data : undefined,
+      failed: operations.status === 'error',
+      masking:
+        guardrails.status === 'ready' && guardrails.data
+          ? guardrails.data.includes('pii-before-model')
+          : undefined,
+    }),
+    [operations, guardrails],
+  );
+  const hasOperations = useMemo(() => allSteps(flow.steps).some(isOperationStep), [flow.steps]);
+  const analysis = useMemo(
+    () => analyse(flow, flows, subOpen, t, ops),
+    [flow, flows, subOpen, t, ops],
+  );
+  const nextVersion = flow.draft ? flow.version : flow.version + 1;
   const count = errorCount(analysis);
   const run = flow.run;
   const overlayOn = overlay && !!run;
@@ -167,11 +219,12 @@ export const FlowEditor = ({
       onFlash({ text: t('stepflows.fixBeforeSave'), color: 'warning' });
       return;
     }
+    if (!canSave) return;
     const reasonError = reasonProblem(reason, t);
-    if (reasonError) {
-      setReasonErr(reasonError);
-      return;
-    }
+    const noPurpose = !flow.desc.trim();
+    if (noPurpose) setPurposeErr(t('stepflows.purposeRequired'));
+    if (reasonError) setReasonErr(reasonError);
+    if (reasonError || noPurpose) return;
     setSaving(true);
     setServerErrors([]);
     try {
@@ -192,7 +245,11 @@ export const FlowEditor = ({
     } catch (error) {
       if (error instanceof ApiError && error.status === 422)
         setServerErrors(error.problem?.errors ?? []);
-      onFlash({ text: tRef.current('stepflows.saveFailed'), color: 'danger' });
+      const right = missingRight(error);
+      onFlash({
+        text: right ? needsRight(right, tRef.current) : tRef.current('stepflows.saveFailed'),
+        color: 'danger',
+      });
     } finally {
       setSaving(false);
     }
@@ -214,6 +271,7 @@ export const FlowEditor = ({
         flows,
         {},
         t,
+        ops,
       ).errors.get(draft.id) ?? [])
     : [];
 
@@ -239,13 +297,13 @@ export const FlowEditor = ({
             />
           </div>
           <span className="flow-picker-text">
-            {versionLabel(flow, t)} · {flow.desc}
+            {versionLabel(flow, t)} · {flow.desc || t('stepflows.newFlowDesc')}
             <span className="meta block">{shared}</span>
           </span>
         </div>
       ) : (
         <p className="flow-picker-text">
-          {versionLabel(flow, t)} · {flow.desc}
+          {versionLabel(flow, t)} · {flow.desc || t('stepflows.newFlowDesc')}
           <span className="meta block">{shared}</span>
         </p>
       )}
@@ -276,12 +334,18 @@ export const FlowEditor = ({
               variant="secondary"
               data-size="sm"
               aria-disabled={running || undefined}
+              aria-describedby={hasOperations ? 'flow-test-note' : undefined}
               onClick={runTest}
             >
               {t('stepflows.runTest')}
             </Button>
           </div>
         </div>
+        {hasOperations ? (
+          <p id="flow-test-note" className="meta">
+            {t('stepflows.operationTestNote')}
+          </p>
+        ) : null}
 
         {count > 0 ? (
           <Alert data-color="danger">
@@ -384,7 +448,7 @@ export const FlowEditor = ({
       {dirty ? (
         <section className="flow-save" aria-labelledby="flow-save-h">
           <Heading level={2} data-size="2xs" id="flow-save-h">
-            {t('stepflows.saveAs', { version: flow.version + 1 })}
+            {t('stepflows.saveAs', { version: nextVersion })}
           </Heading>
           {serverErrors.length ? (
             <Alert data-color="danger" data-size="sm">
@@ -397,6 +461,21 @@ export const FlowEditor = ({
               </ul>
             </Alert>
           ) : null}
+          <Field className="reason-field">
+            <Label htmlFor="flow-purpose">{t('stepflows.purposeLabel')}</Label>
+            <Field.Description>{t('stepflows.purposeHelp')}</Field.Description>
+            <Textarea
+              id="flow-purpose"
+              rows={2}
+              value={flow.desc}
+              aria-invalid={purposeErr ? true : undefined}
+              onChange={(e) => {
+                onChange({ ...flow, desc: e.target.value });
+                setPurposeErr('');
+              }}
+            />
+            {purposeErr ? <ValidationMessage>{purposeErr}</ValidationMessage> : null}
+          </Field>
           <Field className="reason-field">
             <Label htmlFor="flow-reason">{t('stepflows.reasonLabel')}</Label>
             <Field.Description>{t('stepflows.reasonHelp')}</Field.Description>
@@ -415,10 +494,11 @@ export const FlowEditor = ({
           <div className="actions">
             <Button
               variant="primary"
-              aria-disabled={saving || undefined}
+              aria-disabled={saving || !canSave || undefined}
+              aria-describedby={canSave ? undefined : 'flow-save-right'}
               onClick={() => void save()}
             >
-              {t('stepflows.saveAs', { version: flow.version + 1 })}
+              {t('stepflows.saveAs', { version: nextVersion })}
             </Button>
             <ApiCallLink
               call={{
@@ -430,6 +510,11 @@ export const FlowEditor = ({
               }}
             />
           </div>
+          {canSave ? null : (
+            <p id="flow-save-right" className="meta">
+              {needsRight('manage-services', t)}
+            </p>
+          )}
         </section>
       ) : null}
 
@@ -440,6 +525,7 @@ export const FlowEditor = ({
           base={analysis}
           errors={draftErrors}
           flows={flows}
+          ops={ops}
           onClose={() => setDraft(undefined)}
           onApply={() => {
             update(

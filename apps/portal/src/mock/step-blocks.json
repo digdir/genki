@@ -277,8 +277,8 @@
             "en": "Operation"
           },
           "x-help": {
-            "nb": "En gjennomgått beskrivelse av operasjonen, for eksempel openai/decide@1.",
-            "en": "A reviewed operation descriptor, for example openai/decide@1."
+            "nb": "En gjennomgått operasjon som er tatt i bruk her, i formen leverandør/type@versjon.",
+            "en": "A reviewed operation that is in use here, as provider/kind@version."
           },
           "x-widget": "text"
         },
@@ -290,8 +290,8 @@
             "en": "Model"
           },
           "x-help": {
-            "nb": "En av modellene til tjenesten. Tom betyr hovedmodellen.",
-            "en": "One of the service's models. Empty means the main model."
+            "nb": "En av modellene til tjenesten som kan utføre operasjonen. Tom betyr modellen tjenesten har valgt for denne typen operasjon, ellers hovedmodellen.",
+            "en": "One of the service's models that can perform the operation. Empty means the model the service has chosen for this kind of operation, else the main model."
           },
           "x-widget": "text"
         }

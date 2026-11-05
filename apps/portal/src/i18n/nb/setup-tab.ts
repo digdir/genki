@@ -208,6 +208,12 @@ export const setup = defineNamespace({
   cost: 'Kostnad: {cost}',
   notPriced: 'ikke priset',
   speed: 'Fart: {speed}',
+  operationModels: 'Modell per operasjon',
+  operationModelsHelp:
+    'Flyten kaller disse operasjonene. Velg modellen som utfører hver av dem. Stedet for behandling følger modellen.',
+  operationModelFor: 'Modell for {kind}',
+  operationModelMain: 'Hovedmodellen',
+  operationModelNone: 'Ingen av modellene du kan bruke, kan utføre {kind}.',
   fallbackModel: 'Reservemodell',
   fallbackHelp: 'Brukes hvis hovedmodellen ikke svarer.',
   noFallback: 'Ingen reservemodell',

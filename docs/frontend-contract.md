@@ -324,6 +324,7 @@ A service whose steps make media, such as an image, a sound or a PDF, returns it
 - Fetch the bytes with `GET <url>` on the platform, with the same credential that asked (`X-API-Key` or the user's token). It answers the bytes with the media type as `content-type`, `cache-control: private, no-store`, and `404` to a caller that may not read the run. There are no public links: a browser frontend fetches it with its token and shows it from a blob URL; a server frontend fetches it and passes it on to its own user.
 - In a stream, `attachments` comes in one frame of its own before the frame with `finish_reason: "stop"`.
 - Only media types the deployment allows are made at all; a service step that would make another type fails before the model is called.
+- The run timeline (`GET /tenants/{tenant}/tasks/{task}`) gives a step's media as a block with `media: [{ id, mediaType, bytes }]`; the bytes are at `GET /v1/tasks/{task}/media/{id}` as above. Genki's portal and workspace show each item as a preview card (the image, a player for sound and video, type, size and a download link), never a public link.
 
 ### Errors
 

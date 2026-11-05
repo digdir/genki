@@ -13,6 +13,7 @@ export interface TimelineBlock {
   sources?: string[];
   calls?: true;
   usage?: true;
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type StepState = 'running' | 'failed' | 'skipped' | 'partial' | 'waiting';
@@ -86,6 +87,7 @@ const mediaBlock = (media: { id: string; mediaType: string; bytes: number }[]): 
             m.mediaType,
             t('steps.mediaBytes', { bytes: m.bytes, id: m.id }),
           ]),
+          media: media.map(({ id, mediaType, bytes }) => ({ id, mediaType, bytes })),
         },
       ]
     : [];

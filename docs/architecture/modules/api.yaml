@@ -23,6 +23,7 @@ responsibilities:
   - Let operators upload operation descriptors with their fixtures, checked by the loader rules and
     operation@1 before they are stored, record fixtures from their synthetic tries in test, and
     move or withdraw them, audited (ADR 0047)
+  - List the operations a step may call in a tenant, with their typed input and the models that offer each kind
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts
@@ -34,6 +35,7 @@ files:
   - apps/api/src/task-export.ts
   - apps/api/src/operation-governance.ts
   - apps/api/src/operation-descriptors.ts
+  - apps/api/src/step-operations.ts
 input: Environment and catalogs at boot; HTTP at runtime
 output: A running platform on :8080
 replaces:

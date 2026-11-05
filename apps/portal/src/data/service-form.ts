@@ -275,6 +275,16 @@ export const withFallback = (spec: ServiceSpec, id: string): SpecPatch => ({
   model: id ? { ...spec.model, fallback: id } : without(spec.model, 'fallback'),
 });
 
+export const withOperationModel = (spec: ServiceSpec, kind: string, id: string): SpecPatch => {
+  const rest = without(spec.model.operations, kind);
+  const operations = id ? { ...rest, [kind]: id } : rest;
+  return {
+    model: Object.keys(operations).length
+      ? { ...spec.model, operations }
+      : without(spec.model, 'operations'),
+  };
+};
+
 export const datasetsOf = (spec: ServiceSpec): DatasetRef[] => spec.knowledge?.datasets ?? [];
 
 export const withDatasets = (spec: ServiceSpec, datasets: DatasetRef[]): SpecPatch => ({
