@@ -152,11 +152,11 @@ describe('local test model response files', () => {
       'utf8',
     );
     writeFileSync(join(folder, 'embed.json'), fixture);
-    const { request, response } = JSON.parse(fixture) as {
-      request: { body: unknown };
-      response: { body: unknown };
-    };
-    const answer = await call('POST', '/v1/embeddings', request.body);
+    const { response } = JSON.parse(fixture) as { response: { body: unknown } };
+    const answer = await call('POST', '/v1/embeddings', {
+      model: 'text-embedding-3-small',
+      input: ['Another text'],
+    });
     expect(answer.status).toBe(200);
     expect(await answer.json()).toEqual(response.body);
   });
