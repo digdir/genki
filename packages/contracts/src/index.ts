@@ -154,8 +154,13 @@ export interface Usage {
   videoSeconds?: number;
   characters?: number;
   requests?: number;
+  /** Units a descriptor names that are not built in, such as `page`, by name. */
+  units?: Record<string, number>;
   costMicroNok?: number;
 }
+
+/** A unit a descriptor may name and an operator may price: lowercase letters, digits and hyphens. */
+export const unitNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
 
 export const priceUnits = [
   'input-token',
@@ -181,8 +186,8 @@ export const unitFields = {
   request: 'requests',
 } as const satisfies Record<PriceUnit, keyof Usage>;
 
-/** NOK per one unit. */
-export type UnitPrices = Partial<Record<PriceUnit, number>>;
+/** NOK per one unit, for the built-in units and any unit a descriptor names. */
+export type UnitPrices = Partial<Record<PriceUnit, number>> & Record<string, number | undefined>;
 
 /** A model's prices, per operation kind. */
 export type ModelPrices = Record<string, UnitPrices>;
@@ -230,14 +235,16 @@ export const perThousandView = (spec: unknown): UsagePrice | undefined => {
   };
 };
 
-/** The units a call reports, counted from its usage. */
-export const usageUnits = (usage: Usage): Partial<Record<PriceUnit, number>> =>
-  Object.fromEntries(
+/** The units a call reports, counted from its usage, built-in and open. */
+export const usageUnits = (usage: Usage): Record<string, number> => ({
+  ...Object.fromEntries(
     priceUnits.flatMap((unit) => {
       const count = usage[unitFields[unit]];
       return count ? [[unit, count] as const] : [];
     }),
-  );
+  ),
+  ...Object.fromEntries(Object.entries(usage.units ?? {}).filter(([, count]) => count)),
+});
 
 /** The cost of a call when every unit it reports has a price; otherwise the usage stays unpriced. */
 export const pricedUsage = (usage: Usage, prices: UnitPrices | undefined): Usage => {
@@ -245,7 +252,7 @@ export const pricedUsage = (usage: Usage, prices: UnitPrices | undefined): Usage
   const units = usageUnits(usage);
   const cached = prices['cached-input-token'];
   let nok = 0;
-  for (const [unit, count] of Object.entries(units) as [PriceUnit, number][]) {
+  for (const [unit, count] of Object.entries(units)) {
     if (unit === 'cached-input-token') {
       if (cached !== undefined) nok += count * (cached - (prices['input-token'] ?? 0));
       continue;

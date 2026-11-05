@@ -1,0 +1,132 @@
+id: openai/chat-audio@1
+operation: audio-chat
+status: described
+summary: Audio in and audio out on Chat Completions (/chat/completions with modalities text and audio), the question as base64 WAV in an input_audio part and the answer as base64 WAV with its transcript.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    instructions: text
+    audio: { media: audio/wav }
+    voice: { enum: [alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar] }
+output:
+  object:
+    transcript: text
+    audio: { media: audio/wav }
+    usage:
+      object:
+        inputTokens?: { number: { min: 0 } }
+        outputTokens?: { number: { min: 0 } }
+        cachedInputTokens?: { number: { min: 0 } }
+        requests?: { number: { min: 0 } }
+        units?: json
+        costMicroNok?: { number: { min: 0 } }
+request:
+  method: POST
+  path: /chat/completions
+  body:
+    model: $deployment
+    modalities: [text, audio]
+    audio:
+      voice: $input.voice
+      format: wav
+    messages:
+      - role: system
+        content: $input.instructions
+      - role: user
+        content:
+          - type: input_audio
+            input_audio:
+              data: $input.audio
+              format: wav
+wire:
+  request:
+    object:
+      model: plain
+      modalities: [{ enum: [text, audio] }]
+      audio:
+        object:
+          voice: { enum: [alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar] }
+          format: { enum: [wav] }
+      messages:
+        array:
+          variant: role
+          options:
+            system:
+              content: text
+            user:
+              content:
+                - object:
+                    type: { enum: [input_audio] }
+                    input_audio:
+                      object:
+                        data: { media: audio/wav }
+                        format: { enum: [wav] }
+  response:
+    object:
+      id?: plain
+      object?: plain
+      created?: { number: { integer: true } }
+      model?: plain
+      choices:
+        array:
+          object:
+            index: { number: { integer: true, min: 0 } }
+            message:
+              object:
+                role: { enum: [assistant] }
+                content?: { either: [text, 'null'] }
+                refusal?: { either: [text, 'null'] }
+                audio:
+                  object:
+                    id: plain
+                    expires_at: { number: { integer: true } }
+                    data: { media: audio/wav }
+                    transcript: text
+            finish_reason: { enum: [stop, length, content_filter] }
+        min: 1
+      usage:
+        object:
+          prompt_tokens: { number: { integer: true, min: 0 } }
+          completion_tokens: { number: { integer: true, min: 0 } }
+          total_tokens: { number: { integer: true, min: 0 } }
+          prompt_tokens_details?:
+            object:
+              audio_tokens?: { number: { integer: true, min: 0 } }
+              cached_tokens?: { number: { integer: true, min: 0 } }
+              text_tokens?: { number: { integer: true, min: 0 } }
+          completion_tokens_details?:
+            object:
+              audio_tokens?: { number: { integer: true, min: 0 } }
+              reasoning_tokens?: { number: { integer: true, min: 0 } }
+              text_tokens?: { number: { integer: true, min: 0 } }
+errors:
+  - { status: 429, kind: rate-limited }
+  - { status: 400, kind: invalid }
+  - { status: 5xx, kind: unavailable }
+checks:
+  - one-of: { value: $response.choices.0.finish_reason, in: [stop] }
+result:
+  transcript: $response.choices.0.message.audio.transcript
+  audio: $response.choices.0.message.audio.data
+  usage: $usage
+usage:
+  input-token:
+    {
+      $from: $response.usage.prompt_tokens_details.text_tokens,
+      $default: $response.usage.prompt_tokens,
+    }
+  audio-input-token: { $from: $response.usage.prompt_tokens_details.audio_tokens, $omitWhen: [0] }
+  cached-input-token: { $from: $response.usage.prompt_tokens_details.cached_tokens, $omitWhen: [0] }
+  output-token:
+    {
+      $from: $response.usage.completion_tokens_details.text_tokens,
+      $default: $response.usage.completion_tokens,
+    }
+  audio-output-token:
+    { $from: $response.usage.completion_tokens_details.audio_tokens, $omitWhen: [0] }
+  request: 1
+stream: none

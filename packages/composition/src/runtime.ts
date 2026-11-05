@@ -47,7 +47,7 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
-import { blobMediaOutput, mediaOutputConfigOf } from './media-output.js';
+import { blobMediaInput, blobMediaOutput, mediaOutputConfigOf } from './media-output.js';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
 import {
   IndexWriterRouter,
@@ -419,6 +419,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   const gate = createGate({
     tier: environmentTier,
     media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
+    mediaInput: blobMediaInput(blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
     outside: outsideRun(input.log, input.now),

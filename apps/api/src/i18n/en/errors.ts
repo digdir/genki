@@ -434,6 +434,8 @@ export const operationErrors = {
   fixedOperation:
     'the operation and the model are fixed values, not filled in while the service runs',
   noOperationDescriptor: 'there is no operation descriptor {id}',
+  mediaInputWithoutConsent:
+    "{id} takes {mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of {mediaType} with a reason",
   descriptorInReview:
     '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
   kindInTest:

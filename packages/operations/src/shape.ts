@@ -1,4 +1,4 @@
-import { mediaTypePattern, mediaTypesOf, shape, type Shape } from '@genai/kernel';
+import { mediaTypesOf, shape, type Shape } from '@genai/kernel';
 
 export class DescriptorError extends Error {
   constructor(message: string) {
@@ -16,7 +16,10 @@ const scalars: Record<string, Shape> = {
   boolean: shape.boolean,
   null: shape.nothing,
   json: shape.json,
+  opaque: shape.opaque,
 };
+
+const mediaRule = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -39,7 +42,7 @@ const fieldsOf = (spec: unknown, at: string): Record<string, Shape> => {
     Object.entries(spec).map(([key, value]) => {
       const optional = key.endsWith('?');
       const name = optional ? key.slice(0, -1) : key;
-      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name))
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*(?:\[\])?$/.test(name))
         throw new DescriptorError(`${at}.${key}: not a field name`);
       const field = shapeOf(value, `${at}.${name}`);
       return [name, optional ? shape.optional(field) : field];
@@ -112,7 +115,7 @@ export const shapeOf = (spec: unknown, at = 'shape'): Shape => {
   }
   if ('media' in spec) {
     only(spec, ['media'], at);
-    if (typeof spec.media !== 'string' || !mediaTypePattern.test(spec.media.toLowerCase()))
+    if (typeof spec.media !== 'string' || !mediaRule.test(spec.media.toLowerCase()))
       throw new DescriptorError(`${at}.media: must be one media type, such as type/subtype`);
     return shape.media(spec.media.toLowerCase());
   }
@@ -157,6 +160,14 @@ export const fieldNames = (s: Shape): string[] => {
 };
 
 export const holdsMedia = (s: Shape): boolean => mediaTypesOf(s).length > 0;
+
+/** Whether a shape names one kind of value only, as a query parameter, header or form field must. */
+export const isScalar = (s: Shape): boolean =>
+  s.kind === 'optional'
+    ? isScalar(s.shape)
+    : ['text', 'plain', 'ref', 'enum', 'number', 'boolean', 'opaque'].includes(s.kind);
+
+export const unwrapped = (s: Shape): Shape => (s.kind === 'optional' ? unwrapped(s.shape) : s);
 
 export const holdsJson = (s: Shape): boolean => {
   switch (s.kind) {

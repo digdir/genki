@@ -1246,7 +1246,7 @@ describe('a new operation kind from a descriptor alone', () => {
     const sent: unknown[] = [];
     const egress: typeof fetch = async (_url, init) => {
       sent.push(JSON.parse(String(init?.body)));
-      return Response.json(fixture.response.body);
+      return Response.json(fixture.response?.body);
     };
     const router = new ModelRouter({
       catalog: sorter({ classify: id }),
@@ -1260,7 +1260,7 @@ describe('a new operation kind from a descriptor alone', () => {
       await expect(
         ports.open({ kind: 'model', id: 'a/sorter' }, testContext().ctx).call(id, fixture.input),
       ).resolves.toEqual(fixture.result);
-    expect(sent).toEqual([fixture.request.body, fixture.request.body]);
+    expect(sent).toEqual([fixture.request?.body, fixture.request?.body]);
   });
 
   it('the catalogue refuses a binding to an API no implementation or descriptor defines', async () => {

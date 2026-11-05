@@ -1,6 +1,24 @@
 import type { Principal, Ref, ResourceProvenance, Usage } from '@genai/contracts';
-import type { MediaOutput } from './media.js';
-import { mediaTypesOf, walk, type OperationShape, type Walked } from './payload.js';
+import {
+  decodeBase64,
+  defaultMediaOutputMaxBytes,
+  isInlineMedia,
+  isMediaInput,
+  isMediaRef,
+  mediaInputKind,
+  mediaTypeCovers,
+  sha256Hex,
+  type MediaInput,
+  type MediaInputSource,
+  type MediaOutput,
+} from './media.js';
+import {
+  mediaTypesOf,
+  walk,
+  type MediaInputFound,
+  type OperationShape,
+  type Walked,
+} from './payload.js';
 import type { PortContext } from './spi.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
@@ -67,16 +85,27 @@ export interface PayloadGuard {
 export interface UseOptions {
   guards?: readonly PayloadGuard[];
   serviceResidency?: Residency;
+  /** Media types the service's confirmed risk assessment lets out unmasked (#326). */
+  unmaskedMedia?: readonly string[];
 }
 
 export const withUse = (given: UseOptions | undefined, own: UseOptions): UseOptions => {
   const guards = [...(given?.guards ?? []), ...(own.guards ?? [])];
   const serviceResidency = narrowerResidency(given?.serviceResidency, own.serviceResidency);
+  const unmaskedMedia = own.unmaskedMedia ?? given?.unmaskedMedia;
   return {
     ...(guards.length > 0 ? { guards } : {}),
     ...(serviceResidency ? { serviceResidency } : {}),
+    ...(unmaskedMedia?.length ? { unmaskedMedia } : {}),
   };
 };
+
+export interface MediaInputRecord {
+  path: string;
+  mediaType: string;
+  bytes: number;
+  sha256: string;
+}
 
 export interface GateRecord {
   port: string;
@@ -90,6 +119,7 @@ export interface GateRecord {
   usage?: Usage;
   dropped?: number;
   mediaBytes?: number;
+  mediaInput?: MediaInputRecord[];
 }
 
 export interface GateTarget {
@@ -132,6 +162,7 @@ export interface GateOptions {
   outside?: OutsideRun;
   tier?: EnvironmentTier;
   media?: MediaOutput;
+  mediaInput?: MediaInputSource;
 }
 
 export interface Gate {
@@ -223,6 +254,71 @@ export const createGate = (options: GateOptions = {}): Gate => {
     return walked.value;
   };
 
+  const consented = (ctx: PortContext, target: GateTarget, inputs: MediaInputFound[]) => {
+    if (target.synthetic === true) return;
+    const rules = ctx.unmaskedMedia ?? [];
+    for (const found of inputs)
+      if (!rules.some((rule) => mediaTypeCovers(rule, found.type)))
+        throw new GateError(
+          'media',
+          `${found.path}: ${found.type} cannot be masked, and the service's confirmed risk assessment records no unmasked input of it`,
+        );
+  };
+
+  const mediaBytesOf = async (ctx: PortContext, found: MediaInputFound) => {
+    const v = found.value;
+    if (isMediaInput(v)) return v.body;
+    if (isMediaRef(v)) {
+      if (v.tenant !== ctx.tenant)
+        throw new GateError('media', `${found.path}: the media belongs to another tenant`);
+      const body = await options.mediaInput?.read(ctx, v);
+      if (!body) throw new GateError('media', `${found.path}: the media is not kept for this run`);
+      return body;
+    }
+    const body = decodeBase64(isInlineMedia(v) ? v.data : String(v));
+    if (!body) throw new GateError('shape', `${found.path}: the media is not base64`);
+    return body;
+  };
+
+  const readMedia = async <Req, Res>(
+    ctx: PortContext,
+    payload: GatePayload<Res>,
+    body: Req,
+  ): Promise<{ body: Req; records: MediaInputRecord[] }> => {
+    const found = walk(payload.shape.request, body, { side: 'request' }).inputs;
+    if (found.length === 0) return { body, records: [] };
+    const resolved = new Map<unknown, MediaInput>();
+    const records: MediaInputRecord[] = [];
+    for (const input of found) {
+      const bytes = await mediaBytesOf(ctx, input);
+      const cap = options.media?.maxBytes(input.type) ?? defaultMediaOutputMaxBytes;
+      if (bytes.byteLength > cap)
+        throw new GateError(
+          'media',
+          `${input.path}: ${bytes.byteLength} bytes of ${input.type} is over the cap of ${cap} bytes`,
+        );
+      const media: MediaInput = {
+        kind: mediaInputKind,
+        mediaType: input.type,
+        bytes: bytes.byteLength,
+        sha256: await sha256Hex(bytes),
+        body: bytes,
+      };
+      resolved.set(input.value, media);
+      records.push({
+        path: input.path,
+        mediaType: media.mediaType,
+        bytes: media.bytes,
+        sha256: media.sha256,
+      });
+    }
+    const walked = walk<Req>(payload.shape.request, body, {
+      side: 'request',
+      mapMedia: (v) => resolved.get(v) ?? v,
+    });
+    return { body: walked.value, records };
+  };
+
   const answered = <Res>(
     payload: GatePayload<Res>,
     result: unknown,
@@ -247,6 +343,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     payload: GatePayload<Res>,
     request: Req,
   ) => {
+    consented(ctx, target, walk(payload.shape.request, request, { side: 'request' }).inputs);
     inShape(payload, request);
     const guards = distinct(ctx.guards ?? []);
     const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
@@ -260,6 +357,9 @@ export const createGate = (options: GateOptions = {}): Gate => {
       : request;
     for (const guard of guards) if (guard.request) body = (await guard.request(call, body)) as Req;
     body = inShape(payload, body);
+    consented(ctx, target, walk(payload.shape.request, body, { side: 'request' }).inputs);
+    const read = await readMedia(ctx, payload, body);
+    body = read.body;
     const restoring = maskers.filter((m) => m.unmask);
     const restore = (text: string) =>
       restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);
@@ -270,6 +370,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
     const pending = (text: string) => Math.max(0, ...restoring.map((m) => m.pending?.(text) ?? 0));
     return {
       body,
+      mediaInput: read.records,
       finish,
       restore,
       pending,
@@ -281,7 +382,11 @@ export const createGate = (options: GateOptions = {}): Gate => {
   // Only the kernel's `use` sets audit, so a context without it comes from outside a run.
   const outside = (ctx: PortContext) => (ctx.audit ? undefined : options.outside);
 
-  const recorder = (ctx: PortContext, target: GateTarget) => {
+  const recorder = (
+    ctx: PortContext,
+    target: GateTarget,
+    noted: Pick<GateRecord, 'mediaInput'> = {},
+  ) => {
     let written = false;
     const sink = outside(ctx);
     const audit = ctx.audit ?? (sink ? (record: GateRecord) => sink.audit(ctx, record) : undefined);
@@ -300,6 +405,7 @@ export const createGate = (options: GateOptions = {}): Gate => {
         residency: target.residency,
         outcome,
         ...extra,
+        ...(noted.mediaInput?.length ? { mediaInput: noted.mediaInput } : {}),
       });
     };
   };
@@ -407,8 +513,10 @@ export const createGate = (options: GateOptions = {}): Gate => {
     request: Req,
     send: (request: Req) => Promise<Res>,
   ): Promise<Res> => {
-    const record = recorder(ctx, target);
+    const noted: Pick<GateRecord, 'mediaInput'> = {};
+    const record = recorder(ctx, target, noted);
     const guard = await open(ctx, target, payload, request, record);
+    noted.mediaInput = guard.mediaInput;
     const raw = await send(guard.body).catch(async (error: unknown) => {
       await record('failed');
       throw error;
@@ -433,8 +541,10 @@ export const createGate = (options: GateOptions = {}): Gate => {
     request: Req,
     send: (request: Req) => AsyncIterable<GateChunk<Res>>,
   ): AsyncIterable<GateChunk<Res>> {
-    const record = recorder(ctx, target);
+    const noted: Pick<GateRecord, 'mediaInput'> = {};
+    const record = recorder(ctx, target, noted);
     const guard = await open(ctx, target, payload, request, record);
+    noted.mediaInput = guard.mediaInput;
     let carry = '';
     const release = function* (text: string): Generator<GateChunk<Res>> {
       if (!guard.restores) {

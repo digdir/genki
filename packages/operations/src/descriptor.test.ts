@@ -35,9 +35,10 @@ describe('operation descriptors', () => {
       embedYaml.replace(/^usage:\n {2}input-token:/m, 'usage:\n  inputTokens:'),
     );
 
-    expect(Object.keys(named.usage)).toEqual(['inputTokens', 'requests']);
-    expect(byField.usage).toEqual(named.usage);
-    expect(reportedUnits(named.usage)).toEqual(['input-token', 'request']);
+    expect(Object.keys(named.steps[0]?.usage ?? {})).toEqual(['inputTokens', 'requests']);
+    expect(byField.steps[0]?.usage).toEqual(named.steps[0]?.usage);
+    expect(reportedUnits(named.steps[0]?.usage ?? {})).toEqual(['input-token', 'request']);
+    expect(named.units).toEqual(['input-token', 'request']);
   });
 
   it('a descriptor that names a URL is refused', () => {
@@ -58,24 +59,22 @@ describe('operation descriptors', () => {
     ).toMatch(/may not carry store/);
   });
 
-  it('a non-typed descriptor may not declare json in its request', () => {
+  it('a described descriptor may declare json in its input and request', () => {
     const review = embedYaml.replace('status: typed', 'status: review');
-    expect(refused(review)).toBeUndefined();
     expect(
       refused(
         review.replace('      encoding_format: { enum: [float] }', '      encoding_format: json'),
       ),
-    ).toMatch(/not typed may not declare json in its input or wire.request/);
-    expect(
-      refused(
-        review
-          .replace('input: [text]\n', 'input:\n  either: [[text], { object: { image: json } }]\n')
-          .replace(
-            '      input: [text]',
-            '      input: { either: [[text], { object: { image: json } }] }',
-          ),
-      ),
-    ).toMatch(/not typed may not declare json/);
+    ).toBeUndefined();
+  });
+
+  it('only a json request body may carry json', () => {
+    const review = embedYaml
+      .replace('status: typed', 'status: review')
+      .replace('  path: /embeddings', '  path: /embeddings\n  encoding: form')
+      .replace('    input: $input\n', '    input: $input.0\n')
+      .replace('      input: [text]', '      input: json');
+    expect(refused(review)).toMatch(/form request holds single values only|only a json request/);
   });
 
   it('a descriptor that sets a credential header is refused', () => {

@@ -1,8 +1,6 @@
-import type { PriceUnit } from '@genai/contracts';
 import {
   currentApiId,
   descriptorIdPattern,
-  reportedUnits,
   type Descriptor,
   type DescriptorRegistry,
 } from '@genai/operations';
@@ -19,7 +17,7 @@ export interface ApiEntry {
   family: string;
   source: ApiSource;
   status: Descriptor['status'];
-  units: PriceUnit[];
+  units: string[];
   summary?: string;
 }
 
@@ -61,7 +59,7 @@ export const apiRegistry = (
         family: built.family,
         source: 'built-in',
         status: 'typed',
-        units: built.units ?? (described ? reportedUnits(described.usage) : []),
+        units: built.units ?? described?.units ?? [],
         ...(described ? { summary: described.summary } : {}),
       };
     if (!described || !descriptors) return undefined;
@@ -71,7 +69,7 @@ export const apiRegistry = (
       family: described.api.family,
       source: sourceOf(descriptors, id),
       status: described.status,
-      units: reportedUnits(described.usage),
+      units: described.units,
       summary: described.summary,
     };
   };

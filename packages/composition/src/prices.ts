@@ -2,6 +2,7 @@ import {
   isPerThousandPrice,
   perThousandView,
   priceUnits,
+  unitNamePattern,
   unitPricesOfPerThousand,
   type ModelPrices,
   type PriceUnit,
@@ -15,12 +16,23 @@ export const priceMigrationActor = 'genki';
 export const priceMigrationReason =
   'ADR 0048: a price is per model and kind, per unit, in kroner per unit';
 
-const unitPrices = z.strictObject(
-  Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])) as Record<
-    PriceUnit,
-    z.ZodOptional<z.ZodNumber>
-  >,
-);
+const unitPrices = z
+  .object(
+    Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])) as Record<
+      PriceUnit,
+      z.ZodOptional<z.ZodNumber>
+    >,
+  )
+  .catchall(z.number().min(0))
+  .superRefine((prices, ctx) => {
+    for (const unit of Object.keys(prices))
+      if (!unitNamePattern.test(unit))
+        ctx.addIssue({
+          code: 'custom',
+          path: [unit],
+          message: 'a unit is lowercase letters, digits and hyphens, as its descriptor names it',
+        });
+  });
 
 /** A model's prices: kroner per unit, per operation kind. */
 export const catalogPrice = z

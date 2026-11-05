@@ -126,7 +126,7 @@ describe('media output in the gate', () => {
     ).rejects.toThrow('must be base64 encoded image/png');
   });
 
-  it('media in a request is refused as media input', () => {
+  it('declared media in a request is found as media input for the gate to admit', () => {
     const walked = walk(
       object({ picture: media('image/png') }),
       { picture: encoded },
@@ -134,7 +134,25 @@ describe('media output in the gate', () => {
         side: 'request',
       },
     );
-    expect(walked.media).toEqual(['picture']);
+    expect(walked.inputs).toEqual([{ path: 'picture', type: 'image/png', value: encoded }]);
+  });
+
+  it('media input of another media type than declared is outside the shape', () => {
+    const walked = walk(
+      object({ picture: media('image/*') }),
+      { picture: { mediaType: 'audio/wav', data: encoded } },
+      { side: 'request' },
+    );
+    expect(walked.problems).toEqual(['picture: must be image/*, not audio/wav']);
+  });
+
+  it('base64 media input needs a declared media type that names one type', () => {
+    const walked = walk(
+      object({ picture: media('image/*') }),
+      { picture: encoded },
+      { side: 'request' },
+    );
+    expect(walked.problems).toEqual(['picture: must be image/* as a media reference or base64']);
   });
 
   it('a result walked again keeps its media references', () => {

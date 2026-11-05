@@ -1,5 +1,5 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
-import { priceUnits, sourceLinkRules } from '@genai/contracts';
+import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
 import {
   apiIdPattern,
@@ -579,7 +579,11 @@ const ApiView = z
     family: z.string(),
     source: z.enum(['built-in', 'bundled', 'uploaded']),
     status: z.enum(['review', 'described', 'typed']),
-    units: z.array(z.enum(priceUnits)).describe('The units its usage reports, which prices name'),
+    units: z
+      .array(z.string().regex(unitNamePattern))
+      .describe(
+        'The units its usage reports, which prices name: the built-in units and any unit its descriptor names',
+      ),
     summary: z.string().optional(),
     models: z.array(z.string()).describe('The models that bind it'),
   })
@@ -605,6 +609,10 @@ const PlatformModelInput = z
 const Price = z.object({ inputPerThousand: z.number(), outputPerThousand: z.number() });
 const UnitPrices = z
   .object(Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])))
+  .catchall(z.number().min(0))
+  .describe(
+    'Kroner per unit: the built-in units, and any other unit a descriptor names, such as page',
+  )
   .openapi('UnitPrices');
 const ModelPrices = z
   .record(z.string().regex(operationKindPattern), UnitPrices)

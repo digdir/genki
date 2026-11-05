@@ -252,7 +252,7 @@ describe('platform models for operators', () => {
       (
         await send('/operator/models/fake/gpt/price', 'drift', {
           method: 'PUT',
-          body: { chat: { 'input-tokens': 0.1 } },
+          body: { chat: { input_tokens: 0.1 } },
           reason,
         })
       ).status,

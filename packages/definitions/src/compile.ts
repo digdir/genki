@@ -106,6 +106,9 @@ export const toCapabilities = (
         knowledge: spec.knowledge,
         tools: spec.tools.map(toolRef),
         guardrails: spec.guardrails,
+        ...(spec.riskConfirmation?.unmaskedInput?.length
+          ? { unmaskedMedia: spec.riskConfirmation.unmaskedInput.map((u) => u.mediaType) }
+          : {}),
       },
       grants: [
         ...spec.knowledge.datasets.map((k) => ({

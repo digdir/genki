@@ -45,10 +45,17 @@ describe('prices per kind and unit (ADR 0048)', () => {
     expect((await latestPrice(store))?.version).toBe(2);
   });
 
-  it('a price names known units only and at least one kind', () => {
-    expect(checkedPrice({ chat: { 'input-token': 0.1, tokens: 1 } }, ['chat']).ok).toBe(false);
+  it('a price names units by their unit names and at least one kind', () => {
+    expect(checkedPrice({ chat: { 'input-token': 0.1, Tokens: 1 } }, ['chat']).ok).toBe(false);
+    expect(checkedPrice({ chat: { input_token: 0.1 } }, ['chat']).ok).toBe(false);
+    expect(checkedPrice({ chat: { 'input-token': -1 } }, ['chat']).ok).toBe(false);
     expect(checkedPrice({}, ['chat']).ok).toBe(false);
     expect(checkedPrice({ embed: { 'input-token': 0.1 } }, ['embed']).ok).toBe(true);
+  });
+
+  it('an operator may price a unit that is not built in, such as page', () => {
+    const checked = checkedPrice({ ocr: { page: 0.05, request: 0 } }, ['ocr']);
+    expect(checked).toEqual({ ok: true, spec: { ocr: { page: 0.05, request: 0 } } });
   });
 
   it('a per-1000 price published to the registry is stored per kind and unit', async () => {

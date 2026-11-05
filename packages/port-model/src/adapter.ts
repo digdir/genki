@@ -2,7 +2,13 @@ import type { PriceUnit } from '@genai/contracts';
 import type { Credential, Shape } from '@genai/kernel';
 import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
-import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
+import {
+  ModelError,
+  type ChatChunk,
+  type ChatRequest,
+  type ChatResult,
+  type ModelErrorCode,
+} from './port.js';
 
 export interface EndpointConfig {
   baseURL: string;
@@ -69,6 +75,24 @@ export const errorFromStatus = (
   if (status !== undefined && status >= 400 && status < 500)
     return new ModelError('bad_request', message);
   return new ModelError('unavailable', 'the model is unavailable');
+};
+
+const errorCodeOfKind: Record<string, ModelErrorCode> = {
+  invalid: 'bad_request',
+  unavailable: 'unavailable',
+  'rate-limited': 'rate_limited',
+  refused: 'refused',
+  processor: 'refused',
+};
+
+/** The model error for a descriptor call: the error kind the descriptor maps, else the status. */
+export const describedError = (
+  status: number | undefined,
+  message: string,
+  kind?: string,
+): ModelError => {
+  const code = kind ? errorCodeOfKind[kind] : undefined;
+  return code ? new ModelError(code, message) : errorFromStatus(status, message);
 };
 
 export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/kernel';
