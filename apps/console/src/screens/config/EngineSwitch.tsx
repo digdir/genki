@@ -97,12 +97,15 @@ const Loaded = ({
   const [refused, setRefused] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [estimate, setEstimate] = useState<SwitchEstimate | undefined>();
+  const modelId = useId();
+  // A dataset with no embedding of its own, such as one on Typesense, gets one chosen here (#366).
+  const [model, setModel] = useState('');
 
   useEffect(() => {
     if (!choosing || !target) return;
     const controller = new AbortController();
     setEstimate(undefined);
-    api.engineSwitchEstimate(base, target, controller.signal).then(
+    api.engineSwitchEstimate(base, target, controller.signal, model || undefined).then(
       (next) => {
         setRefused(undefined);
         setEstimate(next);
@@ -113,7 +116,7 @@ const Loaded = ({
       },
     );
     return () => controller.abort();
-  }, [api, base, choosing, target, t]);
+  }, [api, base, choosing, target, model, t]);
 
   useEffect(() => setCurrent(engine.activeSwitch), [engine.activeSwitch]);
 
@@ -177,18 +180,45 @@ const Loaded = ({
       }).format(new Date(previous.keptUntil))
     : '';
 
+  // Copy only when re-ingest cannot run and copy can, as for a dataset no pipeline fills.
+  const copying = Boolean(estimate && !estimate.reingest.available && estimate.copy?.available);
+  const chosen = estimate?.embeddings?.find((e) => e.model === model);
+  const embedding = engine.embedding ?? chosen;
+  const needsModel = !engine.embedding;
+  const offer = copying ? estimate?.copy : estimate?.reingest;
+
   const start = () =>
     void act(minimumReasonLength, (r) =>
       api.startEngineSwitch(
         base,
         {
           to: target,
-          method: 'reingest',
-          ...(engine.embedding ? { embedding: engine.embedding } : {}),
+          method: copying ? 'copy' : 'reingest',
+          ...(embedding ? { embedding } : {}),
         },
         r,
       ),
     );
+
+  const skipLabel = (reason: string, count: number) =>
+    reason === 'no_uuid'
+      ? t('engineSwitch.skipNoUuid', { count })
+      : reason === 'same_uuid'
+        ? t('engineSwitch.skipSameUuid', { count })
+        : reason === 'no_text'
+          ? t('engineSwitch.skipNoText', { count })
+          : `${count} ${reason}`;
+  const copyCounts = (copy: NonNullable<EngineSwitch['copy']>) => {
+    const reasons = Object.entries(copy.skipped).filter(([, n]) => n > 0);
+    const total = reasons.reduce((sum, [, n]) => sum + n, 0);
+    const named = reasons.map(([reason, count]) => skipLabel(reason, count)).join(', ');
+    return t('engineSwitch.copyCounts', {
+      copied: copy.copied,
+      skipped: total,
+      reasons: named ? ` (${named})` : '',
+      failed: copy.failed,
+    });
+  };
 
   /** Activate when ready, retry when failed; a running or comparing move offers only cancel. */
   const primary =
@@ -225,10 +255,15 @@ const Loaded = ({
           {t('engineSwitch.generation', { generation: current.generation })}
         </Paragraph>
       ) : null}
-      {current.failedDocuments ? (
+      {current.copy ? (
+        <Paragraph data-size="sm">{copyCounts(current.copy)}</Paragraph>
+      ) : current.failedDocuments ? (
         <Paragraph data-size="sm">
           {t('engineSwitch.failedDocuments', { count: current.failedDocuments })}
         </Paragraph>
+      ) : null}
+      {current.subset ? (
+        <Paragraph data-size="sm">{t('engineSwitch.subset', { count: current.subset })}</Paragraph>
       ) : null}
       {current.state === 'ready' && current.comparison ? (
         <>
@@ -303,15 +338,31 @@ const Loaded = ({
           ))}
         </Select>
       </Field>
-      <Paragraph data-size="sm">{t('engineSwitch.reingestNote')}</Paragraph>
-      {estimate?.reingest.available ? (
+      <Paragraph data-size="sm">
+        {t(copying ? 'engineSwitch.copyNote' : 'engineSwitch.reingestNote')}
+      </Paragraph>
+      {needsModel && estimate?.embeddings?.length ? (
+        <Field>
+          <Label htmlFor={modelId}>{t('engineSwitch.model')}</Label>
+          <Select id={modelId} value={model} onChange={(e) => setModel(e.target.value)}>
+            <SelectOption value="">{t('engineSwitch.chooseModel')}</SelectOption>
+            {estimate.embeddings.map((e) => (
+              <SelectOption key={e.model} value={e.model}>
+                {`${e.model} (${e.dimensions})`}
+              </SelectOption>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+      {offer?.available && estimate ? (
         <Paragraph data-size="sm">
-          {t('engineSwitch.estimate', {
-            costMin: estimate.reingest.costNok.min,
-            costMax: estimate.reingest.costNok.max,
-            minutesMin: estimate.reingest.durationMinutes.min,
-            minutesMax: estimate.reingest.durationMinutes.max,
+          {t(copying ? 'engineSwitch.copyEstimate' : 'engineSwitch.estimate', {
+            costMin: offer.costNok.min,
+            costMax: offer.costNok.max,
+            minutesMin: offer.durationMinutes.min,
+            minutesMax: offer.durationMinutes.max,
             documents: estimate.basis.documents,
+            chunks: estimate.basis.chunks ?? 0,
           })}
         </Paragraph>
       ) : estimate ? (
@@ -323,7 +374,11 @@ const Loaded = ({
       )}
       {reasonField}
       <div className="actions-row">
-        <Button data-size="sm" disabled={busy || !estimate?.reingest.available} onClick={start}>
+        <Button
+          data-size="sm"
+          disabled={busy || !offer?.available || (needsModel && !embedding)}
+          onClick={start}
+        >
           {t('engineSwitch.start')}
         </Button>
         <Button variant="tertiary" data-size="sm" onClick={() => setChoosing(false)}>

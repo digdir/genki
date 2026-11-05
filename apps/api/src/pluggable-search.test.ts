@@ -153,7 +153,7 @@ describe('pluggable search engines over the API', () => {
       return { status: res.status, body: await json<{ spec?: { generation?: string } }>(res) };
     };
 
-    it('copy from the platform database to the knowledge database is refused in bokmål for its document records, not as shared storage', async () => {
+    it('copy from the platform database to the knowledge database is refused in bokmål, since it cannot hand over its documents one by one, not as shared storage', async () => {
       const { call } = await boot({
         embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
         catalogs: {
@@ -187,9 +187,7 @@ describe('pluggable search engines over the API', () => {
       const { title } = await json<{ title: string }>(started);
       expect(title).not.toContain('deler lagring');
       // The app's locale middleware puts the refusal into bokmål through the catalogue.
-      expect(translateMessage(title, 'nb')).toContain(
-        'dokumentposter, som bare innlesinger skriver',
-      );
+      expect(translateMessage(title, 'nb')).toContain('kan ikke gi fra seg dokumentene ett og ett');
     });
 
     it('runs of a dataset on connection knowledge run as jobs', async () => {

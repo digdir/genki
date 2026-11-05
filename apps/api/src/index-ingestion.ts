@@ -49,6 +49,8 @@ import { tenantModelRefusal } from './model-access.js';
 export interface EmbedderSource {
   has(model: string): boolean;
   open(ref: Ref, ctx: PortContext, options?: EmbeddingOpenOptions): EmbeddingPort;
+  /** The embedding models the platform serves, for a choice of model. */
+  models?(): { model: string; dimensions: number }[];
 }
 
 export interface ParquetAccess {

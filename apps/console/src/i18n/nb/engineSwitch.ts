@@ -29,6 +29,17 @@ export const engineSwitch = defineNamespace({
   },
   estimate:
     'Innlesing på nytt: {costMin}–{costMax} kr, {minutesMin}–{minutesMax} min ({documents} dokumenter)',
+  copyEstimate:
+    'Kopi: {costMin}–{costMax} kr, {minutesMin}–{minutesMax} min ({documents} dokumenter, {chunks} biter)',
+  copyNote:
+    'Datasettet kopieres fra søkemotoren det ligger i nå, med teksten slik den er der, og får nye vektorer. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
+  model: 'Embeddingmodell',
+  chooseModel: 'Velg en modell',
+  copyCounts: 'Kopiert: {copied} · hoppet over: {skipped}{reasons} · feilet: {failed}',
+  skipNoUuid: '{count} uten UUID',
+  skipSameUuid: '{count} med samme UUID',
+  skipNoText: '{count} uten tekst',
+  subset: 'Et utvalg på {count} dokumenter: det kan sammenlignes, men ikke tas i bruk.',
   notAvailable: 'Flyttingen kan ikke startes.',
   loadingEstimate: 'Regner ut kostnad og tid',
   noEstimate: 'Fikk ikke regnet ut hva flyttingen koster. Prøv igjen.',

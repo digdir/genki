@@ -620,17 +620,23 @@ export const createApiClient = ({
     /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
     datasetEngine: (base: string, signal?: AbortSignal) =>
       call<DatasetEngine>('GET', `${base}/engine`, { signal }),
-    engineSwitchEstimate: (base: string, to: string, signal?: AbortSignal) =>
+    engineSwitchEstimate: (base: string, to: string, signal?: AbortSignal, model?: string) =>
       call<SwitchEstimate>(
         'GET',
-        `${base}/engine-switches/estimate?to=${encodeURIComponent(to)}&method=reingest`,
+        `${base}/engine-switches/estimate?to=${encodeURIComponent(to)}&method=reingest${
+          model ? `&model=${encodeURIComponent(model)}` : ''
+        }`,
         { signal },
       ),
     engineSwitch: (base: string, sid: string, signal?: AbortSignal) =>
       call<EngineSwitch>('GET', `${base}/engine-switches/${encodeURIComponent(sid)}`, { signal }),
     startEngineSwitch: (
       base: string,
-      body: { to: string; method: 'reingest'; embedding?: { model: string; dimensions: number } },
+      body: {
+        to: string;
+        method: 'copy' | 'reingest';
+        embedding?: { model: string; dimensions: number };
+      },
       reason: string,
     ) =>
       call<EngineSwitch>('POST', `${base}/engine-switches`, {

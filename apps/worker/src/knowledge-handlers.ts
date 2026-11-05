@@ -1,9 +1,12 @@
 import type { Principal } from '@genai/contracts';
 import {
   chunkingOf,
+  copyOwner,
   indexRecord,
   ingestListing,
   pipelineSpec,
+  type ChunkDocumentConfig,
+  type CopyListing,
   type DocumentRecords,
   type KnowledgeListingScope,
   type Listing,
@@ -56,6 +59,11 @@ export interface KnowledgeHandlerDeps {
     signal: AbortSignal,
   ): Promise<Listing>;
   embedder(dataset: DatasetConfig, ctx: PortContext): EmbeddingPort | undefined;
+  /**
+   * The listing of an engine switch's copy run (#366): the dataset as its current engine holds it,
+   * named as the switch decided at its start.
+   */
+  copyListingOf?(run: IngestionExecution, signal: AbortSignal): Promise<CopyListing>;
   /** Throws while the knowledge server is bound to another platform server (ADR 0042). */
   bound?: () => void;
   admission: AdmissionDeps;
@@ -72,6 +80,30 @@ const listingScope = (run: IngestionExecution, platformTenant: string): Knowledg
   dataset: run.dataset,
   owner: executionScope(run.dataset),
 });
+
+/** What a copy records as its chunking: the chunks are its engine's, cut by no setting here. */
+const copiedChunking = { copied: true };
+
+/**
+ * A run's listing and the chunking its generation keeps for it: a copy run's from its engine switch
+ * (#366), any other run's from its pipeline at the version it was started with.
+ */
+const listingFor = async (
+  deps: KnowledgeHandlerDeps,
+  run: IngestionExecution,
+  signal: AbortSignal,
+) => {
+  if (run.pipeline === copyOwner) {
+    if (!run.engineSwitch || !deps.copyListingOf)
+      throw new Error(`run ${run.id} copies, but names no engine switch`);
+    return { listing: await deps.copyListingOf(run, signal), chunking: copiedChunking };
+  }
+  const spec = await specOf(deps, run);
+  return {
+    listing: await deps.listingOf(spec, listingScope(run, deps.admission.platformTenant), signal),
+    chunking: chunkingOf(spec.chunking),
+  };
+};
 
 const specOf = async (deps: KnowledgeHandlerDeps, run: IngestionExecution) => {
   const parsed = pipelineSpec.safeParse(await deps.pipeline(run));
@@ -129,26 +161,31 @@ export const knowledgeWork = (
     async ({ job, run, cancelled }) => {
       deps.bound?.();
       const signal = job.signal;
-      const spec = await specOf(deps, run);
       const { dataset, generation } = await datasetOf(deps, run, signal);
       // A switch's generation, or a new dataset's, is made by the first ingest job that writes it.
       // A cancelled run makes nothing: its generation may already be dropped.
       if (await cancelled()) return;
       if (deps.prepare && !(await deps.generationExists?.(generation)))
         await deps.prepare(dataset, generation);
-      const listing = await deps.listingOf(
-        spec,
-        listingScope(run, deps.admission.platformTenant),
-        signal,
-      );
-      await deps.records.chunking(generation, run.pipeline, chunkingOf(spec.chunking));
+      const { listing, chunking } = await listingFor(deps, run, signal);
+      await deps.records.chunking(generation, run.pipeline, chunking);
+      // A copy's skips, by reason, as `skipped.<reason>` beside the listing's counts.
+      const skips = () =>
+        'skipped' in listing && typeof listing.skipped === 'function'
+          ? Object.fromEntries(
+              Object.entries((listing as CopyListing).skipped()).map(([k, v]) => [
+                `skipped.${k}`,
+                v,
+              ]),
+            )
+          : {};
       await ingestListing({
         records: deps.records,
         listing,
         dataset: run.dataset,
         pipeline: run.pipeline,
         generation,
-        onPlan: (plan) => deps.runs.report(run.id, { ...plan.counts }, 'set'),
+        onPlan: (plan) => deps.runs.report(run.id, { ...plan.counts, ...skips() }, 'set'),
         send: (record: string, transaction: RecordTransaction) =>
           deps.knowledge.send(
             knowledgeIndexQueue,
@@ -176,18 +213,14 @@ export const knowledgeWork = (
           return;
         }
         const signal = job.signal;
-        const spec = await specOf(deps, run);
         const { dataset } = await datasetOf(deps, run, signal);
         const tenant = tenantOf(run, deps.admission.platformTenant);
-        const listing = await deps.listingOf(
-          spec,
-          listingScope(run, deps.admission.platformTenant),
-          signal,
-        );
+        const found = await listingFor(deps, run, signal);
+        const listing = found.listing;
         const chunking = await deps.records.chunking(
           job.data.generation,
           run.pipeline,
-          chunkingOf(spec.chunking),
+          found.chunking,
         );
         // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
         const embedding = await deps.records.embedding(job.data.generation);
@@ -204,7 +237,8 @@ export const knowledgeWork = (
             run: run.id,
             record: job.data.record,
             generation: job.data.generation,
-            chunking,
+            // A copied document keeps its engine's chunks, so a copy's chunking is never applied.
+            chunking: chunking as ChunkDocumentConfig,
             onStored: (n) => {
               chunks = n;
             },

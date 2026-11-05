@@ -24,4 +24,5 @@ models:
   foundry-openai/o3-pro: { inputPerThousand: 0.1904, outputPerThousand: 0.7617 }
   foundry-openai/o4-mini: { inputPerThousand: 0.0105, outputPerThousand: 0.0419 }
   foundry/text-embedding-3-large: { inputPerThousand: 0.0012, outputPerThousand: 0 }
+  foundry/text-embedding-3-large-1536: { inputPerThousand: 0.0012, outputPerThousand: 0 }
   foundry/text-embedding-3-small: { inputPerThousand: 0.0002, outputPerThousand: 0 }

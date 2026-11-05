@@ -478,4 +478,41 @@ describe('document records on the knowledge server', () => {
     expect(owned[1]?.appliedAt).toBeUndefined();
     expect(await records.owned(name, 'other', generation)).toEqual([]);
   });
+
+  it("a pipeline's records include the copy's, marked copied, until it takes them over", async () => {
+    const name = 'digdir/copied';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a', 'b') },
+      noSend,
+    );
+    const before = await records.owned(name, 'kudos', generation);
+    expect(before.map((r) => [r.id, r.copied])).toEqual([
+      ['a', true],
+      ['b', true],
+    ]);
+    expect((await records.owned(name, '_copy', generation)).map((r) => r.copied)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'changed', listed: listed('a'), metadataHash: 'm-a2' }], ['a']),
+      },
+      noSend,
+    );
+    const after = await records.owned(name, 'kudos', generation);
+    expect(after.map((r) => [r.id, r.copied])).toEqual([
+      ['b', true],
+      ['a', undefined],
+    ]);
+    const { rows } = await admin.query<{ owners: string[] }>(
+      `select owners from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.owners).toEqual(['kudos']);
+  });
 });

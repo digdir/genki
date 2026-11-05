@@ -51,7 +51,7 @@ import {
   InMemoryTaskStore,
   type EventLog,
 } from '@genai/kernel';
-import { knowledgeListingOf } from '@genai/ingest';
+import { copyListing, copyOwner, knowledgeListingOf, type CopyIds } from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
 import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
 import { EgressGuard } from '@genai/providers-mcp-client';
@@ -268,6 +268,8 @@ interface SwitchSpec {
   generation: string;
   embedding?: DatasetConfig['embedding'];
   options?: Record<string, unknown>;
+  /** A copy's naming and named documents, decided at its start (#366). */
+  copy?: { ids?: CopyIds; documents?: string[] };
 }
 const openSwitchStates = ['running', 'failed', 'comparing', 'ready', 'activating'];
 /** The dataset at a switch's endpoint, filling the switch's generation (ADR 0025). */
@@ -393,6 +395,39 @@ const knowledgeHandlers =
             scope,
             signal,
           ),
+        copyListingOf: async (run, signal) => {
+          const spec = await switchOfRun(run);
+          if (!spec || spec.dataset !== run.dataset)
+            throw new Error(
+              `the engine switch ${run.engineSwitch} of dataset ${run.dataset} is gone`,
+            );
+          const scope = executionScope(run.dataset);
+          const tenant = scope === 'platform' ? platformTenant : scope;
+          // The catalog still names the engine the dataset is copied from, until the switch publishes.
+          const exported = runtimeFor('read the catalog').knowledge.open(
+            { kind: 'dataset', id: run.dataset, tenant },
+            {
+              tenant,
+              principal: {
+                kind: 'agency-system',
+                issuer: 'platform',
+                subject: 'engine-switch',
+                tenant,
+              },
+              task: `ingestion:${run.id}`,
+              signal,
+              meter: async () => undefined,
+            },
+          ).export;
+          const { list, document } = exported ?? {};
+          if (!list || !document)
+            throw new Error(`the engine of dataset ${run.dataset} cannot hand over its documents`);
+          return copyListing({
+            source: { list, document },
+            ...(spec.copy?.ids ? { ids: spec.copy.ids } : {}),
+            ...(spec.copy?.documents ? { documents: spec.copy.documents } : {}),
+          });
+        },
         embedder: (dataset, ctx) => {
           const runtime = runtimeFor('embed');
           const residency = runtime.residencyOf(dataset.id);
@@ -771,6 +806,8 @@ const reconcilePass = async (
         )
       )?.find((entry) => entry.version === run.pipelineVersion)?.spec as
         { maxDocumentFailures?: number } | undefined;
+      // A copy has no pipeline: it stops after 1 % of Kudos's documents have failed.
+      if (run.pipeline === copyOwner) return 100;
       return spec?.maxDocumentFailures ?? 10;
     },
   });

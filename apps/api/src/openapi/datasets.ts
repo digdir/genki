@@ -407,6 +407,21 @@ const EngineSwitch = z
       .int()
       .optional()
       .describe('Into the knowledge database: documents of the fill that could not be read in'),
+    copy: z
+      .object({
+        copied: z.number().int(),
+        skipped: z.record(z.string(), z.number().int()),
+        failed: z.number().int(),
+      })
+      .optional()
+      .describe(
+        'A copy into the knowledge database, once filled: documents copied, skipped by reason (no_uuid, same_uuid, no_text) and failed',
+      ),
+    subset: z
+      .number()
+      .int()
+      .optional()
+      .describe('A copy of named documents: how many it names; it compares but is never activated'),
     minimumReasonLength: z.number().int(),
     previousKeptUntil: z.string().optional(),
     canRollback: z.boolean(),
@@ -426,10 +441,25 @@ const SwitchEstimate = z
     from: z.string(),
     to: z.string(),
     estimate: z.literal(true),
-    basis: z.object({ documents: z.number().int(), counted: z.boolean() }),
+    basis: z.object({
+      documents: z.number().int(),
+      counted: z.boolean(),
+      chunks: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          'A copy into the knowledge database: chunks, scaled from the first 100 documents',
+        ),
+      tokens: z.number().int().optional().describe('The same, in tokens to embed'),
+    }),
     method: SwitchMethod.optional(),
     copy: MethodEstimate,
     reingest: MethodEstimate,
+    embeddings: z
+      .array(Embedding)
+      .optional()
+      .describe('The embedding models the platform serves, for a dataset that has none'),
   })
   .openapi('EngineSwitchEstimate');
 
@@ -467,6 +497,14 @@ const StartSwitch = z
     method: SwitchMethod,
     embedding: Embedding.optional(),
     options: z.record(z.string(), z.unknown()).optional(),
+    documents: z
+      .array(z.string())
+      .min(1)
+      .max(1000)
+      .optional()
+      .describe(
+        'A copy into the knowledge database of these source ids only, to try it out: it deletes nothing and is never activated',
+      ),
   })
   .openapi('EngineSwitchStart');
 
@@ -783,7 +821,11 @@ const engineRoutes = (base: Base): RouteConfig[] => {
       summary: `Estimate cost and time of moving a dataset to another engine (${who(base, 'manage-datasets')})`,
       request: {
         params,
-        query: z.object({ to: z.string(), method: SwitchMethod.optional() }),
+        query: z.object({
+          to: z.string(),
+          method: SwitchMethod.optional(),
+          model: z.string().optional().openapi({ description: 'The embedding model to price' }),
+        }),
       },
       responses: {
         200: json(SwitchEstimate, 'Estimate'),

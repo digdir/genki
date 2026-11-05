@@ -9,7 +9,7 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { testSet } from '@genai/eval';
 import { envSecrets } from '@genai/kernel';
 import { fakeEmbeddingAdapter } from '@genai/port-embedding/testing';
-import type { KnowledgePort } from '@genai/port-knowledge';
+import type { IndexDocument, KnowledgePort } from '@genai/port-knowledge';
 import { createPool } from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PLATFORM_RIGHTS, trustedEntraScope } from '@genai/identity';
@@ -123,6 +123,9 @@ const fakeWorker = () => {
 
 type Worker = ReturnType<typeof fakeWorker>;
 
+/** Documents of datasets whose current engine can hand them over, by dataset id. */
+const exports = new Map<string, IndexDocument[]>();
+
 const boot = async (
   shared: {
     entries?: InMemoryConfigEntryStore;
@@ -197,6 +200,11 @@ const boot = async (
           has: (model) => Boolean(late.platform?.embedders.describe().some((e) => e.id === model)),
           open: (...args) =>
             (late.platform as NonNullable<typeof late.platform>).embedders.open(...args),
+          models: () =>
+            (late.platform?.embedders.describe() ?? []).map((e) => ({
+              model: e.id,
+              dimensions: e.dimensions,
+            })),
         },
         sweepIntervalMs: 0,
         ...(shared.clock ? { now: () => (shared.clock as { now: Date }).now } : {}),
@@ -204,6 +212,30 @@ const boot = async (
     ],
   });
   late.platform = platform;
+  // A dataset's current engine, faked for copies: documents an export lists and reads one by one.
+  const open = platform.knowledge.open.bind(platform.knowledge);
+  platform.knowledge.open = ((ref, ctx) => {
+    const docs = exports.get(ref.id);
+    const port = open(ref, ctx);
+    if (!docs) return port;
+    return Object.assign(Object.create(port) as KnowledgePort, {
+      export: {
+        vectors: false,
+        documents: async function* () {
+          yield* docs;
+        },
+        count: async (cap: number) => Math.min(cap, docs.length),
+        list: async function* () {
+          for (const { chunks, phrases, ...rest } of docs) {
+            void chunks;
+            void phrases;
+            yield rest;
+          }
+        },
+        document: async (id: string) => docs.find((d) => d.id === id),
+      },
+    });
+  }) as typeof platform.knowledge.open;
   // The knowledge server's read functions, faked: what the comparison asked for, and hits.
   const reads: { endpoint: string; generation?: string }[] = [];
   const openAt = platform.knowledge.openAt.bind(platform.knowledge);
@@ -354,23 +386,6 @@ describe('switching a dataset into the knowledge database', () => {
       admittedAt: expect.any(String),
     });
     expect((await view(booted, 'veiledning', opened.sid)).generation).toBe(run?.generation);
-  });
-
-  it('copy into the knowledge database is refused', async () => {
-    const booted = await boot();
-    await folderDataset(booted, 'kopi');
-    const estimate = await json<SwitchEstimate>(
-      await booted.call(`${base('kopi')}/engine-switches/estimate?to=knowledge-pg`),
-    );
-    expect(estimate.copy).toMatchObject({
-      available: false,
-      reason: expect.stringContaining('dokumentposter'),
-    });
-    expect(estimate.reingest.available).toBe(true);
-    const refused = await startSwitch(booted, 'kopi', 'copy');
-    expect(refused.status).toBe(409);
-    expect(JSON.stringify(await json(refused))).toContain('dokumentposter');
-    expect(booted.worker.started).toEqual([]);
   });
 
   it('a switch into the knowledge database is refused for a dataset with a second pipeline or search phrases', async () => {
@@ -852,5 +867,206 @@ describe('operators switching a platform dataset into the knowledge database', (
     expect(booted.worker.drops).toEqual([
       { tenant: 'platform', dataset: id, generation: opened.generation },
     ]);
+  });
+});
+
+const typesenseDocs = (n: number, chunks = 1, chars = 10): IndexDocument[] =>
+  Array.from({ length: n }, (_, i) => ({
+    id: String(377252 + i),
+    title: `Rapport ${i}`,
+    fields: {},
+    chunks: Array.from({ length: chunks }, (_c, position) => ({
+      id: `c${position}`,
+      position,
+      text: 'x'.repeat(chars),
+    })),
+    phrases: [],
+  }));
+
+/** A dataset on another engine with no pipeline, whose engine can hand over its documents. */
+const copyDataset = async (
+  booted: Booted,
+  id: string,
+  docs: IndexDocument[] = typesenseDocs(3),
+) => {
+  const created = await booted.call(`/tenants/${digdir}/datasets`, {
+    body: { id, name: 'Rapporter', residency: 'norway', index: { endpoint: 'platform-pg' } },
+  });
+  expect(created.status).toBe(201);
+  exports.set(`${digdir}/${id}`, docs);
+  await booted.platform.evalStores.testSets.put(
+    testSet.parse({
+      apiVersion: 'genai/v1',
+      kind: 'TestSet',
+      metadata: { tenant: digdir, id: `${id}-sporsmal`, name: 'Spørsmål', version: 1 },
+      spec: {
+        corpus: id,
+        cases: [
+          {
+            id: 'veileder',
+            split: 'validation',
+            input: 'Hva sier rapporten?',
+            expected: { sources: [{ document: 'veileder' }] },
+          },
+        ],
+      },
+    }),
+  );
+};
+
+const startCopy = (booted: Booted, dataset: string, extra: Record<string, unknown> = {}) =>
+  booted.call(`${base(dataset)}/engine-switches`, {
+    body: { to: 'knowledge-pg', method: 'copy', embedding, ...extra },
+  });
+
+const copiedToReady = async (
+  booted: Booted,
+  dataset: string,
+  extra: Record<string, unknown> = {},
+  report: Record<string, number> = { stored: 3 },
+) => {
+  const response = await startCopy(booted, dataset, extra);
+  expect(response.status).toBe(202);
+  const opened = await json<EngineSwitchView>(response);
+  await booted.worker.end(
+    runOf(booted.worker, opened.id),
+    'succeeded',
+    report as Partial<IngestionReport>,
+  );
+  const ready = await followed(booted, dataset, opened.sid);
+  expect(ready.state).toBe('ready');
+  return ready;
+};
+
+describe('copying a dataset into the knowledge database', () => {
+  it('a copy into the knowledge database starts one run of its own', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('kopi')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.copy.available).toBe(true);
+    const response = await startCopy(booted, 'kopi');
+    expect(response.status).toBe(202);
+    const opened = await json<EngineSwitchView>(response);
+    expect(booted.worker.started).toEqual([
+      expect.objectContaining({
+        dataset: `${digdir}/kopi`,
+        pipeline: '_copy',
+        engineSwitch: opened.id,
+        generation: expect.stringMatching(/^g-\d{8}-[0-9a-f]{6}$/),
+      }),
+    ]);
+  });
+
+  it("a copy names documents as the dataset's Kudos pipeline would, even turned off", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kudos-kopi');
+    const saved = await booted.call(`${base('kudos-kopi')}/pipelines`, {
+      body: {
+        id: 'kudos',
+        name: 'Kudos',
+        source: { kind: 'kudos', since: '2020-01-01' },
+        enabled: false,
+      },
+    });
+    expect(saved.status).toBe(201);
+    await copyDataset(booted, 'nettsider');
+    for (const dataset of ['kudos-kopi', 'nettsider'])
+      expect((await startCopy(booted, dataset)).status).toBe(202);
+    const specs = (await booted.entries.latest({ kind: 'engine-switch', scope: digdir })).map(
+      (e) => e.spec as { dataset: string; copy?: unknown },
+    );
+    expect(specs.find((s) => s.dataset.endsWith('/kudos-kopi'))?.copy).toEqual({ ids: 'kudos' });
+    expect(specs.find((s) => s.dataset.endsWith('/nettsider'))?.copy).toEqual({});
+  });
+
+  it('copy into the knowledge database is refused for a dataset whose engine cannot be exported', async () => {
+    const booted = await boot();
+    await folderDataset(booted, 'mappe');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('mappe')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('kan ikke gi fra seg'),
+    });
+    const refused = await startCopy(booted, 'mappe');
+    expect(refused.status).toBe(409);
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it('activating a copy switch copies again before it publishes', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'kopi-aktiv');
+    const ready = await copiedToReady(booted, 'kopi-aktiv');
+    const activated = await booted.call(
+      `${base('kopi-aktiv')}/engine-switches/${ready.sid}/activate`,
+      { body: {} },
+    );
+    expect(activated.status).toBe(202);
+    const refresh = runOf(booted.worker, ready.id, 1);
+    expect(refresh).toMatchObject({ pipeline: '_copy', generation: ready.generation });
+    await booted.worker.end(refresh, 'succeeded', { unchanged: 3 });
+    await booted.module.follow();
+    expect((await view(booted, 'kopi-aktiv', ready.sid)).state).toBe('active');
+    expect(booted.platform.catalog.get('dataset', `${digdir}/kopi-aktiv`)?.spec).toMatchObject({
+      endpoint: 'knowledge-pg',
+      generation: ready.generation,
+    });
+  });
+
+  it('a copy of named documents compares but cannot be activated', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'utvalg');
+    const ready = await copiedToReady(booted, 'utvalg', { documents: ['377252'] }, { stored: 1 });
+    expect(ready.comparison).toBeDefined();
+    const refused = await booted.call(`${base('utvalg')}/engine-switches/${ready.sid}/activate`, {
+      body: {},
+    });
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(await json(refused))).toContain('utvalg');
+    expect(booted.worker.started).toHaveLength(1);
+    const tooMany = await startCopy(booted, 'utvalg', {
+      documents: Array.from({ length: 1001 }, (_, i) => String(i)),
+    });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it('the switch counts copied, skipped by reason and failed documents', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'tellinger');
+    const ready = await copiedToReady(
+      booted,
+      'tellinger',
+      {},
+      {
+        new: 9,
+        stored: 7,
+        skipped: 1,
+        'skipped.no_uuid': 218,
+        'skipped.same_uuid': 89,
+        failedDocuments: 1,
+      },
+    );
+    expect(ready.copy).toEqual({
+      copied: 7,
+      skipped: { no_text: 1, no_uuid: 218, same_uuid: 89 },
+      failed: 1,
+    });
+  });
+
+  it("the copy estimate scales the first documents' chunks and characters to the whole dataset", async () => {
+    const booted = await boot();
+    // 250 documents of 10 chunks of 3,500 characters: 2,500 chunks, about 2.5 M tokens.
+    await copyDataset(booted, 'anslag', typesenseDocs(250, 10, 3500));
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(
+        `${base('anslag')}/engine-switches/estimate?to=knowledge-pg&model=fake/embed`,
+      ),
+    );
+    expect(estimate.basis).toMatchObject({ documents: 250, chunks: 2500, tokens: 2_500_000 });
+    // fake/embed has no price: 0.0013 NOK per 1,000 tokens, so 3.25 NOK.
+    expect(estimate.copy.costNok).toEqual({ min: 3, max: 5 });
   });
 });

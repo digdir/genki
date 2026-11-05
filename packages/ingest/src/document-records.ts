@@ -3,6 +3,7 @@ import type { EmbeddingPort } from '@genai/port-embedding';
 import { GenerationBusy } from '@genai/port-knowledge';
 import type {
   DocumentRecords,
+  IndexDocument,
   IndexOutcome,
   IndexRecord,
   ListedDocument,
@@ -14,6 +15,7 @@ import type {
   RunPlan,
 } from '@genai/port-knowledge';
 import type { ChunkDocumentConfig } from './chunk-document.js';
+import { copiedDocument, type CopiedSource } from './copy-listing.js';
 import { embedIndexDocument, toIndexDocument } from './index-writer.js';
 import { prepareDocument, type SourceDocument } from './pipeline.js';
 
@@ -37,12 +39,13 @@ export type {
 export type DeleteRule = 'listed' | 'crawled' | 'explicit';
 
 /** A source as a run lists it, and as an index job loads one of its documents. */
-export interface Listing {
+export interface Listing<Loaded = SourceDocument> {
   deletes: DeleteRule;
   documents(): AsyncIterable<ListedDocument>;
   /** After `documents()` is read: every page came back without error and any total matched. */
   complete(): boolean;
-  load(record: Record<string, unknown>): Promise<SourceDocument>;
+  /** A source document to convert and chunk, or for a copy, one with its chunks as they are (#366). */
+  load(record: Record<string, unknown>): Promise<Loaded>;
 }
 
 /** A record that changed while its index job ran: the job fails, and its retry writes the newer change. */
@@ -112,7 +115,12 @@ export const planRun = (
       writes.push({ kind: 'new', listed: doc, metadataHash: hash });
       process.push(doc.id);
       counts.new++;
-    } else if (record.metadataHash !== hash || !sameFiles(record.files, doc.files)) {
+    } else if (
+      record.copied ||
+      record.metadataHash !== hash ||
+      !sameFiles(record.files, doc.files)
+    ) {
+      // A copied record is taken over as changed, so the pipeline writes it again as its own (#366).
       writes.push({ kind: 'changed', listed: doc, metadataHash: hash });
       process.push(doc.id);
       counts.changed++;
@@ -132,7 +140,8 @@ export const planRun = (
   const empty = listedIds.size === 0 && options.deletes !== 'explicit';
   if (!options.complete || empty) return { writes, process, counts };
   for (const record of owned) {
-    if (listedIds.has(record.id) || record.state === 'deleted') continue;
+    // A copied record the pipeline does not list stays as copied: only its owner deletes it.
+    if (listedIds.has(record.id) || record.state === 'deleted' || record.copied) continue;
     if (record.missing + 1 >= missesBeforeDelete[options.deletes]) {
       writes.push({ kind: 'delete', id: record.id });
       process.push(record.id);
@@ -148,7 +157,7 @@ export interface IndexRecordOptions {
   dataset: string;
   /** The run that sent the job: a 404 or 410 counts once per run. */
   run: string;
-  listing: Pick<Listing, 'deletes' | 'load'>;
+  listing: Pick<Listing<SourceDocument | CopiedSource>, 'deletes' | 'load'>;
   record: string;
   generation: string;
   chunking: ChunkDocumentConfig;
@@ -194,6 +203,23 @@ const applied = (done: boolean) => {
     );
 };
 
+/** A copied document: its chunks as its engine holds them, embedded with the generation's model. */
+const writeCopied = async (
+  options: IndexRecordOptions,
+  record: IndexRecord,
+  source: IndexDocument,
+): Promise<IndexOutcome> => {
+  const doc = copiedDocument(record.id, source);
+  if (doc.chunks.every((c) => c.text.trim() === '')) {
+    applied(await options.records.replace(record, options.generation, { skip: 'no_text' }));
+    return 'skipped';
+  }
+  const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
+  applied(await options.records.replace(record, options.generation, { document: written }));
+  options.onStored?.(written.chunks.length);
+  return 'stored';
+};
+
 const writeRecord = async (
   options: IndexRecordOptions,
   found: IndexRecord,
@@ -202,6 +228,7 @@ const writeRecord = async (
   let document: SourceDocument;
   try {
     const listed = await options.listing.load(record.record);
+    if ('copied' in listed) return await writeCopied(options, record, listed.copied);
     document = listed.prepare ? await listed.prepare() : listed;
   } catch (error) {
     if (!(error instanceof PageGone) || options.listing.deletes !== 'crawled') throw error;

@@ -31,8 +31,13 @@ export const operations = defineNamespace({
   switchNoPipeline: 'Datasettet har ingen innlesing å kjøre.',
   switchBusy: 'Et bytte pågår allerede ({id}).',
   switchStalled: 'Overføringen stoppet. Start den på nytt.',
-  switchKnowledgeCopy:
-    'Dokumentene i kunnskapsdatabasen trenger dokumentposter, som bare innlesinger skriver. Les inn på nytt fra kilden.',
+  switchKnowledgeCopyExport:
+    'Søkemotoren til datasettet kan ikke gi fra seg dokumentene ett og ett, så de kan ikke kopieres til kunnskapsdatabasen. Les inn på nytt fra kilden.',
+  switchKnowledgeNeedsModel: 'Velg en embeddingmodell: datasettet har ingen.',
+  switchCopySubset:
+    'Dette byttet kopierte bare et utvalg dokumenter, så det kan ikke tas i bruk. Start en kopi av hele datasettet.',
+  switchCopyDocuments:
+    'documents er en liste med 1 til 1000 dokument-id-er, bare for en kopi til kunnskapsdatabasen.',
   switchKnowledgeOnePipeline:
     'Et datasett i kunnskapsdatabasen fylles av én innlesing til medeiere er bygget; dette har {pipelines}.',
   switchKnowledgePhrases:

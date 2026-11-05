@@ -468,3 +468,80 @@ describe('engine switch of a platform dataset in the console', () => {
     );
   });
 });
+
+describe('copying a dataset into the knowledge database in the console', () => {
+  const large = { model: 'foundry/text-embedding-3-large-1536', dimensions: 1536 };
+  const copyEstimate = (model?: string) => ({
+    ...estimate({ available: false, reason: 'Datasettet har ingen innlesing å kjøre.' }),
+    basis: { documents: 10064, counted: true, chunks: 621244, tokens: 447000000 },
+    copy: {
+      available: true,
+      costNok: model ? { min: 430, max: 700 } : { min: 0, max: 1 },
+      durationMinutes: { min: 80, max: 140 },
+    },
+    embeddings: [{ model: 'foundry/text-embedding-3-small', dimensions: 1536 }, large],
+  });
+  const kudos = { embedding: null };
+
+  it('the console starts a copy with the chosen model when only copy is available', async () => {
+    const { api, calls } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, copyEstimate()],
+      [`${estimateRoute}&model=${encodeURIComponent(large.model)}`]: () => [
+        200,
+        copyEstimate(large.model),
+      ],
+      [`POST ${base}/engine-switches`]: () => [202, switchView('running', { method: 'copy' })],
+      [`GET ${base}/engine-switches/s1`]: () => [200, switchView('running', { method: 'copy' })],
+    });
+    render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    await screen.findByText(/Kopi:/);
+    const start = screen.getByRole('button', { name: 'Start flyttingen' }) as HTMLButtonElement;
+    // A dataset with no embedding of its own waits for a model.
+    expect(start.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Embeddingmodell'), { target: { value: large.model } });
+    expect(
+      // Numbers are grouped as in Norwegian: 10 064.
+      await screen.findByText(
+        /^Kopi: 430–700 kr, 80–140 min \(10\s064 dokumenter, 621\s244 biter\)$/,
+      ),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Kopierer Kudos fra Typesense' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start flyttingen' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      to: 'knowledge-pg',
+      method: 'copy',
+      embedding: large,
+    });
+  });
+
+  it("the console shows a copy's copied, skipped and failed counts", async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [
+        200,
+        engineOn('kudos-typesense', {
+          ...kudos,
+          activeSwitch: switchView('ready', {
+            method: 'copy',
+            failedDocuments: 2,
+            copy: { copied: 9755, skipped: { no_uuid: 218, same_uuid: 89 }, failed: 2 },
+          }),
+        }),
+      ],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    expect(
+      await screen.findByText(
+        /^Kopiert: 9\s755 · hoppet over: 307 \(218 uten UUID, 89 med samme UUID\) · feilet: 2$/,
+      ),
+    ).toBeTruthy();
+  });
+});

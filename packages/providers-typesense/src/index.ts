@@ -20,7 +20,7 @@ import {
 } from '@genai/port-knowledge';
 import { z } from 'zod';
 import { readOnlyClient, searchOnlyClient } from './client.js';
-import { readTypesenseDocuments } from './reader.js';
+import { listTypesenseDocuments, readTypesenseDocument, readTypesenseDocuments } from './reader.js';
 
 export { assertReadOnly, assertSearchOnly, readOnlyClient, type ReadOnlyClient } from './client.js';
 export { readTypesenseDocuments, type ReadCollections } from './reader.js';
@@ -337,6 +337,22 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
             if (n >= cap) break;
           }
           return n;
+        },
+        list: (dataset: Dataset, signal: AbortSignal) =>
+          listTypesenseDocuments(reader, dataset, docsOf(dataset), signal),
+        document: (dataset: Dataset, id: string, signal: AbortSignal) => {
+          const { docs, chunks, phrases } = dataset.options.collections;
+          return readTypesenseDocument(
+            reader,
+            dataset,
+            {
+              docs: docs as string,
+              chunks: chunks as string,
+              ...(phrases ? { phrases } : {}),
+            },
+            id,
+            signal,
+          );
         },
       },
       served: async (dataset: Dataset, signal: AbortSignal) => {

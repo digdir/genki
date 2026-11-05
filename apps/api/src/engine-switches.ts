@@ -6,7 +6,7 @@ import {
   type RetrievalComparison,
   type RetrievalRun,
 } from '@genai/eval';
-import { embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
+import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
 import type { PortContext } from '@genai/kernel';
 import {
   KnowledgeError,
@@ -23,7 +23,7 @@ import { AdminRefused, engineSwitchPublisher, refusedBy, routeOnlyActions } from
 import type { CatalogItem } from './catalog-registry.js';
 import { appendVersion, platformScope, type ConfigEntry } from './config-store.js';
 import { indexIngestionBackend } from './index-ingestion.js';
-import type { Execution } from './ingestion.js';
+import type { Execution, Pipeline } from './ingestion.js';
 import {
   engineOf,
   problem,
@@ -74,10 +74,13 @@ export interface SwitchEstimate {
   from: string;
   to: string;
   estimate: true;
-  basis: { documents: number; counted: boolean };
+  /** For a copy, also the chunks and tokens scaled from the first documents the export hands over. */
+  basis: { documents: number; counted: boolean; chunks?: number; tokens?: number };
   method?: SwitchMethod;
   copy: MethodEstimate;
   reingest: MethodEstimate;
+  /** The embedding models the platform serves, for a switch of a dataset that has none. */
+  embeddings?: { model: string; dimensions: number }[];
 }
 
 export interface SwitchProgress {
@@ -140,6 +143,10 @@ export interface EngineSwitchSpec {
   filled?: boolean;
   /** Documents of its fill whose jobs ended as dead letters; the refresh writes them again. */
   failedDocuments?: number;
+  /** A copy into the knowledge database: how its documents are named, and the ones it copies (#366). */
+  copy?: { ids?: 'kudos'; documents?: string[] };
+  /** A copy's documents once its fill has ended: copied, skipped by reason and failed. */
+  copied?: CopyCounts;
 }
 
 export interface EngineSwitchView {
@@ -164,10 +171,20 @@ export interface EngineSwitchView {
   comparisonNote?: string;
   generation: string;
   failedDocuments?: number;
+  /** A copy's documents: copied, skipped by reason and failed (#366). */
+  copy?: CopyCounts;
+  /** A copy of named documents: how many it names; it compares but is never activated. */
+  subset?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   canRollback: boolean;
   decision?: SwitchDecision;
+}
+
+export interface CopyCounts {
+  copied: number;
+  skipped: Record<string, number>;
+  failed: number;
 }
 
 export interface ServiceUse {
@@ -253,6 +270,11 @@ const range = (value: number, unit: number): Range => ({
 });
 
 const chunksPerDocument = 8;
+/** Characters per token for Norwegian text, for a copy's estimate. */
+const charactersPerToken = 3.5;
+/** The documents a copy's estimate reads to scale chunks and characters to the dataset. */
+const estimateSample = 100;
+const maxCopyDocuments = 1000;
 const tokensPerChunk = 300;
 const defaultEmbeddingNokPerThousand = 0.0013;
 const defaultModelPrice = { inputPerThousand: 0.025, outputPerThousand: 0.1 };
@@ -403,6 +425,39 @@ export const createEngineSwitchesModule =
       }
     };
 
+    /** A copy into the knowledge database reads each document again in its index job (#366). */
+    const copyable = (item: CatalogItem) => {
+      const exporter = exporterOf(item, AbortSignal.timeout(1000));
+      return Boolean(exporter?.list && exporter.document);
+    };
+
+    /** The first documents the export hands over: their chunks and characters, per document. */
+    const sampleOf = async (item: CatalogItem) => {
+      const exporter = exporterOf(item, AbortSignal.timeout(60_000));
+      if (!exporter) return undefined;
+      let documents = 0;
+      let chunks = 0;
+      let characters = 0;
+      const iterator = exporter.documents()[Symbol.asyncIterator]();
+      try {
+        while (documents < estimateSample) {
+          const next = await iterator.next();
+          if (next.done) break;
+          documents++;
+          chunks += next.value.chunks.length;
+          characters += next.value.chunks.reduce((n, c) => n + c.text.length, 0);
+        }
+      } finally {
+        await iterator.return?.();
+      }
+      return documents === 0
+        ? undefined
+        : {
+            chunksPerDocument: chunks / documents,
+            charactersPerChunk: characters / Math.max(1, chunks),
+          };
+    };
+
     const exportedWithoutVectors = (item: CatalogItem) =>
       exporterOf(item, AbortSignal.timeout(1000))?.vectors === false;
 
@@ -454,7 +509,8 @@ export const createEngineSwitchesModule =
           : undefined;
       const knowledge = onKnowledge(target.id);
       const copyProblem = knowledge
-        ? t('operations.switchKnowledgeCopy')
+        ? (missingModel ??
+          (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
         : (missingModel ??
           (current && embedding && current.model !== embedding.model
             ? t('operations.switchCopyNeedsSameModel', {
@@ -486,20 +542,36 @@ export const createEngineSwitchesModule =
       tenant: string,
       item: CatalogItem,
       plan: Plan,
+      model?: string,
     ): Promise<Omit<SwitchEstimate, 'method'>> => {
       const { documents, counted } = await countDocuments(item, 20_000).then(
         (found) => ({ documents: found, counted: true }),
         () => ({ documents: 1000, counted: false }),
       );
       const chunks = documents * chunksPerDocument;
-      const embeddingPrice = plan.embedding
-        ? (deps.prices[plan.embedding.model]?.inputPerThousand ?? defaultEmbeddingNokPerThousand)
+      const priced = model ?? plan.embedding?.model;
+      const embeddingPrice = priced
+        ? (deps.prices[priced]?.inputPerThousand ?? defaultEmbeddingNokPerThousand)
         : 0;
       const sourceHasVectors = !exportedWithoutVectors(item) && Boolean(item.spec.embedding);
-      const reembeds = plan.needsVectors && Boolean(plan.embedding) && !sourceHasVectors;
+      const reembeds = plan.needsVectors && Boolean(priced) && !sourceHasVectors;
       const embedCost =
-        plan.needsVectors && plan.embedding ? (chunks * tokensPerChunk * embeddingPrice) / 1000 : 0;
-      const copyCost = reembeds ? embedCost : 0;
+        plan.needsVectors && priced ? (chunks * tokensPerChunk * embeddingPrice) / 1000 : 0;
+      // A copy into the knowledge database embeds the source's own chunks, scaled from a sample.
+      const sample =
+        onKnowledge(plan.target.id) && !plan.copyProblem
+          ? await sampleOf(item).catch(() => undefined)
+          : undefined;
+      const copied = sample
+        ? {
+            chunks: Math.round(documents * sample.chunksPerDocument),
+            tokens: Math.round(
+              (documents * sample.chunksPerDocument * sample.charactersPerChunk) /
+                charactersPerToken,
+            ),
+          }
+        : undefined;
+      const copyCost = copied ? (copied.tokens * embeddingPrice) / 1000 : reembeds ? embedCost : 0;
       const copyMinutes = 2 + documents * (reembeds ? 0.01 : 0.002);
       const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const phraseCost = pipelines.reduce((sum, p) => {
@@ -527,7 +599,7 @@ export const createEngineSwitchesModule =
         from: String(item.spec.endpoint),
         to: plan.target.id,
         estimate: true,
-        basis: { documents, counted },
+        basis: { documents, counted, ...(copied ?? {}) },
         copy: method(plan.copyProblem, copyCost, copyMinutes),
         reingest: method(plan.reingestProblem, embedCost + phraseCost, reingestMinutes),
       };
@@ -562,6 +634,8 @@ export const createEngineSwitchesModule =
         ...(spec.comparisonNote ? { comparisonNote: spec.comparisonNote } : {}),
         generation: spec.generation,
         ...(spec.failedDocuments ? { failedDocuments: spec.failedDocuments } : {}),
+        ...(spec.copied ? { copy: spec.copied } : {}),
+        ...(spec.copy?.documents ? { subset: spec.copy.documents.length } : {}),
         minimumReasonLength: minimumReason(spec),
         ...(keptUntil ? { previousKeptUntil: keptUntil } : {}),
         canRollback:
@@ -918,15 +992,17 @@ export const createEngineSwitchesModule =
       const entry = (await store.history(kind, scope, id)).at(-1);
       if (!entry) return;
       const spec = entry.spec as EngineSwitchSpec;
-      const pipelines = (await deps.ingestion.list(scope, spec.dataset)).filter(
-        (p) => p.spec.enabled,
-      );
+      // A copy fills and refreshes with one run of its own, which no pipeline config names (#366).
+      const pipelines: Pick<Pipeline, 'dataset' | 'id' | 'version'>[] =
+        spec.method === 'copy'
+          ? [{ dataset: spec.dataset, id: copyOwner, version: 0 }]
+          : (await deps.ingestion.list(scope, spec.dataset)).filter((p) => p.spec.enabled);
       const runs: string[] = [];
       let refused: string | undefined;
       for (const pipeline of pipelines) {
         const started = await deps.ingestion
           .startSwitchRun({
-            pipeline,
+            pipeline: pipeline as Pipeline,
             generation: spec.generation,
             engineSwitch: id,
             by,
@@ -969,6 +1045,28 @@ export const createEngineSwitchesModule =
       'new' | 'changed' | 'unchanged' | 'deleted' | 'stored' | 'skipped' | 'failedDocuments';
     const countOfReports = (runs: Execution[], keys: Count[]) =>
       runs.reduce((sum, r) => sum + keys.reduce((n, k) => n + (r.report?.[k] ?? 0), 0), 0);
+
+    /**
+     * A copy's documents from its runs' reports: stored ones are copied, the index jobs' skips have
+     * no text, and the listing's skips are reported as `skipped.<reason>` (#366).
+     */
+    const copyCountsOf = (runs: Execution[]): CopyCounts => {
+      const skipped: Record<string, number> = {};
+      const add = (reason: string, n: number) => {
+        if (n > 0) skipped[reason] = (skipped[reason] ?? 0) + n;
+      };
+      for (const r of runs) {
+        const report = (r.report ?? {}) as unknown as Record<string, unknown>;
+        add('no_text', typeof report.skipped === 'number' ? report.skipped : 0);
+        for (const [key, value] of Object.entries(report))
+          if (key.startsWith('skipped.') && typeof value === 'number') add(key.slice(8), value);
+      }
+      return {
+        copied: countOfReports(runs, ['stored']),
+        skipped,
+        failed: countOfReports(runs, ['failedDocuments']),
+      };
+    };
 
     /**
      * Publishes the catalog version that names the switch's generation, as the platform with the
@@ -1116,6 +1214,7 @@ export const createEngineSwitchesModule =
           }
           const failedDocuments = countOfReports(runs, ['failedDocuments']);
           const written = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
+          const copied = spec.method === 'copy' ? copyCountsOf(runs) : undefined;
           const listed = countOfReports(runs, ['new', 'changed', 'unchanged', 'deleted']);
           const comparing = await update(
             scope,
@@ -1133,6 +1232,7 @@ export const createEngineSwitchesModule =
                       ...(listed > 0 ? { total: listed } : {}),
                     },
                     ...(failedDocuments > 0 ? { failedDocuments } : {}),
+                    ...(copied ? { copied } : {}),
                   }
                 : undefined,
             systemActor,
@@ -1522,10 +1622,13 @@ export const createEngineSwitchesModule =
               ]);
             try {
               const plan = await planFor(g.tenant, item, c.req.query('to') ?? '', {});
-              const estimate = await estimateFor(g.tenant, item, plan);
+              const model = c.req.query('model') || undefined;
+              const estimate = await estimateFor(g.tenant, item, plan, model);
               return c.json({
                 ...estimate,
                 ...(method ? { method } : {}),
+                // The models a switch may embed with, for a dataset that has none of its own.
+                embeddings: extras.embedders?.models?.() ?? [],
               } satisfies SwitchEstimate);
             } catch (error) {
               return refusalResponse(c, error);
@@ -1545,6 +1648,18 @@ export const createEngineSwitchesModule =
               ]);
             const embedding = embeddingFrom(input.embedding);
             const datasetOptions = input.options === undefined ? undefined : record(input.options);
+            const named = input.documents;
+            const documents =
+              Array.isArray(named) &&
+              named.length > 0 &&
+              named.length <= maxCopyDocuments &&
+              named.every((d) => typeof d === 'string' && d.length > 0)
+                ? (named as string[])
+                : undefined;
+            if (named !== undefined && (!documents || method !== 'copy'))
+              return problem(c, 400, 'Invalid request', [
+                { path: 'documents', message: t('operations.switchCopyDocuments') },
+              ]);
             try {
               const plan = await planFor(g.tenant, item, String(input.to ?? ''), {
                 ...(embedding ? { embedding } : {}),
@@ -1558,6 +1673,24 @@ export const createEngineSwitchesModule =
               if (busy)
                 throw new Refusal(409, t('operations.switchBusy', { id: busy.id }), 'dataset');
               const knowledge = onKnowledge(plan.target.id);
+              if (documents && !knowledge)
+                throw new Refusal(400, t('operations.switchCopyDocuments'), 'documents');
+              if (knowledge && method === 'copy' && !plan.embedding)
+                throw new Refusal(409, t('operations.switchKnowledgeNeedsModel'), 'embedding');
+              // A dataset a Kudos pipeline fills is named as that pipeline names it, on or off (#366).
+              const kudos =
+                knowledge &&
+                method === 'copy' &&
+                (await deps.ingestion.list(g.tenant, item.id)).some(
+                  (p) => p.spec.source.kind === 'kudos',
+                );
+              const copy =
+                knowledge && method === 'copy'
+                  ? {
+                      ...(kudos ? { ids: 'kudos' as const } : {}),
+                      ...(documents ? { documents } : {}),
+                    }
+                  : undefined;
               const overrides = {
                 ...(plan.embedding ? { embedding: plan.embedding } : {}),
                 ...(datasetOptions ? { datasetOptions } : {}),
@@ -1597,6 +1730,7 @@ export const createEngineSwitchesModule =
                 reason,
                 ...(plan.embedding ? { embedding: plan.embedding } : {}),
                 ...(datasetOptions ? { options: datasetOptions } : {}),
+                ...(copy ? { copy } : {}),
                 estimate: {
                   costNok: estimate[method].costNok,
                   durationMinutes: estimate[method].durationMinutes,
@@ -1808,8 +1942,14 @@ export const createEngineSwitchesModule =
                 { path: 'dataset', message: `version ${g.item.version}` },
               ]);
             if (intoKnowledge(spec)) {
-              // What the start refused, such as a second pipeline, is refused again before the refresh.
-              const refused = await knowledgeProblem(g.tenant, g.item);
+              if (spec.copy?.documents)
+                return problem(c, 409, t('operations.switchCopySubset'), [
+                  { path: 'documents', message: t('operations.switchCopySubset') },
+                ]);
+              // What the start refused, such as a second pipeline, is refused again before the
+              // refresh; a copy's refresh is a copy again, so the dataset's pipelines do not run.
+              const refused =
+                spec.method === 'copy' ? undefined : await knowledgeProblem(g.tenant, g.item);
               if (refused) return problem(c, 409, refused, [{ path: 'method', message: refused }]);
               const by = actor(g.principal.actor ?? g.principal);
               const saved = await inTask(
