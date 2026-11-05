@@ -150,6 +150,7 @@ flowchart LR
 ### Vectors and full text
 
 - **Vectors are `halfvec`** (today `vector`), indexed with HNSW (`m` 16, `ef_construction` 64) and searched with iterative scans on, as today. `halfvec` indexes up to 4,000 dimensions. Binary quantisation with re-ranking is a recipe option for very large generations, not yet measured (open, below).
+- **An embedding input is at most 8,191 UTF-8 bytes.** A longer text, such as a long table an engine switch copies in (ADR 0025), is embedded by its start and stored whole, so full-text search and reading still see all of it. text-embedding-3 takes 8,192 tokens and none of its tokens is shorter than a byte, so no input is refused (`embedIndexDocument` in `packages/ingest/src/index-writer.ts`; test "a chunk over 8,191 UTF-8 bytes is embedded by its start and stored whole").
 - **The full-text configuration is one per generation,** chosen in the recipe and `norwegian` by default, as today's `textSearchConfig`. Azure's extension list has no `pg_textsearch` (BM25) ([Azure: extension versions](https://learn.microsoft.com/en-us/azure/postgresql/extensions/concepts-extensions-versions)), and as far as its documentation shows, Azure gives no way to install the files Hunspell dictionaries need, so compound words are not split.
 
 ### Heavy work

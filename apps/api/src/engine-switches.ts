@@ -277,6 +277,7 @@ const charactersPerToken = 3.5;
 /** The documents a copy's estimate reads to scale chunks and characters to the dataset. */
 const estimateSample = 100;
 const maxCopyDocuments = 1000;
+const copiedChunksPerMinute = 80;
 const tokensPerChunk = 300;
 const defaultEmbeddingNokPerThousand = 0.0013;
 const defaultModelPrice = { inputPerThousand: 0.025, outputPerThousand: 0.1 };
@@ -592,7 +593,11 @@ export const createEngineSwitchesModule =
           }
         : undefined;
       const copyCost = copied ? (copied.tokens * embeddingPrice) / 1000 : reembeds ? embedCost : 0;
-      const copyMinutes = 2 + documents * (reembeds ? 0.01 : 0.002);
+      // A copy into the knowledge database runs at about 80 chunks a minute (a local copy of
+      // digdir/public-docs: 5,766 chunks in 73 minutes), bounded by its index jobs' embedding.
+      const copyMinutes = copied
+        ? 2 + copied.chunks / copiedChunksPerMinute
+        : 2 + documents * (reembeds ? 0.01 : 0.002);
       const pipelines = (await deps.ingestion.list(tenant, item.id)).filter((p) => p.spec.enabled);
       const phraseCost = pipelines.reduce((sum, p) => {
         if (!p.spec.phrases) return sum;

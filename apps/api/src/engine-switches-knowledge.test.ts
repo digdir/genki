@@ -1083,6 +1083,8 @@ describe('copying a dataset into the knowledge database', () => {
     expect(estimate.basis).toMatchObject({ documents: 250, chunks: 2500, tokens: 2_500_000 });
     // fake/embed has no price: 0.0013 NOK per 1,000 tokens, so 3.25 NOK.
     expect(estimate.copy.costNok).toEqual({ min: 3, max: 5 });
+    // About 80 chunks a minute, as a local copy of digdir/public-docs ran: 2 + 2,500 / 80 minutes.
+    expect(estimate.copy.durationMinutes).toEqual({ min: 27, max: 44 });
   });
 
   it('a copy into the knowledge database is refused without an embedding model', async () => {

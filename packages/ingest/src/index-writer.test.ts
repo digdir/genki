@@ -11,6 +11,7 @@ import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import { memoryEngine, openTarget, type MemoryDatasetOptions } from '@genai/port-knowledge/testing';
 import type { ChatResult, ModelPort } from '@genai/port-model';
 import {
+  embedIndexDocument,
   folderSource,
   kudosSource,
   memoryPhraseCache,
@@ -351,5 +352,33 @@ describe('index documents', () => {
       ],
       phrases: [{ id: 'p1', chunkId: 'c1', text: 'søknad om tilskudd' }],
     });
+  });
+});
+
+describe('embedding index documents', () => {
+  it('a chunk over 8,191 UTF-8 bytes is embedded by its start and stored whole', async () => {
+    const sent: string[] = [];
+    const embedder = {
+      info: () => ({ id: 'fake/large-1536', dimensions: 2 }),
+      embed: async (texts: string[]) => {
+        sent.push(...texts);
+        return { vectors: texts.map(() => [0.1, 0.2]) };
+      },
+    } as unknown as Parameters<typeof embedIndexDocument>[1];
+    // 'ø' is two bytes in UTF-8: 5,000 of them are 10,000 bytes.
+    const long = 'ø'.repeat(5000);
+    const doc: IndexDocument = {
+      id: 'kudos:a',
+      fields: {},
+      chunks: [
+        { id: 'c0', position: 0, text: long },
+        { id: 'c1', position: 1, text: 'kort' },
+      ],
+      phrases: [],
+    };
+    const embedded = await embedIndexDocument(doc, embedder);
+    expect(sent.map((t) => Buffer.byteLength(t, 'utf8'))).toEqual([8190, 4]);
+    expect(embedded.chunks.map((c) => c.text)).toEqual([long, 'kort']);
+    expect(embedded.chunks.every((c) => c.vector?.length === 2)).toBe(true);
   });
 });
