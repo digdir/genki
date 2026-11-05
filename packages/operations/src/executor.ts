@@ -263,7 +263,7 @@ const withDeployment = (value: unknown, fields: string[], deployment: string) =>
   );
 
 const pathOf = (descriptor: Descriptor, step: Step, state: RunState) =>
-  step.request.path.replace(/\{([^}]*)\}/g, (_, name: string) => {
+  step.request.path.replace(/\{([^{}]*)\}/g, (_, name: string) => {
     if (name === 'deployment') return encodeURIComponent(state.deployment);
     const [, from = '', field = ''] = name.split('.');
     const value = state.steps[from]?.[field];

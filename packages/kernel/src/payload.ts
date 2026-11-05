@@ -73,7 +73,7 @@ export const variant = (key: string, options: Record<string, Record<string, Shap
 export const either = (...options: Shape[]): Shape => ({ kind: 'either', options });
 
 const urlLike = /^(?:[a-z][a-z0-9+.-]*:\/\/|data:|blob:)/i;
-const dataUrl = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+[^,\s]*,/i;
+const dataUrl = /data:[a-z0-9.+-]{1,127}\/[a-z0-9.+-]{1,127}[;,]/i;
 export const longestBase64Run = 64;
 const base64Run = new RegExp(`[A-Za-z0-9+/_-]{${longestBase64Run + 1},}`);
 const providerObjectId =
