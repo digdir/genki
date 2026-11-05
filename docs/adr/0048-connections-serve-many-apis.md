@@ -1,6 +1,6 @@
 # 0048 Connections serve many APIs, models bind one per operation
 
-Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console, plug-in rerank engines, stored rerank entries and processor records on embed and rerank calls are missing)
+Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console built, 2026-11-05; plug-in rerank engines, stored rerank entries, processor records on embed and rerank calls, embedders found by discovery on the embedding port, and limits and kind settings through the operator routes are missing)
 
 Supersedes the adapter-per-protocol part of ADR 0021 and the "one registration" bullet of ADR 0044. Amends ADR 0047: a descriptor names an API family instead of an endpoint protocol, its id names the API instead of the kind, and the `descriptors` opt-in on a model is replaced by bindings.
 
@@ -30,13 +30,13 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 - A connection holds `baseURL` (the provider resource's root), `auth`, `families` and `discovery`. `protocol` is removed.
 - `families` maps each API family the connection offers to its base, a path under `baseURL` or a full URL on the same resource: `families: { openai: /openai/v1, anthropic: https://<resource>.services.ai.azure.com/anthropic }`. A connection offers a family only when it names it.
 - The processor record stays keyed on the connection id, so one provider resource has one record.
-- `discovery` is a list of rules, each with `include`, `exclude`, `capabilities` and `apis`, the bindings a discovered deployment gets. Two rules on one connection replace today's `foundry-openai` and `foundry-claude`. A discovered model still starts as a candidate an operator confirms (ADR 0021).
+- `discovery` is a list of rules, each with `include`, `exclude`, `capabilities` and `apis`, the bindings a discovered deployment gets. Two rules on one connection replace the former `foundry-openai` and `foundry-claude`; embedders are listed models, not discovered. A discovered model still starts as a candidate an operator confirms (ADR 0021).
 - Connection `options` are removed; both adapters declare an empty schema today.
 
 ### A model binds one API per kind
 
 - A model has `apis: { <kind>: <api id> }`, for example `{ chat: openai/responses@1, decide: openai/decide@1 }`. Its operations are the keys. `operations`, `descriptors` and the OpenAI `options.api` are replaced by it.
-- A binding is valid when the API exists, its kind is the key, and the model's connection offers the API's family. Nothing else is compared.
+- A binding is valid when the API exists, its kind is the key, and the model's connection offers the API's family. A `chat` binding also needs an API with a built-in implementation, since chat is not described yet. Nothing else is compared.
 - `options` on a model are checked by the implementations its bindings name, so `tokenParam` belongs to `openai/chat-completions@1`.
 - A kind with its own settings keeps them under the kind: `embed: { dimensions, maxBatch }`.
 
@@ -66,7 +66,7 @@ A price is per model and kind, per unit: `input-token`, `output-token`, `cached-
 ### Operator API and console
 
 - `POST` and `PUT /operator/model-endpoints/{id}` take `baseURL`, `auth`, `families` and `discovery`. A connection can be edited; one in use cannot be removed.
-- `PUT /operator/models/{id}` and the classification `PATCH` take `apis`, `options`, limits and kind settings.
+- `PUT /operator/models/{id}` takes `apis` and `options` next to the deployment, family, residency, capabilities and `enabled`. The classification `PATCH /operator/models/{id}` takes `apis`, `residency`, `capabilities`, `enabled` and `parameters`.
 - The console offers an API on a model when the model's connection offers the API's family.
 
 ### Migration
@@ -74,7 +74,7 @@ A price is per model and kind, per unit: `input-token`, `output-token`, `cached-
 A one-time migration of config entries and the YAML seed, with no change to model ids, since services name them:
 
 - `openai-chat` becomes the family `openai`, `anthropic-messages` becomes `anthropic`, and `openai-embeddings` becomes `openai`.
-- Connections with the same resource root and credential are merged: `foundry-openai`, `foundry-claude` and `foundry-embeddings` become one connection with two families and three discovery rules, and their processor records are merged onto it.
+- Connections with the same resource root and credential are merged: `foundry-openai`, `foundry-claude` and `foundry-embeddings` become one connection with two families and two discovery rules, one for OpenAI deployments and one for Claude, and their processor records are merged onto it. The embedders become listed models on that connection.
 - `operations`, `descriptors` and `options.api` on a model become `apis`. A model with `chat` and no `options.api` binds `openai/chat-completions@1` or `anthropic/messages@1` by its old protocol.
 - Uploaded descriptors are append-only config entries and are not rewritten: the loader reads `api.protocol` as the family by the same mapping.
 
@@ -97,5 +97,6 @@ Turned down:
 - ADR 0021's port stays as it is; its adapter and catalogue parts are replaced here. ADR 0044's behaviour stays, as `openai/chat-completions@1` and `openai/responses@1`.
 - Typed chat and decide calls carry the connection's processor record. On a connection without one they log a warning once and go through; with `GENAI_PROCESSOR_RECORDS=enforce` they refuse real data. The migration carries the existing records, `GET /operator/processor-records` and a log line at start name the connections without one, and the default turns to `enforce` once the console shows them.
 - A price stored per 1,000 tokens is moved to unit prices for every kind its model binds, at start and once. `costMicroNok` and `priced` on a run read as before.
-- Still missing: the console's part (#381); plug-in rerank engines without an API stay in the rerank catalogue, and stored `rerank-endpoint` and `reranker` entries are not moved; embed and rerank calls do not yet check the processor record; embedders found by discovery are not served by the embedding port.
+- Built (#383): the console's models area, with connections, models and the API bound for each kind (`apps/console/src/screens/models`).
+- Still missing: limits and kind settings such as `embed: { dimensions, maxBatch }` through `PUT` and `PATCH /operator/models/{id}`, so they are set in the catalogue only; plug-in rerank engines without an API stay in the rerank catalogue, and stored `rerank-endpoint` and `reranker` entries are not moved; embed and rerank calls do not yet check the processor record; embedders found by discovery are not served by the embedding port.
 - Interaction patterns beyond one JSON request and one JSON answer are ADR 0049.
