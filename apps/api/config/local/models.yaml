@@ -26,6 +26,10 @@ models:
     deployment: echo
     residency: norway
     capabilities: [stream, json-schema]
+  - id: local/replay
+    endpoint: local-model
+    deployment: replay
+    residency: norway
   # gpt-6-luna on genki-test-ai is DataZoneStandard in Sweden Central and serves chat and the Decisions API
   - id: foundry-openai/gpt-6-luna
     endpoint: foundry-openai
