@@ -7,7 +7,7 @@ import {
   type RetrievalRun,
 } from '@genai/eval';
 import { copyOwner, embedIndexDocument, knowledgeSourceRefusal } from '@genai/ingest';
-import type { PortContext } from '@genai/kernel';
+import { residencyAllows, type PortContext } from '@genai/kernel';
 import {
   KnowledgeError,
   type DatasetEmbedding,
@@ -147,6 +147,8 @@ export interface EngineSwitchSpec {
   copy?: { ids?: 'kudos'; documents?: string[] };
   /** A copy's documents once its fill has ended: copied, skipped by reason and failed. */
   copied?: CopyCounts;
+  /** Fill runs a retry left behind, so a copy's counts keep what they wrote. */
+  earlierRuns?: string[];
 }
 
 export interface EngineSwitchView {
@@ -425,6 +427,18 @@ export const createEngineSwitchesModule =
       }
     };
 
+    /** The embedding models a dataset may be embedded with: none wider than its residency. */
+    const modelsFor = (item: CatalogItem) => {
+      const residency = item.spec.residency as Residency | undefined;
+      return (extras.embedders?.models?.() ?? []).filter(
+        (m) => !residency || !m.residency || residencyAllows(residency, m.residency),
+      );
+    };
+    const modelAllowed = (item: CatalogItem, model: string) => {
+      const known = extras.embedders?.models?.().find((m) => m.model === model);
+      return !known || modelsFor(item).some((m) => m.model === model);
+    };
+
     /** A copy into the knowledge database reads each document again in its index job (#366). */
     const copyable = (item: CatalogItem) => {
       const exporter = exporterOf(item, AbortSignal.timeout(1000));
@@ -510,6 +524,9 @@ export const createEngineSwitchesModule =
       const knowledge = onKnowledge(target.id);
       const copyProblem = knowledge
         ? (missingModel ??
+          (embedding && !modelAllowed(item, embedding.model)
+            ? t('operations.switchModelResidency', { model: embedding.model })
+            : undefined) ??
           (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
         : (missingModel ??
           (current && embedding && current.model !== embedding.model
@@ -1050,19 +1067,22 @@ export const createEngineSwitchesModule =
      * A copy's documents from its runs' reports: stored ones are copied, the index jobs' skips have
      * no text, and the listing's skips are reported as `skipped.<reason>` (#366).
      */
-    const copyCountsOf = (runs: Execution[]): CopyCounts => {
+    const copyCountsOf = (runs: Execution[], earlier: Execution[] = []): CopyCounts => {
       const skipped: Record<string, number> = {};
       const add = (reason: string, n: number) => {
         if (n > 0) skipped[reason] = (skipped[reason] ?? 0) + n;
       };
+      // Documents are copied once, by whichever run wrote them; the last listing says what it
+      // skipped and the last runs which documents still failed.
+      for (const r of [...earlier, ...runs])
+        add('no_text', typeof r.report?.skipped === 'number' ? r.report.skipped : 0);
       for (const r of runs) {
         const report = (r.report ?? {}) as unknown as Record<string, unknown>;
-        add('no_text', typeof report.skipped === 'number' ? report.skipped : 0);
         for (const [key, value] of Object.entries(report))
           if (key.startsWith('skipped.') && typeof value === 'number') add(key.slice(8), value);
       }
       return {
-        copied: countOfReports(runs, ['stored']),
+        copied: countOfReports([...earlier, ...runs], ['stored']),
         skipped,
         failed: countOfReports(runs, ['failedDocuments']),
       };
@@ -1214,7 +1234,17 @@ export const createEngineSwitchesModule =
           }
           const failedDocuments = countOfReports(runs, ['failedDocuments']);
           const written = countOfReports(runs, ['stored', 'skipped', 'failedDocuments']);
-          const copied = spec.method === 'copy' ? copyCountsOf(runs) : undefined;
+          const copied =
+            spec.method === 'copy'
+              ? copyCountsOf(
+                  runs,
+                  (
+                    await Promise.all(
+                      (spec.earlierRuns ?? []).map((id) => deps.ingestion.execution(id)),
+                    )
+                  ).filter((r) => r !== undefined),
+                )
+              : undefined;
           const listed = countOfReports(runs, ['new', 'changed', 'unchanged', 'deleted']);
           const comparing = await update(
             scope,
@@ -1628,7 +1658,7 @@ export const createEngineSwitchesModule =
                 ...estimate,
                 ...(method ? { method } : {}),
                 // The models a switch may embed with, for a dataset that has none of its own.
-                embeddings: extras.embedders?.models?.() ?? [],
+                embeddings: modelsFor(item).map(({ model, dimensions }) => ({ model, dimensions })),
               } satisfies SwitchEstimate);
             } catch (error) {
               return refusalResponse(c, error);
@@ -1836,7 +1866,11 @@ export const createEngineSwitchesModule =
                         attempt,
                         ...(s.filled
                           ? { state: 'comparing', heartbeatAt: now().toISOString() }
-                          : { state: 'running', runs: [] }),
+                          : {
+                              state: 'running',
+                              runs: [],
+                              earlierRuns: [...(s.earlierRuns ?? []), ...(s.runs ?? [])],
+                            }),
                       };
                     return {
                       ...rest,

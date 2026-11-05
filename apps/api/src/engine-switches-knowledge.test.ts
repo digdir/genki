@@ -176,6 +176,14 @@ const boot = async (
             residency: 'norway',
             dimensions: 8,
           },
+          // A model outside Norway, which a Norway dataset may not be embedded with.
+          {
+            id: 'fake/global',
+            endpoint: 'fake',
+            deployment: 'g',
+            residency: 'global',
+            dimensions: 8,
+          },
         ],
       },
     },
@@ -204,6 +212,7 @@ const boot = async (
             (late.platform?.embedders.describe() ?? []).map((e) => ({
               model: e.id,
               dimensions: e.dimensions,
+              residency: e.residency,
             })),
         },
         sweepIntervalMs: 0,
@@ -1068,5 +1077,55 @@ describe('copying a dataset into the knowledge database', () => {
     expect(estimate.basis).toMatchObject({ documents: 250, chunks: 2500, tokens: 2_500_000 });
     // fake/embed has no price: 0.0013 NOK per 1,000 tokens, so 3.25 NOK.
     expect(estimate.copy.costNok).toEqual({ min: 3, max: 5 });
+  });
+
+  it('a copy into the knowledge database is refused without an embedding model', async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'uten-modell');
+    const refused = await booted.call(`${base('uten-modell')}/engine-switches`, {
+      body: { to: 'knowledge-pg', method: 'copy' },
+    });
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(await json(refused))).toContain('embeddingmodell');
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it("a copy is refused with a model the dataset's residency does not allow, which the estimate leaves out", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'norge');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('norge')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.embeddings?.map((e) => e.model)).toEqual(['fake/embed']);
+    const refused = await startCopy(booted, 'norge', {
+      embedding: { model: 'fake/global', dimensions: 8 },
+    });
+    expect(refused.status).toBe(409);
+    expect(booted.worker.started).toEqual([]);
+  });
+
+  it("a copy's counts after a retried fill include what the first run copied", async () => {
+    const booted = await boot();
+    await copyDataset(booted, 'igjen');
+    const opened = await json<EngineSwitchView>(await startCopy(booted, 'igjen'));
+    await booted.worker.end(
+      runOf(booted.worker, opened.id),
+      'failed',
+      { new: 4, stored: 3, 'skipped.no_uuid': 1 } as Partial<IngestionReport>,
+      'the engine went away',
+    );
+    await booted.module.follow();
+    expect(
+      (await booted.call(`${base('igjen')}/engine-switches/${opened.sid}/retry`, { body: {} }))
+        .status,
+    ).toBe(202);
+    await booted.worker.end(runOf(booted.worker, opened.id, 1), 'succeeded', {
+      unchanged: 3,
+      new: 1,
+      stored: 1,
+      'skipped.no_uuid': 1,
+    } as Partial<IngestionReport>);
+    const ready = await followed(booted, 'igjen', opened.sid);
+    expect(ready.copy).toEqual({ copied: 4, skipped: { no_uuid: 1 }, failed: 0 });
   });
 });

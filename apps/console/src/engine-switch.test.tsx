@@ -483,7 +483,7 @@ describe('copying a dataset into the knowledge database in the console', () => {
   });
   const kudos = { embedding: null };
 
-  it('the console starts a copy with the chosen model when only copy is available', async () => {
+  it('the console starts a copy with the chosen model when only copy is available, priced once it is chosen', async () => {
     const { api, calls } = platform({
       [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
       'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
@@ -498,7 +498,9 @@ describe('copying a dataset into the knowledge database in the console', () => {
     render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
-    await screen.findByText(/Kopi:/);
+    // Until a model is chosen, the copy has no price to show.
+    expect(await screen.findByText('Velg en modell for å se hva kopien koster.')).toBeTruthy();
+    expect(screen.queryByText(/^Kopi:/)).toBeNull();
     const start = screen.getByRole('button', { name: 'Start flyttingen' }) as HTMLButtonElement;
     // A dataset with no embedding of its own waits for a model.
     expect(start.disabled).toBe(true);

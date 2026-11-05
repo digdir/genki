@@ -290,6 +290,34 @@ describe('document records on the knowledge server', () => {
     expect(after.map((r) => r.text)).toEqual(['Ny 0', 'Ny 1']);
   });
 
+  it("a chunk's page in its metadata is stored as page_from and page_to", async () => {
+    const name = 'digdir/pages';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a') },
+      noSend,
+    );
+    const paged = doc('a');
+    const [one, two] = paged.chunks;
+    if (!one || !two) throw new Error('two chunks');
+    await records.replace(await recordOf(name, 'a'), generation, {
+      document: {
+        ...paged,
+        chunks: [
+          { ...one, metadata: { page: 1, pageEnd: 3 } },
+          { ...two, metadata: { page: 3 } },
+        ],
+      },
+    });
+    const { rows } = await admin.query<{ page_from: number | null; page_to: number | null }>(
+      `select page_from, page_to from ${partitionOf('kn_chunks', generation)} order by position`,
+    );
+    expect(rows).toEqual([
+      { page_from: 1, page_to: 3 },
+      { page_from: 3, page_to: 3 },
+    ]);
+  });
+
   it('a document is replaced in one transaction', async () => {
     const name = 'digdir/replace';
     const generation = await freshGeneration(name);

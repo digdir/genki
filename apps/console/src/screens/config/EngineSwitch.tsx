@@ -354,7 +354,9 @@ const Loaded = ({
           </Select>
         </Field>
       ) : null}
-      {offer?.available && estimate ? (
+      {copying && needsModel && !embedding ? (
+        <Paragraph data-size="sm">{t('engineSwitch.chooseModelFirst')}</Paragraph>
+      ) : offer?.available && estimate ? (
         <Paragraph data-size="sm">
           {t(copying ? 'engineSwitch.copyEstimate' : 'engineSwitch.estimate', {
             costMin: offer.costNok.min,

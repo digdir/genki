@@ -38,8 +38,8 @@ afterEach(async () => {
   fake = undefined;
 });
 
-const exportOf = async () => {
-  fake = await fakeTypesense(documents, typesenseDatasetOptions.parse(options));
+const exportOf = async (docs = documents, datasetOptions: Record<string, unknown> = options) => {
+  fake = await fakeTypesense(docs, typesenseDatasetOptions.parse(datasetOptions));
   const ctx: PortContext = {
     tenant: 'platform',
     principal: { kind: 'agency-system', issuer: 'platform', subject: 'engine-switch' },
@@ -56,7 +56,9 @@ const exportOf = async () => {
           auth: { kind: 'api-key', secret: 'secret://env/typesense-key' },
         },
       },
-      datasets: [{ id: 'digdir/kudos', endpoint: 'ts', residency: 'global', options }],
+      datasets: [
+        { id: 'digdir/kudos', endpoint: 'ts', residency: 'global', options: datasetOptions },
+      ],
     },
     adapters: [typesense],
     secrets: envSecrets({ TYPESENSE_KEY: 'search-only' }),
@@ -67,6 +69,18 @@ const exportOf = async () => {
 };
 
 describe('the Typesense export', () => {
+  it('reads one document for a copy without its search phrases', async () => {
+    const withPhrases = documents.map((d) => ({
+      ...d,
+      phrases: [{ id: `${d.id}-p`, chunkId: d.chunks[0]?.id ?? '', text: 'hva sier forordet' }],
+    }));
+    const { document } = await exportOf(withPhrases, {
+      ...options,
+      collections: { ...options.collections, phrases: 'kudos_phrases' },
+    });
+    expect((await document('377252'))?.phrases).toEqual([]);
+  });
+
   it('lists documents without their chunks and reads one document with its chunks', async () => {
     const { list, document } = await exportOf();
     const listed = [];

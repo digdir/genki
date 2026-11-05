@@ -340,16 +340,13 @@ export const typesense: KnowledgeAdapter<Record<string, never>, Options> = {
         },
         list: (dataset: Dataset, signal: AbortSignal) =>
           listTypesenseDocuments(reader, dataset, docsOf(dataset), signal),
+        // A copy writes no search phrases, so one document is read without them (#366).
         document: (dataset: Dataset, id: string, signal: AbortSignal) => {
-          const { docs, chunks, phrases } = dataset.options.collections;
+          const { docs, chunks } = dataset.options.collections;
           return readTypesenseDocument(
             reader,
             dataset,
-            {
-              docs: docs as string,
-              chunks: chunks as string,
-              ...(phrases ? { phrases } : {}),
-            },
+            { docs: docs as string, chunks: chunks as string },
             id,
             signal,
           );

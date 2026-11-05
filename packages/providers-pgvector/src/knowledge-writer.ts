@@ -84,6 +84,14 @@ export const deleteDocument = async (
 };
 
 /** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
+/** A chunk's page range from its metadata (`page`, `pageEnd`), for `page_from` and `page_to`. */
+const pagesOf = (metadata: Record<string, unknown> | undefined) => {
+  const from = metadata?.page;
+  if (typeof from !== 'number' || !Number.isInteger(from)) return {};
+  const to = metadata?.pageEnd;
+  return { page_from: from, page_to: typeof to === 'number' && Number.isInteger(to) ? to : from };
+};
+
 export const replaceDocument = async (
   client: PoolClient,
   target: DocumentTarget,
@@ -94,6 +102,7 @@ export const replaceDocument = async (
     position: c.position,
     text: c.text,
     metadata: c.metadata ?? {},
+    ...pagesOf(c.metadata),
     vec: checkedVector(target, c.vector, c.id),
   }));
   const phrases = doc.phrases.map((p) => ({
@@ -117,9 +126,9 @@ export const replaceDocument = async (
     ],
   );
   await client.query(
-    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, config, vec)
-     select $1, $2, x.id, $3, x.position, x.text, x.metadata, $4::regconfig, x.vec::halfvec
-     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, vec text)`,
+    `insert into ${tableOf(target, 'kn_chunks')} (dataset, generation, id, doc_id, position, text, metadata, page_from, page_to, config, vec)
+     select $1, $2, x.id, $3, x.position, x.text, x.metadata, x.page_from, x.page_to, $4::regconfig, x.vec::halfvec
+     from jsonb_to_recordset($5::jsonb) as x(id text, position integer, text text, metadata jsonb, page_from integer, page_to integer, vec text)`,
     [...key, target.config, JSON.stringify(chunks)],
   );
   await client.query(

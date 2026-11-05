@@ -1691,7 +1691,10 @@ export const createPlatform = async (input: PlatformInput) => {
     embedders: {
       has: (model) => embeddingModels.has(model),
       open: (...args) => embedders.open(...args),
-      models: () => embedders.describe().map((e) => ({ model: e.id, dimensions: e.dimensions })),
+      models: () =>
+        embedders
+          .describe()
+          .map((e) => ({ model: e.id, dimensions: e.dimensions, residency: e.residency })),
     },
     ...(input.ingestFolderRoot ? { ingestFolderRoot: input.ingestFolderRoot } : {}),
     ingestSources,

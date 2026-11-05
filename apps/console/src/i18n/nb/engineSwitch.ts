@@ -35,6 +35,7 @@ export const engineSwitch = defineNamespace({
     'Datasettet kopieres fra søkemotoren det ligger i nå, med teksten slik den er der, og får nye vektorer. Tjenestene søker i den gamle søkemotoren til du tar den nye i bruk.',
   model: 'Embeddingmodell',
   chooseModel: 'Velg en modell',
+  chooseModelFirst: 'Velg en modell for å se hva kopien koster.',
   copyCounts: 'Kopiert: {copied} · hoppet over: {skipped}{reasons} · feilet: {failed}',
   skipNoUuid: '{count} uten UUID',
   skipSameUuid: '{count} med samme UUID',

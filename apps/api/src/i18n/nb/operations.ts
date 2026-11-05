@@ -33,6 +33,8 @@ export const operations = defineNamespace({
   switchStalled: 'Overføringen stoppet. Start den på nytt.',
   switchKnowledgeCopyExport:
     'Søkemotoren til datasettet kan ikke gi fra seg dokumentene ett og ett, så de kan ikke kopieres til kunnskapsdatabasen. Les inn på nytt fra kilden.',
+  switchModelResidency:
+    'Modellen {model} kan ikke brukes på dette datasettet: den behandler data utenfor der datasettet kan behandles.',
   switchKnowledgeNeedsModel: 'Velg en embeddingmodell: datasettet har ingen.',
   switchCopySubset:
     'Dette byttet kopierte bare et utvalg dokumenter, så det kan ikke tas i bruk. Start en kopi av hele datasettet.',
