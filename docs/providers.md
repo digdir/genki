@@ -36,7 +36,7 @@ An API has the id `<provider>/<api>@<version>`, a kind (`chat`, `decide`, `embed
 | `openai/embeddings@1`       | `embed`  | `openai`    | Embeddings; was `openai/embed@1`, still read.          |
 | `colbert/rerank@1`          | `rerank` | `colbert`   | Reranking; option `maxInputLength`.                    |
 
-A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
+A model binds one API per kind with `apis`. A binding is valid when the API exists, is of that kind, and is in a family the model's connection offers; a `chat` binding also needs an API with a built-in implementation. A model without `apis` on a connection with one family binds that family's default chat API. A discovery rule binds the APIs of the models it finds, and `idPrefix` sets the first part of their ids, so ids stay the same when two connections become one.
 
 ## Embedding and rerank models
 
