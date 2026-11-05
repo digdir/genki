@@ -10,7 +10,7 @@ services:
     volumes:
       - genai-postgres:/var/lib/postgresql/data
   knowledge:
-    image: pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966
+    image: pgvector/pgvector:0.8.7-pg17@sha256:7d0a41464797aeb9862dfdc0bbf1526b82cfd324cdd8036df19e3545f4a9ccb8
     environment:
       POSTGRES_USER: genai
       POSTGRES_PASSWORD: genai-local-only
