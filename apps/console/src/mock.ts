@@ -573,6 +573,23 @@ export const mockFetch = (
         data: configs.get(path) ?? [],
         backend: { name: 'typesense', available: false, reason: 'no write key configured' },
       });
+    const engineOf = /^\/operator\/datasets\/([^/]+)\/engine$/.exec(path);
+    if (method === 'GET' && engineOf) {
+      const id = decodeURIComponent(engineOf[1] as string);
+      const entry = (configs.get('/operator/catalog/entries?kind=dataset') ?? []).find(
+        (e) => e.id === id,
+      );
+      if (!entry) return json({ title: 'Not found', status: 404 }, 404);
+      return json({
+        dataset: id,
+        endpoint: String((entry.spec as { endpoint?: string }).endpoint),
+        embedding: null,
+        canSwitch: true,
+        retentionDays: 14,
+      });
+    }
+    if (method === 'GET' && full === '/operator/catalog/entries?kind=knowledge-endpoint')
+      return json({ data: configs.get(full) ?? [] });
     if (method === 'GET') {
       const key = configListOf(full);
       return key ? json({ data: configs.get(key) }) : undefined;

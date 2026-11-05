@@ -742,9 +742,72 @@ export interface KnowledgeEndpoint {
   writeKeyRequired: boolean;
   capabilities: { supported: EngineCapability[]; missing: EngineCapability[] };
   datasetCount: number;
+  /** The datasets on the endpoint, with their owner and pipeline count. */
+  datasets?: EndpointDataset[];
   status: EndpointStatus;
   shared: boolean;
   version: number;
+}
+
+export interface EndpointDataset {
+  id: string;
+  /** `platform` or the organisation number that owns the dataset. */
+  scope: string;
+  name: string;
+  pipelines: number;
+}
+
+export type EngineSwitchState =
+  | 'running'
+  | 'failed'
+  | 'comparing'
+  | 'ready'
+  | 'activating'
+  | 'active'
+  | 'rolled_back'
+  | 'cancelled';
+
+/** An engine switch of a platform dataset, as the API shows it (ADR 0025). */
+export interface EngineSwitch {
+  id: string;
+  sid: string;
+  from: string;
+  to: string;
+  state: EngineSwitchState;
+  progress: { percent: number; documents: number; total?: number };
+  error?: { message: string; percent: number };
+  generation?: string;
+  failedDocuments?: number;
+  minimumReasonLength: number;
+  canRollback: boolean;
+  comparison?: {
+    cases: number;
+    hitAt5: [number, number];
+    meanRank: [number | null, number | null];
+    verdict: 'same' | 'better' | 'worse';
+  };
+  comparisonNote?: string;
+}
+
+/** What a re-ingest into an endpoint would cost, or why it cannot run (ADR 0025). */
+export interface SwitchEstimate {
+  basis: { documents: number; counted: boolean };
+  reingest: {
+    available: boolean;
+    reason?: string;
+    costNok: { min: number; max: number };
+    durationMinutes: { min: number; max: number };
+  };
+}
+
+/** The engine a platform dataset searches now, and the switch it is in, if any. */
+export interface DatasetEngine {
+  dataset: string;
+  endpoint: string;
+  embedding: { model: string; dimensions: number } | null;
+  canSwitch: boolean;
+  activeSwitch?: EngineSwitch;
+  previous?: { endpoint: string; title: string; keptUntil: string; switch: string };
 }
 
 export interface KnowledgeEndpointItem {
