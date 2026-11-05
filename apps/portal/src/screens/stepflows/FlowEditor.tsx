@@ -5,6 +5,7 @@ import {
   Button,
   Field,
   Heading,
+  Input,
   Label,
   Switch,
   Tabs,
@@ -25,12 +26,13 @@ import { useT, type PlainKey } from '../../i18n';
 import { BlockPicker } from './BlockPicker';
 import { parseYaml, toYaml } from '../../yaml';
 import { Diagram } from './Diagram';
-import { SelectField } from './fields';
+import { SearchField } from './fields';
 import {
   allSteps,
   analyse,
   errorCount,
   findStep,
+  flowName,
   fromDefinition,
   insertAfter,
   newBlockStep,
@@ -41,6 +43,7 @@ import {
 } from './model';
 import { StepPanel } from './StepPanel';
 import { reasonProblem } from '../../components/ReasonField';
+import { slug } from '../../data/service-form';
 
 const runStatusKey = {
   Fullført: 'stepflows.runStatusDone',
@@ -75,7 +78,7 @@ interface Props {
   initialTab: 'diagram' | 'yaml';
   initialOverlay: boolean;
   onPickFlow: (id: string) => void;
-  onChange: (flow: Flow) => void;
+  onChange: (flow: Flow, previousId?: string) => void;
   onFlash: (flash: Flash) => void;
 }
 
@@ -113,6 +116,8 @@ export const FlowEditor = ({
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const [purposeErr, setPurposeErr] = useState('');
+  const [nameErr, setNameErr] = useState('');
+  const savedId = flow.unsaved ? slug(flow.name) : flow.id;
   const canSave = useRights().has('manage-services');
   const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
   const [guardrails] = useAsync(
@@ -147,7 +152,10 @@ export const FlowEditor = ({
   const count = errorCount(analysis);
   const run = flow.run;
   const overlayOn = overlay && !!run;
-  const definition = useMemo(() => toDefinition(flow, tenant, flows), [flow, tenant, flows]);
+  const definition = useMemo(
+    () => toDefinition({ ...flow, id: savedId || flow.id }, tenant, flows),
+    [flow, savedId, tenant, flows],
+  );
   const generated = useMemo(() => toYaml(definition), [definition]);
   const yaml = yamlDraft ?? generated;
   const yamlClean = yamlDraft === undefined || yamlDraft === generated;
@@ -222,9 +230,17 @@ export const FlowEditor = ({
     if (!canSave) return;
     const reasonError = reasonProblem(reason, t);
     const noPurpose = !flow.desc.trim();
+    const nameError = !flow.unsaved
+      ? ''
+      : !savedId
+        ? t('stepflows.nameRequired')
+        : flows[savedId] && savedId !== flow.id
+          ? t('stepflows.nameTaken', { id: savedId })
+          : '';
     if (noPurpose) setPurposeErr(t('stepflows.purposeRequired'));
     if (reasonError) setReasonErr(reasonError);
-    if (reasonError || noPurpose) return;
+    if (nameError) setNameErr(nameError);
+    if (reasonError || noPurpose || nameError) return;
     setSaving(true);
     setServerErrors([]);
     try {
@@ -235,7 +251,15 @@ export const FlowEditor = ({
         return;
       }
       const saved = await api.publishDefinition(definition, {}, reason.trim());
-      onChange({ ...flow, version: saved.version, draft: false, changed: 'nå' });
+      const next: Flow = {
+        ...flow,
+        id: savedId,
+        version: saved.version,
+        draft: false,
+        changed: 'nå',
+      };
+      delete next.unsaved;
+      onChange(next, flow.id);
       setDirty(false);
       setReason('');
       onFlash({
@@ -280,15 +304,17 @@ export const FlowEditor = ({
       {showPicker ? (
         <div className="flow-picker">
           <div className="flow-picker-select">
-            <SelectField
+            <SearchField
               id="flyt"
               label={t('stepflows.flowLabel')}
+              clearLabel={t('stepflows.clearFlowSearch')}
               value={flow.id}
               options={Object.values(flows).map((x) => ({
                 value: x.id,
-                label: x.sub ? t('stepflows.subSuffix', { name: x.name }) : x.name,
+                label: x.sub ? t('stepflows.subSuffix', { name: flowName(x, t) }) : flowName(x, t),
               }))}
               onChange={(id) => {
+                if (!id) return;
                 setDraft(undefined);
                 setYamlDraft(undefined);
                 setYamlErr('');
@@ -461,6 +487,24 @@ export const FlowEditor = ({
               </ul>
             </Alert>
           ) : null}
+          {flow.unsaved ? (
+            <Field className="reason-field">
+              <Label htmlFor="flow-name">{t('stepflows.nameLabel')}</Label>
+              <Field.Description>
+                {savedId ? t('stepflows.nameId', { id: savedId }) : t('stepflows.nameHelp')}
+              </Field.Description>
+              <Input
+                id="flow-name"
+                value={flow.name}
+                aria-invalid={nameErr ? true : undefined}
+                onChange={(e) => {
+                  onChange({ ...flow, name: e.target.value });
+                  setNameErr('');
+                }}
+              />
+              {nameErr ? <ValidationMessage>{nameErr}</ValidationMessage> : null}
+            </Field>
+          ) : null}
           <Field className="reason-field">
             <Label htmlFor="flow-purpose">{t('stepflows.purposeLabel')}</Label>
             <Field.Description>{t('stepflows.purposeHelp')}</Field.Description>
@@ -505,7 +549,7 @@ export const FlowEditor = ({
                 action: t('stepflows.apiAction'),
                 method: 'POST',
                 path: '/definitions',
-                body: { definition: { kind: 'StepFlow', metadata: { id: flow.id } } },
+                body: { definition: { kind: 'StepFlow', metadata: { id: savedId || flow.id } } },
                 right: 'Administrere tjenester',
               }}
             />

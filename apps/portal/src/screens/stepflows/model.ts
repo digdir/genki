@@ -101,6 +101,9 @@ export const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]
 export const versionLabel = (flow: Flow, t: T = nbT) =>
   t(flow.draft ? 'stepflows.versionDraft' : 'stepflows.version', { version: flow.version });
 
+export const flowName = (flow: Pick<Flow, 'name'>, t: T = nbT) =>
+  flow.name.trim() || t('stepflows.newFlow');
+
 export const maxRepeat = 100;
 
 export const controlName = {

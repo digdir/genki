@@ -8,8 +8,9 @@ import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { EmptyState, ErrorState } from '../../states';
 import { FlowEditor, type Flash } from './FlowEditor';
-import { analyse, countSteps, versionLabel } from './model';
+import { analyse, countSteps, flowName, versionLabel } from './model';
 import { StrategyView } from './StrategyView';
+import { UseInService } from './UseInService';
 
 export interface WorkspaceProps {
   api: ApiClient;
@@ -33,7 +34,6 @@ const Library = ({
   liveError,
   onOpen,
   onNew,
-  onFlash,
 }: {
   api: ApiClient;
   tenant: string;
@@ -41,9 +41,9 @@ const Library = ({
   liveError: WorkspaceProps['liveError'];
   onOpen: (id: string) => void;
   onNew: () => void;
-  onFlash: (flash: Flash) => void;
 }) => {
   const t = useT();
+  const [using, setUsing] = useState<Flow>();
   const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
   const ops = { operations: operations.status === 'ready' ? operations.data : undefined };
   return (
@@ -70,7 +70,7 @@ const Library = ({
             <li key={f.id}>
               <div className="row-wrap spread">
                 <Heading level={2} data-size="2xs">
-                  {f.name}
+                  {flowName(f, t)}
                 </Heading>
                 <span className="tag-row">
                   {f.sub ? (
@@ -101,29 +101,29 @@ const Library = ({
                 <Button
                   variant="secondary"
                   data-size="sm"
-                  aria-label={t('stepflows.openLabel', { name: f.name })}
+                  aria-label={t('stepflows.openLabel', { name: flowName(f, t) })}
                   onClick={() => onOpen(f.id)}
                 >
                   {t('stepflows.open')}
                 </Button>
-                <Button
-                  variant="tertiary"
-                  data-size="sm"
-                  aria-label={t('stepflows.useLabel', { name: f.name })}
-                  onClick={() =>
-                    onFlash({
-                      text: t('stepflows.useFlash', { name: f.name, version: versionLabel(f, t) }),
-                      color: 'info',
-                    })
-                  }
-                >
-                  {t('stepflows.useInService')}
-                </Button>
+                {f.unsaved ? null : (
+                  <Button
+                    variant="tertiary"
+                    data-size="sm"
+                    aria-label={t('stepflows.useLabel', { name: flowName(f, t) })}
+                    onClick={() => setUsing(f)}
+                  >
+                    {t('stepflows.useInService')}
+                  </Button>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+      {using ? (
+        <UseInService api={api} tenant={tenant} flow={using} onClose={() => setUsing(undefined)} />
+      ) : null}
     </div>
   );
 };
@@ -191,17 +191,17 @@ export const Workspace = ({
               flows={flows}
               liveError={liveError}
               onOpen={openFlow}
-              onFlash={setFlash}
               onNew={() => {
                 const id = `ny-flyt-${Object.keys(flows).length}`;
                 setFlows((all) => ({
                   ...all,
                   [id]: {
                     id,
-                    name: t('stepflows.newFlow'),
+                    name: '',
                     desc: '',
                     version: 1,
                     draft: true,
+                    unsaved: true,
                     changed: t('stepflows.newFlowChanged'),
                     usedBy: [],
                     input: [['sporsmal', 'tekst']],
@@ -231,7 +231,7 @@ export const Workspace = ({
                       ]
                     : [
                         { label: t('stepflows.crumbFlows'), href: '#/step-flows' },
-                        { label: flow.name },
+                        { label: flowName(flow, t) },
                       ]
                 }
               />
@@ -277,7 +277,14 @@ export const Workspace = ({
                   initialTab={initialTab}
                   initialOverlay={initialOverlay}
                   onPickFlow={setFid}
-                  onChange={(next) => setFlows((all) => ({ ...all, [next.id]: next }))}
+                  onChange={(next, previousId) => {
+                    const renamed = previousId && previousId !== next.id ? previousId : undefined;
+                    setFlows((all) => ({
+                      ...Object.fromEntries(Object.entries(all).filter(([id]) => id !== renamed)),
+                      [next.id]: next,
+                    }));
+                    if (renamed) setFid(next.id);
+                  }}
                   onFlash={setFlash}
                 />
               ) : live ? null : (

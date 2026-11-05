@@ -375,7 +375,6 @@ export const serviceUi = {
     flowsLoading: 'Henter stegflytene …',
     flowsNone: 'Virksomheten har ingen publiserte stegflyter ennå.',
     flowsPick: 'Velg en publisert stegflyt fra biblioteket.',
-    flowPlaceholder: 'Velg stegflyt',
     flowRequired: 'Velg hvilken stegflyt tjenesten skal kjøre.',
     openEditor: 'Åpne i stegflyt-editoren',
     block: 'Stegtype {block}',

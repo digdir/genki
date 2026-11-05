@@ -263,6 +263,14 @@ export const flowOf = (spec: ServiceSpec) => {
   return typeof flow === 'string' ? flow : undefined;
 };
 
+export const withFlow = (spec: ServiceSpec, ref: string): SpecPatch => {
+  const strategy =
+    spec.strategy.id === 'step-flow'
+      ? spec.strategy
+      : (withStrategy(spec, 'step-flow').strategy ?? { id: 'step-flow', version: 1, config: {} });
+  return { strategy: { ...strategy, config: { ...strategy.config, flow: ref } } };
+};
+
 export const withModel = (spec: ServiceSpec, id: string, residency?: string): SpecPatch => ({
   model: {
     ...without(spec.model, 'residency'),

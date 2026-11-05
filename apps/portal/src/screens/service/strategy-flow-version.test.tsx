@@ -77,12 +77,16 @@ const Harness = ({ seen }: { seen: (d: ServiceDefinition) => void }) => {
 describe('the step flow a service uses', () => {
   it('lists every published version of a flow, not only the newest', async () => {
     render(<Harness seen={() => undefined} />);
-    const picker = (await screen.findByRole('combobox', { name: 'Stegflyt' })) as HTMLSelectElement;
+    const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
+    const options = () => [
+      ...(picker.closest('ds-suggestion')?.querySelectorAll<HTMLOptionElement>('u-option') ?? []),
+    ];
     await waitFor(() =>
-      expect([...picker.options].filter((o) => o.value).map((o) => o.textContent)).toEqual([
-        'postruting, versjon 2 (nyeste)',
-        'postruting, versjon 1',
-      ]),
+      expect(
+        options()
+          .filter((o) => o.value)
+          .map((o) => o.textContent),
+      ).toEqual(['postruting, versjon 2 (nyeste)', 'postruting, versjon 1']),
     );
   });
 

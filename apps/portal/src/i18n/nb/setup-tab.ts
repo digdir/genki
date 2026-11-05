@@ -206,6 +206,7 @@ export const setup = defineNamespace({
   via: 'via {via}',
   dataIn: 'Data behandles i {where}',
   cost: 'Kostnad: {cost}',
+  modelPrice: '{input} kr inn og {output} kr ut per 1 000 tokens',
   notPriced: 'ikke priset',
   speed: 'Fart: {speed}',
   operationModels: 'Modell per operasjon',

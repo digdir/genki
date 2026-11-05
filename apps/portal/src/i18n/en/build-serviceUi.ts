@@ -377,7 +377,6 @@ export const serviceUi = {
     flowsLoading: 'Loading the step flows …',
     flowsNone: 'The organisation has no published step flows yet.',
     flowsPick: 'Choose a published step flow from the library.',
-    flowPlaceholder: 'Choose step flow',
     flowRequired: 'Choose which step flow the service should run.',
     openEditor: 'Open in the step flow editor',
     block: 'Step type {block}',
