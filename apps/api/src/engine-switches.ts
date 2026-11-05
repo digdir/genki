@@ -527,6 +527,9 @@ export const createEngineSwitchesModule =
           (embedding && !modelAllowed(item, embedding.model)
             ? t('operations.switchModelResidency', { model: embedding.model })
             : undefined) ??
+          (!embedding && extras.embedders?.models && modelsFor(item).length === 0
+            ? t('operations.switchNoModelForResidency')
+            : undefined) ??
           (!copyable(item) ? t('operations.switchKnowledgeCopyExport') : undefined))
         : (missingModel ??
           (current && embedding && current.model !== embedding.model

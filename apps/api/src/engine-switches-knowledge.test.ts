@@ -135,6 +135,8 @@ const boot = async (
     hang?: boolean;
     lockdown?: boolean;
     as?: string;
+    /** Only models outside Norway, so a Norway dataset has none to be embedded with. */
+    globalModelsOnly?: boolean;
   } = {},
 ) => {
   const entries = shared.entries ?? new InMemoryConfigEntryStore();
@@ -169,13 +171,17 @@ const boot = async (
           },
         },
         models: [
-          {
-            id: 'fake/embed',
-            endpoint: 'fake',
-            deployment: 'e',
-            residency: 'norway',
-            dimensions: 8,
-          },
+          ...(shared.globalModelsOnly
+            ? []
+            : [
+                {
+                  id: 'fake/embed',
+                  endpoint: 'fake',
+                  deployment: 'e',
+                  residency: 'norway' as const,
+                  dimensions: 8,
+                },
+              ]),
           // A model outside Norway, which a Norway dataset may not be embedded with.
           {
             id: 'fake/global',
@@ -1111,7 +1117,7 @@ describe('copying a dataset into the knowledge database', () => {
     await booted.worker.end(
       runOf(booted.worker, opened.id),
       'failed',
-      { new: 4, stored: 3, 'skipped.no_uuid': 1 } as Partial<IngestionReport>,
+      { new: 4, stored: 3, skipped: 1, 'skipped.no_uuid': 1 } as Partial<IngestionReport>,
       'the engine went away',
     );
     await booted.module.follow();
@@ -1126,6 +1132,19 @@ describe('copying a dataset into the knowledge database', () => {
       'skipped.no_uuid': 1,
     } as Partial<IngestionReport>);
     const ready = await followed(booted, 'igjen', opened.sid);
-    expect(ready.copy).toEqual({ copied: 4, skipped: { no_uuid: 1 }, failed: 0 });
+    expect(ready.copy).toEqual({ copied: 4, skipped: { no_text: 1, no_uuid: 1 }, failed: 0 });
+  });
+
+  it('a copy is refused when no model may embed the dataset, with that reason', async () => {
+    const booted = await boot({ globalModelsOnly: true });
+    await copyDataset(booted, 'ingen-modell');
+    const estimate = await json<SwitchEstimate>(
+      await booted.call(`${base('ingen-modell')}/engine-switches/estimate?to=knowledge-pg`),
+    );
+    expect(estimate.embeddings).toEqual([]);
+    expect(estimate.copy).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('Ingen embeddingmodell'),
+    });
   });
 });

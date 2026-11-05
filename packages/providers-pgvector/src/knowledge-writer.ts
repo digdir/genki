@@ -83,7 +83,6 @@ export const deleteDocument = async (
   );
 };
 
-/** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 /** A chunk's page range from its metadata (`page`, `pageEnd`), for `page_from` and `page_to`. */
 const pagesOf = (metadata: Record<string, unknown> | undefined) => {
   const from = metadata?.page;
@@ -92,6 +91,7 @@ const pagesOf = (metadata: Record<string, unknown> | undefined) => {
   return { page_from: from, page_to: typeof to === 'number' && Number.isInteger(to) ? to : from };
 };
 
+/** Replaces one whole document in a generation, inside the caller's transaction, so search never sees half of it. */
 export const replaceDocument = async (
   client: PoolClient,
   target: DocumentTarget,

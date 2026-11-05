@@ -36,6 +36,8 @@ export const operations = {
     "The dataset's search engine cannot hand over its documents one by one, so they cannot be copied into the knowledge database. Re-ingest from the source.",
   switchModelResidency:
     'The model {model} cannot be used on this dataset: it processes data outside where the dataset may be processed.',
+  switchNoModelForResidency:
+    'No embedding model can process this dataset where it may be processed, so it cannot be copied into the knowledge database.',
   switchKnowledgeNeedsModel: 'Choose an embedding model: the dataset has none.',
   switchCopySubset:
     'This switch copied only a selection of documents, so it cannot be activated. Start a copy of the whole dataset.',
