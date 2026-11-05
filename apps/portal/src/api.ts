@@ -318,10 +318,16 @@ export const createApiClient = ({
         | {
             choices?: { message?: { content?: string } }[];
             attachments?: Attachment[];
+            error?: { message?: string };
           }
         | undefined;
-      if (!response.ok)
-        throw new ApiError(response.status, body as Problem | undefined, retryAfterOf(response));
+      if (!response.ok) {
+        const title = body?.error?.message;
+        const problem = title
+          ? { type: 'about:blank', title, status: response.status }
+          : (body as Problem | undefined);
+        throw new ApiError(response.status, problem, retryAfterOf(response));
+      }
       return {
         task: response.headers.get('genai-task') ?? '',
         answer: body?.choices?.[0]?.message?.content ?? '',
