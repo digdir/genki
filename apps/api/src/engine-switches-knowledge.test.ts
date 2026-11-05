@@ -160,7 +160,7 @@ const boot = async (
       embeddings: {
         endpoints: {
           fake: {
-            protocol: 'fake-embeddings',
+            protocol: 'fake',
             baseURL: 'https://embed.invalid',
             auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
           },
@@ -187,7 +187,7 @@ const boot = async (
     knowledgeServer: { reader: pool },
     ingestFolderRoot: folder,
     ...(shared.lockdown ? { lockdown: { configuredKeys: new Set<string>() } } : {}),
-    embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+    embeddingAdapters: [fakeEmbeddingAdapter()],
     ingestionExecutions: worker.executions,
     configurables: { store: entries, jobRuns: worker.jobRuns },
     modules: [

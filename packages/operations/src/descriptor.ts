@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { priceUnits, unitFields, type PriceUnit } from '@genai/contracts';
 import {
   decideShape,
   embedShape,
@@ -73,6 +74,19 @@ const checkModelFields = (at: string, wireRequest: Shape, body: unknown) => {
 
 const literal = z.string().max(200);
 
+const usageFields = Object.values(unitFields);
+
+/** The units a usage mapping reports, whether it names units or the usage fields that count them. */
+export const reportedUnits = (usage: Record<string, unknown>): PriceUnit[] =>
+  priceUnits.filter((unit) => unit in usage || unitFields[unit] in usage);
+
+const usageByField = (usage: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(usage)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => [(unitFields as Record<string, string>)[key] ?? key, value]),
+  );
+
 export const apiFamilyPattern = /^[a-z][a-z0-9-]*$/;
 
 /** The API family each endpoint protocol of ADR 0021 became (ADR 0048). */
@@ -81,6 +95,13 @@ export const legacyProtocolFamilies: Readonly<Record<string, string>> = {
   'anthropic-messages': 'anthropic',
   'openai-embeddings': 'openai',
 };
+
+/** API ids renamed after models could bind them; a stored binding to the old id keeps working. */
+export const renamedApiIds: Readonly<Record<string, string>> = {
+  'openai/embed@1': 'openai/embeddings@1',
+};
+
+export const currentApiId = (id: string) => renamedApiIds[id] ?? id;
 
 export const familyOfProtocol = (protocol: string) => legacyProtocolFamilies[protocol] ?? protocol;
 
@@ -116,10 +137,7 @@ export const descriptorFile = z.strictObject({
   output: z.unknown(),
   wire: z.strictObject({ request: z.unknown(), response: z.unknown() }),
   result: z.unknown(),
-  usage: z.record(
-    z.enum(['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests']),
-    z.unknown(),
-  ),
+  usage: z.partialRecord(z.enum([...usageFields, ...priceUnits]), z.unknown()),
   stream: z.union([
     z.literal('none'),
     z.strictObject({
@@ -223,7 +241,7 @@ export const toDescriptor = (value: unknown): Descriptor => {
     output: shapeOf(d.output, `${at}: output`),
     wire,
     result: d.result,
-    usage: d.usage,
+    usage: usageByField(d.usage),
     stream: 'none',
   };
   if (holdsMedia(descriptor.input) || holdsMedia(descriptor.wire.request))

@@ -30,7 +30,6 @@ import {
 import { guardrailSchemaLabels } from '@genai/guardrails';
 import { negotiate } from '@genai/i18n';
 import { pluginManifest, pluginManifestSchemaLabels, type PluginManifest } from '@genai/plugins';
-import { embeddingCatalog, embeddingCatalogSchemaLabels } from '@genai/port-embedding';
 import { knowledgeCatalog, knowledgeCatalogSchemaLabels } from '@genai/port-knowledge';
 import { instructionSchemaLabels, modelCatalog, modelCatalogSchemaLabels } from '@genai/port-model';
 import { rerankCatalog, rerankCatalogSchemaLabels } from '@genai/port-rerank';
@@ -327,20 +326,6 @@ export const schemaEntries = (sources: SchemaSources): SchemaEntry[] => {
       text('Endepunkt for omrangering', 'Rerank endpoint'),
       element(shapeOf(rerankCatalog, 'endpoints')),
       [rerankCatalogSchemaLabels, ...endpointLabels],
-      operator,
-    ),
-    top(
-      'Embedding',
-      text('Innbyggingsmodell', 'Embedding model'),
-      element(shapeOf(embeddingCatalog, 'models')),
-      [embeddingCatalogSchemaLabels, ...endpointLabels],
-      operator,
-    ),
-    top(
-      'EmbeddingEndpoint',
-      text('Endepunkt for innbygging', 'Embedding endpoint'),
-      element(shapeOf(embeddingCatalog, 'endpoints')),
-      [embeddingCatalogSchemaLabels, ...endpointLabels],
       operator,
     ),
     top('Price', text('Pris', 'Price'), catalogPrice, [priceSchemaLabels], operator),

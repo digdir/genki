@@ -36,7 +36,7 @@ describe('operation@1 for every registered descriptor', () => {
 });
 
 describe('the operation@1 suite', () => {
-  const embed = registered.get('openai/embed@1');
+  const embed = registered.get('openai/embeddings@1');
   if (!embed) throw new Error('the embed descriptor is missing');
   const fixtures = fixturesFor(fixtureDir, embed.id);
 
@@ -44,7 +44,7 @@ describe('the operation@1 suite', () => {
     expect(existsSync(join(fixtureDir, 'nobody', 'thing@1'))).toBe(false);
     const results = await operationContract(embed, fixturesFor(fixtureDir, 'nobody/thing@1'));
     expect(contractFailures(results)).toEqual([
-      { check: 'has recorded fixtures', problems: ['openai/embed@1 has no fixtures'] },
+      { check: 'has recorded fixtures', problems: ['openai/embeddings@1 has no fixtures'] },
     ]);
   });
 

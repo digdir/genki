@@ -73,7 +73,11 @@ afterEach(async () => {
 const reason = 'Styrer en ny type modellkall';
 
 const boot = async (
-  options: { environmentTier?: 'test' | 'production'; status?: 'review' | 'described' } = {},
+  options: {
+    environmentTier?: 'test' | 'production';
+    status?: 'review' | 'described';
+    processorRecords?: 'warn' | 'enforce';
+  } = {},
 ) => {
   const server = await fakeHttp(() => ({
     status: 200,
@@ -84,6 +88,7 @@ const boot = async (
     people,
     descriptors: registry(options.status),
     ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     models: {
       endpoints: {
         lab: {
@@ -483,6 +488,18 @@ describe('processor records', () => {
     expect(
       (await auditOf(booted, refused.task)).find((e) => e.type === 'kernel.gate.call')?.data,
     ).toMatchObject({ outcome: 'refused', refusal: 'media' });
+  });
+
+  it('the processor record list says whether typed calls without a record warn or are refused', async () => {
+    const typedCalls = async (booted: Awaited<ReturnType<typeof boot>>) =>
+      (
+        (await (await booted.send('/operator/processor-records', 'drift')).json()) as {
+          typedCalls: string;
+        }
+      ).typedCalls;
+
+    expect(await typedCalls(await boot())).toBe('warn');
+    expect(await typedCalls(await boot({ processorRecords: 'enforce' }))).toBe('enforce');
   });
 
   it('a processor record cannot let unmasked input through', async () => {

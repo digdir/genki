@@ -1,6 +1,6 @@
 # 0048 Connections serve many APIs, models bind one per operation
 
-Status: proposed, 2026-11-05 (not built)
+Status: proposed, 2026-11-05 (partly built, 2026-11-05; the console, plug-in rerank engines, stored rerank entries and processor records on embed and rerank calls are missing)
 
 Supersedes the adapter-per-protocol part of ADR 0021 and the "one registration" bullet of ADR 0044. Amends ADR 0047: a descriptor names an API family instead of an endpoint protocol, its id names the API instead of the kind, and the `descriptors` opt-in on a model is replaced by bindings.
 
@@ -43,7 +43,7 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 ### One registry of APIs, data or code
 
 - Every API has an id `<provider>/<api>@<version>`, a kind (`operation`) and a family (`api.family`, which replaces `api.protocol`). A descriptor's id no longer has to repeat its kind, so `openai/chat-completions@1` and `openai/responses@1` are both `chat`.
-- An API is either a descriptor (data, run by the one executor of ADR 0047) or a built-in implementation (code, registered under the API id). The built-in ones from day one are `openai/chat-completions@1`, `openai/responses@1` and `anthropic/messages@1` for `chat`, and `openai/embeddings@1` for `embed`. The ADR 0044 switch from Chat Completions to Responses on the one documented refusal stays inside `openai/chat-completions@1`.
+- An API is either a descriptor (data, run by the one executor of ADR 0047) or a built-in implementation (code, registered under the API id). The built-in ones from day one are `openai/chat-completions@1`, `openai/responses@1` and `anthropic/messages@1` for `chat`, and `openai/embeddings@1` for `embed`. The descriptor that was `openai/embed@1` is `openai/embeddings@1`, and the old id is still read. The ADR 0044 switch from Chat Completions to Responses on the one documented refusal stays inside `openai/chat-completions@1`.
 - When an API has both, as `openai/decide@1` does today, the built-in implementation serves the call and the descriptor's fixtures keep proving that they agree (ADR 0047). A built-in implementation is an optimisation of a reviewed API, never a separate path past the gate.
 - `ModelAdapter.protocol` becomes `ModelAdapter.apis`, the API ids an adapter implements, each with its model options schema.
 - `GET /operator/apis` lists the registry: id, kind, family, source (`built-in`, `bundled`, `uploaded`), status and the models bound to it.
@@ -61,7 +61,7 @@ ADR 0047 meant every operation, chat included, to be one governed path. The cata
 
 ### Prices per unit
 
-A price is per model and kind, per unit: `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` or `request`. An API's usage mapping names the units it reports. A call whose units have no price is metered and shown as not priced, as now.
+A price is per model and kind, per unit: `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` or `request`. An API's usage mapping names the units it reports. A call whose units have no price is metered and shown as not priced, as now. A `request` without a price costs nothing, so a model priced per token stays priced. A `cached-input-token` without a price costs as an input token.
 
 ### Operator API and console
 
@@ -95,5 +95,7 @@ Turned down:
 - One provider resource is one connection with one processor record. Merging changes no service.
 - The console's models area shows connections, the models on each, and the API bound for each kind (ADR 0050).
 - ADR 0021's port stays as it is; its adapter and catalogue parts are replaced here. ADR 0044's behaviour stays, as `openai/chat-completions@1` and `openai/responses@1`.
-- Chat calls now refuse real data on a connection without a processor record. The migration carries the existing records, and the console shows which connections lack one before this is turned on.
+- Typed chat and decide calls carry the connection's processor record. On a connection without one they log a warning once and go through; with `GENAI_PROCESSOR_RECORDS=enforce` they refuse real data. The migration carries the existing records, `GET /operator/processor-records` and a log line at start name the connections without one, and the default turns to `enforce` once the console shows them.
+- A price stored per 1,000 tokens is moved to unit prices for every kind its model binds, at start and once. `costMicroNok` and `priced` on a run read as before.
+- Still missing: the console's part (#381); plug-in rerank engines without an API stay in the rerank catalogue, and stored `rerank-endpoint` and `reranker` entries are not moved; embed and rerank calls do not yet check the processor record; embedders found by discovery are not served by the embedding port.
 - Interaction patterns beyond one JSON request and one JSON answer are ADR 0049.

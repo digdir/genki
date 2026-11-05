@@ -63,6 +63,14 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-05: embedders, rerankers and prices per unit
+
+- Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: colbert/rerank@1 }` and `rerank: { onFailure }`. Ids do not change, and neither model is listed in `GET /models` as a chat model.
+- The descriptor `openai/embed@1` is `openai/embeddings@1`; the old id is still read, and a model bound to it moves to the new one.
+- `PUT /operator/models/{id}/price` takes `{ <kind>: { <unit>: <kroner per unit> } }` with the units `input-token`, `output-token`, `cached-input-token`, `audio-second`, `image`, `video-second`, `character` and `request`. `{ inputPerThousand, outputPerThousand }` is still accepted and holds for every kind the model binds. The answer adds `prices`, and keeps `inputPerThousand` and `outputPerThousand` as the per-1,000-token view. A unit not in the list answers `400`.
+- `GET /operator/apis` adds `units`, the units each API reports.
+- `GET /operator/processor-records` adds `typedCalls`: `warn` or `enforce`, what a typed chat or decide call does on a connection without a processor record (`GENAI_PROCESSOR_RECORDS`).
+
 ### 2026-11-05: connections serve many APIs
 
 - A model connection (`model-endpoint`) takes `baseURL`, `auth`, `families: { <family>: <base> }` and `discovery: [<rule>]`, and no longer `protocol` or `options`. A base is a path under `baseURL` or a full URL. `POST /operator/model-endpoints` takes the new shape, and `PUT /operator/model-endpoints/{id}` (operators, audited, `change-reason`) edits a connection in place; a `PUT` without `discovery` keeps the stored rules. A family no API is in answers `400` (`errors[0].path: "families.<family>"`).

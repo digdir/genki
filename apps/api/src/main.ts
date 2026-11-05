@@ -39,7 +39,7 @@ import type { PolicyDecisionPoint } from '@genai/kernel';
 import { documentConverterFrom, phraseArchiveFrom } from './document-converter.js';
 import { createAdmin, platformActor } from './admin.js';
 import { InMemoryTenantApiKeys, type TenantApiKeys } from './routes/portal-routes.js';
-import type { ModelPrice } from './draft-runner.js';
+import type { PriceSpec } from '@genai/contracts';
 import { postgresKeyPolicies, postgresTenantKeys } from './tenant-keys.js';
 import { clientRegistry, notifyingClients, type ClientListener } from './frontends.js';
 import { actorNames } from './actor-names.js';
@@ -50,6 +50,7 @@ import {
   defaultPlatformTenant,
   environmentTierOf,
   openKnowledgePools,
+  processorRecordCheckOf,
   ownedByPlatformTenant,
   platformTenantFrom,
 } from '@genai/composition';
@@ -386,7 +387,7 @@ const settings = new SettingsRegistry(platformSettings);
 if (db) await settings.attach(db.settings);
 const pricesFile = join(configDir, 'prices.yaml');
 const prices = existsSync(pricesFile)
-  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, ModelPrice> })
+  ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, PriceSpec> })
       .models ?? {})
   : {};
 const tenantKeys: TenantApiKeys = db ? postgresTenantKeys(db.apiKeys) : memoryKeys;
@@ -432,10 +433,13 @@ const environmentTier = environmentTierOf(process.env);
 if (environmentTier === 'test')
   log('GENAI_ENV=test: operators may try descriptors in review on synthetic data');
 
+const processorRecords = processorRecordCheckOf(process.env);
+
 const platform = await createPlatform({
   platformTenant,
   ...(lockdown ? { lockdown: { configuredKeys } } : {}),
   environmentTier,
+  processorRecords,
   modules: [...platformModules, createDefinitionSourcesModule(definitionSources, platformTenant)],
   settings,
   verifyPluginsOnBoot: true,

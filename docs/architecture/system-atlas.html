@@ -2759,6 +2759,8 @@
               'Keep uploaded operation descriptors as config entries and serve the bundled ones and the uploads as one registry, read again at every descriptor call, in the API and the worker (ADR 0047)',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
               'Move stored model connections, models, processor records and classifications once to connections with API families and models with API bindings (ADR 0048)',
+              'Fold an embedding catalogue and ColBERT rerankers from before ADR 0048 into the model catalogue, keeping ids, and move stored per-1,000-token prices to prices per kind and unit',
+              'Log the model connections without a processor record at start, and warn or refuse typed calls on them by GENAI_PROCESSOR_RECORDS',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
               'Keep the config entry store, tenant secret vault and change feed contracts',
@@ -2767,6 +2769,7 @@
               'packages/composition/src/runtime.ts',
               'packages/composition/src/block-settings.ts',
               'packages/composition/src/catalog-registry.ts',
+              'packages/composition/src/prices.ts',
               'packages/composition/src/config-store.ts',
               'packages/composition/src/hook-runtime.ts',
               'packages/composition/src/settings-runtime.ts',
@@ -6414,7 +6417,8 @@
               'The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide through a typed descriptor when the catalogue opts in (ADR 0047,',
               "The kernel port described, a reviewed descriptor call from a service's call-operation step, with the kind's maturity and whether the endpoint has a processor record on the gate target (ADR 0047,",
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
-              'The API registry and the binding of each model kind to an API (ADR 0048)',
+              'The API registry and the binding of each model kind to an API, with the units each API reports; embedding and rerank models bind APIs other ports implement (ADR 0048)',
+              "Prices per model, kind and unit; typed chat and decide calls carry the connection's processor record and production maturity (ADR 0048,",
               'Credential resolution',
             ],
             files: [
@@ -6685,6 +6689,34 @@
                             type: 'array',
                             items: { type: 'string', pattern: '^\\d{9}$' },
                           },
+                          embed: {
+                            type: 'object',
+                            properties: {
+                              dimensions: {
+                                type: 'integer',
+                                exclusiveMinimum: 0,
+                                maximum: 9007199254740991,
+                              },
+                              maxBatch: {
+                                type: 'integer',
+                                exclusiveMinimum: 0,
+                                maximum: 9007199254740991,
+                              },
+                            },
+                            required: ['dimensions'],
+                            additionalProperties: false,
+                          },
+                          rerank: {
+                            type: 'object',
+                            properties: {
+                              onFailure: {
+                                default: 'degrade',
+                                type: 'string',
+                                enum: ['degrade', 'fail'],
+                              },
+                            },
+                            additionalProperties: false,
+                          },
                           options: {
                             default: {},
                             type: 'object',
@@ -6827,10 +6859,26 @@
                       type: 'object',
                       propertyNames: {
                         type: 'string',
-                        enum: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
+                        enum: [
+                          'inputTokens',
+                          'outputTokens',
+                          'cachedInputTokens',
+                          'audioSeconds',
+                          'images',
+                          'videoSeconds',
+                          'characters',
+                          'requests',
+                          'input-token',
+                          'output-token',
+                          'cached-input-token',
+                          'audio-second',
+                          'image',
+                          'video-second',
+                          'character',
+                          'request',
+                        ],
                       },
                       additionalProperties: {},
-                      required: ['inputTokens', 'outputTokens', 'cachedInputTokens', 'requests'],
                     },
                     stream: {
                       anyOf: [
@@ -7085,11 +7133,12 @@
             color: '#74a7ff',
             status: 'Port',
             packages: ['@genai/port-rerank'],
-            summary: 'Reranks candidate passages through a catalog of rerank endpoints.',
+            summary:
+              'Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.',
             description:
-              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
+              "Same router shape as the model and knowledge ports; ColBERT is the first adapter. A reranker is a model in the model catalogue that binds an API for rerank, such as colbert/rerank@1 (ADR 0048); engines without an API, such as plug-ins, stay in the rerank catalogue. Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown, checked against tenant sharing and every residency ceiling, held to its closed shape, masked and metered. The router itself only routes and degrades.",
             responsibilities: [
-              'Rerank catalog',
+              'Rerank models from the model catalogue, and the rerank catalogue for engines without an API',
               'Rerank with timeouts and warnings',
               'Calls through the kernel gate',
             ],
@@ -7097,6 +7146,7 @@
               'packages/port-rerank/src/port.ts',
               'packages/port-rerank/src/router.ts',
               'packages/port-rerank/src/catalog.ts',
+              'packages/port-rerank/src/models.ts',
             ],
             input: 'Query + candidates',
             output: 'Scores',
@@ -7231,11 +7281,11 @@
             color: '#74a7ff',
             status: 'Port',
             packages: ['@genai/port-embedding'],
-            summary: 'Turns text into vectors through a catalog of embedding models.',
+            summary: 'Turns text into vectors with the embedding models of the model catalogue.',
             description:
-              "Same router shape as the model and rerank ports. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search outside a run, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
+              "Same router shape as the model and rerank ports. Its embedders are the models in the model catalogue that bind an API for embed (ADR 0048), so they change without a deploy. Checks dimensions, batches input and calls through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search outside a run, so search engines without built-in embedding can use vectors. Embedding is open in lockdown, as ADR 0033 intends.",
             responsibilities: [
-              'Embedding catalog',
+              'Embedding models from the model catalogue, by API id',
               'Dimension checks and batching',
               "Calls through the kernel gate, which applies the endpoint's egress guard",
             ],
@@ -7279,121 +7329,51 @@
                 },
               },
             ],
-            keywords: 'embedding port vectors catalog',
+            keywords: 'embedding port vectors catalogue openai/embeddings@1',
             schemas: [
               {
-                name: 'catalog',
+                name: 'embedding model',
                 file: 'packages/port-embedding/src/catalog.ts',
-                export: 'embeddingCatalog',
+                export: 'embeddingModel',
                 schema: {
                   $schema: 'https://json-schema.org/draft/2020-12/schema',
                   type: 'object',
                   properties: {
-                    endpoints: {
+                    id: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
+                    endpoint: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
+                    deployment: { type: 'string', minLength: 1 },
+                    residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
+                    tenants: { type: 'array', items: { type: 'string', pattern: '^\\d{9}$' } },
+                    apis: {
                       type: 'object',
-                      propertyNames: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                      additionalProperties: {
-                        type: 'object',
-                        properties: {
-                          protocol: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                          baseURL: { type: 'string', format: 'uri' },
-                          auth: {
-                            oneOf: [
-                              {
-                                type: 'object',
-                                properties: {
-                                  kind: { type: 'string', const: 'api-key' },
-                                  secret: {
-                                    type: 'string',
-                                    pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
-                                  },
-                                  header: { type: 'string', minLength: 1 },
-                                },
-                                required: ['kind', 'secret'],
-                                additionalProperties: false,
-                              },
-                              {
-                                type: 'object',
-                                properties: {
-                                  kind: { type: 'string', const: 'bearer' },
-                                  secret: {
-                                    type: 'string',
-                                    pattern: '^secret:\\/\\/[a-z0-9-]+\\/[a-z0-9._-]+$',
-                                  },
-                                },
-                                required: ['kind', 'secret'],
-                                additionalProperties: false,
-                              },
-                              {
-                                type: 'object',
-                                properties: {
-                                  kind: { type: 'string', const: 'token-provider' },
-                                  provider: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                                },
-                                required: ['kind', 'provider'],
-                                additionalProperties: false,
-                              },
-                            ],
-                          },
-                          options: {
-                            default: {},
-                            type: 'object',
-                            propertyNames: { type: 'string' },
-                            additionalProperties: {},
-                          },
-                        },
-                        required: ['protocol', 'baseURL', 'auth'],
-                        additionalProperties: false,
-                      },
+                      properties: { embed: { type: 'string' } },
+                      required: ['embed'],
                     },
-                    models: {
-                      default: [],
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          id: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                          endpoint: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                          deployment: { type: 'string', minLength: 1 },
-                          residency: { type: 'string', enum: ['norway', 'eu', 'global'] },
-                          dimensions: {
-                            type: 'integer',
-                            exclusiveMinimum: 0,
-                            maximum: 9007199254740991,
-                          },
-                          maxBatch: {
-                            type: 'integer',
-                            exclusiveMinimum: 0,
-                            maximum: 9007199254740991,
-                          },
-                          tenants: {
-                            type: 'array',
-                            items: { type: 'string', pattern: '^\\d{9}$' },
-                          },
-                          descriptors: {
-                            type: 'object',
-                            properties: {
-                              embed: {
-                                type: 'string',
-                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
-                              },
-                            },
-                            additionalProperties: false,
-                          },
-                          options: {
-                            default: {},
-                            type: 'object',
-                            propertyNames: { type: 'string' },
-                            additionalProperties: {},
-                          },
+                    embed: {
+                      type: 'object',
+                      properties: {
+                        dimensions: {
+                          type: 'integer',
+                          exclusiveMinimum: 0,
+                          maximum: 9007199254740991,
                         },
-                        required: ['id', 'endpoint', 'deployment', 'residency', 'dimensions'],
-                        additionalProperties: false,
+                        maxBatch: {
+                          type: 'integer',
+                          exclusiveMinimum: 0,
+                          maximum: 9007199254740991,
+                        },
                       },
+                      required: ['dimensions'],
+                      additionalProperties: false,
+                    },
+                    options: {
+                      default: {},
+                      type: 'object',
+                      propertyNames: { type: 'string' },
+                      additionalProperties: {},
                     },
                   },
-                  required: ['endpoints'],
-                  additionalProperties: false,
+                  required: ['id', 'endpoint', 'deployment', 'residency', 'apis', 'embed'],
                 },
               },
             ],
@@ -7529,7 +7509,7 @@
             description:
               'Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
             responsibilities: [
-              "The openai family's built-in APIs openai/chat-completions@1, openai/responses@1 and openai/decide@1, with learned Responses recovery",
+              "The openai family's built-in APIs openai/chat-completions@1, openai/responses@1, openai/decide@1 and openai/embeddings@1, with learned Responses recovery",
               'The decide operation against the Azure OpenAI Decisions API, with a closed response shape',
               'Azure deployment discovery',
             ],
@@ -7554,7 +7534,7 @@
               },
               {
                 to: 'port-embedding',
-                label: 'OpenAI-compatible embeddings adapter',
+                label: 'openai/embeddings@1, the OpenAI-compatible embeddings adapter',
                 kind: 'call',
                 target: 'call',
                 witness: {
@@ -7789,7 +7769,7 @@
             summary: 'Rerank adapter for the ColBERT service.',
             description:
               'Posts query and candidates to the ColBERT endpoint, with a timeout (ADR 0017).',
-            responsibilities: ['ColBERT rerank call'],
+            responsibilities: ['ColBERT rerank call, the built-in API colbert/rerank@1'],
             files: ['packages/providers-colbert/src/index.ts'],
             input: 'Query + candidates',
             output: 'Scores',

@@ -1,4 +1,11 @@
-import type { Principal, Ref, Usage, UsagePrice } from '@genai/contracts';
+import {
+  unitPricesFor,
+  type PriceSpec,
+  type PriceUnit,
+  type Principal,
+  type Ref,
+  type Usage,
+} from '@genai/contracts';
 import {
   platformSettings,
   SettingsRegistry,
@@ -51,12 +58,20 @@ import {
 } from '@genai/port-knowledge';
 import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
 import { liveDescriptors } from './operation-descriptors.js';
-import { migratedCatalog, migrateConnections, registryApiFor } from './connection-migration.js';
+import {
+  migratedCatalog,
+  migrateConnections,
+  registryApiFor,
+  withLegacyCatalogs,
+} from './connection-migration.js';
+import { migratePrices, perThousandPrices } from './prices.js';
 import {
   apiRegistry,
   ModelError,
   ModelRouter,
+  type BuiltInApi,
   type OperationPort,
+  type ProcessorRecordCheck,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
@@ -165,7 +180,9 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
+  /** Rerankers on engines without an API; colbert rerankers here move into the model catalogue. */
   rerank: unknown;
+  /** An embedding catalogue from before ADR 0048; its embedders move into the model catalogue. */
   embeddings?: unknown;
 }
 
@@ -241,6 +258,7 @@ export interface RuntimeInput {
   knowledgeServer?: KnowledgePools;
   knowledgeGuard?: () => void;
   embeddingAdapters?: EmbeddingAdapter[];
+  processorRecords?: ProcessorRecordCheck;
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
   prices?: Record<string, unknown>;
@@ -290,7 +308,10 @@ export const referencesOf = (configs: unknown[]): CatalogReferences => {
         for (const v of Object.values(value)) if (typeof v === 'string') found.models.add(v);
     }
     for (const d of config.knowledge?.datasets ?? []) if (d.dataset) found.datasets.add(d.dataset);
-    if (config.knowledge?.reranker) found.rerankers.add(config.knowledge.reranker);
+    if (config.knowledge?.reranker) {
+      found.rerankers.add(config.knowledge.reranker);
+      found.models.add(config.knowledge.reranker);
+    }
   }
   return found;
 };
@@ -351,12 +372,47 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
+  const rerankAdapters = [colbert];
+  const portApis: BuiltInApi[] = [
+    ...embeddingAdapters.map((a) => ({
+      id: a.api.id,
+      kind: 'embed',
+      family: a.api.family,
+      modelOptions: a.modelOptions as unknown as z.ZodObject,
+      units: ['input-token', 'request'] as PriceUnit[],
+    })),
+    ...rerankAdapters.flatMap((a) =>
+      a.api
+        ? [
+            {
+              id: a.api.id,
+              kind: 'rerank',
+              family: a.api.family,
+              modelOptions: a.rerankerOptions as unknown as z.ZodObject,
+              units: ['request'] as PriceUnit[],
+            },
+          ]
+        : [],
+    ),
+  ];
   const descriptors = liveDescriptors(input.descriptors ?? loadDescriptors(), configEntries);
   await descriptors.refresh();
-  const modelSeed = migratedCatalog(
+  const folded = withLegacyCatalogs(
     input.catalogs.models,
-    registryApiFor(apiRegistry(modelAdapters, descriptors)),
+    input.catalogs.embeddings,
+    input.catalogs.rerank,
+    Object.fromEntries(rerankAdapters.flatMap((a) => (a.api ? [[a.engine, a.api]] : []))),
   );
+  const rerankSeed = folded.rerank;
+  const modelSeed = migratedCatalog(
+    folded.models,
+    registryApiFor(apiRegistry(modelAdapters, descriptors, portApis)),
+  );
+  const typedCalls = input.processorRecords ?? 'warn';
+  const prices: Record<string, unknown> = input.prices ?? {};
+  const unitPrices: Record<string, unknown> = { ...prices };
+  const priceSeed = { ...prices };
   const environmentTier = input.environmentTier ?? 'production';
   const governance = operationGovernance(configEntries, environmentTier);
   const blobStore = input.blobStore ?? new InMemoryBlobStore();
@@ -370,23 +426,13 @@ export const createRuntime = async (input: RuntimeInput) => {
   const embedders = new EmbeddingRouter({
     gate,
     descriptors,
-    catalog: input.catalogs.embeddings ?? { endpoints: {} },
-    adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
+    catalog: modelSeed,
+    adapters: embeddingAdapters,
     secrets: catalogSecrets,
-    priceOf: (id) => prices[id] as UsagePrice | undefined,
+    priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const embeddingModels = new Set(embedders.describe().map((e) => e.id));
-  const smallestEmbedder = embedders
-    .describe()
-    .sort((a, b) => a.dimensions - b.dimensions || a.id.localeCompare(b.id))[0];
-  const defaultEmbedding = smallestEmbedder
-    ? {
-        model: smallestEmbedder.id,
-        dimensions: smallestEmbedder.dimensions,
-        residency: smallestEmbedder.residency,
-      }
-    : undefined;
   const embeddingResidency = (model: string) =>
     embedders.describe().find((e) => e.id === model)?.residency;
   const residencyOf = (dataset: string) => knowledge.datasets().get(dataset)?.residency;
@@ -444,14 +490,24 @@ export const createRuntime = async (input: RuntimeInput) => {
     governance,
     catalog: modelSeed,
     adapters: modelAdapters,
+    portApis,
+    typedCalls,
+    onUnrecordedProcessor: (connection, kind) =>
+      input.logger?.('model call on a connection without a processor record', {
+        connection,
+        kind,
+        processorRecords: typedCalls,
+      }),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
-    priceOf: (id) => prices[id] as UsagePrice | undefined,
+    priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
+  const kindsOf = (id: string) =>
+    Object.keys(models.describe().find((m) => m.id === id)?.apis ?? {});
   const knowledge = new ContextualKnowledgeRouter({
     catalog: routerCatalog(knowledgeSeed),
     adapters: knowledgeAdapters,
@@ -467,8 +523,9 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
   const rerank = new RerankRouter({
     gate,
-    catalog: input.catalogs.rerank,
-    adapters: [colbert],
+    catalog: rerankSeed,
+    models: modelSeed,
+    adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
@@ -607,11 +664,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     blocks: new Set(blocks.refs()),
     models: models.models(),
     retrieval: retrievalConfig,
-    rerankers: new Set(
-      ((input.catalogs.rerank as { rerankers?: { id: string }[] }).rerankers ?? []).map(
-        (r) => r.id,
-      ),
-    ),
+    rerankers: new Set(rerank.rerankers()),
     rerankerResidency: (id) => rerank.residency(id),
     datasets: new Set(knowledge.datasets().keys()),
     modelNeeds: strategyModelNeeds,
@@ -723,7 +776,6 @@ export const createRuntime = async (input: RuntimeInput) => {
   const store = input.definitions(plugins, sharedSkill, sharedRecipe);
   late.store = store;
 
-  const prices: Record<string, unknown> = input.prices ?? {};
   let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
   /** Brings the knowledge server's filter indexes in line with the current catalog. */
   const followKnowledge = () => {
@@ -742,6 +794,12 @@ export const createRuntime = async (input: RuntimeInput) => {
   };
   const apply = (catalogs: EffectiveCatalogs) => {
     models.reload(catalogs.models);
+    embedders.reload(catalogs.models);
+    rerank.reloadModels(catalogs.models);
+    replaceSet(
+      embeddingModels,
+      embedders.describe().map((e) => e.id),
+    );
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
     knowledgeCatalog = catalogs.knowledge;
@@ -749,22 +807,25 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerank.reload(catalogs.rerank);
     replaceSet(plugins.datasets, knowledge.datasets().keys());
     replaceSet(plugins.rerankers, rerank.rerankers());
-    replaceRecord(prices, catalogs.prices);
+    replaceRecord(unitPrices, catalogs.prices);
+    replaceRecord(prices, perThousandPrices(catalogs.prices));
   };
   const catalog = new CatalogRegistry({
     seed: {
       models: modelSeed,
       knowledge: knowledgeSeed,
-      rerank: input.catalogs.rerank,
-      prices: { ...prices },
+      rerank: rerankSeed,
+      prices: priceSeed,
     },
     store: configEntries,
     checks: {
-      models: (c) => {
-        return problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind]));
-      },
+      models: (c) => [
+        ...problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind])),
+        ...embedders.problems(c),
+        ...rerank.problems(c),
+      ],
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
-      rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),
+      rerank: (c) => problemsOf(parseRerankCatalog(c, rerankAdapters)),
     },
     apply,
     ...(input.catalogPolicy ? { policy: input.catalogPolicy } : {}),
@@ -773,10 +834,42 @@ export const createRuntime = async (input: RuntimeInput) => {
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
+    priceKinds: kindsOf,
     ...(input.now ? { now: input.now } : {}),
   });
   await catalog.initialize();
   released.catalog = catalog;
+  const pricesMoved = await migratePrices({
+    store: configEntries,
+    kindsOf,
+    ...(input.now ? { now: input.now } : {}),
+  });
+  if (pricesMoved > 0) {
+    input.logger?.('model prices moved to prices per kind and unit', { prices: pricesMoved });
+    await catalog.refresh();
+  }
+  const smallestEmbedder = embedders
+    .describe()
+    .sort((a, b) => a.dimensions - b.dimensions || a.id.localeCompare(b.id))[0];
+  const defaultEmbedding = smallestEmbedder
+    ? {
+        model: smallestEmbedder.id,
+        dimensions: smallestEmbedder.dimensions,
+        residency: smallestEmbedder.residency,
+      }
+    : undefined;
+  const unrecorded = await connectionsWithoutProcessorRecord(
+    governance,
+    new Set([
+      ...models.describe().map((m) => m.endpoint),
+      ...catalog.list({ kind: 'model-endpoint' }).map((e) => e.id),
+    ]),
+  );
+  if (unrecorded.length > 0)
+    input.logger?.('model connections without a processor record', {
+      connections: unrecorded,
+      processorRecords: typedCalls,
+    });
 
   const serviceLimits = { ...defaultServiceLimits, ...input.serviceLimits };
   const limited = (capability: KernelCapability): KernelCapability => ({
@@ -912,6 +1005,8 @@ export const createRuntime = async (input: RuntimeInput) => {
     descriptors,
     environmentTier,
     governance,
+    processorRecords: typedCalls,
+    unitPrices,
     tryOperation: operationTryRunner({
       kernel: () => kernel,
       registry,
@@ -934,6 +1029,16 @@ const replaceSet = (target: Set<string> | undefined, values: Iterable<string>) =
 const replaceRecord = (target: Record<string, unknown>, values: Record<string, unknown>) => {
   for (const key of Object.keys(target)) Reflect.deleteProperty(target, key);
   Object.assign(target, values);
+};
+
+const connectionsWithoutProcessorRecord = async (
+  governance: { processorRecorded(endpoint: string): Promise<boolean> },
+  connections: Set<string>,
+) => {
+  const checked = await Promise.all(
+    [...connections].sort().map(async (c) => ((await governance.processorRecorded(c)) ? [] : [c])),
+  );
+  return checked.flat();
 };
 
 const problemsOf = (result: { ok: boolean; errors?: { path: string; message: string }[] }) =>

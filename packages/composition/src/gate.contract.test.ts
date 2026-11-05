@@ -365,8 +365,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     open: (setup) => {
       const w = watched(setup);
       const adapter: EmbeddingAdapter = {
-        protocol: 'fake',
-        endpointOptions: z.object({}),
+        api: { id: 'fake/embeddings@1', family: 'fake' },
         modelOptions: z.object({}),
         connect: () => ({
           embed: async (_model, texts) => {
@@ -382,14 +381,15 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
       const router = new EmbeddingRouter({
         gate: w.gate,
         catalog: {
-          endpoints: { fake: without(endpoint('fake'), 'engine') },
+          endpoints: { fake: connection('fake') },
           models: [
             {
               id: 'fake/embedder',
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
-              dimensions: 2,
+              apis: { embed: 'fake/embeddings@1' },
+              embed: { dimensions: 2 },
               ...w.shared,
             },
           ],

@@ -316,6 +316,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       ]);
       return c.json({
         data: [...endpoints].sort().map((e) => processorView(e, records.get(e))),
+        typedCalls: guard.operations.processorRecords ?? 'warn',
       });
     });
 

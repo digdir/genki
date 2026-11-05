@@ -1,4 +1,4 @@
-import type { Principal } from '@genai/contracts';
+import { perThousandView, type Principal } from '@genai/contracts';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -271,17 +271,14 @@ export const operatorModelsModule: PlatformModuleFactory = (deps) => ({
       const id = c.req.param('id') ?? '';
       if (!deps.models.describe().some((m) => m.id === id) && !deps.catalog.get('model', id))
         return problem(c, 404, 'Not found');
-      const input = await body(c);
       const result = await catalogChange(c, guard.principal, 'platform.catalog.publish', {
         kind: 'price',
         id,
-        spec: {
-          inputPerThousand: input.inputPerThousand,
-          outputPerThousand: input.outputPerThousand,
-        },
+        spec: await body(c),
       });
       if (!result.ok) return problem(c, 400, 'Invalid request', result.errors);
-      return c.json({ id, ...result.value.spec, currency: 'NOK' });
+      const prices = result.value.spec;
+      return c.json({ id, prices, ...perThousandView(prices), currency: 'NOK' });
     });
 
     app.put('/operator/models/:id{.+}', async (c) => {

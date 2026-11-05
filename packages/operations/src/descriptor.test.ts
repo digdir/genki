@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { decideShape, embedShape } from '@genai/kernel';
-import { parseDescriptor } from './descriptor.js';
+import { parseDescriptor, reportedUnits } from './descriptor.js';
 import { evaluate } from './mapping.js';
 import { bundledDescriptorDir, loadDescriptors } from './registry.js';
 
-const embedYaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embed@1.yaml'), 'utf8');
+const embedYaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embeddings@1.yaml'), 'utf8');
 
 const refused = (yaml: string) => {
   try {
@@ -20,13 +20,24 @@ const refused = (yaml: string) => {
 describe('operation descriptors', () => {
   it('a typed descriptor declares the same shapes as the operation it serves', () => {
     const registry = loadDescriptors();
-    expect(registry.get('openai/embed@1')?.input).toEqual(embedShape.request);
-    expect(registry.get('openai/embed@1')?.output).toEqual(embedShape.result);
+    expect(registry.get('openai/embeddings@1')?.input).toEqual(embedShape.request);
+    expect(registry.get('openai/embeddings@1')?.output).toEqual(embedShape.result);
     expect(registry.get('openai/decide@1')?.input).toEqual(decideShape.request);
     expect(registry.get('openai/decide@1')?.output).toEqual(decideShape.result);
     expect(refused(embedYaml.replace('input: [text]', 'input: [plain]'))).toMatch(
       /declares the input and output shapes of embed/,
     );
+  });
+
+  it('a usage mapping may name price units or usage fields, and reads as usage fields', () => {
+    const named = parseDescriptor(embedYaml);
+    const byField = parseDescriptor(
+      embedYaml.replace(/^usage:\n {2}input-token:/m, 'usage:\n  inputTokens:'),
+    );
+
+    expect(Object.keys(named.usage)).toEqual(['inputTokens', 'requests']);
+    expect(byField.usage).toEqual(named.usage);
+    expect(reportedUnits(named.usage)).toEqual(['input-token', 'request']);
   });
 
   it('a descriptor that names a URL is refused', () => {
@@ -104,9 +115,7 @@ describe('operation descriptors', () => {
   });
 
   it('a descriptor id names its API, and the operation field names its kind', () => {
-    const descriptor = parseDescriptor(
-      embedYaml.replace('id: openai/embed@1', 'id: openai/embeddings@1'),
-    );
+    const descriptor = parseDescriptor(embedYaml);
     expect(descriptor).toMatchObject({ id: 'openai/embeddings@1', operation: 'embed' });
   });
 
