@@ -1,6 +1,7 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
   knowledgeSourceRefusal,
+  kudosNarrowing,
   pipelineSpec,
   type PipelineSpec,
   type SkipReason,
@@ -494,9 +495,11 @@ export class IngestionService {
             message: i.message,
           })),
         };
-      const refused = this.options.jobs?.runsAsJobs(input.dataset)
-        ? await this.#knowledgeRefusal(input, parsed.data)
-        : undefined;
+      const refused =
+        (await this.#kudosNarrowing(input, parsed.data)) ??
+        (this.options.jobs?.runsAsJobs(input.dataset)
+          ? await this.#knowledgeRefusal(input, parsed.data)
+          : undefined);
       if (refused) return { ok: false, errors: [refused] };
       try {
         const saved = await appendVersion(this.options.store, {
@@ -521,6 +524,25 @@ export class IngestionService {
         throw error;
       }
     });
+  }
+
+  /**
+   * A Kudos slice only grows, whatever engine its dataset is on: an engine switch fills the knowledge
+   * database while the dataset is still on its old engine, and two complete listings delete what a
+   * narrower slice leaves out. Compared with the last version saved, deleted or not.
+   */
+  async #kudosNarrowing(
+    input: { scope: string; dataset: string; id: string },
+    spec: PipelineSpec,
+  ): Promise<{ path: string; message: string } | undefined> {
+    if (spec.source.kind !== 'kudos') return undefined;
+    const previous = (
+      await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
+    ).at(-1);
+    const before = previous ? pipelineSpec.safeParse(previous.spec) : undefined;
+    return before?.success && before.data.source.kind === 'kudos'
+      ? kudosNarrowing(before.data.source, spec.source)
+      : undefined;
   }
 
   /**

@@ -169,6 +169,71 @@ describe('document records on the knowledge server', () => {
     expect(rows[0]?.last).toBe('5');
   });
 
+  it('a seen record takes the earlier ids its listing carries, without a new change', async () => {
+    const name = 'digdir/earlier-seen';
+    const generation = await freshGeneration(name);
+    await records.apply({ dataset: name, pipeline: 'p1', generation, plan: newDocs('a') }, noSend);
+    const before = await changes(name);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'p1',
+        generation,
+        plan: plan([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]),
+      },
+      noSend,
+    );
+
+    const { rows } = await admin.query<{ earlier_ids: string[] }>(
+      `select earlier_ids from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.earlier_ids).toEqual(['377252']);
+    expect(await changes(name)).toEqual(before);
+  });
+
+  it('an earlier id resolves to its document, for 377252', async () => {
+    const name = 'digdir/earlier';
+    const generation = await freshGeneration(name);
+    const uuid = 'de77ffc7-1a57-456a-af49-167e699a4e6e';
+    const kudos: ListedDocument = {
+      id: `kudos:${uuid}`,
+      record: { uuid },
+      metadata: { uuid, title: 'Statusrapport' },
+      files: [{ name: 'f1', sha256: 'aaa' }],
+      earlierIds: ['377252'],
+    };
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'new', listed: kudos, metadataHash: 'm' }]),
+      },
+      noSend,
+    );
+    await records.replace(await recordOf(name, kudos.id), generation, {
+      document: doc(kudos.id),
+    });
+
+    // A citation is resolved only inside a dataset the caller may read (ADR 0042).
+    const client = await admin.connect();
+    let rows: { cited: string; status: string; document: string }[];
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.datasets', $1, true)`, [JSON.stringify([name])]);
+      ({ rows } = await client.query<{ cited: string; status: string; document: string }>(
+        `select cited, status, document
+           from kn_resolve_citation($1, $2, array['377252'], array[$3])`,
+        [name, generation, tombstoneHash(name, '377252')],
+      ));
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+    expect(rows).toEqual([{ cited: '377252', status: 'earlier', document: `kudos:${uuid}` }]);
+  });
+
   it('sends the index job of every record to process in the transaction that writes it', async () => {
     const name = 'digdir/sends';
     const generation = await freshGeneration(name);

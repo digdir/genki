@@ -117,7 +117,12 @@ export const planRun = (
       process.push(doc.id);
       counts.changed++;
     } else {
-      writes.push({ kind: 'seen', id: doc.id });
+      // Earlier ids are not part of the hash: a new map reaches the record without reprocessing it.
+      writes.push({
+        kind: 'seen',
+        id: doc.id,
+        ...(doc.earlierIds && doc.earlierIds.length > 0 ? { earlierIds: doc.earlierIds } : {}),
+      });
       if (record.applied !== record.change || recheck(record, options)) process.push(doc.id);
       counts.unchanged++;
     }

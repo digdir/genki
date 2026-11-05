@@ -122,13 +122,21 @@ const writeRecord = async (
   const change = await nextChange(client, dataset);
   const { listed } = write;
   await client.query(
-    `insert into src_documents (dataset, id, owners, record, metadata_hash, state, change)
-     values ($1, $2, array[$3], $4, $5, null, $6)
+    `insert into src_documents (dataset, id, owners, record, metadata_hash, state, change, earlier_ids)
+     values ($1, $2, array[$3], $4, $5, null, $6, $7)
      on conflict (dataset, id) do update set
        owners = array[$3], record = excluded.record, metadata_hash = excluded.metadata_hash,
        state = null, reason = null, last_seen = now(), missing = 0, gone = 0, gone_run = null,
-       change = excluded.change`,
-    [dataset, listed.id, pipeline, JSON.stringify(listed.record), write.metadataHash, change],
+       change = excluded.change, earlier_ids = excluded.earlier_ids`,
+    [
+      dataset,
+      listed.id,
+      pipeline,
+      JSON.stringify(listed.record),
+      write.metadataHash,
+      change,
+      listed.earlierIds ?? [],
+    ],
   );
   await writeFiles(client, dataset, listed.id, listed.files, change);
   // A document listed again is no longer withdrawn.
@@ -193,6 +201,18 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
         await client.query(
           `update src_documents set missing = missing + 1 where dataset = $1 and id = any($2::text[])`,
           [dataset, missing],
+        );
+      // Earlier ids of unchanged records, in one statement: not a change of the document, so its
+      // data version and generations stay as they are.
+      const earlier = plan.writes.flatMap((w) =>
+        w.kind === 'seen' && w.earlierIds ? [{ id: w.id, ids: w.earlierIds }] : [],
+      );
+      if (earlier.length > 0)
+        await client.query(
+          `update src_documents d set earlier_ids = x.ids
+             from jsonb_to_recordset($2::jsonb) as x(id text, ids text[])
+            where d.dataset = $1 and d.id = x.id and d.earlier_ids is distinct from x.ids`,
+          [dataset, JSON.stringify(earlier)],
         );
       if (plan.process.length === 0) return;
       const { rows } = await client.query<{ number: string }>(

@@ -48,8 +48,8 @@ describe('kudos client', () => {
       fetch: async (input) => {
         const url = String(input);
         calls.push(url);
-        if (url.endsWith('page=2') && flaky++ < 2) return json({}, 503);
-        const n = Number(url.split('page=')[1]);
+        const n = Number(new URL(url).searchParams.get('page'));
+        if (n === 2 && flaky++ < 2) return json({}, 503);
         return json({ data: [{ id: n }], meta: { current_page: n, last_page: 3 } });
       },
     });
@@ -68,7 +68,7 @@ describe('kudos client', () => {
     const client = kudosClient({
       profile: { ...profile, retryDelaysMs: [] },
       fetch: async (input) => {
-        const n = Number(String(input).split('page=')[1]);
+        const n = Number(new URL(String(input)).searchParams.get('page'));
         return n === 1
           ? json({ data: [{ id: 1 }], meta: { current_page: 1, last_page: 9 } })
           : json({}, 500);

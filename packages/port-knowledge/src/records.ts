@@ -19,6 +19,8 @@ export interface ListedDocument {
   /** What the metadata hash covers: the record without what changes when nothing does. */
   metadata: Record<string, unknown>;
   files: ListedFile[];
+  /** Ids the source gave the document before it renumbered (ADR 0042); a citation resolves through them. */
+  earlierIds?: string[];
 }
 
 /** A record its pipeline owns, with the change its run's generation has applied. */
@@ -39,7 +41,8 @@ export interface OwnedRecord {
 /** A change to one record. `new`, `changed` and `delete` take the next number in the change sequence. */
 export type RecordWrite =
   | { kind: 'new' | 'changed'; listed: ListedDocument; metadataHash: string }
-  | { kind: 'seen'; id: string }
+  /** A listed record with no change; `earlierIds` replaces its earlier ids without a new change. */
+  | { kind: 'seen'; id: string; earlierIds?: string[] }
   | { kind: 'missing'; id: string }
   | { kind: 'delete'; id: string };
 
