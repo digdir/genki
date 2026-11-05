@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Usage } from '@genai/contracts';
 import { createGate, GateError, type GateRecord, type PortContext } from '@genai/kernel';
 import { parseDescriptor } from './descriptor.js';
-import { describedCall, OperationError } from './executor.js';
+import { describedCall, OperationError, type WireExchange } from './executor.js';
 
 const classifyYaml = `
 id: example/classify@1
@@ -56,7 +56,11 @@ const classify = parseDescriptor(classifyYaml);
 
 const answer = { model: 'small', label: 'billing', score: 0.9, usage: { input_tokens: 12 } };
 
-const setup = (reply: unknown = answer, status = 200) => {
+const setup = (
+  reply: unknown = answer,
+  status = 200,
+  extra: { guards?: PortContext['guards']; observe?: (e: WireExchange) => void } = {},
+) => {
   const sent: { url: string; headers: Record<string, string>; body: unknown }[] = [];
   const audit: GateRecord[] = [];
   const metered: Usage[] = [];
@@ -79,6 +83,7 @@ const setup = (reply: unknown = answer, status = 200) => {
     audit: async (record) => {
       audit.push(record);
     },
+    ...(extra.guards ? { guards: extra.guards } : {}),
   };
   const call = (input: unknown) =>
     describedCall(
@@ -100,6 +105,7 @@ const setup = (reply: unknown = answer, status = 200) => {
           fetch: fetcher,
         },
         deployment: 'small',
+        ...(extra.observe ? { observe: extra.observe } : {}),
       },
       input,
     );
@@ -176,5 +182,30 @@ describe('the descriptor executor', () => {
     expect(error).toBeInstanceOf(OperationError);
     expect(error).toMatchObject({ status: 429, message: 'slow down' });
     expect(audit[0]?.outcome).toBe('failed');
+  });
+
+  it('an observed call records the exchange as the masked input and the raw answer', async () => {
+    const seen: WireExchange[] = [];
+    const masker = { mask: (t: string) => t.replaceAll('kari@example.no', '[EMAIL]') };
+    const { call } = setup({ ...answer, id: 'cls_1' }, 200, {
+      guards: [{ masker }],
+      observe: (e) => seen.push(e),
+    });
+    await call({ text: 'Skriv til kari@example.no', labels: ['a'] });
+    expect(seen).toEqual([
+      {
+        deployment: 'small',
+        input: { text: 'Skriv til [EMAIL]', labels: ['a'] },
+        request: {
+          method: 'POST',
+          path: '/classifications',
+          body: { model: 'small', text: 'Skriv til [EMAIL]', labels: ['a'] },
+        },
+        response: { status: 200, body: { ...answer, id: 'cls_1' } },
+        result: { label: 'billing', score: 0.9 },
+        usage: { inputTokens: 12, requests: 1 },
+        dropped: 1,
+      },
+    ]);
   });
 });

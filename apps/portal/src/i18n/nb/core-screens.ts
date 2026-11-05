@@ -122,6 +122,7 @@ export const changes = defineNamespace({
   descriptorUpload: 'lastet opp en operasjonsbeskrivelse',
   descriptorStatus: 'endret statusen til en operasjonsbeskrivelse',
   descriptorWithdraw: 'trakk tilbake en operasjonsbeskrivelse',
+  descriptorFixture: 'lagret et testtilfelle for en operasjonsbeskrivelse',
   processorRecord: 'endret databehandleropplysningene for et modellendepunkt',
   taskReviewApprove: 'godkjente tabellen',
   taskReviewEdit: 'rettet i tabellen',

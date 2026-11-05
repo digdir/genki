@@ -127,6 +127,7 @@ export const changes = {
   descriptorUpload: 'uploaded an operation descriptor',
   descriptorStatus: 'changed the status of an operation descriptor',
   descriptorWithdraw: 'withdrew an operation descriptor',
+  descriptorFixture: 'recorded a test case for an operation descriptor',
   processorRecord: 'changed the processor record of a model endpoint',
   taskReviewApprove: 'approved the table',
   taskReviewEdit: 'corrected the table',

@@ -9,6 +9,7 @@ export const shell = {
   pageTenants: 'Organisations',
   pageOnboarding: 'Onboarding',
   pageModels: 'Models',
+  pageModelOperations: 'Model operations',
   pageCatalog: 'Catalogue',
   pageBuildingBlocks: 'Building blocks',
   pageSearchEngines: 'Search engines',

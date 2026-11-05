@@ -296,11 +296,18 @@ describe('uploading operation descriptors', () => {
     );
   });
 
-  it('an upload needs well-formed fixtures, at least one', async () => {
-    const { put } = await boot();
+  it('an upload may come without fixtures and stays in review until operation@1 passes on one', async () => {
+    const { put, setStatus } = await boot();
     const none = await put(upload(classifyYaml(), []));
-    expect(none.status).toBe(422);
-    expect((await errorsOf(none))[0]?.path).toBe('fixtures');
+    expect(none.status).toBe(201);
+    expect(await none.json()).toMatchObject({ status: 'review', fixtures: 0, contract: null });
+    const described = await setStatus('described');
+    expect(described.status).toBe(422);
+    expect((await errorsOf(described))[0]?.path).toBe('fixtures');
+  });
+
+  it('an upload needs well-formed fixtures', async () => {
+    const { put } = await boot();
     const malformed = await put(upload(classifyYaml(), [{ ...fixture(), usage: undefined }]));
     expect(malformed.status).toBe(422);
     expect((await errorsOf(malformed))[0]?.path).toBe('fixtures.0.usage');
@@ -458,5 +465,153 @@ describe('uploading operation descriptors', () => {
     expect((await booted.withdraw()).status).toBe(204);
     expect(await run(booted)).toContain('no descriptor example/classify@1');
     expect(booted.server.seen).toHaveLength(1);
+  });
+});
+
+describe('recording fixtures from tries', () => {
+  const fixtures = `${path}/fixtures`;
+  type Tried = { task: string; exchange: Record<string, unknown> };
+  const tryWith = async (booted: Booted, text: string) => {
+    const tried = await booted.send('/operator/operations/example/classify@1/try', 'drift', {
+      body: { model: 'lab/small', input: { text }, synthetic: true },
+      reason,
+    });
+    expect(tried.status).toBe(200);
+    return (await tried.json()) as Tried;
+  };
+  const record = (booted: Booted, body: unknown, id = path) =>
+    booted.send(`${id}/fixtures`, 'drift', { body, reason });
+  const ready = async () => {
+    const booted = await boot('test');
+    expect((await booted.put(upload(classifyYaml(), []))).status).toBe(201);
+    expect((await booted.offerClassify()).ok).toBe(true);
+    return booted;
+  };
+
+  it('a try answers the exchange it sent and received, with the input masked', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'Skriv til kari.nordmann@example.no');
+    expect(tried.exchange).toMatchObject({
+      deployment: 'small',
+      request: { method: 'POST', path: '/classifications', body: { model: 'small' } },
+      response: { status: 200, body: { label: 'billing' } },
+      result: { label: 'billing' },
+      usage: { inputTokens: 7, requests: 1 },
+      dropped: 0,
+    });
+    expect(JSON.stringify(tried.exchange)).not.toContain('kari.nordmann@example.no');
+  });
+
+  it('a synthetic try is recorded as a fixture of its upload in review, audited', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'Skriv til kari.nordmann@example.no');
+    const recorded = await record(booted, {
+      task: tried.task,
+      name: 'first-try',
+      exchange: tried.exchange,
+    });
+    expect(recorded.status).toBe(201);
+    expect(await recorded.json()).toMatchObject({
+      status: 'review',
+      fixtures: 1,
+      contract: { passed: true },
+      step: 'fixture-recorded',
+    });
+    const stored = (await (await booted.send(path, 'drift')).json()) as {
+      fixtureCases: { name: string; source: string; input: { text: string } }[];
+    };
+    expect(stored.fixtureCases[0]).toMatchObject({
+      name: 'first-try',
+      source: `recorded from the synthetic try ${tried.task}`,
+    });
+    expect(stored.fixtureCases[0]?.input.text).not.toContain('kari.nordmann@example.no');
+    expect((await booted.setStatus('described')).status).toBe(200);
+    const audited = (await booted.admin.audit()).find(
+      (a) => a.action === 'platform.operations.descriptor-fixture',
+    );
+    expect(audited).toMatchObject({
+      actor: 'operator:test:drift',
+      target: 'operation-descriptor:example/classify@1',
+      outcome: 'applied',
+      reason,
+    });
+  });
+
+  it('a fixture is recorded only with the exchange the try answered', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const changed = { ...tried.exchange, result: { label: 'complaint' } };
+    const refused = await record(booted, { task: tried.task, name: 'edited', exchange: changed });
+    expect(refused.status).toBe(422);
+    expect((await errorsOf(refused))[0]?.path).toBe('exchange');
+    const notATry = await record(booted, {
+      task: 'no-such-task',
+      name: 'edited',
+      exchange: tried.exchange,
+    });
+    expect(notATry.status).toBe(422);
+    expect((await errorsOf(notATry))[0]?.path).toBe('task');
+  });
+
+  it('a fixture name is used once per descriptor', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const body = { task: tried.task, name: 'same', exchange: tried.exchange };
+    expect((await record(booted, body)).status).toBe(201);
+    const again = await record(booted, body);
+    expect(again.status).toBe(422);
+    expect((await errorsOf(again))[0]?.path).toBe('name');
+  });
+
+  it('fixtures are recorded only in test', async () => {
+    const booted = await boot('production');
+    expect((await booted.put()).status).toBe(201);
+    const refused = await booted.send(fixtures, 'drift', {
+      body: { task: 't', name: 'x', exchange: {} },
+      reason,
+    });
+    expect(refused.status).toBe(403);
+    expect((await errorsOf(refused))[0]?.path).toBe('environment');
+  });
+
+  it('a bundled descriptor or a described upload takes no recorded fixture', async () => {
+    const booted = await ready();
+    const tried = await tryWith(booted, 'hei');
+    const body = { task: tried.task, name: 'late', exchange: tried.exchange };
+    expect(
+      (await record(booted, body, '/operator/operation-descriptors/openai/embed@1')).status,
+    ).toBe(409);
+    expect((await record(booted, { ...body, name: 'first' })).status).toBe(201);
+    expect((await booted.setStatus('described')).status).toBe(200);
+    expect((await record(booted, body)).status).toBe(409);
+  });
+});
+
+describe('who uses a descriptor', () => {
+  it("a descriptor's detail names the published services whose steps call it", async () => {
+    const booted = await boot();
+    expect((await booted.put()).status).toBe(201);
+    expect(await (await booted.send(path, 'drift')).json()).toMatchObject({ usedBy: [] });
+    expect((await booted.setStatus('described')).status).toBe(200);
+    expect((await booted.offerClassify()).ok).toBe(true);
+    const published = await publishService(booted);
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    const detail = (await (await booted.send(path, 'drift')).json()) as {
+      usedBy: unknown[];
+      input: unknown;
+    };
+    expect(detail.usedBy).toEqual([{ tenant: digdir, service: 'sortering', version: 1 }]);
+    expect(detail.input).toEqual({ kind: 'object', fields: { text: { kind: 'text' } } });
+  });
+
+  it('the operation kinds name the protocol each descriptor speaks', async () => {
+    const booted = await boot();
+    expect((await booted.put()).status).toBe(201);
+    const kinds = (await (await booted.send('/operator/operation-kinds', 'drift')).json()) as {
+      data: { kind: string; descriptors: unknown[] }[];
+    };
+    expect(kinds.data.find((k) => k.kind === 'classify')?.descriptors).toEqual([
+      { id: 'example/classify@1', status: 'review', protocol: 'openai-chat' },
+    ]);
   });
 });

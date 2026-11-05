@@ -17,10 +17,11 @@ import {
   TableRow,
   Tag,
   Textfield,
+  ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import type { ApiClient } from '../api';
+import { ApiError, type ApiClient } from '../api';
 import { useT, type Format, type T } from '../i18n';
 import { useTenantNames } from '../tenant-names';
 import { useAsync } from '../hooks';
@@ -62,9 +63,39 @@ export const priceText = (price: ModelPrice | null | undefined, f: Format, t: T)
 const capabilities = Object.keys(capabilityLabel) as Capability[];
 const residencies = Object.keys(residencyLabel) as Residency[];
 
+export type ModelControl = 'residency' | 'capabilities' | 'operations' | 'enabled';
+
+export interface ControlError {
+  control: ModelControl;
+  text: string;
+}
+
+const controls: readonly ModelControl[] = ['residency', 'capabilities', 'operations', 'enabled'];
+
+/** The control a failed change belongs next to: the field the API names, else the one changed. */
+export const controlOf = (change: ModelClassification, error: unknown): ModelControl => {
+  const named =
+    error instanceof ApiError ? error.problem?.errors?.[0]?.path?.split('.')[0] : undefined;
+  const fromApi = controls.find((c) => c === named);
+  if (fromApi) return fromApi;
+  return controls.find((c) => c in change) ?? 'enabled';
+};
+
+const detailOf = (error: unknown) =>
+  error instanceof ApiError ? (error.problem?.errors ?? []).map((e) => e.message).join('. ') : '';
+
+const ControlMessage = ({
+  error,
+  control,
+}: {
+  error: ControlError | undefined;
+  control: ModelControl;
+}) => (error?.control === control ? <ValidationMessage>{error.text}</ValidationMessage> : null);
+
 const ModelRow = ({
   model,
   kinds,
+  protocol,
   busy,
   error,
   onChange,
@@ -74,8 +105,9 @@ const ModelRow = ({
 }: {
   model: OperatorModel;
   kinds: OperationKind[] | undefined;
+  protocol: string | undefined;
   busy: boolean;
-  error: string | undefined;
+  error: ControlError | undefined;
   onChange: (change: ModelClassification) => void;
   onEdit: () => void;
   onPrice: () => void;
@@ -106,11 +138,6 @@ const ModelRow = ({
           ) : null,
         )}
         <RejectedHint model={model} />
-        {error ? (
-          <Paragraph role="alert" data-size="sm" className="row-error">
-            {error}
-          </Paragraph>
-        ) : null}
       </TableCell>
       <TableCell>{model.endpoint}</TableCell>
       <TableCell>
@@ -144,6 +171,7 @@ const ModelRow = ({
         <span id={`${fieldId}-hint`} className="muted">
           {t('models.globalStandardHint')}
         </span>
+        <ControlMessage error={error} control="residency" />
       </TableCell>
       <TableCell>{priceText(model.price, f, t)}</TableCell>
       <TableCell>
@@ -173,6 +201,7 @@ const ModelRow = ({
               }
             />
           ))}
+          <ControlMessage error={error} control="capabilities" />
         </Fieldset>
         <Fieldset data-size="sm">
           <FieldsetLegend>
@@ -181,7 +210,7 @@ const ModelRow = ({
               {t('models.forModel', { model: model.deployment })}
             </span>
           </FieldsetLegend>
-          {operationChoices(kinds, offered).map(({ kind, maturity }) => {
+          {operationChoices(kinds, offered, protocol).map(({ kind, maturity }) => {
             const on = offered.includes(kind);
             return (
               <Checkbox
@@ -207,6 +236,7 @@ const ModelRow = ({
               />
             );
           })}
+          <ControlMessage error={error} control="operations" />
         </Fieldset>
       </TableCell>
       <TableCell>
@@ -216,6 +246,7 @@ const ModelRow = ({
           disabled={busy}
           onChange={(e) => onChange({ enabled: e.target.checked })}
         />
+        <ControlMessage error={error} control="enabled" />
       </TableCell>
       <TableCell>
         <span className="row-actions">
@@ -256,7 +287,7 @@ export const Models = ({ api }: { api: ApiClient }) => {
   const [state, retry] = useAsync((signal) => api.listModels(signal), [api]);
   const [models, setModels] = useState<OperatorModel[]>([]);
   const [busy, setBusy] = useState<Set<string>>(new Set());
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, ControlError>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [refreshed, setRefreshed] = useState<RefreshResult | 'failed' | undefined>(undefined);
   const [reason, setReason] = useState('');
@@ -269,6 +300,11 @@ export const Models = ({ api }: { api: ApiClient }) => {
   const [kinds] = useAsync((signal) => api.operationKinds(signal), [api]);
   const flash = useFlash();
   const tenantName = useTenantNames(api);
+  const protocolOf = (endpoint: string) => {
+    if (endpoints.status !== 'ready') return undefined;
+    const protocol = endpoints.data.find((e) => e.id === endpoint)?.spec.protocol;
+    return typeof protocol === 'string' ? protocol : undefined;
+  };
   const endpointIds =
     endpoints.status === 'ready'
       ? endpoints.data.map((e) => e.id)
@@ -298,11 +334,11 @@ export const Models = ({ api }: { api: ApiClient }) => {
       const updated = await api.classifyModel(model.id, classification, reason.trim());
       setModels((all) => all.map((m) => (m.id === updated.id ? updated : m)));
       flash.show(tRef.current('models.saved', { model: updated.deployment }));
-    } catch {
-      setErrors((e) => ({
-        ...e,
-        [model.id]: tRef.current('models.saveFailed', { model: model.deployment }),
-      }));
+    } catch (error) {
+      const text = [tRef.current('models.saveFailed', { model: model.deployment }), detailOf(error)]
+        .filter(Boolean)
+        .join(' ');
+      setErrors((e) => ({ ...e, [model.id]: { control: controlOf(classification, error), text } }));
     } finally {
       setBusy((b) => {
         const next = new Set(b);
@@ -409,6 +445,7 @@ export const Models = ({ api }: { api: ApiClient }) => {
                   key={m.id}
                   model={m}
                   kinds={kinds.status === 'ready' ? kinds.data : undefined}
+                  protocol={protocolOf(m.endpoint)}
                   busy={busy.has(m.id)}
                   error={errors[m.id]}
                   onChange={(c) => onChange(m, c)}
@@ -440,6 +477,7 @@ export const Models = ({ api }: { api: ApiClient }) => {
             reloadEndpoints();
           }}
           onAddModel={(endpoint) => setEditing({ endpoint })}
+          onProcessorSaved={(id) => flash.show(t('endpoints.processorSaved', { id }))}
         />
       ) : null}
       {editing ? (

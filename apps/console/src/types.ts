@@ -39,12 +39,112 @@ export type Capability = 'stream' | 'tools' | 'json-schema' | 'reasoning';
 export type BuiltInOperation = 'chat' | 'decide';
 export type ModelOperation = string;
 
+export type Maturity = 'test' | 'production';
+export type DescriptorStatus = 'review' | 'described' | 'typed';
+
 export interface OperationKind {
   kind: ModelOperation;
   builtIn: boolean;
-  maturity: 'test' | 'production';
+  maturity: Maturity;
   typed?: 'production';
-  descriptors: { id: string; status: string }[];
+  by?: string;
+  at?: string;
+  descriptors: { id: string; status: string; protocol?: string }[];
+}
+
+export interface OperationKinds {
+  environment: Maturity;
+  data: OperationKind[];
+}
+
+export interface DescriptorContract {
+  suite: string;
+  checks: number;
+  passed: boolean;
+  failures: { check: string; problems: string[] }[];
+}
+
+export interface OperationDescriptor {
+  id: string;
+  operation: ModelOperation;
+  status: DescriptorStatus;
+  source: 'bundled' | 'uploaded';
+  summary: string;
+  protocol: string | null;
+  fixtures: number;
+  contract: DescriptorContract | null;
+  problems?: string[];
+  version?: number;
+  by?: string;
+  at?: string;
+  reason?: string;
+}
+
+export type InputShape =
+  | { kind: 'text' }
+  | { kind: 'plain'; min?: number }
+  | { kind: 'ref'; pattern?: string }
+  | { kind: 'enum'; values: string[] }
+  | { kind: 'number'; integer?: boolean; min?: number; max?: number }
+  | { kind: 'boolean' }
+  | { kind: 'null' }
+  | { kind: 'json' }
+  | { kind: 'media'; type: string }
+  | { kind: 'opaque' }
+  | { kind: 'optional'; shape: InputShape }
+  | { kind: 'object'; fields: Record<string, InputShape> }
+  | { kind: 'array'; item: InputShape; min?: number; max?: number }
+  | { kind: 'variant'; key: string; options: Record<string, InputShape> }
+  | { kind: 'either'; options: InputShape[] };
+
+export interface DescriptorFixture {
+  name: string;
+  source?: string;
+  input: unknown;
+  [field: string]: unknown;
+}
+
+export interface DescriptorDetail extends OperationDescriptor {
+  input?: InputShape;
+  usedBy: { tenant: string; service: string; version: number }[];
+  document?: Record<string, unknown>;
+  fixtureCases?: DescriptorFixture[];
+}
+
+export interface DescriptorUpload {
+  descriptor: string;
+  fixtures?: DescriptorFixture[];
+}
+
+export interface WireExchange {
+  deployment: string;
+  input: unknown;
+  request: { method: string; path: string; query?: Record<string, string>; body: unknown };
+  response: { status: number; body: unknown };
+  result: unknown;
+  usage: Record<string, number>;
+  dropped: number;
+}
+
+export interface OperationTryResult {
+  task: string;
+  descriptor: string;
+  model: string;
+  result: unknown;
+  exchange?: WireExchange;
+}
+
+export interface ProcessorRecord {
+  agreement: string;
+  subProcessors: { name: string; location: string }[];
+  retention: { days: number; note?: string };
+}
+
+export interface EndpointProcessorRecord {
+  endpoint: string;
+  record: ProcessorRecord | null;
+  by?: string;
+  at?: string;
 }
 
 export interface ModelUsage {

@@ -45,7 +45,7 @@ const problem = (c: Context, status: Status, errors: ValidationError[] = []) =>
     'content-type': 'application/problem+json',
   });
 
-const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
+export const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
   steps.flatMap((s) => [
     s,
     ...stepsIn(s.repeat?.steps ?? []),
@@ -161,7 +161,7 @@ const maturityView = (state: MaturityState, descriptors: DescriptorRegistry) => 
   descriptors: descriptors
     .list()
     .filter((d) => d.operation === state.kind)
-    .map((d) => ({ id: d.id, status: d.status })),
+    .map((d) => ({ id: d.id, status: d.status, protocol: d.api.protocol })),
 });
 
 const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | undefined) => ({

@@ -21,7 +21,8 @@ responsibilities:
   - Let operators set the maturity of operation kinds and the processor records of model endpoints,
     and refuse a service's call-operation step at publish unless both allow it (ADR 0047)
   - Let operators upload operation descriptors with their fixtures, checked by the loader rules and
-    operation@1 before they are stored, and move or withdraw them, audited (ADR 0047)
+    operation@1 before they are stored, record fixtures from their synthetic tries in test, and
+    move or withdraw them, audited (ADR 0047)
 files:
   - apps/api/src/main.ts
   - apps/api/src/composition.ts

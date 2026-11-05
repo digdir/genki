@@ -567,7 +567,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     const governance = this.options.governance ?? unrecordedGovernance;
     return {
       info,
-      call: async (id, input) => {
+      call: async (id, input, options) => {
         await this.options.descriptors?.refresh?.();
         const descriptor = this.options.descriptors?.get(id);
         if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
@@ -605,6 +605,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
             priced: (usage) => withListPrice(usage, this.options.priceOf?.(model.id)),
             provenance: () => ({ model: served }),
             fail: errorFromStatus,
+            ...(tier === 'raw' && options?.observe ? { observe: options.observe } : {}),
           },
           input,
         );

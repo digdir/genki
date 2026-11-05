@@ -72,6 +72,7 @@ const throughAdminTasks = [
   'DELETE /operator/model-endpoints/:id/processor-record',
   'PUT /operator/operation-descriptors/:id{.+}',
   'POST /operator/operation-descriptors/:id{.+}/status',
+  'POST /operator/operation-descriptors/:id{.+}/fixtures',
   'DELETE /operator/operation-descriptors/:id{.+}',
   'POST /operator/skills/shares/:id/decision',
   'PUT /operator/recipes/shares/:flow',

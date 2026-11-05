@@ -20,6 +20,7 @@ responsibilities:
   - Map typed input to the wire request and the wire answer back, without code
   - Run a descriptor call through the gate with the endpoint's credential and egress guard
   - Prove each descriptor against recorded fixtures (operation@1)
+  - Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture
 files:
   - packages/operations/src/descriptor.ts
   - packages/operations/src/shape.ts

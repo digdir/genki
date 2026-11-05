@@ -204,6 +204,7 @@ export const adminActionRights: Readonly<
   'platform.operations.descriptor-upload': 'operator',
   'platform.operations.descriptor-status': 'operator',
   'platform.operations.descriptor-withdraw': 'operator',
+  'platform.operations.descriptor-fixture': 'operator',
   'platform.plugin.verify': 'operator',
   'platform.plugin.register': 'operator',
   'platform.plugin.remove': 'operator',

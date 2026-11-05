@@ -114,6 +114,7 @@ import {
   operationTryPolicy,
   operationTryRunner,
   operationTryStrategy,
+  type TryExchanges,
   type EnvironmentTier,
 } from './operation-try.js';
 import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
@@ -607,10 +608,11 @@ export const createRuntime = async (input: RuntimeInput) => {
             .residency)
         : undefined,
   };
+  const tryExchanges: TryExchanges = new Map();
   const strategies: Strategy[] = [
     ...serviceStrategies,
     batchStrategy as Strategy,
-    operationTryStrategy(environmentTier) as Strategy,
+    operationTryStrategy(environmentTier, tryExchanges) as Strategy,
     ...(input.extraStrategies?.({
       models,
       knowledge,
@@ -904,6 +906,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       registry,
       platformTenant,
       tier: environmentTier,
+      exchanges: tryExchanges,
       ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     }),
   };

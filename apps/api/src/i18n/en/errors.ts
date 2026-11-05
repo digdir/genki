@@ -453,6 +453,14 @@ export const operationErrors = {
   descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
   descriptorUploadTooLarge: 'an upload is at most {size} KiB',
   descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  descriptorNoFixturesYet: '{id} has no fixtures yet; record one from a try before it is described',
+  fixturesFromTriesInTest: 'fixtures are recorded from tries, in test only',
+  descriptorBundledFixtures:
+    '{id} is bundled with Genki; its fixtures change through a pull request',
+  notAFinishedTry: '{task} is not a finished try of {id}',
+  exchangeNotTheTry: 'the exchange is not the one this try sent and received',
+  fixtureNameTaken: '{id} already has a fixture called {name}',
+  descriptorFixturesAtMost: 'a descriptor has at most {maxDescriptorFixtures} fixtures',
   bodyNotJson: 'the body is not JSON',
   uploadStatusValues:
     'status is review or described; typed means Genki has its own code for the operation',
