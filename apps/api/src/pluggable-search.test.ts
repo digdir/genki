@@ -155,13 +155,13 @@ describe('pluggable search engines over the API', () => {
 
     it('copy from the platform database to the knowledge database is refused in bokmål for its document records, not as shared storage', async () => {
       const { call } = await boot({
-        embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+        embeddingAdapters: [fakeEmbeddingAdapter()],
         catalogs: {
           ...knowledgeCatalogs,
           embeddings: {
             endpoints: {
               fake: {
-                protocol: 'fake-embeddings',
+                protocol: 'fake',
                 baseURL: 'https://embed.invalid',
                 auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
               },
@@ -471,7 +471,7 @@ describe('pluggable search engines over the API', () => {
   });
 
   it('ingestion into a pgvector dataset stores, embeds with a fake embedder and becomes searchable', async () => {
-    const adapter = fakeEmbeddingAdapter('fake-embeddings');
+    const adapter = fakeEmbeddingAdapter();
     const docs = join(folder, 'veiledning');
     await rm(docs, { recursive: true, force: true });
     await mkdir(docs, { recursive: true });
@@ -498,7 +498,7 @@ describe('pluggable search engines over the API', () => {
         embeddings: {
           endpoints: {
             fake: {
-              protocol: 'fake-embeddings',
+              protocol: 'fake',
               baseURL: 'https://embed.invalid',
               auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
             },
@@ -591,10 +591,9 @@ describe('pluggable search engines over the API', () => {
   it('the API starts without embedding configuration', async () => {
     const config = join(import.meta.dirname, '..', 'config', 'local');
     const catalogs = {
-      models: { endpoints: {}, models: [] },
+      models: loadCatalog(config, 'models.yaml', 'models', {}).catalog,
       knowledge: loadCatalog(config, 'knowledge.yaml', 'datasets', {}).catalog,
       rerank: { endpoints: {}, rerankers: [] },
-      embeddings: loadCatalog(config, 'embeddings.yaml', 'models', {}).catalog,
     };
     const withDatabase = await boot({ catalogs });
     expect(withDatabase.platform.embedders.describe()).toEqual([]);

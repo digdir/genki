@@ -1,4 +1,12 @@
-import { withListPrice, type Ref } from '@genai/contracts';
+import {
+  perThousandView,
+  pricedUsage,
+  unitPricesFor,
+  type PriceSpec,
+  type Ref,
+  type UnitPrices,
+  type UsagePrice,
+} from '@genai/contracts';
 import {
   createGate,
   credentialFor,
@@ -13,6 +21,7 @@ import {
 import { describedCall, describedSend } from '@genai/operations';
 import {
   errorFromStatus,
+  type BuiltInApi,
   type DeploymentConfig,
   type DiscoverySource,
   type ModelAdapter,
@@ -67,7 +76,11 @@ export interface ModelRouterOptions {
   secrets: SecretResolver;
   sources?: DiscoverySource[];
   classifications?: ModelClassificationStore;
-  priceOf?: (id: string) => ModelPrice | undefined;
+  priceOf?: (id: string) => PriceSpec | undefined;
+  /** Built-in APIs other ports implement, so models can bind them. */
+  portApis?: readonly BuiltInApi[];
+  typedCalls?: ProcessorRecordCheck;
+  onUnrecordedProcessor?: (endpoint: string, kind: string) => void;
   tokenProviders?: Record<string, () => Promise<string>>;
   maxResidency?: Residency;
   maxRetries?: number;
@@ -78,10 +91,11 @@ export interface ModelRouterOptions {
   governance?: OperationGovernance;
 }
 
-export interface ModelPrice {
-  inputPerThousand: number;
-  outputPerThousand: number;
-}
+export type ModelPrice = UsagePrice;
+
+/** What a typed call on a connection without a processor record does: warn and go on, or refuse real data. */
+export const processorRecordChecks = ['warn', 'enforce'] as const;
+export type ProcessorRecordCheck = (typeof processorRecordChecks)[number];
 
 export interface ModelDescription {
   transport?: ModelTransport;
@@ -97,6 +111,7 @@ export interface ModelDescription {
   origin: 'catalog' | 'discovered';
   classified: boolean;
   price?: ModelPrice | null;
+  prices?: Record<string, UnitPrices>;
   parameters: ParameterRules;
   rejectedParameters: Partial<Record<TunableParameter, string>>;
 }
@@ -120,6 +135,13 @@ interface Route {
 }
 
 export const modelOutputCeiling = 16_384;
+
+/** Kinds served by their own ports, not by the model port. */
+export const otherPortKinds: readonly string[] = ['embed', 'rerank'];
+
+/** Whether a model serves a kind of the model port, so a service may name it as its model. */
+export const servesModelPort = (model: { operations: readonly string[] }) =>
+  model.operations.some((kind) => !otherPortKinds.includes(kind));
 
 const kindPorts: Readonly<Record<string, string>> = { chat: 'model', decide: 'decision' };
 
@@ -153,7 +175,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
   constructor(private readonly options: ModelRouterOptions) {
     this.#continuations = options.adapters.flatMap((a) => (a.continuation ? [a.continuation] : []));
     this.#gate = options.gate ?? createGate();
-    this.#apis = apiRegistry(options.adapters, options.descriptors);
+    this.#apis = apiRegistry(options.adapters, options.descriptors, options.portApis);
     this.#catalog = this.#load(options.catalog);
   }
 
@@ -271,7 +293,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     this.#live.clear();
     for (const route of this.#routes().values()) {
       const model = this.#effective(route);
-      if (model.enabled)
+      if (model.enabled && servesModelPort({ operations: Object.keys(model.apis) }))
         this.#live.set(model.id, {
           residency: model.residency,
           capabilities: model.capabilities,
@@ -402,9 +424,43 @@ export class ModelRouter implements PortProvider<ModelPort> {
       classified: Object.keys(this.#classes[model.id] ?? {}).some(
         (k) => k !== 'observed' && k !== 'parameters',
       ),
-      ...(this.options.priceOf ? { price: this.options.priceOf(model.id) ?? null } : {}),
+      ...(this.options.priceOf ? this.#priceView(model.id, Object.keys(model.apis)) : {}),
       parameters: model.parameters ?? {},
       rejectedParameters: this.#classes[model.id]?.observed ?? {},
+    };
+  }
+
+  #priceView(id: string, kinds: string[]) {
+    const spec = this.options.priceOf?.(id);
+    const prices = Object.fromEntries(
+      kinds.flatMap((kind) => {
+        const units = unitPricesFor(spec, kind);
+        return units ? [[kind, units] as const] : [];
+      }),
+    );
+    return { price: perThousandView(spec) ?? null, prices };
+  }
+
+  #unitPrices(id: string, kind: string) {
+    return unitPricesFor(this.options.priceOf?.(id), kind);
+  }
+
+  readonly #warnedUnrecorded = new Set<string>();
+
+  /** The processor record and maturity a typed call carries; built-in kinds are production by construction. */
+  async #typedTarget(target: GateTarget): Promise<GateTarget> {
+    const endpoint = target.endpoint ?? '';
+    const governance = this.options.governance ?? unrecordedGovernance;
+    const recorded = await governance.processorRecorded(endpoint);
+    const enforced = this.options.typedCalls === 'enforce';
+    if (!recorded && !enforced && !this.#warnedUnrecorded.has(endpoint)) {
+      this.#warnedUnrecorded.add(endpoint);
+      this.options.onUnrecordedProcessor?.(endpoint, target.operation);
+    }
+    return {
+      ...target,
+      maturity: 'production',
+      ...(recorded || enforced ? { processorRecord: recorded } : {}),
     };
   }
 
@@ -508,7 +564,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
     const payload = {
       ...decidePayload,
       usage: (result: DecisionResult) =>
-        withListPrice(result.usage, this.options.priceOf?.(model.id)),
+        pricedUsage(result.usage, this.#unitPrices(model.id, 'decide')),
       provenance: () => ({ model: served }),
     };
     return {
@@ -532,7 +588,8 @@ export class ModelRouter implements PortProvider<ModelPort> {
                 ).result
             : undefined);
         if (!decide) throw new ModelError('unsupported', `${api} has no implementation for decide`);
-        const gated = described ? { ...target, descriptor: described.id } : target;
+        const typed = await this.#typedTarget(target);
+        const gated = described ? { ...typed, descriptor: described.id } : typed;
         return this.#gate.call(ctx, gated, payload, request, async (sent) => {
           try {
             return await decide(deployment, sent, ctx.signal);
@@ -602,7 +659,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
             descriptor,
             endpoint,
             deployment: model.deployment,
-            priced: (usage) => withListPrice(usage, this.options.priceOf?.(model.id)),
+            priced: (usage) => pricedUsage(usage, this.#unitPrices(model.id, descriptor.operation)),
             provenance: () => ({ model: served }),
             fail: errorFromStatus,
             ...(tier === 'raw' && options?.observe ? { observe: options.observe } : {}),
@@ -634,9 +691,10 @@ export class ModelRouter implements PortProvider<ModelPort> {
         );
     };
     const gate = this.#gate;
+    const typed = () => this.#typedTarget(target);
     const payload = {
       ...chatPayload(this.#continuations),
-      usage: (result: ChatResult) => withListPrice(result.usage, this.options.priceOf?.(model.id)),
+      usage: (result: ChatResult) => pricedUsage(result.usage, this.#unitPrices(model.id, 'chat')),
       provenance: () => ({ model: served }),
     };
     const observe = (result: ChatResult): ChatResult => {
@@ -665,7 +723,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
         const request = bounded(input);
         const { connection, deployment } = chatting();
         require(request);
-        const result = await gate.call(ctx, target, payload, request, async (sent) => {
+        const result = await gate.call(ctx, await typed(), payload, request, async (sent) => {
           try {
             return await connection.chat(deployment, sent, ctx.signal);
           } catch (error) {
@@ -691,7 +749,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
           }
           if (!ended) throw new ModelError('unavailable', 'the stream ended without a result');
         };
-        for await (const chunk of gate.stream(ctx, target, payload, request, upstream))
+        for await (const chunk of gate.stream(ctx, await typed(), payload, request, upstream))
           yield chunk.kind === 'done' ? { kind: 'done', result: observe(chunk.result) } : chunk;
       },
     };

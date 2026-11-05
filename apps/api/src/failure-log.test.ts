@@ -82,7 +82,7 @@ describe('the API log', () => {
     await expect(run.result).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(lines).toEqual([
+    expect(lines.filter((l) => !l.msg.includes('processor record'))).toEqual([
       {
         msg: 'model call failed',
         fields: {

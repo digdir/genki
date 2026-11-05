@@ -184,6 +184,7 @@ export const anthropicMessages: ModelAdapter<ModelOptions> = {
       kind: 'chat',
       family: 'anthropic',
       modelOptions,
+      units: ['input-token', 'output-token', 'cached-input-token', 'request'],
       default: true,
     },
   ],

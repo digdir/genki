@@ -50,16 +50,36 @@ export const openAiApis = {
   decide: 'openai/decide@1',
 } as const;
 
+const tokenUnits: BuiltInApi['units'] = [
+  'input-token',
+  'output-token',
+  'cached-input-token',
+  'request',
+];
+
 const apis: BuiltInApi[] = [
   {
     id: openAiApis.chatCompletions,
     kind: 'chat',
     family: 'openai',
     modelOptions: chatCompletionsOptions,
+    units: tokenUnits,
     default: true,
   },
-  { id: openAiApis.responses, kind: 'chat', family: 'openai', modelOptions: z.strictObject({}) },
-  { id: openAiApis.decide, kind: 'decide', family: 'openai', modelOptions: z.strictObject({}) },
+  {
+    id: openAiApis.responses,
+    kind: 'chat',
+    family: 'openai',
+    modelOptions: z.strictObject({}),
+    units: tokenUnits,
+  },
+  {
+    id: openAiApis.decide,
+    kind: 'decide',
+    family: 'openai',
+    modelOptions: z.strictObject({}),
+    units: tokenUnits,
+  },
 ];
 
 const finishReasons: Record<string, FinishReason> = {
@@ -379,4 +399,4 @@ export const azureDeployments: DiscoverySource = {
   },
 };
 
-export { openAiEmbeddings } from './embeddings.js';
+export { openAiEmbeddings, openAiEmbeddingsApi } from './embeddings.js';

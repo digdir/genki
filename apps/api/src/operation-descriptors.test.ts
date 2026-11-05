@@ -343,14 +343,14 @@ describe('uploading operation descriptors', () => {
 
   it('an uploaded descriptor cannot replace a bundled one', async () => {
     const { send } = await boot();
-    const refused = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const refused = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'PUT',
       body: upload(),
       reason,
     });
     expect(refused.status).toBe(409);
     expect((await errorsOf(refused))[0]?.message).toContain('upload a new version instead');
-    const withdrawn = await send('/operator/operation-descriptors/openai/embed@1', 'drift', {
+    const withdrawn = await send('/operator/operation-descriptors/openai/embeddings@1', 'drift', {
       method: 'DELETE',
       reason,
     });
@@ -384,7 +384,7 @@ describe('uploading operation descriptors', () => {
     const listed = (await (await send('/operator/operation-descriptors', 'drift')).json()) as {
       data: { id: string }[];
     };
-    expect(listed.data.find((d) => d.id === 'openai/embed@1')).toMatchObject({
+    expect(listed.data.find((d) => d.id === 'openai/embeddings@1')).toMatchObject({
       source: 'bundled',
       status: 'typed',
       fixtures: 2,
@@ -579,7 +579,7 @@ describe('recording fixtures from tries', () => {
     const tried = await tryWith(booted, 'hei');
     const body = { task: tried.task, name: 'late', exchange: tried.exchange };
     expect(
-      (await record(booted, body, '/operator/operation-descriptors/openai/embed@1')).status,
+      (await record(booted, body, '/operator/operation-descriptors/openai/embeddings@1')).status,
     ).toBe(409);
     expect((await record(booted, { ...body, name: 'first' })).status).toBe(201);
     expect((await booted.setStatus('described')).status).toBe(200);

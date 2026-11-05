@@ -1,4 +1,5 @@
 import {
+  currentApiId,
   descriptorDocument,
   DescriptorError,
   toDescriptor,
@@ -156,7 +157,7 @@ export const liveDescriptors = (
   let applied = 0;
   return {
     bundled,
-    get: (id) => bundled.get(id) ?? uploaded.get(id)?.descriptor,
+    get: (id) => bundled.get(id) ?? uploaded.get(currentApiId(id))?.descriptor,
     list: () =>
       [...bundled.list(), ...[...uploaded.values()].map((u) => u.descriptor)].sort((a, b) =>
         a.id.localeCompare(b.id),

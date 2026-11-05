@@ -42,6 +42,17 @@ const endpoint = z.strictObject({
   discovery: z.array(discoveryRule).default([]),
 });
 
+export const rerankFailureModes = ['degrade', 'fail'] as const;
+
+/** Settings that belong to one operation kind, kept under the kind's name on the model. */
+export const kindSettings = {
+  embed: z.strictObject({
+    dimensions: z.number().int().positive(),
+    maxBatch: z.number().int().positive().optional(),
+  }),
+  rerank: z.strictObject({ onFailure: z.enum(rerankFailureModes).default('degrade') }),
+};
+
 const model = z.strictObject({
   id,
   endpoint: id,
@@ -54,6 +65,8 @@ const model = z.strictObject({
   maxOutputTokens: z.number().int().positive().optional(),
   parameters: parameterRules.optional(),
   tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
+  embed: kindSettings.embed.optional(),
+  rerank: kindSettings.rerank.optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -186,6 +199,11 @@ export const parseCatalog = (
       return;
     }
     bindingErrors(`models.${index}.apis`, bound, Object.keys(e.families));
+    if (bound.embed && !m.embed)
+      errors.push({
+        path: `models.${index}.embed`,
+        message: 'an embedding model names its dimensions under embed',
+      });
     const options = modelOptionsSchema(bound, apis).safeParse(m.options);
     if (!options.success) {
       for (const i of options.error.issues)

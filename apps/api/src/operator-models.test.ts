@@ -217,6 +217,48 @@ describe('platform models for operators', () => {
     expect((await send('/operator/apis', 'kari')).status).toBe(403);
   });
 
+  it('an API lists the units its usage mapping names', async () => {
+    const { send } = await boot();
+
+    const listed = await json<{ data: { id: string; units: string[] }[] }>(
+      await send('/operator/apis', 'drift'),
+    );
+
+    expect(listed.data.find((a) => a.id === 'openai/chat-completions@1')?.units).toEqual(
+      expect.arrayContaining(['input-token', 'output-token']),
+    );
+  });
+
+  it('a price is set per kind and unit, and the per-1000 view follows from it', async () => {
+    const { send, platform } = await boot();
+
+    const priced = await send('/operator/models/fake/gpt/price', 'drift', {
+      method: 'PUT',
+      body: { chat: { 'input-token': 0.00001, 'output-token': 0.00004 } },
+      reason: 'Ny avtale med leverandøren',
+    });
+
+    expect(priced.status).toBe(200);
+    expect(await priced.json()).toMatchObject({
+      prices: { chat: { 'input-token': 0.00001, 'output-token': 0.00004 } },
+      inputPerThousand: 0.01,
+      outputPerThousand: 0.04,
+    });
+    expect(platform.prices['fake/gpt']).toEqual({
+      inputPerThousand: 0.01,
+      outputPerThousand: 0.04,
+    });
+    expect(
+      (
+        await send('/operator/models/fake/gpt/price', 'drift', {
+          method: 'PUT',
+          body: { chat: { 'input-tokens': 0.1 } },
+          reason,
+        })
+      ).status,
+    ).toBe(400);
+  });
+
   it('a price override shows in /models and in the prices usage cost reads', async () => {
     const { send, platform } = await boot();
 

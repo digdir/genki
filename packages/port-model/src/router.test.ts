@@ -12,6 +12,7 @@ import {
 } from '@genai/operations';
 import { contractFailures, fixturesFor, operationContract } from '@genai/operations/contract';
 import {
+  apiRegistry,
   ModelError,
   ModelRouter,
   modelOutputCeiling,
@@ -1295,5 +1296,168 @@ describe('a new operation kind from a descriptor alone', () => {
       ['example/classify@1', 'classify', 'proto-a', 'bundled'],
       ['proto-a/chat@1', 'chat', 'proto-a', 'built-in'],
     ]);
+  });
+});
+
+describe('typed calls and processor records (ADR 0048)', () => {
+  const recorded = (endpoints: string[]) => ({
+    maturity: async () => 'test' as const,
+    processorRecorded: async (endpoint: string) => endpoints.includes(endpoint),
+  });
+
+  it('a typed chat call on a connection without a processor record is refused for real data when the check is enforced', async () => {
+    const a = recording('proto-a');
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded(['two']),
+      typedCalls: 'enforce',
+    });
+
+    await expect(open(router, 'a/small').chat({ messages: [] })).rejects.toMatchObject({
+      message: expect.stringMatching(/has no processor record/),
+    });
+    expect(a.calls).toEqual([]);
+    await expect(open(router, 'b/large').chat({ messages: [] })).resolves.toMatchObject({
+      content: 'proto-b:large-dep',
+    });
+  });
+
+  it('a typed chat call without a processor record goes through and warns once per connection when the check warns', async () => {
+    const warned: string[] = [];
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded([]),
+      onUnrecordedProcessor: (endpoint, kind) => warned.push(`${endpoint}:${kind}`),
+    });
+
+    await open(router, 'a/small').chat({ messages: [] });
+    await open(router, 'a/small').chat({ messages: [] });
+    for await (const chunk of open(router, 'a/small').chatStream({ messages: [] })) void chunk;
+    await open(router, 'b/large').chat({ messages: [] });
+
+    expect(warned).toEqual(['one:chat', 'two:chat']);
+  });
+
+  it('a typed call is production by construction, so a kind still in test does not stop it', async () => {
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      governance: recorded(['one']),
+      typedCalls: 'enforce',
+      gate: createGate({ tier: 'production' }),
+    });
+
+    await expect(open(router, 'a/small').chat({ messages: [] })).resolves.toMatchObject({
+      content: 'proto-a:small-dep',
+    });
+  });
+});
+
+describe('prices per kind and unit (ADR 0048)', () => {
+  it('a chat call is priced with the chat prices of its model, and shown per 1,000 tokens', async () => {
+    const a = recording('proto-a', async () => ({
+      ...answer('ok'),
+      usage: { inputTokens: 2000, outputTokens: 500, cachedInputTokens: 1000, requests: 1 },
+    }));
+    const router = new ModelRouter({
+      catalog,
+      adapters: [a.adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      priceOf: (id) =>
+        id === 'a/small'
+          ? {
+              chat: {
+                'input-token': 0.00002,
+                'output-token': 0.0001,
+                'cached-input-token': 0.000005,
+              },
+              decide: { 'input-token': 1 },
+            }
+          : undefined,
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered.map((m) => m.usage.costMicroNok)).toEqual([75_000]);
+    expect(router.describe().find((m) => m.id === 'a/small')).toMatchObject({
+      price: { inputPerThousand: 0.02, outputPerThousand: 0.1 },
+      prices: { chat: { 'input-token': 0.00002 } },
+    });
+  });
+
+  it('a model that names no price for a kind leaves its calls of that kind unpriced', async () => {
+    const router = new ModelRouter({
+      catalog,
+      adapters: [recording('proto-a').adapter, recording('proto-b').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+      priceOf: () => ({ decide: { 'input-token': 1, 'output-token': 1 } }),
+    });
+    const { ctx, metered } = testContext();
+
+    await open(router, 'a/small', ctx).chat({ messages: [] });
+
+    expect(metered[0]?.usage.costMicroNok).toBeUndefined();
+  });
+});
+
+describe('embedding and rerank models in the model catalogue (ADR 0048)', () => {
+  const portApis = [
+    { id: 'proto-a/embed@1', kind: 'embed', family: 'proto-a', modelOptions: z.strictObject({}) },
+  ];
+  const embedder = (extra: Record<string, unknown> = {}) => ({
+    endpoints: catalog.endpoints,
+    models: [
+      {
+        id: 'a/embedder',
+        endpoint: 'one',
+        deployment: 'emb',
+        residency: 'eu',
+        apis: { embed: 'proto-a/embed@1' },
+        ...extra,
+      },
+    ],
+  });
+
+  it('an embedding model in the catalogue names its dimensions under embed', () => {
+    const apis = apiRegistry([recording('proto-a').adapter], undefined, portApis);
+
+    expect(parseCatalog(embedder(), apis)).toMatchObject({
+      ok: false,
+      errors: [{ path: 'models.0.embed' }],
+    });
+    expect(parseCatalog(embedder({ embed: { dimensions: 8, maxBatch: 4 } }), apis)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('a model that binds only another port kind is listed for operators but is not a model a service can name', () => {
+    const router = new ModelRouter({
+      catalog: embedder({ embed: { dimensions: 8 } }),
+      adapters: [recording('proto-a').adapter],
+      portApis,
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      tokenProviders: { entra: async () => 'entra-token' },
+    });
+
+    expect(router.describe().map((m) => [m.id, m.operations])).toEqual([['a/embedder', ['embed']]]);
+    expect(router.models().has('a/embedder')).toBe(false);
+  });
+
+  it('an API renamed after models bound it is found by its old id', () => {
+    const apis = apiRegistry([], loadDescriptors());
+
+    expect(apis.get('openai/embed@1')).toMatchObject({ id: 'openai/embeddings@1', kind: 'embed' });
+    expect(apis.get('openai/embeddings@1')?.units).toEqual(['input-token', 'request']);
   });
 });

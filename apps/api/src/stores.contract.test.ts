@@ -479,7 +479,7 @@ describe.each([['memory'], ['postgres']])('%s stores added alongside', (name) =>
       kind: 'price',
       scope: 'platform',
       id: 'contract/model',
-      spec: { inputPerThousand: 1, outputPerThousand: 2 },
+      spec: { chat: { 'input-token': 0.001, 'output-token': 0.002 } },
       by: 'test',
       reason: 'kontrakt',
     });
@@ -511,8 +511,7 @@ describe.each([['memory'], ['postgres']])('%s stores added alongside', (name) =>
     await second.initialize();
 
     expect(second.effective().prices['contract/model']).toEqual({
-      inputPerThousand: 1,
-      outputPerThousand: 2,
+      chat: { 'input-token': 0.001, 'output-token': 0.002 },
     });
     expect(
       (await createGateRegistry({ store: reopened, builtins: new Map() }).forTenant(ORG_A)).has(

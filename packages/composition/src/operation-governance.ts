@@ -1,7 +1,12 @@
 import type { EnvironmentTier, Maturity } from '@genai/kernel';
-import type { OperationGovernance } from '@genai/port-model';
+import type { OperationGovernance, ProcessorRecordCheck } from '@genai/port-model';
 import { z } from 'zod';
 import { platformScope, type ConfigEntry, type ConfigEntryStore } from './config-store.js';
+
+/** `GENAI_PROCESSOR_RECORDS=enforce` refuses real data on typed calls to a connection without a processor record. */
+export const processorRecordCheckOf = (
+  env: Record<string, string | undefined>,
+): ProcessorRecordCheck => (env.GENAI_PROCESSOR_RECORDS === 'enforce' ? 'enforce' : 'warn');
 
 export const maturityEntryKind = 'operation-maturity';
 export const processorRecordKind = 'processor-record';

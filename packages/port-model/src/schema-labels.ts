@@ -78,6 +78,14 @@ const nb = {
   mode: { label: 'Regel', values: parameterModes },
   value: { label: 'Verdi' },
   tenants: { label: 'Virksomheter som kan bruke den', help: 'Tomt betyr alle.' },
+  embed: { label: 'Innbygging' },
+  dimensions: { label: 'Dimensjoner' },
+  maxBatch: { label: 'Flest tekster per kall' },
+  rerank: { label: 'Omrangering' },
+  onFailure: {
+    label: 'Når omrangeringen feiler',
+    values: { degrade: 'Behold rekkefølgen fra søket', fail: 'Avbryt' },
+  },
   options: { label: 'Andre valg' },
   protocol: { label: 'Protokoll' },
   families: {
@@ -150,6 +158,14 @@ const en: Record<keyof typeof nb, LabelText> = {
   mode: { label: 'Rule', values: parameterModesEn },
   value: { label: 'Value' },
   tenants: { label: 'Organisations that may use it', help: 'Empty means all.' },
+  embed: { label: 'Embedding' },
+  dimensions: { label: 'Dimensions' },
+  maxBatch: { label: 'Most texts per call' },
+  rerank: { label: 'Reranking' },
+  onFailure: {
+    label: 'When reranking fails',
+    values: { degrade: 'Keep the search order', fail: 'Stop' },
+  },
   options: { label: 'Other options' },
   protocol: { label: 'Protocol' },
   families: {

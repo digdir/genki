@@ -31,7 +31,7 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
   new EmbeddingRouter({
     catalog: {
       endpoints: {
-        compatible: { protocol: 'openai-embeddings', baseURL: `${url}/v1`, auth },
+        compatible: { families: { openai: '/v1' }, baseURL: url, auth },
       },
       models: [
         {
@@ -39,12 +39,14 @@ const embedders = (url: string, fixture: OperationFixture, described?: string) =
           endpoint: 'compatible',
           deployment: fixture.deployment,
           residency: 'eu',
-          dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
-          ...(described ? { descriptors: { embed: described } } : {}),
+          apis: { embed: described ?? 'openai/embeddings@1' },
+          embed: {
+            dimensions: (fixture.result as { vectors: number[][] }).vectors[0]?.length ?? 1,
+          },
         },
       ],
     },
-    adapters: [openAiEmbeddings],
+    adapters: described ? [] : [openAiEmbeddings],
     secrets: envSecrets({ TEST_KEY: 'test-key' }),
     descriptors,
     maxRetries: 0,

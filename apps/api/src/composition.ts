@@ -8,7 +8,7 @@ import {
   InMemoryConfigEntryStore,
   strategyModelNeeds,
 } from '@genai/composition';
-import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
+import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
 import { createMcpApp } from '@genai/adapter-mcp';
 import { createRestAdapter, filterMapErrors } from '@genai/adapter-rest';
@@ -150,6 +150,8 @@ import {
   residencyAllows,
   type Capability,
   type ModelClassificationStore,
+  servesModelPort,
+  type ProcessorRecordCheck,
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
@@ -410,7 +412,7 @@ export interface PlatformInput {
   ingestionExecutions?: ExecutionStore;
   apiKeys?: TenantApiKeys;
   keyPolicies?: KeyPolicyStore;
-  prices?: Record<string, ModelPrice>;
+  prices?: Record<string, PriceSpec>;
   traces?: () => TraceStatus | undefined;
   databasePing?: () => Promise<unknown>;
   organizationRegistry?: { url: string; fetch?: typeof fetch };
@@ -454,6 +456,7 @@ export interface PlatformInput {
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
   environmentTier?: EnvironmentTier;
+  processorRecords?: ProcessorRecordCheck;
   descriptors?: DescriptorRegistry;
 }
 
@@ -953,7 +956,8 @@ export const createPlatform = async (input: PlatformInput) => {
       () => modules,
     ),
   };
-  const prices: Record<string, ModelPrice> = { ...(input.prices ?? {}) };
+  // The runtime keeps this record as the per-1,000-token view of the catalogue's prices.
+  const prices = { ...(input.prices ?? {}) } as Record<string, ModelPrice>;
   const evaluators =
     input.evaluators ??
     new Map<string, Evaluator>([
@@ -1004,6 +1008,7 @@ export const createPlatform = async (input: PlatformInput) => {
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
     ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
     log: tracker.log,
@@ -1678,6 +1683,7 @@ export const createPlatform = async (input: PlatformInput) => {
       tier: runtime.environmentTier,
       descriptors: runtime.descriptors,
       governance: runtime.governance,
+      processorRecords: runtime.processorRecords,
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
@@ -1888,14 +1894,14 @@ export const createPlatform = async (input: PlatformInput) => {
         });
       const visible = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter(
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
       const data = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))

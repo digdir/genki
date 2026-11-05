@@ -1,3 +1,4 @@
+import type { PriceUnit } from '@genai/contracts';
 import type { Credential, Shape } from '@genai/kernel';
 import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
@@ -43,6 +44,7 @@ export interface BuiltInApi {
   kind: string;
   family: string;
   modelOptions: z.ZodObject;
+  units?: PriceUnit[];
   /** The API a model binds for this kind when it names none and its connection offers only this family. */
   default?: boolean;
 }

@@ -1,5 +1,5 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
-import { sourceLinkRules } from '@genai/contracts';
+import { priceUnits, sourceLinkRules } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
 import {
   apiIdPattern,
@@ -579,6 +579,7 @@ const ApiView = z
     family: z.string(),
     source: z.enum(['built-in', 'bundled', 'uploaded']),
     status: z.enum(['review', 'described', 'typed']),
+    units: z.array(z.enum(priceUnits)).describe('The units its usage reports, which prices name'),
     summary: z.string().optional(),
     models: z.array(z.string()).describe('The models that bind it'),
   })
@@ -602,6 +603,20 @@ const PlatformModelInput = z
   })
   .openapi('PlatformModelInput');
 const Price = z.object({ inputPerThousand: z.number(), outputPerThousand: z.number() });
+const UnitPrices = z
+  .object(Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])))
+  .openapi('UnitPrices');
+const ModelPrices = z
+  .record(z.string().regex(operationKindPattern), UnitPrices)
+  .describe('Kroner per unit, per operation kind the model binds')
+  .openapi('ModelPrices', {
+    example: { chat: { 'input-token': 0.0000119, 'output-token': 0.0000952 } },
+  });
+const PriceInput = z
+  .union([ModelPrices, Price])
+  .describe(
+    'Prices per kind and unit, or a price per 1,000 input and output tokens from before ADR 0048, which is set for every kind the model binds',
+  );
 const PublicModel = z
   .object({
     id: z.string(),
@@ -1363,7 +1378,17 @@ const operatorModelRoutes: RouteConfig[] = [
     summary:
       'Every model endpoint with its processor record, or null where it has none (operators)',
     responses: {
-      200: json(z.object({ data: z.array(ProcessorRecordView) }), 'The endpoints'),
+      200: json(
+        z.object({
+          data: z.array(ProcessorRecordView),
+          typedCalls: z
+            .enum(['warn', 'enforce'])
+            .describe(
+              'What a chat or decide call with real data does on an endpoint without a record: warn and go on, or be refused (GENAI_PROCESSOR_RECORDS)',
+            ),
+        }),
+        'The endpoints',
+      ),
       ...operatorOnly,
     },
   }),
@@ -1412,14 +1437,17 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}/price',
     summary:
-      'Set the price of a model in NOK per thousand tokens (operators, audited). The id may contain slashes.',
+      'Set the prices of a model per operation kind and unit, in kroner per unit (operators, audited). The id may contain slashes.',
     request: {
       params: z.object({ id: param('fake/gpt') }),
       headers: reasonHeader,
-      body: body(Price),
+      body: body(PriceInput),
     },
     responses: {
-      200: audited(Price.extend({ id: z.string(), currency: z.literal('NOK') }), 'Saved'),
+      200: audited(
+        Price.extend({ id: z.string(), prices: ModelPrices, currency: z.literal('NOK') }),
+        'Saved',
+      ),
       400: problem('Invalid price or missing reason'),
       ...operatorOnly,
       404: problem('No such model'),
