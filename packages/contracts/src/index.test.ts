@@ -43,6 +43,12 @@ describe('prices per unit', () => {
     expect(pricedUsage(usage, undefined)).toEqual(usage);
   });
 
+  it('a unit a descriptor names is priced like a built-in unit, and an unpriced one leaves the call unpriced', () => {
+    const usage = { requests: 1, units: { page: 4 } };
+    expect(pricedUsage(usage, { page: 0.25 }).costMicroNok).toBe(1_000_000);
+    expect(pricedUsage(usage, { 'input-token': 0.01 })).toEqual(usage);
+  });
+
   it('a request costs nothing unless the price names request', () => {
     expect(pricedUsage({ requests: 3 }, prices).costMicroNok).toBe(0);
     expect(pricedUsage({ requests: 3 }, { request: 0.5 }).costMicroNok).toBe(1_500_000);

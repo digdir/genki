@@ -3422,6 +3422,22 @@
                             at: { type: 'string', minLength: 1 },
                             reasons: { default: [], type: 'array', items: { type: 'string' } },
                             riskClass: { type: 'string', enum: ['minimal', 'limited', 'high'] },
+                            unmaskedInput: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  mediaType: {
+                                    type: 'string',
+                                    pattern:
+                                      '^[a-z0-9][a-z0-9!#$&^_.+-]*\\/(?:\\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$',
+                                  },
+                                  reason: { type: 'string', minLength: 10 },
+                                },
+                                required: ['mediaType', 'reason'],
+                                additionalProperties: false,
+                              },
+                            },
                           },
                           additionalProperties: false,
                         },
@@ -6763,10 +6779,12 @@
             summary:
               'A new kind of model API as a reviewed descriptor file and recorded fixtures, run by one executor through the kernel gate.',
             description:
-              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
+              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). A descriptor may be a list of steps with bound values, polling, finally steps, several body encodings, classified query parameters and headers, open usage units, error mapping and answer checks (ADR 0049). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
             responsibilities: [
               'Load and validate descriptors, refusing URLs, credential headers and kept-out APIs',
               'Map typed input to the wire request and the wire answer back, without code',
+              'Run steps in order, bind classified values between them, poll, clean up and map errors and units',
+              'Encode json, multipart, form, binary, text and ndjson bodies and refuse an answer of another content type',
               "Run a descriptor call through the gate with the endpoint's credential and egress guard",
               'Prove each descriptor against recorded fixtures (operation@1)',
               'Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture',
@@ -6775,6 +6793,7 @@
               'packages/operations/src/descriptor.ts',
               'packages/operations/src/shape.ts',
               'packages/operations/src/mapping.ts',
+              'packages/operations/src/encoding.ts',
               'packages/operations/src/executor.ts',
               'packages/operations/src/registry.ts',
               'packages/operations/src/contract.ts',
@@ -6816,7 +6835,7 @@
                         query: {
                           default: {},
                           type: 'object',
-                          propertyNames: { type: 'string', pattern: '^[a-z0-9_-]+$' },
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
                           additionalProperties: { type: 'string', maxLength: 200 },
                         },
                         headers: {
@@ -6831,55 +6850,33 @@
                     },
                     auth: {
                       default: { keyHeader: 'authorization' },
-                      type: 'object',
-                      properties: { keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' } },
-                      required: ['keyHeader'],
-                      additionalProperties: false,
-                    },
-                    request: {
-                      type: 'object',
-                      properties: {
-                        method: { type: 'string', enum: ['POST', 'PUT'] },
-                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
-                        body: {},
-                      },
-                      required: ['method', 'path', 'body'],
-                      additionalProperties: false,
+                      anyOf: [
+                        {
+                          type: 'object',
+                          properties: { keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' } },
+                          required: ['keyHeader'],
+                          additionalProperties: false,
+                        },
+                        {
+                          type: 'object',
+                          properties: {
+                            header: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                            scheme: { type: 'string', pattern: '^[A-Za-z-]{1,32}$' },
+                          },
+                          required: ['header'],
+                          additionalProperties: false,
+                        },
+                        {
+                          type: 'object',
+                          properties: { query: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' } },
+                          required: ['query'],
+                          additionalProperties: false,
+                        },
+                      ],
                     },
                     input: {},
                     output: {},
-                    wire: {
-                      type: 'object',
-                      properties: { request: {}, response: {} },
-                      required: ['request', 'response'],
-                      additionalProperties: false,
-                    },
                     result: {},
-                    usage: {
-                      type: 'object',
-                      propertyNames: {
-                        type: 'string',
-                        enum: [
-                          'inputTokens',
-                          'outputTokens',
-                          'cachedInputTokens',
-                          'audioSeconds',
-                          'images',
-                          'videoSeconds',
-                          'characters',
-                          'requests',
-                          'input-token',
-                          'output-token',
-                          'cached-input-token',
-                          'audio-second',
-                          'image',
-                          'video-second',
-                          'character',
-                          'request',
-                        ],
-                      },
-                      additionalProperties: {},
-                    },
                     stream: {
                       anyOf: [
                         { type: 'string', const: 'none' },
@@ -6910,6 +6907,680 @@
                         },
                       ],
                     },
+                    steps: {
+                      minItems: 1,
+                      maxItems: 10,
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                          auth: {
+                            anyOf: [
+                              {
+                                type: 'object',
+                                properties: {
+                                  header: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                  scheme: { type: 'string', pattern: '^[A-Za-z-]{1,32}$' },
+                                  secret: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$steps\\..*',
+                                  },
+                                },
+                                required: ['header', 'secret'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  query: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                  secret: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$steps\\..*',
+                                  },
+                                },
+                                required: ['query', 'secret'],
+                                additionalProperties: false,
+                              },
+                            ],
+                          },
+                          request: {
+                            type: 'object',
+                            properties: {
+                              method: {
+                                type: 'string',
+                                enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                              },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              encoding: {
+                                default: 'json',
+                                type: 'string',
+                                enum: ['json', 'multipart', 'form', 'binary', 'text', 'ndjson'],
+                              },
+                              body: {},
+                              parts: {},
+                              query: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                additionalProperties: {},
+                              },
+                              headers: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {},
+                              },
+                            },
+                            required: ['method', 'path'],
+                            additionalProperties: false,
+                          },
+                          response: {
+                            default: { encoding: 'json', headers: {} },
+                            type: 'object',
+                            properties: {
+                              encoding: {
+                                default: 'json',
+                                type: 'string',
+                                enum: ['json', 'binary', 'text', 'ndjson'],
+                              },
+                              headers: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {},
+                              },
+                            },
+                            additionalProperties: false,
+                          },
+                          wire: {
+                            type: 'object',
+                            properties: { request: {}, query: {}, headers: {}, response: {} },
+                            required: ['response'],
+                            additionalProperties: false,
+                          },
+                          usage: {
+                            default: {},
+                            type: 'object',
+                            propertyNames: {
+                              anyOf: [
+                                { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                {
+                                  type: 'string',
+                                  enum: [
+                                    'inputTokens',
+                                    'outputTokens',
+                                    'cachedInputTokens',
+                                    'audioSeconds',
+                                    'images',
+                                    'videoSeconds',
+                                    'characters',
+                                    'requests',
+                                  ],
+                                },
+                              ],
+                            },
+                            additionalProperties: {},
+                          },
+                          bind: {
+                            default: {},
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'object',
+                              properties: { from: {}, class: {} },
+                              required: ['from', 'class'],
+                              additionalProperties: false,
+                            },
+                          },
+                          until: {
+                            type: 'object',
+                            properties: {
+                              test: {},
+                              equals: {},
+                              intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
+                              longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                            },
+                            required: ['test', 'intervalSeconds', 'longestSeconds'],
+                            additionalProperties: false,
+                          },
+                          retry: {
+                            default: { attempts: 2, longestWaitSeconds: 10 },
+                            type: 'object',
+                            properties: {
+                              attempts: { type: 'integer', minimum: 0, maximum: 5 },
+                              longestWaitSeconds: { type: 'number', minimum: 0, maximum: 60 },
+                            },
+                            required: ['attempts', 'longestWaitSeconds'],
+                            additionalProperties: false,
+                          },
+                          errors: {
+                            default: [],
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                status: {
+                                  anyOf: [
+                                    { type: 'integer', minimum: 400, maximum: 599 },
+                                    {
+                                      minItems: 1,
+                                      type: 'array',
+                                      items: { type: 'integer', minimum: 400, maximum: 599 },
+                                    },
+                                    { type: 'string', enum: ['4xx', '5xx'] },
+                                  ],
+                                },
+                                kind: {
+                                  type: 'string',
+                                  enum: [
+                                    'invalid',
+                                    'unavailable',
+                                    'rate-limited',
+                                    'refused',
+                                    'processor',
+                                  ],
+                                },
+                                message: {},
+                              },
+                              required: ['status', 'kind'],
+                              additionalProperties: false,
+                            },
+                          },
+                          checks: {
+                            default: [],
+                            type: 'array',
+                            items: {
+                              anyOf: [
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    'same-names': {
+                                      type: 'object',
+                                      properties: { expected: {}, actual: {} },
+                                      required: ['expected', 'actual'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['same-names'],
+                                  additionalProperties: false,
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    count: {
+                                      type: 'object',
+                                      properties: {
+                                        of: {},
+                                        sameAs: {},
+                                        min: {
+                                          type: 'integer',
+                                          minimum: 0,
+                                          maximum: 9007199254740991,
+                                        },
+                                        max: {
+                                          type: 'integer',
+                                          minimum: 0,
+                                          maximum: 9007199254740991,
+                                        },
+                                      },
+                                      required: ['of'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['count'],
+                                  additionalProperties: false,
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    'one-of': {
+                                      type: 'object',
+                                      properties: { value: {}, in: {} },
+                                      required: ['value', 'in'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['one-of'],
+                                  additionalProperties: false,
+                                },
+                              ],
+                            },
+                          },
+                        },
+                        required: ['name', 'request', 'wire'],
+                        additionalProperties: false,
+                      },
+                    },
+                    finally: {
+                      default: [],
+                      maxItems: 10,
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          name: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                          auth: {
+                            anyOf: [
+                              {
+                                type: 'object',
+                                properties: {
+                                  header: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                  scheme: { type: 'string', pattern: '^[A-Za-z-]{1,32}$' },
+                                  secret: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$steps\\..*',
+                                  },
+                                },
+                                required: ['header', 'secret'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  query: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                  secret: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$steps\\..*',
+                                  },
+                                },
+                                required: ['query', 'secret'],
+                                additionalProperties: false,
+                              },
+                            ],
+                          },
+                          request: {
+                            type: 'object',
+                            properties: {
+                              method: {
+                                type: 'string',
+                                enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                              },
+                              path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              encoding: {
+                                default: 'json',
+                                type: 'string',
+                                enum: ['json', 'multipart', 'form', 'binary', 'text', 'ndjson'],
+                              },
+                              body: {},
+                              parts: {},
+                              query: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                additionalProperties: {},
+                              },
+                              headers: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {},
+                              },
+                            },
+                            required: ['method', 'path'],
+                            additionalProperties: false,
+                          },
+                          response: {
+                            default: { encoding: 'json', headers: {} },
+                            type: 'object',
+                            properties: {
+                              encoding: {
+                                default: 'json',
+                                type: 'string',
+                                enum: ['json', 'binary', 'text', 'ndjson'],
+                              },
+                              headers: {
+                                default: {},
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {},
+                              },
+                            },
+                            additionalProperties: false,
+                          },
+                          wire: {
+                            type: 'object',
+                            properties: { request: {}, query: {}, headers: {}, response: {} },
+                            required: ['response'],
+                            additionalProperties: false,
+                          },
+                          usage: {
+                            default: {},
+                            type: 'object',
+                            propertyNames: {
+                              anyOf: [
+                                { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                {
+                                  type: 'string',
+                                  enum: [
+                                    'inputTokens',
+                                    'outputTokens',
+                                    'cachedInputTokens',
+                                    'audioSeconds',
+                                    'images',
+                                    'videoSeconds',
+                                    'characters',
+                                    'requests',
+                                  ],
+                                },
+                              ],
+                            },
+                            additionalProperties: {},
+                          },
+                          bind: {
+                            default: {},
+                            type: 'object',
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                            additionalProperties: {
+                              type: 'object',
+                              properties: { from: {}, class: {} },
+                              required: ['from', 'class'],
+                              additionalProperties: false,
+                            },
+                          },
+                          until: {
+                            type: 'object',
+                            properties: {
+                              test: {},
+                              equals: {},
+                              intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
+                              longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                            },
+                            required: ['test', 'intervalSeconds', 'longestSeconds'],
+                            additionalProperties: false,
+                          },
+                          retry: {
+                            default: { attempts: 2, longestWaitSeconds: 10 },
+                            type: 'object',
+                            properties: {
+                              attempts: { type: 'integer', minimum: 0, maximum: 5 },
+                              longestWaitSeconds: { type: 'number', minimum: 0, maximum: 60 },
+                            },
+                            required: ['attempts', 'longestWaitSeconds'],
+                            additionalProperties: false,
+                          },
+                          errors: {
+                            default: [],
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                status: {
+                                  anyOf: [
+                                    { type: 'integer', minimum: 400, maximum: 599 },
+                                    {
+                                      minItems: 1,
+                                      type: 'array',
+                                      items: { type: 'integer', minimum: 400, maximum: 599 },
+                                    },
+                                    { type: 'string', enum: ['4xx', '5xx'] },
+                                  ],
+                                },
+                                kind: {
+                                  type: 'string',
+                                  enum: [
+                                    'invalid',
+                                    'unavailable',
+                                    'rate-limited',
+                                    'refused',
+                                    'processor',
+                                  ],
+                                },
+                                message: {},
+                              },
+                              required: ['status', 'kind'],
+                              additionalProperties: false,
+                            },
+                          },
+                          checks: {
+                            default: [],
+                            type: 'array',
+                            items: {
+                              anyOf: [
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    'same-names': {
+                                      type: 'object',
+                                      properties: { expected: {}, actual: {} },
+                                      required: ['expected', 'actual'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['same-names'],
+                                  additionalProperties: false,
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    count: {
+                                      type: 'object',
+                                      properties: {
+                                        of: {},
+                                        sameAs: {},
+                                        min: {
+                                          type: 'integer',
+                                          minimum: 0,
+                                          maximum: 9007199254740991,
+                                        },
+                                        max: {
+                                          type: 'integer',
+                                          minimum: 0,
+                                          maximum: 9007199254740991,
+                                        },
+                                      },
+                                      required: ['of'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['count'],
+                                  additionalProperties: false,
+                                },
+                                {
+                                  type: 'object',
+                                  properties: {
+                                    'one-of': {
+                                      type: 'object',
+                                      properties: { value: {}, in: {} },
+                                      required: ['value', 'in'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  required: ['one-of'],
+                                  additionalProperties: false,
+                                },
+                              ],
+                            },
+                          },
+                        },
+                        required: ['name', 'request', 'wire'],
+                        additionalProperties: false,
+                      },
+                    },
+                    request: {
+                      type: 'object',
+                      properties: {
+                        method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+                        path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        encoding: {
+                          default: 'json',
+                          type: 'string',
+                          enum: ['json', 'multipart', 'form', 'binary', 'text', 'ndjson'],
+                        },
+                        body: {},
+                        parts: {},
+                        query: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                          additionalProperties: {},
+                        },
+                        headers: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                          additionalProperties: {},
+                        },
+                      },
+                      required: ['method', 'path'],
+                      additionalProperties: false,
+                    },
+                    response: {
+                      default: { encoding: 'json', headers: {} },
+                      type: 'object',
+                      properties: {
+                        encoding: {
+                          default: 'json',
+                          type: 'string',
+                          enum: ['json', 'binary', 'text', 'ndjson'],
+                        },
+                        headers: {
+                          default: {},
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                          additionalProperties: {},
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                    wire: {
+                      type: 'object',
+                      properties: { request: {}, query: {}, headers: {}, response: {} },
+                      required: ['response'],
+                      additionalProperties: false,
+                    },
+                    usage: {
+                      type: 'object',
+                      propertyNames: {
+                        anyOf: [
+                          { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                          {
+                            type: 'string',
+                            enum: [
+                              'inputTokens',
+                              'outputTokens',
+                              'cachedInputTokens',
+                              'audioSeconds',
+                              'images',
+                              'videoSeconds',
+                              'characters',
+                              'requests',
+                            ],
+                          },
+                        ],
+                      },
+                      additionalProperties: {},
+                    },
+                    until: {
+                      type: 'object',
+                      properties: {
+                        test: {},
+                        equals: {},
+                        intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
+                        longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                      },
+                      required: ['test', 'intervalSeconds', 'longestSeconds'],
+                      additionalProperties: false,
+                    },
+                    retry: {
+                      default: { attempts: 2, longestWaitSeconds: 10 },
+                      type: 'object',
+                      properties: {
+                        attempts: { type: 'integer', minimum: 0, maximum: 5 },
+                        longestWaitSeconds: { type: 'number', minimum: 0, maximum: 60 },
+                      },
+                      required: ['attempts', 'longestWaitSeconds'],
+                      additionalProperties: false,
+                    },
+                    errors: {
+                      default: [],
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          status: {
+                            anyOf: [
+                              { type: 'integer', minimum: 400, maximum: 599 },
+                              {
+                                minItems: 1,
+                                type: 'array',
+                                items: { type: 'integer', minimum: 400, maximum: 599 },
+                              },
+                              { type: 'string', enum: ['4xx', '5xx'] },
+                            ],
+                          },
+                          kind: {
+                            type: 'string',
+                            enum: [
+                              'invalid',
+                              'unavailable',
+                              'rate-limited',
+                              'refused',
+                              'processor',
+                            ],
+                          },
+                          message: {},
+                        },
+                        required: ['status', 'kind'],
+                        additionalProperties: false,
+                      },
+                    },
+                    checks: {
+                      default: [],
+                      type: 'array',
+                      items: {
+                        anyOf: [
+                          {
+                            type: 'object',
+                            properties: {
+                              'same-names': {
+                                type: 'object',
+                                properties: { expected: {}, actual: {} },
+                                required: ['expected', 'actual'],
+                                additionalProperties: false,
+                              },
+                            },
+                            required: ['same-names'],
+                            additionalProperties: false,
+                          },
+                          {
+                            type: 'object',
+                            properties: {
+                              count: {
+                                type: 'object',
+                                properties: {
+                                  of: {},
+                                  sameAs: {},
+                                  min: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+                                  max: { type: 'integer', minimum: 0, maximum: 9007199254740991 },
+                                },
+                                required: ['of'],
+                                additionalProperties: false,
+                              },
+                            },
+                            required: ['count'],
+                            additionalProperties: false,
+                          },
+                          {
+                            type: 'object',
+                            properties: {
+                              'one-of': {
+                                type: 'object',
+                                properties: { value: {}, in: {} },
+                                required: ['value', 'in'],
+                                additionalProperties: false,
+                              },
+                            },
+                            required: ['one-of'],
+                            additionalProperties: false,
+                          },
+                        ],
+                      },
+                    },
                   },
                   required: [
                     'id',
@@ -6917,12 +7588,9 @@
                     'status',
                     'summary',
                     'api',
-                    'request',
                     'input',
                     'output',
-                    'wire',
                     'result',
-                    'usage',
                     'stream',
                   ],
                   additionalProperties: false,

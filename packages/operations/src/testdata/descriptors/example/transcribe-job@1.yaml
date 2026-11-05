@@ -1,0 +1,80 @@
+id: example/transcribe-job@1
+operation: transcribe-job
+status: described
+summary: A made-up job API that uploads audio, polls the job, fetches the transcript as text and deletes the job.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    audio: { media: audio/* }
+    language?: { enum: [nb, en] }
+output:
+  object:
+    text: text
+steps:
+  - name: start
+    request:
+      method: POST
+      path: /jobs
+      encoding: multipart
+      parts:
+        model: $deployment
+        file: $input.audio
+        language: $input.language
+    wire:
+      request:
+        object:
+          model: plain
+          file: { media: audio/* }
+          language?: { enum: [nb, en] }
+      response:
+        object:
+          id: { ref: '^job_[a-z0-9]+$' }
+          status: { enum: [queued, running, succeeded, failed] }
+    bind:
+      job: { from: $response.id, class: { ref: '^job_[a-z0-9]+$' } }
+    usage:
+      job: 1
+    errors:
+      - { status: 413, kind: invalid, message: $response.error.detail }
+  - name: poll
+    request:
+      method: GET
+      path: /jobs/{steps.start.job}
+    wire:
+      response:
+        object:
+          id: { ref: '^job_[a-z0-9]+$' }
+          status: { enum: [queued, running, succeeded, failed] }
+    until:
+      test: $response.status
+      equals: [succeeded, failed]
+      intervalSeconds: 1
+      longestSeconds: 30
+    checks:
+      - one-of: { value: $response.status, in: [succeeded] }
+  - name: transcript
+    request:
+      method: GET
+      path: /jobs/{steps.start.job}/transcript
+    response:
+      encoding: text
+      headers:
+        x-audio-seconds: { optional: number }
+    wire:
+      response: text
+    usage:
+      audio-second: $headers.x-audio-seconds
+finally:
+  - name: remove
+    request:
+      method: DELETE
+      path: /jobs/{steps.start.job}
+    wire:
+      response:
+        object:
+          deleted: boolean
+result:
+  text: $response
+stream: none

@@ -50,6 +50,17 @@ const fullChat = {
 };
 
 describe('closed payload shapes', () => {
+  it('the walker masks every string inside json, keys included', () => {
+    const walked = walk(
+      object({ context: json }),
+      { context: { 'kari@example.no': ['ring kari@example.no', 3, { note: 'kari@example.no' }] } },
+      { side: 'request', map: (t) => t.replaceAll('kari@example.no', '[EMAIL]') },
+    );
+    expect(walked.value).toEqual({
+      context: { '[EMAIL]': ['ring [EMAIL]', 3, { note: '[EMAIL]' }] },
+    });
+  });
+
   it('lets every field the model port has through the chat shape', () => {
     const walked = walk(chatShape([replay]).request, fullChat, request);
     expect(walked.problems).toEqual([]);

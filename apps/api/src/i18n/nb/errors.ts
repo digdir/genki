@@ -434,6 +434,8 @@ export const operationErrors = defineNamespace({
   stepAt: '{at}: {message}',
   fixedOperation: 'operasjonen og modellen er faste verdier, ikke fylt inn mens tjenesten kjører',
   noOperationDescriptor: 'det finnes ingen operasjonsbeskrivelse {id}',
+  mediaInputWithoutConsent:
+    '{id} tar imot {mediaType}, som ikke kan maskeres; tjenestens risikovurdering må registrere umaskert inndata av {mediaType} med en begrunnelse',
   descriptorInReview:
     '{id} er under gjennomgang; en operatør prøver den i råsjiktet, og en tjeneste kan bruke den når den er gjennomgått',
   kindInTest:

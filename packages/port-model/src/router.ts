@@ -20,6 +20,7 @@ import {
 } from '@genai/kernel';
 import { describedCall, describedSend } from '@genai/operations';
 import {
+  describedError,
   errorFromStatus,
   type BuiltInApi,
   type DeploymentConfig,
@@ -661,7 +662,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
             deployment: model.deployment,
             priced: (usage) => pricedUsage(usage, this.#unitPrices(model.id, descriptor.operation)),
             provenance: () => ({ model: served }),
-            fail: errorFromStatus,
+            fail: describedError,
             ...(tier === 'raw' && options?.observe ? { observe: options.observe } : {}),
           },
           input,

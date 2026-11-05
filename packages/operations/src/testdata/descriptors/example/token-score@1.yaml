@@ -1,0 +1,79 @@
+id: example/token-score@1
+operation: score
+status: described
+summary: A made-up scoring API that exchanges the key for a short token, then scores named questions about a text.
+api:
+  family: example
+  version: v3
+input:
+  object:
+    text: text
+    questions:
+      { array: { object: { name: { ref: '^[a-z_]{1,32}$' } } }, min: 1, max: 20, unique: name }
+    tags: [text]
+    fast?: boolean
+    context?: json
+output:
+  object:
+    scores: [{ object: { name: plain, score: { number: { min: 0, max: 1 } } } }]
+    summary: plain
+steps:
+  - name: token
+    request:
+      method: POST
+      path: /oauth/token
+      encoding: form
+      body:
+        grant_type: client_credentials
+    wire:
+      request:
+        object:
+          grant_type: { enum: [client_credentials] }
+      response:
+        object:
+          access_token: opaque
+          expires_in: { number: { integer: true } }
+    bind:
+      access: { from: $response.access_token, class: secret }
+  - name: score
+    auth:
+      header: authorization
+      scheme: Bearer
+      secret: $steps.token.access
+    request:
+      method: POST
+      path: /scores
+      body:
+        prompt: { $concat: ['Vurder: ', $input.text] }
+        questions: { $each: $input.questions, $map: $item.name }
+        tags: { $join: [$input.tags, ','] }
+        mode: { $if: { test: $input.fast, equals: true, then: quick, else: thorough } }
+        context: $input.context
+    wire:
+      request:
+        object:
+          prompt: text
+          questions: [plain]
+          tags: text
+          mode: { enum: [quick, thorough] }
+          context?: json
+      response:
+        object:
+          answers: [{ object: { name: plain, score: { number: { min: 0, max: 1 } } } }]
+          usage: { object: { tokens: { number: { integer: true, min: 0 } } } }
+    retry: { attempts: 1, longestWaitSeconds: 5 }
+    errors:
+      - { status: 429, kind: rate-limited }
+      - { status: [400, 422], kind: invalid, message: $response.error.detail }
+    checks:
+      - same-names:
+          expected: { $each: $input.questions, $map: $item.name }
+          actual: { $each: $response.answers, $map: $item.name }
+      - count: { of: $response.answers, sameAs: $input.questions }
+    usage:
+      input-token: $response.usage.tokens
+      request: 1
+result:
+  scores: $response.answers
+  summary: { $join: [{ $each: $response.answers, $map: $item.name }, ', '] }
+stream: none

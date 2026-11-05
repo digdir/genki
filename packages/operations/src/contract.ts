@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import type { Usage } from '@genai/contracts';
 import {
   createGate,
+  decodeBase64,
+  isInlineMedia,
   isMediaRef,
+  mediaInputKind,
   walk,
   type GateRecord,
   type MediaOutput,
@@ -15,50 +18,107 @@ import {
 } from '@genai/kernel';
 import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { z } from 'zod';
-import type { Descriptor } from './descriptor.js';
-import { describedCall } from './executor.js';
-import { evaluate } from './mapping.js';
+import type { Descriptor, Step } from './descriptor.js';
+import { recordedBody } from './encoding.js';
+import { describedCall, describedSend, type RecordedRequest } from './executor.js';
+import { unwrapped } from './shape.js';
 
 export const operationContractVersion = 'operation@1';
 
+export interface FixtureRequest {
+  method: string;
+  path: string;
+  query?: Record<string, string>;
+  headers?: Record<string, string>;
+  body: unknown;
+}
+
+export interface FixtureResponse {
+  status?: number;
+  headers?: Record<string, string>;
+  body: unknown;
+}
+
+/** One recorded call: a single request and answer, or every step's in order. */
 export interface OperationFixture {
   name: string;
   source?: string;
   deployment: string;
   input: unknown;
-  request: { method: string; path: string; query?: Record<string, string>; body: unknown };
-  response: { status?: number; body: unknown };
+  request?: FixtureRequest;
+  response?: FixtureResponse;
+  steps?: { step: string; request: FixtureRequest; response: FixtureResponse }[];
   result: unknown;
   usage: Usage;
   dropped?: number;
 }
 
-const count = z.number().int().min(0);
+const count = z.number().nonnegative();
 
-export const OperationFixtureSpec = z.strictObject({
-  name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
-  source: z.string().max(500).optional(),
-  deployment: z.string().min(1).max(200),
-  input: z.unknown(),
-  request: z.strictObject({
-    method: z.string().min(1).max(10),
-    path: z.string().min(1).max(500),
-    query: z.record(z.string(), z.string()).optional(),
-    body: z.unknown(),
-  }),
-  response: z.strictObject({
-    status: z.number().int().min(100).max(599).optional(),
-    body: z.unknown(),
-  }),
-  result: z.unknown(),
-  usage: z.strictObject({
-    inputTokens: count.optional(),
-    outputTokens: count.optional(),
-    cachedInputTokens: count.optional(),
-    requests: count.optional(),
-  }),
-  dropped: count.optional(),
+const fixtureRequest = z.strictObject({
+  method: z.string().min(1).max(10),
+  path: z.string().min(1).max(500),
+  query: z.record(z.string(), z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.unknown(),
 });
+
+const fixtureResponse = z.strictObject({
+  status: z.number().int().min(100).max(599).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.unknown(),
+});
+
+export const OperationFixtureSpec = z
+  .strictObject({
+    name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+    source: z.string().max(500).optional(),
+    deployment: z.string().min(1).max(200),
+    input: z.unknown(),
+    request: fixtureRequest.optional(),
+    response: fixtureResponse.optional(),
+    steps: z
+      .array(
+        z.strictObject({
+          step: z.string().min(1).max(32),
+          request: fixtureRequest,
+          response: fixtureResponse,
+        }),
+      )
+      .min(1)
+      .max(100)
+      .optional(),
+    result: z.unknown(),
+    usage: z.strictObject({
+      inputTokens: count.optional(),
+      outputTokens: count.optional(),
+      cachedInputTokens: count.optional(),
+      audioSeconds: count.optional(),
+      images: count.optional(),
+      videoSeconds: count.optional(),
+      characters: count.optional(),
+      requests: count.optional(),
+      units: z.record(z.string(), count).optional(),
+    }),
+    dropped: z.number().int().min(0).optional(),
+  })
+  .refine(
+    (f) => (f.steps === undefined) === (f.request !== undefined && f.response !== undefined),
+    'a fixture records request and response, or steps',
+  );
+
+/** The recorded requests and answers of a fixture, in order, with the step each belongs to. */
+export const exchangesOf = (descriptor: Descriptor, fixture: OperationFixture) =>
+  fixture.steps ??
+  (fixture.request && fixture.response
+    ? [
+        {
+          step: descriptor.steps[0]?.name ?? 'call',
+          request: fixture.request,
+          response: fixture.response,
+        },
+      ]
+    : []);
 
 export interface OperationCheckResult {
   check: string;
@@ -117,20 +177,62 @@ const mark = (s: Shape, v: unknown): unknown => {
   }
 };
 
-const wireTextFromInputText = (descriptor: Descriptor, fixture: OperationFixture): string[] => {
-  const body = evaluate(descriptor.request.body, {
-    input: mark(descriptor.input, fixture.input),
-    deployment: fixture.deployment,
-  });
+const wireTextFromInputText = async (
+  descriptor: Descriptor,
+  fixture: OperationFixture,
+): Promise<string[]> => {
   const leaked: string[] = [];
-  walk(descriptor.wire.request, body, {
-    side: 'request',
-    map: (t) => {
-      if (t.startsWith(plainProbe)) leaked.push(t.slice(plainProbe.length));
-      return t;
+  const recorded = exchangesOf(descriptor, fixture);
+  const allSteps = [...descriptor.steps, ...descriptor.finally];
+  let at = 0;
+  await describedSend(
+    descriptor,
+    {
+      baseURL: 'https://contract.invalid/base',
+      credential: { kind: 'api-key', key: async () => contractKey },
+      fetch: async () => {
+        const answer = recorded[at];
+        at += 1;
+        return answer
+          ? replayed(
+              allSteps.find((s) => s.name === answer.step),
+              answer.response,
+            )
+          : Response.json({}, { status: 500 });
+      },
+      sleep: async () => undefined,
     },
-  });
+    fixture.deployment,
+    admitted(descriptor.input, mark(descriptor.input, fixture.input)),
+    {
+      inspect: (shape, value) =>
+        walk(shape, value, {
+          side: 'request',
+          map: (t) => {
+            if (t.startsWith(plainProbe)) leaked.push(t.slice(plainProbe.length));
+            return t;
+          },
+        }),
+    },
+  ).catch(() => undefined);
   return leaked.map((t) => `a text field on the wire holds a value that is not input text (${t})`);
+};
+
+/** Media in a fixture input as the gate hands it on once admitted, for checks that run without the gate. */
+const admitted = (shape: Shape, input: unknown): unknown => {
+  const types = new Map(
+    walk(shape, input, { side: 'request' }).inputs.map((i) => [i.value, i.type]),
+  );
+  return walk(shape, input, {
+    side: 'request',
+    mapMedia: (v) => {
+      const inline = isInlineMedia(v) ? v : undefined;
+      const body =
+        decodeBase64(inline ? inline.data : typeof v === 'string' ? v : '') ?? new Uint8Array();
+      const mediaType = types.get(v) ?? '';
+      return { kind: mediaInputKind, mediaType, bytes: body.byteLength, sha256: '', body };
+    },
+  }).value;
 };
 
 const personalData = [syntheticNationalId, 'kari.nordmann@example.no', '+47 912 34 567'];
@@ -146,7 +248,15 @@ const free = (s: Shape, every: boolean): boolean =>
     ? free(s.shape, every)
     : s.kind === 'text' || (every && (s.kind === 'plain' || s.kind === 'ref'));
 
+const seededJson = (v: unknown): unknown => {
+  if (typeof v === 'string') return `${v} ${personalData.join(' ')}`;
+  if (Array.isArray(v)) return v.map(seededJson);
+  if (isRecord(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, seededJson(x)]));
+  return v;
+};
+
 const seed = (s: Shape, v: unknown, every: boolean): unknown => {
+  if (s.kind === 'json') return seededJson(v);
   if (free(s, every) && typeof v === 'string') {
     const seeded = `${v} ${personalData.join(' ')}`;
     return walk(s, seeded, { side: 'request' }).problems.length === 0 ? seeded : v;
@@ -190,13 +300,39 @@ const seed = (s: Shape, v: unknown, every: boolean): unknown => {
   }
 };
 
-interface Recorded {
-  method: string;
-  path: string;
+interface Recorded extends RecordedRequest {
   query: Record<string, string>;
-  headers: Record<string, string>;
-  body: unknown;
+  credentialSent: boolean;
 }
+
+const contractKey = 'contract-key';
+
+const defaultContentType = (step: Step | undefined) => {
+  switch (step?.response.encoding) {
+    case 'binary':
+      return (unwrapped(step.wire.response) as { type: string }).type;
+    case 'text':
+      return 'text/plain; charset=utf-8';
+    case 'ndjson':
+      return 'application/x-ndjson';
+    default:
+      return 'application/json';
+  }
+};
+
+const replayed = (step: Step | undefined, response: FixtureResponse) => {
+  const headers = { 'content-type': defaultContentType(step), ...response.headers };
+  const status = response.status ?? 200;
+  const body =
+    status < 300 && step?.response.encoding === 'binary'
+      ? Buffer.from(String(response.body), 'base64')
+      : status < 300 && step?.response.encoding === 'text'
+        ? String(response.body)
+        : status < 300 && step?.response.encoding === 'ndjson'
+          ? (response.body as unknown[]).map((l) => `${JSON.stringify(l)}\n`).join('')
+          : JSON.stringify(response.body);
+  return new Response(body, { status, headers });
+};
 
 const keptInMemory = () => {
   const bodies = new Map<string, Uint8Array>();
@@ -224,24 +360,46 @@ const run = async (
   fixture: OperationFixture,
   input: unknown,
   guards: readonly PayloadGuard[] = [],
+  inspect?: (shape: Shape, value: unknown) => void,
 ) => {
   const kept = keptInMemory();
   const sent: Recorded[] = [];
   const audit: GateRecord[] = [];
   const metered: Usage[] = [];
+  const recorded = exchangesOf(descriptor, fixture);
+  const allSteps = [...descriptor.steps, ...descriptor.finally];
   const fetcher: typeof fetch = async (url, init) => {
     const target = new URL(String(url));
+    const headers = Object.fromEntries(new Headers(init?.headers));
+    const sentQuery = Object.fromEntries(target.searchParams);
+    const at = sent.length;
+    const step = allSteps.find((s) => s.name === recorded[at]?.step);
+    const secret = step?.auth;
+    const credentialSent = secret
+      ? secret.place === 'query'
+        ? secret.name in sentQuery
+        : secret.name in headers
+      : Object.values(headers).some((v) => v.includes(contractKey)) ||
+        Object.values(sentQuery).includes(contractKey);
+    const query = Object.fromEntries(
+      Object.entries(sentQuery).filter(
+        ([name, value]) =>
+          value !== contractKey && !(secret?.place === 'query' && name === secret.name),
+      ),
+    );
+    const mapped = Object.keys(step?.request.headers ?? {}).map((h) => h.toLowerCase());
     sent.push({
       method: init?.method ?? 'GET',
       path: target.pathname.replace(/^\/base/, ''),
-      query: Object.fromEntries(target.searchParams),
-      headers: Object.fromEntries(new Headers(init?.headers)),
-      body: JSON.parse(String(init?.body ?? 'null')),
+      query,
+      headers: Object.fromEntries(Object.entries(headers).filter(([h]) => mapped.includes(h))),
+      body: await recordedBody(init?.body, headers['content-type'] ?? null),
+      credentialSent,
     });
-    return new Response(JSON.stringify(fixture.response.body), {
-      status: fixture.response.status ?? 200,
-      headers: { 'content-type': 'application/json' },
-    });
+    const answer = recorded[at]?.response;
+    if (!answer)
+      return Response.json({ error: { message: 'no recorded answer' } }, { status: 500 });
+    return replayed(step, answer);
   };
   const ctx: PortContext = {
     tenant: '999888777',
@@ -267,14 +425,17 @@ const run = async (
         endpoint: 'contract',
         residency: 'norway',
         admission: 'open',
+        synthetic: true,
       },
       descriptor,
       endpoint: {
         baseURL: 'https://contract.invalid/base',
-        credential: { kind: 'api-key', key: async () => 'contract-key' },
+        credential: { kind: 'api-key', key: async () => contractKey },
         fetch: fetcher,
+        sleep: async () => undefined,
       },
       deployment: fixture.deployment,
+      ...(inspect ? { inspect } : {}),
     },
     input,
   ).then(
@@ -293,7 +454,7 @@ const personalDataReachesTheWireMasked = async (
   const { sent, outcome } = await run(descriptor, fixture, input, [maskPersonalData]);
   if ('error' in outcome && sent.length === 0)
     return [`the call with personal data in its input failed: ${String(outcome.error)}`];
-  const wire = JSON.stringify(sent.map((r) => r.body));
+  const wire = JSON.stringify(sent.map((r) => [r.body, r.query, r.headers]));
   return personalData
     .filter((value) => wire.includes(value))
     .map((value) => `${value} reached the wire unmasked`);
@@ -316,18 +477,21 @@ const checks: {
     run: async (descriptor, fixture) => {
       const { sent, outcome } = await run(descriptor, fixture, fixture.input);
       if ('error' in outcome) return [`the call failed: ${String(outcome.error)}`];
-      const request = sent[0];
-      if (!request || sent.length !== 1) return [`expected one request, saw ${sent.length}`];
-      return [
-        ...same('method', request.method, fixture.request.method),
-        ...same('path', request.path, fixture.request.path),
-        ...same('query', request.query, fixture.request.query ?? {}),
-        ...same('body', request.body, fixture.request.body),
-        ...(request.headers.authorization === 'Bearer contract-key' ||
-        Object.values(request.headers).includes('contract-key')
-          ? []
-          : ['the endpoint credential was not sent']),
-      ];
+      const recorded = exchangesOf(descriptor, fixture);
+      if (sent.length !== recorded.length)
+        return [`expected ${recorded.length} requests, saw ${sent.length}`];
+      return sent.flatMap((request, i) => {
+        const want = (recorded[i] as { request: FixtureRequest }).request;
+        const at = recorded.length > 1 ? `request ${i + 1}: ` : '';
+        return [
+          ...same(`${at}method`, request.method, want.method),
+          ...same(`${at}path`, request.path, want.path),
+          ...same(`${at}query`, request.query, want.query ?? {}),
+          ...same(`${at}headers`, request.headers, want.headers ?? {}),
+          ...same(`${at}body`, request.body, want.body),
+          ...(request.credentialSent ? [] : [`${at}the endpoint credential was not sent`]),
+        ];
+      });
     },
   },
   {

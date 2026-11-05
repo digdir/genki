@@ -18,8 +18,8 @@ afterEach(async () => {
 
 const serve = async (fixture: OperationFixture) => {
   const server = await fakeHttp(() => ({
-    status: fixture.response.status ?? 200,
-    json: fixture.response.body,
+    status: fixture.response?.status ?? 200,
+    json: fixture.response?.body,
   }));
   servers.push(server);
   return server;
@@ -128,7 +128,7 @@ describe('descriptors against the hand-written adapters', () => {
       expect(described.seen[0]?.path).toBe(adapter.seen[0]?.path);
       expect(described.seen[0]?.path).toBe('/v1/embeddings');
       expect(described.seen[0]?.body).toEqual(adapter.seen[0]?.body);
-      expect(described.seen[0]?.body).toEqual(fixture.request.body);
+      expect(described.seen[0]?.body).toEqual(fixture.request?.body);
       expect(described.seen[0]?.headers['api-key']).toBe('test-key');
       expect(adapter.seen[0]?.headers['api-key']).toBe('test-key');
       expect(described.result).toEqual(adapter.result);

@@ -666,6 +666,7 @@ export const createKernel = (options: KernelOptions): Kernel => {
           provenance: (resource) => recordResource(l, resource),
           ...(useOptions.guards?.length ? { guards: useOptions.guards } : {}),
           ...(useOptions.serviceResidency ? { serviceResidency: useOptions.serviceResidency } : {}),
+          ...(useOptions.unmaskedMedia?.length ? { unmaskedMedia: useOptions.unmaskedMedia } : {}),
           audit: async (record) => {
             await emit(l, { type: 'kernel.gate.call', data: record, audience: 'audit' }, 'kernel');
           },

@@ -253,6 +253,12 @@ const serviceNb = {
   'spec.riskConfirmation.by': { label: 'Bekreftet av' },
   'spec.riskConfirmation.at': { label: 'Bekreftet' },
   'spec.riskConfirmation.reasons': { label: 'Begrunnelser' },
+  'spec.riskConfirmation.unmaskedInput': {
+    label: 'Lyd, bilder og filer som kan sendes umaskert',
+    help: 'Slike data kan ikke maskeres. Oppgi medietypen og hvorfor tjenesten trenger den.',
+  },
+  'spec.riskConfirmation.unmaskedInput.mediaType': { label: 'Medietype' },
+  'spec.riskConfirmation.unmaskedInput.reason': { label: 'Begrunnelse' },
   'spec.riskConfirmation.riskClass': {
     label: 'Bekreftet risikonivå',
     values: { minimal: 'Minimal risiko', limited: 'Begrenset risiko', high: 'Høy risiko' },
@@ -375,6 +381,12 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.riskConfirmation.by': { label: 'Confirmed by' },
   'spec.riskConfirmation.at': { label: 'Confirmed' },
   'spec.riskConfirmation.reasons': { label: 'Reasons' },
+  'spec.riskConfirmation.unmaskedInput': {
+    label: 'Audio, images and files that may be sent unmasked',
+    help: 'Such data cannot be masked. Give the media type and why the service needs it.',
+  },
+  'spec.riskConfirmation.unmaskedInput.mediaType': { label: 'Media type' },
+  'spec.riskConfirmation.unmaskedInput.reason': { label: 'Reason' },
   'spec.riskConfirmation.riskClass': {
     label: 'Confirmed risk level',
     values: { minimal: 'Minimal risk', limited: 'Limited risk', high: 'High risk' },

@@ -63,6 +63,13 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-05: descriptors from primitives and media input with consent
+
+- Operation descriptors may be a list of `steps` with `bind`, `until`, `finally`, request encodings `multipart`, `form`, `binary`, `text` and `ndjson`, answer encodings `binary`, `text` and `ndjson`, classified query parameters and headers, open usage units, `errors` and `checks` (ADR 0049, [operations.md](operations.md)). One-request descriptors and their fixtures are read unchanged; a fixture may record `steps: [{ step, request, response }]`.
+- An answer whose content type is not the one its descriptor declares fails the call. This includes a JSON answer sent as `text/plain`.
+- Image, audio and file input to a descriptor call is let through when the service's confirmed risk assessment records it, `spec.riskConfirmation.unmaskedInput: [{ mediaType, reason }]`, and otherwise refused as before (#326). `kernel.gate.call` adds `mediaInput` with each input's type, size and SHA-256.
+- A price may name any unit a descriptor names, such as `page`, besides the eight built-in units; a unit name is lowercase letters, digits and hyphens. `GET /operator/apis` lists such units in `units`.
+
 ### 2026-11-05: embedders, rerankers and prices per unit
 
 - Embedding models are models in the model catalogue with `apis: { embed: openai/embeddings@1 }` and `embed: { dimensions, maxBatch? }`; the embedding catalogue and the schemas `Embedding` and `EmbeddingEndpoint` are gone. A reranker on an engine with an API is a model with `apis: { rerank: colbert/rerank@1 }` and `rerank: { onFailure }`. Ids do not change, and neither model is listed in `GET /models` as a chat model.

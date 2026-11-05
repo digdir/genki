@@ -19,7 +19,7 @@ import {
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { maturities, residencyAllows } from '@genai/kernel';
+import { maturities, mediaTypeCovers, mediaTypesOf, residencyAllows } from '@genai/kernel';
 import type { DescriptorRegistry } from '@genai/operations';
 import { builtInOperations, type ModelDescription } from '@genai/port-model';
 import { callOperationModel, callOperationRef } from '@genai/strategy-step-flow';
@@ -116,6 +116,12 @@ export const describedStepProblems = async (
         refuse(
           'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
         );
+      const consented = service.spec.riskConfirmation?.unmaskedInput ?? [];
+      for (const mediaType of mediaTypesOf(descriptor.input))
+        if (!consented.some((c) => mediaTypeCovers(c.mediaType, mediaType)))
+          refuse(
+            `${id} takes ${mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${mediaType} with a reason`,
+          );
       if (!('pii-before-model' in service.spec.guardrails))
         refuse(
           'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',

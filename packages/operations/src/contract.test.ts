@@ -49,7 +49,12 @@ describe('the operation@1 suite', () => {
   });
 
   it('a descriptor whose request differs from the recorded one fails', async () => {
-    const changed = { ...embed, request: { ...embed.request, path: '/embedding' } };
+    const [step] = embed.steps;
+    if (!step) throw new Error('the embed descriptor has no step');
+    const changed = {
+      ...embed,
+      steps: [{ ...step, request: { ...step.request, path: '/embedding' } }],
+    };
     const failed = contractFailures(await operationContract(changed, fixtures));
     expect(failed.map((f) => f.check)).toContain(
       'one-text: the request built from the typed input is the recorded wire request',
@@ -180,7 +185,7 @@ const callImage = async (yaml: string, input: unknown) => {
         credential: { kind: 'api-key', key: async () => 'k' },
         fetch: async (_url, init) => {
           sent.push(JSON.parse(String(init?.body)));
-          return Response.json(imageFixture.response.body);
+          return Response.json(imageFixture.response?.body);
         },
       },
       deployment: 'img',
@@ -254,14 +259,16 @@ describe('media output in descriptors', () => {
     );
   });
 
-  it('a descriptor may not declare media in its input or wire request', () => {
-    expect(() => parseDescriptor(imageField('{ media: image/png }'))).toThrow(
-      'media is output only',
-    );
+  it('a descriptor may declare media in its input, which the gate lets out only with consent', () => {
+    expect(() => parseDescriptor(imageField('{ media: image/png }'))).not.toThrow();
   });
 
   it('a media marker names one media type', () => {
-    for (const type of ['image', 'image/*', '"image/png; charset=x"'])
+    for (const type of ['image', '"image/png; charset=x"'])
       expect(() => parseDescriptor(mediaYaml(type))).toThrow('must be one media type');
+  });
+
+  it('media coming back names one media type, not a wildcard', () => {
+    expect(() => parseDescriptor(mediaYaml('image/*'))).toThrow('must be one media type');
   });
 });
