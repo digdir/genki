@@ -355,7 +355,7 @@ describe('the described tier', () => {
 });
 
 describe('maturity per operation kind', () => {
-  it('built-in operation kinds show as production', async () => {
+  it('built-in operation kinds, embed and rerank included, show as production', async () => {
     const { send } = await boot();
     const listed = (await (await send('/operator/operation-kinds', 'drift')).json()) as {
       governs: string;
@@ -366,10 +366,11 @@ describe('maturity per operation kind', () => {
       builtIn: true,
       typed: 'production',
     });
-    expect(listed.data.find((k) => k.kind === 'decide')).toMatchObject({
-      builtIn: true,
-      typed: 'production',
-    });
+    for (const kind of ['decide', 'embed', 'rerank'])
+      expect(listed.data.find((k) => k.kind === kind)).toMatchObject({
+        builtIn: true,
+        typed: 'production',
+      });
     const classify = listed.data.find((k) => k.kind === 'classify');
     expect(classify).toMatchObject({ builtIn: false, maturity: 'test' });
     expect(classify).not.toHaveProperty('typed');

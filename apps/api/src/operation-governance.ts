@@ -159,12 +159,12 @@ export const describedStepProblems = async (
   return problems;
 };
 
+const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
+
 const maturityView = (state: MaturityState, descriptors: DescriptorRegistry) => ({
   ...state,
-  builtIn: (builtInOperations as readonly string[]).includes(state.kind),
-  ...((builtInOperations as readonly string[]).includes(state.kind)
-    ? { typed: 'production' as const }
-    : {}),
+  builtIn: builtInKinds.includes(state.kind),
+  ...(builtInKinds.includes(state.kind) ? { typed: 'production' as const } : {}),
   descriptors: descriptors
     .list()
     .filter((d) => d.operation === state.kind)
@@ -241,7 +241,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const { governance, descriptors } = guard.operations;
       await descriptors.refresh();
       const kinds = new Set([
-        ...builtInOperations,
+        ...builtInKinds,
         ...descriptors.list().map((d) => d.operation),
         ...(await governance.maturities()).map((m) => m.kind),
       ]);

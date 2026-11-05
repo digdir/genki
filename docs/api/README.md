@@ -112,7 +112,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - Publishing a service with a `call-operation` step answers `422` unless it has the `pii-before-model` guardrail, and when the descriptor's kind is `decide` (served only through `purpose-check`).
 - A draft (builder, playground, skill test, assistant) cannot run a `call-operation` step; the step fails as refused.
 - Image, audio and file input to a descriptor call is always refused. The processor record no longer has `acceptsUnmaskedInput` or `unmaskedInputReason`; a `PUT` with either answers `400`.
-- `GET /operator/operation-kinds` lists `chat` and `decide` always, with `builtIn: true` and `typed: "production"`, and says `governs: "descriptor-calls"`: maturity governs descriptor calls only.
+- `GET /operator/operation-kinds` lists `chat`, `decide`, `embed` and `rerank` always, with `builtIn: true` and `typed: "production"`, and says `governs: "descriptor-calls"`: maturity governs descriptor calls only.
 
 ### 2026-11-03: the described tier, maturity per kind and processor records
 
