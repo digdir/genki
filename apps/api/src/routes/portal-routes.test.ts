@@ -46,6 +46,8 @@ const task = (
   ...(status === 'completed' || status === 'failed' ? { endedAt: at } : {}),
 });
 
+const now = () => new Date('2026-10-06T12:00:00Z');
+
 const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> = {}) => {
   const store = new InMemoryDefinitionStore({
     ...plugins,
@@ -113,7 +115,7 @@ const setup = async (extra: Partial<Parameters<typeof registerPortalRoutes>[1]> 
     }),
     prices: { 'foundry/gpt-4o': { inputPerThousand: 0.0238, outputPerThousand: 0.0952 } },
     traces: { enabled: true, content: false },
-    now: () => new Date('2026-10-06T12:00:00Z'),
+    now,
     newKey: () => 'gp_testkey_abcdefghijklmnop1234',
     newId: () => 'key-1',
     ...extra,
@@ -522,7 +524,7 @@ describe('portal routes', () => {
     const listed = await json<{ keys: Record<string, unknown>[] }>(
       await send(`/tenants/${digdir}/access`, 'kari'),
     );
-    const authenticator = createAuthenticator({ apiKeys: legacy });
+    const authenticator = createAuthenticator({ apiKeys: legacy, now });
     const principal = await authenticator.principalOf(
       new Request('http://x', { headers: { 'x-api-key': body.key } }),
     );
@@ -579,7 +581,7 @@ describe('portal routes', () => {
       method: 'POST',
       reason: 'ikke i bruk',
     });
-    const authenticator = createAuthenticator({ apiKeys: legacy });
+    const authenticator = createAuthenticator({ apiKeys: legacy, now });
     const principal = await authenticator.principalOf(
       new Request('http://x', { headers: { 'x-api-key': created.key } }),
     );
