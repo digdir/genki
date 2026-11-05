@@ -17,3 +17,4 @@ spec:
       - Statusrapport
     since: '2020-01-01'
   schedule: none
+  enabled: false
