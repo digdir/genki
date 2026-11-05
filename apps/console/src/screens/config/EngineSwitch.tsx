@@ -96,19 +96,22 @@ const Loaded = ({
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [refused, setRefused] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const [estimate, setEstimate] = useState<SwitchEstimate | undefined>();
+  // The last estimate, with the target and model it was asked for.
+  const [loaded, setLoaded] = useState<
+    { target: string; model: string; estimate: SwitchEstimate } | undefined
+  >();
   const modelId = useId();
   // A dataset with no embedding of its own, such as one on Typesense, gets one chosen here (#366).
   const [model, setModel] = useState('');
+  const [named, setNamed] = useState('');
 
   useEffect(() => {
     if (!choosing || !target) return;
     const controller = new AbortController();
-    setEstimate(undefined);
     api.engineSwitchEstimate(base, target, controller.signal, model || undefined).then(
       (next) => {
         setRefused(undefined);
-        setEstimate(next);
+        setLoaded({ target, model, estimate: next });
       },
       (error: unknown) => {
         if (!controller.signal.aborted)
@@ -180,12 +183,18 @@ const Loaded = ({
       }).format(new Date(previous.keptUntil))
     : '';
 
+  // Choosing a model keeps the form and reloads only the price; another target starts over.
+  const estimate = loaded?.target === target ? loaded.estimate : undefined;
+  const repricing = estimate !== undefined && loaded?.model !== model;
   // Copy only when re-ingest cannot run and copy can, as for a dataset no pipeline fills.
   const copying = Boolean(estimate && !estimate.reingest.available && estimate.copy?.available);
   const chosen = estimate?.embeddings?.find((e) => e.model === model);
   const embedding = engine.embedding ?? chosen;
   const needsModel = !engine.embedding;
   const offer = copying ? estimate?.copy : estimate?.reingest;
+
+  // Source ids for a copy of named documents, split on commas and white space.
+  const documents = named.split(/[\s,]+/).filter(Boolean);
 
   const start = () =>
     void act(minimumReasonLength, (r) =>
@@ -195,6 +204,7 @@ const Loaded = ({
           to: target,
           method: copying ? 'copy' : 'reingest',
           ...(embedding ? { embedding } : {}),
+          ...(copying && documents.length > 0 ? { documents } : {}),
         },
         r,
       ),
@@ -338,9 +348,11 @@ const Loaded = ({
           ))}
         </Select>
       </Field>
-      <Paragraph data-size="sm">
-        {t(copying ? 'engineSwitch.copyNote' : 'engineSwitch.reingestNote')}
-      </Paragraph>
+      {estimate ? (
+        <Paragraph data-size="sm">
+          {t(copying ? 'engineSwitch.copyNote' : 'engineSwitch.reingestNote')}
+        </Paragraph>
+      ) : null}
       {needsModel && estimate?.embeddings?.length ? (
         <Field>
           <Label htmlFor={modelId}>{t('engineSwitch.model')}</Label>
@@ -354,8 +366,18 @@ const Loaded = ({
           </Select>
         </Field>
       ) : null}
+      {copying ? (
+        <Textfield
+          label={t('engineSwitch.documents')}
+          description={t('engineSwitch.documentsHint')}
+          value={named}
+          onChange={(e) => setNamed(e.target.value)}
+        />
+      ) : null}
       {copying && needsModel && !embedding ? (
         <Paragraph data-size="sm">{t('engineSwitch.chooseModelFirst')}</Paragraph>
+      ) : repricing ? (
+        <Loading label={t('engineSwitch.loadingEstimate')} />
       ) : offer?.available && estimate ? (
         <Paragraph data-size="sm">
           {t(copying ? 'engineSwitch.copyEstimate' : 'engineSwitch.estimate', {
@@ -378,7 +400,7 @@ const Loaded = ({
       <div className="actions-row">
         <Button
           data-size="sm"
-          disabled={busy || !offer?.available || (needsModel && !embedding)}
+          disabled={busy || repricing || !offer?.available || (needsModel && !embedding)}
           onClick={start}
         >
           {t('engineSwitch.start')}

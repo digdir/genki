@@ -636,6 +636,8 @@ export const createApiClient = ({
         to: string;
         method: 'copy' | 'reingest';
         embedding?: { model: string; dimensions: number };
+        /** Source ids for a copy of named documents. */
+        documents?: string[];
       },
       reason: string,
     ) =>

@@ -36,6 +36,9 @@ export const engineSwitch = {
     'The dataset is copied from the engine it is on now, with its text as it is there, and gets new vectors. Services search the old engine until you put the new one in use.',
   model: 'Embedding model',
   chooseModel: 'Choose a model',
+  documents: 'Only these documents (optional)',
+  documentsHint:
+    'The ids in the current engine, separated by commas or spaces. A selection can be compared, not put in use.',
   chooseModelFirst: 'Choose a model to see what the copy costs.',
   copyCounts: 'Copied: {copied} · skipped: {skipped}{reasons} · failed: {failed}',
   skipNoUuid: '{count} without a UUID',

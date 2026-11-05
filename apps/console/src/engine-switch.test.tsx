@@ -15,7 +15,8 @@ interface Call {
   session: string | null;
 }
 
-type Handler = (call: Call) => [number, unknown];
+// 'pending' never answers, for a screen that is still loading.
+type Handler = (call: Call) => [number, unknown] | 'pending';
 
 const platform = (routes: Record<string, Handler>) => {
   const calls: Call[] = [];
@@ -32,7 +33,11 @@ const platform = (routes: Record<string, Handler>) => {
     };
     calls.push(call);
     const handler = routes[`${method} ${path}`];
-    const [status, body] = handler ? handler(call) : [404, { title: 'Not found' }];
+    const answer: [number, unknown] | 'pending' = handler
+      ? handler(call)
+      : [404, { title: 'Not found' }];
+    if (answer === 'pending') return new Promise<Response>(() => undefined);
+    const [status, body] = answer;
     return new Response(JSON.stringify(body), {
       status,
       headers: { 'content-type': 'application/json' },
@@ -521,6 +526,58 @@ describe('copying a dataset into the knowledge database in the console', () => {
       method: 'copy',
       embedding: large,
     });
+  });
+
+  it('a copy of named documents is started from the console with their ids', async () => {
+    const { api, calls } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => [200, copyEstimate()],
+      [`${estimateRoute}&model=${encodeURIComponent(large.model)}`]: () => [
+        200,
+        copyEstimate(large.model),
+      ],
+      [`POST ${base}/engine-switches`]: () => [202, switchView('running', { method: 'copy' })],
+      [`GET ${base}/engine-switches/s1`]: () => [200, switchView('running', { method: 'copy' })],
+    });
+    render(<EngineSwitchSection api={api} base={base} pollMs={1} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    fireEvent.change(await screen.findByLabelText('Embeddingmodell'), {
+      target: { value: large.model },
+    });
+    fireEvent.change(screen.getByLabelText('Bare disse dokumentene (valgfritt)'), {
+      target: { value: '377252, 33 2447 ' },
+    });
+    // Choosing the model reloads only the price: the form stays as filled in.
+    expect(await screen.findByText(/^Kopi: /)).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Bare disse dokumentene (valgfritt)') as HTMLInputElement).value,
+    ).toBe('377252, 33 2447 ');
+    fireEvent.change(screen.getByLabelText('Begrunnelse'), {
+      target: { value: 'Kopierer tre Kudos-dokumenter' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Start flyttingen' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      to: 'knowledge-pg',
+      method: 'copy',
+      embedding: large,
+      documents: ['377252', '33', '2447'],
+    });
+  });
+
+  it('the re-ingest note does not show while a copy estimate loads', async () => {
+    const { api } = platform({
+      [`GET ${base}/engine`]: () => [200, engineOn('kudos-typesense', kudos)],
+      'GET /operator/catalog/entries?kind=knowledge-endpoint': () => [200, endpoints],
+      [estimateRoute]: () => 'pending',
+    });
+    render(<EngineSwitchSection api={api} base={base} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Flytt til kunnskapsdatabasen' }));
+    expect(await screen.findByLabelText('Til søkemotor')).toBeTruthy();
+    expect(screen.queryByText(/leses inn på nytt fra kilden/)).toBeNull();
   });
 
   it("the console shows a copy's copied, skipped and failed counts", async () => {
