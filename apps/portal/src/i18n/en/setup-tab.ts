@@ -208,6 +208,7 @@ export const setup = {
   via: 'via {via}',
   dataIn: 'Data is processed in {where}',
   cost: 'Cost: {cost}',
+  modelPrice: 'NOK {input} in and NOK {output} out per 1,000 tokens',
   notPriced: 'not priced',
   speed: 'Speed: {speed}',
   operationModels: 'Model per operation',

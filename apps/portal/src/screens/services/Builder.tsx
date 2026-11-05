@@ -247,7 +247,7 @@ export const Builder = ({
   );
   const modelCatalog =
     live && catalog.status === 'ready'
-      ? catalog.data.map((m) => modelFor(m.id, m.residency, true))
+      ? catalog.data.map((m) => ({ ...modelFor(m.id, m.residency, true), price: m.price ?? null }))
       : live
         ? []
         : undefined;

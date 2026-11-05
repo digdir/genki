@@ -82,6 +82,9 @@ describe('a new step flow', () => {
     await newFlow(fetch);
     addStep(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
+    fireEvent.change(screen.getByLabelText('Navn på flyten'), {
+      target: { value: 'Brevsortering' },
+    });
     fireEvent.change(screen.getByLabelText(/Hva er endret, og hvorfor\?/), {
       target: { value: 'Første versjon' },
     });

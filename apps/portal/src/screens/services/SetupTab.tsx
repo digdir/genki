@@ -17,7 +17,9 @@ import {
   Textfield,
   ValidationMessage,
 } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
 import { useState, type ReactNode } from 'react';
+import { formatModelPrice } from '../../format';
 import { Icon } from '../../components/Icon';
 import {
   exampleDatasets,
@@ -521,6 +523,7 @@ export const SetupTab = ({
   operationModels = [],
 }: Props) => {
   const t = useT();
+  const f = useFormat();
   const userName = useUserName();
   const modelList = modelCatalog ?? models;
   const [catalog, setCatalog] = useState(false);
@@ -1243,7 +1246,7 @@ export const SetupTab = ({
                       <Tag data-size="sm" data-color="neutral">
                         {t('setup.cost', {
                           cost: modelCatalog
-                            ? t('setup.notPriced')
+                            ? formatModelPrice(x.price, f, t)
                             : modelWord(t, x.cost).toLowerCase(),
                         })}
                       </Tag>

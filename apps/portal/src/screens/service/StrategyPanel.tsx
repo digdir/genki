@@ -14,7 +14,7 @@ import { useAsync } from '../../hooks';
 import { useT, type T } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
 import type { Format } from '@genai/i18n';
-import { SelectField } from '../stepflows/fields';
+import { SearchField, SelectField } from '../stepflows/fields';
 import { SchemaForm, undescribedPaths, type Value, type WidgetRenderer } from '@genai/schema-forms';
 import { useMemo } from 'react';
 import { useStrategySchema } from './strategy-schema';
@@ -112,9 +112,10 @@ const FlowPicker = ({
   const chosen = flowId(current);
   return (
     <div className="stack-xs">
-      <SelectField
+      <SearchField
         id={id}
         label={t('serviceStrategy.flow')}
+        clearLabel={t('stepflows.clearFlowSearch')}
         description={
           state.status === 'loading'
             ? t('serviceStrategy.flowsLoading')
@@ -123,7 +124,6 @@ const FlowPicker = ({
               : t('serviceStrategy.flowsPick')
         }
         value={current}
-        placeholder={t('serviceStrategy.flowPlaceholder')}
         options={options}
         {...(current ? {} : { error: t('serviceStrategy.flowRequired') })}
         onChange={(v) => onSet(v || undefined)}
