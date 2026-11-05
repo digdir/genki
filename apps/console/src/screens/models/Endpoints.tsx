@@ -28,7 +28,6 @@ import { useTenantNames } from '../../tenant-names';
 import type {
   Capability,
   ConfigEntry,
-  ModelOperation,
   ModelPrice,
   ModelProtocol,
   OperatorModel,
@@ -55,11 +54,6 @@ export const residencyLabel: Record<Residency, PlainKey> = {
   norway: 'endpoints.residencyNorway',
   eu: 'endpoints.residencyEu',
   global: 'endpoints.residencyGlobal',
-};
-
-export const operationLabel: Record<ModelOperation, PlainKey> = {
-  chat: 'models.operationChat',
-  decide: 'models.operationDecide',
 };
 
 export const capabilityLabel: Record<Capability, PlainKey> = {

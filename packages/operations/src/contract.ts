@@ -1,11 +1,14 @@
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Usage } from '@genai/contracts';
 import {
   createGate,
+  isMediaRef,
   walk,
   type GateRecord,
+  type MediaOutput,
   type PayloadGuard,
   type PortContext,
   type Shape,
@@ -195,12 +198,34 @@ interface Recorded {
   body: unknown;
 }
 
+const keptInMemory = () => {
+  const bodies = new Map<string, Uint8Array>();
+  const media: MediaOutput = {
+    allows: () => true,
+    maxBytes: () => Number.MAX_SAFE_INTEGER,
+    keep: async (ctx, body) => {
+      const path = `contract/${bodies.size + 1}`;
+      bodies.set(path, body);
+      return { tenant: ctx.tenant, path, sha256: createHash('sha256').update(body).digest('hex') };
+    },
+  };
+  const encoded = (value: unknown): unknown => {
+    if (isMediaRef(value)) return Buffer.from(bodies.get(value.path) ?? []).toString('base64');
+    if (Array.isArray(value)) return value.map(encoded);
+    if (typeof value === 'object' && value !== null)
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encoded(v)]));
+    return value;
+  };
+  return { media, encoded };
+};
+
 const run = async (
   descriptor: Descriptor,
   fixture: OperationFixture,
   input: unknown,
   guards: readonly PayloadGuard[] = [],
 ) => {
+  const kept = keptInMemory();
   const sent: Recorded[] = [];
   const audit: GateRecord[] = [];
   const metered: Usage[] = [];
@@ -233,7 +258,7 @@ const run = async (
   };
   const outcome = await describedCall(
     {
-      gate: createGate(),
+      gate: createGate({ media: kept.media }),
       ctx,
       target: {
         port: 'operation',
@@ -253,7 +278,7 @@ const run = async (
     },
     input,
   ).then(
-    (result) => ({ result }),
+    (result) => ({ result: kept.encoded(result) }),
     (error: unknown) => ({ error }),
   );
   return { outcome, sent, audit, metered };

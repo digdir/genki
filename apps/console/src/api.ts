@@ -27,6 +27,7 @@ import type {
   SupportSessionRow,
   RunningTask,
   EffectiveSettings,
+  OperationKind,
   OperationsOverview,
   SettingOverrides,
   SettingsGrid,
@@ -41,6 +42,9 @@ import type {
   TenantDefinitionHistory,
   EndpointTestResult,
   KnowledgeEndpoint,
+  DatasetEngine,
+  EngineSwitch,
+  SwitchEstimate,
   KnowledgeEndpointItem,
   KnowledgeEngine,
   StoredSecret,
@@ -266,6 +270,8 @@ export const createApiClient = ({
     },
     listModels: async (signal?: AbortSignal) =>
       (await call<{ data: OperatorModel[] }>('GET', '/operator/models', { signal })).data,
+    operationKinds: async (signal?: AbortSignal) =>
+      (await call<{ data: OperationKind[] }>('GET', '/operator/operation-kinds', { signal })).data,
     refreshModels: (reason: string) =>
       call<RefreshResult>('POST', '/operator/models/refresh', {
         headers: { 'change-reason': reason },
@@ -611,6 +617,36 @@ export const createApiClient = ({
           signal,
         })
       ).data,
+    /** `base` is a dataset's path: `/operator/datasets/{id}` or `/tenants/{org}/datasets/{id}`. */
+    datasetEngine: (base: string, signal?: AbortSignal) =>
+      call<DatasetEngine>('GET', `${base}/engine`, { signal }),
+    engineSwitchEstimate: (base: string, to: string, signal?: AbortSignal) =>
+      call<SwitchEstimate>(
+        'GET',
+        `${base}/engine-switches/estimate?to=${encodeURIComponent(to)}&method=reingest`,
+        { signal },
+      ),
+    engineSwitch: (base: string, sid: string, signal?: AbortSignal) =>
+      call<EngineSwitch>('GET', `${base}/engine-switches/${encodeURIComponent(sid)}`, { signal }),
+    startEngineSwitch: (
+      base: string,
+      body: { to: string; method: 'reingest'; embedding?: { model: string; dimensions: number } },
+      reason: string,
+    ) =>
+      call<EngineSwitch>('POST', `${base}/engine-switches`, {
+        body,
+        headers: { 'change-reason': reason },
+      }),
+    engineSwitchAction: (
+      base: string,
+      sid: string,
+      action: 'retry' | 'cancel' | 'activate' | 'rollback',
+      reason: string,
+    ) =>
+      call<EngineSwitch>('POST', `${base}/engine-switches/${encodeURIComponent(sid)}/${action}`, {
+        body: {},
+        headers: { 'change-reason': reason },
+      }),
     knowledgeSecrets: async (signal?: AbortSignal) =>
       (await call<{ data: StoredSecret[] }>('GET', '/operator/knowledge/secrets', { signal })).data,
     testKnowledgeEndpoint: (spec: Record<string, unknown>) =>

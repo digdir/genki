@@ -36,6 +36,7 @@ export const models = {
   operations: 'Calls it serves',
   operationChat: 'Chat',
   operationDecide: 'Decisions',
+  operationInTest: 'in test',
   inUse: '{model} is in use',
   edit: 'Edit',
   editModel: 'Edit {model}',

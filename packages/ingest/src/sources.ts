@@ -192,7 +192,18 @@ export interface FolderSourceOptions {
   read?(path: string): Promise<string>;
   readBytes?(path: string): Promise<Uint8Array>;
   converter?: DocumentConverter;
+  /** The document id for a file, in place of a hash of its path (ADR 0042: `folder:` ids). */
+  documentId?(path: string): string;
 }
+
+/**
+ * A folder document's id on the knowledge database (ADR 0042): its owner (`platform` or the
+ * organisation number) and a hash of its path from the folder root, so it is the same on every
+ * machine, two pipelines that list the same file name the same document, and no path (which can
+ * name a person) reaches a stored answer.
+ */
+export const folderDocumentId = (owner: string, path: string) =>
+  `folder:${owner}/${documentId(path)}`;
 
 const readFolderEntry = async (
   options: FolderSourceOptions,
@@ -223,7 +234,12 @@ export const folderSource = (options: FolderSourceOptions): IngestSource => ({
         options.titleFrom === 'heading' && 'text' in read
           ? headingTitle(entry.path, read.text)
           : undefined;
-      const doc = { ...pathToDoc(entry), ...(heading ? { title: heading } : {}) };
+      const id = options.documentId?.(entry.path);
+      const doc = {
+        ...pathToDoc(entry),
+        ...(id ? { id, doc_num: id } : {}),
+        ...(heading ? { title: heading } : {}),
+      };
       const config = {
         ...(options.basePath ? { basePath: options.basePath } : {}),
         ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),

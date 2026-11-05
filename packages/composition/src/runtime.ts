@@ -29,6 +29,7 @@ import {
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type MediaOutputConfig,
   type PolicyDecisionPoint,
   type PortContext,
   type PortProvider,
@@ -39,6 +40,7 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
+import { blobMediaOutput, mediaOutputConfigOf } from './media-output.js';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
 import {
   IndexWriterRouter,
@@ -230,6 +232,7 @@ export interface RuntimeInput {
   tokenProviders?: TokenProviders;
   egress?: EgressOptions;
   blobStore?: BlobStore;
+  mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
@@ -350,8 +353,10 @@ export const createRuntime = async (input: RuntimeInput) => {
   await descriptors.refresh();
   const environmentTier = input.environmentTier ?? 'production';
   const governance = operationGovernance(configEntries, environmentTier);
+  const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const gate = createGate({
     tier: environmentTier,
+    media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
     ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
     ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
     outside: outsideRun(input.log, input.now),
@@ -487,7 +492,6 @@ export const createRuntime = async (input: RuntimeInput) => {
         return owning && owning !== owner ? mcp.resolve(name, version, ctx, owning) : undefined;
       },
     });
-  const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const blob = new BlobPortProvider(blobStore);
 
   const agentLoop = usingRetrievalPorts(

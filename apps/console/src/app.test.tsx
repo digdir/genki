@@ -347,6 +347,91 @@ describe('modeller', () => {
     ]);
   });
 
+  const withKinds = (
+    answer: (base: typeof fetch, input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  ): typeof fetch => {
+    const base = mockFetch();
+    return async (input, init) =>
+      String(input).endsWith('/operator/operation-kinds')
+        ? answer(base, input, init)
+        : base(input, init);
+  };
+
+  it('the model form lists every operation kind the platform knows', async () => {
+    await signedIn('#/models');
+    await modelTable();
+
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+    await screen.findAllByText('i test');
+    expect(box('generate-image i test for gpt-4.1').checked).toBe(false);
+    expect(box('Samtale for gpt-image-1.5').checked).toBe(false);
+    expect(box('Avgjørelser for gpt-image-1.5').checked).toBe(false);
+    expect(box('generate-image i test for gpt-image-1.5').checked).toBe(true);
+  });
+
+  it('a kind the model offers is kept when another kind is ticked', async () => {
+    const { calls, fetch } = recording();
+    await signedIn('#/models', [operatorRole], fetch);
+    await modelTable();
+    giveReason();
+
+    const box = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Samtale for gpt-image-1.5' }));
+    await waitFor(() => expect(box('Samtale for gpt-image-1.5').checked).toBe(true));
+    fireEvent.click(box('Samtale for gpt-image-1.5'));
+    await waitFor(() => expect(box('Samtale for gpt-image-1.5').checked).toBe(false));
+
+    expect(calls.filter((c) => c.method === 'PATCH').map((c) => [c.path, c.body])).toEqual([
+      [
+        '/api/operator/models/foundry-openai/gpt-image-1.5',
+        { operations: ['generate-image', 'chat'] },
+      ],
+      ['/api/operator/models/foundry-openai/gpt-image-1.5', { operations: ['generate-image'] }],
+    ]);
+  });
+
+  it('a kind the model offers is shown checked when the kinds list fails to load', async () => {
+    await signedIn(
+      '#/models',
+      [operatorRole],
+      withKinds(async () => Response.json({ title: 'Unavailable', status: 503 }, { status: 503 })),
+    );
+    await modelTable();
+
+    const offered = screen.getByRole('checkbox', {
+      name: 'generate-image for gpt-image-1.5',
+    }) as HTMLInputElement;
+    expect(offered.checked).toBe(true);
+    expect(offered.disabled).toBe(true);
+    expect(screen.queryByRole('checkbox', { name: 'generate-image for gpt-4.1' })).toBeNull();
+  });
+
+  it('an uploaded kind appears without a console change', async () => {
+    await signedIn(
+      '#/models',
+      [operatorRole],
+      withKinds(async (base, input, init) => {
+        const known = (await (await base(input, init)).json()) as { data: unknown[] };
+        return Response.json({
+          ...known,
+          data: [
+            ...known.data,
+            {
+              kind: 'transcribe-audio',
+              builtIn: false,
+              maturity: 'production',
+              descriptors: [{ id: 'foundry-openai/transcribe-audio@1', status: 'described' }],
+            },
+          ],
+        });
+      }),
+    );
+    await modelTable();
+
+    await screen.findAllByText('transcribe-audio');
+    expect(screen.getByRole('checkbox', { name: 'transcribe-audio for gpt-4.1' })).toBeTruthy();
+  });
+
   it('retires a model only through a dialog that says services pause instead of switching', async () => {
     const { calls, fetch } = recording();
     await signedIn('#/models', [operatorRole], fetch);
