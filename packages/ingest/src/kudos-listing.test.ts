@@ -6,7 +6,7 @@ import { kudosClient, kudosProd, type KudosDocument } from './kudos.js';
 import { knowledgeListingOf, pipelineSpec, type KudosAccess } from './pipeline-sources.js';
 
 const signal = new AbortController().signal;
-const scope = { tenant: '991825827', dataset: 'digdir/kudos' };
+const scope = { tenant: '991825827', dataset: 'digdir/kudos', owner: 'digdir' };
 const converter = { toMarkdown: async () => 'Tekst fra rapporten.' };
 
 const spec = (source: Record<string, unknown>) =>
