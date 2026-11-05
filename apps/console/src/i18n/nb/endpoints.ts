@@ -1,8 +1,6 @@
 import { defineNamespace } from '@genai/i18n';
 
 export const endpoints = defineNamespace({
-  protocolOpenai: 'OpenAI-kompatibel (Chat Completions)',
-  protocolAnthropic: 'Anthropic-kompatibel (Messages)',
   residencyNorway: 'Norge',
   residencyEu: 'EU',
   residencyGlobal: 'Globalt',
@@ -21,7 +19,23 @@ export const endpoints = defineNamespace({
   addEndpointTitle: 'Legg til modellendepunkt',
   name: 'Navn',
   nameDescription: 'Brukes foran modellnavnet, for eksempel foundry-eu/gpt-4.1.',
-  protocol: 'Protokoll',
+  families: 'API-familier',
+  familiesDescription:
+    'Hver familie er et sett API-er tilkoblingen tilbyr, på en sti under adressen eller på en egen adresse.',
+  familyName: 'Familie',
+  familyBase: 'Sti eller adresse',
+  familyBaseDescription: 'For eksempel /openai/v1. La feltet stå tomt for selve adressen.',
+  familyHint: 'Velg hver familie bare én gang.',
+  familyBaseHint:
+    'Skriv en sti som starter med /, en full https-adresse, eller la feltet stå tomt.',
+  familiesRequired: 'Tilkoblingen må tilby minst én familie.',
+  addFamily: 'Legg til familie',
+  removeFamily: 'Fjern {family}',
+  editEndpointTitle: 'Rediger {id}',
+  editId: 'Rediger {id}',
+  edit: 'Rediger',
+  saveEndpoint: 'Lagre endepunkt',
+  saveFailed: 'Kunne ikke lagre endepunktet. Prøv igjen om litt.',
   baseUrl: 'Adresse (base URL)',
   login: 'Innlogging',
   apiKey: 'API-nøkkel',
@@ -66,7 +80,7 @@ export const endpoints = defineNamespace({
   none: 'Ingen modellendepunkter ennå.',
   tableLabel: 'Tabell over modellendepunkter',
   colEndpoint: 'Endepunkt',
-  colProtocol: 'Protokoll',
+  colFamilies: 'API-familier',
   colSecret: 'Hemmelighet',
   colModels: 'Modeller',
   colProcessor: 'Databehandler',

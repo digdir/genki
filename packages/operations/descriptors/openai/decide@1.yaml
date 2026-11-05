@@ -3,7 +3,7 @@ operation: decide
 status: typed
 summary: The Decisions API on an OpenAI-compatible v1 endpoint, as the hand-written decide adapter sends it.
 api:
-  protocol: openai-chat
+  family: openai
   version: v1
 auth:
   keyHeader: authorization

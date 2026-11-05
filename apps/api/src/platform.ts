@@ -2,7 +2,12 @@ import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
-import { parameterRuleProblems, parameterRules } from '@genai/port-model';
+import {
+  apiIdPattern,
+  operationKindPattern,
+  parameterRuleProblems,
+  parameterRules,
+} from '@genai/port-model';
 import {
   exportTenant,
   importTenant,
@@ -619,7 +624,11 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
-    operations: z.array(z.string()).optional(),
+    apis: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The API the model binds for each operation kind it offers'),
+    operations: z.array(z.string()).optional().describe('The kinds it offers, the keys of apis'),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
@@ -635,11 +644,12 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
-    operations: z
-      .array(z.string().regex(/^[a-z][a-z0-9-]*$/))
-      .min(1)
+    apis: z
+      .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
       .optional()
-      .describe('chat, decide, or a kind a registered operation descriptor defines'),
+      .describe(
+        'One API per operation kind, such as { chat: openai/responses@1 }; the API must be of that kind and in a family the connection offers',
+      ),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })

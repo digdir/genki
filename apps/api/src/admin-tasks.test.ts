@@ -68,6 +68,7 @@ const throughAdminTasks = [
   'POST /operator/quality/matrix/runs',
   'POST /operator/operations/:id{.+}/try',
   'POST /operator/operation-kinds/:kind/maturity',
+  'PUT /operator/model-endpoints/:id',
   'PUT /operator/model-endpoints/:id/processor-record',
   'DELETE /operator/model-endpoints/:id/processor-record',
   'PUT /operator/operation-descriptors/:id{.+}',

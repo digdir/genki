@@ -1558,7 +1558,7 @@ export const createPlatform = async (input: PlatformInput) => {
       pluginUsage({
         store: definitions,
         tenants: async () => (await directory.list()).map((t) => t.orgNumber),
-        modelEndpoint: (model) => models.describe().find((m) => m.id === model)?.endpoint,
+        modelApis: (model) => models.describe().find((m) => m.id === model)?.apis,
         datasetEndpoint: (dataset) =>
           config.catalog.get('dataset', knowledge.resolve(dataset) ?? dataset)?.spec.endpoint as
             string | undefined,

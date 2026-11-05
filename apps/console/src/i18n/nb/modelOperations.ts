@@ -57,7 +57,7 @@ export const modelOperations = defineNamespace({
   nextNone: 'Ingenting. Den endres gjennom Genki.',
   kind: 'Type',
   source: 'Kilde',
-  protocol: 'Protokoll',
+  family: 'API-familie',
   unknown: 'Ukjent',
   lastChange: 'Sist endret',
   lastChangeLine: 'av {who}, {when}',

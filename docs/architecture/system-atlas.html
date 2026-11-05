@@ -2413,7 +2413,7 @@
               },
               {
                 to: 'providers-anthropic',
-                label: 'Composes anthropic-messages adapter',
+                label: 'Composes the Anthropic adapter',
                 kind: 'call',
                 target: 'call',
                 witness: {
@@ -2480,7 +2480,7 @@
               },
               {
                 to: 'providers-openai',
-                label: 'Composes openai-chat adapter',
+                label: 'Composes the OpenAI adapter',
                 kind: 'call',
                 target: 'call',
                 witness: {
@@ -2758,6 +2758,7 @@
               'Keep the maturity of each operation kind per environment, set by one operator and audited, and the processor record of each model endpoint, as config entries the gate reads at call (ADR 0047)',
               'Keep uploaded operation descriptors as config entries and serve the bundled ones and the uploads as one registry, read again at every descriptor call, in the API and the worker (ADR 0047)',
               'Apply catalogs, guardrail rules, hooks and skills stored as config entries',
+              'Move stored model connections, models, processor records and classifications once to connections with API families and models with API bindings (ADR 0048)',
               'Compile published services into capabilities and quarantine invalid ones',
               'Apply per-agency building-block settings (on/off, timeouts) to every service run, in the API and the worker',
               'Keep the config entry store, tenant secret vault and change feed contracts',
@@ -2775,6 +2776,7 @@
               'packages/composition/src/operation-try.ts',
               'packages/composition/src/operation-governance.ts',
               'packages/composition/src/operation-descriptors.ts',
+              'packages/composition/src/connection-migration.ts',
             ],
             input: 'Catalogs, secrets, definition and config stores, policy',
             output: 'A kernel with every strategy registered, and the registries behind it',
@@ -2929,7 +2931,7 @@
               },
               {
                 to: 'providers-anthropic',
-                label: 'Composes the anthropic-messages adapter',
+                label: 'Composes the Anthropic adapter',
                 kind: 'call',
                 target: 'call',
                 witness: {
@@ -2949,7 +2951,7 @@
               },
               {
                 to: 'providers-openai',
-                label: 'Composes the openai-chat adapter and embeddings',
+                label: 'Composes the OpenAI adapter and embeddings',
                 kind: 'call',
                 target: 'call',
                 witness: {
@@ -6404,7 +6406,7 @@
             summary:
               'One port for model calls; a router owns the catalog, capabilities, operations, credentials and routing, the kernel gate governs every call.',
             description:
-              'Adapters are per wire protocol, not per vendor (ADR 0021). Models are discovered from endpoints such as Azure AI Foundry, start with residency global and are classified by an operator.',
+              'Adapters implement APIs, not vendors (ADR 0021). A connection offers API families, a model binds one API per kind, and the API registry lists built-in implementations and descriptors under one id each (ADR 0048). Models are discovered from connections such as Azure AI Foundry, start with residency global and are classified by an operator.',
             responsibilities: [
               'Model catalog and discovery',
               'Operations on the catalogue (chat, decide and every kind a registered descriptor defines) and capability checks',
@@ -6412,6 +6414,7 @@
               'The kernel port operation, a descriptor call on a catalogue model for the raw tier, and decide through a typed descriptor when the catalogue opts in (ADR 0047,',
               "The kernel port described, a reviewed descriptor call from a service's call-operation step, with the kind's maturity and whether the endpoint has a processor record on the gate target (ADR 0047,",
               'Calls through the kernel gate, which checks admission (lockdown, ADR 0033), enabled, sharing and residency, holds the request and the answer to their closed shapes, runs the payload guard and meters (ADR 0047); the router itself only routes',
+              'The API registry and the binding of each model kind to an API (ADR 0048)',
               'Credential resolution',
             ],
             files: [
@@ -6419,6 +6422,7 @@
               'packages/port-model/src/router.ts',
               'packages/port-model/src/gate.ts',
               'packages/port-model/src/catalog.ts',
+              'packages/port-model/src/apis.ts',
               'packages/port-model/src/decision.ts',
               'packages/port-model/src/operation.ts',
               'packages/port-model/src/instructions.ts',
@@ -6468,7 +6472,6 @@
                       additionalProperties: {
                         type: 'object',
                         properties: {
-                          protocol: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
                           baseURL: { type: 'string', format: 'uri' },
                           auth: {
                             oneOf: [
@@ -6508,41 +6511,58 @@
                               },
                             ],
                           },
-                          options: {
-                            default: {},
+                          families: {
                             type: 'object',
-                            propertyNames: { type: 'string' },
-                            additionalProperties: {},
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                            additionalProperties: {
+                              anyOf: [
+                                { type: 'string', pattern: '^(\\/[A-Za-z0-9._~-]+)*\\/?$' },
+                                { type: 'string', format: 'uri' },
+                              ],
+                            },
                           },
                           discovery: {
-                            type: 'object',
-                            properties: {
-                              source: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                              from: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
-                              include: {
-                                default: ['*'],
-                                type: 'array',
-                                items: { type: 'string', minLength: 1 },
-                              },
-                              exclude: {
-                                default: [],
-                                type: 'array',
-                                items: { type: 'string', minLength: 1 },
-                              },
-                              capabilities: {
-                                default: ['stream'],
-                                type: 'array',
-                                items: {
-                                  type: 'string',
-                                  enum: ['stream', 'tools', 'json-schema', 'reasoning'],
+                            default: [],
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                source: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
+                                from: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
+                                idPrefix: { type: 'string', pattern: '^[a-z0-9][a-z0-9._/-]*$' },
+                                include: {
+                                  default: ['*'],
+                                  type: 'array',
+                                  items: { type: 'string', minLength: 1 },
+                                },
+                                exclude: {
+                                  default: [],
+                                  type: 'array',
+                                  items: { type: 'string', minLength: 1 },
+                                },
+                                capabilities: {
+                                  default: ['stream'],
+                                  type: 'array',
+                                  items: {
+                                    type: 'string',
+                                    enum: ['stream', 'tools', 'json-schema', 'reasoning'],
+                                  },
+                                },
+                                apis: {
+                                  type: 'object',
+                                  propertyNames: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                                  additionalProperties: {
+                                    type: 'string',
+                                    pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
+                                  },
                                 },
                               },
+                              required: ['source'],
+                              additionalProperties: false,
                             },
-                            required: ['source'],
-                            additionalProperties: false,
                           },
                         },
-                        required: ['protocol', 'baseURL', 'auth'],
+                        required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
                       },
                     },
@@ -6565,21 +6585,13 @@
                               enum: ['stream', 'tools', 'json-schema', 'reasoning'],
                             },
                           },
-                          operations: {
-                            default: ['chat'],
-                            minItems: 1,
-                            type: 'array',
-                            items: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
-                          },
-                          descriptors: {
+                          apis: {
                             type: 'object',
-                            properties: {
-                              decide: {
-                                type: 'string',
-                                pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
-                              },
+                            propertyNames: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
+                            additionalProperties: {
+                              type: 'string',
+                              pattern: '^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$',
                             },
-                            additionalProperties: false,
                           },
                           contextWindow: {
                             type: 'integer',
@@ -6767,7 +6779,7 @@
                     api: {
                       type: 'object',
                       properties: {
-                        protocol: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+                        family: { type: 'string', pattern: '^[a-z][a-z0-9-]*$' },
                         version: { type: 'string', minLength: 1, maxLength: 64 },
                         query: {
                           default: {},
@@ -6782,7 +6794,7 @@
                           additionalProperties: { type: 'string', maxLength: 200 },
                         },
                       },
-                      required: ['protocol', 'version'],
+                      required: ['family', 'version'],
                       additionalProperties: false,
                     },
                     auth: {
@@ -7506,7 +7518,7 @@
           {
             id: 'providers-openai',
             plane: 'providers',
-            name: 'openai-chat adapter',
+            name: 'OpenAI adapter',
             note: 'Chat, Responses, Decisions + Foundry discovery',
             icon: 'llm',
             color: '#8fa8b3',
@@ -7517,7 +7529,7 @@
             description:
               'Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry deployments so models are discovered, not configured.',
             responsibilities: [
-              'openai-chat protocol with per-model API selection and learned Responses recovery',
+              "The openai family's built-in APIs openai/chat-completions@1, openai/responses@1 and openai/decide@1, with learned Responses recovery",
               'The decide operation against the Azure OpenAI Decisions API, with a closed response shape',
               'Azure deployment discovery',
             ],
@@ -7577,16 +7589,20 @@
           {
             id: 'providers-anthropic',
             plane: 'providers',
-            name: 'anthropic-messages adapter',
+            name: 'Anthropic adapter',
             note: 'Claude on Foundry',
             icon: 'llm',
             color: '#8fa8b3',
             status: 'Provider',
             packages: ['@genai/providers-anthropic'],
-            summary: 'The anthropic-messages wire protocol, used for Claude on Azure AI Foundry.',
+            summary:
+              'The built-in API anthropic/messages@1 in the anthropic family, used for Claude on Azure AI Foundry.',
             description:
               'Maps generic options such as reasoning and continuation to the Messages API. Available with residency global (ADR 0021).',
-            responsibilities: ['anthropic-messages protocol', 'Reasoning continuation passthrough'],
+            responsibilities: [
+              'The anthropic/messages@1 chat API',
+              'Reasoning continuation passthrough',
+            ],
             files: ['packages/providers-anthropic/src/index.ts'],
             input: 'Port request',
             output: 'Messages API call',
@@ -8992,7 +9008,7 @@
               },
               {
                 module: 'providers-openai',
-                text: 'The openai-chat adapter talks to the Foundry deployment.',
+                text: 'The OpenAI adapter talks to the Foundry deployment through the API the model binds.',
               },
               { module: 'azure-foundry', text: 'Azure AI Foundry generates the answer.' },
               {

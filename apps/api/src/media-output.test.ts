@@ -12,7 +12,7 @@ operation: generate-image
 status: described
 summary: A made-up image generation API.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -58,7 +58,7 @@ operation: speak
 status: described
 summary: A made-up text to speech API.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -137,7 +137,7 @@ const boot = async (mediaOutput?: MediaOutputConfig) => {
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },

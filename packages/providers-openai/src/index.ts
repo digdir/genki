@@ -9,6 +9,7 @@ import {
   type ChatRequest,
   type ChatResult,
   type DeploymentConfig,
+  type BuiltInApi,
   type DiscoverySource,
   type EndpointConfig,
   type FinishReason,
@@ -38,12 +39,28 @@ const withoutTrailingSlashes = (url: string) => {
 
 const cached = (tokens: number | undefined) => (tokens ? { cachedInputTokens: tokens } : {});
 
-const endpointOptions = z.strictObject({});
-const modelOptions = z.strictObject({
-  api: z.enum(['chat-completions', 'responses']).optional(),
+const chatCompletionsOptions = z.strictObject({
   tokenParam: z.enum(['max_tokens', 'max_completion_tokens']).default('max_completion_tokens'),
 });
-type ModelOptions = z.infer<typeof modelOptions>;
+type ModelOptions = z.infer<typeof chatCompletionsOptions>;
+
+export const openAiApis = {
+  chatCompletions: 'openai/chat-completions@1',
+  responses: 'openai/responses@1',
+  decide: 'openai/decide@1',
+} as const;
+
+const apis: BuiltInApi[] = [
+  {
+    id: openAiApis.chatCompletions,
+    kind: 'chat',
+    family: 'openai',
+    modelOptions: chatCompletionsOptions,
+    default: true,
+  },
+  { id: openAiApis.responses, kind: 'chat', family: 'openai', modelOptions: z.strictObject({}) },
+  { id: openAiApis.decide, kind: 'decide', family: 'openai', modelOptions: z.strictObject({}) },
+];
 
 const finishReasons: Record<string, FinishReason> = {
   stop: 'stop',
@@ -76,7 +93,7 @@ const rejectsTemperature = (error: unknown) =>
   error instanceof APIError && rejectedParameter(error.status, error.message) === 'temperature';
 
 const params = (
-  model: DeploymentConfig<ModelOptions>,
+  model: DeploymentConfig<Partial<ModelOptions>>,
   request: ChatRequest,
   fixedTemperature = false,
 ): ChatCompletionCreateParamsBase => ({
@@ -85,7 +102,9 @@ const params = (
   ...(request.temperature === undefined || fixedTemperature
     ? {}
     : { temperature: request.temperature }),
-  ...(request.maxTokens === undefined ? {} : { [model.options.tokenParam]: request.maxTokens }),
+  ...(request.maxTokens === undefined
+    ? {}
+    : { [model.options.tokenParam ?? 'max_completion_tokens']: request.maxTokens }),
   ...(request.reasoning ? { reasoning_effort: request.reasoning } : {}),
   ...(request.tools?.length
     ? {
@@ -120,10 +139,8 @@ const toModelError = (error: unknown, signal: AbortSignal): ModelError => {
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
 
-export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOptions> = {
-  protocol: 'openai-chat',
-  endpointOptions,
-  modelOptions,
+export const openAiChat: ModelAdapter<Partial<ModelOptions>> = {
+  apis,
   continuation: responsesContinuation,
 
   connect(endpoint: EndpointConfig) {
@@ -142,11 +159,13 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
 
     const fixedTemperature = new Set<string>();
     const learnedResponses = new Set<string>();
-    const apiFor = (model: DeploymentConfig<ModelOptions>) =>
-      model.options.api ??
-      (learnedResponses.has(model.deployment) ? 'responses' : 'chat-completions');
+    const configured = (model: DeploymentConfig) => model.api === openAiApis.responses;
+    const apiFor = (model: DeploymentConfig) =>
+      configured(model) || learnedResponses.has(model.deployment)
+        ? 'responses'
+        : 'chat-completions';
     const create = async <T>(
-      model: DeploymentConfig<ModelOptions>,
+      model: DeploymentConfig<Partial<ModelOptions>>,
       request: ChatRequest,
       send: (api: 'chat-completions' | 'responses', omitTemperature: boolean) => Promise<T>,
     ): Promise<{ response: T; dropped: TunableParameter[] }> => {
@@ -164,7 +183,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
             fixedTemperature.add(key);
           } else if (
             api === 'chat-completions' &&
-            model.options.api === undefined &&
+            !configured(model) &&
             request.tools?.length &&
             error instanceof APIError &&
             error.status === 400 &&
@@ -181,7 +200,7 @@ export const openAiChat: ModelAdapter<z.infer<typeof endpointOptions>, ModelOpti
     return {
       describe: (model) => ({
         api: apiFor(model),
-        source: model.options.api
+        source: configured(model)
           ? 'configured'
           : learnedResponses.has(model.deployment)
             ? 'learned'

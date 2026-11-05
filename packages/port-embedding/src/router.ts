@@ -14,6 +14,7 @@ import {
 } from '@genai/kernel';
 import {
   describedSend,
+  familyOfProtocol,
   type DescribedEndpoint,
   type Descriptor,
   type DescriptorRegistry,
@@ -105,8 +106,10 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
       if (!descriptor) problems.push(`${model.id}: no descriptor ${id}`);
       else if (descriptor.status !== 'typed' || descriptor.operation !== 'embed')
         problems.push(`${model.id}: ${id} is not a typed embed descriptor`);
-      else if (descriptor.api.protocol !== protocol)
-        problems.push(`${model.id}: ${id} is for ${descriptor.api.protocol}, not ${protocol}`);
+      else if (descriptor.api.family !== familyOfProtocol(protocol ?? ''))
+        problems.push(
+          `${model.id}: ${id} is for the ${descriptor.api.family} family, not ${protocol}`,
+        );
     }
     if (problems.length > 0) throw new Error(`invalid embedding catalog: ${problems.join('; ')}`);
     const connections = new Map<string, EmbeddingConnection>();

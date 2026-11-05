@@ -11,7 +11,7 @@ operation: classify
 status: ${overrides.status ?? 'review'}
 summary: A made-up classification API, uploaded by an operator.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01${overrides.extra ?? ''}
 request:
   method: POST
@@ -105,7 +105,7 @@ const boot = async (environmentTier?: 'test' | 'production') => {
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
@@ -131,7 +131,7 @@ const boot = async (environmentTier?: 'test' | 'production') => {
     booted.admin.classifyModel(
       people.drift as Principal,
       'lab/small',
-      { operations: ['chat', 'classify'] },
+      { apis: { chat: 'openai/chat-completions@1', classify: 'example/classify@1' } },
       reason,
     );
   const tryIt = () =>
@@ -244,11 +244,11 @@ describe('uploading operation descriptors', () => {
     expect(booted.server.seen).toHaveLength(1);
   });
 
-  it('an uploaded kind can be given to a model', async () => {
+  it('an uploaded API can be bound to a model for its kind', async () => {
     const booted = await boot();
     expect(await booted.offerClassify()).toMatchObject({
       ok: false,
-      errors: [{ path: 'operations', message: 'no descriptor defines the classify operation' }],
+      errors: [{ path: 'apis', message: 'classify: no API example/classify@1' }],
     });
     expect((await booted.put()).status).toBe(201);
     expect(await booted.offerClassify()).toMatchObject({
@@ -604,14 +604,14 @@ describe('who uses a descriptor', () => {
     expect(detail.input).toEqual({ kind: 'object', fields: { text: { kind: 'text' } } });
   });
 
-  it('the operation kinds name the protocol each descriptor speaks', async () => {
+  it('the operation kinds name the API family each descriptor speaks', async () => {
     const booted = await boot();
     expect((await booted.put()).status).toBe(201);
     const kinds = (await (await booted.send('/operator/operation-kinds', 'drift')).json()) as {
       data: { kind: string; descriptors: unknown[] }[];
     };
     expect(kinds.data.find((k) => k.kind === 'classify')?.descriptors).toEqual([
-      { id: 'example/classify@1', status: 'review', protocol: 'openai-chat' },
+      { id: 'example/classify@1', status: 'review', family: 'openai' },
     ]);
   });
 });

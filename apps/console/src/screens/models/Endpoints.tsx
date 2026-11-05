@@ -24,14 +24,14 @@ import { useRef, useState } from 'react';
 import { useAsync } from '../../hooks';
 import { ApiError, type ApiClient } from '../../api';
 import { useFormat } from '@genai/i18n/react';
-import { useT, type PlainKey, type T } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { useTenantNames } from '../../tenant-names';
 import type {
   Capability,
   ConfigEntry,
   EndpointProcessorRecord,
+  ModelEndpointInput,
   ModelPrice,
-  ModelProtocol,
   OperatorModel,
   Residency,
 } from '../../types';
@@ -47,11 +47,6 @@ import {
 } from '../../ui';
 import { ProcessorRecordForm } from './ProcessorRecord';
 import { reasonError, ReasonField } from './reason-field';
-
-export const protocolLabel: Record<ModelProtocol, PlainKey> = {
-  'openai-chat': 'endpoints.protocolOpenai',
-  'anthropic-messages': 'endpoints.protocolAnthropic',
-};
 
 export const residencyLabel: Record<Residency, PlainKey> = {
   norway: 'endpoints.residencyNorway',
@@ -74,52 +69,84 @@ const problemText = (error: unknown, fallback: string) => {
   return [error.problem?.title, details].filter(Boolean).join(': ') || fallback;
 };
 
-const specOf = (entry: ConfigEntry, t: T) => {
-  const spec = entry.spec as {
-    protocol?: string;
-    adapter?: string;
-    baseURL?: string;
-    auth?: { secret?: string };
-  };
-  const protocol = spec.protocol ?? spec.adapter;
+interface EndpointSpec {
+  baseURL?: string;
+  families?: Record<string, string>;
+  auth?: { kind?: string; secret?: string; header?: string };
+}
+
+const specOf = (entry: ConfigEntry) => {
+  const spec = entry.spec as EndpointSpec;
   return {
-    protocol:
-      protocol && protocol in protocolLabel
-        ? t(protocolLabel[protocol as ModelProtocol])
-        : protocol,
+    families: Object.keys(spec.families ?? {}),
     baseURL: spec.baseURL,
     secret: spec.auth?.secret?.replace(secretPrefix, ''),
   };
 };
 
+interface FamilyRow {
+  family: string;
+  base: string;
+}
+
+const familyBasePattern = /^((\/[A-Za-z0-9._~-]+)*\/?|https:\/\/\S+)$/;
+
 const EndpointForm = ({
   api,
+  existing,
   onClose,
-  onAdded,
+  onSaved,
 }: {
   api: ApiClient;
+  existing?: ConfigEntry | undefined;
   onClose: () => void;
-  onAdded: (id: string) => void;
+  onSaved: (id: string) => void;
 }) => {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  const [id, setId] = useState('');
-  const [protocol, setProtocol] = useState<ModelProtocol>('openai-chat');
-  const [baseURL, setBaseURL] = useState('');
-  const [authKind, setAuthKind] = useState<'api-key' | 'bearer'>('api-key');
-  const [secretName, setSecretName] = useState('');
+  const spec = (existing?.spec ?? {}) as EndpointSpec;
+  const storedSecret = spec.auth?.secret?.startsWith(secretPrefix)
+    ? spec.auth.secret.slice(secretPrefix.length)
+    : '';
+  const [apis] = useAsync((signal) => api.modelApis(signal), [api]);
+  const known =
+    apis.status === 'ready' ? [...new Set(apis.data.map((a) => a.family))].sort() : undefined;
+  const [id, setId] = useState(existing?.id ?? '');
+  const [rows, setRows] = useState<FamilyRow[]>(
+    spec.families
+      ? Object.entries(spec.families).map(([family, base]) => ({ family, base }))
+      : [{ family: 'openai', base: '' }],
+  );
+  const [baseURL, setBaseURL] = useState(spec.baseURL ?? '');
+  const [authKind, setAuthKind] = useState<'api-key' | 'bearer'>(
+    spec.auth?.kind === 'bearer' ? 'bearer' : 'api-key',
+  );
+  const [secretName, setSecretName] = useState(storedSecret);
   const [secretValue, setSecretValue] = useState('');
   const [secretSaved, setSecretSaved] = useState<string | undefined>();
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const familyOptions = (current: string) =>
+    [...new Set([...(known ?? []), current, ...rows.map((r) => r.family)])].filter(Boolean).sort();
+  const setRow = (index: number, change: Partial<FamilyRow>) =>
+    setRows((all) => all.map((r, i) => (i === index ? { ...r, ...change } : r)));
 
   const check = (fields: string[]) => {
+    const names = rows.map((r) => r.family);
     const all: Record<string, string | undefined> = {
       id: /^[a-z0-9][a-z0-9-]*$/.test(id) ? undefined : t('endpoints.idHint'),
       baseURL: /^https:\/\/\S+$/.test(baseURL) ? undefined : t('endpoints.urlHint'),
+      families:
+        rows.length === 0
+          ? t('endpoints.familiesRequired')
+          : names.some((n, i) => !n || names.indexOf(n) !== i)
+            ? t('endpoints.familyHint')
+            : rows.some((r) => !familyBasePattern.test(r.base.trim()))
+              ? t('endpoints.familyBaseHint')
+              : undefined,
       secretName: /^[a-z0-9][a-z0-9-]*$/.test(secretName)
         ? undefined
         : t('endpoints.secretNameHint'),
@@ -148,23 +175,28 @@ const EndpointForm = ({
     }
   };
 
-  const add = async () => {
+  const save = async () => {
     setFailed(undefined);
-    if (!check(['id', 'baseURL', 'secretName', 'reason'])) return;
+    if (!check(['id', 'baseURL', 'families', 'secretName', 'reason'])) return;
     setBusy(true);
+    const header = authKind === 'api-key' ? spec.auth?.header : undefined;
+    const input: ModelEndpointInput = {
+      baseURL,
+      auth: {
+        kind: authKind,
+        secret: `${secretPrefix}${secretName}`,
+        ...(header ? { header } : {}),
+      },
+      families: Object.fromEntries(rows.map((r) => [r.family, r.base.trim()])),
+    };
     try {
-      await api.addModelEndpoint(
-        {
-          id,
-          protocol,
-          baseURL,
-          auth: { kind: authKind, secret: `${secretPrefix}${secretName}` },
-        },
-        reason.trim(),
-      );
-      onAdded(id);
+      if (existing) await api.updateModelEndpoint(id, input, reason.trim());
+      else await api.addModelEndpoint(id, input, reason.trim());
+      onSaved(id);
     } catch (error) {
-      setFailed(problemText(error, tRef.current('endpoints.addFailed')));
+      setFailed(
+        problemText(error, tRef.current(existing ? 'endpoints.saveFailed' : 'endpoints.addFailed')),
+      );
     } finally {
       setBusy(false);
     }
@@ -175,7 +207,9 @@ const EndpointForm = ({
       <div className="panel-head">
         <span className="eyebrow">{t('endpoints.panelEyebrow')}</span>
         <Heading level={2} data-size="xs" id="endpoint-panel-h" tabIndex={-1}>
-          {t('endpoints.addEndpointTitle')}
+          {existing
+            ? t('endpoints.editEndpointTitle', { id: existing.id })
+            : t('endpoints.addEndpointTitle')}
         </Heading>
       </div>
       <div className="panel-body">
@@ -183,29 +217,72 @@ const EndpointForm = ({
           label={t('endpoints.name')}
           description={t('endpoints.nameDescription')}
           value={id}
+          readOnly={Boolean(existing)}
           onChange={(e) => setId(e.target.value.trim())}
           error={errors.id}
         />
-        <div className="field">
-          <Label htmlFor="endpoint-protocol">{t('endpoints.protocol')}</Label>
-          <Select
-            id="endpoint-protocol"
-            value={protocol}
-            onChange={(e) => setProtocol(e.target.value as ModelProtocol)}
-          >
-            {(Object.keys(protocolLabel) as ModelProtocol[]).map((p) => (
-              <SelectOption key={p} value={p}>
-                {t(protocolLabel[p])}
-              </SelectOption>
-            ))}
-          </Select>
-        </div>
         <Textfield
           label={t('endpoints.baseUrl')}
           value={baseURL}
           onChange={(e) => setBaseURL(e.target.value.trim())}
           error={errors.baseURL}
         />
+        <Fieldset>
+          <FieldsetLegend>{t('endpoints.families')}</FieldsetLegend>
+          <Paragraph data-size="sm">{t('endpoints.familiesDescription')}</Paragraph>
+          {rows.map((row, index) => (
+            <div className="actions-row" key={index}>
+              <div className="field">
+                <Label htmlFor={`endpoint-family-${index}`}>{t('endpoints.familyName')}</Label>
+                <Select
+                  id={`endpoint-family-${index}`}
+                  value={row.family}
+                  onChange={(e) => setRow(index, { family: e.target.value })}
+                >
+                  {familyOptions(row.family).map((f) => (
+                    <SelectOption key={f} value={f}>
+                      {f}
+                    </SelectOption>
+                  ))}
+                </Select>
+              </div>
+              <Textfield
+                id={`endpoint-family-base-${index}`}
+                label={t('endpoints.familyBase')}
+                description={index === 0 ? t('endpoints.familyBaseDescription') : undefined}
+                value={row.base}
+                onChange={(e) => setRow(index, { base: e.target.value })}
+              />
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                aria-label={t('endpoints.removeFamily', { family: row.family })}
+                disabled={rows.length === 1}
+                onClick={() => setRows((all) => all.filter((_, i) => i !== index))}
+              >
+                {t('endpoints.remove')}
+              </Button>
+            </div>
+          ))}
+          {errors.families ? <ValidationMessage>{errors.families}</ValidationMessage> : null}
+          <div className="actions-row">
+            <Button
+              variant="secondary"
+              data-size="sm"
+              onClick={() =>
+                setRows((all) => [
+                  ...all,
+                  {
+                    family: (known ?? []).find((f) => !all.some((r) => r.family === f)) ?? '',
+                    base: '',
+                  },
+                ])
+              }
+            >
+              {t('endpoints.addFamily')}
+            </Button>
+          </div>
+        </Fieldset>
         <div className="field">
           <Label htmlFor="endpoint-auth">{t('endpoints.login')}</Label>
           <Select
@@ -263,8 +340,8 @@ const EndpointForm = ({
           </Alert>
         ) : null}
         <div className="actions-row">
-          <Button loading={busy} onClick={() => void add()}>
-            {t('endpoints.addEndpoint')}
+          <Button loading={busy} onClick={() => void save()}>
+            {existing ? t('endpoints.saveEndpoint') : t('endpoints.addEndpoint')}
           </Button>
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
@@ -515,6 +592,7 @@ export const Endpoints = ({
 }) => {
   const t = useT();
   const [adding, setAdding] = useState(false);
+  const [editingEndpoint, setEditingEndpoint] = useState<ConfigEntry | undefined>();
   const [removing, setRemoving] = useState<string | undefined>();
   const [inUse, setInUse] = useState<InUse[] | undefined>();
   const [recording, setRecording] = useState<string | undefined>();
@@ -557,7 +635,7 @@ export const Endpoints = ({
             <TableHead>
               <TableRow>
                 <TableHeaderCell scope="col">{t('endpoints.colEndpoint')}</TableHeaderCell>
-                <TableHeaderCell scope="col">{t('endpoints.colProtocol')}</TableHeaderCell>
+                <TableHeaderCell scope="col">{t('endpoints.colFamilies')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('endpoints.colSecret')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('endpoints.colModels')}</TableHeaderCell>
                 <TableHeaderCell scope="col">{t('endpoints.colProcessor')}</TableHeaderCell>
@@ -568,7 +646,7 @@ export const Endpoints = ({
             </TableHead>
             <TableBody>
               {endpoints.map((e) => {
-                const spec = specOf(e, t);
+                const spec = specOf(e);
                 return (
                   <TableRow key={e.id}>
                     <TableHeaderCell scope="row">
@@ -577,7 +655,9 @@ export const Endpoints = ({
                         <span className="meta">{spec.baseURL ?? ''}</span>
                       </span>
                     </TableHeaderCell>
-                    <TableCell>{spec.protocol ?? t('endpoints.unknown')}</TableCell>
+                    <TableCell>
+                      {spec.families.length > 0 ? spec.families.join(', ') : t('endpoints.unknown')}
+                    </TableCell>
                     <TableCell>{spec.secret ?? t('endpoints.noSecret')}</TableCell>
                     <TableCell>{models.filter((m) => m.endpoint === e.id).length}</TableCell>
                     <TableCell>
@@ -602,6 +682,14 @@ export const Endpoints = ({
                     </TableCell>
                     <TableCell>
                       <span className="row-actions">
+                        <Button
+                          variant="tertiary"
+                          data-size="sm"
+                          aria-label={t('endpoints.editId', { id: e.id })}
+                          onClick={() => setEditingEndpoint(e)}
+                        >
+                          {t('endpoints.edit')}
+                        </Button>
                         <Button
                           variant="tertiary"
                           data-size="sm"
@@ -653,12 +741,18 @@ export const Endpoints = ({
           }}
         />
       ) : null}
-      {adding ? (
+      {adding || editingEndpoint ? (
         <EndpointForm
+          key={editingEndpoint?.id ?? 'new'}
           api={api}
-          onClose={() => setAdding(false)}
-          onAdded={() => {
+          existing={editingEndpoint}
+          onClose={() => {
             setAdding(false);
+            setEditingEndpoint(undefined);
+          }}
+          onSaved={() => {
+            setAdding(false);
+            setEditingEndpoint(undefined);
             onAdded();
           }}
         />

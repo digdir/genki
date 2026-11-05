@@ -114,7 +114,9 @@ const OperationKind = z
       z.object({
         id: z.string(),
         status: z.enum(['review', 'described', 'typed']),
-        protocol: z.string().describe('The endpoint protocol the descriptor speaks'),
+        family: z
+          .string()
+          .describe('The API family the descriptor speaks, offered by a connection'),
       }),
     ),
   })
@@ -122,14 +124,14 @@ const OperationKind = z
 
 const OperationDescriptorView = z
   .object({
-    id: z.string().describe('<provider>/<kind>@<version>'),
+    id: z.string().describe('<provider>/<api>@<version>'),
     operation: z.string(),
     status: z.enum(['review', 'described', 'typed']),
     source: z
       .enum(['bundled', 'uploaded'])
       .describe('Bundled with Genki in packages/operations, or uploaded by an operator'),
     summary: z.string(),
-    protocol: z.string().nullable(),
+    family: z.string().nullable().describe('The API family, such as openai or anthropic'),
     fixtures: z.number().int().describe('How many recorded fixtures prove it'),
     contract: z
       .object({

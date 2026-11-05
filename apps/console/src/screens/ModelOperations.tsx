@@ -680,8 +680,8 @@ const DescriptorPanel = ({
                   ? t('modelOperations.sourceUploaded')
                   : t('modelOperations.sourceBundled')}
               </dd>
-              <dt>{t('modelOperations.protocol')}</dt>
-              <dd>{detail.protocol ?? t('modelOperations.unknown')}</dd>
+              <dt>{t('modelOperations.family')}</dt>
+              <dd>{detail.family ?? t('modelOperations.unknown')}</dd>
               {detail.by && detail.at ? (
                 <>
                   <dt>{t('modelOperations.lastChange')}</dt>

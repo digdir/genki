@@ -28,6 +28,7 @@ import { useAsync } from '../hooks';
 import { EmptyState, ErrorState, Loading } from '../states';
 import type {
   Capability,
+  ModelApi,
   ModelClassification,
   OperationKind,
   OperatorModel,
@@ -43,12 +44,7 @@ import {
   PriceDialog,
   residencyLabel,
 } from './models/Endpoints';
-import {
-  offeredOperations,
-  operationChoices,
-  operationName,
-  toggleOperation,
-} from '../model-operations';
+import { kindChoices, operationName, rebind } from '../model-operations';
 import { ParametersDialog, parameterNames, RejectedHint, ruleText } from './models/Parameters';
 import { reasonProblem, reasonTooShort } from '../reason';
 
@@ -63,14 +59,14 @@ export const priceText = (price: ModelPrice | null | undefined, f: Format, t: T)
 const capabilities = Object.keys(capabilityLabel) as Capability[];
 const residencies = Object.keys(residencyLabel) as Residency[];
 
-export type ModelControl = 'residency' | 'capabilities' | 'operations' | 'enabled';
+export type ModelControl = 'residency' | 'capabilities' | 'apis' | 'enabled';
 
 export interface ControlError {
   control: ModelControl;
   text: string;
 }
 
-const controls: readonly ModelControl[] = ['residency', 'capabilities', 'operations', 'enabled'];
+const controls: readonly ModelControl[] = ['residency', 'capabilities', 'apis', 'enabled'];
 
 /** The control a failed change belongs next to: the field the API names, else the one changed. */
 export const controlOf = (change: ModelClassification, error: unknown): ModelControl => {
@@ -95,7 +91,8 @@ const ControlMessage = ({
 const ModelRow = ({
   model,
   kinds,
-  protocol,
+  apis,
+  families,
   busy,
   error,
   onChange,
@@ -105,7 +102,8 @@ const ModelRow = ({
 }: {
   model: OperatorModel;
   kinds: OperationKind[] | undefined;
-  protocol: string | undefined;
+  apis: ModelApi[] | undefined;
+  families: string[] | undefined;
   busy: boolean;
   error: ControlError | undefined;
   onChange: (change: ModelClassification) => void;
@@ -116,7 +114,7 @@ const ModelRow = ({
   const t = useT();
   const f = useFormat();
   const fieldId = `residency-${model.id.replace(/[^a-z0-9]/gi, '-')}`;
-  const offered = offeredOperations(model);
+  const bound = model.apis ?? {};
   return (
     <TableRow>
       <TableCell>
@@ -210,33 +208,42 @@ const ModelRow = ({
               {t('models.forModel', { model: model.deployment })}
             </span>
           </FieldsetLegend>
-          {operationChoices(kinds, offered, protocol).map(({ kind, maturity }) => {
-            const on = offered.includes(kind);
+          {kindChoices(kinds, apis, bound, families).map(({ kind, apis: offered, maturity }) => {
+            const selectId = `${fieldId}-api-${kind}`;
+            const only = Object.keys(bound).length === 1 && Boolean(bound[kind]);
             return (
-              <Checkbox
-                key={kind}
-                label={
-                  <>
-                    {operationName(kind, t)}{' '}
-                    {maturity === 'test' ? (
-                      <>
-                        <span className="muted">{t('models.operationInTest')}</span>{' '}
-                      </>
-                    ) : null}
-                    <span className="visually-hidden">
-                      {t('models.forModel', { model: model.deployment })}
-                    </span>
-                  </>
-                }
-                checked={on}
-                disabled={busy || (on && offered.length === 1)}
-                onChange={(e) =>
-                  onChange({ operations: toggleOperation(offered, kind, e.target.checked) })
-                }
-              />
+              <div className="field" key={kind}>
+                <Label htmlFor={selectId}>
+                  {operationName(kind, t)}{' '}
+                  {maturity === 'test' ? (
+                    <>
+                      <span className="muted">{t('models.operationInTest')}</span>{' '}
+                    </>
+                  ) : null}
+                  <span className="visually-hidden">
+                    {t('models.forModel', { model: model.deployment })}
+                  </span>
+                </Label>
+                <Select
+                  id={selectId}
+                  data-size="sm"
+                  value={bound[kind] ?? ''}
+                  disabled={busy || apis === undefined}
+                  onChange={(e) => onChange({ apis: rebind(bound, kind, e.target.value) })}
+                >
+                  <SelectOption value="" disabled={only}>
+                    {t('models.apiNone')}
+                  </SelectOption>
+                  {offered.map((id) => (
+                    <SelectOption key={id} value={id}>
+                      {id}
+                    </SelectOption>
+                  ))}
+                </Select>
+              </div>
             );
           })}
-          <ControlMessage error={error} control="operations" />
+          <ControlMessage error={error} control="apis" />
         </Fieldset>
       </TableCell>
       <TableCell>
@@ -300,10 +307,11 @@ export const Models = ({ api }: { api: ApiClient }) => {
   const [kinds] = useAsync((signal) => api.operationKinds(signal), [api]);
   const flash = useFlash();
   const tenantName = useTenantNames(api);
-  const protocolOf = (endpoint: string) => {
+  const [apis] = useAsync((signal) => api.modelApis(signal), [api]);
+  const familiesOf = (endpoint: string) => {
     if (endpoints.status !== 'ready') return undefined;
-    const protocol = endpoints.data.find((e) => e.id === endpoint)?.spec.protocol;
-    return typeof protocol === 'string' ? protocol : undefined;
+    const families = endpoints.data.find((e) => e.id === endpoint)?.spec.families;
+    return families && typeof families === 'object' ? Object.keys(families) : undefined;
   };
   const endpointIds =
     endpoints.status === 'ready'
@@ -445,7 +453,8 @@ export const Models = ({ api }: { api: ApiClient }) => {
                   key={m.id}
                   model={m}
                   kinds={kinds.status === 'ready' ? kinds.data : undefined}
-                  protocol={protocolOf(m.endpoint)}
+                  apis={apis.status === 'ready' ? apis.data : undefined}
+                  families={familiesOf(m.endpoint)}
                   busy={busy.has(m.id)}
                   error={errors[m.id]}
                   onChange={(c) => onChange(m, c)}

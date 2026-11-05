@@ -101,6 +101,10 @@ export const catalogErrors = defineNamespace({
   hooksOff: 'kroker er slått av',
   endpointId: 'små bokstaver, sifre, punktum og bindestrek',
   httpsAddress: 'en HTTPS-adresse uten påloggingsopplysninger',
+  familyAndBase: 'oppgi minst én API-familie og stien eller adressen til den',
+  noApiFamily: 'ingen API-er i familien {family}; en av {knownFamilies}',
+  familyBase: 'en sti under baseURL, eller en HTTPS-adresse uten påloggingsopplysninger',
+  discoveryRules: 'en liste med regler for å finne modeller',
   apiKeyOrBearer: 'api-key eller bearer',
   usePlatformSecret: 'bruk en hemmelighet for plattformen: secret://platform/<name>',
   endpointExists: 'Endepunktet finnes allerede',
@@ -437,6 +441,8 @@ export const operationErrors = defineNamespace({
   notServiceModel: 'modellen {modelId} er ikke en av modellene til tjenesten',
   noCatalogueModel: 'det finnes ingen modell {modelId} i katalogen',
   modelOutsideResidency: 'modellen {modelId} kjører i {residency}, utenfor {residency}',
+  modelBindsOther: 'modellen {modelId} bruker {bound} for {operation}, ikke {id}',
+  modelBindsNone: 'modellen {modelId} bruker ikke noe API for {operation}',
   noProcessorRecordForService:
     'endepunktet {endpoint} for {modelId} har ingen databehandleropplysninger, så det kan ikke betjene en tjeneste med ekte data',
   decideOnlyThroughPurposeCheck:

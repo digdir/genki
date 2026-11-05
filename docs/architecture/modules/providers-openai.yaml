@@ -1,6 +1,6 @@
 id: providers-openai
 plane: providers
-name: openai-chat adapter
+name: OpenAI adapter
 note: Chat, Responses, Decisions + Foundry discovery
 icon: llm
 color: '#8fa8b3'
@@ -12,7 +12,8 @@ description:
   Translates the model port to the OpenAI chat and Responses APIs with the vendor SDK, and lists Foundry
   deployments so models are discovered, not configured.
 responsibilities:
-  - openai-chat protocol with per-model API selection and learned Responses recovery
+  - The openai family's built-in APIs openai/chat-completions@1, openai/responses@1 and
+    openai/decide@1, with learned Responses recovery
   - The decide operation against the Azure OpenAI Decisions API, with a closed response shape
   - Azure deployment discovery
 files:

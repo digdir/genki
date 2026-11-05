@@ -26,7 +26,6 @@ import {
 } from '@genai/port-model';
 import { z } from 'zod';
 
-const endpointOptions = z.strictObject({});
 const modelOptions = z.strictObject({
   defaultMaxTokens: z.number().int().positive().default(4096),
 });
@@ -178,10 +177,16 @@ const toBlock = (b: StreamBlock): ContentBlockParam =>
     ? { type: 'tool_use', id: b.id, name: b.name, input: parseArguments(b.json) }
     : b;
 
-export const anthropicMessages: ModelAdapter<z.infer<typeof endpointOptions>, ModelOptions> = {
-  protocol: 'anthropic-messages',
-  endpointOptions,
-  modelOptions,
+export const anthropicMessages: ModelAdapter<ModelOptions> = {
+  apis: [
+    {
+      id: 'anthropic/messages@1',
+      kind: 'chat',
+      family: 'anthropic',
+      modelOptions,
+      default: true,
+    },
+  ],
   continuation: messagesContinuation,
 
   connect(endpoint: EndpointConfig) {

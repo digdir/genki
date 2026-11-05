@@ -104,7 +104,7 @@ export const stepOperationsModule: PlatformModuleFactory = (deps) => ({
           media: [...new Set(mediaTypes(d.output))],
           models: await Promise.all(
             visible
-              .filter((m) => m.operations.includes(d.operation))
+              .filter((m) => m.apis[d.operation] === d.id)
               .map(async (m) => ({
                 id: m.id,
                 name: names.get(m.id) ?? m.id,

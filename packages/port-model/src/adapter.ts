@@ -3,10 +3,9 @@ import type { z } from 'zod';
 import type { DecisionRequest, DecisionResult } from './decision.js';
 import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
 
-export interface EndpointConfig<O = unknown> {
+export interface EndpointConfig {
   baseURL: string;
   credential: Credential;
-  options: O;
   maxRetries: number;
   timeoutMs: number;
   fetch?: typeof fetch;
@@ -14,6 +13,7 @@ export interface EndpointConfig<O = unknown> {
 
 export interface DeploymentConfig<O = unknown> {
   deployment: string;
+  api: string;
   options: O;
 }
 
@@ -37,13 +37,21 @@ export interface ModelConnection<M = unknown> {
   ): Promise<DecisionResult>;
 }
 
-export interface ModelAdapter<E = unknown, M = unknown> {
-  protocol: string;
-  endpointOptions: z.ZodType<E>;
-  modelOptions: z.ZodType<M>;
+/** One wire API an adapter implements in code, registered under its API id (ADR 0048). */
+export interface BuiltInApi {
+  id: string;
+  kind: string;
+  family: string;
+  modelOptions: z.ZodObject;
+  /** The API a model binds for this kind when it names none and its connection offers only this family. */
+  default?: boolean;
+}
+
+export interface ModelAdapter<M = unknown> {
+  apis: BuiltInApi[];
   /** The closed shape of the replay state this adapter puts in `continuation`. */
   continuation?: Shape;
-  connect(endpoint: EndpointConfig<E>): ModelConnection<M>;
+  connect(endpoint: EndpointConfig): ModelConnection<M>;
 }
 
 export const errorFromStatus = (

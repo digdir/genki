@@ -1,5 +1,12 @@
 import type { PlainKey, T } from './i18n';
-import type { BuiltInOperation, ModelOperation, OperationKind, OperatorModel } from './types';
+import type {
+  ApiBindings,
+  BuiltInOperation,
+  ModelApi,
+  ModelOperation,
+  OperationKind,
+  OperatorModel,
+} from './types';
 
 export const operationLabel: Record<BuiltInOperation, PlainKey> = {
   chat: 'models.operationChat',
@@ -21,46 +28,55 @@ const builtIns = Object.keys(operationLabel) as BuiltInOperation[];
 const isBuiltIn = (kind: ModelOperation): kind is BuiltInOperation =>
   (builtIns as string[]).includes(kind);
 
-export interface OperationChoice {
+export interface KindChoice {
   kind: ModelOperation;
-  builtIn: boolean;
+  apis: string[];
+  bound?: string;
   maturity?: OperationKind['maturity'];
 }
 
-export const offeredOperations = (model: Pick<OperatorModel, 'operations'>): ModelOperation[] =>
-  model.operations ?? ['chat'];
+export const offeredOperations = (
+  model: Pick<OperatorModel, 'operations' | 'apis'>,
+): ModelOperation[] => {
+  const kinds = model.operations ?? Object.keys(model.apis ?? {});
+  return kinds.length > 0 ? kinds : ['chat'];
+};
 
-const speaks = (known: OperationKind | undefined, protocol: string | undefined) =>
-  Boolean(protocol) && (known?.descriptors ?? []).some((d) => d.protocol === protocol);
-
-/** The kinds a model may be given: built-in kinds, kinds it offers, and kinds with a descriptor for its protocol. */
-export const operationChoices = (
+/** Per kind, the APIs a model may bind: those in a family its connection offers, plus the one it binds. */
+export const kindChoices = (
   known: OperationKind[] | undefined,
-  offered: ModelOperation[],
-  protocol?: string,
-): OperationChoice[] => {
-  const choices = new Map<ModelOperation, OperationChoice>();
-  for (const kind of builtIns) choices.set(kind, { kind, builtIn: true });
-  for (const k of known ?? []) {
-    if (isBuiltIn(k.kind)) continue;
-    if (protocol !== undefined && !speaks(k, protocol) && !offered.includes(k.kind)) continue;
-    choices.set(k.kind, { kind: k.kind, builtIn: false, maturity: k.maturity });
+  apis: ModelApi[] | undefined,
+  bound: ApiBindings,
+  families: string[] | undefined,
+): KindChoice[] => {
+  const choices = new Map<ModelOperation, KindChoice>();
+  const choiceOf = (kind: ModelOperation) => {
+    const found = choices.get(kind) ?? { kind, apis: [] };
+    choices.set(kind, found);
+    return found;
+  };
+  for (const api of apis ?? [])
+    if (!families || families.includes(api.family)) choiceOf(api.kind).apis.push(api.id);
+  for (const [kind, api] of Object.entries(bound)) {
+    const choice = choiceOf(kind);
+    choice.bound = api;
+    if (!choice.apis.includes(api)) choice.apis.push(api);
   }
-  for (const kind of offered)
-    if (!choices.has(kind)) choices.set(kind, { kind, builtIn: isBuiltIn(kind) });
-  const all = [...choices.values()];
+  for (const k of known ?? []) {
+    const choice = choices.get(k.kind);
+    if (choice && !isBuiltIn(k.kind)) choice.maturity = k.maturity;
+  }
+  const all = [...choices.values()].map((c) => ({ ...c, apis: [...c.apis].sort() }));
   return [
     ...builtIns.flatMap((b) => all.filter((c) => c.kind === b)),
     ...all.filter((c) => !isBuiltIn(c.kind)).sort((a, b) => a.kind.localeCompare(b.kind)),
   ];
 };
 
-export const toggleOperation = (
-  offered: ModelOperation[],
-  kind: ModelOperation,
-  on: boolean,
-): ModelOperation[] =>
-  on ? (offered.includes(kind) ? offered : [...offered, kind]) : offered.filter((k) => k !== kind);
+export const rebind = (bound: ApiBindings, kind: ModelOperation, api: string): ApiBindings => {
+  const rest = Object.fromEntries(Object.entries(bound).filter(([k]) => k !== kind));
+  return api ? { ...rest, [kind]: api } : rest;
+};
 
 export const operationName = (kind: ModelOperation, t: T): string => {
   const label = Object.hasOwn(knownKindLabel, kind) ? knownKindLabel[kind] : undefined;

@@ -51,8 +51,9 @@ import {
 } from '@genai/port-knowledge';
 import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
 import { liveDescriptors } from './operation-descriptors.js';
+import { migratedCatalog, migrateConnections, registryApiFor } from './connection-migration.js';
 import {
-  catalogDescriptorProblems,
+  apiRegistry,
   ModelError,
   ModelRouter,
   type OperationPort,
@@ -352,6 +353,10 @@ export const createRuntime = async (input: RuntimeInput) => {
   const modelAdapters = [openAiChat, anthropicMessages];
   const descriptors = liveDescriptors(input.descriptors ?? loadDescriptors(), configEntries);
   await descriptors.refresh();
+  const modelSeed = migratedCatalog(
+    input.catalogs.models,
+    registryApiFor(apiRegistry(modelAdapters, descriptors)),
+  );
   const environmentTier = input.environmentTier ?? 'production';
   const governance = operationGovernance(configEntries, environmentTier);
   const blobStore = input.blobStore ?? new InMemoryBlobStore();
@@ -437,7 +442,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     gate,
     descriptors,
     governance,
-    catalog: input.catalogs.models,
+    catalog: modelSeed,
     adapters: modelAdapters,
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
@@ -468,6 +473,15 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
+  const migrated = await migrateConnections({
+    store: configEntries,
+    seed: modelSeed,
+    apis: models.apis(),
+    ...(input.modelClassifications ? { classifications: input.modelClassifications } : {}),
+    ...(input.now ? { now: input.now } : {}),
+  });
+  if (Object.values(migrated).some((n) => n > 0))
+    input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
   const discovery = await models.refresh();
   for (const f of discovery.failed)
     input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
@@ -739,7 +753,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   };
   const catalog = new CatalogRegistry({
     seed: {
-      models: input.catalogs.models,
+      models: modelSeed,
       knowledge: knowledgeSeed,
       rerank: input.catalogs.rerank,
       prices: { ...prices },
@@ -747,10 +761,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     store: configEntries,
     checks: {
       models: (c) => {
-        const parsed = parseCatalog(c, modelAdapters, [azureDeployments.kind]);
-        return parsed.ok
-          ? catalogDescriptorProblems(parsed.catalog, descriptors)
-          : problemsOf(parsed);
+        return problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind]));
       },
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
       rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),

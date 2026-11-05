@@ -14,7 +14,7 @@ operation: classify
 status: review
 summary: A made-up classification API.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST

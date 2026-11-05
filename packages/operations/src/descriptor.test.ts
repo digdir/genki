@@ -103,10 +103,20 @@ describe('operation descriptors', () => {
     ).toMatch(/request.body.model must be \$deployment/);
   });
 
-  it('a descriptor id names the operation it describes', () => {
-    expect(refused(embedYaml.replace('operation: embed', 'operation: classify'))).toMatch(
-      /a descriptor id names its operation/,
+  it('a descriptor id names its API, and the operation field names its kind', () => {
+    const descriptor = parseDescriptor(
+      embedYaml.replace('id: openai/embed@1', 'id: openai/embeddings@1'),
     );
+    expect(descriptor).toMatchObject({ id: 'openai/embeddings@1', operation: 'embed' });
+  });
+
+  it("a stored descriptor that names an endpoint protocol is read with that protocol's family", () => {
+    const stored = embedYaml.replace('family: openai', 'protocol: openai-embeddings');
+    expect(parseDescriptor(stored).api.family).toBe('openai');
+    expect(
+      parseDescriptor(embedYaml.replace('family: openai', 'protocol: anthropic-messages')).api
+        .family,
+    ).toBe('anthropic');
   });
 
   it('a descriptor that declares stream events is refused until streaming is built', () => {
