@@ -1,3 +1,4 @@
+import { withoutTrailingSlashes } from '@genai/kernel';
 import { familyOfProtocol } from '@genai/operations';
 import type { ApiRegistry, ModelClassification, ModelClassificationStore } from '@genai/port-model';
 import {
@@ -34,14 +35,12 @@ const familySuffixes = [/\/openai\/v1\/?$/, /\/openai\/?$/, /\/anthropic\/?$/, /
 const record = (value: unknown): Spec =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Spec) : {};
 
-const trimmed = (url: string) => url.replace(/\/+$/, '');
-
 /** A base URL split into the provider resource's root and the family's path under it. */
 export const resourceRoot = (baseURL: string): { root: string; path: string } => {
-  const url = trimmed(baseURL);
+  const url = withoutTrailingSlashes(baseURL);
   for (const suffix of familySuffixes) {
     const match = suffix.exec(url);
-    if (match) return { root: url.slice(0, match.index), path: trimmed(match[0]) };
+    if (match) return { root: url.slice(0, match.index), path: withoutTrailingSlashes(match[0]) };
   }
   return { root: url, path: '' };
 };
@@ -192,8 +191,8 @@ export const planConnections = (view: CatalogView, apiFor: ApiForKind): Connecti
     for (const id of members) {
       const e = view.endpoints.get(id) as Placed;
       const family = familyOfProtocol(String(e.spec.protocol));
-      const url = trimmed(String(e.spec.baseURL));
-      const root = trimmed(String(spec.baseURL));
+      const url = withoutTrailingSlashes(String(e.spec.baseURL));
+      const root = withoutTrailingSlashes(String(spec.baseURL));
       const at = url.startsWith(root) ? url.slice(root.length) : url;
       if (families[family] !== undefined && families[family] !== at) {
         endpoints.set(id, {

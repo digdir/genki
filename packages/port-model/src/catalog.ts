@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { secretRefPattern } from '@genai/kernel';
+import { secretRefPattern, withoutTrailingSlashes } from '@genai/kernel';
 import { apiFamilyPattern } from '@genai/operations';
 import type { ModelAdapter } from './adapter.js';
 import { apiIdPattern, apiRegistry, type ApiRegistry } from './apis.js';
@@ -73,8 +73,6 @@ export type CatalogResult =
 
 const pathOf = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
   [...base, ...issue.path].map(String).join('.');
-
-const withoutTrailingSlashes = (url: string) => url.replace(/\/+$/, '');
 
 /** The URL a connection serves one family at: its base under `baseURL`, or the base itself when it is a full URL. */
 export const familyURL = (endpoint: Pick<CatalogEndpoint, 'baseURL'>, base: string) =>
