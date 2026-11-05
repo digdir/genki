@@ -1,7 +1,7 @@
 using '../main.bicep'
 
 param environmentName = 'prod'
-param location = 'norwayeast'
+param location = 'westeurope'
 param postgresAdminGroupObjectId = readEnvironmentVariable('PG_ADMIN_GROUP_OBJECT_ID')
 param postgresAdminGroupName = readEnvironmentVariable('PG_ADMIN_GROUP_NAME')
 param deployPrincipalId = readEnvironmentVariable('DEPLOY_PRINCIPAL_ID', '')
@@ -73,3 +73,7 @@ param hostnames = {
 param customDomainsStage = readEnvironmentVariable('CUSTOM_DOMAINS_STAGE', 'none')
 param createDnsZone = true
 param dnsZoneName = 'genki.digdir.cloud'
+
+param alertsEnabled = true
+param alertEmails = readEnvironmentVariable('ALERT_EMAILS', '')
+param healthCheckFrequencySeconds = 300

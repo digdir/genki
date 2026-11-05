@@ -21,6 +21,9 @@
       "path": "../../packages/kernel"
     },
     {
+      "path": "../../packages/operations"
+    },
+    {
       "path": "../../packages/hooks"
     },
     {
@@ -142,6 +145,12 @@
     },
     {
       "path": "../../packages/i18n"
+    },
+    {
+      "path": "../../packages/port-usage"
+    },
+    {
+      "path": "../../packages/providers-ai-gateway"
     }
   ]
 }

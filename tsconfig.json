@@ -35,6 +35,9 @@
       "path": "packages/providers-postgres-source"
     },
     {
+      "path": "packages/operations"
+    },
+    {
       "path": "packages/port-model"
     },
     {
@@ -126,6 +129,12 @@
     },
     {
       "path": "packages/port-blob"
+    },
+    {
+      "path": "packages/port-usage"
+    },
+    {
+      "path": "packages/providers-ai-gateway"
     },
     {
       "path": "packages/jobs"

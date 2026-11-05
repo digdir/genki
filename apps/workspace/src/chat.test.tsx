@@ -77,6 +77,33 @@ describe('chat', () => {
     expect(within(conversation()).getByText('Svar laget med KI')).toBeTruthy();
   });
 
+  it('shows an image in the answer as a preview card fetched with the login', async () => {
+    URL.createObjectURL ??= () => 'blob:figur';
+    URL.revokeObjectURL ??= () => undefined;
+    const asked: string[] = [];
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async () => ({
+        text: 'Her er figuren.',
+        sources: [],
+        media: [{ id: 'm1', mediaType: 'image/png', bytes: 2048, url: '/v1/tasks/t1/media/m1' }],
+      }),
+      media: async (url) => {
+        asked.push(url);
+        return new Blob(['png'], { type: 'image/png' });
+      },
+    };
+    await renderApp('#/chat', { api, initialMessages: [] });
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Still et spørsmål/ }), {
+      target: { value: 'Lag en figur' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const image = await screen.findByRole('img', { name: 'Bilde i svaret' });
+    expect(image.getAttribute('src')).toMatch(/^blob:/);
+    expect(asked).toEqual(['/v1/tasks/t1/media/m1']);
+    expect(screen.getByText(/image\/png · 2 kB/)).toBeTruthy();
+  });
+
   it('marks a paused service, does not pick it and lets no one ask it', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),

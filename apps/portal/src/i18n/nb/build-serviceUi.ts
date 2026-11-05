@@ -161,6 +161,15 @@ export const serviceUi = {
     published: 'Versjon {version} er publisert og i bruk.',
   }),
   serviceTest: defineNamespace({
+    publishedTitle: 'Test steget som kaller en operasjon',
+    publishedNote:
+      'Flyten har steg som kaller en operasjon. Et utkast kan ikke kalle operasjoner, så denne testen kjører den publiserte versjonen v{version}. Endringer du ikke har publisert, er ikke med. Testen bruker modellen og koster det samme som en vanlig kjøring.',
+    publishedMissing:
+      'Flyten har steg som kaller en operasjon, og et utkast kan ikke kalle operasjoner. Publiser tjenesten for å teste dem.',
+    publishedRun: 'Kjør test mot v{version}',
+    publishedFailed: 'Testen mot den publiserte versjonen feilet: {detail}',
+    draftNoOperations:
+      'Prøveområdet under kjører utkastet. Steg som kaller en operasjon, blir avvist der.',
     queryRequired: 'Skriv noe tjenesten skal svare på.',
     runsLive: 'Kjører versjonen som er i bruk én gang.',
     runsDraft: 'Kjører utkastet én gang uten å publisere det.',
@@ -362,13 +371,16 @@ export const serviceUi = {
     temperatureIgnored: 'Modellen du har valgt støtter ikke temperatur. Verdien blir ikke sendt.',
     temperatureFixed:
       'Modellen du har valgt bruker alltid temperatur {value}. Verdien her blir ikke brukt.',
+    flowVersionLatest: '{id}, versjon {version} (nyeste)',
+    flowPinned: 'Tjenesten bruker versjon {version}.',
+    newVersionAvailable: 'Ny versjon er tilgjengelig: {flow} v{version}.',
+    updateFlow: 'Oppdater til v{version}',
     flowOption: '{id}, versjon {version}',
     flowUnpublished: '{flow} (ikke publisert hos virksomheten)',
     flow: 'Stegflyt',
     flowsLoading: 'Henter stegflytene …',
     flowsNone: 'Virksomheten har ingen publiserte stegflyter ennå.',
     flowsPick: 'Velg en publisert stegflyt fra biblioteket.',
-    flowPlaceholder: 'Velg stegflyt',
     flowRequired: 'Velg hvilken stegflyt tjenesten skal kjøre.',
     openEditor: 'Åpne i stegflyt-editoren',
     block: 'Stegtype {block}',

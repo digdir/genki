@@ -2,7 +2,12 @@ import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
-import { parameterRuleProblems, parameterRules } from '@genai/port-model';
+import {
+  apiIdPattern,
+  operationKindPattern,
+  parameterRuleProblems,
+  parameterRules,
+} from '@genai/port-model';
 import {
   exportTenant,
   importTenant,
@@ -29,6 +34,7 @@ import {
   problemContent,
   problems,
   reasonTooShort,
+  RunErasure,
 } from './http.js';
 import { originOf, serviceOrigin, type DraftOrigin } from './draft-runner.js';
 import { t } from './i18n/index.js';
@@ -221,6 +227,9 @@ const Block = z.object({
   sources: z.array(z.string()).optional(),
   calls: z.literal(true).optional(),
   usage: z.literal(true).optional(),
+  media: z
+    .array(z.object({ id: z.string(), mediaType: z.string(), bytes: z.number().int() }))
+    .optional(),
 });
 
 const RunStats = z
@@ -264,6 +273,7 @@ const Timeline = z
     costOre: z.number().optional(),
     costMicroNok: z.number().int().nullable().optional(),
     priced: z.boolean().optional(),
+    erasure: RunErasure.optional(),
     steps: z.array(
       z.object({
         id: z.string(),
@@ -614,6 +624,11 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
+    apis: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The API the model binds for each operation kind it offers'),
+    operations: z.array(z.string()).optional().describe('The kinds it offers, the keys of apis'),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
@@ -629,6 +644,12 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
+    apis: z
+      .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
+      .optional()
+      .describe(
+        'One API per operation kind, such as { chat: openai/responses@1 }; the API must be of that kind and in a family the connection offers',
+      ),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })
@@ -799,6 +820,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
     const lacking =
       !startedBy(found, principal) && refusedRight(c, acting, tenant, 'manage-services');
     if (lacking) return lacking;
+    const erasure = await options.tasks.erasure?.(tenant, task);
     return c.json(
       toTimeline(
         found,
@@ -808,6 +830,7 @@ export const registerPlatformRoutes = (app: OpenAPIHono, options: PlatformApiOpt
         {
           details: requireRight(acting, tenant, 'manage-services').ok,
           usage: startedBy(found, principal) || seesUsage(acting, tenant),
+          ...(erasure ? { erasure } : {}),
         },
       ),
       200,

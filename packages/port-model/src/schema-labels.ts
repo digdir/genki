@@ -65,6 +65,10 @@ const nb = {
       reasoning: 'Resonnerer',
     },
   },
+  apis: {
+    label: 'API per operasjon',
+    help: 'Hvilket API utrullingen bruker for hver operasjon, for eksempel samtale. Uten verdi samtale med tilkoblingens standard-API.',
+  },
   contextWindow: { label: 'Kontekstvindu (tokens)' },
   maxOutputTokens: { label: 'Mest svar modellen kan gi (tokens)' },
   parameters: { label: 'Regler for parametere' },
@@ -76,6 +80,10 @@ const nb = {
   tenants: { label: 'Virksomheter som kan bruke den', help: 'Tomt betyr alle.' },
   options: { label: 'Andre valg' },
   protocol: { label: 'Protokoll' },
+  families: {
+    label: 'API-familier',
+    help: 'API-familiene tilkoblingen tilbyr, med stien under adressen eller en full adresse for hver.',
+  },
   baseURL: { label: 'Adresse (URL)' },
   auth: { label: 'Pålogging' },
   'auth.kind': {
@@ -93,6 +101,11 @@ const nb = {
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
+  'discovery.idPrefix': {
+    label: 'Starten på ID-en',
+    help: 'Modellene som finnes får ID-en <start>/<utrulling>. Uten verdi tilkoblingens ID.',
+  },
+  'discovery.apis': { label: 'API per operasjon for modellene som finnes' },
   'discovery.include': { label: 'Ta med' },
   'discovery.exclude': { label: 'Utelat' },
   'discovery.capabilities': {
@@ -124,6 +137,10 @@ const en: Record<keyof typeof nb, LabelText> = {
       reasoning: 'Reasons',
     },
   },
+  apis: {
+    label: 'API per operation',
+    help: "Which API the deployment uses for each operation, such as chat. Without a value, chat with the connection's default API.",
+  },
   contextWindow: { label: 'Context window (tokens)' },
   maxOutputTokens: { label: 'Most output the model can give (tokens)' },
   parameters: { label: 'Parameter rules' },
@@ -135,6 +152,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   tenants: { label: 'Organisations that may use it', help: 'Empty means all.' },
   options: { label: 'Other options' },
   protocol: { label: 'Protocol' },
+  families: {
+    label: 'API families',
+    help: 'The API families the connection offers, each with its path under the address or a full address.',
+  },
   baseURL: { label: 'Address (URL)' },
   auth: { label: 'Sign-in' },
   'auth.kind': {
@@ -152,6 +173,11 @@ const en: Record<keyof typeof nb, LabelText> = {
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },
   'discovery.from': { label: 'Use the lookup from the endpoint' },
+  'discovery.idPrefix': {
+    label: 'Start of the id',
+    help: "Models found get the id <start>/<deployment>. Without a value, the connection's id.",
+  },
+  'discovery.apis': { label: 'API per operation for the models found' },
   'discovery.include': { label: 'Include' },
   'discovery.exclude': { label: 'Leave out' },
   'discovery.capabilities': {

@@ -54,7 +54,7 @@ const refusal = (t: T, error: unknown) =>
     : t('searchEngine.swFailed');
 
 const stepOf = (sw: Switch | undefined) =>
-  !sw ? 1 : sw.state === 'running' || sw.state === 'failed' ? 3 : 4;
+  !sw ? 1 : sw.state === 'running' || sw.state === 'failed' ? 3 : sw.state === 'activating' ? 5 : 4;
 
 export const canCopy = (from: SearchEngineInfo, to: SearchEngineInfo) =>
   !to.embeddingModel || to.embeddingModel.name === from.embeddingModel?.name;
@@ -105,10 +105,16 @@ export const EngineSwitch = ({
   const base = datasetEnginePath(tenant, datasetId);
 
   useEffect(() => {
-    if (!sw || (sw.state !== 'running' && sw.state !== 'comparing')) return;
+    if (!sw || (sw.state !== 'running' && sw.state !== 'comparing' && sw.state !== 'activating'))
+      return;
     const timer = setTimeout(() => {
       api.searchEngines.getSwitch(tenant, datasetId, sw.id).then(
         (next) => {
+          // Activating into the knowledge database ends once the refresh has run and the catalog names it.
+          if (sw.state === 'activating' && next.state === 'active') {
+            onClose({ kind: 'activated', target: dest.title });
+            return;
+          }
           setSw(next);
           if (next.state === 'comparing' || next.state === 'ready')
             setStep((s) => (s === 3 ? 4 : s));
@@ -117,7 +123,7 @@ export const EngineSwitch = ({
       );
     }, pollMs);
     return () => clearTimeout(timer);
-  }, [api, tenant, datasetId, sw, pollMs]);
+  }, [api, tenant, datasetId, sw, pollMs, onClose, dest.title]);
 
   const act = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -208,8 +214,9 @@ export const EngineSwitch = ({
     setTried(true);
     if (!sw || reasonProblem(reason, t, minimumReason)) return;
     void act(async () => {
-      await api.searchEngines.activateSwitch(tenant, datasetId, sw.id, reason.trim());
-      onClose({ kind: 'activated', target: dest.title });
+      const next = await api.searchEngines.activateSwitch(tenant, datasetId, sw.id, reason.trim());
+      if (next.state === 'activating') setSw(next);
+      else onClose({ kind: 'activated', target: dest.title });
     });
   };
 
@@ -558,6 +565,11 @@ export const EngineSwitch = ({
               {sw?.comparisonNote}
             </Alert>
           ) : null}
+          {sw?.failedDocuments ? (
+            <Alert data-color="warning" data-size="sm">
+              {t('searchEngine.swFailedDocuments', { count: sw.failedDocuments })}
+            </Alert>
+          ) : null}
           {!comparison && !compared ? (
             <span className="engine-leave subtle" role="status">
               <Spinner aria-hidden="true" data-size="xs" />
@@ -682,35 +694,49 @@ export const EngineSwitch = ({
               undecided: () => <NotDecided />,
             })}
           </p>
-          <ReasonField
-            value={reason}
-            onChange={setReason}
-            minLength={minimumReason}
-            showError={tried}
-            rows={3}
-            {...(worse
-              ? {
-                  description: t('searchEngine.swWorseReason'),
-                }
-              : {})}
-          />
-          <div className="actions">
-            <Button variant="secondary" onClick={() => goStep(4)}>
-              {t('common.back')}
-            </Button>
-            <Button variant="primary" loading={busy} onClick={adopt}>
-              {t('searchEngine.swAdopt')}
-            </Button>
-            <ApiCallLink
-              call={{
-                action: t('searchEngine.swAdopt'),
-                method: 'POST',
-                path: `${base}/engine-switches/${encodeURIComponent(sw?.id ?? '{id}')}/activate`,
-                body: { reason: reason.trim() || '…' },
-                right,
-              }}
-            />
-          </div>
+          {sw?.state === 'ready' && sw.failure ? (
+            <Alert data-color="warning" data-size="sm">
+              {t('searchEngine.swRefreshFailed', { message: sw.failure.message })}
+            </Alert>
+          ) : null}
+          {sw?.state === 'activating' ? (
+            <span className="engine-leave subtle" role="status">
+              <Spinner aria-hidden="true" data-size="xs" />
+              {t('searchEngine.swRefreshing', { engine: dest.title })}
+            </span>
+          ) : (
+            <>
+              <ReasonField
+                value={reason}
+                onChange={setReason}
+                minLength={minimumReason}
+                showError={tried}
+                rows={3}
+                {...(worse
+                  ? {
+                      description: t('searchEngine.swWorseReason'),
+                    }
+                  : {})}
+              />
+              <div className="actions">
+                <Button variant="secondary" onClick={() => goStep(4)}>
+                  {t('common.back')}
+                </Button>
+                <Button variant="primary" loading={busy} onClick={adopt}>
+                  {t('searchEngine.swAdopt')}
+                </Button>
+                <ApiCallLink
+                  call={{
+                    action: t('searchEngine.swAdopt'),
+                    method: 'POST',
+                    path: `${base}/engine-switches/${encodeURIComponent(sw?.id ?? '{id}')}/activate`,
+                    body: { reason: reason.trim() || '…' },
+                    right,
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
       ) : null}
     </section>

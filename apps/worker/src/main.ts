@@ -21,6 +21,8 @@ import {
   withBlockSettings,
 } from '@genai/composition';
 import {
+  defaultHeavyThreshold,
+  defaultNightWindow,
   InMemoryDefinitionStore,
   platformSettings,
   SettingsRegistry,
@@ -51,9 +53,13 @@ import {
 } from '@genai/kernel';
 import { knowledgeListingOf } from '@genai/ingest';
 import { FileSystemBlobStore } from '@genai/port-blob';
+import { aiGatewayUsageSource, gatewayUsageConfigFromEnv } from '@genai/providers-ai-gateway';
+import { EgressGuard } from '@genai/providers-mcp-client';
 import { createLocalConverter } from '@genai/providers-documents';
 import { createTraceExporter, observedEventLog } from '@genai/providers-langfuse';
+import type { DatasetConfig } from '@genai/port-knowledge';
 import { openJobQueue, PgBossRunJobs } from '@genai/providers-pgboss';
+import { knowledgeHeavyWork, prepareGeneration } from '@genai/providers-pgvector';
 import {
   createPostgresStores,
   executionScope,
@@ -80,10 +86,13 @@ import {
   startHealthServer,
   watchKnowledgeBinding,
 } from './knowledge-binding.js';
+import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
+import { dropWork } from './knowledge-drop.js';
 import { knowledgeWork } from './knowledge-handlers.js';
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
+import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
 const log = (msg: string, extra: Record<string, unknown> = {}) =>
@@ -172,6 +181,31 @@ if (knowledgeRefused.length > 0) {
   log('refusing to start', { problems: knowledgeRefused });
   process.exit(1);
 }
+const gatewayUsage = gatewayUsageConfigFromEnv(process.env);
+if (gatewayUsage.problems.length > 0) {
+  log('refusing to start', { problems: gatewayUsage.problems });
+  process.exit(1);
+}
+const egressOptions = { platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)] };
+const polledSources: PolledSource[] =
+  gatewayUsage.config && db
+    ? [
+        {
+          source: aiGatewayUsageSource(gatewayUsage.config, {
+            secrets: envSecrets(),
+            egress: new EgressGuard(egressOptions),
+          }),
+          since: gatewayUsage.config.since,
+        },
+      ]
+    : [];
+if (gatewayUsage.config && !db) log('gateway usage is off: it needs a database');
+const work = [
+  ...platformWork,
+  ...(db && polledSources.length > 0
+    ? [usagePollWork({ sources: polledSources, store: db.usageBuckets, log })]
+    : []),
+];
 // The queues are worked only once the worker has passed every refusal above.
 const jobError = (error: unknown) =>
   log('job queue error', {
@@ -190,6 +224,106 @@ const openedJobs = () => {
   if (!late.jobs) throw new Error('the job queues are not open yet');
   return late.jobs;
 };
+const settings = new SettingsRegistry(platformSettings);
+if (db) await settings.attach(db.settings);
+const platformSetting = <T>(key: string, fallback: T) =>
+  (settings.effective(platformTenant)[key]?.value as T | undefined) ?? fallback;
+// Heavy knowledge work waits for the night window (ADR 0042, "Heavy work"); both are read per job.
+const heavySettings = {
+  window: () => platformSetting('knowledge.nightWindow', defaultNightWindow),
+  threshold: () => platformSetting('knowledge.heavyThreshold', defaultHeavyThreshold),
+};
+const knowledgeVcores = process.env.KNOWLEDGE_VCORES
+  ? Number(process.env.KNOWLEDGE_VCORES)
+  : undefined;
+if (knowledgeServer && knowledgeVcores === undefined)
+  log(
+    "KNOWLEDGE_VCORES is not set: index builds use PostgreSQL's max_parallel_maintenance_workers",
+  );
+const openedKnowledge = () => {
+  const knowledge = openedJobs().knowledge;
+  if (!knowledge) throw new Error('no knowledge server is configured');
+  return knowledge;
+};
+/** The catalog's datasets on the knowledge server, each with its active generation. */
+const knowledgeServerDatasets = (): DatasetConfig[] => {
+  const runtime = late.runtime;
+  if (!runtime) return [];
+  return runtime.writers
+    .datasetIds((endpoint) => endpoint.options?.connection === 'knowledge')
+    .flatMap((id) => {
+      try {
+        const { dataset } = runtime.writers.open(id, { signal: new AbortController().signal });
+        return dataset.generation ? [dataset] : [];
+      } catch {
+        return [];
+      }
+    });
+};
+/** An engine switch's spec, as far as the worker reads it (apps/api/src/engine-switches.ts). */
+interface SwitchSpec {
+  dataset: string;
+  to: string;
+  state: string;
+  generation: string;
+  embedding?: DatasetConfig['embedding'];
+  options?: Record<string, unknown>;
+}
+const openSwitchStates = ['running', 'failed', 'comparing', 'ready', 'activating'];
+/** The dataset at a switch's endpoint, filling the switch's generation (ADR 0025). */
+const switchedDataset = (spec: SwitchSpec, signal: AbortSignal): DatasetConfig | undefined => {
+  try {
+    const { dataset } = runtimeFor('read the catalog').writers.openAt(
+      spec.dataset,
+      spec.to,
+      { signal },
+      {
+        ...(spec.embedding ? { embedding: spec.embedding } : {}),
+        ...(spec.options ? { datasetOptions: spec.options } : {}),
+      },
+    );
+    return { ...dataset, generation: spec.generation };
+  } catch {
+    return undefined;
+  }
+};
+const switchOfRun = async (run: { dataset: string; engineSwitch?: string }) => {
+  if (!db || !run.engineSwitch) return undefined;
+  const entry = (
+    await db.configEntries.history('engine-switch', executionScope(run.dataset), run.engineSwitch)
+  ).at(-1);
+  return entry && !entry.deleted ? (entry.spec as SwitchSpec) : undefined;
+};
+const switchOfGeneration = async (generation: string) => {
+  if (!db) return undefined;
+  const entry = (await db.configEntries.latest({ kind: 'engine-switch' })).find(
+    (e) =>
+      !e.deleted &&
+      (e.spec as SwitchSpec).generation === generation &&
+      openSwitchStates.includes((e.spec as SwitchSpec).state),
+  );
+  return entry?.spec as SwitchSpec | undefined;
+};
+const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
+  ? {
+      server: knowledgeHeavyWork(knowledgeServer.pools.owner),
+      queue: {
+        send: (queue, data, options) => openedKnowledge().send(queue, data, options),
+        work: (queue, handler) => openedKnowledge().work(queue, handler),
+        retime: (queues, startAfter) => openedKnowledge().retime(queues, startAfter),
+        schedule: (queue, cron, data, options) =>
+          openedKnowledge().schedule(queue, cron, data, options),
+      },
+      ...heavySettings,
+      datasets: knowledgeServerDatasets,
+      datasetOfGeneration: async (generation) => {
+        const spec = await switchOfGeneration(generation);
+        return spec && switchedDataset(spec, AbortSignal.timeout(10_000));
+      },
+      ...(knowledgeVcores === undefined ? {} : { vcores: knowledgeVcores }),
+      log,
+    }
+  : undefined;
 // Runs of datasets on the knowledge database, as jobs (ADR 0042): text layer only until #141.
 const knowledgeRunRecords = db
   ? new PostgresJobRunRecords(
@@ -204,12 +338,10 @@ const knowledgeHandlers =
     ? knowledgeWork({
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
-          send: (queue, data, options) => {
-            const knowledge = openedJobs().knowledge;
-            if (!knowledge) throw new Error('no knowledge server is configured');
-            return knowledge.send(queue, data, options);
-          },
+          send: (queue, data, options) => openedKnowledge().send(queue, data, options),
+          sendAgain: (queue, job, options) => openedKnowledge().sendAgain(queue, job, options),
         },
+        heavy: heavySettings,
         runs: knowledgeRunRecords,
         pipeline: async (run) =>
           (
@@ -226,6 +358,28 @@ const knowledgeHandlers =
             return undefined;
           }
         },
+        switchDataset: async (run, signal) => {
+          const spec = await switchOfRun(run);
+          return spec && spec.dataset === run.dataset ? switchedDataset(spec, signal) : undefined;
+        },
+        generationExists: async (generation: string) =>
+          Boolean(
+            (
+              await knowledgeWriter.query(`select 1 from kn_generations where generation = $1`, [
+                generation,
+              ])
+            ).rowCount,
+          ),
+        ...(knowledgeServer?.pools.owner
+          ? {
+              prepare: (dataset: DatasetConfig, generation: string) =>
+                prepareGeneration(
+                  knowledgeServer.pools.owner as Parameters<typeof prepareGeneration>[0],
+                  dataset,
+                  generation,
+                ),
+            }
+          : {}),
         listingOf: (spec, scope, signal) =>
           knowledgeListingOf(
             spec,
@@ -266,26 +420,66 @@ const workerJobs = db
           }
         : {}),
       markerTimeoutMs: Number(process.env.MARKER_TIMEOUT_MS ?? defaultMarkerTimeoutMs),
-      work: [...platformWork, ...(knowledgeHandlers?.platform ?? [])],
-      ...(knowledgeHandlers ? { knowledgeWork: knowledgeHandlers.knowledge } : {}),
+      work: [
+        ...work,
+        ...(knowledgeHandlers?.platform ?? []),
+        ...(knowledgeServer?.pools.owner
+          ? [
+              dropWork({
+                datasets: knowledgeServerDatasets,
+                server: knowledgeHeavyWork(knowledgeServer.pools.owner),
+                bound: () => knowledgeBinding.knowledgeBound(),
+                log,
+              }),
+            ]
+          : []),
+      ],
+      ...(knowledgeHandlers
+        ? {
+            knowledgeWork: [
+              ...knowledgeHandlers.knowledge,
+              ...(heavyDeps ? [checkWork(heavyDeps)] : []),
+            ],
+          }
+        : {}),
       open: openJobQueue,
       runJobs: (pool, queue, queues) => new PgBossRunJobs(pool, queue, queues),
       onError: jobError,
     })
   : undefined;
 if (workerJobs) late.jobs = workerJobs;
+// knowledge.build and knowledge.fill are worked only inside the night window (ADR 0042, "Jobs").
+const fillWork = knowledgeHandlers?.heavy[0];
+const nightWindow =
+  heavyDeps && workerJobs?.knowledge && fillWork
+    ? heavyWindow(heavyDeps, { build: buildWork(heavyDeps), fill: fillWork })
+    : undefined;
+const tickNightWindow = async () => {
+  await settings.reload();
+  await nightWindow?.tick();
+};
+if (nightWindow) await tickNightWindow();
+const nightWindowTimer = nightWindow
+  ? setInterval(
+      () =>
+        void tickNightWindow().catch((error: unknown) =>
+          log('knowledge night window failed', { error: String(error) }),
+        ),
+      30_000,
+    )
+  : undefined;
 const jobs = workerJobs?.platform ?? new InMemoryJobQueue();
-if (!workerJobs) await workQueues(jobs, platformWork);
+if (!workerJobs) await workQueues(jobs, work);
+await scheduleUsagePolls(jobs, polledSources);
 log('jobs', {
   kind: db ? 'pg-boss' : 'memory',
-  queues: platformWork.length,
+  queues: work.length,
+  usageSources: polledSources.map((s) => s.source.id),
   knowledgeServer: Boolean(workerJobs?.knowledge),
 });
 const skipped = Object.values(catalogs).flatMap((c) => c.skipped);
 if (skipped.length > 0) log('catalog entries skipped for missing settings', { skipped });
 
-const settings = new SettingsRegistry(platformSettings);
-if (db) await settings.attach(db.settings);
 const pricesFile = join(configDir, 'prices.yaml');
 const prices = existsSync(pricesFile)
   ? ((parseYaml(readFileSync(pricesFile, 'utf8')) as { models?: Record<string, TokenPrice> })
@@ -383,9 +577,7 @@ const runtime = await createRuntime({
     : {}),
   state: db?.state ?? new InMemoryStateStore(),
   blobStore: blob,
-  egress: {
-    platformHosts: ['localhost', '127.0.0.1', ...databaseHosts(process.env)],
-  },
+  egress: egressOptions,
   ...(traces ? { observe: (l: EventLog) => observedEventLog(l, traces) } : {}),
   ...(db
     ? {
@@ -511,6 +703,7 @@ const stopFollowingChanges = db
           await following.run();
         },
       },
+      descriptors: runtime.descriptors,
       definitions: { sync: following.run },
       models: runtime.models,
       toolConnections: { reload: loadToolConnections },
@@ -524,6 +717,7 @@ const retention = db
       settings,
       capabilities: () => runtime.store.capabilities(),
       threads: db.threadRetention,
+      outsideRun: db.outsideRunRetention,
       documents: blob,
       tenants: async () => (await db.tenants.list()).map((t) => t.orgNumber),
       ...(retentionLease ? { active: () => retentionLease.tryAcquire() } : {}),
@@ -533,6 +727,7 @@ const retention = db
           envelopes: run.envelopes,
           conversations: run.conversations,
           documents: run.documents,
+          outsideRunDays: run.outsideRunDays,
           groups: run.groups.length,
         }),
       onError: (error) => log('retention purge failed', { error: String(error) }),
@@ -544,12 +739,29 @@ log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 const knowledgeRunsLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
   : undefined;
+let reconciling = false;
 const reconcileKnowledge = async () => {
+  // A pass may wait minutes for a VACUUM's lock; the next tick does not start a second one.
+  if (reconciling) return;
   if (!knowledgeRunRecords || !workerJobs || !(await knowledgeRunsLease?.tryAcquire())) return;
+  reconciling = true;
+  try {
+    await reconcilePass(knowledgeRunRecords, workerJobs);
+  } finally {
+    reconciling = false;
+  }
+};
+const reconcilePass = async (
+  records: NonNullable<typeof knowledgeRunRecords>,
+  opened: NonNullable<typeof workerJobs>,
+) => {
   const pass = await reconcileKnowledgeRuns({
-    records: knowledgeRunRecords,
-    servers: workerJobs.runJobs,
+    records,
+    servers: opened.runJobs,
     lockdown,
+    ...(heavyDeps
+      ? { finishing: finishRun(heavyDeps, (id, counts, mode) => records.report(id, counts, mode)) }
+      : {}),
     failureBudget: async (run) => {
       const spec = (
         await db?.configEntries.history(
@@ -583,11 +795,13 @@ const knowledgeReconciler = knowledgeRunRecords
 const stop = () => {
   retention?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
+  if (nightWindowTimer) clearInterval(nightWindowTimer);
   stopFollowingChanges?.();
   following.stop();
   worker.stop();
   void (async () => {
     await jobs.stop();
+    await nightWindow?.stop();
     await workerJobs?.knowledge?.stop();
     knowledgeBinding.stop();
     await health.close();

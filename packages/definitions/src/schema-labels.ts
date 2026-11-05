@@ -245,6 +245,10 @@ const serviceNb = {
     label: 'Risikonivå etter KI-forordningen',
     values: { minimal: 'Minimal risiko', limited: 'Begrenset risiko', high: 'Høy risiko' },
   },
+  'spec.decidesAboutPeople': {
+    label: 'Tar tjenesten beslutninger om personer?',
+    help: 'Krever høy risiko, en person som godkjenner hvert resultat og at det modellen fikk, tas vare på.',
+  },
   'spec.riskConfirmation': { label: 'Bekreftelse av risikonivået' },
   'spec.riskConfirmation.by': { label: 'Bekreftet av' },
   'spec.riskConfirmation.at': { label: 'Bekreftet' },
@@ -300,6 +304,10 @@ const serviceNb = {
   'spec.model.roles.synthesis': { label: 'Modell som skriver svaret' },
   'spec.model.roles.planner': { label: 'Modell som planlegger søket' },
   'spec.model.roles.judge': { label: 'Modell som vurderer' },
+  'spec.model.operations': {
+    label: 'Modell per operasjon',
+    help: 'Modellen et steg som kaller en operasjon bruker for hver type operasjon, når steget ikke velger modell selv.',
+  },
   'spec.model.residency': {
     label: 'Hvor data behandles',
     values: { norway: 'Norge', eu: 'EU/EØS', global: 'Globalt' },
@@ -359,6 +367,10 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
     label: 'Risk level under the AI Act',
     values: { minimal: 'Minimal risk', limited: 'Limited risk', high: 'High risk' },
   },
+  'spec.decidesAboutPeople': {
+    label: 'Does the service make decisions about people?',
+    help: 'Needs high risk, a person who approves each result, and the model input kept for review.',
+  },
   'spec.riskConfirmation': { label: 'Confirmation of the risk level' },
   'spec.riskConfirmation.by': { label: 'Confirmed by' },
   'spec.riskConfirmation.at': { label: 'Confirmed' },
@@ -414,6 +426,10 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.model.roles.synthesis': { label: 'Model that writes the answer' },
   'spec.model.roles.planner': { label: 'Model that plans the search' },
   'spec.model.roles.judge': { label: 'Model that judges' },
+  'spec.model.operations': {
+    label: 'Model per operation',
+    help: 'The model a step that calls an operation uses for each kind of operation, when the step names none.',
+  },
   'spec.model.residency': {
     label: 'Where data is processed',
     values: { norway: 'Norway', eu: 'EU/EEA', global: 'Global' },
@@ -493,6 +509,7 @@ const serviceMeta: Record<string, PropertyMeta> = {
   'spec.model.roles.synthesis': { 'x-widget': 'model', 'x-options': models },
   'spec.model.roles.planner': { 'x-widget': 'model', 'x-options': models },
   'spec.model.roles.judge': { 'x-widget': 'model', 'x-options': models },
+  'spec.model.operations': { 'x-advanced': true },
   'spec.variants.model': { 'x-widget': 'model', 'x-options': models },
   'spec.guardrails': { ...guards, 'x-order': 60 },
   'spec.exposure': { ...start, 'x-order': 70 },

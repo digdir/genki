@@ -172,10 +172,25 @@ const formOf = (view: DatasetDetailView, pipeline: PipelineView | undefined): So
     include: source?.kind === 'website' ? fromGlobs(source.include) : '',
     exclude: source?.kind === 'website' ? fromGlobs(source.exclude) : '',
     types: source?.kind === 'kudos' ? source.types : [],
-    fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : '2020',
+    fromYear: source?.kind === 'kudos' && source.since ? source.since.slice(0, 4) : defaultFromYear,
     schedule: pipeline?.spec.schedule ?? 'none',
     reason: '',
   };
+};
+
+const defaultFromYear = '2020';
+
+/**
+ * A source with no start date lists every year, so the year the form shows by default is not
+ * written unless the person picks another; a later one would be refused as a narrowing.
+ */
+const kudosSourceFrom = (
+  form: SourceForm,
+  current: Extract<PipelineSource, { kind: 'kudos' }>,
+): PipelineSource => {
+  const next: Extract<PipelineSource, { kind: 'kudos' }> = { ...current, types: form.types };
+  if (current.since || form.fromYear !== defaultFromYear) next.since = `${form.fromYear}-01-01`;
+  return next;
 };
 
 const sourceFrom = (form: SourceForm, current: PipelineSource): PipelineSource =>
@@ -187,7 +202,7 @@ const sourceFrom = (form: SourceForm, current: PipelineSource): PipelineSource =
         exclude: toGlobs(form.exclude),
       }
     : current.kind === 'kudos'
-      ? { ...current, types: form.types, since: `${form.fromYear}-01-01` }
+      ? kudosSourceFrom(form, current)
       : current;
 
 const SourceSettings = ({

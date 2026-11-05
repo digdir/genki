@@ -247,6 +247,68 @@
     }
   },
   {
+    "ref": "call-operation@1",
+    "name": "call-operation",
+    "version": "1",
+    "description": "Call a reviewed operation descriptor on one of the service's models, with the step input as its typed input",
+    "title": {
+      "nb": "Kall en operasjon",
+      "en": "Call an operation"
+    },
+    "summary": {
+      "nb": "Kaller en gjennomgått type modellkall på en av modellene til tjenesten, med verdier fra flyten. Kallet følger rammene til tjenesten og blir maskert, målt og logget.",
+      "en": "Calls a reviewed kind of model operation on one of the service's models, with values from the flow. It runs under the service's guardrails and is masked, metered and audited."
+    },
+    "input": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "descriptor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9][0-9]*$",
+          "x-label": {
+            "nb": "Operasjon",
+            "en": "Operation"
+          },
+          "x-help": {
+            "nb": "En gjennomgått operasjon som er tatt i bruk her, i formen leverandør/type@versjon.",
+            "en": "A reviewed operation that is in use here, as provider/kind@version."
+          },
+          "x-widget": "text"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Modell",
+            "en": "Model"
+          },
+          "x-help": {
+            "nb": "En av modellene til tjenesten som kan utføre operasjonen. Tom betyr modellen tjenesten har valgt for denne typen operasjon, ellers hovedmodellen.",
+            "en": "One of the service's models that can perform the operation. Empty means the model the service has chosen for this kind of operation, else the main model."
+          },
+          "x-widget": "text"
+        }
+      },
+      "required": ["descriptor"],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "result": {}
+      },
+      "required": ["result"],
+      "additionalProperties": false
+    }
+  },
+  {
     "ref": "classify@1",
     "name": "classify",
     "version": "1",

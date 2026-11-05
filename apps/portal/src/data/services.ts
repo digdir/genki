@@ -4,6 +4,7 @@ import type {
   AssistantTurn,
   JsonPatchOp,
 } from '../api/assistant';
+import type { ModelPrice } from '../types';
 import {
   applySpec,
   type OutputField,
@@ -229,6 +230,7 @@ export interface ModelChoice {
   ore: number;
   note: string;
   residency?: string;
+  price?: ModelPrice | null;
 }
 
 export const models: ModelChoice[] = [

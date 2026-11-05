@@ -47,7 +47,7 @@ What a client may read or change:
 
 - **Models:** every model the gateway serves.
 - **Usage:** only calls whose chain (below) holds an organisation in its scope. Without `subject`, the answer holds only those calls. A `subject` outside the scope answers `403`.
-- **Keys:** it lists and reads keys whose subject is in an organisation in its scope. It changes and revokes only keys it issued itself; other keys in its scope are read-only to it. A key outside the scope answers `404`, as if it did not exist.
+- **Keys:** it lists and reads keys whose subject is in an organisation in its scope. It changes and revokes only keys it issued itself; other keys in its scope are read-only to it, and changing or revoking one answers `403`. A key outside the scope answers `404`, as if it did not exist.
 - **Subjects it may give a key:** `org`, `team`, `service` or `user` within an organisation in its scope. Moving a key to a subject outside the scope answers `403`.
 
 The gateway sets a key's `issuer` from the credential, never from the body.
@@ -61,14 +61,14 @@ The gateway sets a key's `issuer` from the credential, never from the body.
 - **Errors** answer `application/problem+json`: `{ "type", "title", "status", "detail"?, "errors"?: [{ "path", "message" }] }`. `type` may be `about:blank`. genki acts on `status` and `errors[].path`.
 - **Unknown fields** in a request body answer `400`. Unknown fields in an answer are ignored by genki, so a gateway may add fields.
 
-| Status | When                                                                        | What genki does                                     |
-| ------ | --------------------------------------------------------------------------- | --------------------------------------------------- |
-| `400`  | The query or body is not valid; `errors` names each field                   | Reports a fault in genki                            |
-| `401`  | No credential, or one the gateway does not accept                           | Stops and alerts operators                          |
-| `403`  | The credential lacks the route's scope, or the subject is outside its scope | Stops and alerts operators                          |
-| `404`  | No such key, or a key outside the scope                                     | Treats the key as gone                              |
-| `429`  | Too many requests; `retry-after` says when to come back                     | Waits for `retry-after`, then tries on the next run |
-| `502`  | The gateway product behind the API did not answer                           | Tries again on the next run                         |
+| Status | When                                                                                                              | What genki does                                     |
+| ------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `400`  | The query or body is not valid; `errors` names each field                                                         | Reports a fault in genki                            |
+| `401`  | No credential, or one the gateway does not accept                                                                 | Stops and alerts operators                          |
+| `403`  | The credential lacks the route's scope, the subject is outside its scope, or the key was issued by another client | Stops and alerts operators                          |
+| `404`  | No such key, or a key outside the scope                                                                           | Treats the key as gone                              |
+| `429`  | Too many requests; `retry-after` says when to come back                                                           | Waits for `retry-after`, then tries on the next run |
+| `502`  | The gateway product behind the API did not answer                                                                 | Tries again on the next run                         |
 
 ## Subjects
 
@@ -252,7 +252,7 @@ Only when a genki model endpoint points at the gateway, with genki's key, genki 
 | `genki-task`   | The genki task the call belongs to, an opaque id |
 
 - The gateway records the call under `genki:<tenant>` (see Subjects) and keeps `genki-task` on it.
-- On a key whose consumer is `genki`, a call without `genki-tenant`, with one that is not 9 digits, or with an organisation outside genki's scope, is refused with `400` before any model is called.
+- On a key whose consumer is `genki`, a call without `genki-tenant`, with one that is not 9 digits, or with an organisation outside genki's scope, is refused with `400` or `403` before any model is called. genki treats both as a refusal by the gateway.
 - On any other key the gateway ignores both headers.
 - The gateway removes every `genki-*` header before it forwards a call to a model provider.
 - The values are keys, not content: no title, prompt or person is in them.
@@ -365,3 +365,15 @@ The test, `a call is counted once whether genki or the gateway measured it`, put
 - `totals`, `daily[].usage` and `usageThisMonth` on the overview become the sum of both sources. Each gains `bySource: [{ "source": "genki", "usage": ... }, { "source": "gateway", "usage": ... }]`, and `byModel` rows gain `source`. Gateway rows also come as `bySubject`, with `cost`, `rate` and `rateDay`. `byService`, `byProject`, `testing` and `ingestion` stay genki's own, since the gateway cannot see services, projects or test runs.
 - `view-usage` gates all of it, as today. The change goes into the API changes in `README.md`, since `totals` now means the sum.
 - The portal's usage screen shows the source on each row and the total with the share from each.
+
+### What step 1 built, and where it differs
+
+- **Packages.** `packages/port-usage` holds the types, `UsageGateway` (the contract's `GET /v1/usage`) next to `UsageSource`, the fake `memoryUsageSource`, `combine`, the poll (`pollUsage`) and the suite `usage@1` (`@genai/port-usage/contract`). `@genai/port-usage/testing` serves any `UsageGateway` over HTTP behind a client key. `packages/providers-ai-gateway` is the HTTP client. The suite runs against the fake and against the provider with the fake behind HTTP; the aivar API with `GATEWAY=fake` (clients `dev-genki` and `dev-portal`) is not wired into it yet.
+- **The suite is written against `UsageGateway`, not `UsageSource`,** since its rules on subject filters, `org` and paging need the full query. `UsageSource` is the gateway with `groupBy=model,subject`.
+- **Settings.** The API and the worker read `GATEWAY_USAGE_URL` (the base URL), `GATEWAY_USAGE_CREDENTIAL` (a `secret://` reference), `GATEWAY_USAGE_SINCE` (the first run's start, default 2026-11-01) and `GATEWAY_USAGE_TIMEOUT_MS` (default 60 seconds, for the whole answer). With neither of the first two set, nothing is polled and no route reads `usage_buckets`. One set without the other, or a credential that is not a `secret://` reference, stops both from starting.
+- **The queue.** `usage-gateway-poll` in `packages/jobs/src/usage-queues.ts`: policy `singleton`, scheduled per source with the source id as key, expiry 30 minutes, heartbeat 1 minute, 2 retries from 5 minutes with backoff, and a dead-letter queue. A `429`, `502`, `503` or `504` ends the job without error and the next hourly run fills the gap. Any other failure, `401` and `403` among them, fails the job, so it ends in the dead-letter queue that operators see.
+- **Empty hours.** A group with no calls has no row, so an hour without rows says nothing about whether it is closed. The poll counts such an hour as closed when a later hour in the same answer has closed rows, or 20 minutes after its end, the job's settle time. `closedThrough` then moves past it. The contract should say how long a gateway may take to close a bucket.
+- **Tables.** `usage_buckets` has a tenant column and row-level security per ADR 0022; the API reads its own tenant's rows and, for `GET /operator/usage`, every listed tenant's rows in one call through `platform_usage_buckets`. `usage_unassigned` has no policy for the API's role and no grant, and is read only through `platform_usage_unassigned`, also offered as `GET /operator/usage/unassigned`. The worker writes both through `store_usage_bucket` under platform access. `usage_marks` and `currency_rates` are platform tables without a tenant. A row's tenant is fixed when it is stored; a closed row stored as unassigned stays there if its organisation later becomes a tenant.
+- **Rates.** `currency_rates` is filled through `PostgresUsageBuckets.putRates`; fetching Norges Bank's daily rates is not built. A row with no rate for its day or before counts as unpriced in kroner. `bySubject` gives the latest rate used and its day, since a window over several days uses several rates.
+- **Counting.** `combine` applies the rule to gateway rows. genki's own usage stays the per-task tally the routes already make, and `genkiCostCounts` removes genki's measured cost for a model that runs through the gateway; the same rule, one function each side. Which models run through the gateway is `throughGateway` on the portal routes, empty in step 1; it is per model, not per hour.
+- **Screens.** `daily[].byModel` and `daily[].byService` stay genki's own, so the usage chart is unchanged. The usage screen adds a section, shown only when `bySource` is present, with the share per source and the model rows with their source.

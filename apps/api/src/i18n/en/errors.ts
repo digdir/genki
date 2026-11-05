@@ -102,6 +102,10 @@ export const catalogErrors = {
   hooksOff: 'hooks are off',
   endpointId: 'lowercase letters, digits, dots, dashes',
   httpsAddress: 'an HTTPS address without credentials',
+  familyAndBase: 'name at least one API family and its base',
+  noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
+  familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',
   endpointExists: 'The endpoint already exists',
@@ -206,6 +210,10 @@ export const knowledgeErrors = {
   noRunningIngestion: 'no running ingestion {execution}',
   ingestionRunLocked:
     'the dataset {dataset} is already being ingested by run {execution}; wait for it to finish or cancel it',
+  switchHold:
+    'the dataset {dataset} is being switched to another search engine ({engineSwitch}); its pipelines run again once the switch is ready, active or ended',
+  generationNotBuilt:
+    'the generation {generation} was not built: its build job ended without attaching it; retry the switch',
 } satisfies Translation<typeof source.knowledgeErrors>;
 
 export const blockErrors = {
@@ -344,6 +352,9 @@ export const qualityErrors = {
   instructionsChanged: 'The instructions in the draft have changed since the suggestion was made.',
   notReleased: 'model {model} is not released yet; it is waiting for the quality matrix',
   modelToTest: 'the model to test is required',
+  descriptorsOperatorsOnly: 'only operators try descriptors in review',
+  descriptorsTestOnly: 'GENAI_ENV is not test',
+  noDescriptor: 'no descriptor {id}',
   modelInUse: 'the model in use is required',
   compareAnother: 'compare against another model',
   modelNotFound: 'Could not find the model',
@@ -418,6 +429,56 @@ export const qualityErrors = {
   noPendingShare: 'no pending share of {skill}',
 } satisfies Translation<typeof source.qualityErrors>;
 
+export const operationErrors = {
+  stepAt: '{at}: {message}',
+  fixedOperation:
+    'the operation and the model are fixed values, not filled in while the service runs',
+  noOperationDescriptor: 'there is no operation descriptor {id}',
+  descriptorInReview:
+    '{id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed',
+  kindInTest:
+    'the {operation} operation is in test in this environment; an operator must move it to production before a service can use it',
+  notServiceModel: "the model {modelId} is not one of the service's models",
+  noCatalogueModel: 'there is no model {modelId} in the catalogue',
+  modelOutsideResidency: 'the model {modelId} runs in {residency}, outside {residency}',
+  modelBindsOther: 'the model {modelId} binds {bound} for {operation}, not {id}',
+  modelBindsNone: 'the model {modelId} binds no API for {operation}',
+  noProcessorRecordForService:
+    'the endpoint {endpoint} of {modelId} has no processor record, so it cannot serve a service with real data',
+  decideOnlyThroughPurposeCheck:
+    'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+  callOperationNeedsMasking:
+    'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
+  operatorsGovernOperations: 'only operators govern operations',
+  noOperationDescriptors: 'this platform has no operation descriptors',
+  noDescriptorForKind: 'no descriptor describes {kind}',
+  maturityValues: 'maturity is test or production',
+  noProcessorRecord: '{id} has no processor record',
+  noModelEndpoint: 'no model endpoint {id}',
+  operatorsManageDescriptors: 'only operators manage operation descriptors',
+  descriptorBundled: '{id} is bundled with Genki; upload a new version instead',
+  descriptorUploadTooLarge: 'an upload is at most {size} KiB',
+  descriptorDescribedInUse: '{id} is described and may be in use; upload a new version instead',
+  descriptorNoFixturesYet: '{id} has no fixtures yet; record one from a try before it is described',
+  fixturesFromTriesInTest: 'fixtures are recorded from tries, in test only',
+  descriptorBundledFixtures:
+    '{id} is bundled with Genki; its fixtures change through a pull request',
+  notAFinishedTry: '{task} is not a finished try of {id}',
+  exchangeNotTheTry: 'the exchange is not the one this try sent and received',
+  fixtureNameTaken: '{id} already has a fixture called {name}',
+  descriptorFixturesAtMost: 'a descriptor has at most {maxDescriptorFixtures} fixtures',
+  bodyNotJson: 'the body is not JSON',
+  uploadStatusValues:
+    'status is review or described; typed means Genki has its own code for the operation',
+  descriptorIsMapping: 'a descriptor is a mapping of fields',
+  uploadNeverTyped:
+    'typed means Genki has its own code for the operation, so an upload is never typed',
+  uploadStartsInReview:
+    'an uploaded descriptor starts in review; an operator moves it to described after',
+  descriptorCalled: 'the descriptor is called {id}',
+  fixturesCalledTwice: 'two fixtures are called {names}',
+} satisfies Translation<typeof source.operationErrors>;
+
 export const adapterErrors = {
   fillFormOrAsk: 'Fill in the form or write a question.',
   fieldList: '{name} must be a list of choices.',
@@ -479,6 +540,7 @@ export const errors = {
   blockErrors,
   projectErrors,
   qualityErrors,
+  operationErrors,
   adapterErrors,
   definitionErrors,
   routeErrors,

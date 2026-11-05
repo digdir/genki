@@ -16,7 +16,9 @@ import { common as enCommon } from './en/common';
 import { config as enConfig } from './en/config';
 import { diagnostics as enDiagnostics } from './en/diagnostics';
 import { endpoints as enEndpoints } from './en/endpoints';
+import { engineSwitch as enEngineSwitch } from './en/engineSwitch';
 import { models as enModels } from './en/models';
+import { modelOperations as enModelOperations } from './en/modelOperations';
 import { modelParameters as enModelParameters } from './en/modelParameters';
 import { onboarding as enOnboarding } from './en/onboarding';
 import { operations as enOperations } from './en/operations';
@@ -42,9 +44,11 @@ import { buildingBlocks } from './nb/buildingBlocks';
 import { catalog } from './nb/catalog';
 import { common } from './nb/common';
 import { config } from './nb/config';
+import { engineSwitch } from './nb/engineSwitch';
 import { diagnostics } from './nb/diagnostics';
 import { endpoints } from './nb/endpoints';
 import { models } from './nb/models';
+import { modelOperations } from './nb/modelOperations';
 import { modelParameters } from './nb/modelParameters';
 import { onboarding } from './nb/onboarding';
 import { operations } from './nb/operations';
@@ -74,7 +78,9 @@ export const nb = defineCatalogue({
   config,
   diagnostics,
   endpoints,
+  engineSwitch,
   models,
+  modelOperations,
   modelParameters,
   onboarding,
   operations,
@@ -105,7 +111,9 @@ export const en = {
   config: enConfig,
   diagnostics: enDiagnostics,
   endpoints: enEndpoints,
+  engineSwitch: enEngineSwitch,
   models: enModels,
+  modelOperations: enModelOperations,
   modelParameters: enModelParameters,
   onboarding: enOnboarding,
   operations: enOperations,

@@ -24,12 +24,15 @@ import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
+  createGate,
   createKernel,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type MediaOutputConfig,
   type PolicyDecisionPoint,
   type PortContext,
+  type PortProvider,
   type SecretResolver,
   type StateStore,
   type Strategy,
@@ -37,6 +40,7 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
+import { blobMediaOutput, mediaOutputConfigOf } from './media-output.js';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
 import {
   IndexWriterRouter,
@@ -45,8 +49,14 @@ import {
   type IndexWriterAdapter,
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
+import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
+import { liveDescriptors } from './operation-descriptors.js';
+import { migratedCatalog, migrateConnections, registryApiFor } from './connection-migration.js';
 import {
+  apiRegistry,
+  ModelError,
   ModelRouter,
+  type OperationPort,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
@@ -99,6 +109,15 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
+import { outsideRun } from './outside-run.js';
+import { operationGovernance } from './operation-governance.js';
+import {
+  operationTryPolicy,
+  operationTryRunner,
+  operationTryStrategy,
+  type TryExchanges,
+  type EnvironmentTier,
+} from './operation-try.js';
 import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
 import {
   guardedSend,
@@ -170,6 +189,27 @@ export interface PolicyParts {
   catalog(): CatalogRegistry | undefined;
 }
 
+/** The described port for published service versions only; a draft cannot run a call-operation step. */
+export const publishedOnly = (
+  provider: PortProvider<OperationPort>,
+  published: (task: string) => Promise<boolean>,
+): PortProvider<OperationPort> => ({
+  open: (ref, ctx) => {
+    const port = provider.open(ref, ctx);
+    return {
+      info: () => port.info(),
+      call: async (descriptor, input) => {
+        if (!(await published(ctx.task)))
+          throw new ModelError(
+            'refused',
+            'a call-operation step runs only in a published service version, not in a draft',
+          );
+        return port.call(descriptor, input);
+      },
+    };
+  },
+});
+
 export interface RuntimeInput {
   platformTenant: string;
   catalogs: Catalogs;
@@ -184,6 +224,9 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
+  published?: (capabilityId: string) => boolean;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -191,6 +234,7 @@ export interface RuntimeInput {
   tokenProviders?: TokenProviders;
   egress?: EgressOptions;
   blobStore?: BlobStore;
+  mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
@@ -307,7 +351,25 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const descriptors = liveDescriptors(input.descriptors ?? loadDescriptors(), configEntries);
+  await descriptors.refresh();
+  const modelSeed = migratedCatalog(
+    input.catalogs.models,
+    registryApiFor(apiRegistry(modelAdapters, descriptors)),
+  );
+  const environmentTier = input.environmentTier ?? 'production';
+  const governance = operationGovernance(configEntries, environmentTier);
+  const blobStore = input.blobStore ?? new InMemoryBlobStore();
+  const gate = createGate({
+    tier: environmentTier,
+    media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
+    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.endpointFetch ? { egress: input.endpointFetch } : {}),
+    outside: outsideRun(input.log, input.now),
+  });
   const embedders = new EmbeddingRouter({
+    gate,
+    descriptors,
     catalog: input.catalogs.embeddings ?? { endpoints: {} },
     adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
     secrets: catalogSecrets,
@@ -377,10 +439,11 @@ export const createRuntime = async (input: RuntimeInput) => {
     input.onWarning,
   );
   const models = new ModelRouter({
-    catalog: input.catalogs.models,
-    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    gate,
+    descriptors,
+    governance,
+    catalog: modelSeed,
     adapters: modelAdapters,
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
     priceOf: (id) => prices[id] as UsagePrice | undefined,
@@ -403,13 +466,22 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const rerank = new RerankRouter({
+    gate,
     catalog: input.catalogs.rerank,
     adapters: [colbert],
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
+  const migrated = await migrateConnections({
+    store: configEntries,
+    seed: modelSeed,
+    apis: models.apis(),
+    ...(input.modelClassifications ? { classifications: input.modelClassifications } : {}),
+    ...(input.now ? { now: input.now } : {}),
+  });
+  if (Object.values(migrated).some((n) => n > 0))
+    input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
   const discovery = await models.refresh();
   for (const f of discovery.failed)
     input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
@@ -435,7 +507,6 @@ export const createRuntime = async (input: RuntimeInput) => {
         return owning && owning !== owner ? mcp.resolve(name, version, ctx, owning) : undefined;
       },
     });
-  const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const blob = new BlobPortProvider(blobStore);
 
   const agentLoop = usingRetrievalPorts(
@@ -467,6 +538,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       retrieval: async (ctx, config) =>
         createRagRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig)),
       agent: agentLoop as Strategy<unknown>,
+      describedOperations: true,
     }),
   );
   const wrap = input.wrapStrategy ?? ((strategy: Strategy) => strategy);
@@ -491,6 +563,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       wrap(
         withHooks(
           guardStrategy(withSettings(settings, strategy), {
+            decisions: true,
             rules: ruleHooks,
             answerLanguage: async (ctx, request, config, question) =>
               answerLanguageFor(
@@ -544,13 +617,16 @@ export const createRuntime = async (input: RuntimeInput) => {
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
-        ? ((config as { endpoint?: { residency?: Residency } }).endpoint?.residency ??
-          input.agents?.(String((config as { agent?: unknown }).agent ?? ''))?.endpoint.residency)
+        ? ((config as { endpoint?: { residency?: Residency } } | null)?.endpoint?.residency ??
+          input.agents?.(String((config as { agent?: unknown } | null)?.agent ?? ''))?.endpoint
+            .residency)
         : undefined,
   };
+  const tryExchanges: TryExchanges = new Map();
   const strategies: Strategy[] = [
     ...serviceStrategies,
     batchStrategy as Strategy,
+    operationTryStrategy(environmentTier, tryExchanges) as Strategy,
     ...(input.extraStrategies?.({
       models,
       knowledge,
@@ -567,6 +643,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerank,
     tools,
     blob,
+    decision: models.decisions(),
+    operation: models.operations(),
+    described: publishedOnly(models.described(), async (task) => {
+      const capability = await capabilityOf(task);
+      return capability !== undefined && (input.published?.(capability) ?? true);
+    }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);
@@ -612,7 +694,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     strategies,
     capabilities: registry,
     ports,
-    policy,
+    policy: operationTryPolicy(policy),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),
@@ -671,14 +753,16 @@ export const createRuntime = async (input: RuntimeInput) => {
   };
   const catalog = new CatalogRegistry({
     seed: {
-      models: input.catalogs.models,
+      models: modelSeed,
       knowledge: knowledgeSeed,
       rerank: input.catalogs.rerank,
       prices: { ...prices },
     },
     store: configEntries,
     checks: {
-      models: (c) => problemsOf(parseCatalog(c, modelAdapters, [azureDeployments.kind])),
+      models: (c) => {
+        return problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind]));
+      },
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
       rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),
     },
@@ -784,6 +868,7 @@ export const createRuntime = async (input: RuntimeInput) => {
 
   return {
     kernel,
+    gate,
     registry,
     ports,
     strategies,
@@ -824,6 +909,17 @@ export const createRuntime = async (input: RuntimeInput) => {
     sync,
     followKnowledge,
     quarantined: () => [...quarantine.values()],
+    descriptors,
+    environmentTier,
+    governance,
+    tryOperation: operationTryRunner({
+      kernel: () => kernel,
+      registry,
+      platformTenant,
+      tier: environmentTier,
+      exchanges: tryExchanges,
+      ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    }),
   };
 };
 

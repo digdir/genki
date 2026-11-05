@@ -23,7 +23,12 @@ afterEach(cleanup);
 
 const liveModels: ModelOption[] = [
   { id: 'foundry-openai/gpt-4.1-mini', residency: 'global', capabilities: ['stream'] },
-  { id: 'foundry-openai/gpt-4.1', residency: 'eu', capabilities: ['stream'] },
+  {
+    id: 'foundry-openai/gpt-4.1',
+    residency: 'eu',
+    capabilities: ['stream'],
+    price: { inputPerThousand: 0.02, outputPerThousand: 0.08 },
+  },
 ];
 
 interface Call {
@@ -107,6 +112,18 @@ describe('the live builder', () => {
     ]);
   });
 
+  it('shows the price per 1,000 tokens the API returns and "ikke priset" only for a model without one', async () => {
+    const { fetch } = recorded();
+    await startBuilder(fetch);
+    await openAdvanced('model', 'Modell');
+
+    const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
+    expect(
+      within(models).getByText('Kostnad: 0,02 kr inn og 0,08 kr ut per 1 000 tokens'),
+    ).toBeTruthy();
+    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(1);
+  });
+
   it('lists only live models with residency in words and no invented cost or speed', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
@@ -115,7 +132,6 @@ describe('the live builder', () => {
     const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
     expect(within(models).getAllByRole('radio')).toHaveLength(2);
     expect(within(models).getByText(/Data behandles i EU/)).toBeTruthy();
-    expect(within(models).getAllByText('Kostnad: ikke priset')).toHaveLength(2);
     expect(within(models).queryByText(/Borealis|Fart:|Kostnad: høy/)).toBeNull();
   });
 

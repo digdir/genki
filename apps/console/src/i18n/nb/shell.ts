@@ -8,6 +8,7 @@ export const shell = defineNamespace({
   pageTenants: 'Virksomheter',
   pageOnboarding: 'Oppstart',
   pageModels: 'Modeller',
+  pageModelOperations: 'Modelloperasjoner',
   pageCatalog: 'Katalog',
   pageBuildingBlocks: 'Byggeklosser',
   pageSearchEngines: 'Søkemotorer',

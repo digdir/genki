@@ -37,11 +37,13 @@
 - hooks
 - plugins
 - port-model
+- operations
 - port-knowledge
 - port-rerank
 - port-embedding
 - port-tools
 - port-blob
+- port-usage
 - providers-openai
 - providers-anthropic
 - providers-typesense
@@ -50,6 +52,7 @@
 - providers-documents
 - providers-mcp-client
 - providers-a2a-client
+- providers-ai-gateway
 - providers-openapi-tools
 - providers-langfuse
 - providers-postgres

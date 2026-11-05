@@ -70,6 +70,8 @@ const recordMigrations: string[] = [
      primary key (generation, id)
    )`,
   `alter table kn_generations add column if not exists data_version bigint not null default 0`,
+  // The first nightly recall@10 of a generation, reset by a REINDEX (ADR 0042, "Heavy work").
+  `alter table kn_generations add column if not exists recall_baseline double precision`,
   `alter table src_documents add column if not exists gone_run text`,
   `alter table kn_applied add column if not exists applied_at timestamptz not null default now()`,
 ];
@@ -286,6 +288,10 @@ export const prepareGeneration = (
         );
         // Keys and per-document lookups up front, so each store replaces a document without a scan.
         await client.query(`alter table ${name} add primary key (generation, id)`);
+        // Index jobs fill it before it is attached: rows only, never its definition (ADR 0042).
+        await client.query(
+          `grant select, insert, update, delete on ${name} to ${knowledgeRoles.writer}`,
+        );
       }
       await client.query(
         `create index ${partitionOf('kn_chunks', generation)}_doc on ${partitionOf('kn_chunks', generation)} (generation, doc_id, position)`,

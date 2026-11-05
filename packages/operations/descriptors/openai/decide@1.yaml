@@ -1,0 +1,163 @@
+id: openai/decide@1
+operation: decide
+status: typed
+summary: The Decisions API on an OpenAI-compatible v1 endpoint, as the hand-written decide adapter sends it.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+request:
+  method: POST
+  path: /decisions
+  body:
+    model: $deployment
+    input: $input.input
+    questions: $input.questions
+input:
+  object:
+    input:
+      either:
+        - text
+        - array: { object: { role: { enum: [user] }, content: text } }
+          min: 1
+    questions:
+      array:
+        variant: type
+        options:
+          predicate:
+            name: { ref: '^[a-zA-Z0-9_-]{1,64}$' }
+            instructions: { plain: { min: 1 } }
+          choice:
+            name: { ref: '^[a-zA-Z0-9_-]{1,64}$' }
+            instructions: { plain: { min: 1 } }
+            choices:
+              array:
+                object:
+                  value: { plain: { min: 1 } }
+                  description?: { plain: { min: 1 } }
+              min: 2
+              unique: value
+          score:
+            name: { ref: '^[a-zA-Z0-9_-]{1,64}$' }
+            instructions: { plain: { min: 1 } }
+            levels:
+              array:
+                object:
+                  label: { plain: { min: 1 } }
+                  description?: { plain: { min: 1 } }
+              min: 2
+      min: 1
+      max: 400
+      unique: name
+output:
+  object:
+    answers:
+      array:
+        variant: type
+        options:
+          predicate:
+            name: plain
+            probability: { number: { min: 0, max: 1 } }
+          choice:
+            name: plain
+            choice: plain
+            probabilities:
+              - object: { value: plain, probability: { number: { min: 0, max: 1 } } }
+            confidence: { number: { min: 0, max: 1 } }
+          score:
+            name: plain
+            score: number
+            probabilities:
+              - object:
+                  value: number
+                  label: plain
+                  probability: { number: { min: 0, max: 1 } }
+            confidence: { number: { min: 0, max: 1 } }
+          refusal:
+            name: { either: [plain, 'null'] }
+    usage:
+      object:
+        inputTokens?: { number: { min: 0 } }
+        outputTokens?: { number: { min: 0 } }
+        cachedInputTokens?: { number: { min: 0 } }
+        requests?: { number: { min: 0 } }
+        costMicroNok?: { number: { min: 0 } }
+    servedModel: plain
+    calibrated: boolean
+    dropped?: { number: { integer: true, min: 0 } }
+wire:
+  request:
+    object:
+      model: plain
+      input:
+        either:
+          - text
+          - array: { object: { role: { enum: [user] }, content: text } }
+            min: 1
+      questions:
+        array:
+          variant: type
+          options:
+            predicate:
+              name: plain
+              instructions: plain
+            choice:
+              name: plain
+              instructions: plain
+              choices: [{ object: { value: plain, description?: plain } }]
+            score:
+              name: plain
+              instructions: plain
+              levels: [{ object: { label: plain, description?: plain } }]
+  response:
+    object:
+      model?: plain
+      answers:
+        array:
+          variant: type
+          options:
+            predicate:
+              name: plain
+              probability: { number: { min: 0, max: 1 } }
+            choice:
+              name: plain
+              choice: plain
+              probabilities:
+                - object: { value: plain, probability: { number: { min: 0, max: 1 } } }
+              confidence: { number: { min: 0, max: 1 } }
+            score:
+              name: plain
+              score: number
+              probabilities:
+                - object:
+                    value: number
+                    label: plain
+                    probability: { number: { min: 0, max: 1 } }
+              confidence: { number: { min: 0, max: 1 } }
+            refusal:
+              name: { either: [plain, 'null'] }
+      usage:
+        object:
+          input_tokens: { number: { integer: true, min: 0 } }
+          input_tokens_details?:
+            object:
+              cached_tokens?: { number: { integer: true, min: 0 } }
+              cache_write_tokens?: { number: { integer: true, min: 0 } }
+          output_tokens: { number: { integer: true, min: 0 } }
+          output_tokens_details?:
+            object:
+              reasoning_tokens?: { number: { integer: true, min: 0 } }
+          total_tokens?: { number: { integer: true, min: 0 } }
+result:
+  answers: $response.answers
+  usage: $usage
+  servedModel: { $from: $response.model, $default: $deployment }
+  calibrated: true
+  dropped: { $from: $dropped, $omitWhen: [0] }
+usage:
+  inputTokens: $response.usage.input_tokens
+  outputTokens: $response.usage.output_tokens
+  cachedInputTokens: { $from: $response.usage.input_tokens_details.cached_tokens, $omitWhen: [0] }
+  requests: 1
+stream: none

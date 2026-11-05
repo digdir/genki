@@ -97,12 +97,32 @@ export const actionKey: Record<string, PlainKey> = {
   'platform.recipe.share': 'audit.actionRecipeShare',
   'platform.recipe.unshare': 'audit.actionRecipeUnshare',
   'platform.trigger.pause': 'audit.actionTriggerPause',
+  'platform.operations.descriptor-upload': 'audit.actionDescriptorUpload',
+  'platform.operations.descriptor-status': 'audit.actionDescriptorStatus',
+  'platform.operations.descriptor-withdraw': 'audit.actionDescriptorWithdraw',
+  'platform.operations.descriptor-fixture': 'audit.actionDescriptorFixture',
+  'platform.operations.try': 'audit.actionOperationTry',
+  'platform.operations.maturity': 'audit.actionOperationMaturity',
+  'platform.operations.processor-record': 'audit.actionProcessorRecord',
+};
+
+const catalogActionKey: Record<string, PlainKey> = {
+  'platform.catalog.publish:model-endpoint': 'audit.actionModelEndpointSave',
+  'platform.catalog.delete:model-endpoint': 'audit.actionModelEndpointRemove',
+  'platform.catalog.publish:model': 'audit.actionCatalogModelSave',
+  'platform.catalog.delete:model': 'audit.actionCatalogModelRemove',
+  'platform.catalog.publish:price': 'audit.actionModelPriceSave',
 };
 
 type Period = 'day' | 'week' | 'month';
 
-const labelOf = (e: AuditEntry, t: T) => {
-  const key = actionKey[e.action];
+const keyOf = (e: AuditEntry) => {
+  const kind = /^catalog:([a-z-]+)\//.exec(e.target)?.[1];
+  return (kind && catalogActionKey[`${e.action}:${kind}`]) ?? actionKey[e.action];
+};
+
+export const labelOf = (e: AuditEntry, t: T) => {
+  const key = keyOf(e);
   return e.actionLabel ?? (key ? t(key) : t('audit.otherAction'));
 };
 const targetOf = (e: AuditEntry) => {

@@ -12,6 +12,17 @@ export const components = defineNamespace({
   locationGlobal: 'Data utenfor EU/EØS',
   todayAt: 'i dag kl. {time}',
   changeLogged: 'Endret av {by} {when}: «{reason}». Logget.',
+  attachmentsLabel: 'Vedlegg',
+  attachmentLoading: 'Henter vedlegget …',
+  attachmentFailed: 'Vedlegget kan ikke vises her. Du har kanskje ikke tilgang til kjøringen.',
+  attachmentMeta: '{mediaType} · {size}',
+  attachmentFromStep: 'fra steget {step}',
+  attachmentImage: 'Bilde fra steget {step}',
+  attachmentImagePlain: 'Bilde fra svaret',
+  attachmentOpen: 'Last ned',
+  bytes: '{n} byte',
+  kilobytes: '{n} kB',
+  megabytes: '{n} MB',
 });
 
 export const apiCall = defineNamespace({

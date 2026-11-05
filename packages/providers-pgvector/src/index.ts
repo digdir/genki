@@ -11,6 +11,7 @@ export {
 } from './knowledge-setup.js';
 export {
   attachGeneration,
+  dropGeneration,
   migrateKnowledgeServer,
   partitionOf,
   prepareGeneration,
@@ -18,3 +19,4 @@ export {
   type PartitionOptions,
 } from './partitions.js';
 export { knowledgeRecordsOf } from './knowledge-records.js';
+export * from './heavy-work.js';

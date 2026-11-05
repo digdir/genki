@@ -1,0 +1,46 @@
+id: operations
+plane: ports
+name: Operation descriptors
+note: Descriptors · executor · operation@1
+icon: llm
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/operations'
+summary: A new kind of model API as a reviewed descriptor file and recorded fixtures, run by one executor through the kernel gate.
+description: Descriptors are versioned YAML files, data and never code, that name the endpoint path,
+  the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's
+  closed vocabulary, a declarative mapping between them, the usage mapping and the stream events
+  (ADR 0047). One executor turns a descriptor into a gated call. The contract suite operation@1
+  proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide
+  through a typed descriptor instead of the hand-written adapter; operators try descriptors in review
+  through the raw tier, in test only.
+responsibilities:
+  - Load and validate descriptors, refusing URLs, credential headers and kept-out APIs
+  - Map typed input to the wire request and the wire answer back, without code
+  - Run a descriptor call through the gate with the endpoint's credential and egress guard
+  - Prove each descriptor against recorded fixtures (operation@1)
+  - Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture
+files:
+  - packages/operations/src/descriptor.ts
+  - packages/operations/src/shape.ts
+  - packages/operations/src/mapping.ts
+  - packages/operations/src/executor.ts
+  - packages/operations/src/registry.ts
+  - packages/operations/src/contract.ts
+input: A descriptor, a catalogue endpoint and typed input
+output: The typed result, usage and the count of dropped fields
+replaces: []
+edges:
+  - to: kernel
+    label: The gate, closed shapes and credentials
+    kind: call
+    target: call
+    witness:
+      file: packages/operations/src/executor.ts
+      imports: '@genai/kernel'
+contract:
+  - name: descriptor
+    file: packages/operations/src/descriptor.ts
+    export: descriptorFile
+keywords: operation descriptor executor raw tier operation@1 fixtures

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { EmbeddingPort } from '@genai/port-embedding';
+import { GenerationBusy } from '@genai/port-knowledge';
 import type {
   DocumentRecords,
   IndexOutcome,
@@ -116,7 +117,12 @@ export const planRun = (
       process.push(doc.id);
       counts.changed++;
     } else {
-      writes.push({ kind: 'seen', id: doc.id });
+      // Earlier ids are not part of the hash: a new map reaches the record without reprocessing it.
+      writes.push({
+        kind: 'seen',
+        id: doc.id,
+        ...(doc.earlierIds && doc.earlierIds.length > 0 ? { earlierIds: doc.earlierIds } : {}),
+      });
       if (record.applied !== record.change || recheck(record, options)) process.push(doc.id);
       counts.unchanged++;
     }
@@ -147,6 +153,8 @@ export interface IndexRecordOptions {
   generation: string;
   chunking: ChunkDocumentConfig;
   embedder?: EmbeddingPort;
+  /** Called with the chunks a stored document wrote, so the run counts them toward the heavy threshold. */
+  onStored?: (chunks: number) => void;
 }
 
 /**
@@ -161,6 +169,9 @@ export const indexRecord = async (
   if (found.dataset !== options.dataset)
     throw new Error(`record ${options.record} is not a record of ${options.dataset}`);
   const record = found;
+  // Before anything is downloaded or embedded: VACUUM holds the generation, so the job gives way.
+  if (!(await options.records.writable(options.generation)))
+    throw new GenerationBusy(options.generation);
   if (record.state === 'deleted') {
     await options.records.remove(record, options.generation);
     return 'deleted';
@@ -168,6 +179,7 @@ export const indexRecord = async (
   try {
     return await writeRecord(options, record);
   } catch (error) {
+    if (error instanceof GenerationBusy) throw error;
     // Not applied: the generation keeps what it held, and the data version stays below this change
     // until a later run, send-back or catch-up writes it. The reason is a code, never the source id.
     await options.records.fail(record, error instanceof Error ? error.name : 'Error');
@@ -221,6 +233,7 @@ const writeRecord = async (
   const doc = toIndexDocument(record.id, prepared.doc, prepared.chunks, prepared.phrases);
   const written = options.embedder ? await embedIndexDocument(doc, options.embedder) : doc;
   applied(await options.records.replace(record, options.generation, { document: written }));
+  options.onStored?.(written.chunks.length);
   return 'stored';
 };
 

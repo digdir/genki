@@ -1,28 +1,39 @@
 endpoints:
-  foundry-openai:
-    protocol: openai-chat
+  foundry:
     baseURL: ${FOUNDRY_OPENAI_BASE_URL}
-    auth: { kind: api-key, header: api-key, secret: secret://env/foundry-openai-key }
+    auth: { kind: api-key, secret: secret://env/foundry-openai-key }
+    families:
+      openai: ''
+      anthropic: ${FOUNDRY_CLAUDE_BASE_URL}
     discovery:
-      source: azure-deployments
-      exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
-      capabilities: [stream, tools, json-schema]
-  foundry-claude:
-    protocol: anthropic-messages
-    baseURL: ${FOUNDRY_CLAUDE_BASE_URL}
-    auth: { kind: api-key, secret: secret://env/foundry-claude-key }
-    discovery:
-      source: azure-deployments
-      from: foundry-openai
-      include: ['claude-*']
-      capabilities: [stream, tools, json-schema, reasoning]
+      - source: azure-deployments
+        idPrefix: foundry-openai
+        exclude: ['claude-*', 'text-embedding-*', '*-codex*', 'gpt-4.5-preview']
+        capabilities: [stream, tools, json-schema]
+        apis: { chat: openai/chat-completions@1 }
+      - source: azure-deployments
+        idPrefix: foundry-claude
+        include: ['claude-*']
+        capabilities: [stream, tools, json-schema, reasoning]
+        apis: { chat: anthropic/messages@1 }
   local-model:
-    protocol: openai-chat
     baseURL: ${LOCAL_MODEL_URL}
     auth: { kind: bearer, secret: secret://env/local-model-key }
+    families: { openai: '' }
 models:
   - id: local/echo
     endpoint: local-model
     deployment: echo
     residency: norway
     capabilities: [stream, json-schema]
+  - id: local/replay
+    endpoint: local-model
+    deployment: replay
+    residency: norway
+  # gpt-6-luna on genki-test-ai is DataZoneStandard in Sweden Central and serves chat and the Decisions API
+  - id: foundry-openai/gpt-6-luna
+    endpoint: foundry
+    deployment: gpt-6-luna
+    residency: eu
+    capabilities: [stream, tools, json-schema]
+    apis: { chat: openai/chat-completions@1, decide: openai/decide@1 }

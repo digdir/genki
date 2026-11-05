@@ -49,6 +49,17 @@ describe('planRun', () => {
     expect(second.counts.deleted).toBe(1);
   });
 
+  it('an unchanged record takes the earlier ids its listing now carries, without being processed', () => {
+    const plan = planRun([{ ...listed('a'), earlierIds: ['377252'] }], [owned('a')], {
+      complete: true,
+      deletes: 'listed',
+    });
+
+    expect(plan.writes).toEqual([{ kind: 'seen', id: 'a', earlierIds: ['377252'] }]);
+    expect(plan.process).toEqual([]);
+    expect(plan.counts.unchanged).toBe(1);
+  });
+
   it('an incomplete listing deletes nothing', () => {
     const plan = planRun([listed('a')], [owned('a'), owned('b', { missing: 5 })], {
       complete: false,
@@ -94,6 +105,7 @@ describe('planRun', () => {
         return true;
       },
       fail: async () => undefined,
+      writable: async () => true,
     } as unknown as DocumentRecords;
     const outcome = await indexRecord({
       records,
@@ -147,6 +159,7 @@ describe('planRun', () => {
       find: async () => record,
       replace: async () => false,
       fail: async (_r: unknown, reason: string) => void failed.push(reason),
+      writable: async () => true,
     } as unknown as DocumentRecords;
     await expect(
       indexRecord({
@@ -247,6 +260,7 @@ describe('ingestListing', () => {
     const records = {
       owned: async () => [owned('a')],
       apply,
+      writable: async () => true,
     } as unknown as DocumentRecords;
     const counts = await ingestListing({
       records,
