@@ -37,7 +37,6 @@ export const navigation: NavGroup[] = [
     group: 'shell.groupPlatform',
     items: [
       { path: '/models', label: 'shell.pageModels' },
-      { path: '/model-operations', label: 'shell.pageModelOperations' },
       { path: '/catalog', label: 'shell.pageCatalog' },
       { path: '/building-blocks', label: 'shell.pageBuildingBlocks' },
       { path: '/search-engines', label: 'shell.pageSearchEngines' },

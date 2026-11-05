@@ -1051,10 +1051,21 @@ export interface ModelApi {
   models: string[];
 }
 
+export interface DiscoveryRule {
+  source?: string;
+  from?: string;
+  idPrefix?: string;
+  include?: string[];
+  exclude?: string[];
+  capabilities?: Capability[];
+  apis?: ApiBindings;
+}
+
 export interface ModelEndpointInput {
   baseURL: string;
   auth: { kind: 'api-key' | 'bearer'; secret: string; header?: string };
   families: Record<string, string>;
+  discovery?: DiscoveryRule[];
 }
 
 export interface ModelSettings {
@@ -1063,6 +1074,7 @@ export interface ModelSettings {
   family?: string;
   residency: Residency;
   capabilities: Capability[];
+  apis?: ApiBindings;
   enabled: boolean;
 }
 

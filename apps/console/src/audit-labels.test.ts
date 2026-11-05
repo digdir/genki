@@ -24,26 +24,48 @@ const operationActions = [
   ['platform.operations.processor-record', 'model-endpoint:azure/processor-record'],
   ['platform.models.classify', 'model:azure/gpt'],
   ['platform.catalog.publish', 'catalog:model-endpoint/azure@1'],
+  ['platform.catalog.publish', 'catalog:model-endpoint/azure@2'],
   ['platform.catalog.delete', 'catalog:model-endpoint/azure'],
+  ['platform.catalog.publish', 'catalog:model/azure/gpt@1'],
+  ['platform.catalog.publish', 'catalog:model/azure/gpt@3'],
+  ['platform.catalog.delete', 'catalog:model/azure/gpt'],
+  ['platform.catalog.publish', 'catalog:price/azure/gpt@1'],
+  ['platform.models.refresh', 'models'],
+  ['platform.platform-secret.set', 'secret:azure-key'],
 ] as const;
 
 describe('audit labels', () => {
   it.each(['nb', 'en'] as const)(
-    'names every ADR 0047 action instead of other action in %s',
+    'Revisjon names every ADR 0047 and ADR 0048 action in plain words in %s',
     (locale) => {
       const t = translator(locale);
-      for (const [action, target] of operationActions)
-        expect(labelOf(entry(action, target), t), action).not.toBe(t('audit.otherAction'));
+      const labels = operationActions.map(([action, target]) => labelOf(entry(action, target), t));
+      for (const [i, [action]] of operationActions.entries())
+        expect(labels[i], action).not.toBe(t('audit.otherAction'));
+      expect(new Set(labels).size).toBe(labels.length);
     },
   );
 
-  it('names a model endpoint change apart from other catalogue changes', () => {
+  it('says whether a connection or model was added or changed, by its catalogue version', () => {
     const t = translator('nb');
-    expect(labelOf(entry('platform.catalog.publish', 'catalog:model-endpoint/azure@1'), t)).toBe(
-      'La til modellendepunkt',
+    expect(labelOf(entry('platform.catalog.publish', 'catalog:model-endpoint/foundry@1'), t)).toBe(
+      'La til tilkobling',
     );
+    expect(labelOf(entry('platform.catalog.publish', 'catalog:model-endpoint/foundry@2'), t)).toBe(
+      'Endret tilkobling',
+    );
+    expect(labelOf(entry('platform.catalog.publish', 'catalog:model/foundry/gpt@2'), t)).toBe(
+      'Endret modell i katalogen',
+    );
+    expect(labelOf(entry('platform.operations.descriptor-upload', 'x'), t)).toBe(
+      'Lastet opp oppskrift',
+    );
+  });
+
+  it('names a connection change apart from other catalogue changes', () => {
+    const t = translator('nb');
     expect(labelOf(entry('platform.catalog.delete', 'catalog:model-endpoint/azure'), t)).toBe(
-      'Fjernet modellendepunkt',
+      'Fjernet tilkobling',
     );
     expect(labelOf(entry('platform.catalog.publish', 'catalog:dataset/x@1'), t)).toBe(
       'Publiserte i katalogen',
