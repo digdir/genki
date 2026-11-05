@@ -7,6 +7,14 @@ import {
   type OnError,
   type Step,
 } from '../../data/stepflows';
+import {
+  callOperation,
+  descriptorOf,
+  kindName,
+  operationKindOf,
+  stepModelOf,
+  type OperationContext,
+} from '../../data/step-operations';
 import { translator, type PlainKey, type T } from '../../i18n';
 
 const nbT = translator('nb');
@@ -179,6 +187,7 @@ export const analyse = (
   flows: Record<string, Flow>,
   subOpen: Record<string, boolean> = {},
   t: T = nbT,
+  ops?: OperationContext,
 ): Analysis => {
   const rows: Row[] = [];
   const errors = new Map<string, string[]>();
@@ -225,6 +234,38 @@ export const analyse = (
       templatesIn(value).forEach((expr) => checkRef(id, expr, visible, n)),
     );
 
+  const checkOperation = (s: BlockStep, v: string[]) => {
+    const id = descriptorOf(s);
+    if (!id) {
+      addErr(s.id, t('stepflows.chooseOperation'));
+      return;
+    }
+    Object.entries(s.in).forEach(([n, ref]) => checkRef(s.id, ref, v, n));
+    if (!ops?.operations) return;
+    const op = ops.operations.find((o) => o.id === id);
+    if (!op) {
+      addErr(s.id, t('stepflows.operationGone', { id }));
+      return;
+    }
+    op.input.forEach((f) => {
+      if (f.required && !s.in[f.name] && s.raw?.[f.name] === undefined)
+        addErr(s.id, t('stepflows.missingInput', { name: f.name }));
+    });
+    const model = stepModelOf(s);
+    const chosen = op.models.find((m) => m.id === model);
+    if (model && !chosen)
+      addErr(
+        s.id,
+        t('stepflows.operationModelGone', {
+          model,
+          kind: kindName(operationKindOf(id) ?? op.operation),
+        }),
+      );
+    if (chosen && !chosen.processorRecord)
+      addErr(s.id, t('stepflows.operationNoRecord', { model: chosen.name }));
+    if (ops.masking === false) addErr(s.id, t('stepflows.operationNoMasking'));
+  };
+
   const walk = (steps: Step[], visible: string[], guides: Guide[], unreachable: string) => {
     steps.forEach((s) => {
       const v = visible.slice();
@@ -242,6 +283,7 @@ export const analyse = (
             else checkRef(s.id, ref, v, n);
           });
           checkTemplates(s.id, s.raw, v);
+          if (s.block === callOperation) checkOperation(s, v);
           const known = new Set(b.params.map((param) => param.name));
           const unknown = Object.keys(s.p).filter((name) => !known.has(name));
           if (unknown.length) unknownParams[s.id] = unknown;
@@ -263,7 +305,11 @@ export const analyse = (
               else if (param.type === 'int' && !Number.isInteger(x))
                 addErr(s.id, t('stepflows.paramInt', { label: param.label }));
             }
-            if (param.required && (val === undefined || val === ''))
+            if (
+              param.required &&
+              (val === undefined || val === '') &&
+              !(s.block === callOperation && param.name === 'descriptor')
+            )
               addErr(s.id, t('stepflows.paramRequired', { label: param.label }));
             if (param.type === 'list' && Array.isArray(val) && val.length === 0)
               addErr(s.id, t('stepflows.paramListEmpty', { label: param.label }));

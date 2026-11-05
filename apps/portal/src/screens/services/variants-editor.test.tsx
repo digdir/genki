@@ -91,7 +91,7 @@ describe('the way of working of a variant', () => {
     fireEvent.change(within(row).getByLabelText('Arbeidsmåte for Rask'), {
       target: { value: 'step-flow' },
     });
-    const flow = await within(row).findByRole('option', { name: 'postruting, versjon 2' });
+    const flow = await within(row).findByRole('option', { name: 'postruting, versjon 2 (nyeste)' });
     fireEvent.change(flow.closest('select') as HTMLSelectElement, {
       target: { value: 'postruting@2' },
     });

@@ -724,6 +724,9 @@ describe('saving', () => {
     fireEvent.click(screen.getByRole('button', { name: /Legg til (et )?steg/ }));
     pickBlock(/^Klassifiser/);
     fireEvent.click(screen.getByRole('button', { name: 'Slett steget' }));
+    fireEvent.change(screen.getByLabelText(/Hva flyten gjør/), {
+      target: { value: 'Sorterer brev' },
+    });
     fireEvent.change(screen.getByLabelText(/Hva er endret, og hvorfor\?/), {
       target: { value: 'Første versjon' },
     });

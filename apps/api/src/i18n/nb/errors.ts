@@ -442,7 +442,7 @@ export const operationErrors = defineNamespace({
   decideOnlyThroughPurposeCheck:
     'decide brukes bare gjennom vernregelen purpose-check, som sender et avslag eller et usikkert svar til en person',
   callOperationNeedsMasking:
-    'et call-operation-steg trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
+    'et steg som kaller en operasjon, trenger vernregelen pii-before-model, slik at teksten det sender, er maskert',
   operatorsGovernOperations: 'bare operatører styrer operasjoner',
   noOperationDescriptors: 'denne plattformen har ingen operasjonsbeskrivelser',
   noDescriptorForKind: 'ingen beskrivelse beskriver {kind}',

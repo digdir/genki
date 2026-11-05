@@ -327,6 +327,23 @@ describe('media output from a call-operation step', () => {
     expect(listed.map((b) => b.items?.[0]?.[0])).toEqual(['image/png', 'image/png']);
   });
 
+  it('a media block in the timeline names the media id a client fetches the preview by', async () => {
+    const booted = await boot();
+    await publish(booted);
+    const { text, task } = await ask(booted);
+    const [attachment] = (JSON.parse(text) as { attachments: Attachment[] }).attachments;
+    const timeline = toTimeline(
+      await booted.platform.kernel.task(caller, task),
+      await eventsOf(booted, task),
+      new Date(),
+    );
+    const media = timeline.steps.flatMap((s) => s.blocks).flatMap((b) => b.media ?? []);
+    expect(media).toEqual([
+      { id: attachment?.id, mediaType: 'image/png', bytes: pngBytes.byteLength },
+      { id: attachment?.id, mediaType: 'image/png', bytes: pngBytes.byteLength },
+    ]);
+  });
+
   it('media output is counted in bytes in the gate audit', async () => {
     const booted = await boot();
     await publish(booted);

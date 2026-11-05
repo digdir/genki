@@ -475,7 +475,7 @@ describe('the step flow picker', () => {
 
     const picker = (await screen.findByRole('combobox', { name: 'Stegflyt' })) as HTMLSelectElement;
     expect(screen.queryByRole('textbox', { name: /Stegflyt/ })).toBeNull();
-    await screen.findByRole('option', { name: 'postruting, versjon 2' });
+    await screen.findByRole('option', { name: 'postruting, versjon 2 (nyeste)' });
     fireEvent.change(picker, { target: { value: 'postruting@2' } });
     expect(
       screen.getByRole('link', { name: 'Åpne i stegflyt-editoren' }).getAttribute('href'),

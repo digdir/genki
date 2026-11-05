@@ -67,6 +67,7 @@ import {
   withInputChoice,
   withLanguageMode,
   withModel,
+  withOperationModel,
   withOutputKind,
   withPublicCard,
   withPublicName,
@@ -80,6 +81,7 @@ import {
   type SchedulePreset,
 } from '../../data/service-form';
 import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
+import { kindName } from '../../data/step-operations';
 import { defaultInstructionsOf, strategyFor, takesOf } from '../../data/strategies';
 import type { AsyncState } from '../../hooks';
 import { useT, type PlainKey, type T } from '../../i18n';
@@ -90,6 +92,11 @@ import { TableColumnsEditor, type TableSpec } from './TableOutputEditor';
 import { VariantsEditor } from './VariantsEditor';
 import type { ApiClient } from '../../api';
 import { A2aChannel } from '../integrations/A2aChannel';
+
+export interface OperationModelChoice {
+  kind: string;
+  models: { id: string; name: string; where: string }[];
+}
 
 export interface DatasetOption {
   id: string;
@@ -478,6 +485,7 @@ interface Props {
   frontends?: string[];
   readOnly?: boolean;
   api?: ApiClient | undefined;
+  operationModels?: OperationModelChoice[] | undefined;
 }
 
 const pickClass = (on: boolean) => (on ? 'pick-card picked' : 'pick-card');
@@ -510,6 +518,7 @@ export const SetupTab = ({
   frontends,
   readOnly = false,
   api,
+  operationModels = [],
 }: Props) => {
   const t = useT();
   const userName = useUserName();
@@ -1278,6 +1287,46 @@ export const SetupTab = ({
           <Alert data-color="warning" data-size="sm">
             {fallbackWarn}
           </Alert>
+        ) : null}
+        {operationModels.length ? (
+          <fieldset className="plain-fieldset stack-xs">
+            <legend className="ds-label">{t('setup.operationModels')}</legend>
+            <p className="meta">{t('setup.operationModelsHelp')}</p>
+            {operationModels.map(({ kind, models: offered }) => {
+              const name = kindName(kind);
+              const chosen = s.model.operations?.[kind] ?? '';
+              return (
+                <Field key={kind} className="narrow-field">
+                  <Label htmlFor={`felt-operasjon-${kind}`}>
+                    {t('setup.operationModelFor', { kind: name })}
+                  </Label>
+                  {offered.length ? null : (
+                    <Field.Description>
+                      {t('setup.operationModelNone', { kind: name })}
+                    </Field.Description>
+                  )}
+                  <Select
+                    id={`felt-operasjon-${kind}`}
+                    value={chosen}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      patch((cur) => withOperationModel(cur.spec, kind, id));
+                    }}
+                  >
+                    <Select.Option value="">{t('setup.operationModelMain')}</Select.Option>
+                    {chosen && !offered.some((x) => x.id === chosen) ? (
+                      <Select.Option value={chosen}>{chosen}</Select.Option>
+                    ) : null}
+                    {offered.map((x) => (
+                      <Select.Option key={x.id} value={x.id}>
+                        {x.name} ({modelWord(t, x.where)})
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Field>
+              );
+            })}
+          </fieldset>
         ) : null}
       </Section>
 

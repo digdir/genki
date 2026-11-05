@@ -222,6 +222,9 @@ const Block = z.object({
   sources: z.array(z.string()).optional(),
   calls: z.literal(true).optional(),
   usage: z.literal(true).optional(),
+  media: z
+    .array(z.object({ id: z.string(), mediaType: z.string(), bytes: z.number().int() }))
+    .optional(),
 });
 
 const RunStats = z

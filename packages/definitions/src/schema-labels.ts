@@ -306,7 +306,7 @@ const serviceNb = {
   'spec.model.roles.judge': { label: 'Modell som vurderer' },
   'spec.model.operations': {
     label: 'Modell per operasjon',
-    help: 'Modellen et call-operation-steg bruker for hver type operasjon, når steget ikke velger selv.',
+    help: 'Modellen et steg som kaller en operasjon bruker for hver type operasjon, når steget ikke velger modell selv.',
   },
   'spec.model.residency': {
     label: 'Hvor data behandles',
@@ -428,7 +428,7 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.model.roles.judge': { label: 'Model that judges' },
   'spec.model.operations': {
     label: 'Model per operation',
-    help: 'The model a call-operation step uses for each kind of operation, when the step names none.',
+    help: 'The model a step that calls an operation uses for each kind of operation, when the step names none.',
   },
   'spec.model.residency': {
     label: 'Where data is processed',

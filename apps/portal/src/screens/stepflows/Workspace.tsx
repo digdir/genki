@@ -4,6 +4,7 @@ import type { ApiClient } from '../../api';
 import { Crumbs } from '../../components/Crumbs';
 import { serviceOfFlow, strategies, type Flow, type Strategy } from '../../data/stepflows';
 import { NotAvailable } from '../../components/NotAvailable';
+import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { EmptyState, ErrorState } from '../../states';
 import { FlowEditor, type Flash } from './FlowEditor';
@@ -26,12 +27,16 @@ export interface WorkspaceProps {
 }
 
 const Library = ({
+  api,
+  tenant,
   flows,
   liveError,
   onOpen,
   onNew,
   onFlash,
 }: {
+  api: ApiClient;
+  tenant: string;
   flows: Record<string, Flow>;
   liveError: WorkspaceProps['liveError'];
   onOpen: (id: string) => void;
@@ -39,6 +44,8 @@ const Library = ({
   onFlash: (flash: Flash) => void;
 }) => {
   const t = useT();
+  const [operations] = useAsync((signal) => api.stepOperations(tenant, signal), [api, tenant]);
+  const ops = { operations: operations.status === 'ready' ? operations.data : undefined };
   return (
     <div className="stack-md">
       <div className="page-head">
@@ -58,7 +65,7 @@ const Library = ({
       ) : null}
       <ul className="flow-library">
         {Object.values(flows).map((f) => {
-          const errors = analyse(f, flows, {}, t).errors.size;
+          const errors = analyse(f, flows, {}, t, ops).errors.size;
           return (
             <li key={f.id}>
               <div className="row-wrap spread">
@@ -76,7 +83,7 @@ const Library = ({
                   </Tag>
                 </span>
               </div>
-              <p className="small">{f.desc}</p>
+              <p className="small">{f.desc || t('stepflows.newFlowDesc')}</p>
               <dl className="kv small-kv">
                 <dt>{t('stepflows.dtVersion')}</dt>
                 <dd>
@@ -179,6 +186,8 @@ export const Workspace = ({
         <Tabs.Panel value="lib">
           {view === 'lib' ? (
             <Library
+              api={api}
+              tenant={tenant}
               flows={flows}
               liveError={liveError}
               onOpen={openFlow}
@@ -190,7 +199,7 @@ export const Workspace = ({
                   [id]: {
                     id,
                     name: t('stepflows.newFlow'),
-                    desc: t('stepflows.newFlowDesc'),
+                    desc: '',
                     version: 1,
                     draft: true,
                     changed: t('stepflows.newFlowChanged'),
@@ -208,14 +217,23 @@ export const Workspace = ({
           {view === 'flow' && flow && current ? (
             <div className="stack-md">
               <Crumbs
-                items={[
-                  { label: t('stepflows.crumbServices'), href: '#/services' },
-                  {
-                    label: serviceName,
-                    href: service ? `#/services/${encodeURIComponent(service.id)}` : '#/services',
-                  },
-                  { label: t('stepflows.strategyTitle') },
-                ]}
+                items={
+                  service || serviceOfFlow[flow.id]
+                    ? [
+                        { label: t('stepflows.crumbServices'), href: '#/services' },
+                        {
+                          label: serviceName,
+                          href: service
+                            ? `#/services/${encodeURIComponent(service.id)}`
+                            : '#/services',
+                        },
+                        { label: t('stepflows.strategyTitle') },
+                      ]
+                    : [
+                        { label: t('stepflows.crumbFlows'), href: '#/step-flows' },
+                        { label: flow.name },
+                      ]
+                }
               />
               <div className="stack-xs">
                 <Heading level={1} data-size="md" id="strategi-h">
@@ -254,7 +272,7 @@ export const Workspace = ({
                   tenant={tenant}
                   flows={flows}
                   flow={flow}
-                  {...(service ? { serviceName: service.name } : {})}
+                  {...(service ? { serviceName: service.name, serviceId: service.id } : {})}
                   showPicker
                   initialTab={initialTab}
                   initialOverlay={initialOverlay}

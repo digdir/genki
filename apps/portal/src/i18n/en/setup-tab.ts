@@ -210,6 +210,12 @@ export const setup = {
   cost: 'Cost: {cost}',
   notPriced: 'not priced',
   speed: 'Speed: {speed}',
+  operationModels: 'Model per operation',
+  operationModelsHelp:
+    'The flow calls these operations. Choose the model that performs each of them. Where data is processed follows the model.',
+  operationModelFor: 'Model for {kind}',
+  operationModelMain: 'The main model',
+  operationModelNone: 'None of the models you can use can perform {kind}.',
   fallbackModel: 'Fallback model',
   fallbackHelp: 'Used if the main model does not respond.',
   noFallback: 'No fallback model',
