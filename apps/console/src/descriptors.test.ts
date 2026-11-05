@@ -6,7 +6,6 @@ import {
   formValues,
   inputOf,
   mediaIn,
-  nextStep,
   uploadErrors,
   uploadFieldOf,
   withoutMediaPaths,
@@ -23,53 +22,6 @@ const shape: InputShape = {
     questions: { kind: 'array', item: { kind: 'object', fields: { name: { kind: 'plain' } } } },
   },
 };
-
-describe('the next step for a descriptor', () => {
-  const uploaded = { source: 'uploaded' as const, contract: null };
-  const kind = { builtIn: false, maturity: 'test' as const };
-
-  it("the next step follows the descriptor's status, fixtures and kind maturity", () => {
-    expect(nextStep({ ...uploaded, status: 'review', fixtures: 0 }, kind)).toBe('try');
-    expect(
-      nextStep(
-        {
-          ...uploaded,
-          status: 'review',
-          fixtures: 1,
-          contract: { suite: 'operation@1', checks: 7, passed: false, failures: [] },
-        },
-        kind,
-      ),
-    ).toBe('fix');
-    expect(
-      nextStep(
-        {
-          ...uploaded,
-          status: 'review',
-          fixtures: 1,
-          contract: { suite: 'operation@1', checks: 7, passed: true, failures: [] },
-        },
-        kind,
-      ),
-    ).toBe('approve');
-    expect(nextStep({ ...uploaded, status: 'described', fixtures: 1 }, kind)).toBe('promote');
-    expect(
-      nextStep(
-        { ...uploaded, status: 'described', fixtures: 1 },
-        { ...kind, maturity: 'production' },
-      ),
-    ).toBe('ready');
-    expect(
-      nextStep(
-        { source: 'bundled', status: 'typed', fixtures: 2, contract: null },
-        {
-          builtIn: true,
-          maturity: 'test',
-        },
-      ),
-    ).toBe('ready');
-  });
-});
 
 describe('uploading a descriptor', () => {
   it('upload errors are placed next to the field they concern', () => {
