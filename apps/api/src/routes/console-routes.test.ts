@@ -169,7 +169,7 @@ const setup = async (extra: Pick<ConsoleDeps, 'lifecycle' | 'pluginUsage'> = {})
     (await admin.events(task)).find(
       (e) => e.type === 'x.platform.change' || e.type === 'x.platform.rejected',
     );
-  return { send, store, labels, cancelled, auditFor, admin };
+  return { send, store, labels, cancelled, auditFor, admin, runs };
 };
 
 const readJson = async <T>(res: Response) => (await res.json()) as T;
@@ -301,6 +301,29 @@ describe('console routes', () => {
     }>(await send('/operator/quality', 'operator'));
     expect(body.services).toEqual([expect.objectContaining({ run: 'r2', regressions: ['judge'] })]);
     expect(body.judges).toEqual([expect.objectContaining({ judge: 'rubric-v1', advisory: true })]);
+  });
+
+  it('queues the verdicts of a judge that names its version and model under its evaluator', async () => {
+    const { send, runs } = await setup();
+    const criteria = run('r3', '2026-10-06T00:00:00Z', 1, [1, 1]);
+    criteria.provenance.judges = ['judge:criteria@1+foundry/claude-sonnet'];
+    criteria.results = criteria.results.map((r) => ({
+      ...r,
+      scores: r.scores.map((s) => ({
+        ...s,
+        evaluator: 'judge:criteria',
+        metric: 'judge.criteria',
+      })),
+    }));
+    await runs.save({ run: criteria, tenant: digdir, task: 'e3', service: 'klarsprak' });
+
+    const queue = await readJson<{ data: { item: string; judge: string }[] }>(
+      await send('/operator/quality/label-queue', 'operator'),
+    );
+
+    expect(queue.data).toContainEqual(
+      expect.objectContaining({ item: 'r3:q1:0', judge: 'judge:criteria' }),
+    );
   });
 
   it('queues judge verdicts for labelling and records a human label as an audited change', async () => {
