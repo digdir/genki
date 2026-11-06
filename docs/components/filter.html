@@ -261,7 +261,8 @@
               and read every token through their own variable, with the token as the fallback. Set
               one on any ancestor to change that detail only. The muted text is pinned to neutral on
               purpose, so it stays grey whatever family the links and chips beside it follow; a
-              failed upload is pinned to danger.
+              failed upload is pinned to danger. The gap between the fields follows the window's
+              height between two tokens, as kunnskapsassistenten's does.
             </p>
             <table>
               <thead>
@@ -304,8 +305,21 @@
                 </tr>
                 <tr>
                   <td><code>--genai-filter-gap</code></td>
-                  <td><code>--ds-size-7</code></td>
-                  <td>gap between the fields, and around the line</td>
+                  <td><code>3.6dvh</code></td>
+                  <td>
+                    gap between the fields, and around the line: a share of the window's height,
+                    between the floor and the ceiling
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-ceiling</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the largest gap, on a tall window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-floor</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the smallest gap, on a short window</td>
                 </tr>
                 <tr>
                   <td><code>--genai-filter-head-gap</code></td>
