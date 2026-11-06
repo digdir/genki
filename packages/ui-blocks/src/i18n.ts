@@ -9,6 +9,7 @@ import { enWelcome, nbWelcome } from './welcome/i18n.js';
 import { enCorpus, nbCorpus } from './corpus/catalogue.js';
 import { enDocuments, nbDocuments } from './documents/catalogue.js';
 import { enFilter, nbFilter } from './filter/catalogue.js';
+import { enSettings, nbSettings } from './settings/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -169,6 +170,7 @@ export const nb = defineCatalogue({
   filter: nbFilter,
   corpus: nbCorpus,
   documents: nbDocuments,
+  settings: nbSettings,
 });
 export const en = {
   procedure: enProcedure,
@@ -182,6 +184,7 @@ export const en = {
   filter: enFilter,
   corpus: enCorpus,
   documents: enDocuments,
+  settings: enSettings,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
