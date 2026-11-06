@@ -312,12 +312,22 @@ describe('website loader', () => {
   it('merges frontmatter titles and strips the diataxis prefix', () => {
     const markdown =
       '---\ntitle: Kom i gang\nlinktitle: Start\ndiataxis: diataxis_tutorial\n---\n# Hei\n';
-    expect(mergeFrontmatter({ id: 'x' }, markdown)).toEqual({
+    expect(mergeFrontmatter({ id: 'x', title: 'Getting started' }, markdown)).toEqual({
       id: 'x',
+      title: 'Kom i gang',
       linktitle: 'Start',
       frontmatter_title: 'Kom i gang',
       diataxis: 'tutorial',
     });
+  });
+
+  it('keeps the URL title when the frontmatter title is empty, missing or not text', () => {
+    const doc = { id: 'x', title: 'Getting started' };
+    for (const fm of ['title: ""', 'title: "  "', 'linktitle: Start', 'title: { nb: Hei }'])
+      expect(mergeFrontmatter(doc, `---\n${fm}\n---\nTekst\n`)).toMatchObject({
+        title: 'Getting started',
+      });
+    expect(mergeFrontmatter(doc, '# Hei\n')).toEqual(doc);
   });
 });
 
