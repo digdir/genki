@@ -55,8 +55,11 @@ describe('the suggestions', () => {
     expect(picked).toEqual([questions[1]]);
   });
 
-  it('draws nothing without suggestions, not even its heading', () => {
+  it('shows no heading and no list for a dataset without suggestions, and offers none of its own', () => {
     const { container } = render(<Suggestions suggestions={[]} onPick={() => {}} />);
+    expect(screen.queryByRole('heading', { name: 'Forslag' })).toBeNull();
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
     expect(container.innerHTML).toBe('');
   });
 

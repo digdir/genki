@@ -52,7 +52,11 @@
               <dd>
                 <a href="https://github.com/digdir/kunnskapsassistenten/issues/174"
                   >kunnskapsassistenten#174</a
+                >, and
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/223"
+                  >kunnskapsassistenten#223</a
                 >
+                for the welcome and the suggestions
               </dd>
               <dt>Canvas</dt>
               <dd>00-Chat (FM-0, FM-0b, FM-0c, FM-0d, FM-2b)</dd>
@@ -161,8 +165,9 @@
               one on any ancestor to change that detail only. Three are pinned to a colour family on
               purpose: accent for the frame and the hint while a file is dragged over it, and danger
               for why a file was not attached. Kunnskapsassistenten passes
-              <code>color="neutral"</code> and <code>actionColor="accent"</code>. One value is not a
-              token: the field grows to ten lines of its own text, and then scrolls.
+              <code>color="neutral"</code> and <code>actionColor="accent"</code>. Two values are not
+              tokens, both Kunnskapsassistenten's: the empty field takes a tenth of the screen's
+              height, between two tokens, and grows to at most 274 px.
             </p>
             <table>
               <thead>
@@ -215,13 +220,23 @@
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-max-block-size</code></td>
-                  <td>ten lines</td>
+                  <td>274 px</td>
                   <td>how tall the field grows before it scrolls</td>
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-min-block-size</code></td>
-                  <td><code>--ds-size-22</code></td>
+                  <td>a tenth of the screen's height</td>
                   <td>the empty field's height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-min-block-size-ceiling</code></td>
+                  <td><code>--ds-size-22</code></td>
+                  <td>the most the empty field takes on a tall screen</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-composer-field-min-block-size-floor</code></td>
+                  <td><code>--ds-size-12</code></td>
+                  <td>the least the empty field takes on a short screen</td>
                 </tr>
                 <tr>
                   <td><code>--genai-composer-field-padding-block</code></td>
@@ -435,12 +450,15 @@
                 the foot, and the margin that keeps the field from hiding what is scrolled to.
               </li>
               <li>
-                <strong>Different on purpose:</strong> the field grows to ten lines (about 270 px)
-                instead of 274 px; the empty field is 88 px tall on every screen, where
-                Kunnskapsassistenten gives it a tenth of a short screen's height (84 px on a 390 ×
-                844 phone); and the air over the disclaimer and over «Forslag» steps at the block's
-                own width instead of following the window's. Colours follow the host's family unless
-                the host passes <code>color</code> and <code>actionColor</code>.
+                <strong>Different on purpose:</strong> the air over the disclaimer and over
+                «Forslag» steps at the block's own width instead of following the window's. Colours
+                follow the host's family unless the host passes <code>color</code> and
+                <code>actionColor</code>.
+              </li>
+              <li>
+                <strong>Decided:</strong> a service without suggestions of its own gets none, not
+                even the heading, since nothing is shown without data. Kunnskapsassistenten's
+                suggestions for any dataset stay in that app.
               </li>
             </ul>
           </div>
@@ -453,10 +471,12 @@
               </li>
               <li>
                 Measured beside Kunnskapsassistenten's start page and one live conversation, at 1440
-                px under its theme: of 61 sizes, gaps, offsets and colours compared, all but the
-                field's maximum height were the same, once the host passes <code>neutral</code> with
-                <code>accent</code> actions. Its surfaces are neutral while its send button and
-                follow-ups keep the page's accent, which is why the block takes two colour props.
+                px under its theme: all 61 sizes, gaps, offsets and colours compared are the same,
+                once the host passes <code>neutral</code> with <code>accent</code> actions. The
+                field measures 88 px empty and at most 274 px at 1440 × 900, and 84 px empty at 390
+                × 844, as in Kunnskapsassistenten. Its surfaces are neutral while its send button
+                and follow-ups keep the page's accent, which is why the block takes two colour
+                props.
               </li>
               <li>
                 The conversation reads in order: the question you asked with its document selection,
@@ -483,11 +503,6 @@
               <li>
                 How do we tell “not found” from “not read”, when the assistant reads only a
                 selection closely?
-              </li>
-              <li>
-                Should the block offer suggestions that hold for any dataset, such as
-                Kunnskapsassistenten's «Hva handler dokumentene i denne samlingen om?», when a
-                service has none of its own?
               </li>
               <li>
                 The workspace's field has a visible label, a line about personal data and a

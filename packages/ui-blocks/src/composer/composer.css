@@ -95,12 +95,17 @@
     box-shadow: none;
   }
 
-  /* The field grows with the question, to ten lines. Its text starts where the paperclip's icon
-     does. */
+  /* Room for a real question, never at the cost of a short screen: a tenth of its height, between
+     two tokens. The field grows with the question to the design's maximum. Its text starts where
+     the paperclip's icon does. */
   .uib-composer-field textarea {
     field-sizing: content;
-    min-block-size: var(--genai-composer-field-min-block-size, var(--ds-size-22));
-    max-block-size: var(--genai-composer-field-max-block-size, 10lh);
+    min-block-size: clamp(
+      var(--genai-composer-field-min-block-size-floor, var(--ds-size-12)),
+      var(--genai-composer-field-min-block-size, 10dvh),
+      var(--genai-composer-field-min-block-size-ceiling, var(--ds-size-22))
+    );
+    max-block-size: var(--genai-composer-field-max-block-size, 274px);
     padding-block: var(--genai-composer-field-padding-block, var(--ds-size-1));
     padding-inline: var(--genai-composer-field-padding-inline-start, var(--ds-size-3)) 0;
     overflow-y: auto;
