@@ -92,7 +92,7 @@ describe('a row whose title is cut off', () => {
     expect(overlay()).toBeNull();
   });
 
-  it('takes the first Escape for the box, so a dialog around the panel stays open', () => {
+  it('takes the first Escape for the box and lets the second through, to a dialog around the panel', () => {
     withWidths(420, 300);
     render(view());
     fireEvent.focus(link());

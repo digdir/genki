@@ -38,12 +38,14 @@ export interface ThreadsProps {
   onNewThread?: (() => void) | undefined;
   /**
    * The person renamed a thread. Return a promise to have the new name shown at once and the old
-   * one put back, with a message, if it rejects. Without this and `onDelete`, the rows have no menu.
+   * one put back, with a message, if it rejects. Resolve it with `'gone'` when the thread no longer
+   * exists: its row goes, and the person is told. Without this and `onDelete`, the rows have no menu.
    */
   onRename?: ((thread: ThreadItem, title: string) => unknown) | undefined;
   /**
    * The person confirmed a delete. Return a promise to have the row taken away at once and put
-   * back, with a message, if it rejects. If it is the thread on screen, the host opens a new one.
+   * back, with a message, if it rejects. A thread that is already gone is deleted: resolve with
+   * `'gone'`, or anything. If it is the thread on screen, the host opens a new one.
    */
   onDelete?: ((thread: ThreadItem) => unknown) | undefined;
   /** Shows «Filtrer dokumenter», for a filter that shares the panel. */
@@ -96,6 +98,10 @@ export const Threads = ({
 }: ThreadsProps) => {
   const t = useT();
   const f = useFormat();
+  const timeWords = {
+    yesterday: t('threads.yesterday'),
+    dateAtClock: (date: string, clock: string) => t('threads.dateAtClock', { date, clock }),
+  };
   const tag = intlLocale(f.locale);
   const [query, setQuery] = useState('');
   const statusId = useId();
@@ -154,13 +160,25 @@ export const Threads = ({
     // On mount only: the flag says how the person got here.
   }, []);
 
-  const settle = (result: unknown, id: string, call: number, failure: () => string) => {
+  const settle = (
+    result: unknown,
+    id: string,
+    call: number,
+    failure: () => string,
+    gone?: { text: () => string; next: string | undefined },
+  ) => {
     Promise.resolve(result).then(
-      () => {
+      (value) => {
         outcomes.current.set(call, 'done');
         const change = pending.current.get(id);
         if (change?.call !== call) return;
-        change.settled = true;
+        if (value === 'gone' && gone) {
+          // Gone elsewhere: the row goes too, and focus on its menu goes to the next row.
+          pending.current.set(id, { kind: 'delete', call, settled: true });
+          if (menuRefs.current.get(id) === document.activeElement) focusAfter.current = gone.next;
+          setAnnouncement('');
+          setActionError(gone.text());
+        } else change.settled = true;
         rerender();
       },
       () => {
@@ -201,8 +219,17 @@ export const Threads = ({
     setAnnouncement(t('threads.renamed', { title }));
     rerender();
     const old = titleOf(thread);
-    settle(onRename(given, title), thread.id, call, () =>
-      t('threads.renameFailed', { title: old }),
+    const order = groups.flatMap((group) => group.threads);
+    const index = order.findIndex((row) => row.id === thread.id);
+    settle(
+      onRename(given, title),
+      thread.id,
+      call,
+      () => t('threads.renameFailed', { title: old }),
+      {
+        text: () => t('threads.renameGone', { title: old }),
+        next: (order[index + 1] ?? order[index - 1])?.id ?? newThreadTarget,
+      },
     );
   };
 
@@ -251,7 +278,14 @@ export const Threads = ({
       aria-busy={loading || undefined}
     >
       {onShowFilters ? (
-        <Button ref={filterRef} variant="tertiary" data-color="neutral" onClick={onShowFilters}>
+        <Button
+          className="uib-threads-show-filters"
+          ref={filterRef}
+          variant="tertiary"
+          // Pinned to neutral, as kunnskapsassistenten draws it: a way to the filter, not the brand.
+          data-color="neutral"
+          onClick={onShowFilters}
+        >
           <FunnelIcon aria-hidden="true" />
           {t('threads.showFilters')}
         </Button>
@@ -364,7 +398,7 @@ export const Threads = ({
                       title={titleOf(thread)}
                       href={threadHref(hostThread(thread.id) ?? thread)}
                       current={thread.id === currentId}
-                      time={rowTime(thread.updatedAt, f, t('threads.yesterday'))}
+                      time={rowTime(thread.updatedAt, f, timeWords)}
                       dataset={thread.dataset}
                       onOpen={
                         onOpenThread
