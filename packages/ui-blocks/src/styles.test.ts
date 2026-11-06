@@ -43,10 +43,22 @@ const genaiUses = (text: string) => {
   return uses;
 };
 
-// A value no token has, such as a width or a line count, is allowed as the fallback of a block's
-// own variable, so a host can still change it.
-const literal = /^(?:\d*\.?\d+(?:px|rem|em|r?lh|ch|%)?)$/;
+// A value no token has, such as a width, a viewport height or a line count, is allowed as the
+// fallback of a block's own variable, so a host can still change it.
+const literal = /^(?:\d*\.?\d+(?:px|rem|em|r?lh|ch|%|[dsl]?vh|vw)?)$/;
 const isLiteralFallback = (use: { fallback: string }) => literal.test(use.fallback);
+
+const literalSizes = (flat: string) => {
+  let rest = flat;
+  for (const use of genaiUses(flat).filter(isLiteralFallback).reverse())
+    rest = rest.slice(0, use.start) + rest.slice(use.end);
+  return (
+    rest
+      .replace(/@container [^{]+\{/g, '')
+      .match(/(?<![\w-])\d*\.?\d+(?:px|rem|em|r?lh|[dsl]?v[hw]|vmin|vmax|pt|ch|ex|cm|mm|in)\b/g) ??
+    []
+  );
+};
 
 // Pinned to a colour family on purpose, each with a comment in the CSS.
 const accentPins = [
@@ -71,13 +83,7 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
   });
 
   it('hold no literal size or weight outside a --genai- fallback, but the container query', () => {
-    let rest = flat;
-    for (const use of genaiUses(flat).filter(isLiteralFallback).reverse())
-      rest = rest.slice(0, use.start) + rest.slice(use.end);
-    const sizes = rest
-      .replace(/@container [^{]+\{/g, '')
-      .match(/(?<![\w-])\d*\.?\d+(?:px|rem|em|r?lh|vh|vw|vmin|vmax|pt|ch|ex|cm|mm|in)\b/g);
-    expect(sizes ?? []).toEqual([]);
+    expect(literalSizes(flat)).toEqual([]);
     expect(css.match(/font-weight:\s*\d/g) ?? []).toEqual([]);
   });
 
@@ -129,12 +135,17 @@ describe('the lint', () => {
     );
   });
 
-  it('accepts a literal width behind a variable, and refuses the same width bare', () => {
-    const behind = flatten('a { inline-size: var(--genai-picker-list-width, 24rem); }');
-    const bare = flatten('a { inline-size: 24rem; }');
-    expect(genaiUses(behind).every(isLiteralFallback)).toBe(true);
-    expect(genaiUses(bare)).toEqual([]);
-    expect(bare.match(/\d+rem/)).not.toBeNull();
+  it.each([
+    ['inline-size', '24rem'],
+    ['max-block-size', '30dvh'],
+    ['max-block-size', '40svh'],
+    ['block-size', '50vh'],
+    ['inline-size', '80vw'],
+  ])('accepts %s: %s behind a variable, and refuses it bare', (property, value) => {
+    const behind = flatten(`a { ${property}: var(--genai-block-${property}, ${value}); }`);
+    const bare = flatten(`a { ${property}: ${value}; }`);
+    expect(literalSizes(behind)).toEqual([]);
+    expect(literalSizes(bare)).toEqual([value]);
   });
 });
 
