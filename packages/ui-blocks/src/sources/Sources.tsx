@@ -115,7 +115,8 @@ const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`)
 
 const qualifier = (id: string | undefined) => (id?.includes('::') ? id.split('::')[0] : undefined);
 
-const isOwn = (source: SourceDocument) => source.documentId?.startsWith('attached:') ?? false;
+export const isOwn = (source: SourceDocument) =>
+  source.documentId?.startsWith('attached:') ?? false;
 
 export const sourceDataset = (source: SourceDocument) =>
   qualifier(source.documentId) ?? qualifier(source.excerpts[0]?.chunkId);
@@ -140,7 +141,8 @@ export const targetPosition = (
 
 const titleKey = (title: string) => title.trim().replace(/\s+/g, ' ').toLocaleLowerCase('nb');
 
-const distinctNames = (
+/** Each document's name, with its id after it when another document has the same title. */
+export const distinctNames = (
   sources: readonly SourceDocument[],
   name: (title: string, id: string) => string,
 ) => {

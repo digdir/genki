@@ -6,7 +6,7 @@
     <title>Footnotes · Components</title>
     <meta
       name="description"
-      content="Numbered references that link each claim in the answer to its source, with a source list at the bottom of the answer."
+      content="The answer with its footnotes: each footnote leads to the one excerpt it cites, Sources leads back to it, and «Kilder brukt i svaret» lists the documents under the answer."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -22,7 +22,7 @@
         class="component"
         id="footnotes"
         data-component="footnotes"
-        data-phase="draft"
+        data-phase="building"
         data-optional="true"
         aria-labelledby="footnotes-title"
       >
@@ -30,23 +30,30 @@
           <div>
             <h1 id="footnotes-title">Footnotes</h1>
             <div class="badges">
-              <span class="badge phase">Draft</span><span class="badge">Optional</span
+              <span class="badge phase">Building</span><span class="badge">Optional</span
               ><span class="badge">Main area</span>
             </div>
             <p class="summary">
-              Numbered references that link each claim in the answer to its source, with a source
-              list at the bottom of the answer.
+              The answer with its footnotes: each footnote leads to the one excerpt it cites,
+              Sources leads back to it, and «Kilder brukt i svaret» lists the documents under the
+              answer.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
-              <dd>«Fotnoter»</dd>
+              <dd>«Svaret» with «Fotnoter»</dd>
               <dt>Sits in</dt>
               <dd>The answer</dd>
+              <dt>Code</dt>
+              <dd><code>Answer</code> in <code>@genai/ui-blocks</code></dd>
               <dt>Issue</dt>
               <dd>
                 <a href="https://github.com/digdir/kunnskapsassistenten/issues/179"
                   >kunnskapsassistenten#179</a
+                >, and
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/174"
+                  >kunnskapsassistenten#174</a
                 >
+                for the answer itself
               </dd>
               <dt>Canvas</dt>
               <dd>00-Fotnoter (FN-1, FN-1b, FN-1c, FN-1d)</dd>
@@ -71,28 +78,343 @@
             <h2>Use it when</h2>
             <ul>
               <li>Users must be able to check each claim against its source.</li>
+              <li>
+                Each footnote should lead to what it cites, and each excerpt back to where the
+                answer uses it.
+              </li>
             </ul>
             <h2>Variants</h2>
             <ul>
-              <li>With the sources panel open and closed. Footnotes must work in both.</li>
+              <li>
+                <strong>By excerpt</strong> (the default): a footnote is a small round mark with its
+                excerpt's number, «Utdrag 1», «Utdrag 2», in the order the answer first cites them,
+                whatever number the service wrote. Needs the contract's <code>markers</code>.
+              </li>
+              <li>
+                <strong>By document:</strong> nothing is numbered. A footnote is a mark with a
+                document in it, named by the document's title.
+              </li>
+              <li>
+                <strong>States:</strong> a skeleton before the first word and a line while it
+                writes; a stopped answer, whose footnotes say their source never came; a failed one;
+                and a finished answer with no sources, which says so over the text.
+              </li>
             </ul>
+            <p>
+              The pairing comes from the data, never a guess. A footnote that leads to nothing shown
+              is not drawn, two side by side that lead to one item are one footnote, and a
+              <code>[N]</code> that is no footnote, such as a year, stays text. Each footnote is
+              held on the line of the word before it.
+            </p>
           </div>
           <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>text</code>, <code>sources</code> and <code>markers</code>: the answer as the
+                contract sends it. <code>[N]</code> is the marker <code>markers</code> names, or the
+                source with <code>index: N</code>.
+              </li>
+              <li><code>status</code>: streaming, complete, aborted or failed.</li>
+              <li>
+                <code>onOpenCitation</code>: a footnote was followed, with its index and the item it
+                cites, for Sources' <code>target</code>.
+              </li>
+              <li>
+                <code>target</code>: the footnote to scroll to and focus, where Sources'
+                <code>onShowUse</code> and <code>onReturn</code> lead.
+              </li>
+              <li>
+                <code>onOpenDocument</code>, <code>href</code>, <code>citationId</code>,
+                <code>sourcesUsed</code>, <code>closingQuestion</code>,
+                <code>onRegenerate</code> and the <code>actions</code> slot.
+              </li>
+            </ul>
+            <p>
+              <code>answerCitations</code> gives Sources exactly the footnotes the answer draws, so
+              both blocks pair from one list.
+            </p>
             <h2>Related</h2>
             <ul>
-              <li><a href="sources.html">Sources</a>: a footnote opens the matching source</li>
+              <li>
+                <a href="sources.html">Sources</a>: a footnote opens the excerpt it cites, and the
+                excerpt leads back
+              </li>
               <li>
                 <a href="document-view.html">Document view</a>: a footnote can open the document at
                 the excerpt
               </li>
+              <li><a href="chat.html">Chat</a>: the conversation the answers sit in</li>
             </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, follows <code>data-color</code>,
+              <code>data-color-scheme</code> and <code>data-size</code>, and reads every token
+              through its own variable, with the token as the fallback. Seven are pinned to a colour
+              family on purpose: accent for the footnote mark and the links to the documents, which
+              can be pressed in a card that is often neutral, and info for the icon over an answer
+              with no sources. The answer's text uses the shared Markdown renderer, listed on
+              <a href="sources.html">Sources</a>.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-answer-actions-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>actions gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-block-spacing</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>block spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-code-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>code background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-code-border-radius</code></td>
+                  <td><code>--ds-border-radius-md</code></td>
+                  <td>code border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-code-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>code color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-code-font-size</code></td>
+                  <td><code>--ds-body-sm-font-size</code></td>
+                  <td>code font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-code-padding</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>code padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>footnote background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>footnote border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>footnote border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>footnote color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-font-size</code></td>
+                  <td><code>--ds-font-size-1</code></td>
+                  <td>footnote font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>footnote font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>footnote gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-hover-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>footnote hover background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-hover-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>footnote hover color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-icon-size</code></td>
+                  <td><code>1em</code></td>
+                  <td>footnote icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-padding</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>footnote padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-raise</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>footnote raise</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-size</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>footnote size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-heading-spacing</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>heading spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-line-height</code></td>
+                  <td><code>--ds-line-height-lg</code></td>
+                  <td>line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-list-indent</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>list indent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-list-item-spacing</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>list item spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-note-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>note color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-note-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>note gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-note-icon-block-size</code></td>
+                  <td><code>1lh</code></td>
+                  <td>note icon block size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-note-icon-color</code></td>
+                  <td><code>--ds-color-info-text-subtle</code></td>
+                  <td>note icon color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-note-icon-size</code></td>
+                  <td><code>1.25em</code></td>
+                  <td>note icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-skeleton-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>skeleton gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-excerpts-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>sources used excerpts color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-icon-size</code></td>
+                  <td><code>--ds-icon-size</code></td>
+                  <td>sources used icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-link-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>sources used link color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-link-hover-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>sources used link hover color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-padding</code></td>
+                  <td>grows from 410 px</td>
+                  <td>sources used padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-padding-end</code></td>
+                  <td>grows from 410 px</td>
+                  <td>sources used padding end</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-spacing</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>sources used spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-title-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>sources used title gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-stopped-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>stopped color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-writing-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>writing color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-writing-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>writing font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-writing-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>writing gap</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
           <div class="wide">
             <h2>What we have learned</h2>
             <ul>
               <li>
-                The source list at the bottom is in the same order as the footnotes. One quote per
-                place a source is used.
+                «Kilder brukt i svaret» is in the same order as the documents in Sources, and only
+                lists what the answer cites. Its rows are not numbered: only excerpts are.
+              </li>
+              <li>
+                Models write the footnote after the full stop: 195 of 237 markers in 37 answers from
+                genki-test on 6 November 2026. Held on the line of the word before, the mark never
+                starts a line alone.
+              </li>
+              <li>
+                Every one of those 237 markers leads to a source shown, and the scan finds 0
+                leftovers from the source format in the 37 answers. Two answers from 3 November had
+                markers with no source; the block draws those as text.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                In document mode, is a mark with a document in it, named by the title, the right way
+                to name a document in the text?
+              </li>
+              <li>
+                genki-test's services cite documents. Excerpt mode on live answers waits for answers
+                that name their excerpts (digdir/genki#283).
               </li>
             </ul>
           </div>

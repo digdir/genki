@@ -1,0 +1,209 @@
+/* After Designsystemet's layers, so a host's own CSS wins, and every token read
+   through a --genai-answer-* variable at the point of use, listed on docs/components/footnotes.html. */
+@layer ds.theme, ds.base, ds.components, genai.components;
+
+@layer genai.components {
+  /* An answer is read, not pressed: nothing in the card should feel clickable. */
+  .uib-answer {
+    container: uib-answer / inline-size;
+    cursor: auto;
+    font-family: var(--genai-answer-font-family, var(--ds-font-family)), sans-serif;
+  }
+
+  /* The text: Designsystemet has no prose container, so the spacing between blocks is set here.
+     It is a query container too, for the footnote rule in markdown.css. */
+  .uib-answer-text {
+    container-type: inline-size;
+  }
+  .uib-answer-text > * {
+    margin-block: 0 var(--genai-answer-block-spacing, var(--ds-size-4));
+  }
+  .uib-answer-text > .uib-markdown-heading:not(:first-child) {
+    margin-block-start: var(--genai-answer-heading-spacing, var(--ds-size-8));
+  }
+  .uib-answer-text p {
+    line-height: var(--genai-answer-line-height, var(--ds-line-height-lg));
+  }
+  .uib-answer-text :is(ul, ol) {
+    padding-inline-start: var(--genai-answer-list-indent, var(--ds-size-6));
+  }
+  .uib-answer-text li + li {
+    margin-block-start: var(--genai-answer-list-item-spacing, var(--ds-size-3));
+  }
+  .uib-answer-text pre {
+    padding: var(--genai-answer-code-padding, var(--ds-size-3));
+    border-radius: var(--genai-answer-code-border-radius, var(--ds-border-radius-md));
+    background: var(--genai-answer-code-background, var(--ds-color-surface-tinted));
+    color: var(--genai-answer-code-color, var(--ds-color-text-default));
+  }
+  .uib-answer-text code {
+    font-size: var(--genai-answer-code-font-size, var(--ds-body-sm-font-size));
+  }
+
+  /* `line-height: 0` keeps a raised footnote from pushing the lines apart. */
+  .uib-answer-footnote,
+  .uib-answer-lost {
+    line-height: 0;
+  }
+  .uib-answer-footnote {
+    vertical-align: baseline;
+  }
+  .uib-answer-lost {
+    margin-inline-start: var(--genai-answer-footnote-gap, var(--ds-size-1));
+  }
+  /* A footnote as a small round mark raised a little beside the word, its number in the smallest
+     font size. It stands the smallest size step from what comes before it: two marks in a row are
+     then as far apart as WCAG 2.5.8 asks of targets this small. Pinned to accent: in this block
+     accent means it can be pressed, and the card around it is often neutral. */
+  .uib-answer-mark {
+    display: inline-block;
+    box-sizing: border-box;
+    min-inline-size: var(--genai-answer-footnote-size, var(--ds-size-5));
+    block-size: var(--genai-answer-footnote-size, var(--ds-size-5));
+    margin-inline-start: var(--genai-answer-footnote-gap, var(--ds-size-1));
+    padding-inline: var(--genai-answer-footnote-padding, var(--ds-size-1));
+    border-radius: var(--genai-answer-footnote-border-radius, var(--ds-border-radius-full));
+    background: var(--genai-answer-footnote-background, var(--ds-color-accent-surface-tinted));
+    color: var(--genai-answer-footnote-color, var(--ds-color-accent-text-default));
+    font-size: var(--genai-answer-footnote-font-size, var(--ds-font-size-1));
+    font-weight: var(--genai-answer-footnote-font-weight, var(--ds-font-weight-semibold));
+    line-height: var(--genai-answer-footnote-size, var(--ds-size-5));
+    text-align: center;
+    text-decoration: none;
+    vertical-align: var(--genai-answer-footnote-raise, var(--ds-size-1));
+  }
+  /* In document mode the mark names a document, so it shows a document, not a number. */
+  .uib-answer-mark-icon {
+    inline-size: var(--genai-answer-footnote-icon-size, 1em);
+    block-size: var(--genai-answer-footnote-icon-size, 1em);
+    vertical-align: middle;
+  }
+  /* The brackets, kept in the text for whoever copies the answer but not drawn. Inline and not
+     visually hidden: an absolutely positioned element is a block to copying, which then reads
+     «[ 1 ]». The link is named by `aria-label`, so none of it is read out. */
+  .uib-answer-copy {
+    font-size: 0;
+  }
+  /* Hover only where there is one, as Designsystemet does for links: after a tap on a touch
+     screen the fill would otherwise stay. Pinned to accent, as the mark is. */
+  @media (hover: hover) and (pointer: fine) {
+    .uib-answer-mark:hover {
+      background: var(
+        --genai-answer-footnote-hover-background,
+        var(--ds-color-accent-base-default)
+      );
+      color: var(--genai-answer-footnote-hover-color, var(--ds-color-accent-base-contrast-default));
+    }
+  }
+  /* Forced colours drop the fill, so the mark gets a ring in the link colour. */
+  @media (forced-colors: active) {
+    .uib-answer-mark {
+      border: var(--genai-answer-footnote-border-width, var(--ds-border-width-default)) solid;
+    }
+  }
+
+  /* A finished answer with no sources says so in one quiet line over the text, as an inline
+     status message does. The icon is one line tall, beside the first line when the text wraps.
+     Pinned to info, since it is information about the answer. */
+  .uib-answer-note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--genai-answer-note-gap, var(--ds-size-2));
+    color: var(--genai-answer-note-color, var(--ds-color-text-subtle));
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  .uib-answer-note-icon {
+    flex-shrink: 0;
+    inline-size: var(--genai-answer-note-icon-size, 1.25em);
+    block-size: var(--genai-answer-note-icon-block-size, 1lh);
+    color: var(--genai-answer-note-icon-color, var(--ds-color-info-text-subtle));
+  }
+
+  .uib-answer-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-answer-skeleton-gap, var(--ds-size-2));
+  }
+  /* One block per line: a text skeleton is inline and takes its width from its dashes. */
+  .uib-answer-skeleton-line {
+    margin: 0;
+  }
+  .uib-answer-writing {
+    display: flex;
+    align-items: center;
+    gap: var(--genai-answer-writing-gap, var(--ds-size-2));
+    margin: 0;
+    color: var(--genai-answer-writing-color, var(--ds-color-text-subtle));
+    font-size: var(--genai-answer-writing-font-size, var(--ds-font-size-minus-1));
+  }
+  .uib-answer-stopped {
+    color: var(--genai-answer-stopped-color, var(--ds-color-text-subtle));
+  }
+
+  /* «Kilder brukt i svaret»: Details in a Card, as Designsystemet shows it. The card holds the
+     frame and the colours; only the spacing is the block's, wider where there is room. Private
+     defaults, so the container query changes a default and never a host's value. */
+  .uib-answer-sources-used-card {
+    --_sources-used-padding: var(--ds-size-2);
+    --_sources-used-padding-end: var(--ds-size-3);
+    margin-block: var(--genai-answer-sources-used-spacing, var(--ds-size-8));
+  }
+  .uib-answer-sources-used {
+    --dsc-details-padding: var(--genai-answer-sources-used-padding, var(--_sources-used-padding));
+  }
+  .uib-answer-sources-used > :not(summary):not(u-summary) {
+    margin: var(--genai-answer-sources-used-padding, var(--_sources-used-padding))
+      var(--genai-answer-sources-used-padding, var(--_sources-used-padding))
+      var(--genai-answer-sources-used-padding-end, var(--_sources-used-padding-end));
+  }
+  .uib-answer-sources-used-title {
+    display: flex;
+    align-items: center;
+    gap: var(--genai-answer-sources-used-title-gap, var(--ds-size-2));
+  }
+  .uib-answer-sources-used-icon {
+    flex-shrink: 0;
+    font-size: var(--genai-answer-sources-used-icon-size, var(--ds-icon-size));
+  }
+  /* A title is a long compound noun, and one alone can be wider than the box on a phone. */
+  .uib-answer-sources-used-list {
+    margin: 0;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  /* Pinned to accent: a way into the document, inside a box that is often neutral. */
+  .uib-answer-sources-used-link {
+    --dsc-link-color: var(
+      --genai-answer-sources-used-link-color,
+      var(--ds-color-accent-text-subtle)
+    );
+    --dsc-link-color--hover: var(
+      --genai-answer-sources-used-link-hover-color,
+      var(--ds-color-accent-text-default)
+    );
+    --dsc-link-color--active: var(
+      --genai-answer-sources-used-link-hover-color,
+      var(--ds-color-accent-text-default)
+    );
+  }
+  /* «Utdrag 1–2» under a title: what the footnotes in the text call them. */
+  .uib-answer-sources-used-excerpts {
+    margin: 0;
+    color: var(--genai-answer-sources-used-excerpts-color, var(--ds-color-text-subtle));
+  }
+
+  .uib-answer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--genai-answer-actions-gap, var(--ds-size-2));
+  }
+
+  @container uib-answer (inline-size >= 410px) {
+    .uib-answer-sources-used-card {
+      --_sources-used-padding: var(--ds-size-4);
+      --_sources-used-padding-end: var(--ds-size-6);
+    }
+  }
+}
