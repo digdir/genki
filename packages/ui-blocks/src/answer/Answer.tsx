@@ -434,14 +434,15 @@ export const Answer = ({
       </Card.Block>
       {(complete && !empty && actions) || ((aborted || failed) && (again || actions)) ? (
         <Card.Block>
-          <div className="uib-answer-actions">
+          {/* The answer's own row. `uib-answer-actions` is the answer actions block's class. */}
+          <div className="uib-answer-row">
             {again ? (
               <Button ref={retryRef} variant="tertiary" data-size="sm" onClick={onRegenerate}>
                 <ArrowsCirclepathIcon aria-hidden />
                 {told ? t('answer.retry') : t('answer.regenerate')}
               </Button>
             ) : null}
-            {actions}
+            {actions ? <div className="uib-answer-row-slot">{actions}</div> : null}
           </div>
         </Card.Block>
       ) : null}

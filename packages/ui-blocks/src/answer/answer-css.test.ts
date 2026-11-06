@@ -60,6 +60,16 @@ describe('the answer styles', () => {
     );
   });
 
+  it('style no class and name no variable of the answer actions block, which owns them', () => {
+    // Two blocks in one layer on one class: the later sheet's rules land on the other's element.
+    expect(flat).not.toMatch(/\.uib-answer-actions\b/);
+    expect(flat).not.toContain('--genai-answer-actions-');
+  });
+
+  it('let the app’s row fill the row under the answer, so its far end is the card’s', () => {
+    expect(flat).toMatch(/\.uib-answer-row-slot \{ flex: 1 1 auto; min-inline-size: 0; \}/);
+  });
+
   it('keep a footnote from pushing the lines of the answer apart', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
   });

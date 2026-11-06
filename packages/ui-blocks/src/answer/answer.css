@@ -221,11 +221,21 @@
     color: var(--genai-answer-sources-used-excerpts-color, var(--ds-color-text-subtle));
   }
 
-  .uib-answer-actions {
+  /* The row under the answer: «Generer på nytt», then the app's own row. The app's row fills
+     what is left, so its far end is the card's, as kunnskapsassistenten puts the time. */
+  .uib-answer-row,
+  .uib-answer-row-slot {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--genai-answer-actions-gap, var(--ds-size-2));
+    gap: var(--genai-answer-row-gap, var(--ds-size-2));
+  }
+  .uib-answer-row-slot {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+  .uib-answer-row-slot > :only-child {
+    flex: 1 1 auto;
   }
 
   @container uib-answer (inline-size >= 410px) {
