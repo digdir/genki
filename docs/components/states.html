@@ -84,6 +84,10 @@
                 <strong>Not found:</strong> an address or a thread that does not exist. The page is
                 this state, with «Gå til forsiden» as the way out.
               </li>
+              <li>
+                <strong>Crash:</strong> around the whole app, outside its router, so an error React
+                cannot recover from gives a page with «Last inn på nytt», not a white screen.
+              </li>
             </ul>
             <h2>Don't use it when</h2>
             <ul>
@@ -119,14 +123,29 @@
                 retry clears the error; <code>retryRef</code> hands the app the retry button.
               </li>
               <li>
+                <code>ErrorState</code> with a <code>kind</code>, for an answer that failed: one of
+                <code>errorKinds</code>, which gives the heading, what happened and the advice.
+                <code>message</code> then replaces only what happened, and «Prøv igjen» is offered
+                only where it can help (<code>isRetryable</code>). <code>assistantName</code> goes
+                in the sentences that need a subject. <code>errorKindFromStatus</code> reads an HTTP
+                status for only what it establishes; the platform's own error codes are the app's to
+                map.
+              </li>
+              <li>
                 <code>NotFoundState</code>: <code>homeHref</code>, and <code>onGoHome</code> for an
                 app with its own router. <code>title</code> and <code>description</code> default to
                 «Siden finnes ikke».
               </li>
+              <li>
+                <code>CrashBoundary</code>: the app as <code>children</code>,
+                <code>onReload</code> for «Last inn på nytt» (a reload of the page by default), and
+                <code>onError</code> with what was thrown, for the app's own log.
+              </li>
             </ul>
             <p>
               The texts are the block's that uses them, from its own catalogue. The package's
-              catalogue has only «Prøv igjen», «Gå til forsiden» and the page that does not exist.
+              catalogue has «Prøv igjen», «Gå til forsiden», the page that does not exist, the crash
+              page and the error kinds.
             </p>
             <h2>Related</h2>
             <ul>
@@ -151,10 +170,12 @@
               A brand is a Designsystemet theme. The states sit in
               <code>@layer genai.components</code>, after Designsystemet's layers, follow
               <code>data-color-scheme</code> and <code>data-size</code>, and read every token
-              through their own variable, with the token as the fallback. One is pinned to a colour
-              family on purpose: an empty state's text is neutral in any family, while the action
-              beside it follows the host's. The error is Designsystemet's <code>Alert</code> in
-              <code>danger</code>; set its <code>--dsc-alert-*</code> variables to change it.
+              through their own variable, with the token as the fallback. Two are pinned to neutral
+              on purpose: an empty state's text is neutral in any family, while the action beside it
+              follows the host's, and the crash page's ground is neutral, as kunnskapsassistenten
+              draws it. The error is Designsystemet's <code>Alert</code> in <code>danger</code>; set
+              its <code>--dsc-alert-*</code> variables to change it. The crash page's width is a
+              reading measure in characters, since no token is a line length.
             </p>
             <table>
               <thead>
@@ -179,6 +200,43 @@
                   <td><code>--genai-states-empty-color</code></td>
                   <td><code>--ds-color-neutral-text-subtle</code></td>
                   <td>an empty state's heading and description, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-background</code></td>
+                  <td><code>--ds-color-neutral-background-tinted</code></td>
+                  <td>the crash page's ground, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>between the crash page's heading, text, button and details</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-max-inline-size</code></td>
+                  <td><code>65ch</code></td>
+                  <td>the crash page's reading width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-padding-block</code></td>
+                  <td><code>--ds-size-15</code></td>
+                  <td>the room above and below the crash page's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-padding-inline</code></td>
+                  <td><code>4vw</code></td>
+                  <td>
+                    the crash page's side padding, a share of the window between the two below
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-padding-inline-max</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the most side padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-crash-padding-inline-min</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the least side padding</td>
                 </tr>
               </tbody>
             </table>
@@ -206,6 +264,18 @@
                 alert would announce what the person is about to read anyway. Its link is a real
                 link; with <code>onGoHome</code>, a plain click goes through the app's router, and a
                 click with a modifier key opens a new tab as usual.
+              </li>
+              <li>
+                The error kinds are kunnskapsassistenten's, with its words: the model, the search, a
+                timeout, a refused key, too many questions, a question too long, a refused filter, a
+                thread that is gone, and the rest. Each needs something different of the reader. A
+                stopped answer and a search with no hits are not errors and have no kind.
+              </li>
+              <li>
+                The crash page is the page: its own <code>main</code> and a level 1 heading, which
+                takes the focus left on <code>&lt;body&gt;</code>. The error text is behind a
+                Details, to copy into a message. Only <code>NotFoundError</code>, a node moved from
+                under React, gets a line on extensions and translation, its one known cause.
               </li>
             </ul>
           </div>

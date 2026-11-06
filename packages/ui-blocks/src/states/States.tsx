@@ -1,6 +1,16 @@
 import { Alert, Button, Heading, Link, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useRef, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { useT } from '../i18n.js';
+import { errorTextKey, isRetryable, type ErrorKind } from './errorKinds.js';
+
+export { CrashBoundary, type CrashBoundaryProps } from './CrashBoundary.js';
+export {
+  errorKindFromStatus,
+  errorKinds,
+  isErrorKind,
+  isRetryable,
+  type ErrorKind,
+} from './errorKinds.js';
 
 export interface EmptyStateProps {
   /** What is missing, said plainly. */
@@ -31,10 +41,20 @@ export const EmptyState = ({ title, description, level = 3, children }: EmptySta
 );
 
 export interface ErrorStateProps {
-  /** A heading in the alert. */
+  /** A heading in the alert. With a `kind`, the kind's own when not given. */
   title?: string | undefined;
-  /** Nothing is shown or announced while this is undefined. */
+  /**
+   * Nothing is shown or announced while this and `kind` are undefined. With a `kind`, it takes the
+   * place of the kind's first sentence, what happened; the advice stays the kind's.
+   */
   message?: string | undefined;
+  /**
+   * What went wrong with an answer. Gives the heading, the sentence on what happened and the advice,
+   * and offers «Prøv igjen» only where trying again can help.
+   */
+  kind?: ErrorKind | undefined;
+  /** What the assistant is called, in the texts of some kinds. «Assistenten» without it. */
+  assistantName?: string | undefined;
   /** Offers «Prøv igjen». */
   onRetry?: (() => void) | undefined;
   /** Where focus goes when a retry clears the error. The alert region when not given. */
@@ -50,6 +70,8 @@ export interface ErrorStateProps {
 export const ErrorState = ({
   title,
   message,
+  kind,
+  assistantName,
   onRetry,
   focusAfterRetry,
   retryRef,
@@ -58,13 +80,22 @@ export const ErrorState = ({
   const region = useRef<HTMLDivElement>(null);
   const retryHeldFocus = useRef(false);
 
+  // kunnskapsassistenten's cases, one heading and two sentences each (`views/chat/errorText.ts`).
+  const key = kind ? errorTextKey[kind] : undefined;
+  const name = assistantName ?? t('states.assistant');
+  const shownTitle = title ?? (key ? t(`states.${key}Title`) : undefined);
+  const shownMessage = key
+    ? `${message ?? t(`states.${key}What`, { name })} ${t(`states.${key}Advice`)}`
+    : message;
+  const canRetry = onRetry !== undefined && (kind === undefined || isRetryable(kind));
+
   useEffect(() => {
-    if (message || !retryHeldFocus.current) return;
+    if (shownMessage || !retryHeldFocus.current) return;
     retryHeldFocus.current = false;
     // Only focus that was lost: the app's retry may already have moved it on purpose.
     if (document.activeElement !== document.body && document.activeElement !== null) return;
     (focusAfterRetry?.current ?? region.current)?.focus();
-  }, [message, focusAfterRetry]);
+  }, [shownMessage, focusAfterRetry]);
 
   const retry = () => {
     retryHeldFocus.current = region.current?.contains(document.activeElement) ?? false;
@@ -73,15 +104,15 @@ export const ErrorState = ({
 
   return (
     <div role="alert" className="uib-states-error ds-focus" tabIndex={-1} ref={region}>
-      {message ? (
+      {shownMessage ? (
         <Alert data-color="danger">
-          {title ? (
+          {shownTitle ? (
             <Heading level={3} data-size="2xs">
-              {title}
+              {shownTitle}
             </Heading>
           ) : null}
-          <Paragraph variant="long">{message}</Paragraph>
-          {onRetry ? (
+          <Paragraph variant="long">{shownMessage}</Paragraph>
+          {canRetry ? (
             <Button variant="secondary" data-size="sm" onClick={retry} ref={retryRef}>
               {t('states.retry')}
             </Button>
