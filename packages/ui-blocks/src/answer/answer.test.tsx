@@ -372,13 +372,25 @@ describe('«Kilder brukt i svaret»', () => {
       .getAllByRole('listitem')
       .map((row) => row.textContent);
 
-  it('lists each document the answer cites, in the order Sources shows them, with its excerpts', () => {
+  it('lists each document the answer cites, by its numbers as Sources runs them, with its excerpts', () => {
+    // The service lists the annual report first, but the letter holds «Utdrag 1».
     draw();
     expect(screen.getByText('Kilder brukt i svaret').closest('details')?.open).toBe(true);
     expect(rows()).toEqual([
-      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 2, Utdrag 3',
       'Tildelingsbrev Nkom 2022Utdrag 1',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 2, Utdrag 3',
     ]);
+  });
+
+  it('runs in the same order as the cards in Sources', () => {
+    render(<Host />);
+    const listed = within(
+      screen.getByText('Kilder brukt i svaret').closest('details') as HTMLElement,
+    )
+      .getAllByRole('link', { name: /^(?!Utdrag)/ })
+      .map((link) => link.textContent);
+    const cards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(cards.filter((title) => listed.includes(title))).toEqual(listed);
   });
 
   it('names each excerpt under its title, in order, comma separated, on one small grey line', () => {
@@ -402,9 +414,9 @@ describe('«Kilder brukt i svaret»', () => {
     const onOpenExcerpt = vi.fn();
     draw({ onOpenExcerpt, href: (target) => `#utdrag-${target.chunkId ?? ''}` });
     const links = screen.getAllByRole('link', { name: /^Utdrag \d+ i Kilder$/ });
-    expect(links.map((link) => link.textContent)).toEqual(['Utdrag 2', 'Utdrag 3', 'Utdrag 1']);
-    expect(links[1]?.getAttribute('href')).toBe('#utdrag-kudos::2021-1');
-    expect(fireEvent.click(links[1] as HTMLElement)).toBe(false);
+    expect(links.map((link) => link.textContent)).toEqual(['Utdrag 1', 'Utdrag 2', 'Utdrag 3']);
+    expect(links[2]?.getAttribute('href')).toBe('#utdrag-kudos::2021-1');
+    expect(fireEvent.click(links[2] as HTMLElement)).toBe(false);
     expect(onOpenExcerpt).toHaveBeenCalledWith({
       chunkId: 'kudos::2021-1',
       documentId: 'kudos::2021',
