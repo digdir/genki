@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Variant picker · Components</title>
+    <meta
+      name="description"
+      content="Lets a person choose which variant of the service answers the next question, when the service offers more than one."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Variant picker</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="variant-picker"
+        data-component="variant-picker"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="variant-picker-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="variant-picker-title">Variant picker</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">In the question field</span>
+            </div>
+            <p class="summary">
+              Lets a person choose which variant of the service answers the next question, when the
+              service offers more than one.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>
+                «Variant»: the button says «Variant: Svar med kilder», the list «Velg variant»
+              </dd>
+              <dt>Sits in</dt>
+              <dd>The question field, beside the send button</dd>
+              <dt>Issue</dt>
+              <dd>None yet</dd>
+              <dt>Code</dt>
+              <dd><code>VariantPicker</code> in <code>packages/ui-blocks</code></dd>
+              <dt>Made from</dt>
+              <dd><code>chat/AgentPicker</code> in kunnskapsassistenten</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-soft" x="62" y="16" width="74" height="52" rx="8" />
+            <rect class="s-bar" x="70" y="23" width="34" height="5" rx="2.5" />
+            <rect class="s-accent-soft" x="66" y="33" width="66" height="14" rx="5" />
+            <rect class="s-bar" x="71" y="37.5" width="40" height="5" rx="2.5" />
+            <rect class="s-accent" x="117" y="34.5" width="11" height="11" rx="3" />
+            <path class="s-check" d="M120 40l2.2 2.2 3.8-4.4" />
+            <rect class="s-bar" x="71" y="54" width="46" height="5" rx="2.5" />
+            <rect class="s-soft" x="24" y="74" width="112" height="28" rx="10" />
+            <rect class="s-bar" x="32" y="80" width="56" height="5" rx="2.5" />
+            <rect class="s-accent" x="86" y="91" width="24" height="5" rx="2.5" />
+            <path class="s-accent" d="M113 91.5l3 3 3-3z" />
+            <circle class="s-accent" cx="128" cy="93" r="5" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                The service has two or more variants a person may pick: the rows of
+                <code>GET /v1/models</code> with <code>_pickable</code>, for one service.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>The service has one variant. The block then draws nothing.</li>
+              <li>
+                To choose between services. A variant is never shown as a service or an agent of its
+                own (<a href="../frontend-contract.md">frontend contract</a>, Services and their
+                variants).
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                One: a button with no frame and the name of the variant in use, with a list that
+                opens above it.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>variants</code>: <code>{ id, title, description? }</code> for each variant,
+                from the platform's <code>id</code> and <code>_variant_title</code>.
+              </li>
+              <li>
+                <code>chosen</code>: the id of the variant in use. Without it the button says
+                «Standard».
+              </li>
+              <li>
+                <code>onChoose</code>: the id the person chose. The app sends it as
+                <code>model</code>.
+              </li>
+              <li>
+                <code>color</code>: Designsystemet's <code>data-color</code> for the button and the
+                list, set only when given. Kunnskapsassistenten passes <code>neutral</code>.
+              </li>
+              <li><code>className</code>: on the button, for the block it sits in to place it.</li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="chat.html">Chat</a>: the picker sits in its question field</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. None is pinned to a colour family. The
+              list's width is the one value that is not a token: no Designsystemet size is as wide
+              as a line of description.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-variant-picker-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>the font of the button and the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-trigger-padding</code></td>
+                  <td><code>--ds-size-1</code> <code>--ds-size-2</code></td>
+                  <td>the button's padding, as <code>--dsc-button-padding</code></td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-trigger-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>between the name and the arrow, as <code>--dsc-button-gap</code></td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-trigger-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the button's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-list-inline-size</code></td>
+                  <td><code>24rem</code></td>
+                  <td>the list's width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-list-margin</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the room the list leaves on each side of a narrow window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-option-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>between a variant's name and its description</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-name-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>a variant's name in the list</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-description-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>a variant's description</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-description-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>a variant's description</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-variant-picker-description-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>a variant's description</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                A Designsystemet <code>Dropdown</code> of buttons under the heading «Velg variant»,
+                not an ARIA menu: a menu without arrow keys and typeahead is worse than none. The
+                variant in use has <code>aria-current</code> and a check.
+              </li>
+              <li>
+                The button's name is «Variant: » and what it shows, so voice control still finds it
+                (WCAG 2.5.3) and a screen reader hears what the button changes.
+              </li>
+              <li>
+                The list opens above the button, since the question field is at the bottom; with no
+                room above, Designsystemet opens it below. It scrolls inside the room it has rather
+                than running off a short screen.
+              </li>
+              <li>After a choice, the list closes and focus goes back to the button.</li>
+              <li>
+                A long name ends in an ellipsis, so the button never pushes the send button off a
+                phone. A description is shown only when the app has one.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Kunnskapsassistenten's picker listed eight agents, 663 px of list on a phone. The
+                list is capped at the room above the button for that reason.
+              </li>
+              <li>
+                Kunnskapsassistenten says «Agent». The block says «Variant», since the platform
+                offers variants of one service, never separate agents.
+              </li>
+              <li>
+                The platform sends no description per variant today, only the service's purpose,
+                which is the same on every row. So the list shows names only, until it does.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Is «Variant» a word end users understand, or should the button say something
+                plainer?
+              </li>
+              <li>
+                Should the platform give each variant a description of its own, so a person can tell
+                them apart?
+              </li>
+              <li>
+                Placing it is the question field's job: in Kunnskapsassistenten it sits at the end
+                of the row, before the send button.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="notes.html" rel="prev"><small>Previous</small>Notes</a>
+        <a class="next" href="states.html" rel="next"><small>Next</small>States</a>
+      </nav>
+    </main>
+  </body>
+</html>

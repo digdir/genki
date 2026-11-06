@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>States · Components</title>
+    <meta
+      name="description"
+      content="What a block shows when it has nothing to show, when something failed, and when what was asked for does not exist."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">States</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="states"
+        data-component="states"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="states-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="states-title">States</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Shared</span
+              ><span class="badge">Inside other blocks</span>
+            </div>
+            <p class="summary">
+              What a block shows when it has nothing to show, when something failed, and when what
+              was asked for does not exist. Three small components the other blocks use.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Tom, feil, ikke funnet»</dd>
+              <dt>Sits in</dt>
+              <dd>Inside a panel or a block, or as the whole page</dd>
+              <dt>Issue</dt>
+              <dd>None yet</dd>
+              <dt>Code</dt>
+              <dd>
+                <code>EmptyState</code>, <code>ErrorState</code> and <code>NotFoundState</code> in
+                <code>packages/ui-blocks</code>
+              </dd>
+              <dt>Made from</dt>
+              <dd>
+                <code>components/EmptyState</code>, <code>ErrorState</code> and
+                <code>NotFoundState</code> in kunnskapsassistenten
+              </dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-bar" x="28" y="24" width="58" height="7" rx="3.5" />
+            <rect class="s-bar" x="28" y="37" width="96" height="5" rx="2.5" />
+            <rect class="s-bar" x="28" y="46" width="70" height="5" rx="2.5" />
+            <rect class="s-accent" x="28" y="56" width="40" height="5" rx="2.5" />
+            <rect class="s-soft" x="24" y="70" width="112" height="32" rx="8" />
+            <circle class="s-bar" cx="34" cy="80" r="4" />
+            <rect class="s-bar" x="44" y="77.5" width="60" height="5" rx="2.5" />
+            <rect class="s-accent-soft" x="44" y="88" width="34" height="9" rx="4.5" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                <strong>Empty:</strong> a block has nothing to show yet, such as no threads or no
+                sources before the first question. A normal state, not an error.
+              </li>
+              <li>
+                <strong>Error:</strong> something the person asked for failed, and they need to
+                know. It can offer «Prøv igjen».
+              </li>
+              <li>
+                <strong>Not found:</strong> an address or a thread that does not exist. The page is
+                this state, with «Gå til forsiden» as the way out.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>Something is loading. That is a skeleton, and a polite live region.</li>
+              <li>
+                To fill an empty panel the service does not have. A block that is not there is not
+                shown.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>Empty in a panel</strong> (level 3, the default): a small heading under the
+                panel's own.
+              </li>
+              <li>
+                <strong>Empty as a page</strong> (level 2): a large heading, where the page's title
+                would have stood. Not found is always this.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>EmptyState</code>: <code>title</code>, <code>description</code>,
+                <code>level</code> (2, 3 or 4; it sets the size too) and, as children, the action
+                that resolves it.
+              </li>
+              <li>
+                <code>ErrorState</code>: <code>title</code>, <code>message</code> and
+                <code>onRetry</code>. <code>focusAfterRetry</code> says where focus goes when a
+                retry clears the error; <code>retryRef</code> hands the app the retry button.
+              </li>
+              <li>
+                <code>NotFoundState</code>: <code>homeHref</code>, and <code>onGoHome</code> for an
+                app with its own router. <code>title</code> and <code>description</code> default to
+                «Siden finnes ikke».
+              </li>
+            </ul>
+            <p>
+              The texts are the block's that uses them, from its own catalogue. The package's
+              catalogue has only «Prøv igjen», «Gå til forsiden» and the page that does not exist.
+            </p>
+            <h2>Related</h2>
+            <ul>
+              <li>
+                <a href="threads.html">Threads</a>: no threads, no matches, and threads that failed
+                to load
+              </li>
+              <li><a href="sources.html">Sources</a>: no sources yet, or none for this answer</li>
+              <li>
+                <a href="filter.html">Filter</a>: filtering that is not available, and filters that
+                failed to load
+              </li>
+              <li>
+                <a href="chat.html">Chat</a>: an answer that failed, and a thread that does not
+                exist
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The states sit in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follow
+              <code>data-color-scheme</code> and <code>data-size</code>, and read every token
+              through their own variable, with the token as the fallback. One is pinned to a colour
+              family on purpose: an empty state's text is neutral in any family, while the action
+              beside it follows the host's. The error is Designsystemet's <code>Alert</code> in
+              <code>danger</code>; set its <code>--dsc-alert-*</code> variables to change it.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-states-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>the font of every state</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-empty-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>between an empty state's heading, description and action</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-states-empty-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>an empty state's heading and description, pinned to neutral</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                The empty state is a heading and a line, never an alert: nothing missing is an
+                error. Its size follows its level, so the two cannot disagree: small in a panel,
+                large as a page.
+              </li>
+              <li>
+                The error is an alert region that stays in the page while there is no error, since
+                <code>role="alert"</code> announces only what appears inside a region already there.
+                Empty, it is out of the flow but still focusable.
+              </li>
+              <li>
+                When «Prøv igjen» clears the error, focus goes to <code>focusAfterRetry</code>, or
+                to the alert region, so it never drops to the page. Focus the app moved on purpose,
+                and an error that clears on its own, leave focus alone.
+              </li>
+              <li>
+                Not found is an empty state at level 2, not an alert: the page is this state, and an
+                alert would announce what the person is about to read anyway. Its link is a real
+                link; with <code>onGoHome</code>, a plain click goes through the app's router, and a
+                click with a modifier key opens a new tab as usual.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Drawn small, a not-found page was the smallest thing on a page it was the whole of.
+                As a page it takes the size the page's title would have had.
+              </li>
+              <li>
+                A retry button that removes itself must hand focus on, or the next Tab starts over
+                at the skip link.
+              </li>
+              <li>
+                One alert region per block, not one per error: two voices in no order are harder to
+                follow than one.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                The error's heading is always level 3, as in Kunnskapsassistenten. Should it follow
+                where it sits, as the empty state does?
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="variant-picker.html" rel="prev"
+          ><small>Previous</small>Variant picker</a
+        >
+      </nav>
+    </main>
+  </body>
+</html>
