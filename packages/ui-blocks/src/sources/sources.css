@@ -110,10 +110,13 @@
     --dsc-card-block-border-width: 0;
     background: transparent;
   }
+  /* The title has the card's whole width, and the links back and the app's controls stand under
+     it, as kunnskapsassistenten puts its way back: beside it, a long title is squeezed into a
+     narrow column at the panel's 336 px. */
   .uib-sources-document-head {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: var(--genai-sources-head-gap, var(--ds-size-2));
     padding: var(--genai-sources-head-padding, var(--_head-padding));
     border: var(--genai-sources-head-border-width, var(--ds-border-width-default)) solid
@@ -131,9 +134,10 @@
     flex: 1 1 auto;
     min-inline-size: 0;
   }
+  /* The chevron stays by the title's first line when the title wraps. */
   .uib-sources-document-toggle {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--genai-sources-head-toggle-gap, var(--ds-size-2));
     inline-size: 100%;

@@ -176,6 +176,11 @@ describe('the Sources styles', () => {
     expect(flat).toContain('.uib-sources-document-body[hidden] { display: none; }');
   });
 
+  it('give a document’s title the card’s whole width, with its controls under it', () => {
+    const head = flat.match(/\.uib-sources-document-head \{([^}]*)\}/)?.[1] ?? '';
+    expect(head).toContain('flex-direction: column');
+  });
+
   it('keep each link back at least 24 px both ways, which a size token under data-size="sm" is not', () => {
     const rule = flat.match(/\.uib-sources-use \{([^}]*)\}/)?.[1] ?? '';
     expect(rule).toContain('min-inline-size: var(--genai-sources-use-min-size, 24px)');
