@@ -63,6 +63,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-06: a streamed descriptor step answers with its text
+
+- A `call-operation@1` step with `stream: true` now outputs `{ result, text }`, and a flow that ends on it answers with `text` instead of the JSON of `result`. Deltas reach `/v1/chat/completions` only with `genai_stream: "live"`; without it the text comes as one piece.
+
 ### 2026-11-06: any provider API by descriptor
 
 - Descriptors gain the classes `issued` and `url`, per-step `credential` placements (`header`, `query`, `form`, `basic`), multipart `filenames`, `request.follow`, `until.fail`, the mapping functions `$dataUrl`, `$add`, `$sub`, `$mul` and `$coalesce`, several media types in one output, and `response.stream` (`sse`, `ndjson`, `lines`) with `resources`, `modules` and `websocket` steps (ADR 0049, [operations.md](operations.md)).

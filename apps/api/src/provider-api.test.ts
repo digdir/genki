@@ -97,12 +97,17 @@ const boot = async () => {
   return { ...booted, server };
 };
 
-const publish = async (booted: Awaited<ReturnType<typeof boot>>, restore: boolean) => {
+const publish = async (
+  booted: Awaited<ReturnType<typeof boot>>,
+  restore: boolean,
+  id = 'strom',
+  withAnswer = true,
+) => {
   const flowed = await booted.platform.definitions.publish(
     {
       apiVersion: 'genai/v1',
       kind: 'StepFlow',
-      metadata: { tenant: digdir, id: 'strom', name: 'Strøm' },
+      metadata: { tenant: digdir, id, name: 'Strøm' },
       spec: {
         purpose: 'Strøm et svar',
         input: { query: 'tekst' },
@@ -114,12 +119,16 @@ const publish = async (booted: Awaited<ReturnType<typeof boot>>, restore: boolea
             params: { descriptor: 'example/stream-events@1', stream: true },
             input: { question: '{{input.query}}' },
           },
-          {
-            id: 'answer',
-            name: 'Svar',
-            block: 'answer@1',
-            input: { text: '{{steps.say.output.result.answer}}' },
-          },
+          ...(withAnswer
+            ? [
+                {
+                  id: 'answer',
+                  name: 'Svar',
+                  block: 'answer@1',
+                  input: { text: '{{steps.say.output.result.answer}}' },
+                },
+              ]
+            : []),
         ],
       },
     },
@@ -131,14 +140,14 @@ const publish = async (booted: Awaited<ReturnType<typeof boot>>, restore: boolea
     {
       apiVersion: 'genai/v1',
       kind: 'Service',
-      metadata: { tenant: digdir, id: 'strom', name: 'Strøm' },
+      metadata: { tenant: digdir, id, name: 'Strøm' },
       spec: {
         purpose: 'Strøm svar til saksbehandlere',
         audience: ['employees'],
         riskClass: 'minimal',
         input: { accepts: ['text/plain'] },
         output: { kind: 'answer' },
-        strategy: { id: 'step-flow', version: 1, config: { flow: 'strom@1' } },
+        strategy: { id: 'step-flow', version: 1, config: { flow: `${id}@1` } },
         model: { primary: 'lab/small', residency: 'norway' },
         guardrails: { 'pii-before-model': { categories: ['national-id'], restore } },
         exposure: { rest: true, openai: true },
@@ -157,6 +166,33 @@ const streamedText = (raw: string) =>
     .map((l) => JSON.parse(l.slice(6)) as { choices?: { delta?: { content?: string } }[] })
     .map((c) => c.choices?.[0]?.delta?.content ?? '')
     .join('');
+
+describe('a flow that ends on a streamed descriptor step', () => {
+  const question = 'Hei, hvordan går det med deg i dag?';
+  const contents = (raw: string) =>
+    raw
+      .split('\n')
+      .filter((l) => l.startsWith('data: ') && l !== 'data: [DONE]')
+      .map((l) => JSON.parse(l.slice(6)) as { choices?: { delta?: { content?: string } }[] })
+      .flatMap((c) => (c.choices?.[0]?.delta?.content ? [c.choices[0].delta.content] : []));
+
+  it('answers with the text, in live deltas, and the same text without streaming', async () => {
+    const booted = await boot();
+    await publish(booted, true, 'direkte', false);
+    const messages = [{ role: 'user', content: question }];
+    const live = await booted.send('/v1/chat/completions', 'saksbehandling', {
+      body: { model: 'direkte__default', stream: true, genai_stream: 'live', messages },
+    });
+    const deltas = contents(await live.text());
+    expect(deltas.length).toBeGreaterThanOrEqual(2);
+    expect(deltas.join('')).toBe(question);
+    const plain = await booted.send('/v1/chat/completions', 'saksbehandling', {
+      body: { model: 'direkte__default', messages },
+    });
+    const body = (await plain.json()) as { choices: { message: { content: string } }[] };
+    expect(body.choices[0]?.message.content).toBe(question);
+  });
+});
 
 describe('a streamed descriptor step on /v1/chat/completions (B)', () => {
   const ask = async (booted: Awaited<ReturnType<typeof boot>>, content: string) => {
