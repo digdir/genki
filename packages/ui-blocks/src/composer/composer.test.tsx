@@ -80,6 +80,34 @@ describe('the question field', () => {
     expect(document.activeElement).toBe(field());
   });
 
+  it('puts the caret in the field when «Avbryt» goes with a finished answer, so focus does not fall to the page', () => {
+    const { rerender } = render(
+      <Composer value="" onChange={() => {}} onSubmit={() => {}} working onCancel={() => {}} />,
+    );
+    screen.getByRole('button', { name: 'Avbryt genereringen' }).focus();
+    rerender(<Composer value="" onChange={() => {}} onSubmit={() => {}} onCancel={() => {}} />);
+    expect(document.activeElement).toBe(field());
+  });
+
+  it('leaves the focus where the reader moved it while the answer came', () => {
+    const { rerender } = render(
+      <>
+        <button type="button">Et annet sted</button>
+        <Composer value="" onChange={() => {}} onSubmit={() => {}} working onCancel={() => {}} />
+      </>,
+    );
+    screen.getByRole('button', { name: 'Avbryt genereringen' }).focus();
+    const elsewhere = screen.getByRole('button', { name: 'Et annet sted' });
+    elsewhere.focus();
+    rerender(
+      <>
+        <button type="button">Et annet sted</button>
+        <Composer value="" onChange={() => {}} onSubmit={() => {}} onCancel={() => {}} />
+      </>,
+    );
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
   it('names the field and the disclaimer after the assistant, and says «assistenten» without a name', () => {
     const { rerender } = render(
       <Composer
@@ -166,16 +194,20 @@ describe('the question field', () => {
     ).toBeTruthy();
   });
 
-  it('puts the host’s colour family on the block only when given one', () => {
+  it('is neutral unless the host gives it another colour family, as a field is in Designsystemet', () => {
     const { container, rerender } = render(
       <Composer value="" onChange={() => {}} onSubmit={() => {}} />,
     );
-    expect(container.firstElementChild?.hasAttribute('data-color')).toBe(false);
-    rerender(<Composer value="" onChange={() => {}} onSubmit={() => {}} color="neutral" />);
     expect(container.firstElementChild?.getAttribute('data-color')).toBe('neutral');
+    rerender(<Composer value="" onChange={() => {}} onSubmit={() => {}} color="brand1" />);
+    expect(container.firstElementChild?.getAttribute('data-color')).toBe('brand1');
+    expect(screen.getByText(/kan gjøre feil/).getAttribute('data-color')).toBe('brand1');
+    cleanup();
+    render(<ComposerDisclaimer />);
+    expect(screen.getByText(/kan gjøre feil/).getAttribute('data-color')).toBe('neutral');
   });
 
-  it('gives the send button and the follow-ups a colour family of their own only when given one', () => {
+  it('gives the send button and the follow-ups accent, or the family the host gives them', () => {
     const { rerender } = render(
       <Composer
         value="Hei"
@@ -185,20 +217,47 @@ describe('the question field', () => {
       />,
     );
     const followUp = () => screen.getByRole('button', { name: 'Kan du utdype?' });
-    expect(sendButton().hasAttribute('data-color')).toBe(false);
-    expect(followUp().hasAttribute('data-color')).toBe(false);
+    expect(sendButton().getAttribute('data-color')).toBe('accent');
+    expect(followUp().getAttribute('data-color')).toBe('accent');
     rerender(
       <Composer
         value="Hei"
         onChange={() => {}}
         onSubmit={() => {}}
         followUps={['Kan du utdype?']}
-        color="neutral"
-        actionColor="accent"
+        actionColor="brand2"
       />,
     );
-    expect(sendButton().getAttribute('data-color')).toBe('accent');
-    expect(followUp().getAttribute('data-color')).toBe('accent');
+    expect(sendButton().getAttribute('data-color')).toBe('brand2');
+    expect(followUp().getAttribute('data-color')).toBe('brand2');
+  });
+
+  it('keeps its own height clear under what the browser scrolls to in its column, when docked', () => {
+    const observed: ResizeObserverCallback[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) {
+        observed.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { container, unmount } = render(
+        <div className="column">
+          <p>Svaret</p>
+          <Composer value="" onChange={() => {}} onSubmit={() => {}} sticky />
+        </div>,
+      );
+      const column = container.querySelector<HTMLElement>('.column');
+      observed[0]?.([], {} as ResizeObserver);
+      expect(column?.style.getPropertyValue('--uib-composer-block-size')).toMatch(/^\d+px$/);
+      unmount();
+      expect(column?.style.getPropertyValue('--uib-composer-block-size')).toBe('');
+    } finally {
+      globalThis.ResizeObserver = original;
+    }
   });
 
   it('stays at the foot of a scrolling conversation only when the host asks', () => {
@@ -340,7 +399,9 @@ describe('the composer’s language', () => {
       </InLocale>,
     );
     expect(screen.getByRole('textbox', { name: 'Question for Kunnskapsassistenten' })).toBeTruthy();
-    expect(within(screen.getByRole('button', { name: 'Cancel the answer' })).getByText('Cancel'));
+    expect(
+      within(screen.getByRole('button', { name: 'Cancel the generation' })).getByText('Cancel'),
+    );
     expect(field().placeholder).toBe('What would you like to know more about?');
   });
 

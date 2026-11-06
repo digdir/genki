@@ -126,7 +126,13 @@
                 <code>followUps</code>, <code>onScrollToBottom</code>, <code>actions</code> (a slot
                 beside the send button, for the variant picker), <code>assistantName</code>,
                 <code>placeholder</code>, <code>showDisclaimer</code>, <code>shortcut</code> and
-                <code>sticky</code>.
+                <code>sticky</code>. Docked with <code>sticky</code>, the block keeps its own height
+                clear under whatever the browser scrolls to in the same column, so the field never
+                hides the focus (WCAG 2.4.11), as kunnskapsassistenten does.
+              </li>
+              <li>
+                <code>fieldRef</code> and <code>sendRef</code>: refs to the field and the send
+                button, for a host that moves focus there, such as a skip link.
               </li>
               <li>
                 <code>actions</code> is where the variant picker goes: kunnskapsassistenten decided
@@ -141,14 +147,16 @@
               </li>
               <li>
                 <code>color</code> sets Designsystemet's <code>data-color</code> on the block, and
-                <code>actionColor</code> on the send button and the follow-ups, each only when
-                given. Kunnskapsassistenten's look is <code>neutral</code> with
-                <code>accent</code> actions.
+                <code>actionColor</code> on the send button and the follow-ups. They are
+                <code>neutral</code> and <code>accent</code> unless given, as a field is in
+                Designsystemet and in kunnskapsassistenten. <code>Welcome</code>,
+                <code>Suggestions</code> and <code>ComposerDisclaimer</code> are neutral too.
               </li>
               <li>
                 <code>Welcome</code>: the reader's first <code>name</code>, if known.
                 <code>Suggestions</code>: <code>suggestions</code> and <code>onPick</code>; the host
-                fills the field and puts the caret there, it does not send.
+                fills the field and puts the caret there, it does not send. Both take
+                <code>headingLevel</code>, 2 for the greeting and 3 for «Forslag» by default.
               </li>
               <li>
                 <code>ComposerDisclaimer</code>: the disclaimer on its own, for the foot of the
@@ -176,10 +184,12 @@
               and read every token through their own variable, with the token as the fallback. Set
               one on any ancestor to change that detail only. Three are pinned to a colour family on
               purpose: accent for the frame and the hint while a file is dragged over it, and danger
-              for why a file was not attached. Kunnskapsassistenten passes
-              <code>color="neutral"</code> and <code>actionColor="accent"</code>. Two values are not
-              tokens, both Kunnskapsassistenten's: the empty field takes a tenth of the screen's
-              height, between two tokens, and grows to at most 274 px.
+              for why a file was not attached. The block is neutral and its actions accent unless
+              the host passes <code>color</code> and <code>actionColor</code>. In the markup, four
+              controls are pinned to neutral as kunnskapsassistenten draws them: «Bla til bunnen»,
+              the paperclip, a file's «Prøv igjen» and the suggestions. Two values are not tokens,
+              both Kunnskapsassistenten's: the empty field takes a tenth of the screen's height,
+              between two tokens, and grows to at most 274 px.
             </p>
             <table>
               <thead>
@@ -463,9 +473,7 @@
               </li>
               <li>
                 <strong>Different on purpose:</strong> the air over the disclaimer and over
-                «Forslag» steps at the block's own width instead of following the window's. Colours
-                follow the host's family unless the host passes <code>color</code> and
-                <code>actionColor</code>.
+                «Forslag» steps at the block's own width instead of following the window's.
               </li>
               <li>
                 <strong>Decided:</strong> a service without suggestions of its own gets none, not

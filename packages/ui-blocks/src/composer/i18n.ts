@@ -40,7 +40,7 @@ export const enComposer = {
   placeholder: 'What would you like to know more about?',
   send: 'Send the question',
   cancel: 'Cancel',
-  cancelLabel: 'Cancel the answer',
+  cancelLabel: 'Cancel the generation',
   disclaimer: '{name} can make mistakes. Remember to check important information.',
   disclaimerUnnamed: 'The assistant can make mistakes. Remember to check important information.',
   shortcutHint: 'Press {key} + / to jump here',

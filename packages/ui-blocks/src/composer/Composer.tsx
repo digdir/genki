@@ -1,6 +1,7 @@
 import { Button, Chip, Paragraph, Textfield } from '@digdir/designsystemet-react';
 import { ArrowDownIcon, PaperclipIcon, PaperplaneIcon, StopIcon } from '@navikt/aksel-icons';
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -39,11 +40,18 @@ export interface ComposerProps {
   actions?: ReactNode;
   /** Ctrl+/ or Cmd+/ anywhere on the page puts the caret in the field. On unless switched off. */
   shortcut?: boolean | undefined;
-  /** Stays at the foot of a scrolling conversation, with a fade over it. */
+  /**
+   * Stays at the foot of a scrolling conversation, with a fade over it. Its height is then kept
+   * clear at the foot of what the browser scrolls to in the same column, so the field never
+   * hides the focus (WCAG 2.4.11).
+   */
   sticky?: boolean | undefined;
-  /** Designsystemet's `data-color` for the block, set only when given. */
+  /**
+   * Designsystemet's `data-color` for the block. Neutral unless given, as a field is in
+   * Designsystemet and in kunnskapsassistenten.
+   */
   color?: string | undefined;
-  /** The same for the send button and the follow-ups, which can stand out from the block. */
+  /** The same for the send button and the follow-ups, which stand out from the block: accent. */
   actionColor?: string | undefined;
   fieldRef?: RefObject<HTMLTextAreaElement | null> | undefined;
   sendRef?: RefObject<HTMLButtonElement | null> | undefined;
@@ -60,7 +68,7 @@ const hasFiles = (event: DragEvent) => [...event.dataTransfer.types].includes('F
 /** The disclaimer under the field, for a host that draws it elsewhere, such as at the foot of a start page. */
 export const ComposerDisclaimer = ({
   assistantName,
-  color,
+  color = 'neutral',
   className,
 }: {
   assistantName?: string | undefined;
@@ -100,8 +108,8 @@ export const Composer = ({
   actions,
   shortcut = true,
   sticky = false,
-  color,
-  actionColor,
+  color = 'neutral',
+  actionColor = 'accent',
   fieldRef,
   sendRef,
   ref,
@@ -121,7 +129,44 @@ export const Composer = ({
   const unavailable = attachments !== undefined && attachments.onAdd === undefined;
   useComposerShortcut(field, shortcut);
 
+  const own = useRef<HTMLDivElement | null>(null);
+  const setRoot = (node: HTMLDivElement | null) => {
+    own.current = node;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  // Docked, the block puts its height on the column it docks in, where composer.css keeps that
+  // much clear under whatever the browser scrolls to (WCAG 2.4.11). Measured, as
+  // kunnskapsassistenten's ChatView does: no token knows the field's height. jsdom has no
+  // ResizeObserver, and a page without one only loses the margin.
+  useEffect(() => {
+    const node = own.current;
+    const column = node?.parentElement;
+    if (!sticky || !node || !column || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      column.style.setProperty('--uib-composer-block-size', `${Math.round(node.offsetHeight)}px`);
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      column.style.removeProperty('--uib-composer-block-size');
+    };
+  }, [sticky]);
+
   const focusField = () => field.current?.focus();
+
+  // «Avbryt» turns back into a send button that is disabled until the next question, and the
+  // focus on it falls to the page. The field takes it instead, where the next question is written.
+  // Only focus that was on «Avbryt»: a reader who moved on is left where they are.
+  const cancelHeldFocus = useRef(false);
+  useEffect(() => {
+    if (working || !cancelHeldFocus.current) return;
+    cancelHeldFocus.current = false;
+    const active = document.activeElement;
+    const send = own.current?.querySelector('.uib-composer-send');
+    if (active === null || active === document.body || active === send) field.current?.focus();
+  }, [working, field]);
 
   const trySubmit = (question: string) => {
     if (working) return;
@@ -176,11 +221,12 @@ export const Composer = ({
       className={classes('uib-composer', className)}
       data-sticky={sticky || undefined}
       data-color={color}
-      ref={ref}
+      ref={setRoot}
     >
       {onScrollToBottom ? (
         <Button
           className="uib-composer-scroll"
+          // Pinned to neutral, as kunnskapsassistenten draws it: it floats over any answer.
           data-color="neutral"
           data-size="sm"
           variant="secondary"
@@ -237,6 +283,7 @@ export const Composer = ({
               aria-disabled="true"
               aria-label={t('composer.attachSoonLabel')}
               className="uib-composer-attach"
+              // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
               data-color="neutral"
               variant="tertiary"
             >
@@ -264,6 +311,7 @@ export const Composer = ({
               <Button
                 aria-label={text.attach}
                 className="uib-composer-attach"
+                // Pinned to neutral, as kunnskapsassistenten draws it: a tool, not the action.
                 data-color="neutral"
                 icon
                 onClick={() => picker.current?.click()}
@@ -280,9 +328,16 @@ export const Composer = ({
               aria-label={t('composer.cancelLabel')}
               className="uib-composer-send"
               data-color={actionColor}
+              onBlur={(event) => {
+                // Focus moved to something the reader chose. Disabled or gone, it moves to nothing.
+                if (event.relatedTarget) cancelHeldFocus.current = false;
+              }}
               onClick={() => {
                 onCancel();
                 focusField();
+              }}
+              onFocus={() => {
+                cancelHeldFocus.current = true;
               }}
               ref={sendRef}
               variant="secondary"
@@ -312,7 +367,9 @@ export const Composer = ({
         </p>
       ) : null}
 
-      {shownRefusal ? <output className="uib-composer-refusal">{shownRefusal}</output> : null}
+      {/* Always in the page, only its text changes: a live region mounted with its text is
+          usually not announced, and the reader would not hear why nothing was sent. */}
+      <output className="uib-composer-refusal">{shownRefusal}</output>
 
       {followUps?.length ? (
         <ul className="uib-composer-follow-ups">
@@ -330,7 +387,7 @@ export const Composer = ({
         </ul>
       ) : null}
 
-      {showDisclaimer ? <ComposerDisclaimer assistantName={assistantName} /> : null}
+      {showDisclaimer ? <ComposerDisclaimer assistantName={assistantName} color={color} /> : null}
 
       {shortcut ? (
         <p className="uib-visually-hidden" id={descriptionId}>
