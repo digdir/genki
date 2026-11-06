@@ -5,7 +5,12 @@ export const playgroundUi = {
   playground: {
     pageTitle: 'Playground',
     pageLead:
-      'Try a model, a dataset, a skill or a service draft without publishing anything. Compare two setups on the same question, and save good answers as test cases. Runs count towards the quota.',
+      'Try the interface in Frontend: which building blocks the service has, and where. Try the content in Backend: a model, a dataset, a skill or a service draft. Nothing is published, and runs count towards the quota.',
+    viewsLabel: 'The playground',
+    tabBackend: 'Backend',
+    tabFrontend: 'Frontend',
+    makeService: 'Make a service from this',
+    frontendAddress: 'new-service.genki.no',
     panelLabel: 'Try',
     panelTitle: 'Try',
     openInPlayground: 'Open in the playground',
@@ -64,6 +69,8 @@ export const playgroundUi = {
       '{model} did not respond within 60 seconds. There is nothing wrong with the setup. Try again in a moment. {notStored}',
     refused: '{model} cannot be used in this setup.',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
+    setupNotReady:
+      'The setup is not ready to try yet. {problems} Fill in what is missing in Setup, and try again. {notStored}',
     setupLabel: 'Setup {key}',
     setupSessionNote: 'Changes here do not affect anything that is published.',
     endCompare: 'End comparison',

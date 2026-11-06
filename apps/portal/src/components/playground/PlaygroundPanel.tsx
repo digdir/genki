@@ -12,7 +12,16 @@ import {
   Textarea,
 } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import type { AnswerLanguage } from '../../data/service-languages';
 import { AnswerLanguagePicker } from './AnswerLanguagePicker';
 import { ApiError, type ApiClient } from '../../api';
@@ -52,6 +61,7 @@ import {
 } from '../../data/playground';
 import { useEscape, useNarrow } from '../../hooks';
 import { useT, type T } from '../../i18n';
+import { describeProblem } from '../../screens/service/publish';
 import { ApiCallPanel } from '../ApiCall';
 import { Icon } from '../Icon';
 import { isModelFailure, ModelNoAnswer, RunFailure, type RunFailureInfo } from '../RunFailure';
@@ -90,6 +100,8 @@ export interface PlaygroundPanelProps {
   tenantName?: string;
   serviceDraft?: ServiceDraft;
   timelinePanel?: boolean;
+  bare?: boolean;
+  note?: ReactNode;
 }
 
 export interface ServiceDraft {
@@ -181,6 +193,14 @@ const errorText = (error: unknown, model: string, t: T) => {
   if (error instanceof ApiError && error.status === 403) {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
+  }
+  const missing = error instanceof ApiError && error.status === 422 ? error.problem?.errors : [];
+  if (missing?.length) {
+    const problems = missing
+      .map((e) => describeProblem({ ...e, path: e.path.replace(/^setup\./, '') }, t))
+      .map((p) => `${p.section}: ${p.message}`)
+      .join(' ');
+    return t('playground.setupNotReady', { problems, notStored });
   }
   if (error instanceof ApiError && error.status === 429)
     return error.problem?.title ?? t('playground.quotaUsedUp', { notStored });
@@ -283,6 +303,8 @@ export const PlaygroundPanel = ({
   tenantName: tenantNameProp,
   serviceDraft,
   timelinePanel = false,
+  bare = false,
+  note,
 }: PlaygroundPanelProps) => {
   const t = useT();
   const f = useFormat();
@@ -656,7 +678,7 @@ export const PlaygroundPanel = ({
         <span className="playground-subtle">{contextText}</span>
       </div>
       <div className="playground-head-actions">
-        <Link href="#/playground">{t('playground.openInPlayground')}</Link>
+        <Link href="#/playground/backend">{t('playground.openInPlayground')}</Link>
         {onClose ? (
           <Button
             variant="tertiary"
@@ -853,24 +875,28 @@ export const PlaygroundPanel = ({
           </Paragraph>
         </Alert>
       ) : null}
-      <SetupBar
-        rows={[
-          { key: 'a' as const, setup: a },
-          ...(b ? [{ key: 'b' as const, setup: b }] : []),
-        ].map((row) => ({
-          key: row.key,
-          chips: setupChips(options, row.setup, t),
-          expanded: editing === row.key,
-          onEdit: editFor(row.key),
-        }))}
-        comparing={comparing}
-        sessionText={sessionText}
-        onToggleCompare={toggleCompare}
-        onShowCall={() =>
-          setCall({ title: t('playground.callRun'), body: callBody(currentInput()) })
-        }
-      />
-      <AnswerLanguagePicker value={answerLanguage} onChange={setAnswerLanguage} />
+      {bare ? null : (
+        <>
+          <SetupBar
+            rows={[
+              { key: 'a' as const, setup: a },
+              ...(b ? [{ key: 'b' as const, setup: b }] : []),
+            ].map((row) => ({
+              key: row.key,
+              chips: setupChips(options, row.setup, t),
+              expanded: editing === row.key,
+              onEdit: editFor(row.key),
+            }))}
+            comparing={comparing}
+            sessionText={sessionText}
+            onToggleCompare={toggleCompare}
+            onShowCall={() =>
+              setCall({ title: t('playground.callRun'), body: callBody(currentInput()) })
+            }
+          />
+          <AnswerLanguagePicker value={answerLanguage} onChange={setAnswerLanguage} />
+        </>
+      )}
       {draft && editing ? (
         <SetupForm
           options={options}
@@ -894,7 +920,7 @@ export const PlaygroundPanel = ({
           <span className="playground-empty-title">
             {t(isExtract ? 'playground.emptyExtract' : 'playground.emptyChat')}
           </span>
-          <span className="playground-subtle">{t('playground.emptyHelp')}</span>
+          {bare ? null : <span className="playground-subtle">{t('playground.emptyHelp')}</span>}
           {isExtract || !suggestionsFor(options, a).length ? null : (
             <div className="playground-chips">
               {suggestionsFor(options, a).map((s) => (
@@ -961,7 +987,9 @@ export const PlaygroundPanel = ({
                       const last = messages.at(-1)?.id === m.id;
                       return (
                         <div key={key} className="playground-run">
-                          {run ? <RunHeader run={run} {...(result ? { result } : {})} /> : null}
+                          {run && !bare ? (
+                            <RunHeader run={run} {...(result ? { result } : {})} />
+                          ) : null}
                           {result ? (
                             <AnswerCard
                               {...(label ? { label } : {})}
@@ -975,6 +1003,7 @@ export const PlaygroundPanel = ({
                                 })
                               }
                               {...(last && key === 'a' && !busy ? { onReply: ask } : {})}
+                              bare={bare}
                             />
                           ) : run?.status === 'running' ? (
                             <>
@@ -982,7 +1011,9 @@ export const PlaygroundPanel = ({
                               <LiveText run={run} />
                             </>
                           ) : null}
-                          {run ? <WhatHappened run={run} idPrefix={`${m.id}-${key}-`} /> : null}
+                          {run && !bare ? (
+                            <WhatHappened run={run} idPrefix={`${m.id}-${key}-`} />
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1011,6 +1042,7 @@ export const PlaygroundPanel = ({
               </li>
             ))}
           </ol>
+          {note}
           <div className="playground-thread-foot">
             <span role="status" className="playground-status">
               {busy ? (

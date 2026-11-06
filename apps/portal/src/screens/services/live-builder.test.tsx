@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../App';
 import { mockAnsattporten } from '../../auth';
@@ -58,16 +58,18 @@ const startBuilder = async (fetch: typeof globalThis.fetch) => {
   await auth.login();
   window.location.hash = '#/services/new';
   render(<App auth={auth} fetch={fetch} live />);
-  await screen.findByRole('heading', { name: 'Lag med KI' });
-  fireEvent.change(screen.getByLabelText('Hva skal tjenesten gjøre?'), {
-    target: { value: 'Svar på spørsmål om permisjon' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
   return screen.findByRole('complementary', { name: 'Byggeassistent' });
 };
 
-const openSection = async (name: RegExp) => {
-  fireEvent.click(await screen.findByRole('button', { name }));
+const openAdvanced = async (page: string, heading: string) => {
+  window.location.hash = `#/services/new/advanced/${page}`;
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
+  await screen.findByRole('heading', { level: 2, name: heading });
+};
+
+const confirmRisk = async () => {
+  await openAdvanced('safety', 'Sikkerhet og personvern');
+  fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
 };
 
 type Spec = {
@@ -91,6 +93,9 @@ describe('the live builder', () => {
     const panel = await startBuilder(fetch);
 
     expect(calls.some((c) => /\/definitions\/template\?kind=Service$/.test(c.url))).toBe(true);
+    const composer = within(panel).getByRole('textbox', { name: 'Skriv til assistenten' });
+    fireEvent.change(composer, { target: { value: 'Svar på spørsmål om permisjon' } });
+    fireEvent.keyDown(composer, { key: 'Enter' });
     expect(await within(panel).findByText('Ingrid Berg')).toBeTruthy();
     expect(within(panel).queryByText('Kari Nordmann')).toBeNull();
 
@@ -110,7 +115,7 @@ describe('the live builder', () => {
   it('shows the price per 1,000 tokens the API returns and "ikke priset" only for a model without one', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Modell/);
+    await openAdvanced('model', 'Modell');
 
     const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
     expect(
@@ -122,7 +127,7 @@ describe('the live builder', () => {
   it('lists only live models with residency in words and no invented cost or speed', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Modell/);
+    await openAdvanced('model', 'Modell');
 
     const models = screen.getByRole('group', { name: 'Modeller Digdir tillater' });
     expect(within(models).getAllByRole('radio')).toHaveLength(2);
@@ -133,21 +138,23 @@ describe('the live builder', () => {
   it('picks datasets from the catalog, writes the full id and removes them again', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Kunnskap/);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til datasett' }));
     expect(await screen.findByText('Delt med dere')).toBeTruthy();
     expect(screen.queryByText('Statsbudsjettet 2026')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til Kudos-rapporter' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Legg til Veiledere og rundskriv' }));
     expect(screen.queryByText('612 dokumenter')).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
-    );
-    expect(
-      screen.queryByRole('button', { name: 'Fjern datasettet Veiledere og rundskriv' }),
-    ).toBeNull();
+    const suggestion = screen.getByRole('combobox', { name: 'Datasett' }).closest('ds-suggestion');
+    // jsdom does not run the combobox clicks, so send the event the DS Suggestion listens for.
+    const pick = (value: string, label: string, chosen = false) =>
+      act(() => {
+        suggestion?.dispatchEvent(
+          new CustomEvent('comboboxbeforeselect', {
+            cancelable: true,
+            detail: { value, textContent: label, isConnected: chosen },
+          }),
+        );
+      });
+    pick('digdir/kudos', 'Kudos-rapporter');
+    pick('999888777/veiledere', 'Veiledere og rundskriv');
+    pick('999888777/veiledere', 'Veiledere og rundskriv', true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/validate'))).toBe(true));
@@ -157,7 +164,7 @@ describe('the live builder', () => {
   it('adds tools from the connected tool servers with their versioned reference', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    await openSection(/^Verktøy/);
+    await openAdvanced('tools', 'Verktøy');
 
     fireEvent.click(screen.getByRole('button', { name: 'Legg til verktøy fra katalogen' }));
     expect(await screen.findByRole('button', { name: 'Legg til arkiv.hent' })).toBeTruthy();
@@ -185,10 +192,10 @@ describe('the live builder', () => {
         ),
     );
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    await confirmRisk();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(await within(dialog).findByText('Modell:')).toBeTruthy();
     expect(within(dialog).getByText(/Modellen behandler data i global region/)).toBeTruthy();
     expect(within(dialog).getByText('Formål og målgruppe:')).toBeTruthy();
@@ -212,12 +219,12 @@ describe('the live builder', () => {
   it('shows the published status in the header right after the first publish', async () => {
     const { calls, fetch } = recorded();
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    await confirmRisk();
     const header = document.querySelector('.service-head') as HTMLElement;
     expect(within(header).getByText('Utkast')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Første versjon av tjenesten' },
     });
@@ -239,7 +246,7 @@ describe('the live builder', () => {
   it('drops the risk confirmation when the risk level changes', async () => {
     const { fetch } = recorded();
     await startBuilder(fetch);
-    fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
+    await confirmRisk();
     expect(await screen.findByText('Bekreftet av Ingrid Berg i dag')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /^Høy/ }));
     expect(screen.queryByText('Bekreftet av Ingrid Berg i dag')).toBeNull();
@@ -259,7 +266,7 @@ describe('the live builder', () => {
     await auth.login();
     window.location.hash = '#/services/rapportassistenten/setup?publiser=1';
     render(<App auth={auth} fetch={fetch} live />);
-    return screen.findByRole('dialog');
+    return screen.findByRole('region', { name: /^Publiser/ });
   };
 
   it('shows the latest test run from the API in the publish dialog, not an example score', async () => {
@@ -337,10 +344,10 @@ describe('the live builder and the server draft', () => {
 
     window.location.hash = '#/services/rapportassistenten/setup/instructions';
     await waitFor(() => expect(instructions().value).toBe(after));
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
+    window.location.hash = '#/services/rapportassistenten/setup/risk';
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     expect(within(dialog).getByText('Endringer i utkastet som ikke er publisert')).toBeTruthy();
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Tar i bruk forbedringsforslaget' },
@@ -457,10 +464,10 @@ describe('the live builder when the draft is outdated', () => {
   const openOutdated = async (elsewhere: Record<string, unknown>) => {
     const { calls, publishElsewhere } = await startOutdated(elsewhere, true);
     await publishElsewhere();
-    window.location.hash = '#/services/rapportassistenten/setup/purpose';
+    window.location.hash = '#/services/rapportassistenten/setup/risk';
     fireEvent.click(await screen.findByRole('button', { name: 'Bekreft risikonivå' }));
     fireEvent.click(screen.getByRole('button', { name: 'Publiser' }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('region', { name: /^Publiser/ });
     fireEvent.change(within(dialog).getByLabelText('Hva er endret, og hvorfor?'), {
       target: { value: 'Kortere svar til brukerne' },
     });
@@ -520,6 +527,7 @@ describe('the live builder when the draft is outdated', () => {
     fireEvent.click(within(alert).getByRole('button', { name: 'Oppdater utkastet' }));
     expect(await within(dialog).findByText(/Utkastet er oppdatert/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/draft/rebase'))).toBe(true);
+
     await publishIn(dialog);
     await waitFor(() => expect(publishes(calls)).toHaveLength(2));
     expect(publishes(calls)[1]?.body).toMatchObject({
@@ -551,6 +559,7 @@ describe('the live builder when the draft is outdated', () => {
       revision: 2,
       definition: { spec: { strategy: { config: { instructions: 'Svar utfyllende.' } } } },
     });
+    fireEvent.click(within(dialog).getByRole('link', { name: 'Tilbake til tjenesten' }));
     await waitFor(() =>
       expect(
         (screen.getByLabelText('Instruksjoner til tjenesten') as HTMLTextAreaElement).value,

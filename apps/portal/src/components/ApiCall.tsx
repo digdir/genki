@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useT } from '../i18n';
 import { publicApiBase } from '../public-api';
 import { CopyButton } from './CopyButton';
+import { useDeveloperView } from './developer-view';
 import { Icon } from './Icon';
 import { SidePanel } from './SidePanel';
 
@@ -128,6 +129,7 @@ export const ApiCallPanel = ({
 export const ApiCallLink = ({ call, width }: { call: ApiCallPreview; width?: ApiCallWidth }) => {
   const t = useT();
   const [open, setOpen] = useState(false);
+  if (!useDeveloperView()) return null;
   return (
     <>
       <button

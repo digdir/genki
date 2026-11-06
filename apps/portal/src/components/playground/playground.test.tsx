@@ -40,7 +40,7 @@ const withPlayground = (playground: PlaygroundMockOptions, seen: string[] = []) 
 };
 
 const openPage = async (playground: PlaygroundMockOptions = {}, seen: string[] = []) => {
-  await renderAt('#/playground', withPlayground(playground, seen));
+  await renderAt('#/playground/backend', withPlayground(playground, seen));
   return screen.findByRole('textbox', { name: 'Spørsmål' });
 };
 
@@ -291,7 +291,7 @@ describe('Prøveområde', () => {
 
   it('extraction sends the sample file and shows the fields', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
+    await renderAt('#/playground/backend', withPlayground({ runs }));
     fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));
@@ -461,6 +461,26 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
+  it('says what is missing when the API refuses the setup, not that the model was silent', async () => {
+    await openPage({
+      invalidSetup: [
+        {
+          path: 'setup.spec.purpose',
+          message: 'Too small: expected string to have >=1 characters',
+        },
+      ],
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^Oppsettet er ikke klart til å prøves ennå\. Formål og målgruppe: Må fylles ut\. Fyll ut/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
   it('starts on the first service exposed for chat, not the first in the list', async () => {
     const options = structuredClone(examplePlaygroundOptions);
     options.services.sort((x) => (x.chat ? 1 : -1));
@@ -515,7 +535,7 @@ describe('Prøveområde', () => {
 
   it('an uploaded document is sent as base64 with its name and type', async () => {
     const runs: PlaygroundRunRequest[] = [];
-    await renderAt('#/playground', withPlayground({ runs }));
+    await renderAt('#/playground/backend', withPlayground({ runs }));
     fireEvent.click(await screen.findByRole('button', { name: 'Endre oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Et eget oppsett' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Hent ut opplysninger fra et dokument' }));
