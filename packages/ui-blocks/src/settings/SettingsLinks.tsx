@@ -1,6 +1,7 @@
 import { Link } from '@digdir/designsystemet-react';
 import { CogIcon } from '@navikt/aksel-icons';
-import type { MouseEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { plainClick } from '../dom.js';
 import { useT } from '../i18n.js';
 
 /** One of the host's pages, linked after «Innstillinger». */
@@ -24,9 +25,6 @@ export interface SettingsLinksProps {
   assistantName?: string | undefined;
   className?: string | undefined;
 }
-
-const plainClick = (event: MouseEvent) =>
-  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /**
  * «Innstillinger» first, then the host's own pages, for the foot of the navigation panel. The

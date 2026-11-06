@@ -1,10 +1,9 @@
 import { Fieldset, Link, Radio, Switch } from '@digdir/designsystemet-react';
 import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import { useId } from 'react';
+import { classes } from '../dom.js';
 import { useT } from '../i18n.js';
 import { displayLevels, isDisplayLevel, type DisplayLevel } from './displayLevel.js';
-
-const classes = (...names: (string | undefined)[]) => names.filter(Boolean).join(' ');
 
 export interface DisplayLevelChoiceProps {
   /** The level in use, as the host keeps it. Without it, «Standard» is chosen. */
@@ -79,7 +78,7 @@ export const ExperimentSwitches = ({
           <Link href={experiment.href} rel="noreferrer" target="_blank">
             {experiment.hrefLabel ?? t('settings.readMore')}
             {/* The icon is aria-hidden, so the new tab is said in words too. */}
-            <span className="uib-visually-hidden"> {t('settings.newTab')}</span>
+            <span className="ds-sr-only"> {t('settings.newTab')}</span>
             <ExternalLinkIcon aria-hidden />
           </Link>
         ) : null;

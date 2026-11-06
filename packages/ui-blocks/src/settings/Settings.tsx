@@ -1,6 +1,7 @@
 import { Heading, Paragraph, ToggleGroup } from '@digdir/designsystemet-react';
 import { MonitorIcon, MoonIcon, SunIcon } from '@navikt/aksel-icons';
 import { createContext, useContext, useId, type ReactNode } from 'react';
+import { classes } from '../dom.js';
 import { useT } from '../i18n.js';
 import { DisplayLevelChoice, ExperimentSwitches, type SettingsExperiment } from './Choices.js';
 import { isColorScheme, type ColorScheme } from './colorScheme.js';
@@ -53,7 +54,6 @@ const choices = [
   { value: 'auto', Icon: MonitorIcon },
 ] as const;
 
-const classes = (...names: (string | undefined)[]) => names.filter(Boolean).join(' ');
 const colored = (color: string | undefined) => (color ? { 'data-color': color } : {});
 
 /** The level of a section's heading, one below the block's. */
