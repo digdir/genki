@@ -67,21 +67,28 @@ export interface AnswerTimeText {
  * this week, then day and short month. The short text leaves out the year, so the whole date goes
  * with it. `undefined` for a time that cannot be read: no time is better than «Invalid Date».
  */
+/** The words a time is written with, from the catalogue: no Norwegian in code. */
+export interface AnswerTimeWords {
+  yesterday: string;
+  /** The whole date and the clock as one: «12. mai 2025 kl. 09:05». */
+  dateTime: (date: string, time: string) => string;
+}
+
 export const answerTime = (
   value: string | number | Date,
   f: Format,
-  yesterday: string,
+  words: AnswerTimeWords,
   now: Date = new Date(),
 ): AnswerTimeText | undefined => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return undefined;
   const days = daySerial(now) - daySerial(date);
   // The whole date as the platform writes it, with the same clock as the short text.
-  const title = `${f.date(date, 'long')}${f.locale === 'en' ? ', ' : ' kl. '}${clock(date)}`;
+  const title = words.dateTime(f.date(date, 'long'), clock(date));
   const common = { dateTime: date.toISOString(), title };
   // A time ahead of the machine's clock reads as today: the answer does not argue with the clock.
   if (days <= 0) return { ...common, text: clock(date) };
-  if (days === 1) return { ...common, text: yesterday };
+  if (days === 1) return { ...common, text: words.yesterday };
   if (days < 7) return { ...common, text: f.weekday(date) };
   return { ...common, text: dayMonth(f.locale).format(date) };
 };

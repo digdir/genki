@@ -19,9 +19,16 @@ export const nbConversation = defineNamespace({
   search: 'Søk i svaret',
   searchOf: 'Søk i svar {n} av {total}',
   searchPlaceholder: 'Søk i svaret',
+  searchMin: 'Skriv minst {n} tegn',
+  searchNone: 'Ingen treff',
+  searchCount: '{n} av {total} treff',
+  clearSearch: 'Tøm søket',
+  previous: 'Forrige',
+  next: 'Neste',
   previousHit: 'Forrige treff i svaret',
   nextHit: 'Neste treff i svaret',
   closeSearch: 'Lukk søk i svaret',
+  dateTime: '{date} kl. {time}',
 });
 
 export const enConversation = {
@@ -43,7 +50,14 @@ export const enConversation = {
   search: 'Search the answer',
   searchOf: 'Search answer {n} of {total}',
   searchPlaceholder: 'Search the answer',
+  searchMin: 'Type at least {n} characters',
+  searchNone: 'No matches',
+  searchCount: '{n} of {total} matches',
+  clearSearch: 'Clear the search',
+  previous: 'Previous',
+  next: 'Next',
   previousHit: 'Previous match in the answer',
   nextHit: 'Next match in the answer',
   closeSearch: 'Close the search in the answer',
+  dateTime: '{date}, {time}',
 } satisfies Translation<typeof nbConversation>;
