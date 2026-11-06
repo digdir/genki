@@ -11,6 +11,7 @@
  *     --candidate kunnskapsassistenten-pg --test-set ka-kudos-draft [--evaluators retrieval,answer-quality]
  *     [--repeats 3] [--splits train,validation]
  *   tsx scripts/engine-benchmark.ts compare --baseline-run <id> --candidate-run <id>
+ *   tsx scripts/engine-benchmark.ts status digdir/kudos-pg [--follow]
  *
  * `dataset` copies a catalog entry under a new id (without its aliases), on the same engine; move
  * it to the knowledge database in the console afterwards, which shows the cost first. `service`
@@ -26,7 +27,9 @@
  * client id), and the browser opens for Ansattporten, as for the genki-admin MCP server
  * (apps/admin-mcp/README.md; ANSATTPORTEN_ISSUER, GENKI_AUDIENCE, GENKI_ALTINN_RESOURCE and
  * ADMIN_MCP_REDIRECT_URI as there). Locally, GENKI_DEV_LOGIN=kari (or another mock person) uses
- * the API's mock login. GENKI_TENANT defaults to Digdir, 991825827.
+ * the API's mock login. GENKI_TOKEN instead takes a token as it is: copy the `authorization`
+ * header of any `/operator` request from a logged-in console's network tab. It expires within the
+ * hour; never paste it into a chat or a file. GENKI_TENANT defaults to Digdir, 991825827.
  */
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -53,6 +56,9 @@ const openBrowser = (url: string) => {
 };
 
 const tokenSource = (() => {
+  // A token copied from a logged-in console (the authorization header of any /operator request).
+  const given = env('GENKI_TOKEN');
+  if (given) return async () => given.replace(/^Bearer\s+/i, '');
   const devLogin = env('GENKI_DEV_LOGIN');
   if (devLogin) {
     let token: Promise<string> | undefined;
@@ -364,6 +370,39 @@ const compare = async (baselineId: string, candidateId: string, out: string) => 
   console.log(`\nreport.json and cases.csv in ${out}`);
 };
 
+// --- status --------------------------------------------------------------------------------
+
+interface EngineView {
+  endpoint: string;
+  activeSwitch?: Record<string, unknown> & { sid?: string; state?: string };
+  previous?: { endpoint: string; keptUntil: string };
+}
+
+/** Prints a dataset's engine and its open switch, every minute with `--follow`, read-only. */
+const status = async (datasets: string[], follow: boolean) => {
+  for (;;) {
+    for (const dataset of datasets) {
+      const engine = await call<EngineView>('GET', `/operator/datasets/${enc(dataset)}/engine`);
+      const s = engine.activeSwitch;
+      const line = s
+        ? [
+            `switch ${String(s.sid)} ${String(s.state)}`,
+            s.progress ? `progress ${JSON.stringify(s.progress)}` : '',
+            s.copy ? `copy ${JSON.stringify(s.copy)}` : '',
+            s.error ? `error ${JSON.stringify(s.error)}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : 'no open switch';
+      console.log(
+        `${new Date().toISOString().slice(11, 19)} ${dataset} on ${engine.endpoint}: ${line}`,
+      );
+    }
+    if (!follow) return;
+    await sleep(60_000);
+  }
+};
+
 // --- main ----------------------------------------------------------------------------------
 
 const { positionals, values } = parseArgs({
@@ -383,6 +422,7 @@ const { positionals, values } = parseArgs({
     'baseline-run': { type: 'string' },
     'candidate-run': { type: 'string' },
     out: { type: 'string' },
+    follow: { type: 'boolean', default: false },
   },
 });
 
@@ -422,11 +462,14 @@ if (command === 'dataset') {
   );
   const [baselineRun, candidateRun] = await Promise.all(tasks.map(waitFor));
   await compare(baselineRun as string, candidateRun as string, out);
+} else if (command === 'status') {
+  if (positionals.length < 2) throw new Error('name one or more datasets after status');
+  await status(positionals.slice(1), values.follow ?? false);
 } else if (command === 'compare') {
   await compare(need('baseline-run'), need('candidate-run'), out);
 } else {
   console.error(
-    'usage: tsx scripts/engine-benchmark.ts dataset | service | run | compare (see the comment at the top)',
+    'usage: tsx scripts/engine-benchmark.ts dataset | service | run | compare | status (see the comment at the top)',
   );
   process.exitCode = 2;
 }
