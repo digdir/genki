@@ -121,3 +121,19 @@ describe('the Shell styles', () => {
     expect(names.filter((name) => !page.includes(`<code>${name}</code>`))).toEqual([]);
   });
 });
+
+// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
+// each is named here and justified by the comment on the line above it.
+describe('the Shell markup', () => {
+  it('pins to neutral only the panel buttons kunnskapsassistenten draws neutral, with the reason', () => {
+    const lines = readFileSync(`${import.meta.dirname}/Shell.tsx`, 'utf8').split('\n');
+    const at = lines.flatMap((line, index) =>
+      line.includes('data-color="neutral"') ? [index] : [],
+    );
+    expect(at).toHaveLength(1);
+    for (const index of at) {
+      expect(lines[index - 1]?.trim()).toMatch(/^\/\/ Pinned to neutral, as kunnskapsassistenten/);
+      expect(lines[index - 2]).toContain('uib-shell-toggle');
+    }
+  });
+});

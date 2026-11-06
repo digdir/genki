@@ -58,6 +58,12 @@ export interface ShellPanel {
   head?: ReactNode;
   /** Pinned to the top of the panel's scrolling region, such as the view's heading. */
   pinned?: ReactNode;
+  /**
+   * Hands the host the pinned region's element, for a block that draws its own head there, such
+   * as the filter (its `pinIn`), and `null` when it goes. Pass a stable function, such as a state
+   * setter.
+   */
+  pinnedRef?: ((element: HTMLDivElement | null) => void) | undefined;
   /** The panel's foot, such as its links. Not on a rail. */
   foot?: ReactNode;
   /** Keep the foot at the panel's bottom instead of at the end of what scrolls. */
@@ -373,6 +379,12 @@ const Side = ({
   const [content, setContentElement] = useState<HTMLDivElement | null>(null);
   const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
   useScrollPadding(content, pinned);
+  const onPinned = panel.pinnedRef;
+  useEffect(() => {
+    if (!onPinned || !pinned) return;
+    onPinned(pinned);
+    return () => onPinned(null);
+  }, [onPinned, pinned]);
 
   // A tab stop only when the region scrolls with nothing in it to reach (WCAG 2.1.1), kept while
   // focused (2.4.3). A group, not a region: the panel is a landmark with this name already.
@@ -484,6 +496,7 @@ const Side = ({
         aria-expanded={!collapsed}
         aria-label={toggleLabel}
         className={classes('uib-shell-toggle', showsWord && 'uib-shell-hide')}
+        // Pinned to neutral, as kunnskapsassistenten draws it: the panel's own control.
         data-color="neutral"
         data-size="sm"
         icon={!showsWord}
