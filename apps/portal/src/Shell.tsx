@@ -8,6 +8,7 @@ import {
   ComponentIcon,
   DatabaseIcon,
   HouseIcon,
+  LayersIcon,
   MenuHamburgerIcon,
   PersonGroupIcon,
   RectangleSectionsIcon,
@@ -44,6 +45,16 @@ export const navigationGroups: readonly NavGroup[] = [
     items: [{ path: '/overview', label: 'shell.navOverview', icon: HouseIcon }],
   },
   {
+    heading: 'shell.groupAnalyse',
+    items: [
+      {
+        path: '/architecture-assistant',
+        label: 'shell.navArchitecture',
+        icon: LayersIcon,
+      },
+    ],
+  },
+  {
     heading: 'shell.groupBuild',
     items: [
       {
@@ -78,7 +89,7 @@ export const navigationGroups: readonly NavGroup[] = [
     ],
   },
   {
-    heading: 'shell.groupAnalyse',
+    heading: 'shell.groupFollow',
     items: [
       {
         path: '/statistics',

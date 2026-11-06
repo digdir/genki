@@ -141,8 +141,8 @@ describe('screens in English', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent)
-        .slice(1, 4),
-    ).toEqual(['Overview', 'Services', 'Shared services']);
+        .slice(1, 5),
+    ).toEqual(['Overview', 'Architecture assistant', 'Services', 'Shared services']);
     expect(screen.getByRole('link', { name: 'Skip to main content' })).toBeTruthy();
     expect(await screen.findByRole('heading', { level: 2, name: 'Latest changes' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /open user menu/ }));
