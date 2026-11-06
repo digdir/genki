@@ -250,14 +250,16 @@
   .uib-sources-uses-icon {
     color: var(--genai-sources-uses-icon-color, var(--ds-color-text-subtle));
   }
-  /* A number alone is a small target: each is at least 24 px both ways (WCAG 2.5.8). */
+  /* A number alone is a small target: each is at least 24 px both ways (WCAG 2.5.8). A literal,
+     since Designsystemet's size tokens shrink under the link's own data-size="sm": --ds-size-6
+     comes to 21 px there. */
   .uib-sources-use {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--genai-sources-use-gap, var(--ds-size-1));
-    min-inline-size: var(--genai-sources-use-min-size, var(--ds-size-6));
-    min-block-size: var(--genai-sources-use-min-size, var(--ds-size-6));
+    min-inline-size: var(--genai-sources-use-min-size, 24px);
+    min-block-size: var(--genai-sources-use-min-size, 24px);
     white-space: nowrap;
     hyphens: none;
   }
