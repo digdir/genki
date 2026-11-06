@@ -73,6 +73,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - A provider object that cannot be deleted becomes the audit action `platform.provider-object.incident` (rejected) in the tenant's log.
 - Usage totals carry `units` for open units wherever usage is returned.
 - A caller can send audio and images to a service that lists the media type in `spec.input.accepts` (`audio/*` is not a valid entry; name each type, such as `audio/wav` or `image/png`). `/v1/chat/completions` takes `input_audio` (`{ data, format }`, `wav` or `mp3`) and `image_url` with a base64 data URL in the last user message; `GET /v1/models` shows the accepted types as `_media: { accepts, max_bytes, max_count }`. Errors: `400 invalid_documents`, `400 documents_not_accepted`, `413 document_too_large`, `415 unsupported_document_type`. In a step flow the files are `{{input.files.0}}`, `{{input.files.1}}` and so on, media references that a `call-operation@1` step passes as a descriptor's `media` input. The consent rule is unchanged.
+- A descriptor is refused at load when a mapped request field, nested ones included, has no class in `wire.request`, or when an `opaque` request field is filled from input instead of an earlier step.
 
 ### 2026-11-05: descriptors from primitives and media input with consent
 

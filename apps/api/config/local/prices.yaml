@@ -49,5 +49,7 @@ models:
     chat: { input-token: 0.0000105, output-token: 0.0000419 }
   foundry/text-embedding-3-large:
     embed: { input-token: 0.0000012 }
+  foundry/text-embedding-3-large-1536:
+    embed: { input-token: 0.0000012 }
   foundry/text-embedding-3-small:
     embed: { input-token: 0.0000002 }

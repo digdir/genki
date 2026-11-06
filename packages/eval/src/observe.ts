@@ -86,8 +86,12 @@ export const defaultObserve: Observe = (parts, events) => {
 };
 
 export const sameSource = (expected: SourceRef, actual: SourceRef) => {
-  if (expected.chunkId !== undefined && actual.chunkId !== undefined)
-    return expected.chunkId === actual.chunkId;
+  if (expected.chunkId !== undefined && actual.chunkId !== undefined) {
+    if (expected.chunkId === actual.chunkId) return true;
+    // A copy into another engine gives chunks new ids and keeps their document and position, so a
+    // chunk id that differs is matched by those, never by the document alone.
+    if (expected.position === undefined) return false;
+  }
   if (expected.document === undefined || actual.document === undefined) return false;
   // An index from before the source renumbered names the document by its earlier id.
   if (expected.document !== actual.document && expected.earlierDocument !== actual.document)

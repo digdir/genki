@@ -290,6 +290,34 @@ describe('document records on the knowledge server', () => {
     expect(after.map((r) => r.text)).toEqual(['Ny 0', 'Ny 1']);
   });
 
+  it("a chunk's page in its metadata is stored as page_from and page_to", async () => {
+    const name = 'digdir/pages';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a') },
+      noSend,
+    );
+    const paged = doc('a');
+    const [one, two] = paged.chunks;
+    if (!one || !two) throw new Error('two chunks');
+    await records.replace(await recordOf(name, 'a'), generation, {
+      document: {
+        ...paged,
+        chunks: [
+          { ...one, metadata: { page: 1, pageEnd: 3 } },
+          { ...two, metadata: { page: 3 } },
+        ],
+      },
+    });
+    const { rows } = await admin.query<{ page_from: number | null; page_to: number | null }>(
+      `select page_from, page_to from ${partitionOf('kn_chunks', generation)} order by position`,
+    );
+    expect(rows).toEqual([
+      { page_from: 1, page_to: 3 },
+      { page_from: 3, page_to: 3 },
+    ]);
+  });
+
   it('a document is replaced in one transaction', async () => {
     const name = 'digdir/replace';
     const generation = await freshGeneration(name);
@@ -460,6 +488,13 @@ describe('document records on the knowledge server', () => {
     ).toEqual(first);
   });
 
+  it('index jobs that start together all get the chunking the first one kept', async () => {
+    const generation = await freshGeneration('digdir/chunking-together');
+    const settings = Array.from({ length: 16 }, (_, i) => ({ maximumLength: 1000 + i }));
+    const kept = await Promise.all(settings.map((c) => records.chunking(generation, 'docs', c)));
+    expect(new Set(kept.map((c) => JSON.stringify(c))).size).toBe(1);
+  });
+
   it('lists the records a pipeline owns with the change its generation holds', async () => {
     const name = 'digdir/owned';
     const generation = await freshGeneration(name);
@@ -477,5 +512,42 @@ describe('document records on the knowledge server', () => {
     expect(Date.parse(owned[0]?.appliedAt ?? '')).toBeGreaterThan(Date.now() - 60_000);
     expect(owned[1]?.appliedAt).toBeUndefined();
     expect(await records.owned(name, 'other', generation)).toEqual([]);
+  });
+
+  it("a pipeline's records include the copy's, marked copied, until it takes them over", async () => {
+    const name = 'digdir/copied';
+    const generation = await freshGeneration(name);
+    await records.apply(
+      { dataset: name, pipeline: '_copy', generation, plan: newDocs('a', 'b') },
+      noSend,
+    );
+    const before = await records.owned(name, 'kudos', generation);
+    expect(before.map((r) => [r.id, r.copied])).toEqual([
+      ['a', true],
+      ['b', true],
+    ]);
+    expect((await records.owned(name, '_copy', generation)).map((r) => r.copied)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    await records.apply(
+      {
+        dataset: name,
+        pipeline: 'kudos',
+        generation,
+        plan: plan([{ kind: 'changed', listed: listed('a'), metadataHash: 'm-a2' }], ['a']),
+      },
+      noSend,
+    );
+    const after = await records.owned(name, 'kudos', generation);
+    expect(after.map((r) => [r.id, r.copied])).toEqual([
+      ['b', true],
+      ['a', undefined],
+    ]);
+    const { rows } = await admin.query<{ owners: string[] }>(
+      `select owners from src_documents where dataset = $1 and id = 'a'`,
+      [name],
+    );
+    expect(rows[0]?.owners).toEqual(['kudos']);
   });
 });

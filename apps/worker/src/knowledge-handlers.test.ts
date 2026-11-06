@@ -3,9 +3,13 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  copyListing,
+  copyOwner,
   documentId,
   knowledgeListingOf,
   pipelineSpec,
+  type CopyListingOptions,
+  type CopySource,
   type IngestSourceOptions,
   type PipelineSpec,
 } from '@genai/ingest';
@@ -19,7 +23,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import type { EmbeddingPort } from '@genai/port-embedding';
-import type { DatasetConfig } from '@genai/port-knowledge';
+import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import {
   attachGeneration,
   generationLockSpace,
@@ -141,6 +145,8 @@ const scenario = async (
     switched?: Partial<DatasetConfig>;
     /** A platform dataset, such as digdir/genki-docs, instead of one of the organisation's. */
     platform?: boolean;
+    /** What a copy run reads from the dataset's current engine. */
+    copy?: Omit<CopyListingOptions, 'earlierIds'>;
   } = {},
 ) => {
   datasets += 1;
@@ -230,6 +236,12 @@ const scenario = async (
       } as unknown as EmbeddingPort;
     },
     ...(extra.bound ? { bound: extra.bound } : {}),
+    ...(extra.copy
+      ? {
+          copyListingOf: async () =>
+            copyListing({ ...(extra.copy as CopyListingOptions), earlierIds: copyEarlierIds }),
+        }
+      : {}),
     admission: { records: runRecords, platformTenant: ORG, lockdown: false },
   });
   const file = (name: string, text: string) => writeFile(join(folderRoot, folder, name), text);
@@ -247,13 +259,13 @@ const scenario = async (
 
 const startRun = async (
   dataset: string,
-  names: { generation?: string; engineSwitch?: string } = {},
+  names: { generation?: string; engineSwitch?: string; pipeline?: string } = {},
 ) => {
   const id = crypto.randomUUID();
   await platform.pool.query(
     `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
        status, started_by, started_at, runs_as_jobs, admitted_at, generation, engine_switch)
-     values ($1, $2, $3, 'docs', 1, 'index-writer', 'running', 'test', $4, true, $4, $5, $6)`,
+     values ($1, $2, $3, $7, 1, 'index-writer', 'running', 'test', $4, true, $4, $5, $6)`,
     [
       id,
       ORG,
@@ -261,6 +273,7 @@ const startRun = async (
       new Date().toISOString(),
       names.generation ?? null,
       names.engineSwitch ?? null,
+      names.pipeline ?? 'docs',
     ],
   );
   return id;
@@ -281,8 +294,11 @@ const handler = (work: QueueWork[], queue: string) => {
 };
 
 /** Runs a run as the worker would: its ingest job, then each index job it sent. */
-const runOnce = async (s: Awaited<ReturnType<typeof scenario>>) => {
-  const run = await startRun(s.dataset.id);
+const runOnce = async (
+  s: Awaited<ReturnType<typeof scenario>>,
+  names: Parameters<typeof startRun>[1] = {},
+) => {
+  const run = await startRun(s.dataset.id, names);
   const before = s.sent.length;
   await handler(
     s.work.platform,
@@ -718,5 +734,104 @@ describe('knowledge.ingest and knowledge.index', () => {
     });
     expect((await docsIn(target)).map((d) => d.title)).toEqual(['B']);
     expect(switched.sent.slice(before).every((d) => d.generation === target)).toBe(true);
+  }, 60_000);
+});
+
+const copyEarlierIds = new Map([['kudos:de77ffc7-1a57-456a-af49-167e699a4e6e', ['377252']]]);
+
+const typesenseDoc = (id: string, texts: string[]): IndexDocument => ({
+  id,
+  title: `Rapport ${id}`,
+  fields: {
+    type: 'Statusrapport',
+    files: [{ url: `https://kudos.example/${id}.pdf`, sha256: `sha-${id}` }],
+  },
+  chunks: texts.map((text, position) => ({
+    id: 'reused-by-typesense',
+    position,
+    text,
+    metadata: { metadata: '{}' },
+  })),
+  phrases: [],
+});
+
+const copySource = (docs: IndexDocument[]): CopySource => ({
+  list: async function* () {
+    for (const { chunks, phrases, ...rest } of docs) {
+      void chunks;
+      void phrases;
+      yield rest;
+    }
+  },
+  document: async (id) => docs.find((d) => d.id === id),
+});
+
+/** A copy run of the engine switch `docs:1`, into the scenario's generation. */
+const copyRun = (s: Awaited<ReturnType<typeof scenario>>) => ({
+  pipeline: copyOwner,
+  engineSwitch: 'docs:1',
+  generation: s.generation,
+});
+
+describe('copying a dataset into the knowledge database', () => {
+  const embedding = { model: 'fake/large-1536', dimensions: 3 };
+
+  it('a switch into the knowledge database can copy a dataset, with a record per document', async () => {
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      copy: {
+        source: copySource([typesenseDoc('377252', ['Forord']), typesenseDoc('364', ['Borte'])]),
+        ids: 'kudos',
+      },
+    });
+    const { run } = await runOnce(s, copyRun(s));
+    const { rows } = await admin.query<{
+      id: string;
+      owners: string[];
+      earlier_ids: string[];
+      record: Record<string, unknown>;
+      state: string;
+    }>(`select id, owners, earlier_ids, record, state from src_documents where dataset = $1`, [
+      s.dataset.id,
+    ]);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'kudos:de77ffc7-1a57-456a-af49-167e699a4e6e',
+        owners: [copyOwner],
+        earlier_ids: ['377252'],
+        record: expect.objectContaining({ id: '377252', title: 'Rapport 377252' }),
+        state: 'stored',
+      }),
+    ]);
+    const files = await admin.query<{ file: string; sha256: string }>(
+      `select file, sha256 from src_files where dataset = $1`,
+      [s.dataset.id],
+    );
+    expect(files.rows).toEqual([
+      { file: 'https://kudos.example/377252.pdf', sha256: 'sha-377252' },
+    ]);
+    expect(await reportOf(run)).toMatchObject({ new: 1, stored: 1, 'skipped.no_uuid': 1 });
+  }, 60_000);
+
+  it("copied chunks keep their text and order and are embedded with the target's model", async () => {
+    const embedded: string[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      embedded,
+      copy: { source: copySource([typesenseDoc('15d652024721', ['første', 'andre', 'tredje'])]) },
+    });
+    await runOnce(s, copyRun(s));
+    const { rows } = await admin.query<{ position: number; text: string; dims: number }>(
+      `select position, text, vector_dims(vec::vector) as dims
+         from ${partitionOf('kn_chunks', s.generation)} order by position`,
+    );
+    expect(rows).toEqual([
+      { position: 0, text: 'første', dims: 3 },
+      { position: 1, text: 'andre', dims: 3 },
+      { position: 2, text: 'tredje', dims: 3 },
+    ]);
+    expect(new Set(embedded)).toEqual(new Set(['fake/large-1536']));
   }, 60_000);
 });

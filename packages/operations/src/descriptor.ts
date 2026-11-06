@@ -564,6 +564,51 @@ const mappedFields = (template: unknown): [string, unknown][] => {
   ]);
 };
 
+const classesAt = (s: Shape): Shape[] => {
+  switch (s.kind) {
+    case 'optional':
+      return classesAt(s.shape);
+    case 'array':
+      return classesAt(s.item);
+    case 'variant':
+      return Object.values(s.options).flatMap(classesAt);
+    case 'either':
+      return s.options.flatMap(classesAt);
+    default:
+      return [s];
+  }
+};
+
+const checkEveryFieldClassified = (
+  at: string,
+  wires: Shape[],
+  template: unknown,
+  path: string[],
+) => {
+  if (Array.isArray(template)) {
+    for (const item of template) checkEveryFieldClassified(at, wires, item, path);
+    return;
+  }
+  if (!isRecord(template)) return;
+  const keys = Object.keys(template);
+  if (keys.length > 0 && keys.every((k) => k.startsWith('$'))) {
+    if ('$map' in template) checkEveryFieldClassified(at, wires, template.$map, path);
+    return;
+  }
+  const here = wires.flatMap(classesAt);
+  if (here.some((c) => c.kind === 'json')) return;
+  for (const [key, value] of Object.entries(template)) {
+    const children = here.flatMap((c) =>
+      c.kind === 'object' && key in c.fields ? [c.fields[key] as Shape] : [],
+    );
+    if (children.length === 0)
+      throw new DescriptorError(
+        `${at}.${[...path, key].join('.')}: ${key} has no class; every value that goes out is classified`,
+      );
+    checkEveryFieldClassified(at, children, value, [...path, key]);
+  }
+};
+
 const stepPath = /^\$steps\.([a-z][a-z0-9_]*)\.([a-z][a-zA-Z0-9_]*)$/;
 
 /** A field filled from input may never carry a URL or a provider object, and a provider object comes only from a bound step value. */
@@ -581,7 +626,16 @@ const checkFieldSources = (
     throw new DescriptorError(
       `${at}: may not carry ${urls.join(', ')}; input never names a URL; an answer link is followed only through request.follow`,
     );
+  if (wire) checkEveryFieldClassified(at, [wire], template, []);
   for (const [key, value] of mappedFields(template)) {
+    if (
+      wire &&
+      rootsOf(value).some((r) => r !== 'steps') &&
+      shapesNamed(wire, key).some((d) => d.kind === 'opaque')
+    )
+      throw new DescriptorError(
+        `${at}.${key}: opaque state is replayed from an earlier step, never filled from input, which could carry a URL out`,
+      );
     if (providerObjectFields.has(key) && rootsOf(value).some((r) => r !== 'steps'))
       throw new DescriptorError(
         `${at}.${key}: a provider object id comes only from a value bound in an earlier step, never from input`,
