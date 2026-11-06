@@ -119,16 +119,22 @@
     outline: none;
   }
 
+  /* The paperclip at the start, the host's controls and send at the end. Send stays at the end
+     with no paperclip and no control beside it, as kunnskapsassistenten has it. */
   .uib-composer-controls {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--genai-composer-controls-gap, var(--ds-size-2));
   }
 
   .uib-composer-attach,
   .uib-composer-send {
     flex: 0 0 auto;
+  }
+
+  .uib-composer-attach {
+    margin-inline-end: auto;
   }
 
   .uib-composer-send {
@@ -141,7 +147,6 @@
   .uib-composer-actions {
     display: flex;
     min-inline-size: 0;
-    margin-inline-start: auto;
   }
 
   .uib-composer-file-input {
