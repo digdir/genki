@@ -11,6 +11,7 @@ import {
   type Ref,
   type RefObject,
 } from 'react';
+import { classes, hasFiles } from '../dom.js';
 import { useT } from '../i18n.js';
 import { AttachmentList, useAttachmentText, useUploadAnnouncement } from './Attachments.js';
 import { shortcutModifier, useComposerShortcut } from './shortcut.js';
@@ -60,10 +61,6 @@ export interface ComposerProps {
 }
 
 type Refusal = 'wait' | 'unavailable';
-
-const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
-
-const hasFiles = (event: DragEvent) => [...event.dataTransfer.types].includes('Files');
 
 /** The disclaimer under the field, for a host that draws it elsewhere, such as at the foot of a start page. */
 export const ComposerDisclaimer = ({
@@ -390,12 +387,12 @@ export const Composer = ({
       {showDisclaimer ? <ComposerDisclaimer assistantName={assistantName} color={color} /> : null}
 
       {shortcut ? (
-        <p className="uib-visually-hidden" id={descriptionId}>
+        <p className="ds-sr-only" id={descriptionId}>
           {t('composer.shortcutDescription')}
         </p>
       ) : null}
       {attachments ? (
-        <p aria-live="polite" className="uib-visually-hidden">
+        <p aria-live="polite" className="ds-sr-only">
           {announcement}
         </p>
       ) : null}

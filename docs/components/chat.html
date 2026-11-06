@@ -119,8 +119,11 @@
               </li>
               <li>
                 <code>attachments</code>: the files as the host tracks them (uploading, ready or
-                failed) with <code>onAdd</code>, <code>onRemove</code> and <code>onRetry</code>.
-                Uploading is the host's; the block draws and refuses.
+                failed) with <code>onAdd</code>, <code>onRemove</code> and <code>onRetry</code>, and
+                <code>types</code> and <code>maxBytes</code> for what it takes, named as in
+                <code>OwnDocuments</code> (<code>fileTypes</code> and
+                <code>maxMegabytes</code> still work until hosts have moved). Uploading is the
+                host's; the block draws and refuses.
               </li>
               <li>
                 <code>followUps</code>, <code>onScrollToBottom</code>, <code>actions</code> (a slot
