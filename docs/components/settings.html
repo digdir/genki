@@ -94,6 +94,15 @@
                 <strong>The colour scheme alone:</strong> <code>ColorSchemeToggle</code>, for an app
                 that places it somewhere else.
               </li>
+              <li>
+                <strong>The other choices alone:</strong> <code>DisplayLevelChoice</code> and
+                <code>ExperimentSwitches</code>.
+              </li>
+              <li>
+                <strong>The links to it:</strong> <code>SettingsLinks</code>, for the foot of the
+                navigation panel: «Innstillinger» first, then the app's own pages, such as the pages
+                about the service.
+              </li>
             </ul>
           </div>
           <div>
@@ -109,19 +118,43 @@
                 a choice the app has not taken is not shown as taken.
               </li>
               <li>
+                <code>displayLevel</code> and <code>onDisplayLevelChange</code>: how much an answer
+                shows of how it was made, <code>'standard'</code> or <code>'detailed'</code>. The
+                section «Svar» is drawn only when the app takes the choice.
+              </li>
+              <li>
+                <code>experiments</code> and <code>onExperimentChange</code>: the trials, each with
+                an <code>id</code>, <code>title</code>, <code>description</code>, whether it is
+                <code>on</code>, and a link (<code>href</code>, <code>hrefLabel</code>) to where it
+                is discussed. The section «Eksperimenter» is drawn only when there are trials and
+                the app takes the change. The event says which trial and whether it is now on.
+              </li>
+              <li>
                 <code>headingLevel</code>: the level of «Innstillinger», 2 by default. Each
                 section's heading is one below. On a page of its own, the app passes 1.
               </li>
               <li>
-                <code>children</code>: the app's own sections after the colour scheme, each a
+                <code>children</code>: the app's own sections after the block's, each a
                 <code>SettingsSection</code> with a <code>title</code>.
+              </li>
+              <li>
+                <code>note</code>: a quiet line after every section, such as where the choices are
+                kept, which only the app knows.
+              </li>
+              <li>
+                <code>SettingsLinks</code>: <code>settingsHref</code>, the app's
+                <code>links</code> (<code>href</code>, <code>title</code>, an
+                <code>aria-hidden</code> <code>icon</code>), <code>currentHref</code> for
+                <code>aria-current</code>, <code>onNavigate</code> for the app's router, and
+                <code>assistantName</code> for the list's name, «Innstillinger og om …».
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the block, set only
                 when given.
               </li>
               <li>
-                <code>colorSchemes</code> and <code>isColorScheme</code> are exported for an app
+                <code>colorSchemes</code>, <code>isColorScheme</code>,
+                <code>displayLevels</code> and <code>isDisplayLevel</code> are exported for an app
                 that reads a stored choice.
               </li>
             </ul>
@@ -140,9 +173,10 @@
               <code>@layer genai.components</code>, after Designsystemet's layers, follows
               <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
               and reads every token through its own variable, with the token as the fallback. Set
-              one on any ancestor to change that detail only. None is pinned to a colour family. The
-              choice itself is Designsystemet's <code>ToggleGroup</code>, which the block does not
-              restyle: an app changes it with Designsystemet's own
+              one on any ancestor to change that detail only. One is pinned to neutral on purpose:
+              the note, which in the accent family would read as a link, as kunnskapsassistenten
+              draws it. The choice itself is Designsystemet's <code>ToggleGroup</code>, which the
+              block does not restyle: an app changes it with Designsystemet's own
               <code>--dsc-togglegroup-*</code> variables.
             </p>
             <div class="table-wrap">
@@ -156,14 +190,39 @@
                 </thead>
                 <tbody>
                   <tr>
+                    <td><code>--genai-settings-experiments-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between the trials' switches</td>
+                  </tr>
+                  <tr>
                     <td><code>--genai-settings-font-family</code></td>
                     <td><code>--ds-font-family</code></td>
-                    <td>the font of the whole block</td>
+                    <td>the font of the whole block, and of the links</td>
                   </tr>
                   <tr>
                     <td><code>--genai-settings-gap</code></td>
                     <td><code>--ds-size-8</code></td>
                     <td>between the heading and each section</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-link-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-semibold</code></td>
+                    <td>the link to the page on screen</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-link-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between a link's icon and its title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-links-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the links</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-note-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the note after the sections, pinned to neutral</td>
                   </tr>
                   <tr>
                     <td><code>--genai-settings-padding-block-end</code></td>
@@ -198,7 +257,22 @@
                 keeps it, sets <code>data-color-scheme</code>, and passes it back in. A value the
                 block does not know shows as «Auto».
               </li>
+              <li>
+                «Fargemodus» comes first, as the page's main choice: light and dark mode live in the
+                settings, not in the panel's foot (decided 2026-11-06).
+              </li>
+              <li>
+                «Svar»: «Standard» or «Detaljert» as radio buttons, each with a line on what it
+                shows. «Eksperimenter»: a line that all are off until turned on, then a
+                Designsystemet <code>Switch</code> per trial, since each takes effect at once, with
+                a link that opens in a new tab and says so in words.
+              </li>
               <li>The app's own sections share the look and the heading level of «Fargemodus».</li>
+              <li>
+                <code>SettingsLinks</code> is a named list, not a <code>nav</code>: the panel around
+                it is already the navigation landmark. The page on screen is marked by weight, not
+                colour.
+              </li>
             </ul>
           </div>
           <div class="wide">
@@ -215,8 +289,11 @@
                 refuses an inline one), and follows a choice made in another tab.
               </li>
               <li>
-                Kunnskapsassistenten's other sections stay its own, passed in as children: how much
-                the answer shows, its experiments, and the line on where the choices are kept.
+                How much the answer shows and the experiments are sections of the block, with
+                kunnskapsassistenten's words, so every app need not build them again. What stays the
+                app's: which trials exist, storing every choice, turning the trials off when the
+                reader signs out, and a development section such as kunnskapsassistenten's choice of
+                a pinned or scrolling foot.
               </li>
               <li>genki's portal, console and workspace are light only today.</li>
             </ul>

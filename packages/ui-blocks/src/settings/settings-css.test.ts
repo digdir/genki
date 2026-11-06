@@ -49,9 +49,11 @@ describe('the Settings styles', () => {
     expect(css).not.toMatch(/--genai-[a-z-]+\s*:/);
   });
 
-  it('pin no colour family, so the block follows the host’s data-color', () => {
+  it('follow the host’s data-color, but for the note, pinned to neutral so it reads as no link', () => {
     const family = /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/;
-    expect(uses.filter((use) => family.test(use.fallback))).toEqual([]);
+    expect(uses.filter((use) => family.test(use.fallback)).map((use) => use.whole)).toEqual([
+      'var(--genai-settings-note-color, var(--ds-color-neutral-text-subtle))',
+    ]);
   });
 
   it('are each listed on the component page', () => {
