@@ -1,0 +1,63 @@
+/* The footnote mark, shared by the answer's text and Sources, after Designsystemet's layers, and
+   every token read through a --genai-footnote-* variable at the point of use, listed on
+   docs/components/sources.html. */
+@layer ds.theme, ds.base, ds.components, genai.components;
+
+@layer genai.components {
+  /* A footnote as a small round mark, its number in the smallest font size. Pinned to accent:
+     accent means it can be pressed, and the card around it is often neutral.
+     The ring, not the fill, sets the circle apart from the card: the tinted fill on the card is
+     1.2:1 in the digdir theme (1.1:1 dark), the ring 6.6:1 (6.2:1 dark), and the number on the
+     fill 11.5:1 in both (measured 6 November 2026). Inset, so the circle keeps its size.
+     One size wherever the mark stands: Designsystemet's size tokens shrink under a table's
+     data-size="sm", which drew the marks at 11 px there and 12 px in the text. In rem, the 20 px,
+     12 px and 4 px of kunnskapsassistenten's mark at the default size. */
+  .uib-footnote-mark {
+    display: inline-block;
+    box-sizing: border-box;
+    min-inline-size: var(--genai-footnote-size, 1.25rem);
+    block-size: var(--genai-footnote-size, 1.25rem);
+    padding-inline: var(--genai-footnote-padding, 0.25rem);
+    border-radius: var(--genai-footnote-border-radius, var(--ds-border-radius-full));
+    background: var(--genai-footnote-background, var(--ds-color-accent-surface-tinted));
+    color: var(--genai-footnote-color, var(--ds-color-accent-text-default));
+    font-size: var(--genai-footnote-font-size, 0.75rem);
+    font-weight: var(--genai-footnote-font-weight, var(--ds-font-weight-semibold));
+    line-height: var(--genai-footnote-size, 1.25rem);
+    text-align: center;
+    text-decoration: none;
+  }
+  /* Raised a little beside the word before it, the smallest size step from it: two marks in a
+     row are then as far apart as WCAG 2.5.8 asks of targets this small. */
+  .uib-footnote-mark[data-raised] {
+    margin-inline-start: var(--genai-footnote-gap, 0.25rem);
+    vertical-align: var(--genai-footnote-raise, 0.25rem);
+  }
+  /* Not while focused, where Designsystemet's own two rings take the shadow. */
+  .uib-footnote-mark:not(:focus-visible) {
+    box-shadow: inset 0 0 0 var(--genai-footnote-border-width, var(--ds-border-width-default))
+      var(--genai-footnote-border-color, var(--ds-color-accent-border-strong));
+  }
+  /* The brackets, kept in the text for whoever copies it but not drawn. Inline and not visually
+     hidden: an absolutely positioned element is a block to copying, which then reads «[ 1 ]».
+     The link is named by `aria-label`, so none of it is read out. */
+  .uib-footnote-copy {
+    font-size: 0;
+  }
+  /* Hover only where there is one, as Designsystemet does for links: after a tap on a touch
+     screen the fill would otherwise stay. Pinned to accent, as the mark is: the number on the
+     filled circle is 6.1:1 (6.3:1 dark), and the fill stands 5.0:1 (4.1:1 dark) from the tinted
+     one, so the change is plain. Focus keeps Designsystemet's two rings, 12:1 and more. */
+  @media (hover: hover) and (pointer: fine) {
+    .uib-footnote-mark:any-link:hover {
+      background: var(--genai-footnote-hover-background, var(--ds-color-accent-base-default));
+      color: var(--genai-footnote-hover-color, var(--ds-color-accent-base-contrast-default));
+    }
+  }
+  /* Forced colours drop the fill, so the mark gets a ring in the link colour. */
+  @media (forced-colors: active) {
+    .uib-footnote-mark {
+      border: var(--genai-footnote-border-width, var(--ds-border-width-default)) solid;
+    }
+  }
+}
