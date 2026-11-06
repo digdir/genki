@@ -5,14 +5,35 @@ import type { Score, TestCase } from './schema.js';
 export interface EvalContext {
   servedModels: string[];
   modelFamily(model: string): string | undefined;
+  /** Aborts when the eval run is cancelled. */
+  signal?: AbortSignal;
 }
 
+export interface PendingScore {
+  case: string;
+  repeat: number;
+  task: string;
+  score: Score;
+}
+
+export interface CollectedScore {
+  case: string;
+  repeat: number;
+  score: Score;
+}
+
+/**
+ * evaluator@2: scores come back at once, or as pending, which the runner asks for again with
+ * collect. What is not ready yet is left out or answered pending again.
+ */
 export interface Evaluator {
   id: string;
   version: string;
   kind: 'deterministic' | 'model' | 'human';
   judge?: string;
   evaluate(testCase: TestCase, observation: Observation, ctx: EvalContext): Promise<Score[]>;
+  /** The signal aborts when the run's wait for scores ends or the run is cancelled. */
+  collect?(pending: PendingScore[], options?: { signal?: AbortSignal }): Promise<CollectedScore[]>;
 }
 
 export class EvalError extends Error {
@@ -33,6 +54,7 @@ const scored = (
   metric,
   value,
   applicable: true,
+  state: 'scored',
   ...(details ? { details } : {}),
 });
 
@@ -42,6 +64,7 @@ const skipped = (evaluator: Evaluator, metric: string, reason: string): Score =>
   metric,
   value: null,
   applicable: false,
+  state: 'not-applicable',
   reason,
 });
 

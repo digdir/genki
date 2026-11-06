@@ -1126,6 +1126,12 @@ const Candidate = z
 const RunStatus = z
   .union([
     z.object({ state: z.literal('running'), task: z.string() }),
+    z.object({
+      state: z.literal('waiting-for-scores'),
+      task: z.string(),
+      pending: z.number().int(),
+      until: z.string(),
+    }),
     z.object({ state: z.literal('completed'), task: z.string(), run: z.string() }),
     z.object({ state: z.literal('failed'), task: z.string(), error: z.string() }),
   ])
@@ -1392,7 +1398,7 @@ const evalRoutes: RouteConfig[] = [
     description: described(
       'The tenant that started it; an operator needs a support session',
       notAudited,
-      'Read from the task and the stored run, so every instance answers the same.',
+      'Read from the task and the stored run, so every instance answers the same, except waiting-for-scores: only the instance running the eval knows its judges have not delivered, and the others answer running.',
     ),
     request: { params: z.object({ task }), headers: readHeaders },
     responses: { 200: json(RunStatus, 'Status'), ...evalProblems },
