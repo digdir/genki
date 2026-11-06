@@ -80,6 +80,9 @@
     text-align: center;
     text-decoration: none;
     vertical-align: var(--genai-answer-footnote-raise, var(--ds-size-1));
+  }
+  /* Not while focused, where Designsystemet's own two rings take the shadow. */
+  .uib-answer-mark:not(:focus-visible) {
     box-shadow: inset 0 0 0
       var(--genai-answer-footnote-border-width, var(--ds-border-width-default))
       var(--genai-answer-footnote-border-color, var(--ds-color-accent-border-strong));
