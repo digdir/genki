@@ -59,7 +59,13 @@ export interface FilterProps {
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Over the fields, under the heading, such as `CorpusChoice`. It shares the live region. */
   head?: ReactNode;
-  /** Under a line after the fields, such as the documents. */
+  /**
+   * Before the fields, over a line, such as `Documents`: the documents behind the answer, in sight
+   * without scrolling past the fields. kunnskapsassistenten keeps its documents list apart from
+   * the reader's own «so the view can show them above the facets, in sight».
+   */
+  documents?: ReactNode;
+  /** Under a line after the fields, such as the reader's own documents. */
   children?: ReactNode;
   /** Designsystemet's `data-color` for the block, set only when given. */
   color?: string | undefined;
@@ -135,6 +141,7 @@ export const Filter = ({
   title,
   headingLevel = 2,
   head,
+  documents,
   children,
   color,
   className,
@@ -226,6 +233,14 @@ export const Filter = ({
             {head}
           </div>
         )}
+
+        {documents ? (
+          <>
+            {/* Above is about documents; below narrows the search. */}
+            <div className="uib-filter-above">{documents}</div>
+            <Divider className="uib-filter-divider" />
+          </>
+        ) : null}
 
         {/* While locked, the fields are not drawn, so a failure to fetch them can wait. */}
         <ErrorRegion
