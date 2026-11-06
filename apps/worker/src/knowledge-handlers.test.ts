@@ -152,6 +152,8 @@ const scenario = async (
     embedWait?: (texts: string[]) => Promise<void>;
     /** Collects the options each index job opens its embedder with. */
     opened?: unknown[];
+    /** Collects the worker's log lines. */
+    logged?: { msg: string; fields: Record<string, unknown> }[];
     progress?: RunProgress;
   } = {},
 ) => {
@@ -245,6 +247,12 @@ const scenario = async (
     },
     ...(extra.bound ? { bound: extra.bound } : {}),
     ...(extra.progress ? { progress: extra.progress } : {}),
+    ...(extra.logged
+      ? {
+          log: (msg: string, fields: Record<string, unknown>) =>
+            extra.logged?.push({ msg, fields }),
+        }
+      : {}),
     ...(extra.copy
       ? {
           copyListingOf: async () =>
@@ -903,6 +911,61 @@ describe('copying a dataset into the knowledge database', () => {
     await runOnce(s, copyRun(s));
 
     expect(opened).toEqual([{ retries: 0 }]);
+  }, 60_000);
+
+  it('a run cancelled while its index job waits out a 429 stops the job at once', async () => {
+    let run = '';
+    let calls = 0;
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+      embedWait: async () => {
+        calls += 1;
+        await platform.pool.query(
+          `update ingestion_executions set cancel_requested_at = $2, cancelled_by = 'test' where id = $1`,
+          [run, new Date().toISOString()],
+        );
+        throw new EmbeddingError('rate_limited', 'the embedder is rate limited', {
+          retryAfterMs: 10 * 60_000,
+        });
+      },
+    });
+    run = await startRun(s.dataset.id, copyRun(s));
+    const before = s.sent.length;
+    await handler(
+      s.work.platform,
+      knowledgeIngestQueue.name,
+    )(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    const data = s.sent[before] as Record<string, string>;
+
+    const started = Date.now();
+    await expect(
+      handler(s.work.knowledge, knowledgeIndexQueue.name)(job(knowledgeIndexQueue.name, data)),
+    ).rejects.toMatchObject({ code: 'cancelled' });
+
+    expect(calls).toBe(1);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 60_000);
+
+  it('an index job whose embedder gives up logs model call failed once, with its code', async () => {
+    const logged: { msg: string; fields: Record<string, unknown> }[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      logged,
+      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+      embedWait: () => Promise.reject(new EmbeddingError('unavailable', 'down')),
+    });
+
+    await runOnce(s, copyRun(s)).catch(() => undefined);
+
+    expect(logged.filter((l) => l.msg === 'model call failed')).toEqual([
+      {
+        msg: 'model call failed',
+        fields: expect.objectContaining({ model: 'fake/large-1536', code: 'unavailable' }),
+      },
+    ]);
   }, 60_000);
 
   it('a copy whose embedder answers 429 for its first calls stores every document and fails none', async () => {

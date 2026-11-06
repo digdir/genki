@@ -188,4 +188,27 @@ describe('throttledEmbedder', () => {
     await expect(pending).rejects.toThrow('worker stopping');
     expect(model.calls).toHaveLength(1);
   });
+
+  it('an embedder that gives up reports it once, for a 429 past 20 minutes or a fourth unavailable', async () => {
+    const gaveUp: string[] = [];
+    const clock = fakeClock();
+    const quota = scripted(
+      'te3',
+      Array.from({ length: 100 }, () => throttled(minute)),
+    );
+    const down = scripted(
+      'te3',
+      Array.from({ length: 10 }, () => new EmbeddingError('unavailable', 'down')),
+    );
+    const onGaveUp = (error: EmbeddingError) => gaveUp.push(error.code);
+
+    await throttledEmbedder(quota.port, { pauses: new EmbeddingPauses(), ...clock, onGaveUp })
+      .embed(['a'])
+      .catch(() => undefined);
+    await throttledEmbedder(down.port, { pauses: new EmbeddingPauses(), ...clock, onGaveUp })
+      .embed(['a'])
+      .catch(() => undefined);
+
+    expect(gaveUp).toEqual(['rate_limited', 'unavailable']);
+  });
 });

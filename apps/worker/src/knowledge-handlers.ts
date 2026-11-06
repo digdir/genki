@@ -35,6 +35,8 @@ import { admittedWork, type AdmissionDeps } from './knowledge-jobs.js';
 export interface KnowledgeHandlerDeps {
   /** The document records on the knowledge server, as the writer role. */
   records: DocumentRecords;
+  /** The worker's log: an embedder that gives up is logged as `model call failed`. */
+  log?: (msg: string, fields: Record<string, unknown>) => void;
   /** The knowledge server's queue, where index jobs commit with their records. */
   knowledge: Pick<JobQueue, 'send' | 'sendAgain'>;
   /** `knowledge.heavyThreshold` and `knowledge.nightWindow`, read again for every job. */
@@ -266,12 +268,26 @@ export const knowledgeWork = (
           const embedding = await deps.records.embedding(job.data.generation);
           // Without the SDK's retries: a 429 waits here and pauses this worker's other jobs on the
           // model, instead of failing the document (#400).
+          const ctx = contextOf(run, principal, tenant, signal);
           const opened = embedding
-            ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal), {
-                retries: 0,
-              })
+            ? deps.embedder({ ...dataset, embedding }, ctx, { retries: 0 })
             : undefined;
-          const embedder = opened && throttledEmbedder(opened, { pauses, signal, cancelled });
+          const embedder =
+            opened &&
+            throttledEmbedder(opened, {
+              pauses,
+              signal,
+              cancelled,
+              // The runtime leaves these to the job, which logs only the try it gives up.
+              onGaveUp: (error) =>
+                deps.log?.('model call failed', {
+                  task: ctx.task,
+                  tenant: ctx.tenant,
+                  model: embedding?.model,
+                  error: error.name,
+                  code: error.code,
+                }),
+            });
           let chunks = 0;
           let outcome: Awaited<ReturnType<typeof indexRecord>>;
           try {

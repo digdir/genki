@@ -144,4 +144,16 @@ describe('model calls in the log', () => {
     expect(lines.filter((l) => l.msg === 'model call throttled')).toHaveLength(1);
     expect(lines.filter((l) => l.msg === 'model call failed')).toEqual([]);
   });
+
+  it('a 5xx on an embedder that retries itself is left for its caller to log', async () => {
+    const { embedder, lines } = await runtimeWith(
+      () => Response.json({ error: { message: 'down' } }, { status: 503 }),
+      { retries: 0 },
+    );
+
+    await expect(embedder.embed([question])).rejects.toMatchObject({ code: 'unavailable' });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(lines.filter((l) => l.msg === 'model call failed')).toEqual([]);
+  });
 });

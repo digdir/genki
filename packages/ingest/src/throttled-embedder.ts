@@ -24,6 +24,8 @@ export interface ThrottleOptions {
   cancelled?: () => Promise<boolean>;
   /** How often a wait reads `cancelled`. */
   checkEveryMs?: number;
+  /** Called once when the embedder stops retrying a 429 or an unavailable model and fails. */
+  onGaveUp?: (error: EmbeddingError) => void;
   /** The most one try of a job waits for the quota in all; then a 429 fails it as other errors do. */
   maxWaitMs?: number;
   now?: () => number;
@@ -70,6 +72,11 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
   const model = port.info().id;
   let waited = 0;
 
+  const gaveUp = (error: EmbeddingError) => {
+    options.onGaveUp?.(error);
+    return error;
+  };
+
   const stopIfCancelled = async () => {
     if (await options.cancelled?.())
       throw new EmbeddingError(
@@ -91,9 +98,11 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
     const paused = options.pauses.until(model) - now();
     if (paused <= 0) return;
     if (waited + paused > maxWaitMs)
-      throw new EmbeddingError(
-        'rate_limited',
-        `the embedder is rate limited; waited ${Math.round(waited / 1000)} s`,
+      throw gaveUp(
+        new EmbeddingError(
+          'rate_limited',
+          `the embedder is rate limited; waited ${Math.round(waited / 1000)} s`,
+        ),
       );
     await sleepUnlessCancelled(paused);
     waited += paused;
@@ -114,6 +123,7 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
             await sleep(firstUnavailableMs * 2 ** unavailable++, options.signal);
             continue;
           }
+          if (code === 'unavailable') throw gaveUp(error as EmbeddingError);
           if (code !== 'rate_limited') throw error;
           const backoff = firstBackoffMs * 2 ** throttled++;
           const asked = (error as EmbeddingError).retryAfterMs;
@@ -122,7 +132,7 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
             asked !== undefined && asked > 0
               ? asked
               : Math.min(maxBackoffMs, Math.round(backoff * (0.8 + 0.4 * random())));
-          if (waited + ms > maxWaitMs) throw error;
+          if (waited + ms > maxWaitMs) throw gaveUp(error as EmbeddingError);
           options.pauses.pause(model, now() + ms);
         }
       }

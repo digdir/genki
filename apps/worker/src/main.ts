@@ -346,6 +346,7 @@ const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
         indexConcurrency,
+        log,
         progress: knowledgeProgress,
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
