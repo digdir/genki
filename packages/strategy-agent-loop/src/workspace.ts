@@ -340,6 +340,58 @@ export class Workspace {
     return [...this.chunks.values()];
   }
 
+  chunksForSynthesis(): Chunk[] {
+    const read = this.readChunkIds();
+    const explicit = new Set(
+      this.reads.filter((r) => !r.autoRead).flatMap((r) => r.returnedChunkIds),
+    );
+    const evidence = new Set([
+      ...[...this.claimCoverage.values()].flatMap((c) => c.chunkIds),
+      ...this.contradictions.flatMap((c) => c.chunkIds),
+    ]);
+    const summaries = new Map<string, SearchSummary>();
+    for (const search of this.searches) {
+      for (const summary of search.summaries) {
+        const id = summary['chunk-id'];
+        summaries.set(id, {
+          ...summary,
+          // A degraded search or an unranked tail must not erase a known score.
+          'rerank-score': summary['rerank-score'] ?? summaries.get(id)?.['rerank-score'] ?? null,
+        });
+      }
+    }
+    const priority = (c: Chunk) => {
+      const summary = summaries.get(c.chunkId);
+      return [
+        Number(evidence.has(c.chunkId)),
+        Number(explicit.has(c.chunkId)),
+        summary?.['rerank-score'] ?? c.rerankScore ?? 0,
+        summary?.['retrieval-prior'] ?? c.score ?? 0,
+        summary?.['hit-count'] ?? c.hitCount ?? 0,
+        -(summary?.['original-rank'] ?? c.rank ?? Number.MAX_SAFE_INTEGER),
+      ];
+    };
+    const ranked = this.workspaceChunks()
+      .filter((c) => read.has(c.chunkId))
+      .map((chunk, index) => ({ chunk, index, priority: priority(chunk) }))
+      .sort((a, b) => {
+        for (let i = 0; i < a.priority.length; i++) {
+          const difference = (b.priority[i] as number) - (a.priority[i] as number);
+          if (difference !== 0) return difference;
+        }
+        return a.index - b.index;
+      });
+    // Refunds can leave more readable content than the read budget. Bound synthesis
+    // by actual text size, without cutting evidence mid-chunk or imposing a count cap.
+    let remaining = this.limits.readChars;
+    return ranked.flatMap(({ chunk }) => {
+      const length = Math.max(1, chunk.content.length);
+      if (length > remaining) return [];
+      remaining -= length;
+      return [chunk];
+    });
+  }
+
   chunksForOutput(): Chunk[] {
     const key = (c: Chunk) => [-(c.score ?? 0), -(c.hitCount ?? 0), -(c.rank ?? 0)];
     const read = this.readChunkIds();
