@@ -168,6 +168,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
           {!allChosen && total > 0 && (
             <Button
               variant="tertiary"
+              // Pinned to neutral, as kunnskapsassistenten draws it: quiet beside the field.
               data-color="neutral"
               data-size="sm"
               aria-label={t('filter.selectAllIn', { field: name })}
@@ -184,6 +185,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
           {chosen > 0 && (
             <Button
               variant="tertiary"
+              // Pinned to neutral, as kunnskapsassistenten draws it: quiet beside the field.
               data-color="neutral"
               data-size="sm"
               aria-label={t('filter.clearIn', { field: name })}
@@ -212,7 +214,7 @@ export const YearRangeField = ({ ref, field, selected, onChange, max }: FieldPro
           placeholder={t('filter.yearPlaceholder')}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
-        <Suggestion.Toggle />
+        <Suggestion.Toggle aria-label={t('filter.listToggle')} />
         <Suggestion.Clear />
         <Suggestion.List ref={listRef} data-overscroll="contain">
           {/* Over the years, for the eye only: not an option to walk to or choose, and the

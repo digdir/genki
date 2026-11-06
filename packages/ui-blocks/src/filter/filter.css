@@ -40,10 +40,12 @@
   }
 
   /* The heading and the controls that decide what every field counts, such as the corpus. */
+  /* Its own font too, since a host may pin it outside the block (`pinIn`). */
   .uib-filter-head {
     display: flex;
     flex-direction: column;
     gap: var(--genai-filter-head-gap, var(--ds-size-3));
+    font-family: var(--genai-filter-font-family, var(--ds-font-family)), sans-serif;
     inline-size: 100%;
   }
   .uib-filter-head[hidden] {

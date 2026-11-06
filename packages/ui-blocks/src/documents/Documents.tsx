@@ -153,6 +153,7 @@ export const Documents = ({
             <Button
               variant="tertiary"
               data-size="sm"
+              // Pinned to neutral, as kunnskapsassistenten draws it: more of the list.
               data-color="neutral"
               onClick={() => setExpanded(true)}
             >
@@ -187,7 +188,8 @@ export interface OwnDocument {
 export interface OwnDocumentsProps {
   documents: readonly OwnDocument[];
   /** Uploads one file; the block waits for each before the next, as every upload writes to the
-   * same list. Without it the zone is drawn switched off, «Kommer snart». */
+   * same list. A rejection does not stop the next file: the host shows the failure in the file's
+   * row. Without it the zone is drawn switched off, «Kommer snart». */
   onUpload?: ((file: File) => unknown) | undefined;
   onRemove?: ((id: string) => void) | undefined;
   /** The file input's `accept`. */
@@ -275,11 +277,19 @@ export const OwnDocuments = ({
 
   const choose = async (files: FileList | null) => {
     if (!files || !onUpload) return;
-    // One at a time: every upload writes to the same list, and two in flight would race.
-    for (const file of Array.from(files)) await onUpload(file);
-    // The same file can be picked again after it was removed, and an input that still holds it
-    // fires no change event the second time.
+    const picked = Array.from(files);
+    // The same file can be picked again, after a failure or a removal, and an input that still
+    // holds it fires no change event the second time. Emptied first, so a failure cannot skip it.
     if (inputRef.current) inputRef.current.value = '';
+    // One at a time: every upload writes to the same list, and two in flight would race. A
+    // rejected upload is that file's failure, which its row shows; the next file is still tried.
+    for (const file of picked) {
+      try {
+        await onUpload(file);
+      } catch {
+        // The host's list says the file failed, in its row.
+      }
+    }
   };
 
   // Switched off, the zone takes no pointer, so a file dropped on it lands on the section, and
@@ -382,6 +392,7 @@ export const OwnDocuments = ({
                     else removeRefs.current.delete(item.id);
                   }}
                   variant="tertiary"
+                  // Pinned to neutral, as kunnskapsassistenten draws it: beside a file.
                   data-color="neutral"
                   data-size="sm"
                   aria-label={t('documents.remove', { name: item.name })}

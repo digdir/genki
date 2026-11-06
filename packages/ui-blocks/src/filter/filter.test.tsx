@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CorpusChoice, type CorpusOption } from '../corpus/Corpus.js';
-import { en, nb } from '../i18n.js';
+import { en, nb, translator } from '../i18n.js';
 import { Filter, narrowing, type FilterProps } from './Filter.js';
 import type { FilterField, FilterSelection } from './types.js';
 
@@ -150,6 +150,26 @@ describe('the filter', () => {
     );
     expect(screen.getByRole('heading', { name: 'Filter' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Select all dokumenttyper' })).toBeTruthy();
+  });
+
+  it('names every field’s list button in the reader’s language', () => {
+    const { unmount } = render(<Filter fields={fields} selection={{}} onChange={() => {}} />);
+    const nbNames = screen.getAllByRole('button', { name: 'Valg' }).length;
+    expect(nbNames).toBeGreaterThan(0);
+    unmount();
+    render(
+      <InLocale locale="en">
+        <Filter fields={fields} selection={{}} onChange={() => {}} />
+      </InLocale>,
+    );
+    expect(screen.getAllByRole('button', { name: 'Options' })).toHaveLength(nbNames);
+    expect(screen.queryByRole('button', { name: 'Valg' })).toBeNull();
+  });
+
+  it('counts one year in the singular in English', () => {
+    const t = translator('en');
+    expect(t('filter.stateYears', { count: 1 })).toBe('1 year selected');
+    expect(t('filter.stateYears', { count: 3 })).toBe('3 years selected');
   });
 
   it('has an English text for every Norwegian one', () => {
@@ -325,6 +345,24 @@ describe('a thread on screen', () => {
     expect(region()).toBe('');
   });
 
+  it('starts over only on a plain click on «Ny tråd», and leaves a click for a new tab to the browser', () => {
+    const onNewThread = vi.fn();
+    draw({
+      fields,
+      locked: { type: ['Årsrapport'] },
+      thread: 't1',
+      onNewThread,
+      newThreadHref: '/',
+    });
+    const link = screen.getByRole('link', { name: 'Ny tråd' });
+    for (const modifier of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }])
+      expect(fireEvent.click(link, modifier)).toBe(true);
+    expect(fireEvent.click(link, { button: 1 })).toBe(true);
+    expect(onNewThread).not.toHaveBeenCalled();
+    expect(fireEvent.click(link)).toBe(false);
+    expect(onNewThread).toHaveBeenCalledOnce();
+  });
+
   it('takes the note away when the filter is changed back', () => {
     draw({ fields, thread: 't1' });
     fireEvent.click(screen.getByRole('button', { name: 'Velg alle dokumenttyper' }));
@@ -452,6 +490,37 @@ describe('the live region', () => {
     expect(region()[0]?.textContent).toBe(
       'Dokumentsamling: Wikipedia (NorQuAD). Filteret er nullstilt fordi dokumentsamlingen ble byttet.',
     );
+  });
+
+  it('draws its heading and head in a pinned element when given one, still speaking through its region', () => {
+    const pinned = document.createElement('div');
+    document.body.append(pinned);
+    const corpora: CorpusOption[] = [
+      { key: 'kudos', label: 'Kudos' },
+      { key: 'norquad', label: 'Wikipedia (NorQuAD)' },
+    ];
+    const { container } = render(
+      <Filter
+        fields={fields}
+        selection={{}}
+        onChange={() => {}}
+        pinIn={pinned}
+        head={<CorpusChoice options={corpora} value="kudos" onChange={() => {}} />}
+      />,
+    );
+    expect(within(pinned).getByRole('heading', { name: 'Filtrering' })).toBeTruthy();
+    const choice = within(pinned).getByRole('combobox', { name: 'Dokumentsamling' });
+    expect(container.contains(choice)).toBe(false);
+    fireEvent.change(choice, { target: { value: 'norquad' } });
+    expect(container.querySelector('output')?.textContent).toBe(
+      'Dokumentsamling: Wikipedia (NorQuAD)',
+    );
+    pinned.remove();
+  });
+
+  it('draws no head while the pinned element it is given is not there yet', () => {
+    render(<Filter fields={fields} selection={{}} onChange={() => {}} pinIn={null} />);
+    expect(screen.queryByRole('heading', { name: 'Filtrering' })).toBeNull();
   });
 });
 

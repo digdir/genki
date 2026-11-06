@@ -31,7 +31,9 @@ export const nbFilter = defineNamespace({
   stateNone: 'Ingen avgrensning',
   stateAll: 'Alle {total} valgt, altså ingen avgrensning',
   stateSome: '{count} av {total} valgt',
-  stateYears: '{count} år valgt',
+  stateYears: { one: '{count} år valgt', other: '{count} år valgt' },
+  // The name of the button that opens a field's list. Designsystemet's own is «Valg», in bokmål only.
+  listToggle: 'Valg',
   overLimit: 'Høyst {max} kan brukes i ett felt, og {count} er valgt. Fjern noen, eller velg alle.',
   searchIn: 'Søk i {field}',
   noMatches: 'Ingen treff',
@@ -89,7 +91,8 @@ export const enFilter = {
   stateNone: 'No limit',
   stateAll: 'All {total} selected, so no limit',
   stateSome: '{count} of {total} selected',
-  stateYears: '{count} years selected',
+  stateYears: { one: '{count} year selected', other: '{count} years selected' },
+  listToggle: 'Options',
   overLimit:
     'At most {max} can be used in one field, and {count} are selected. Remove some, or select all.',
   searchIn: 'Search {field}',

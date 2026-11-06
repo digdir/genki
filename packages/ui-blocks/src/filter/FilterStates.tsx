@@ -112,6 +112,7 @@ export const ActiveFilter = ({
         </Heading>
         <Button
           variant="tertiary"
+          // Pinned to neutral, as kunnskapsassistenten draws it: quiet beside the heading.
           data-color="neutral"
           data-size="sm"
           aria-label={t('filter.clearLimit')}
@@ -149,7 +150,7 @@ export const ActiveFilter = ({
 };
 
 export interface NewThreadLinkProps {
-  /** Where the link leads. Without it the link only calls `onNewThread`. */
+  /** Where the link leads in a new tab. A plain click calls `onNewThread` instead. */
   href?: string | undefined;
   onNewThread: (event: MouseEvent<HTMLAnchorElement>) => void;
 }
@@ -162,7 +163,11 @@ export const NewThreadLink = ({ href, onNewThread }: NewThreadLinkProps) => {
       data-size="sm"
       href={href ?? '#'}
       onClick={(event) => {
-        if (href === undefined) event.preventDefault();
+        // A click for a new tab or window is the browser's, as in the thread list. A plain click is
+        // the host's, which starts over in this tab.
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+          return;
+        event.preventDefault();
         onNewThread(event);
       }}
     >
@@ -192,7 +197,11 @@ export const LockedFilter = ({ values, level, newThread }: LockedFilterProps) =>
       <ul className="uib-filter-locked-values">
         {values.map((item) => (
           <li key={keyOf(item)}>
-            <Tag data-color="neutral" data-size="sm">
+            <Tag
+              // Pinned to neutral, as kunnskapsassistenten draws it: what the thread is held to.
+              data-color="neutral"
+              data-size="sm"
+            >
               {item.label ?? item.value}
             </Tag>
           </li>
@@ -218,7 +227,13 @@ export const FieldPlaceholder = () => {
           <Label>{t('filter.title')}</Label>
         </Skeleton>
         <Skeleton>
-          <Button variant="tertiary" data-color="neutral" data-size="sm" tabIndex={-1}>
+          <Button
+            variant="tertiary"
+            // Pinned to neutral, as kunnskapsassistenten draws it: a stand-in for «Velg alle».
+            data-color="neutral"
+            data-size="sm"
+            tabIndex={-1}
+          >
             {t('filter.selectAll')}
           </Button>
         </Skeleton>

@@ -127,6 +127,8 @@
                 <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
                 lock, and the note when the filter changes in a thread under way. The platform keeps
                 no filter per thread yet, so <code>locked</code> is for a host that keeps one.
+                <code>onNewThread</code> takes a plain click on «Ny tråd»; a click for a new tab
+                follows <code>newThreadHref</code>, the browser's.
               </li>
               <li>
                 <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
@@ -135,6 +137,13 @@
               <li>
                 <code>head</code> and <code>children</code>: the corpus choice over the fields, and
                 the documents under a line after them.
+              </li>
+              <li>
+                <code>pinIn</code>: an element to draw the heading and <code>head</code> in, such as
+                the shell's pinned region from its panel's <code>pinnedRef</code>. They stay in
+                sight while the fields scroll, as kunnskapsassistenten pins them, and keep the
+                filter's live region. <code>null</code> while the element is not there draws no
+                head.
               </li>
               <li>
                 <code>documents</code>: the documents behind the answer, over a line before the
@@ -248,7 +257,8 @@
                 <strong><code>OwnDocuments</code></strong
                 >, «Dine dokumenter»: a drop zone and the reader's files with progress, size and why
                 one failed. Without <code>onUpload</code> the zone is switched off and says «Kommer
-                snart».
+                snart». Files go up one at a time; a rejected upload does not stop the next, and the
+                same file can be picked again.
               </li>
             </ul>
           </div>

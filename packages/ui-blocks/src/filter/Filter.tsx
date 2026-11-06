@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../i18n.js';
 import { AnnounceContext, freshText } from './announce.js';
 import { FacetField, type FieldHandle } from './FacetField.js';
@@ -44,9 +45,12 @@ export interface FilterProps {
   /** The id of the thread on screen, undefined for a new one. A change in a thread that is not
    * locked shows a note, since the thread keeps no filter of its own. */
   thread?: string | undefined;
-  /** «Ny tråd», in the lock and in the note. Without it neither link is drawn. */
+  /**
+   * A plain click on «Ny tråd», in the lock and in the note; a click for a new tab is the
+   * browser's. Without it neither link is drawn.
+   */
   onNewThread?: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
-  /** Where «Ny tråd» leads. Without it the link only calls `onNewThread`. */
+  /** Where «Ny tråd» leads in a new tab. A plain click calls `onNewThread` instead. */
   newThreadHref?: string | undefined;
   /** A field of kind `year` takes periods, and years in a row show as one chip. */
   yearPeriods?: boolean | undefined;
@@ -59,6 +63,13 @@ export interface FilterProps {
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Over the fields, under the heading, such as `CorpusChoice`. It shares the live region. */
   head?: ReactNode;
+  /**
+   * Where the heading and `head` are drawn instead, such as the shell's pinned region (its panel's
+   * `pinnedRef`), so they stay in sight while the fields scroll, as kunnskapsassistenten pins
+   * them. They keep the filter's live region. `null` while that element is not there yet draws
+   * no head; undefined draws it over the fields.
+   */
+  pinIn?: Element | null | undefined;
   /**
    * Before the fields, over a line, such as `Documents`: the documents behind the answer, in sight
    * without scrolling past the fields. kunnskapsassistenten keeps its documents list apart from
@@ -141,6 +152,7 @@ export const Filter = ({
   title,
   headingLevel = 2,
   head,
+  pinIn,
   documents,
   children,
   color,
@@ -216,6 +228,18 @@ export const Filter = ({
       }
     : undefined;
 
+  const headNode =
+    title === false && !head ? null : (
+      <div className="uib-filter-head" data-color={color}>
+        {title === false ? null : (
+          <Heading level={headingLevel} data-size="sm">
+            {title ?? t('filter.title')}
+          </Heading>
+        )}
+        {head}
+      </div>
+    );
+
   return (
     <AnnounceContext value={announce}>
       <div
@@ -223,16 +247,11 @@ export const Filter = ({
         data-color={color}
         aria-busy={loading || undefined}
       >
-        {title === false && !head ? null : (
-          <div className="uib-filter-head">
-            {title === false ? null : (
-              <Heading level={headingLevel} data-size="sm">
-                {title ?? t('filter.title')}
-              </Heading>
-            )}
-            {head}
-          </div>
-        )}
+        {headNode === null
+          ? null
+          : pinIn === undefined
+            ? headNode
+            : pinIn && createPortal(headNode, pinIn)}
 
         {documents ? (
           <>

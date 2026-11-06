@@ -22,3 +22,31 @@ describe('the Filter styles', () => {
     expect(rule('.uib-filter-divider')).toContain(`margin-block: ${gap};`);
   });
 });
+
+// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
+// each is named here and justified by the comment on the line above it.
+const markupPins: Record<string, string[]> = {
+  '../documents/Documents.tsx': ['Loads more', 'documents.remove'],
+  'FacetField.tsx': ['filter.selectAllIn', 'filter.clearIn'],
+  'YearRangeField.tsx': ['filter.selectAllIn', 'filter.clearIn'],
+  'FilterStates.tsx': ['filter.clearLimit', 'uib-filter-locked-values', "'filter.selectAll'"],
+};
+
+describe('the Filter and Documents markup', () => {
+  it.each(Object.entries(markupPins))(
+    'pins to neutral in %s only what kunnskapsassistenten draws neutral, each with its reason',
+    (file, named) => {
+      const lines = readFileSync(`${import.meta.dirname}/${file}`, 'utf8').split('\n');
+      const at = lines.flatMap((line, index) =>
+        line.includes('data-color="neutral"') ? [index] : [],
+      );
+      expect(at).toHaveLength(named.length);
+      at.forEach((index, n) => {
+        expect(lines[index - 1]?.trim()).toMatch(
+          /^\/\/ Pinned to neutral, as kunnskapsassistenten/,
+        );
+        expect(lines.slice(index - 7, index + 6).join('\n')).toContain(named[n]);
+      });
+    },
+  );
+});

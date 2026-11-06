@@ -227,6 +227,18 @@ describe('the corpus choice', () => {
     ]);
   });
 
+  it('holds one input in its field, so Designsystemet’s field has nothing to warn about', () => {
+    const { container } = render(
+      <CorpusChoice options={options} value="kudos" onChange={() => {}} />,
+    );
+    const field = container.querySelector('.uib-corpus-choice') as HTMLElement;
+    const inputs = [...field.querySelectorAll('*')].filter(
+      (element) => 'validity' in element && !(element instanceof HTMLButtonElement),
+    );
+    expect(inputs.map((element) => element.tagName)).toEqual(['SELECT']);
+    expect(container.querySelector('output')).not.toBeNull();
+  });
+
   it('asks the host to switch, and says which collection it became', () => {
     const onChange = vi.fn();
     const { container } = render(

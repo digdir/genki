@@ -177,17 +177,21 @@ export const CorpusChoice = ({
     onChange(key);
   };
 
+  // The live region stands beside the field, not in it: `<output>` counts as an input, and
+  // Designsystemet's field warns that it holds two.
   return (
-    <Field className={['uib-corpus-choice', className].filter(Boolean).join(' ')}>
-      <Label>{t('corpus.label')}</Label>
-      <Select value={value ?? ''} onChange={(event) => choose(event.currentTarget.value)}>
-        {options.map((option) => (
-          <Select.Option key={option.key} value={option.key}>
-            {option.label}
-          </Select.Option>
-        ))}
-      </Select>
+    <>
+      <Field className={['uib-corpus-choice', className].filter(Boolean).join(' ')}>
+        <Label>{t('corpus.label')}</Label>
+        <Select value={value ?? ''} onChange={(event) => choose(event.currentTarget.value)}>
+          {options.map((option) => (
+            <Select.Option key={option.key} value={option.key}>
+              {option.label}
+            </Select.Option>
+          ))}
+        </Select>
+      </Field>
       {filterAnnouncer ? null : <output className="uib-visually-hidden">{own}</output>}
-    </Field>
+    </>
   );
 };
