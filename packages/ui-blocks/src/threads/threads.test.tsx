@@ -75,7 +75,7 @@ describe('the thread list', () => {
     const row = screen.getByRole('link', { name: 'Måloppnåelse i Nkom' });
     const time = row.querySelector('time') as HTMLTimeElement;
     expect(time.textContent).toBe('i går');
-    expect(time.getAttribute('title')).toBe('14. september 2026 kl. 09.00');
+    expect(time.getAttribute('title')).toBe('14. september 2026 kl. 09:00');
   });
 
   it('links each row to the address the host gives, as given', () => {

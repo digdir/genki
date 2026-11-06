@@ -35,6 +35,8 @@ export const nbThreads = defineNamespace({
   close: 'Lukk',
   deleted: '«{title}» er slettet.',
   deleteFailed: 'Klarte ikke å slette «{title}». Tråden er fortsatt her.',
+  signedInAs: 'Innlogget som',
+  signOut: 'Logg ut',
 });
 
 export const enThreads = {
@@ -72,4 +74,6 @@ export const enThreads = {
   close: 'Close',
   deleted: '“{title}” is deleted.',
   deleteFailed: 'Could not delete “{title}”. The thread is still here.',
+  signedInAs: 'Signed in as',
+  signOut: 'Sign out',
 } satisfies Translation<typeof nbThreads>;

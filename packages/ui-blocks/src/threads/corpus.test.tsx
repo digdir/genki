@@ -56,7 +56,7 @@ describe(`the ${captured.total} conversations listed from genki-test on ${captur
     expect(rows.map((row) => row.querySelector('.uib-threads-thread-title')?.textContent)).toEqual(
       newestFirst,
     );
-    for (const row of rows) expect(within(row).getByText(/^\d{2}\.\d{2}$/).tagName).toBe('TIME');
+    for (const row of rows) expect(within(row).getByText(/^\d{2}:\d{2}$/).tagName).toBe('TIME');
   });
 
   it('finds the same threads a plain search of the titles finds, for every word in them', () => {

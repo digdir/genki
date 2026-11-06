@@ -111,7 +111,12 @@ const en = createFormat('en');
 
 describe('the time on a row', () => {
   it('shows the clock for today, since the heading already says «I dag»', () => {
-    expect(rowTime(at(2026, 8, 15, 14, 32), nb, 'i går', tuesday)?.text).toBe('14.32');
+    expect(rowTime(at(2026, 8, 15, 14, 32), nb, 'i går', tuesday)?.text).toBe('14:32');
+  });
+
+  it('writes the clock with a colon, as kunnskapsassistenten does, in every language', () => {
+    expect(rowTime(at(2026, 8, 15, 9, 5), nb, 'i går', tuesday)?.text).toBe('09:05');
+    expect(rowTime(at(2026, 8, 15, 9, 5), en, 'yesterday', tuesday)?.text).toBe('09:05');
   });
 
   it('says «i går» rather than naming the weekday', () => {
@@ -135,7 +140,8 @@ describe('the time on a row', () => {
     const iso = at(2025, 4, 12, 9, 5);
     const time = rowTime(iso, nb, 'i går', tuesday);
     expect(time?.dateTime).toBe(iso);
-    expect(time?.title).toBe('12. mai 2025 kl. 09.05');
+    expect(time?.title).toBe('12. mai 2025 kl. 09:05');
+    expect(rowTime(iso, en, 'yesterday', tuesday)?.title).toBe('12 May 2025, 09:05');
   });
 
   it('speaks English when the person does', () => {
@@ -161,7 +167,7 @@ describe('the time on a row', () => {
       ...group.threads.map((t) => rowTime(t.updatedAt, nb, 'i går', tuesday)?.text),
     ]);
     expect(labelled).toEqual([
-      ['today', '14.32'],
+      ['today', '14:32'],
       ['last7', 'i går', 'fredag'],
       ['last30', '28. aug.'],
       ['month', '12. juli'],
