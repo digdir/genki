@@ -41,7 +41,6 @@ const neutralPins = [
   '--genai-shell-drawer-background',
   '--genai-shell-primary-background',
   '--genai-shell-rail-background',
-  '--genai-shell-signed-in-border-color',
 ];
 
 describe('the Shell styles', () => {

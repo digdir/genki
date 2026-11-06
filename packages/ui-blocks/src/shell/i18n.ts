@@ -14,8 +14,6 @@ export const nbShell = defineNamespace({
   hidden: 'Skjult',
   // Without a unit, `aria-valuenow` is read as a bare number.
   width: '{width} piksler',
-  signedInAs: 'Innlogget som',
-  signOut: 'Logg ut',
 });
 
 export const enShell = {
@@ -27,6 +25,4 @@ export const enShell = {
   resizePanel: 'Resize {panel}',
   hidden: 'Hidden',
   width: '{width} pixels',
-  signedInAs: 'Signed in as',
-  signOut: 'Sign out',
 } satisfies Translation<typeof nbShell>;

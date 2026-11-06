@@ -56,7 +56,7 @@
               </dd>
               <dt>Code</dt>
               <dd>
-                <code>Shell</code>, <code>ShellLinks</code> and <code>SignedIn</code> in
+                <code>Shell</code> in
                 <code>packages/ui-blocks</code>
               </dd>
               <dt>Canvas</dt>
@@ -143,10 +143,6 @@
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the shell, set only
                 when given.
-              </li>
-              <li>
-                <code>ShellLinks</code>: a panel's foot of links, named, with the open page marked.
-                <code>SignedIn</code>: who is signed in, and «Logg ut».
               </li>
             </ul>
             <h2>Related</h2>
@@ -235,7 +231,7 @@
               The block sits in <code>@layer genai.components</code>, after Designsystemet's layers,
               follows <code>data-color</code>, <code>data-color-scheme</code> and
               <code>data-size</code>, and reads every token through its own variable, with the token
-              as the fallback. Seven are pinned to the neutral family on purpose, as
+              as the fallback. Six are pinned to the neutral family on purpose, as
               kunnskapsassistenten's shell: the page, the panels, the rails, the bar, the drawer and
               the borders stay grey whatever <code>data-color</code> the app sets, because accent
               belongs to the content and to what can be pressed. The separator's line takes the
@@ -281,11 +277,6 @@
                     <td><code>--genai-shell-border-color</code></td>
                     <td><code>--ds-color-neutral-border-default</code></td>
                     <td>the panels' edges, pinned heads, the foot and the bar (pinned)</td>
-                  </tr>
-                  <tr>
-                    <td><code>--genai-shell-signed-in-border-color</code></td>
-                    <td><code>--ds-color-neutral-border-subtle</code></td>
-                    <td>the line above who is signed in (pinned)</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-border-width</code></td>
@@ -412,21 +403,6 @@
                     <td><code>--ds-size-3</code></td>
                     <td>around a drawer's close button</td>
                   </tr>
-                  <tr>
-                    <td><code>--genai-shell-links-gap</code></td>
-                    <td><code>--ds-size-2</code></td>
-                    <td>between the foot's links, their icons, and the signed-in line</td>
-                  </tr>
-                  <tr>
-                    <td><code>--genai-shell-links-current-font-weight</code></td>
-                    <td><code>--ds-font-weight-semibold</code></td>
-                    <td>the link to the open page</td>
-                  </tr>
-                  <tr>
-                    <td><code>--genai-shell-user-gap</code></td>
-                    <td><code>--ds-size-1</code></td>
-                    <td>between the person icon and the name</td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -437,11 +413,15 @@
               <li>
                 Made from kunnskapsassistenten's <code>layout/</code>: <code>Shell</code>,
                 <code>PanelSeparator</code>, <code>PanelHead</code>, <code>ViewHead</code>,
-                <code>SidebarFooter</code>, <code>LayoutProvider</code>'s rules,
-                <code>viewModel</code>'s and <code>resize</code>'s sums, and <code>SignedIn</code>,
-                with the same words, sizes, breakpoints and spacing. Their tests are ported,
-                including the sweep of every width from 280 to 2000 px that checks nothing scrolls
-                sideways.
+                <code>LayoutProvider</code>'s rules, and <code>viewModel</code>'s and
+                <code>resize</code>'s sums, with the same words, sizes, breakpoints and spacing.
+                Their tests are ported, including the sweep of every width from 280 to 2000 px that
+                checks nothing scrolls sideways.
+              </li>
+              <li>
+                The foot is a slot. What kunnskapsassistenten puts in it has blocks of its own: the
+                links are <a href="settings.html">Settings</a>' <code>SettingsLinks</code>, and who
+                is signed in is <a href="threads.html">Threads</a>' <code>SignedIn</code>.
               </li>
               <li>
                 What the app keeps: kunnskapsassistenten stores the layout in the browser under

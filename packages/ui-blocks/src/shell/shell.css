@@ -7,7 +7,7 @@
 
    The chrome is pinned to the neutral family on purpose, as kunnskapsassistenten's shell: the
    page, the panels, the rails, the bar and the borders stay grey whatever data-color the host
-   sets, because accent belongs to the content and to what can be pressed. Seven pins, each named
+   sets, because accent belongs to the content and to what can be pressed. Six pins, each named
    in shell-css.test.ts. The separator's line is the one exception: it is interactive, so it
    takes the accent role without a family. */
 @layer ds.theme, ds.base, ds.components, genai.components;
@@ -394,51 +394,5 @@
     block-size: auto;
     min-block-size: 0;
     padding-block-start: 0;
-  }
-
-  /* ── The foot's links, and who is signed in ── */
-
-  /* No markers: a bullet beside an icon is two markers for one item. The list keeps its role. */
-  .uib-shell-links {
-    display: flex;
-    flex-direction: column;
-    gap: var(--genai-shell-links-gap, var(--ds-size-2));
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .uib-shell-links a {
-    display: flex;
-    gap: var(--genai-shell-links-gap, var(--ds-size-2));
-    align-items: center;
-  }
-
-  /* Weight, not colour: a link in another colour reads as another kind of thing. */
-  .uib-shell-links a[aria-current='page'] {
-    font-weight: var(--genai-shell-links-current-font-weight, var(--ds-font-weight-semibold));
-  }
-
-  /* The border above says the line is not one more row of the list. */
-  .uib-shell-signed-in {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--genai-shell-links-gap, var(--ds-size-2));
-    align-items: center;
-    justify-content: space-between;
-    inline-size: 100%;
-    padding-block-start: var(--genai-shell-foot-padding-block-start, var(--ds-size-4));
-    border-block-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
-      var(--genai-shell-signed-in-border-color, var(--ds-color-neutral-border-subtle));
-  }
-
-  /* The name may be an address with no spaces in it; it wraps anyway. */
-  .uib-shell-user {
-    display: flex;
-    gap: var(--genai-shell-user-gap, var(--ds-size-1));
-    align-items: center;
-    min-inline-size: 0;
-    margin: 0;
-    overflow-wrap: anywhere;
   }
 }
