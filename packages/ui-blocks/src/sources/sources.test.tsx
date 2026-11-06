@@ -280,6 +280,132 @@ describe('the cards and the search', () => {
   });
 });
 
+describe('one answer at a time', () => {
+  const stepper = (index: number, onAnswerChange = vi.fn()) =>
+    draw({ answerIndex: index, answerCount: 3, onAnswerChange });
+
+  it('says which answer’s sources these are, of how many, and steps with «Forrige» and «Neste»', () => {
+    const onAnswerChange = vi.fn();
+    stepper(1, onAnswerChange);
+    const count = screen.getByText('Kilder til svar 2 av 3', { selector: 'p' });
+    expect(count.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('Kilder til svar 2 av 3', { selector: 'output' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Forrige svar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Neste svar' }));
+    expect(onAnswerChange.mock.calls).toEqual([[0], [2]]);
+  });
+
+  it('keeps the step at an end focusable but inert, so focus stays where the reader pressed', () => {
+    const onAnswerChange = vi.fn();
+    stepper(0, onAnswerChange);
+    const previous = screen.getByRole('button', { name: 'Forrige svar' });
+    expect(previous.getAttribute('aria-disabled')).toBe('true');
+    expect(previous.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(previous);
+    expect(onAnswerChange).not.toHaveBeenCalled();
+  });
+
+  it('says the new answer in a live region that is in the page from the start', () => {
+    const { rerender } = draw({ answerIndex: 0, answerCount: 1, onAnswerChange: () => {} });
+    const region = document.querySelector('output') as HTMLElement;
+    expect(region.textContent).toBe('');
+    rerender(
+      <Sources
+        sources={[nkom]}
+        corpus="Kudos"
+        answerIndex={1}
+        answerCount={2}
+        onAnswerChange={() => {}}
+      />,
+    );
+    expect(document.querySelector('output')).toBe(region);
+    expect(region.textContent).toBe('Kilder til svar 2 av 2');
+  });
+
+  it('draws no steps for a thread with one answer, or when the app cannot change answer', () => {
+    draw({ answerIndex: 0, answerCount: 1, onAnswerChange: () => {} });
+    expect(screen.queryByRole('button', { name: 'Neste svar' })).toBeNull();
+    cleanup();
+    draw({ answerIndex: 0, answerCount: 3 });
+    expect(screen.queryByRole('button', { name: 'Neste svar' })).toBeNull();
+  });
+
+  it('starts a fresh search on another answer', () => {
+    const { rerender } = draw({ answerIndex: 0, answerCount: 2, onAnswerChange: () => {} });
+    const field = screen.getByRole('searchbox') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'internkontroll' } });
+    expect(field.value).toBe('internkontroll');
+    rerender(
+      <Sources
+        sources={[nkom, memo]}
+        corpus="Kudos"
+        answerIndex={1}
+        answerCount={2}
+        onAnswerChange={() => {}}
+      />,
+    );
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+  });
+
+  it('keeps the steps when the answer on screen has no sources, since stepping back is the point', () => {
+    draw({ sources: [], answerIndex: 1, answerCount: 2, onAnswerChange: () => {} });
+    expect(screen.getByRole('button', { name: 'Forrige svar' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Ingen kilder til dette svaret' })).toBeTruthy();
+  });
+});
+
+describe('a panel with no sources says why', () => {
+  const titleFor = (props: Partial<SourcesProps>) => {
+    cleanup();
+    draw({ sources: [], ...props });
+    return screen.getByRole('heading', { level: 3 }).textContent;
+  };
+
+  it('per what became of the answer', () => {
+    expect(titleFor({ answerStatus: 'unasked' })).toBe('Ingen kilder ennå');
+    expect(titleFor({ answerStatus: 'complete' })).toBe('Ingen kilder til dette svaret');
+    expect(titleFor({})).toBe('Ingen kilder til dette svaret');
+    expect(titleFor({ answerStatus: 'aborted' })).toBe('Svaret ble avbrutt før kildene kom');
+    expect(titleFor({ answerStatus: 'failed' })).toBe('Svaret kom ikke fram');
+    expect(titleFor({ answerStatus: 'clarification', assistantName: 'Kunnskapsassistenten' })).toBe(
+      'Kunnskapsassistenten spurte om en avklaring',
+    );
+  });
+
+  it('names the corpus before the first question, and with no answer yet draws no search', () => {
+    draw({ sources: undefined, answerStatus: 'unasked' });
+    expect(document.body.textContent).toContain(
+      'Hvert utdrag er et sitat fra et dokument på Kudos, med samme nummer som markøren i svaret.',
+    );
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(document.querySelector('.uib-sources-disclaimer')).toBeNull();
+  });
+
+  it('tells sources lost on the way to the store from an answer that cited none', () => {
+    const lost = () => {
+      cleanup();
+      draw({ sources: [], answerStatus: 'complete', citations: cite('kudos::2021-1') });
+      return document.body.textContent;
+    };
+    expect(lost()).toContain('Kildene er ikke lagret for denne samtalen');
+    expect(lost()).toContain('Svaret viser til utdrag, men de ble ikke lagret');
+    cleanup();
+    draw({ sources: [], answerStatus: 'complete', sourcesNotStored: true });
+    expect(document.body.textContent).toContain('Kildene blir ikke lagret sammen med samtalen.');
+  });
+
+  it('shows the loading state while the answer is still on its way', () => {
+    draw({ sources: undefined, answerStatus: 'streaming' });
+    expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(screen.queryByRole('heading')).toBeNull();
+  });
+
+  it('draws nothing when the app passes neither sources nor a status', () => {
+    const { container } = draw({ sources: undefined });
+    expect(container.innerHTML).toBe('');
+  });
+});
+
 describe('the catalogue', () => {
   it('speaks English when the reader does', () => {
     render(

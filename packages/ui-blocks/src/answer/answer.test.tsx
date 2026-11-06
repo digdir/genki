@@ -9,6 +9,7 @@ import { Sources } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { Answer, type AnswerProps, type AnswerTarget } from './Answer.js';
 import { answerCitations, type AnswerMarker } from './citations.js';
+import { answerCopy } from './copy.js';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -469,6 +470,148 @@ describe('the answer’s states', () => {
     draw({ noAnswer: true, closingQuestion: true });
     expect(screen.queryByText('Er det noe mer jeg kan hjelpe deg med?')).toBeNull();
     expect(screen.queryByText('Kilder brukt i svaret')).toBeNull();
+  });
+});
+
+describe('a failed answer', () => {
+  it('says which failure it was, what happened and what to do', () => {
+    draw({ status: 'failed', text: '', failure: { kind: 'timeout' }, onRegenerate: () => {} });
+    expect(screen.getByText('Svaret tok for lang tid')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Spørsmålet ble avbrutt fordi svaret brukte for lang tid. Et mer avgrenset spørsmål, eller et smalere filter, går som regel raskere.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Prøv igjen' })).toBeTruthy();
+  });
+
+  it('puts the service’s own sentence first, without a second «Prøv igjen», and keeps the advice', () => {
+    draw({
+      status: 'failed',
+      text: '',
+      failure: { kind: 'model', message: 'Modellen er utilgjengelig. Prøv igjen.' },
+    });
+    expect(
+      screen.getByText(
+        'Modellen er utilgjengelig. Dokumentene og filteret er uberørt, så spørsmålet kan stilles som det står.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('offers to ask again only when that can help', () => {
+    const offered = (kind: NonNullable<AnswerProps['failure']>['kind']) => {
+      cleanup();
+      draw({ status: 'failed', text: '', failure: { kind }, onRegenerate: () => {} });
+      return screen.queryByRole('button', { name: 'Prøv igjen' }) !== null;
+    };
+    expect(
+      ['model', 'search', 'timeout', 'busy', 'unknown'].map((k) => offered(k as never)),
+    ).toEqual([true, true, true, true, true]);
+    expect(['access', 'tooLong', 'filter', 'threadGone'].map((k) => offered(k as never))).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('names the assistant where the case does', () => {
+    draw({
+      status: 'failed',
+      text: '',
+      failure: { kind: 'search' },
+      assistantName: 'Kunnskapsassistenten',
+    });
+    expect(
+      screen.getByText(/^Kunnskapsassistenten fikk ikke søkt i dokumentene/).textContent,
+    ).toContain('ingenting å bygge på');
+  });
+
+  it('announces a failure that ends an answer on its way, and moves lost focus to «Prøv igjen»', async () => {
+    const { rerender } = draw({ status: 'streaming', text: '', onRegenerate: () => {} });
+    const region = screen.getByRole('alert');
+    expect(region.textContent).toBe('');
+    rerender(
+      <Answer
+        text=""
+        status="failed"
+        failure={{ kind: 'busy' }}
+        sources={sources}
+        markers={markers}
+        onRegenerate={() => {}}
+      />,
+    );
+    expect(screen.getByRole('alert')).toBe(region);
+    expect(region.textContent).toContain('For mange spørsmål på kort tid');
+    await frame();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Prøv igjen' }));
+  });
+
+  it('shows a failure read back from the store without announcing it, and keeps focus', async () => {
+    draw({ status: 'failed', text: '', failure: { kind: 'busy' }, onRegenerate: () => {} });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('For mange spørsmål på kort tid')).toBeTruthy();
+    await frame();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('says only that it failed, and offers «Generer på nytt», when the app cannot tell why', () => {
+    draw({ status: 'failed', text: '', onRegenerate: () => {} });
+    expect(
+      screen.getByText('Dette spørsmålet fikk ikke noe svar. Noe gikk galt underveis.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Generer på nytt' })).toBeTruthy();
+  });
+});
+
+describe('the answer as copied', () => {
+  const year = { ...nkom, publishedAt: '2022-03-01' };
+  const paged = {
+    ...year,
+    excerpts: year.excerpts.map((e, i) => (i === 0 ? { ...e, page: 12 } : e)),
+  };
+
+  it('numbers its footnotes as drawn and lists one reference per excerpt under «Kilder»', () => {
+    const copied = answerCopy(text, { sources: [paged, tildeling, memo], markers });
+    expect(copied.sources).toBe(3);
+    expect(copied.text).toBe(
+      [
+        'Rapportering',
+        '',
+        'Nkom rapporterer kvartalsvis. [1]',
+        '',
+        'Internkontrollen følger DFØ [2], og bevilgningen var 594,2 mill. kroner [3]. Rapporteringen er fast [1].',
+        '',
+        'Kilder',
+        '[1] Tildelingsbrev Nkom 2022.',
+        '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022). https://kudos.dfo.no/dokument/2021',
+        '[3] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 12 (2022). https://kudos.dfo.no/dokument/2021',
+      ].join('\n'),
+    );
+  });
+
+  it('numbers documents in the order first cited, one line each, in document mode', () => {
+    const copied = answerCopy(text, { sources, markers, citationMode: 'document' });
+    expect(copied.sources).toBe(2);
+    expect(copied.text).toContain('Nkom rapporterer kvartalsvis. [1]');
+    expect(copied.text).toContain('Internkontrollen følger DFØ [2]');
+    expect(copied.text.split('Kilder\n')[1]).toBe(
+      '[1] Tildelingsbrev Nkom 2022.\n[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
+    );
+  });
+
+  it('is the clean text alone, without footnotes, when no source came', () => {
+    const copied = answerCopy('Svaret står her [1].\n\n- Et punkt', {});
+    expect(copied).toEqual({ text: 'Svaret står her.\n\nEt punkt', sources: 0 });
+  });
+
+  it('writes the reference list in the reader’s language', () => {
+    expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
+      'Sources\n[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022).',
+    );
+    expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
+      ', p. 12 (2022).',
+    );
   });
 });
 

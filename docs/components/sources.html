@@ -129,6 +129,18 @@
                 <code>onShowUse</code>: from an excerpt to each footnote that cites it, stepping
                 through them.
               </li>
+              <li>
+                <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:
+                one answer's sources at a time, «Kilder til svar 2 av 3» with «Forrige» and «Neste»,
+                since every answer numbers its excerpts from 1. The app holds which answer is shown
+                and passes its sources.
+              </li>
+              <li>
+                <code>answerStatus</code> and <code>sourcesNotStored</code>: an empty panel says
+                why. Nothing asked yet, stopped before the sources came, failed, waiting on a
+                question back, or sources the store did not keep. <code>streaming</code> shows the
+                loading state.
+              </li>
             </ul>
             <p>
               <code>pairCitations</code> is exported, so the answer numbers its footnotes the same
@@ -176,6 +188,21 @@
                   <td><code>--genai-sources-actions-gap</code></td>
                   <td><code>--ds-size-1</code></td>
                   <td>actions gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-count-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«Kilder til svar n av m»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>answer switcher gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-steps-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Forrige» and «Neste»</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-body-background</code></td>
@@ -226,6 +253,16 @@
                   <td><code>--genai-sources-documents-gap</code></td>
                   <td><code>--ds-size-6</code>, <code>--ds-size-3</code></td>
                   <td>documents gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-empty-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>empty state text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-empty-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>empty state gap</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-excerpt-active-background</code></td>

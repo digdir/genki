@@ -10,6 +10,12 @@
     font-family: var(--genai-answer-font-family, var(--ds-font-family)), sans-serif;
   }
 
+  /* «KI-assistenten svarte:» is the card's first child but takes no space, so what follows it is
+     the first thing seen and gets no card spacing above it, as in an answer without the line. */
+  .uib-answer-body > .ds-sr-only:first-child + * {
+    margin-block-start: 0;
+  }
+
   /* The text: Designsystemet has no prose container, so the spacing between blocks is set here.
      It is a query container too, for the footnote rule in markdown.css. */
   .uib-answer-text {
@@ -139,6 +145,23 @@
   }
   .uib-answer-stopped {
     color: var(--genai-answer-stopped-color, var(--ds-color-text-subtle));
+  }
+
+  /* Never `display: none`, which drops the region from the accessibility tree: out of flow while
+     empty, so it takes no card spacing while the answer comes. */
+  .uib-answer-failure:empty {
+    position: absolute;
+  }
+  .uib-answer-failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-answer-failure-gap, var(--ds-size-1));
+  }
+  .uib-answer-failure > * {
+    margin: 0;
+  }
+  .uib-answer-failure-title {
+    color: var(--genai-answer-failure-title-color, var(--ds-color-text-default));
   }
 
   /* «Kilder brukt i svaret»: Details in a Card, as Designsystemet shows it. The card holds the

@@ -43,7 +43,30 @@ const enProcedure = {
 
 const nbSources = defineNamespace({
   title: 'Kilder',
-  none: 'Svaret viser ikke til noen kilder.',
+  noneTitle: 'Ingen kilder til dette svaret',
+  none: 'Svaret viser ikke til noen utdrag fra dokumentene.',
+  unaskedTitle: 'Ingen kilder ennå',
+  unasked: 'Kildene vises her når du har stilt et spørsmål.',
+  unaskedQuote:
+    'Hvert utdrag er et sitat fra et dokument på {corpus}, med samme nummer som markøren i svaret.',
+  unaskedQuoteNoCorpus:
+    'Hvert utdrag er et sitat fra et dokument, med samme nummer som markøren i svaret.',
+  abortedTitle: 'Svaret ble avbrutt før kildene kom',
+  aborted:
+    'Kildene kommer sist i et svar. Still spørsmålet på nytt for å se hvilke dokumenter det bygger på.',
+  failedTitle: 'Svaret kom ikke fram',
+  failed: 'Da kom kildene heller ikke. Prøv spørsmålet på nytt.',
+  clarificationTitle: '{name} spurte om en avklaring',
+  clarificationTitleUnnamed: 'KI-assistenten spurte om en avklaring',
+  clarification: 'Kildene kommer når du har svart på spørsmålet i samtalen.',
+  notStoredTitle: 'Kildene er ikke lagret for denne samtalen',
+  notStored:
+    'Svaret viser til utdrag, men de ble ikke lagret sammen med samtalen. Still spørsmålet på nytt for å få et svar med kilder du kan åpne.',
+  notKept:
+    'Kildene blir ikke lagret sammen med samtalen. Still spørsmålet på nytt for å se hvilke dokumenter svaret bygger på.',
+  answerOf: 'Kilder til svar {n} av {total}',
+  previousAnswer: 'Forrige svar',
+  nextAnswer: 'Neste svar',
   loading: 'Henter kilder …',
   untitled: 'Kilde uten tittel',
   disclaimer:
@@ -97,7 +120,30 @@ const nbSources = defineNamespace({
 
 const enSources = {
   title: 'Sources',
-  none: 'The answer cites no sources.',
+  noneTitle: 'No sources for this answer',
+  none: 'The answer cites no excerpts from the documents.',
+  unaskedTitle: 'No sources yet',
+  unasked: 'The sources show here once you have asked a question.',
+  unaskedQuote:
+    'Each excerpt is a quote from a document in {corpus}, with the same number as the marker in the answer.',
+  unaskedQuoteNoCorpus:
+    'Each excerpt is a quote from a document, with the same number as the marker in the answer.',
+  abortedTitle: 'The answer was stopped before the sources came',
+  aborted:
+    'The sources come last in an answer. Ask the question again to see which documents it builds on.',
+  failedTitle: 'The answer did not arrive',
+  failed: 'So the sources did not either. Ask the question again.',
+  clarificationTitle: '{name} asked for a clarification',
+  clarificationTitleUnnamed: 'The AI assistant asked for a clarification',
+  clarification: 'The sources come once you have answered the question in the conversation.',
+  notStoredTitle: 'The sources are not stored for this conversation',
+  notStored:
+    'The answer cites excerpts, but they were not stored with the conversation. Ask the question again to get an answer with sources you can open.',
+  notKept:
+    'The sources are not stored with the conversation. Ask the question again to see which documents the answer builds on.',
+  answerOf: 'Sources for answer {n} of {total}',
+  previousAnswer: 'Previous answer',
+  nextAnswer: 'Next answer',
   loading: 'Loading sources …',
   untitled: 'Untitled source',
   disclaimer:

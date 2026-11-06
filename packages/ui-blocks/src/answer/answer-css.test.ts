@@ -52,6 +52,13 @@ describe('the answer styles', () => {
     expect(outside).toEqual([]);
   });
 
+  it('add no card spacing above the first thing seen, after the line only a screen reader hears', () => {
+    // Designsystemet spaces each card child after the first; the hidden line is the first.
+    expect(flat).toContain(
+      '.uib-answer-body > .ds-sr-only:first-child + * { margin-block-start: 0; }',
+    );
+  });
+
   it('keep a footnote from pushing the lines of the answer apart', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
   });
