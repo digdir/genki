@@ -165,4 +165,27 @@
   .uib-threads-overlay-title {
     overflow-wrap: anywhere;
   }
+
+  /* The line above says who is signed in is not one more row. Pinned to neutral, as the reference
+     draws it: a divider, not the brand. */
+  .uib-threads-signed-in {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--genai-threads-signed-in-gap, var(--ds-size-2));
+    inline-size: 100%;
+    padding-block-start: var(--genai-threads-signed-in-padding-block-start, var(--ds-size-4));
+    border-block-start: var(--genai-threads-signed-in-border-width, var(--ds-border-width-default))
+      solid var(--genai-threads-signed-in-border-color, var(--ds-color-neutral-border-subtle));
+  }
+  /* The name may be an e-mail address with no spaces in it; it wraps anyway. */
+  .uib-threads-user {
+    display: flex;
+    align-items: center;
+    gap: var(--genai-threads-user-gap, var(--ds-size-1));
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
 }

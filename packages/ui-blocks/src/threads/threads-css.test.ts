@@ -14,10 +14,11 @@ const neutralPins = [
   '--genai-threads-group-title-color',
   '--genai-threads-meta-color',
   '--genai-threads-no-matches-color',
+  '--genai-threads-signed-in-border-color',
 ];
 
 describe('the Threads styles', () => {
-  it('follow the host’s colour family, but for the three deliberate neutral pins', () => {
+  it('follow the host’s colour family, but for the four deliberate neutral pins', () => {
     const pinned = uses
       .filter((use) =>
         /^--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.token ?? ''),

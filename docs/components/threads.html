@@ -137,6 +137,14 @@
                 <code>newThreadHref</code> and <code>onNewThread</code>, and a
                 <code>footer</code> slot for who is signed in.
               </li>
+              <li>
+                <code>SignedIn</code>, for the <code>footer</code>: the reader's <code>name</code>,
+                with the <code>email</code> on hover, and «Logg ut», a plain link to
+                <code>signOutHref</code>. <code>onSignOut</code> comes before the browser leaves, a
+                middle click included, so the host can forget what this browser kept for the reader:
+                the filter, the collection, the experiments. It stands after the last row and
+                scrolls with the list, so it never covers a row the keyboard has reached.
+              </li>
             </ul>
             <p>
               Deleting the thread on screen is the host's to follow up: it opens a new thread in
@@ -156,9 +164,9 @@
               <code>@layer genai.components</code>, after Designsystemet's layers, follows
               <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
               and reads every token through its own variable, with the token as the fallback. Set
-              one on any ancestor to change that detail only. Three are pinned to neutral on
-              purpose, as the reference draws them: the group headings, the time and dataset under a
-              title, and «Ingen treff».
+              one on any ancestor to change that detail only. Four are pinned to neutral on purpose,
+              as the reference draws them: the group headings, the time and dataset under a title,
+              «Ingen treff», and the line above who is signed in.
             </p>
             <table>
               <thead>
@@ -295,6 +303,26 @@
                   <td>gap between a row and its menu</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-threads-signed-in-border-color</code></td>
+                  <td><code>--ds-color-neutral-border-subtle</code></td>
+                  <td>the line above who is signed in, pinned to neutral</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the line above who is signed in</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the name and «Logg ut»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-signed-in-padding-block-start</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>space between the line and the name</td>
+                </tr>
+                <tr>
                   <td><code>--genai-threads-thread-border-radius</code></td>
                   <td><code>--ds-border-radius-md</code></td>
                   <td>a row's and the box's corners</td>
@@ -313,6 +341,11 @@
                   <td><code>--genai-threads-thread-padding-inline</code></td>
                   <td><code>--ds-size-2</code></td>
                   <td>a row's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-threads-user-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between the person icon and the name</td>
                 </tr>
               </tbody>
             </table>
