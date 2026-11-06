@@ -1,3 +1,6 @@
+@import './states/states.css';
+@import './variant-picker/variant-picker.css';
+
 .uib-visually-hidden {
   position: absolute;
   width: 1px;
