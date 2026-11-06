@@ -89,4 +89,24 @@ describe('the welcome’s language', () => {
     );
     expect(screen.getByRole('heading', { level: 3, name: 'Suggestions' })).toBeTruthy();
   });
+
+  it('puts its headings at the levels the host gives, the greeting over «Forslag» by default', () => {
+    render(
+      <>
+        <Welcome />
+        <Suggestions suggestions={['Hva er Digdir?']} onPick={() => {}} />
+      </>,
+    );
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toMatch(/^Hei/);
+    expect(screen.getByRole('heading', { level: 3 }).textContent).toBe('Forslag');
+    cleanup();
+    render(
+      <>
+        <Welcome headingLevel={3} />
+        <Suggestions headingLevel={4} suggestions={['Hva er Digdir?']} onPick={() => {}} />
+      </>,
+    );
+    expect(screen.getByRole('heading', { level: 3 }).textContent).toMatch(/^Hei/);
+    expect(screen.getByRole('heading', { level: 4 }).textContent).toBe('Forslag');
+  });
 });
