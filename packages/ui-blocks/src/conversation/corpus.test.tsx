@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readFootnotes } from '../answer/citations.js';
 import fixture from '../answer/fixtures/genki-test-answers.json' with { type: 'json' };
@@ -86,20 +86,18 @@ describe('the conversation on real answers from genki-test', () => {
       expect(items[2 * i]?.textContent).toBe(`Du skrev:${question}`);
   });
 
-  it('gives each answer exactly the footnotes the answer block draws for it', () => {
-    render(<Conversation turns={turns} />);
-    const items = [...(screen.getAllByRole('list')[0]?.children ?? [])];
-    let footnotes = 0;
-    for (const [i, { answer }] of exchanges.entries()) {
-      // Marks, since this app gives the footnotes nowhere to go.
-      const drawn = within(items[2 * i + 1] as HTMLElement).queryAllByRole('img', {
-        name: /^Kilde \d+: /,
-      }).length;
-      expect(drawn, answer.id).toBe(readFootnotes(answer.text, answer.sources).citations.length);
-      footnotes += drawn;
+  // genki-test's answers cite documents, and footnotes are numbered by excerpt only.
+  it('draws no footnote in answers that cite only documents, as the answer block does', () => {
+    const { container } = render(<Conversation turns={turns} />);
+    let cited = 0;
+    for (const { answer } of exchanges) {
+      const read = readFootnotes(answer.text, answer.sources);
+      expect(read.pairing.numbers.size, answer.id).toBe(0);
+      cited += read.citations.length;
     }
-    console.info(`${exchanges.length} exchanges, ${footnotes} footnotes drawn`);
-    expect(footnotes).toBeGreaterThan(100);
+    expect(container.querySelectorAll('.uib-answer-mark')).toHaveLength(0);
+    console.info(`${exchanges.length} exchanges, ${cited} footnotes naming documents, 0 drawn`);
+    expect(cited).toBeGreaterThan(100);
   });
 
   it('lands every search mark on the words searched for, and counts what is there', () => {

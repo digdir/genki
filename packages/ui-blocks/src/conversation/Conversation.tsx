@@ -6,7 +6,6 @@ import { finishedText } from '../answer/copy.js';
 import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
 import { findHits, stepHit } from '../markdown/textSearch.js';
-import type { CitationMode } from '../sources/pairing.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { AnswerSearch } from './AnswerSearch.js';
 import { AnswerTime } from './AnswerTime.js';
@@ -39,6 +38,8 @@ export interface ConversationProps {
     ((turn: ConversationAnswer, citation: number, target: SourceTarget) => void) | undefined;
   /** A document in «Kilder brukt i svaret» was chosen, in which answer. */
   onOpenDocument?: ((turn: ConversationAnswer, source: SourceDocument) => void) | undefined;
+  /** An excerpt under a title in «Kilder brukt i svaret» was chosen, in which answer. */
+  onOpenExcerpt?: ((turn: ConversationAnswer, target: SourceTarget) => void) | undefined;
   /**
    * Asks a stopped or failed question again, offered under that answer, with the question it
    * answers. A question nothing answered gets the same offer, with an answer turn that stands in.
@@ -99,8 +100,6 @@ export interface ConversationProps {
   stalledAfter?: number | undefined;
   /** An answer on its way has stalled: the app stops it, as with «Avbryt». */
   onStalled?: ((turn: ConversationAnswer) => void) | undefined;
-  /** The service's choice, or the reader's, for every answer. */
-  citationMode?: CitationMode | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
   sourcesUsed?: boolean | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
@@ -179,6 +178,7 @@ export const Conversation = ({
   loading = false,
   onOpenCitation,
   onOpenDocument,
+  onOpenExcerpt,
   onRegenerate,
   title,
   titleRepeatsQuestion,
@@ -197,7 +197,6 @@ export const Conversation = ({
   slowAfter = SLOW_ANSWER_MS,
   stalledAfter = STALLED_ANSWER_MS,
   onStalled,
-  citationMode = 'excerpt',
   sourcesUsed,
   closingQuestion,
   assistantName,
@@ -322,10 +321,7 @@ export const Conversation = ({
   const searched = search
     ? answers.find((turn) => turn.id === searching && turn.status === 'complete')
     : undefined;
-  const visible = useMemo(
-    () => (searched ? answerVisibleText(searched, citationMode) : undefined),
-    [searched, citationMode],
-  );
+  const visible = useMemo(() => (searched ? answerVisibleText(searched) : undefined), [searched]);
   const hits = useMemo(
     () => (searched && visible ? findHits([{ id: searched.id, text: visible.text }], query) : []),
     [searched, visible, query],
@@ -517,12 +513,12 @@ export const Conversation = ({
           status={turn.status}
           sources={turn.sources}
           markers={turn.markers}
-          citationMode={citationMode}
           noAnswer={turn.noAnswer}
           onOpenCitation={
             onOpenCitation && ((citation, goal) => onOpenCitation(turn, citation, goal))
           }
           onOpenDocument={onOpenDocument && ((source) => onOpenDocument(turn, source))}
+          onOpenExcerpt={onOpenExcerpt && ((goal) => onOpenExcerpt(turn, goal))}
           href={href && ((goal) => href(turn, goal))}
           citationId={citationId && ((citation) => citationId(turn, citation))}
           target={target?.turnId === turn.id ? answerTarget : undefined}

@@ -1,6 +1,5 @@
 import { readFootnotes } from '../answer/citations.js';
 import { renderBlocks, type VisibleText } from '../markdown/Markdown.js';
-import type { CitationMode } from '../sources/pairing.js';
 import type { ConversationAnswer } from './types.js';
 
 /**
@@ -11,9 +10,8 @@ import type { ConversationAnswer } from './types.js';
  */
 export const answerVisibleText = (
   answer: Pick<ConversationAnswer, 'text' | 'sources' | 'markers' | 'status'>,
-  citationMode: CitationMode = 'excerpt',
 ): VisibleText => {
-  const { marks } = readFootnotes(answer.text, answer.sources, answer.markers, citationMode);
+  const { marks } = readFootnotes(answer.text, answer.sources, answer.markers);
   const lost = answer.status === 'aborted';
   let text = '';
   const offsets: number[] = [];
