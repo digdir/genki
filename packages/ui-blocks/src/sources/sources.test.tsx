@@ -56,6 +56,16 @@ const toggleOf = (name: RegExp | string) =>
   within(rowOf(name)).getByRole('button', { name: /^(Åpne|Lukk|Open|Close) / });
 
 describe('the sources block', () => {
+  it('heads its documents with «Kilder» one level up, as kunnskapsassistenten’s outline does', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    expect(screen.getByRole('heading', { level: 2, name: 'Kilder' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: nkom.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 4, name: /^Utdrag 1/ })).toBeTruthy();
+    cleanup();
+    draw({ headingLevel: 4 });
+    expect(screen.getByRole('heading', { level: 3, name: 'Kilder' })).toBeTruthy();
+  });
+
   it('names each document by its title and never by a number', () => {
     draw({ citations: cite('kudos::2021-2') });
     const heading = screen.getByRole('heading', { level: 3, name: nkom.title });
@@ -503,7 +513,10 @@ describe('a panel with no sources says why', () => {
   it('shows the loading state while the answer is still on its way', () => {
     draw({ sources: undefined, answerStatus: 'streaming' });
     expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
-    expect(screen.queryByRole('heading')).toBeNull();
+    // «Kilder» only: no empty state under it.
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'Kilder',
+    ]);
   });
 
   it('draws nothing when the app passes neither sources nor a status', () => {
