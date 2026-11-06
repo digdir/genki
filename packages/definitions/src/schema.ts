@@ -18,7 +18,7 @@ const slug = z
 export const versionedRef = z
   .string()
   .regex(
-    /^[a-z0-9][a-z0-9.-]*@\d+(\.\d+)*$/,
+    /^[a-z0-9][a-z0-9._-]*@\d+(\.\d+)*$/,
     'must be a versioned reference, like digdir.klarsprak@2.3',
   );
 const publicName = z
