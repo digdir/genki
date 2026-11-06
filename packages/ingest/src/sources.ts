@@ -27,6 +27,7 @@ import {
 import type { IngestSource, SkipReason, SourceDocument } from './pipeline.js';
 import {
   mergeFrontmatter,
+  ResponseTooLarge,
   prepareWebsiteChunks,
   prepareWebsiteDoc,
   urlToDoc,
@@ -40,6 +41,8 @@ export interface KudosSourceOptions {
   converter: DocumentConverter;
   types?: Set<string>;
   profile?: KudosProfile;
+  /** A file KUDOS lists as larger is not downloaded and counts as `too_large`. */
+  maxFileBytes?: number;
 }
 
 const kudosTexts = async (
@@ -47,14 +50,27 @@ const kudosTexts = async (
   doc: ReturnType<typeof fillInKudosFields>,
 ): Promise<{ texts: string[]; skip?: SkipReason }> => {
   const files: { file: KudosFile; bytes: Uint8Array }[] = [];
+  let skip: SkipReason | undefined;
+  let tooLarge = false;
+  const limit = options.maxFileBytes;
   try {
-    for (const file of doc.files ?? []) files.push({ file, bytes: await options.fetchFile(file) });
+    for (const file of doc.files ?? []) {
+      if (limit !== undefined && Number(file.size ?? 0) > limit) {
+        tooLarge = true;
+        continue;
+      }
+      try {
+        files.push({ file, bytes: await options.fetchFile(file) });
+      } catch (error) {
+        if (!(error instanceof ResponseTooLarge)) throw error;
+        tooLarge = true;
+      }
+    }
   } catch (error) {
     if (error instanceof FileUnreachable) return { texts: [], skip: 'unreachable' };
     throw error;
   }
   const texts: string[] = [];
-  let skip: SkipReason | undefined;
   for (const { file, bytes } of files) {
     try {
       const text = await options.converter.toMarkdown({
@@ -68,6 +84,8 @@ const kudosTexts = async (
       skip = error instanceof NoTextLayerError ? 'no_text' : 'conversion_failed';
     }
   }
+  // A file left out for its size says more than a blank one beside it.
+  if (texts.length === 0 && tooLarge) return { texts, skip: 'too_large' };
   return texts.length === 0 && skip ? { texts, skip } : { texts };
 };
 
@@ -85,7 +103,7 @@ export const kudosSource = (options: KudosSourceOptions): IngestSource => ({
         key: doc.id,
         docNum: doc.doc_num,
         texts: [],
-        url: kudosPublicUrl(doc.id, options.profile),
+        url: kudosPublicUrl(raw, options.profile),
         stored: (chunks: Chunk[]) => prepareKudosDoc(doc, chunks.length),
         storedChunks: (chunks: Chunk[]) => prepareKudosChunks(chunks),
       };
@@ -174,7 +192,18 @@ export interface FolderSourceOptions {
   read?(path: string): Promise<string>;
   readBytes?(path: string): Promise<Uint8Array>;
   converter?: DocumentConverter;
+  /** The document id for a file, in place of a hash of its path (ADR 0042: `folder:` ids). */
+  documentId?(path: string): string;
 }
+
+/**
+ * A folder document's id on the knowledge database (ADR 0042): its owner (`platform` or the
+ * organisation number) and a hash of its path from the folder root, so it is the same on every
+ * machine, two pipelines that list the same file name the same document, and no path (which can
+ * name a person) reaches a stored answer.
+ */
+export const folderDocumentId = (owner: string, path: string) =>
+  `folder:${owner}/${documentId(path)}`;
 
 const readFolderEntry = async (
   options: FolderSourceOptions,
@@ -205,7 +234,12 @@ export const folderSource = (options: FolderSourceOptions): IngestSource => ({
         options.titleFrom === 'heading' && 'text' in read
           ? headingTitle(entry.path, read.text)
           : undefined;
-      const doc = { ...pathToDoc(entry), ...(heading ? { title: heading } : {}) };
+      const id = options.documentId?.(entry.path);
+      const doc = {
+        ...pathToDoc(entry),
+        ...(id ? { id, doc_num: id } : {}),
+        ...(heading ? { title: heading } : {}),
+      };
       const config = {
         ...(options.basePath ? { basePath: options.basePath } : {}),
         ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),

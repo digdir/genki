@@ -1,5 +1,6 @@
 import { assistantApi } from './api/assistant';
 import type { StepBlockSchema } from './data/step-blocks';
+import type { StepOperation } from './data/step-operations';
 import type { StrategyEntry } from './data/strategies';
 import { buildingBlocksApi } from './api/building-blocks';
 import { datasetsApi } from './api/datasets';
@@ -90,6 +91,21 @@ export interface IngestionBackend {
   name: string;
   available: boolean;
   reason?: string;
+}
+
+export interface Attachment {
+  type: string;
+  id: string;
+  mediaType: string;
+  bytes: number;
+  step?: string;
+  url: string;
+}
+
+export interface PublishedRunResult {
+  task: string;
+  answer: string;
+  attachments: Attachment[];
 }
 
 export interface DraftRunResult {
@@ -290,6 +306,43 @@ export const createApiClient = ({
     isReadOnlyInLockdown: async (signal?: AbortSignal) =>
       (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
     ...featureClients({ get, request, tenantPath, send: raw, query: sendJson }),
+    stepOperations: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data: StepOperation[] }>(`${tenantPath(tenant)}/step-flows/operations`, signal))
+        .data,
+    runPublished: async (service: string, text: string): Promise<PublishedRunResult> => {
+      const response = await sendRaw('POST', '/v1/chat/completions', {
+        model: service,
+        messages: [{ role: 'user', content: text }],
+      });
+      const body = (await response.json().catch(() => undefined)) as
+        | {
+            choices?: { message?: { content?: string } }[];
+            attachments?: Attachment[];
+            error?: { message?: string };
+          }
+        | undefined;
+      if (!response.ok) {
+        const title = body?.error?.message;
+        const problem = title
+          ? { type: 'about:blank', title, status: response.status }
+          : (body as Problem | undefined);
+        throw new ApiError(response.status, problem, retryAfterOf(response));
+      }
+      return {
+        task: response.headers.get('genai-task') ?? '',
+        answer: body?.choices?.[0]?.message?.content ?? '',
+        attachments: body?.attachments ?? [],
+      };
+    },
+    media: async (url: string, signal?: AbortSignal) => {
+      const bearer = token();
+      const response = await send(`${baseUrl}${url}`, {
+        headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok) throw new ApiError(response.status, undefined);
+      return response.blob();
+    },
     listStepBlocks: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ blocks: StepBlockSchema[] }>(`${tenantPath(tenant)}/step-flows/blocks`, signal))
         .blocks,

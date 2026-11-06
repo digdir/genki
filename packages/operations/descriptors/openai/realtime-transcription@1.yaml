@@ -1,0 +1,141 @@
+id: openai/realtime-transcription@1
+operation: live-transcription
+status: described
+summary: Live speech-to-text over the OpenAI Realtime API's transcription session, audio in as PCM frames and the transcript back as it forms.
+api:
+  family: openai
+  version: realtime
+  headers:
+    openai-beta: realtime=v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    language?: { enum: [no, nb, nn, en] }
+    model?: { enum: [gpt-4o-transcribe, gpt-4o-mini-transcribe] }
+output:
+  object:
+    transcript: text
+steps:
+  - name: session
+    request:
+      method: GET
+      path: /realtime
+      query:
+        intent: transcription
+    wire:
+      query:
+        object:
+          intent: { enum: [transcription] }
+    websocket:
+      longestSeconds: 1800
+      maxMessages: 50000
+      maxMessageBytes: 262144
+      client:
+        name: $event.type
+        binary: audio/pcm
+        binaryAs: { event: input_audio_buffer.append, field: audio }
+        events:
+          transcription_session.update:
+            shape:
+              object:
+                type: { enum: [transcription_session.update] }
+                session:
+                  object:
+                    input_audio_format: { enum: [pcm16] }
+                    input_audio_transcription:
+                      object:
+                        model: plain
+                        language?: plain
+                    turn_detection:
+                      object:
+                        type: { enum: [server_vad] }
+          input_audio_buffer.append:
+            shape:
+              object:
+                type: { enum: [input_audio_buffer.append] }
+                audio: opaque
+          input_audio_buffer.commit:
+            shape:
+              object:
+                type: { enum: [input_audio_buffer.commit] }
+      server:
+        name: $event.type
+        events:
+          transcription_session.created:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                session?: json
+          transcription_session.updated:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                session?: json
+          input_audio_buffer.speech_started:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                item_id?: plain
+                audio_start_ms?: number
+          input_audio_buffer.speech_stopped:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                item_id?: plain
+                audio_end_ms?: number
+          input_audio_buffer.committed:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                item_id?: plain
+                previous_item_id?: plain
+          conversation.item.input_audio_transcription.delta:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                item_id?: plain
+                content_index?: number
+                delta: text
+            transcript: $event.delta
+          conversation.item.input_audio_transcription.completed:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                item_id?: plain
+                content_index?: number
+                transcript: text
+                usage?:
+                  object:
+                    type?: plain
+                    input_tokens?: number
+                    output_tokens?: number
+                    total_tokens?: number
+                    seconds?: number
+            usage:
+              inputTokens: $event.usage.input_tokens
+              outputTokens: $event.usage.output_tokens
+              audioSeconds: $event.usage.seconds
+              requests: 1
+          error:
+            shape:
+              object:
+                type: plain
+                event_id?: plain
+                error:
+                  object:
+                    type?: plain
+                    code?: plain
+                    message: text
+            fail:
+              kind: invalid
+              message: $event.error.message
+result:
+  transcript: $response.transcript

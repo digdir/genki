@@ -7,19 +7,22 @@ color: '#74a7ff'
 status: Port
 packages:
   - '@genai/port-rerank'
-summary: Reranks candidate passages through a catalog of rerank endpoints.
+summary: Reranks candidate passages with the rerank models of the model catalogue and the rerank catalogue.
 description: Same router shape as the model and knowledge ports; ColBERT is the first adapter.
+  A reranker is a model in the model catalogue that binds an API for rerank, such as
+  colbert/rerank@1 (ADR 0048); engines without an API, such as plug-ins, stay in the rerank catalogue.
   Every rerank call goes through the kernel's gate (ADR 0047), so it is admitted in lockdown,
   checked against tenant sharing and every residency ceiling, held to its closed shape, masked and
   metered. The router itself only routes and degrades.
 responsibilities:
-  - Rerank catalog
+  - Rerank models from the model catalogue, and the rerank catalogue for engines without an API
   - Rerank with timeouts and warnings
   - Calls through the kernel gate
 files:
   - packages/port-rerank/src/port.ts
   - packages/port-rerank/src/router.ts
   - packages/port-rerank/src/catalog.ts
+  - packages/port-rerank/src/models.ts
 input: Query + candidates
 output: Scores
 replaces:

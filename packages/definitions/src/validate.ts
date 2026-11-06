@@ -418,6 +418,19 @@ const checkService = (definition: ServiceDefinition, plugins: PluginSchemas): Va
       });
   }
 
+  for (const [kind, id] of Object.entries(spec.model.operations ?? {})) {
+    const path = `spec.model.operations.${kind}`;
+    const model = plugins.models.get(id);
+    if (!model) errors.push({ path, message: `unknown model ${id}` });
+    else if (!(model.operations ?? ['chat']).includes(kind))
+      errors.push({ path, message: `model ${id} does not offer the ${kind} operation` });
+    else if (residencies.indexOf(model.residency) > residencies.indexOf(spec.model.residency))
+      errors.push({
+        path,
+        message: `model ${id} runs in ${model.residency}, outside ${spec.model.residency}`,
+      });
+  }
+
   const isExternal = (strategy: ServiceDefinition['spec']['strategy']) =>
     plugins.strategyResidency?.(strategyKey(strategy.id, strategy.version), strategy.config) !==
     undefined;

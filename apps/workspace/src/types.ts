@@ -90,6 +90,14 @@ export interface UserMessage {
   attachments?: string[];
 }
 
+export interface MediaAttachment {
+  id: string;
+  mediaType: string;
+  bytes: number;
+  step?: string;
+  url: string;
+}
+
 export interface AssistantMessage {
   id: string;
   role: 'assistant';
@@ -102,6 +110,7 @@ export interface AssistantMessage {
   noAnswer?: boolean;
   table?: ResultTable;
   csv?: string;
+  media?: MediaAttachment[];
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -112,6 +121,7 @@ export interface ChatReply {
   noAnswer?: boolean;
   table?: ResultTable;
   csv?: string;
+  media?: MediaAttachment[];
   task?: string;
   conversationId?: string;
   failure?: ChatFailure;
@@ -152,6 +162,7 @@ export interface WorkspaceApi {
   ): Promise<ChatReply>;
   conversations?: ConversationApi;
   sendFeedback(input: FeedbackInput): Promise<void>;
+  media?(url: string, signal?: AbortSignal): Promise<Blob>;
   failedRuns?(tenant: string, signal?: AbortSignal): Promise<FailedRun[]>;
   rights?(tenant: string, signal?: AbortSignal): Promise<string[]>;
   lockdown?(signal?: AbortSignal): Promise<boolean>;

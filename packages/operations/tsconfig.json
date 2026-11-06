@@ -6,7 +6,7 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-utils.ts"],
   "references": [
     {
       "path": "../contracts"

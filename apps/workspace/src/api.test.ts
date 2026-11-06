@@ -253,6 +253,40 @@ describe('workspace api', () => {
     });
   });
 
+  it('keeps the attachments of an answer, and only those the platform serves from a task', async () => {
+    const { fetcher } = recorder(() =>
+      sse(
+        [
+          delta('Her er figuren.'),
+          {
+            attachments: [
+              {
+                id: 'm1',
+                mediaType: 'image/png',
+                bytes: 2048,
+                step: 'figur',
+                url: '/v1/tasks/task-9/media/m1',
+              },
+              { id: 'm2', mediaType: 'image/png', bytes: 1, url: 'https://example.com/x.png' },
+            ],
+          },
+          delta('', 'stop'),
+        ],
+        { 'genai-task': 'task-9' },
+      ),
+    );
+    const reply = await client(fetcher).chat('figur__default', [], () => {});
+    expect(reply.media).toEqual([
+      {
+        id: 'm1',
+        mediaType: 'image/png',
+        bytes: 2048,
+        step: 'figur',
+        url: '/v1/tasks/task-9/media/m1',
+      },
+    ]);
+  });
+
   it('streams chat deltas and returns sources and the task', async () => {
     const { calls, fetcher } = recorder(() =>
       sse(

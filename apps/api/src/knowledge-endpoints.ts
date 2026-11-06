@@ -87,9 +87,19 @@ export interface KnowledgeEndpointView {
   writeKeyRequired: boolean;
   capabilities: CapabilitySummary;
   datasetCount: number;
+  /** The datasets on the endpoint, with their owner and pipeline count; operators only. */
+  datasets?: EndpointDatasetView[];
   status: EndpointStatus;
   shared: boolean;
   version: number;
+}
+
+export interface EndpointDatasetView {
+  id: string;
+  /** `platform` or the organisation number that owns the dataset. */
+  scope: string;
+  name: string;
+  pipelines: number;
 }
 
 export interface StoredSecretView {
@@ -248,9 +258,22 @@ export const createKnowledgeEndpointsModule =
         const guard = await operatorOf(c, mounted.authenticate);
         if ('response' in guard) return guard.response;
         return c.json({
-          data: deps.catalog
-            .list({ kind: 'knowledge-endpoint' })
-            .map((item) => endpointView(deps, item)),
+          data: await Promise.all(
+            deps.catalog.list({ kind: 'knowledge-endpoint' }).map(async (item) => {
+              const datasets = datasetsOn(deps, item.id).sort((a, b) => a.id.localeCompare(b.id));
+              return {
+                ...endpointView(deps, item, datasets),
+                datasets: await Promise.all(
+                  datasets.map(async (d): Promise<EndpointDatasetView> => ({
+                    id: d.id,
+                    scope: d.scope,
+                    name: typeof d.spec.name === 'string' ? d.spec.name : d.id,
+                    pipelines: (await deps.ingestion.list(d.scope, d.id)).length,
+                  })),
+                ),
+              };
+            }),
+          ),
         });
       });
       app.get('/operator/knowledge/secrets', async (c) => {

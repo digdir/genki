@@ -28,12 +28,18 @@ const serve = async (response: unknown, status = 200) => {
   return server;
 };
 
-const router = (url: string, operations = ['chat', 'decide']) =>
+const router = (
+  url: string,
+  apis: Record<string, string> = {
+    chat: 'openai/chat-completions@1',
+    decide: 'openai/decide@1',
+  },
+) =>
   new ModelRouter({
     catalog: {
       endpoints: {
         'foundry-openai': {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${url}/openai/v1`,
           auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/test-key' },
         },
@@ -45,7 +51,7 @@ const router = (url: string, operations = ['chat', 'decide']) =>
           deployment: 'gpt-6-luna',
           residency: 'eu',
           capabilities: ['stream'],
-          operations,
+          apis,
         },
       ],
     },
@@ -175,7 +181,7 @@ describe('the decide operation on openai-chat', () => {
 
   it('a model without the decide operation refuses decide as unsupported', async () => {
     const { url, seen } = await serve(fixture('predicate').response);
-    const { port } = opened(router(url, ['chat']));
+    const { port } = opened(router(url, { chat: 'openai/chat-completions@1' }));
     const error = await port.decide(requestOf(fixture('predicate'))).catch((e: unknown) => e);
     expect((error as ModelError).code).toBe('unsupported');
     expect(seen).toHaveLength(0);

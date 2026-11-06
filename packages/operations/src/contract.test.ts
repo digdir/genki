@@ -36,7 +36,7 @@ describe('operation@1 for every registered descriptor', () => {
 });
 
 describe('the operation@1 suite', () => {
-  const embed = registered.get('openai/embed@1');
+  const embed = registered.get('openai/embeddings@1');
   if (!embed) throw new Error('the embed descriptor is missing');
   const fixtures = fixturesFor(fixtureDir, embed.id);
 
@@ -44,12 +44,17 @@ describe('the operation@1 suite', () => {
     expect(existsSync(join(fixtureDir, 'nobody', 'thing@1'))).toBe(false);
     const results = await operationContract(embed, fixturesFor(fixtureDir, 'nobody/thing@1'));
     expect(contractFailures(results)).toEqual([
-      { check: 'has recorded fixtures', problems: ['openai/embed@1 has no fixtures'] },
+      { check: 'has recorded fixtures', problems: ['openai/embeddings@1 has no fixtures'] },
     ]);
   });
 
   it('a descriptor whose request differs from the recorded one fails', async () => {
-    const changed = { ...embed, request: { ...embed.request, path: '/embedding' } };
+    const [step] = embed.steps;
+    if (!step) throw new Error('the embed descriptor has no step');
+    const changed = {
+      ...embed,
+      steps: [{ ...step, request: { ...step.request, path: '/embedding' } }],
+    };
     const failed = contractFailures(await operationContract(changed, fixtures));
     expect(failed.map((f) => f.check)).toContain(
       'one-text: the request built from the typed input is the recorded wire request',
@@ -85,12 +90,12 @@ describe('the operation@1 suite', () => {
 });
 
 const imageYaml = `
-id: example/image@1
+id: example/generate-image@1
 operation: generate-image
 status: review
 summary: A made-up image API for the operation@1 suite.
 api:
-  protocol: openai-chat
+  family: openai
   version: v1
 request:
   method: POST
@@ -180,7 +185,7 @@ const callImage = async (yaml: string, input: unknown) => {
         credential: { kind: 'api-key', key: async () => 'k' },
         fetch: async (_url, init) => {
           sent.push(JSON.parse(String(init?.body)));
-          return Response.json(imageFixture.response.body);
+          return Response.json(imageFixture.response?.body);
         },
       },
       deployment: 'img',
@@ -227,4 +232,46 @@ describe('descriptor fields that would switch off masking or carry media', () =>
       expect(sent).toEqual([]);
       expect(audit[0]).toMatchObject({ outcome: 'refused', refusal: 'shape' });
     });
+});
+
+describe('media output in descriptors', () => {
+  const mediaYaml = (type: string) =>
+    imageYaml.replace(
+      'images: { array: { object: { b64: plain } } }',
+      `images: { array: { object: { b64: { media: ${type} } } } }`,
+    );
+
+  it('a descriptor that marks its output as media of any media type passes operation@1', async () => {
+    for (const type of ['image/png', 'audio/wav', 'video/mp4', 'application/pdf', 'text/csv'])
+      expect(await failedChecks(mediaYaml(type))).toEqual([]);
+  });
+
+  it('a descriptor whose media output is not base64 fails operation@1', async () => {
+    const descriptor = parseDescriptor(mediaYaml('image/png'));
+    const fixture = {
+      ...imageFixture,
+      response: { body: { data: [{ b64_json: 'ikke base64!' }] } },
+      result: { images: [{ b64: 'ikke base64!' }], usage: { requests: 1 } },
+    };
+    const failed = contractFailures(await operationContract(descriptor, [fixture]));
+    expect(failed.map((f) => f.check)).toContain(
+      'one-image: the recorded response maps to the typed result',
+    );
+  });
+
+  it('a descriptor may declare media in its input, which the gate lets out only with consent', () => {
+    expect(() => parseDescriptor(imageField('{ media: image/png }'))).not.toThrow();
+  });
+
+  it('a media marker names a media type, or a list of them', () => {
+    for (const type of ['image', '"image/png; charset=x"'])
+      expect(() => parseDescriptor(mediaYaml(type))).toThrow('must be a media type');
+  });
+
+  it('media coming back names its media types, never a wildcard', () => {
+    expect(() => parseDescriptor(mediaYaml('image/*'))).toThrow('names its media types');
+    expect(() => parseDescriptor(mediaYaml('[image/png, image/*]'))).toThrow(
+      'names its media types',
+    );
+  });
 });

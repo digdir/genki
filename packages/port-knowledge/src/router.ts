@@ -430,6 +430,24 @@ export class KnowledgeRouter implements PortProvider<KnowledgePort> {
               vectors: exporter.vectors,
               documents: () => exporter.documents(config, ctx.signal),
               count: (cap: number) => guard(() => exporter.count(config, cap, ctx.signal)),
+              ...(exporter.list
+                ? {
+                    list: () =>
+                      (exporter.list as NonNullable<typeof exporter.list>)(config, ctx.signal),
+                  }
+                : {}),
+              ...(exporter.document
+                ? {
+                    document: (id: string) =>
+                      guard(() =>
+                        (exporter.document as NonNullable<typeof exporter.document>)(
+                          config,
+                          id,
+                          ctx.signal,
+                        ),
+                      ),
+                  }
+                : {}),
             },
           }
         : {}),
