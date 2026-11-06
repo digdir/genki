@@ -270,9 +270,7 @@ export const Filter = ({
 
         {/* Always rendered: a live region only announces changes inside a region that already
             exists. The skeleton is aria-hidden, so this carries «Henter filtre». */}
-        <output className="uib-visually-hidden">
-          {loading ? t('filter.loading') : announcement}
-        </output>
+        <output className="ds-sr-only">{loading ? t('filter.loading') : announcement}</output>
 
         {locked && (
           <LockedFilter values={chosenValues(locked, fields)} level={sub} newThread={newThread} />

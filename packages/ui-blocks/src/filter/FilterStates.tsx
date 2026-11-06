@@ -10,6 +10,7 @@ import {
   Tag,
 } from '@digdir/designsystemet-react';
 import { useEffect, useId, useLayoutEffect, useRef, type MouseEvent } from 'react';
+import { plainClick } from '../dom.js';
 import { useT } from '../i18n.js';
 import type { FilterSelection } from './types.js';
 
@@ -165,8 +166,7 @@ export const NewThreadLink = ({ href, onNewThread }: NewThreadLinkProps) => {
       onClick={(event) => {
         // A click for a new tab or window is the browser's, as in the thread list. A plain click is
         // the host's, which starts over in this tab.
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-          return;
+        if (!plainClick(event)) return;
         event.preventDefault();
         onNewThread(event);
       }}
