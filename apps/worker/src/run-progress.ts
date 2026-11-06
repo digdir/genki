@@ -48,8 +48,6 @@ export const runProgress = (log: ProgressLog, everyMs = 60_000): RunProgress => 
         if (ended) return;
         ended = true;
         tally.active -= 1;
-        // A tally flushed away while the job ran comes back for its last count.
-        if (!runs.has(id)) runs.set(id, tally);
       };
     },
     stored: (run, chunks) => {

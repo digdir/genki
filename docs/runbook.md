@@ -52,7 +52,7 @@ ContainerAppHTTPLogs
 
 **Model provider failures.** The lines carry `model`, `code` and `tenant`. `rate_limited` means the deployment's quota (tokens per minute) is used up: see the deployment in Azure AI Foundry and the token alert below. `unavailable` means the provider did not answer or answered 5xx: check the Azure status page and the endpoint setting (`FOUNDRY_OPENAI_BASE_URL`, `FOUNDRY_CLAUDE_BASE_URL`). Services with a fallback model keep answering; others fail until the provider is back.
 
-A call is answered 429 several times before it fails: the SDK waits as the provider asks and tries again, up to four attempts in all. Each 429 is logged as `model call throttled`, which no alert counts. It names the connection as `endpoint`, the deployment asked for as `model`, the wait the provider asked for as `retryAfterMs` and the `attempt`. To see how hard a deployment is throttled:
+Each 429 a model connection gets is logged as `model call throttled`, which no alert counts. It names the connection as `endpoint`, the deployment the request named as `model`, the wait the provider asked for as `retryAfterMs` and the `attempt`. Calls through the OpenAI and Anthropic SDKs are tried up to four times; the OpenAI SDK waits as the provider asks, up to 60 seconds, and uses its own backoff for a longer wait. A rerank call is not tried again, so its 429 fails at once. To see how hard a deployment is throttled:
 
 ```kusto
 ContainerAppConsoleLogs
@@ -60,7 +60,7 @@ ContainerAppConsoleLogs
 | where TimeGenerated > ago(1h)
 | extend line = parse_json(Log)
 | where line.msg == 'model call throttled'
-| summarize throttled = count(), waitMs = sum(toint(line.retryAfterMs)) by bin(TimeGenerated, 5m), tostring(line.model)
+| summarize throttled = count(), waitMs = sum(toint(line.retryAfterMs)) by bin(TimeGenerated, 5m), model = tostring(line.model)
 ```
 
 **Ingestion failures.** The message says where to look:
@@ -70,7 +70,7 @@ ContainerAppConsoleLogs
 - `knowledge server unreachable`, `knowledge reconciler failed`: the knowledge server or its network. See [Knowledge server](../infra/README.md#knowledge-server).
 - `job queue error`: pg-boss lost the platform database. Check the Postgres server.
 
-**A slow knowledge run.** Each worker logs `knowledge run progress` once a minute for each run it writes: `stored` documents and their `chunks` in that minute, and `active`, the run's jobs on that worker as the line is written. `worker started` names the `version`, `knowledgeIndexConcurrency` (the most `active` can be) and `knowledgePoolSize`. Few documents with `active` at the concurrency point at the embedding calls: read the throttled lines above.
+**A slow knowledge run.** Each worker logs `knowledge run progress` once a minute for each run it writes: `stored` documents and their `chunks` in that minute, and `active`, the run's index and fill jobs on that worker as the line is written. A job is active while it embeds and while it waits for its turn to write, since a generation takes one write at a time. `worker started` names the `version`, `knowledgeIndexConcurrency` (how many index jobs, and as many fill jobs, the worker works at once) and `knowledgePoolSize`. Few documents with many jobs active can be throttling or jobs waiting to write: `model call throttled` lines in the same minutes tell them apart.
 
 ```kusto
 ContainerAppConsoleLogs

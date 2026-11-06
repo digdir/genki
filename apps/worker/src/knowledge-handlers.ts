@@ -231,23 +231,20 @@ export const knowledgeWork = (
     admittedWork(
       queue,
       async ({ job, run, principal, cancelled }) => {
-        // The job counts as active from here on, in the run's progress line.
+        deps.bound?.();
+        if (await cancelled()) return;
+        const now = deps.heavy.now?.() ?? new Date();
+        // A run that has written the heavy threshold sends its remaining documents to the window.
+        if (queue === knowledgeIndexQueue && (run.report?.chunks ?? 0) >= deps.heavy.threshold()) {
+          await deps.knowledge.send(knowledgeFillQueue, job.data, {
+            key: knowledgeKeys.fill(job.data.generation, job.data.record),
+            startAfter: heavyWorkStart(deps.heavy.window(), now),
+          });
+          return;
+        }
+        // From here the job counts as active in the run's progress line.
         const ended = deps.progress?.started({ id: run.id, dataset: run.dataset });
         try {
-          deps.bound?.();
-          if (await cancelled()) return;
-          const now = deps.heavy.now?.() ?? new Date();
-          // A run that has written the heavy threshold sends its remaining documents to the window.
-          if (
-            queue === knowledgeIndexQueue &&
-            (run.report?.chunks ?? 0) >= deps.heavy.threshold()
-          ) {
-            await deps.knowledge.send(knowledgeFillQueue, job.data, {
-              key: knowledgeKeys.fill(job.data.generation, job.data.record),
-              startAfter: heavyWorkStart(deps.heavy.window(), now),
-            });
-            return;
-          }
           const signal = job.signal;
           const { dataset } = await datasetOf(deps, run, signal);
           const tenant = tenantOf(run, deps.admission.platformTenant);
