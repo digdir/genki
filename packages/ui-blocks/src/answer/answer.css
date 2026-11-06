@@ -10,6 +10,12 @@
     font-family: var(--genai-answer-font-family, var(--ds-font-family)), sans-serif;
   }
 
+  /* «KI-assistenten svarte:» is the card's first child but takes no space, so what follows it is
+     the first thing seen and gets no card spacing above it, as in an answer without the line. */
+  .uib-answer-body > .ds-sr-only:first-child + * {
+    margin-block-start: 0;
+  }
+
   /* The text: Designsystemet has no prose container, so the spacing between blocks is set here.
      It is a query container too, for the footnote rule in markdown.css. */
   .uib-answer-text {
