@@ -126,6 +126,21 @@ describe('the question field', () => {
     expect(before(agent, sendButton())).toBe(true);
   });
 
+  // The variant picker's place, as kunnskapsassistenten decided on 6 October 2026.
+  it('lets a control in the host’s slot take Enter without sending, and reach the field by Ctrl+/', () => {
+    const { sent } = draw({
+      initial: 'Hva sier årsrapportene om måloppnåelse?',
+      actions: <button type="button">Variant: Svar med kilder</button>,
+    });
+    const picker = screen.getByRole('button', { name: 'Variant: Svar med kilder' });
+    picker.focus();
+    fireEvent.keyDown(picker, { key: 'Enter' });
+    expect(sent).toEqual([]);
+    expect(field().value).toBe('Hva sier årsrapportene om måloppnåelse?');
+    fireEvent.keyDown(picker, { key: '/', ctrlKey: true });
+    expect(document.activeElement).toBe(field());
+  });
+
   it('sends a follow-up as it is, and has the follow-ups under the box and the disclaimer last', () => {
     const { sent } = draw({ followUps: ['Kan du utdype?', 'Identifiser utfordringer'] });
     const followUp = screen.getByRole('button', { name: 'Kan du utdype?' });
