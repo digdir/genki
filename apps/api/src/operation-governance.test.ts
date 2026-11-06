@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Event, Principal } from '@genai/contracts';
 import { syntheticNationalId } from '@genai/kernel/gate-contract';
 import { descriptorRegistry, loadDescriptors, parseDescriptor } from '@genai/operations';
+import { InMemoryBlobStore } from '@genai/port-blob';
 import { fakeHttp, type FakeServer } from '@genai/port-model/testing';
 import { bootPlatform, digdir } from './testkit.js';
 
@@ -79,11 +80,18 @@ usage:
 stream: none
 `;
 
+const describeAudioYaml = describeImageYaml
+  .replaceAll('describe-image', 'describe-audio')
+  .replaceAll('picture', 'audio')
+  .replaceAll('image/png', 'audio/*')
+  .replace('takes a picture', 'takes a recording');
+
 const registry = (status: 'review' | 'described' = 'described') =>
   descriptorRegistry([
     ...loadDescriptors().list(),
     parseDescriptor(classifyYaml(status)),
     parseDescriptor(describeImageYaml),
+    parseDescriptor(describeAudioYaml),
   ]);
 
 const people: Record<string, Principal> = {
@@ -126,7 +134,8 @@ const boot = async (
   }));
   servers.push(server);
   const booted = await bootPlatform({
-    people,
+    people: { ...people, app: caller },
+    blobStore: new InMemoryBlobStore(),
     descriptors: registry(options.status),
     ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
     ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
@@ -145,7 +154,7 @@ const boot = async (
           deployment: 'small',
           residency: 'norway',
           capabilities: ['json-schema'],
-          operations: ['chat', 'classify', 'describe-image'],
+          operations: ['chat', 'classify', 'describe-image', 'describe-audio'],
         },
         {
           id: 'lab/classifier',
@@ -611,6 +620,107 @@ describe('processor records', () => {
           sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
         },
       ],
+    });
+  });
+
+  describe('a file the caller sends', () => {
+    const wav = Buffer.from('RIFF....WAVEfmt fake audio').toString('base64');
+    const audioConsent = {
+      reasons: [],
+      unmaskedInput: [{ mediaType: 'audio/*', reason: 'Opptak som skal skrives ut' }],
+    };
+    const audioFlow = () => {
+      const steps = flow({ audio: '{{input.files.0}}' });
+      const [step] = steps.spec.steps;
+      return {
+        ...steps,
+        spec: {
+          ...steps.spec,
+          steps: [{ ...step, params: { descriptor: 'example/describe-audio@1' } }],
+        },
+      };
+    };
+    const publishAudio = async (
+      { platform, send }: Booted,
+      riskConfirmation?: unknown,
+      accepts = ['audio/wav'],
+    ) => {
+      await send('/operator/operation-kinds/describe-audio/maturity', 'drift', {
+        body: { maturity: 'production' },
+        reason,
+      });
+      const published = await platform.definitions.publish(audioFlow(), 'test', 'test');
+      expect(published.ok ? [] : published.errors).toEqual([]);
+      return platform.definitions.publish(
+        {
+          ...service,
+          spec: {
+            ...service.spec,
+            input: { accepts },
+            ...(riskConfirmation ? { riskConfirmation } : {}),
+          },
+        },
+        'test',
+        'test',
+      );
+    };
+    const speak = ({ send }: Booted, format: string, data = wav) =>
+      send('/v1/chat/completions', 'app', {
+        body: {
+          model: 'sortering__default',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Skriv ut opptaket' },
+                { type: 'input_audio', input_audio: { data, format } },
+              ],
+            },
+          ],
+        },
+      });
+    const ready = async () => {
+      const booted = await boot();
+      await booted.promote();
+      await booted.processorRecord();
+      return booted;
+    };
+
+    it('reaches a call-operation step as input.files.0, with its type, size and SHA-256 recorded', async () => {
+      const booted = await ready();
+      expect(messages(await publishAudio(booted, audioConsent))).toEqual([]);
+      const response = await speak(booted, 'wav');
+      expect(response.status).toBe(200);
+      expect(booted.server.seen[0]?.body).toMatchObject({ audio: wav });
+      const task = response.headers.get('genai-task') ?? '';
+      expect(
+        (await auditOf(booted, task)).find((e) => e.type === 'kernel.gate.call')?.data,
+      ).toMatchObject({
+        outcome: 'ok',
+        mediaInput: [
+          {
+            path: 'audio',
+            mediaType: 'audio/wav',
+            bytes: Buffer.from(wav, 'base64').byteLength,
+            sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+          },
+        ],
+      });
+    });
+
+    it('is not published as input without recorded consent', async () => {
+      const booted = await ready();
+      expect(messages(await publishAudio(booted))).toMatch(
+        /takes audio\/\* input, which cannot be masked/,
+      );
+    });
+
+    it('is refused when the service does not accept its media type', async () => {
+      const booted = await ready();
+      expect(messages(await publishAudio(booted, audioConsent))).toEqual([]);
+      const response = await speak(booted, 'mp3');
+      expect(response.status).toBe(415);
+      expect(booted.server.seen).toEqual([]);
     });
   });
 

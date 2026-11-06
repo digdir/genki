@@ -66,6 +66,7 @@ import {
   deleteConversationDocuments,
   runtimeDocumentStore,
   runtimeDocumentTypes,
+  runtimeMediaTypes,
 } from './runtime-documents.js';
 import {
   EgressGuard,
@@ -577,6 +578,7 @@ export interface ResolverHooks {
   chat?(compiled: CompiledCapability): Promise<boolean>;
   batch?(compiled: CompiledCapability): Promise<boolean>;
   documents?(compiled: CompiledCapability): Promise<string[]>;
+  media?(compiled: CompiledCapability): Promise<string[]>;
 }
 
 const humanized = (id: string) => {
@@ -618,6 +620,8 @@ export const capabilityResolver = (
   ): Promise<ModelEntry> => {
     const documents = (await hooks.documents?.(compiled)) ?? [];
     if (documents.length) entry = { ...entry, documents };
+    const media = (await hooks.media?.(compiled)) ?? [];
+    if (media.length) entry = { ...entry, media };
     const searches = hooks.searches?.(principal, compiled) ?? [];
     if (searches.length) entry = { ...entry, searches };
     const fields = entry.inputFields;
@@ -1373,6 +1377,11 @@ export const createPlatform = async (input: PlatformInput) => {
     },
     documents: async (compiled) =>
       runtimeDocumentTypes(
+        (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
+          .spec,
+      ),
+    media: async (compiled) =>
+      runtimeMediaTypes(
         (await definitions.get('Service', compiled.service.tenant, compiled.service.id))?.definition
           .spec,
       ),

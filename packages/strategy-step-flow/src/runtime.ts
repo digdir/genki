@@ -8,6 +8,7 @@ import {
   mediaAttachments,
   mediaIdOf,
   mediaPart,
+  mediaRefKind,
   mediaRefsIn,
   type Emitted,
   type InvocationContext,
@@ -85,6 +86,23 @@ class Paused extends Error {}
 
 class BudgetExceeded extends Error {}
 
+const fileRefs = (input: Input): MediaRef[] =>
+  (input.parts ?? []).flatMap((p) => {
+    const ref = p.body.kind === 'blob' ? p.body.ref : undefined;
+    const meta = p.meta ?? {};
+    if (ref?.kind !== 'blob' || !ref.tenant || typeof meta.sha256 !== 'string') return [];
+    return [
+      {
+        kind: mediaRefKind,
+        mediaType: p.mime.split(';')[0]?.trim().toLowerCase() ?? p.mime,
+        bytes: typeof meta.size === 'number' ? meta.size : 0,
+        sha256: meta.sha256,
+        tenant: ref.tenant,
+        path: ref.id,
+      },
+    ];
+  });
+
 const inputScope = (input: Input): Record<string, unknown> => {
   const data =
     typeof input.data === 'object' && input.data !== null && !Array.isArray(input.data)
@@ -95,8 +113,10 @@ const inputScope = (input: Input): Record<string, unknown> => {
     .join('\n')
     .trim();
   const query = typeof data.query === 'string' && data.query.trim() ? data.query : text;
+  const files = fileRefs(input);
   return {
     ...data,
+    ...(files.length > 0 ? { files } : {}),
     query,
     text,
     history: Array.isArray(data.history) ? data.history : [],
