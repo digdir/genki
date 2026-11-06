@@ -170,6 +170,20 @@ describe('the reader’s own documents', () => {
     ]);
   });
 
+  it('tries every file when one fails, and takes the same file again when it is picked again', async () => {
+    const onUpload = vi.fn(async (file: File) => {
+      if (file.name === 'en.pdf') throw new Error('502');
+    });
+    render(own({ onUpload }));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const first = new File(['a'], 'en.pdf');
+    fireEvent.change(input, { target: { files: [first, new File(['b'], 'to.docx')] } });
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
+    expect(input.value).toBe('');
+    fireEvent.change(input, { target: { files: [first] } });
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(3));
+  });
+
   it('shows how far an upload has come, the type and size when ready, and why it failed', () => {
     const { rerender } = render(own({ documents: [doc({ status: 'uploading', progress: 40 })] }));
     expect(screen.getByText(/Laster opp … 40 %/)).toBeTruthy();

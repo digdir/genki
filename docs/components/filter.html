@@ -127,6 +127,8 @@
                 <code>locked</code>, <code>thread</code> and <code>onNewThread</code>: a thread's
                 lock, and the note when the filter changes in a thread under way. The platform keeps
                 no filter per thread yet, so <code>locked</code> is for a host that keeps one.
+                <code>onNewThread</code> takes a plain click on «Ny tråd»; a click for a new tab
+                follows <code>newThreadHref</code>, the browser's.
               </li>
               <li>
                 <code>yearPeriods</code> and <code>compactChips</code>: KA's two trials, off by
@@ -135,6 +137,13 @@
               <li>
                 <code>head</code> and <code>children</code>: the corpus choice over the fields, and
                 the documents under a line after them.
+              </li>
+              <li>
+                <code>pinIn</code>: an element to draw the heading and <code>head</code> in, such as
+                the shell's pinned region from its panel's <code>pinnedRef</code>. They stay in
+                sight while the fields scroll, as kunnskapsassistenten pins them, and keep the
+                filter's live region. <code>null</code> while the element is not there draws no
+                head.
               </li>
               <li>
                 <code>documents</code>: the documents behind the answer, over a line before the
@@ -248,7 +257,8 @@
                 <strong><code>OwnDocuments</code></strong
                 >, «Dine dokumenter»: a drop zone and the reader's files with progress, size and why
                 one failed. Without <code>onUpload</code> the zone is switched off and says «Kommer
-                snart».
+                snart». Files go up one at a time; a rejected upload does not stop the next, and the
+                same file can be picked again.
               </li>
             </ul>
           </div>
@@ -261,7 +271,8 @@
               and read every token through their own variable, with the token as the fallback. Set
               one on any ancestor to change that detail only. The muted text is pinned to neutral on
               purpose, so it stays grey whatever family the links and chips beside it follow; a
-              failed upload is pinned to danger.
+              failed upload is pinned to danger. The gap between the fields follows the window's
+              height between two tokens, as kunnskapsassistenten's does.
             </p>
             <table>
               <thead>
@@ -304,8 +315,21 @@
                 </tr>
                 <tr>
                   <td><code>--genai-filter-gap</code></td>
-                  <td><code>--ds-size-7</code></td>
-                  <td>gap between the fields, and around the line</td>
+                  <td><code>3.6dvh</code></td>
+                  <td>
+                    gap between the fields, and around the line: a share of the window's height,
+                    between the floor and the ceiling
+                  </td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-ceiling</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the largest gap, on a tall window</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-filter-gap-floor</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>the smallest gap, on a short window</td>
                 </tr>
                 <tr>
                   <td><code>--genai-filter-head-gap</code></td>

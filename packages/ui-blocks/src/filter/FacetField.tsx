@@ -202,6 +202,7 @@ export const FacetField = ({
           {!allChosen && total > 0 && (
             <Button
               variant="tertiary"
+              // Pinned to neutral, as kunnskapsassistenten draws it: quiet beside the field.
               data-color="neutral"
               data-size="sm"
               aria-label={t('filter.selectAllIn', { field: name })}
@@ -219,6 +220,7 @@ export const FacetField = ({
           {chosen > 0 && (
             <Button
               variant="tertiary"
+              // Pinned to neutral, as kunnskapsassistenten draws it: quiet beside the field.
               data-color="neutral"
               data-size="sm"
               aria-label={t('filter.clearIn', { field: name })}
@@ -245,7 +247,7 @@ export const FacetField = ({
       >
         {/* Names the field: several bare «Søk» read as one repeated control. */}
         <Suggestion.Input ref={inputRef} placeholder={t('filter.searchIn', { field: name })} />
-        <Suggestion.Toggle />
+        <Suggestion.Toggle aria-label={t('filter.listToggle')} />
         <Suggestion.Clear />
         <Suggestion.List ref={listRef} data-overscroll="contain">
           {chosenFirst(field.options, (option) => first.has(option.value)).map((option) => (
