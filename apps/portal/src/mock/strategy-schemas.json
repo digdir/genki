@@ -437,6 +437,31 @@
           "x-widget": "toggle",
           "x-right": "manage-services"
         },
+        "citeBy": {
+          "type": "string",
+          "enum": ["document", "excerpt"],
+          "x-label": {
+            "nb": "Hva en fotnote peker på",
+            "en": "What a footnote points to"
+          },
+          "x-help": {
+            "nb": "Et utdrag gir én fotnote per avsnitt svaret bygger på.",
+            "en": "An excerpt gives one footnote per passage the answer rests on."
+          },
+          "x-enumLabels": {
+            "document": {
+              "nb": "Et dokument",
+              "en": "A document"
+            },
+            "excerpt": {
+              "nb": "Et utdrag",
+              "en": "An excerpt"
+            }
+          },
+          "x-advanced": true,
+          "x-widget": "select",
+          "x-right": "manage-services"
+        },
         "search": {
           "type": "object",
           "properties": {

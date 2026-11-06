@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { textPart, type CapabilityDescriptor, type Part, type Principal } from '@genai/contracts';
 import { createKernel, type Capability, type Emitted, type Strategy } from '@genai/kernel';
 import {
@@ -36,6 +36,17 @@ const chunks: SourceRecord[] = [
 
 const seen: { history?: unknown; overrides?: unknown } = {};
 
+const byDocument = {
+  answer: 'Svar [1] og [2].',
+  meta: {
+    citations: [
+      { index: 1, chunkId: 'c1' },
+      { index: 2, chunkId: 'c2' },
+    ],
+  } as Record<string, unknown>,
+};
+let reply = byDocument;
+
 const strategy: Strategy = {
   id: 'echo',
   version: '1',
@@ -46,18 +57,9 @@ const strategy: Strategy = {
     seen.overrides = data.overrides;
     yield { type: 'kernel.notice', data: { event: 'agent/iteration-started', iteration: 1 } };
     yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: 3 } };
-    const answer = 'Svar [1] og [2].';
-    yield { type: 'kernel.part.delta', data: { text: answer } };
+    yield { type: 'kernel.part.delta', data: { text: reply.answer } };
     const parts: Part[] = [
-      {
-        ...textPart(answer),
-        meta: {
-          citations: [
-            { index: 1, chunkId: 'c1' },
-            { index: 2, chunkId: 'c2' },
-          ],
-        },
-      },
+      { ...textPart(reply.answer), meta: reply.meta },
       { mime: SOURCES_MIME, body: { kind: 'json', json: { sources: chunks } } },
     ];
     yield { type: 'kernel.result', data: parts };
@@ -313,6 +315,54 @@ describe('/v1 frontend contract: sources', () => {
     });
     expect(body.sources[1]).toMatchObject({ title: 'Årsrapport', document_id: 'd2' });
     expect(body.sources[1]).not.toHaveProperty('url');
+    expect(body).not.toHaveProperty('markers');
+  });
+
+  describe('when the answer cites excerpts', () => {
+    afterEach(() => {
+      reply = byDocument;
+    });
+    const byExcerpt = {
+      answer: 'Første [1], tredje [2] og andre [3].',
+      meta: {
+        citations: [
+          { index: 1, chunkId: 'c1', document: 'd1' },
+          { index: 2, chunkId: 'c1b', document: 'd1' },
+          { index: 3, chunkId: 'c2', document: 'd2' },
+        ],
+        citeBy: 'excerpt',
+      },
+    };
+    const markers = [
+      { marker: '1', chunk_id: 'c1', document: 'd1' },
+      { marker: '2', chunk_id: 'c1b', document: 'd1' },
+      { marker: '3', chunk_id: 'c2', document: 'd2' },
+    ];
+
+    it('resolves every marker to one excerpt, and lists on each excerpt the markers that cite it', async () => {
+      reply = byExcerpt;
+      const body = (await (await setup().ask({})).json()) as {
+        sources: (Source & { markers?: string[] })[];
+        markers?: unknown;
+      };
+
+      expect(body.markers).toEqual(markers);
+      expect(body.sources.map((s) => [s.document_id, s.index, s.markers])).toEqual([
+        ['d1', 1, ['1', '2']],
+        ['d2', 3, ['3']],
+      ]);
+      expect(body.sources[0]?.excerpts).toEqual([
+        { chunk_id: 'c1', text: 'Første', position: 0, markers: ['1'] },
+        { chunk_id: 'c1b', text: 'Tredje', position: 4, markers: ['2'] },
+      ]);
+    });
+
+    it('sends the same markers when the answer is streamed', async () => {
+      reply = byExcerpt;
+      const text = await (await setup().ask({ stream: true })).text();
+
+      expect(text).toContain(`"markers":${JSON.stringify(markers)}`);
+    });
   });
 });
 

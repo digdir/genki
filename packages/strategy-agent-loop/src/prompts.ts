@@ -142,6 +142,9 @@ export const agentTools: ToolSpec[] = [
 export const citationInstruction =
   'When making claims based on the provided sources, cite them using [N] notation where N is the source number. Every factual claim should have at least one citation. Place citations immediately after the relevant statement.';
 
+export const excerptCitationInstruction =
+  "Each excerpt in the context has its own number. When making claims based on the provided sources, cite the excerpt the claim rests on using [N] notation, where N is that excerpt's number. Cite the excerpt, not the document as a whole: when two sentences rest on different excerpts, each cites its own, even when the excerpts come from the same document. Every factual claim should have at least one citation. Place citations immediately after the relevant statement.";
+
 export const ambiguityInstruction =
   'If the sources contain multiple plausible values, labels, or interpretations, do not hide the ambiguity. Compare the user’s wording to the source labels, preserve the source terminology, and explicitly mention ambiguity when the question is underspecified. Do not silently collapse distinct source labels into one concept. Do not merge or arithmetic-combine values from different labels, sentences, or chunks unless the source explicitly states that they belong together. If one label is clearly the closest semantic match, use it and state that label in the answer. If different chunks describe different scopes or definitions, explain that difference instead of producing a single blended number.';
 
