@@ -1,4 +1,4 @@
-# 0048 A new service is a draft on the server
+# 0051 A new service is a draft on the server
 
 Status: proposed, 2026-11-03
 
