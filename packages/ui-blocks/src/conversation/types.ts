@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { AnswerStatus } from '../answer/Answer.js';
+import type { AnswerFailure, AnswerStatus } from '../answer/Answer.js';
 import type { AnswerMarker } from '../answer/citations.js';
 import type { SourceDocument } from '../sources/types.js';
 
@@ -30,7 +30,22 @@ export interface ConversationAnswer {
   /** When the answer came, as ISO 8601 or a date. Without it, no time is shown. */
   createdAt?: string | number | Date | undefined;
   /** The line over the answer: what the question was narrowed to, or where it was asked. */
-  scope?: string | undefined;
+  scope?: string | ConversationScope | undefined;
+  /** Why a failed answer failed. Keep it with the turn, so a reload says the same. */
+  failure?: AnswerFailure | undefined;
+}
+
+/**
+ * What a question was asked of, for the line over its answer. The block words it as
+ * kunnskapsassistenten does: «Avgrenset til: Årsrapport · 2023», «…, fra Kudos», or «Hentet fra
+ * Kudos» when nothing was narrowed. Keep it with the turn: it is the filter the question was asked
+ * with, not the one chosen now.
+ */
+export interface ConversationScope {
+  /** The values chosen in the filter, in the order the filter lists its fields. */
+  narrowedTo?: readonly string[] | undefined;
+  /** The collection asked, only when it is not the one chosen now. */
+  corpus?: string | undefined;
 }
 
 /** The assistant asking for more before it answers (the contract's `clarification`). */
@@ -42,7 +57,7 @@ export interface ConversationClarification {
   /** Answers the service offers. The reader can always write their own in the question field. */
   options?: readonly string[] | undefined;
   /** The line over the question back, as over an answer: it was searched with the same filter. */
-  scope?: string | undefined;
+  scope?: string | ConversationScope | undefined;
 }
 
 export type ConversationTurn =
