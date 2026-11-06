@@ -217,7 +217,8 @@ const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
   const citations = useMemo(() => answerCitations(text, sources, markers, mode), [mode]);
   const [toSource, setToSource] = useState<SourceTarget>();
   const [toAnswer, setToAnswer] = useState<AnswerTarget>();
-  const [followed, setFollowed] = useState<number>();
+  // What the reader followed, a footnote or a title, is where the way back goes.
+  const [followed, setFollowed] = useState<AnswerTarget>();
   return (
     <>
       <Answer
@@ -227,8 +228,13 @@ const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
         citationMode={mode}
         target={toAnswer}
         onOpenCitation={(citation, target) => {
-          setFollowed(citation);
+          setFollowed({ citation });
           setToSource(target);
+        }}
+        onOpenDocument={(source) => {
+          const goal = { documentId: source.documentId, index: source.index };
+          setFollowed({ document: goal });
+          setToSource(goal);
         }}
       />
       <Sources
@@ -238,7 +244,7 @@ const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
         target={toSource}
         onShowUse={(citation) => setToAnswer({ citation })}
         onReturn={() => {
-          if (followed !== undefined) setToAnswer({ citation: followed });
+          if (followed !== undefined) setToAnswer({ ...followed });
         }}
       />
     </>
@@ -317,6 +323,28 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     fireEvent.keyDown(excerptRow(1), { key: 'Escape' });
     await frame();
     expect(document.activeElement).toBe(footnotes()[3]);
+  });
+
+  it('goes back to the title in «Kilder brukt i svaret» the reader came from, by Escape or the button', async () => {
+    render(<Host />);
+    // A footnote first, so a stale way back would show.
+    fireEvent.click(footnotes()[0] as HTMLElement);
+    await frame();
+    const title = screen.getByRole('link', { name: tildeling.title });
+    fireEvent.click(title);
+    await frame();
+    const card = screen
+      .getByRole('heading', { level: 3, name: tildeling.title })
+      .closest('.uib-sources-document') as HTMLElement;
+    expect(card.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    await frame();
+    expect(document.activeElement).toBe(title);
+    fireEvent.click(title);
+    await frame();
+    fireEvent.click(within(card).getByRole('button', { name: 'Tilbake til svaret' }));
+    await frame();
+    expect(document.activeElement).toBe(title);
   });
 
   it('pairs by document both ways in document mode, footnote N with the card numbered N', async () => {

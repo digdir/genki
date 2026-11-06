@@ -35,10 +35,13 @@ export const SourcesUsed = ({
   documents,
   href,
   onOpenDocument,
+  links,
 }: {
   documents: readonly UsedDocument[];
   href?: ((target: SourceTarget) => string | undefined) | undefined;
   onOpenDocument?: ((source: SourceDocument) => void) | undefined;
+  /** Each title's link, by document key, so the answer can send focus back to one. */
+  links?: Map<string, HTMLElement> | undefined;
 }) => {
   const t = useT();
   if (documents.length === 0) return null;
@@ -67,6 +70,11 @@ export const SourcesUsed = ({
                 <List.Item key={key}>
                   {onOpenDocument || address ? (
                     <Link
+                      ref={(element: HTMLAnchorElement | null) => {
+                        if (!links) return;
+                        if (element) links.set(key, element);
+                        else links.delete(key);
+                      }}
                       className="uib-answer-sources-used-link"
                       href={address ?? '#'}
                       onClick={
