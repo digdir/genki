@@ -94,16 +94,15 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>By excerpt</strong> (the default): only cited excerpts get a number, «Utdrag
-                1», «Utdrag 2», in the order the answer first cites them. Documents are named by
-                title. Needs footnotes that name their excerpt.
+                <strong>Footnotes that name excerpts</strong>: only cited excerpts get a number,
+                «Utdrag 1», «Utdrag 2», in the order the answer first cites them. Documents are
+                named by title.
               </li>
               <li>
-                <strong>By document</strong>, while a service cites documents: each cited document
-                is numbered, «Kilde 1», «Kilde 2», in the order the answer first cites it, as its
-                footnotes are, and links back to them. Its passages, which nothing cites alone, are
-                unnumbered and closed behind «Vis utdrag fra dokumentet (n)». A document nothing
-                cites says so.
+                <strong>Footnotes that name only documents</strong>, as long as a service cites
+                documents: nothing is numbered, since footnotes are numbered by excerpt and never by
+                document. A document's passages, which nothing cites alone, are closed behind «Vis
+                utdrag fra dokumentet (n)». A document no footnote names says so.
               </li>
               <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
@@ -111,9 +110,9 @@
               </li>
             </ul>
             <p>
-              The service sets the mode; a reader can switch when the app passes
-              <code>onCitationModeChange</code>. An excerpt is titled by its section, with its
-              number before it. A closed excerpt shows its first two lines.
+              Which of the two is read from <code>citations</code>, never chosen. An excerpt is
+              titled by its section, with its number before it. A closed excerpt shows its first two
+              lines.
             </p>
           </div>
           <div>
@@ -122,19 +121,21 @@
               <li><code>sources</code>: the contract's <code>sources[]</code>.</li>
               <li>
                 <code>citations</code>: the answer's footnotes in order, each naming the excerpt
-                (<code>chunkId</code>) or document it cites. Without them nothing is numbered.
+                (<code>chunkId</code>) or document it cites. Excerpts are numbered only when every
+                footnote names its excerpt. Without footnotes nothing is numbered.
               </li>
               <li>
                 <code>target</code> and <code>onReturn</code>: from a footnote to its excerpt and
                 back. <code>onTargetMissing</code> reports a footnote whose excerpt is not shown.
               </li>
               <li>
-                <code>onShowUse</code> and <code>citationHref</code>: a cited excerpt, or a cited
-                document in document mode, has a link back to each footnote that cites it, in the
-                order they stand in the answer, as Wikipedia's back-references. Cited once, «Til
-                svaret»; several times, «↩ 1 2 3». Each is a real link, so a reader can tab to or
-                open any one, and each says to a screen reader which footnote it leads to. They
-                replace one control that cycled (decided 6 November 2026).
+                <code>onShowUse</code> and <code>citationHref</code>: the links back to the answer
+                sit where the excerpt is. Its title, «Utdrag 1», links to the first footnote that
+                cites it. Cited several times, small links right beside the title lead to the
+                others, in the order they stand in the answer, as Wikipedia's back-references:
+                «Utdrag 1 ↩ 2 3». Each is a real link, so a reader can tab to or open any one, and
+                each says to a screen reader which footnote it leads to. Nothing on a document's
+                head or over the list links back (decided 6 November 2026).
               </li>
               <li>
                 <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:
@@ -148,11 +149,6 @@
                 question back, or sources the store did not keep. <code>streaming</code> shows the
                 loading state. <code>loading</code> shows it too, before anything is known.
                 <code>assistantName</code> names who asked back, «KI-assistenten» without it.
-              </li>
-              <li>
-                <code>citationMode</code>: <code>excerpt</code> (the default) or
-                <code>document</code>, the service's choice. <code>onCitationModeChange</code> lets
-                a reader switch, when the footnotes name excerpts.
               </li>
               <li>
                 <code>variant</code>: <code>panel</code> (the default) or <code>compact</code>.
@@ -536,19 +532,14 @@
                   <td>uncited color</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-sources-use-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
-                  <td>gap between the icon and «Til svaret»</td>
-                </tr>
-                <tr>
                   <td><code>--genai-sources-use-min-size</code></td>
                   <td>24px</td>
-                  <td>each link back's smallest width and height</td>
+                  <td>each link back's smallest width and height, «Utdrag 1» among them</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-uses-gap</code></td>
                   <td><code>--ds-size-2</code></td>
-                  <td>gap between the links back, «↩ 1 2 3»</td>
+                  <td>gap between «Utdrag 1» and the links back beside it, «↩ 2 3»</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-uses-icon-color</code></td>
@@ -581,9 +572,6 @@
             <h2>Open questions</h2>
             <ul>
               <li>Should less relevant sources be hidden by default?</li>
-              <li>
-                Where does the reader's choice of citation mode live: per thread, or per person?
-              </li>
             </ul>
           </div>
         </div>

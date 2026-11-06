@@ -1,12 +1,4 @@
-import {
-  Button,
-  Card,
-  Heading,
-  Link,
-  Paragraph,
-  Skeleton,
-  ToggleGroup,
-} from '@digdir/designsystemet-react';
+import { Button, Card, Heading, Link, Paragraph, Skeleton } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import {
   ArrowLeftIcon,
@@ -34,13 +26,7 @@ import {
   type SearchHit,
 } from '../markdown/textSearch.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
-import {
-  documentKeys,
-  pairCitations,
-  type CitationMode,
-  type Pairing,
-  type SourceCitation,
-} from './pairing.js';
+import { documentKeys, pairCitations, type Pairing, type SourceCitation } from './pairing.js';
 import { SourcesSearch } from './SourcesSearch.js';
 import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
 
@@ -68,15 +54,16 @@ export interface SourcesProps {
   answerCount?: number | undefined;
   /** The reader stepped to another answer: its index. The app passes that answer's sources. */
   onAnswerChange?: ((index: number) => void) | undefined;
-  /** The answer's footnotes in order. Without them nothing is numbered and nothing links back. */
-  citations?: readonly SourceCitation[] | undefined;
-  /** The service's choice. Excerpt mode needs footnotes that name their excerpt. */
-  citationMode?: CitationMode | undefined;
-  /** Lets the reader switch between the modes. */
-  onCitationModeChange?: ((mode: CitationMode) => void) | undefined;
   /**
-   * A link back to the answer was followed: that footnote's index in `citations`. Each excerpt
-   * has one link per footnote that cites it, drawn when this or `citationHref` is given.
+   * The answer's footnotes in order. Without them nothing is numbered and nothing links back.
+   * Excerpts are numbered only when every footnote names its excerpt; footnotes that name only
+   * documents number nothing.
+   */
+  citations?: readonly SourceCitation[] | undefined;
+  /**
+   * A link back to the answer was followed: that footnote's index in `citations`. A cited
+   * excerpt's title, «Utdrag N», links to the first footnote that cites it, and small links
+   * beside it to the others, drawn when this or `citationHref` is given.
    */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
@@ -219,26 +206,38 @@ interface BackTo {
 }
 
 /**
- * Where the answer cites an item: one link per footnote, in the order they stand in the answer,
- * as Wikipedia's back-references. Cited once, «Til svaret»; several times, «↩ 1 2 3». Each is a
- * real link, so a reader can tab to, or open, any one of them, and each says to a screen reader
- * which footnote it leads to. Decided 6 November 2026, in place of one control that cycled.
+ * «Utdrag N» over a cited excerpt, and its way back to the answer, where the excerpt is. The
+ * title is a link to the first footnote that cites it. When the answer cites it again, small
+ * links right beside the title lead to the others, in the order they stand in the answer, as
+ * Wikipedia's back-references: «Utdrag 1 ↩ 2 3». Each is a real link, so a reader can tab to,
+ * or open, any one of them, and each says to a screen reader which footnote it leads to. Decided
+ * 6 November 2026, in place of a control that cycled and of a row of links on the card's head.
  */
-const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) => {
+const ExcerptNumber = ({
+  label,
+  uses,
+  back,
+}: {
+  label: string;
+  uses: readonly number[];
+  back: BackTo | undefined;
+}) => {
   const t = useT();
+  const [first, ...more] = uses;
+  if (!back || first === undefined)
+    return <span className="uib-sources-excerpt-number">{label}</span>;
   const { total, answer, href, onShow } = back;
   const where = (citation: number) =>
     answer === undefined
       ? t('sources.useWhere', { n: citation + 1, total })
       : t('sources.useWhereInAnswer', { n: citation + 1, total, answer });
-  // Named by `aria-label`, which holds what is seen (WCAG 2.5.3): hidden spans inside a link are
-  // boxes of their own to a browser, which then reads «Til svaret , fotnote 2».
-  const link = (citation: number, name: string, label: ReactNode) => (
+  // Named by `aria-label`, which starts with what is seen (WCAG 2.5.3): hidden spans inside a
+  // link are boxes of their own to a browser, which then reads «Utdrag 1 , fotnote 2».
+  const link = (citation: number, name: string, text: ReactNode, className: string) => (
     <Link
       key={citation}
       href={href?.(citation) ?? '#'}
-      data-size="sm"
-      className="uib-sources-use"
+      className={className}
       aria-label={name}
       onClick={
         onShow
@@ -250,34 +249,34 @@ const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) =>
           : undefined
       }
     >
-      {label}
+      {text}
     </Link>
   );
-  const [only] = uses;
-  if (uses.length === 1 && only !== undefined)
-    return (
-      <p className="uib-sources-uses">
-        {link(
-          only,
-          `${t('sources.toAnswer')}, ${where(only)}`,
-          <>
-            <ArrowUndoIcon aria-hidden />
-            {t('sources.toAnswer')}
-          </>,
-        )}
-      </p>
-    );
+  const toAnswer = t('sources.toAnswerFrom', { label });
   return (
-    <p className="uib-sources-uses">
-      <ArrowUndoIcon aria-hidden className="uib-sources-uses-icon" />
-      {uses.map((citation, i) =>
-        link(
-          citation,
-          `${t('sources.toAnswer')}, ${t('sources.use')} ${i + 1}, ${where(citation)}`,
-          i + 1,
-        ),
+    <span className="uib-sources-excerpt-number">
+      {link(
+        first,
+        more.length
+          ? `${toAnswer}, ${t('sources.use')} 1, ${where(first)}`
+          : `${toAnswer}, ${where(first)}`,
+        label,
+        'uib-sources-use uib-sources-title-link',
       )}
-    </p>
+      {more.length ? (
+        <span className="uib-sources-uses">
+          <ArrowUndoIcon aria-hidden className="uib-sources-uses-icon" />
+          {more.map((citation, i) =>
+            link(
+              citation,
+              `${t('sources.toAnswer')}, ${t('sources.use')} ${i + 2}, ${where(citation)}`,
+              i + 2,
+              'uib-sources-use',
+            ),
+          )}
+        </span>
+      ) : null}
+    </span>
   );
 };
 
@@ -355,20 +354,14 @@ const EmptyState = ({
   level,
   corpus,
   assistantName,
-  byDocument,
 }: {
   kind: EmptyKind;
   level: number;
   corpus: string | undefined;
   assistantName: string | undefined;
-  byDocument: boolean;
 }) => {
   const t = useT();
-  const quote = byDocument
-    ? undefined
-    : corpus
-      ? t('sources.unaskedQuote', { corpus })
-      : t('sources.unaskedQuoteNoCorpus');
+  const quote = corpus ? t('sources.unaskedQuote', { corpus }) : t('sources.unaskedQuoteNoCorpus');
   const [title, description] = (() => {
     switch (kind) {
       case 'unasked':
@@ -486,32 +479,17 @@ const SourceItem = ({
   const title = given || t('sources.untitled');
   const active = target?.chunkId && holds(source, target) ? target.chunkId : undefined;
   const byExcerpt = pairing?.mode === 'excerpt';
-  // While the footnotes cite documents, the document is what they point at: it carries the
-  // footnote's number and the links back, and its passages, which nothing cites alone, stay
-  // unnumbered behind «Vis utdrag fra dokumentet».
+  // While the footnotes name only documents, nothing is numbered: footnotes are numbered by
+  // excerpt, never by document. The passages, which nothing cites alone, wait behind «Vis utdrag
+  // fra dokumentet», and a document no footnote names says so.
   const byDocument = pairing?.mode === 'document';
-  const documentNumber = byDocument ? pairing.numbers.get(documentKey) : undefined;
-  const documentUses = byDocument ? (pairing.uses.get(documentKey) ?? []) : [];
-  const documentUncited = byDocument && documentUses.length === 0;
-  // «Kilde 1: Tittel» for the heading and its button. The number stands on a line of its own,
-  // which a browser would read «Kilde 1 Tittel».
-  const numberedTitle =
-    documentNumber === undefined
-      ? undefined
-      : `${t('sources.documentNumber', { n: documentNumber })}: ${given || t('sources.untitled')}`;
+  const documentUncited = byDocument && !pairing.uses.has(documentKey);
   const passagesId = useId();
-  const backLinks = (uses: readonly number[], excerpt?: SourceExcerpt) =>
-    back && uses.length ? (
-      <BackLinks
-        uses={uses}
-        back={{
-          ...back,
-          onShow:
-            back.show &&
-            ((citation) => back.show?.(citation, excerpt ? { source, excerpt } : { source })),
-        }}
-      />
-    ) : null;
+  const backFor = (excerpt: SourceExcerpt): BackTo | undefined =>
+    back && {
+      ...back,
+      onShow: back.show && ((citation) => back.show?.(citation, { source, excerpt })),
+    };
 
   useEffect(() => {
     // Once per target the app passes: new sources remount every card, and a target the app
@@ -599,33 +577,21 @@ const SourceItem = ({
     >
       <Card.Block className="uib-sources-document-head" data-color={headerColor}>
         {/* The heading stays a heading, and the button inside it is the whole band to press. */}
-        <Heading level={level as Level} data-size="xs" aria-label={numberedTitle}>
+        <Heading level={level as Level} data-size="xs">
           <button
             ref={head}
             type="button"
             className="uib-sources-document-toggle ds-focus"
             aria-expanded={open}
             aria-controls={bodyId}
-            aria-label={numberedTitle}
             onClick={() => onOpenChange(!open)}
           >
-            {documentNumber === undefined ? (
-              <span>{title}</span>
-            ) : (
-              <span>
-                <span className="uib-sources-document-number">
-                  {t('sources.documentNumber', { n: documentNumber })}
-                </span>
-                {title}
-              </span>
-            )}
+            <span>{title}</span>
             <ChevronDownIcon aria-hidden className="uib-sources-caret" />
           </button>
         </Heading>
-        {details || actions || (back && documentUses.length) ? (
+        {details || actions ? (
           <div className="uib-sources-controls">
-            {/* The document is the cited item, so it carries the links back, on a closed card too. */}
-            {backLinks(documentUses)}
             {details ? (
               <Button
                 variant="tertiary"
@@ -745,25 +711,29 @@ const SourceItem = ({
                     level={(level + 1) as Level}
                     data-size="2xs"
                     className="uib-sources-excerpt-title"
-                    // The number stands on a line of its own, which a browser reads without the
-                    // colon between them.
+                    // Named as a heading by what it says: the number stands on a line of its own,
+                    // which a browser reads without the colon, and the links in it have names of
+                    // their own.
                     aria-label={
-                      section && n !== undefined
-                        ? `${t('sources.excerptNumber', { n })}: ${section}`
-                        : undefined
+                      n === undefined
+                        ? undefined
+                        : section
+                          ? `${t('sources.excerptNumber', { n })}: ${section}`
+                          : t('sources.excerptNumber', { n })
                     }
                   >
-                    {n === undefined ? null : (
-                      <span className="uib-sources-excerpt-number">
-                        {t('sources.excerptNumber', { n })}
-                      </span>
+                    {n === undefined || !excerpt ? null : (
+                      // In the title, so it works on a closed row too.
+                      <ExcerptNumber
+                        label={t('sources.excerptNumber', { n })}
+                        uses={uses}
+                        back={backFor(excerpt)}
+                      />
                     )}
                     {section ? <span>{section}</span> : null}
                     {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
                   </Heading>
                   <div className="uib-sources-excerpt-controls">
-                    {/* Beside the title, so they work on a closed row too. */}
-                    {backLinks(uses, excerpt)}
                     <Button
                       type="button"
                       variant="tertiary"
@@ -889,8 +859,6 @@ export const Sources = ({
   answerCount = 1,
   onAnswerChange,
   citations,
-  citationMode = 'excerpt',
-  onCitationModeChange,
   onShowUse,
   citationHref,
   loading = false,
@@ -928,8 +896,8 @@ export const Sources = ({
     [sources, t, itemId],
   );
   const pairing = useMemo(
-    () => (citations ? pairCitations(sources ?? [], citations, citationMode) : undefined),
-    [sources, citations, citationMode],
+    () => (citations ? pairCitations(sources ?? [], citations) : undefined),
+    [sources, citations],
   );
   const index = useMemo<SearchableItem[]>(
     () =>
@@ -1055,17 +1023,12 @@ export const Sources = ({
   const named = heading ? { 'aria-labelledby': titleId } : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
   const searching = (search ?? variant === 'panel') && !empty && Boolean(sources?.length);
-  const switching =
-    onCitationModeChange !== undefined &&
-    citations !== undefined &&
-    citations.length > 0 &&
-    citations.every((c) => c.chunkId !== undefined);
   const describedBy = disclaimer && sources?.length ? (disclaimerId ?? madeId) : undefined;
   return (
     <div className={classes('uib-sources', className)} data-variant={variant} data-color={color}>
       {/* In the page from the first render: a live region announces only a change to it. */}
       {onAnswerChange ? <output className="ds-sr-only">{answerLabel}</output> : null}
-      {heading || searching || switching || stepping ? (
+      {heading || searching || stepping ? (
         <div className="uib-sources-head">
           {heading}
           {/* Also when this answer has no sources: stepping back is the point. */}
@@ -1076,18 +1039,6 @@ export const Sources = ({
               count={answerCount}
               onChange={onAnswerChange}
             />
-          ) : null}
-          {switching ? (
-            <ToggleGroup
-              data-size="sm"
-              className="uib-sources-mode"
-              aria-label={t('sources.citeBy')}
-              value={pairing?.mode ?? citationMode}
-              onChange={(value) => onCitationModeChange(value as CitationMode)}
-            >
-              <ToggleGroup.Item value="excerpt">{t('sources.citeByExcerpt')}</ToggleGroup.Item>
-              <ToggleGroup.Item value="document">{t('sources.citeByDocument')}</ToggleGroup.Item>
-            </ToggleGroup>
           ) : null}
           {searching ? (
             <SourcesSearch
@@ -1121,7 +1072,6 @@ export const Sources = ({
           level={headingLevel}
           corpus={corpus}
           assistantName={assistantName}
-          byDocument={citationMode === 'document'}
         />
       ) : sources?.length ? (
         <ol key={listKey} className="uib-sources-documents" {...named}>
