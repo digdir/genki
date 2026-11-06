@@ -19,6 +19,7 @@ responsibilities:
   - Embedding models from the model catalogue, by API id
   - Dimension checks and batching
   - Calls through the kernel gate, which applies the endpoint's egress guard
+  - A 429's requested wait on the error (retryAfterMs), and the SDK's retries per opened embedder
 files:
   - packages/port-embedding/src/port.ts
   - packages/port-embedding/src/router.ts

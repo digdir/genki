@@ -346,6 +346,7 @@ const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
         indexConcurrency,
+        log,
         progress: knowledgeProgress,
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
@@ -437,11 +438,12 @@ const knowledgeHandlers =
             ...(spec.copy?.documents ? { documents: spec.copy.documents } : {}),
           });
         },
-        embedder: (dataset, ctx) => {
+        embedder: (dataset, ctx, request) => {
           const runtime = runtimeFor('embed');
           const residency = runtime.residencyOf(dataset.id);
           return dataset.embedding
             ? runtime.embedders.open({ kind: 'embedder', id: dataset.embedding.model }, ctx, {
+                ...request,
                 ...(residency ? { maxResidency: residency } : {}),
               })
             : undefined;

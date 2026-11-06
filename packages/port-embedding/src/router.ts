@@ -44,6 +44,11 @@ export interface EmbeddingRouterOptions {
 
 export interface EmbeddingOpenOptions {
   maxResidency?: Residency;
+  /**
+   * The SDK's own retries for this embedder's calls, in place of the router's `maxRetries`. A
+   * knowledge job opens with 0 and retries itself, so a 429 pauses every job at once (#400).
+   */
+  retries?: number;
 }
 
 export interface EmbedderDescription {
@@ -200,11 +205,20 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
             described.endpoint,
             config.deployment,
             texts,
-            { signal: ctx.signal, fail: embeddingErrorFromStatus },
+            {
+              signal: ctx.signal,
+              fail: (status, message) => embeddingErrorFromStatus(status, message),
+            },
           );
           dropped(answer.dropped);
           result = answer.result;
-        } else if (connection) result = await connection.embed(config, texts, ctx.signal);
+        } else if (connection)
+          result = await connection.embed(
+            config,
+            texts,
+            ctx.signal,
+            request.retries === undefined ? {} : { maxRetries: request.retries },
+          );
         else throw new EmbeddingError('unavailable', `${model.api} has no implementation`);
       } catch (error) {
         if (error instanceof EmbeddingError) throw error;

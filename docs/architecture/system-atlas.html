@@ -2584,6 +2584,7 @@
               'Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)',
               'Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding',
               'Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them',
+              'Wait out a throttled embedding model in knowledge.index and knowledge.fill, pausing every job on the model, for up to 20 minutes a try',
               'Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start',
               'Work knowledge.drop on the platform server for one generation an engine switch left, never the active one',
               "End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold",
@@ -5505,8 +5506,10 @@
                 'Document records on the knowledge database':
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
+              "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
             ],
             files: [
+              'packages/ingest/src/throttled-embedder.ts',
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',
@@ -8689,6 +8692,7 @@
               'Embedding models from the model catalogue, by API id',
               'Dimension checks and batching',
               "Calls through the kernel gate, which applies the endpoint's egress guard",
+              "A 429's requested wait on the error (retryAfterMs), and the SDK's retries per opened embedder",
             ],
             files: [
               'packages/port-embedding/src/port.ts',
