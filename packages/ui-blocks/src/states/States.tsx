@@ -17,7 +17,7 @@ const titleSize = { 2: 'lg', 3: '2xs', 4: '2xs' } as const;
 
 /** Nothing to show yet. A normal state, not an error, so no alert and no announcement. */
 export const EmptyState = ({ title, description, level = 3, children }: EmptyStateProps) => (
-  <div className="uib-empty-state">
+  <div className="uib-states-empty">
     <Heading level={level} data-size={titleSize[level]}>
       {title}
     </Heading>
@@ -72,7 +72,7 @@ export const ErrorState = ({
   };
 
   return (
-    <div role="alert" className="uib-error-state ds-focus" tabIndex={-1} ref={region}>
+    <div role="alert" className="uib-states-error ds-focus" tabIndex={-1} ref={region}>
       {message ? (
         <Alert data-color="danger">
           {title ? (

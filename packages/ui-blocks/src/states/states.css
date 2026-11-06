@@ -5,7 +5,7 @@
 @layer genai.components {
   /* Pinned to neutral: what is missing reads as quiet text in any colour family, while the action
      beside it follows the host's. */
-  .uib-empty-state {
+  .uib-states-empty {
     display: flex;
     flex-direction: column;
     gap: var(--genai-states-empty-gap, var(--ds-size-2));
@@ -13,12 +13,12 @@
     color: var(--genai-states-empty-color, var(--ds-color-neutral-text-subtle));
     font-family: var(--genai-states-font-family, var(--ds-font-family)), sans-serif;
   }
-  .uib-error-state {
+  .uib-states-error {
     font-family: var(--genai-states-font-family, var(--ds-font-family)), sans-serif;
   }
   /* Never display: none, which takes the region out of the accessibility tree. Out of flow, and
      still focusable for when the retry button goes. */
-  .uib-error-state:empty {
+  .uib-states-error:empty {
     position: absolute;
     block-size: 0;
     inline-size: 0;

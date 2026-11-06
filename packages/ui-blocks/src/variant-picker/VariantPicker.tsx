@@ -65,7 +65,7 @@ export const VariantPicker = ({
         <ChevronDownIcon aria-hidden />
       </Dropdown.Trigger>
       <Dropdown
-        className="uib-variant-picker"
+        className="uib-variant-picker-list"
         {...colored(color)}
         data-overscroll="contain"
         data-size="sm"
