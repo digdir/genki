@@ -147,6 +147,23 @@
     color: var(--genai-answer-stopped-color, var(--ds-color-text-subtle));
   }
 
+  /* Never `display: none`, which drops the region from the accessibility tree: out of flow while
+     empty, so it takes no card spacing while the answer comes. */
+  .uib-answer-failure:empty {
+    position: absolute;
+  }
+  .uib-answer-failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-answer-failure-gap, var(--ds-size-1));
+  }
+  .uib-answer-failure > * {
+    margin: 0;
+  }
+  .uib-answer-failure-title {
+    color: var(--genai-answer-failure-title-color, var(--ds-color-text-default));
+  }
+
   /* «Kilder brukt i svaret»: Details in a Card, as Designsystemet shows it. The card holds the
      frame and the colours; only the spacing is the block's, wider where there is room. Private
      defaults, so the container query changes a default and never a host's value. */

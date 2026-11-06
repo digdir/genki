@@ -117,6 +117,14 @@
               </li>
               <li><code>status</code>: streaming, complete, aborted or failed.</li>
               <li>
+                <code>failure</code>: why a failed answer failed, from the model, the search, the
+                time, the key, too many questions, a question too long, a refused filter or a thread
+                that is gone. The card says what happened and what to do, in kunnskapsassistenten's
+                words, and offers «Prøv igjen» only when asking again can help. A failure that ends
+                an answer on its way is announced, and lost focus moves to «Prøv igjen». Keep it
+                with the turn, so a reload says the same.
+              </li>
+              <li>
                 <code>onOpenCitation</code>: a footnote was followed, with its index and the item it
                 cites, for Sources' <code>target</code>.
               </li>
@@ -133,6 +141,12 @@
             <p>
               <code>answerCitations</code> gives Sources exactly the footnotes the answer draws, so
               both blocks pair from one list.
+            </p>
+            <p>
+              <code>answerCopy</code> gives the text for «Kopier svaret», as kunnskapsassistenten
+              copies it: the answer with its footnotes numbered as drawn, and «Kilder» under it, one
+              line per numbered excerpt with its title, page, year and address. Its
+              <code>sources</code> count is the receipt's.
             </p>
             <h2>Related</h2>
             <ul>
@@ -202,6 +216,16 @@
                   <td><code>--genai-answer-code-padding</code></td>
                   <td><code>--ds-size-3</code></td>
                   <td>code padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-failure-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between a failure's heading and its text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-failure-title-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>a failure's heading</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-font-family</code></td>
@@ -415,6 +439,10 @@
               <li>
                 genki-test's services cite documents. Excerpt mode on live answers waits for answers
                 that name their excerpts (digdir/genki#283).
+              </li>
+              <li>
+                kunnskapsassistenten's reference list starts each line with the publisher. The
+                contract's sources carry none, so the copied list starts with the title.
               </li>
             </ul>
           </div>

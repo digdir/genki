@@ -1,7 +1,7 @@
 import { Button, Card, Link, Paragraph, Skeleton, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { ArrowsCirclepathIcon, FileTextIcon, InformationSquareIcon } from '@navikt/aksel-icons';
-import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n.js';
 import { Markdown, type CiteRenderer, type TableFacts } from '../markdown/Markdown.js';
 import { documentKeys, type CitationMode } from '../sources/pairing.js';
@@ -11,6 +11,40 @@ import { readFootnotes, type AnswerMarker } from './citations.js';
 import { SourcesUsed, type UsedDocument } from './SourcesUsed.js';
 
 export type AnswerStatus = 'streaming' | 'complete' | 'aborted' | 'failed';
+
+/**
+ * Why an answer failed, as far as the app can tell: the model, the search in the documents, the
+ * time, the key, too many questions, a question too long, a filter the service refused, a thread
+ * that is gone, or nothing it can name.
+ */
+export type AnswerFailureKind =
+  | 'model'
+  | 'search'
+  | 'timeout'
+  | 'access'
+  | 'busy'
+  | 'tooLong'
+  | 'filter'
+  | 'threadGone'
+  | 'unknown';
+
+export interface AnswerFailure {
+  kind: AnswerFailureKind;
+  /** The service's own sentence on what happened, in place of the block's. The advice stays. */
+  message?: string | undefined;
+}
+
+/**
+ * Whether asking again can help. The same question fails the same way with a refused key, a
+ * question too long, a refused filter or a thread that is gone, and a button that cannot work is
+ * worse than none.
+ */
+export const failureRetryable = (kind: AnswerFailureKind) =>
+  kind !== 'access' && kind !== 'tooLong' && kind !== 'filter' && kind !== 'threadGone';
+
+// Anchored to the end, so «Prøv igjen senere» stays: a service sentence that ends by asking for
+// what the button under it does would say it twice.
+const retryPrompt = /\s*(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*[.!…]*\s*$/iu;
 
 /** A footnote in the answer to show, by its index in the answer's footnotes. */
 export interface AnswerTarget {
@@ -45,6 +79,11 @@ export interface AnswerProps {
   closingQuestion?: boolean | undefined;
   /** Asks the same question again, offered under a stopped or failed answer. */
   onRegenerate?: (() => void) | undefined;
+  /**
+   * Why a failed answer failed. The card says what happened and what to do, and offers to ask
+   * again only when that can help. Keep it with the turn, so a reload says the same.
+   */
+  failure?: AnswerFailure | undefined;
   /** The row under a finished answer, such as copying and feedback. */
   actions?: ReactNode;
   /** Who answered, for a screen reader. Without it, the AI assistant. */
@@ -55,6 +94,48 @@ export interface AnswerProps {
   color?: string | undefined;
   className?: string | undefined;
 }
+
+type T = ReturnType<typeof useT>;
+
+/** The case's heading, and what happened and what to do, as one paragraph. */
+const failureText = (t: T, { kind, message }: AnswerFailure, name: string) => {
+  const [title, what, advice] = ((): [string, string, string] => {
+    switch (kind) {
+      case 'model':
+        return [t('answer.modelTitle'), t('answer.modelWhat'), t('answer.modelAdvice')];
+      case 'search':
+        return [
+          t('answer.searchTitle'),
+          t('answer.searchWhat', { name }),
+          t('answer.searchAdvice'),
+        ];
+      case 'timeout':
+        return [t('answer.timeoutTitle'), t('answer.timeoutWhat'), t('answer.timeoutAdvice')];
+      case 'access':
+        return [
+          t('answer.accessTitle'),
+          t('answer.accessWhat', { name }),
+          t('answer.accessAdvice'),
+        ];
+      case 'busy':
+        return [t('answer.busyTitle'), t('answer.busyWhat'), t('answer.busyAdvice')];
+      case 'tooLong':
+        return [t('answer.tooLongTitle'), t('answer.tooLongWhat'), t('answer.tooLongAdvice')];
+      case 'filter':
+        return [t('answer.filterTitle'), t('answer.filterWhat'), t('answer.filterAdvice')];
+      case 'threadGone':
+        return [
+          t('answer.threadGoneTitle'),
+          t('answer.threadGoneWhat'),
+          t('answer.threadGoneAdvice'),
+        ];
+      default:
+        return [t('answer.unknownTitle'), t('answer.unknownWhat'), t('answer.unknownAdvice')];
+    }
+  })();
+  const own = message?.replace(retryPrompt, '').trim();
+  return { title, text: `${own || what} ${advice}` };
+};
 
 /** Characters per skeleton line, not a length: Skeleton repeats that many dashes. */
 const skeletonLines = [78, 86, 82, 48];
@@ -153,6 +234,7 @@ export const Answer = ({
   sourcesUsed = true,
   closingQuestion = false,
   onRegenerate,
+  failure,
   actions,
   assistantName,
   headingLevel = 3,
@@ -167,6 +249,23 @@ export const Answer = ({
   const complete = status === 'complete';
   const aborted = status === 'aborted';
   const failed = status === 'failed';
+  const retryRef = useRef<HTMLButtonElement>(null);
+
+  // An answer seen on its way: a failure that ends it is news, and is said. One read back failed
+  // from the store is not, and is only shown.
+  const [live, setLive] = useState(streaming);
+  if (streaming && !live) setLive(true);
+
+  // Focus goes to «Prøv igjen» only if it was lost, a frame later, when the control the reader
+  // pressed has gone; anywhere else, it stays where the reader put it.
+  useEffect(() => {
+    if (!failed || !live) return;
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active === null || active === document.body) retryRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [failed, live]);
 
   const read = useMemo(
     () => readFootnotes(text, sources, markers, citationMode),
@@ -271,6 +370,12 @@ export const Answer = ({
       : [];
   });
 
+  const told =
+    failed && failure ? failureText(t, failure, assistantName ?? t('answer.assistant')) : undefined;
+  const again =
+    (aborted || failed) &&
+    onRegenerate !== undefined &&
+    (!failed || !failure || failureRetryable(failure.kind));
   const finished = complete && !empty && !noAnswer;
   // Exactly the answers with nothing behind them. Unknown sources say nothing, and footnotes
   // with no sources are sources lost, not an answer without any.
@@ -312,10 +417,25 @@ export const Answer = ({
             {empty ? t('answer.abortedBeforeAnswer') : t('answer.aborted')}
           </Paragraph>
         ) : null}
-        {failed ? (
-          <Paragraph data-size="sm" variant="long" className="uib-answer-stopped">
-            {t('answer.failed')}
-          </Paragraph>
+        {/* In the page while the answer comes, so a failure that ends it is announced: an alert
+            says only what appears inside one already there. Out of flow while empty. */}
+        {streaming || failed ? (
+          <div role={live ? 'alert' : undefined} className="uib-answer-failure">
+            {failed && told ? (
+              <>
+                <Paragraph data-size="sm" className="uib-answer-failure-title">
+                  <strong>{told.title}</strong>
+                </Paragraph>
+                <Paragraph data-size="sm" variant="long" className="uib-answer-stopped">
+                  {told.text}
+                </Paragraph>
+              </>
+            ) : failed ? (
+              <Paragraph data-size="sm" variant="long" className="uib-answer-stopped">
+                {t('answer.failed')}
+              </Paragraph>
+            ) : null}
+          </div>
         ) : null}
         {finished && sourcesUsed ? (
           <SourcesUsed documents={used} href={href} onOpenDocument={onOpenDocument} />
@@ -324,13 +444,13 @@ export const Answer = ({
           <Paragraph variant="long">{t('answer.closingQuestion')}</Paragraph>
         ) : null}
       </Card.Block>
-      {(complete && !empty && actions) || ((aborted || failed) && (onRegenerate || actions)) ? (
+      {(complete && !empty && actions) || ((aborted || failed) && (again || actions)) ? (
         <Card.Block>
           <div className="uib-answer-actions">
-            {(aborted || failed) && onRegenerate ? (
-              <Button variant="tertiary" data-size="sm" onClick={onRegenerate}>
+            {again ? (
+              <Button ref={retryRef} variant="tertiary" data-size="sm" onClick={onRegenerate}>
                 <ArrowsCirclepathIcon aria-hidden />
-                {t('answer.regenerate')}
+                {told ? t('answer.retry') : t('answer.regenerate')}
               </Button>
             ) : null}
             {actions}
