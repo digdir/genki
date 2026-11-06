@@ -66,6 +66,8 @@ const accentPins = [
   '--genai-sources-excerpt-active-background',
   '--genai-sources-excerpt-active-marker-color',
 ];
+// The disclaimer is grey in kunnskapsassistenten whatever the host's family.
+const neutralPins = ['--genai-sources-disclaimer-color'];
 const warningPins = [
   '--genai-sources-mark-background',
   '--genai-sources-mark-color',
@@ -152,18 +154,22 @@ describe('the lint', () => {
 describe('the Sources styles', () => {
   const flat = sheets.find((sheet) => sheet.path === 'sources/sources.css')?.flat ?? '';
 
-  it('follow the host’s colour family, but for the seven deliberate pins', () => {
+  it('follow the host’s colour family, but for the eight deliberate pins', () => {
     const uses = genaiUses(flat);
     const pinned = uses
       .filter((use) =>
         /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.fallback),
       )
       .map((use) => use.name);
-    expect([...new Set(pinned)].sort()).toEqual([...accentPins, ...warningPins].sort());
+    expect([...new Set(pinned)].sort()).toEqual(
+      [...accentPins, ...warningPins, ...neutralPins].sort(),
+    );
     for (const name of accentPins)
       expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-accent-/);
     for (const name of warningPins)
       expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-warning-/);
+    for (const name of neutralPins)
+      expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-neutral-/);
   });
 
   it('say that a closed card’s body is hidden, which the layer would otherwise undo', () => {
