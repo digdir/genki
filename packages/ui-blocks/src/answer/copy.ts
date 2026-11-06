@@ -1,6 +1,6 @@
 import type { Locale } from '@genai/i18n';
 import { translator } from '../i18n.js';
-import { documentKeys, type CitationMode } from '../sources/pairing.js';
+import { documentKeys } from '../sources/pairing.js';
 import { distinctNames } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
@@ -10,8 +10,6 @@ export interface AnswerCopyOptions {
   sources?: readonly SourceDocument[] | undefined;
   /** The contract's top-level `markers`, when the service cites excerpts. */
   markers?: readonly AnswerMarker[] | undefined;
-  /** The mode the answer is drawn in, so the copy numbers its footnotes as the reader saw them. */
-  citationMode?: CitationMode | undefined;
   /** The language of the reference list's words, «s.» or «p.». */
   locale?: Locale | undefined;
 }
@@ -64,8 +62,9 @@ const yearOf = (date: string | undefined) => {
  * What «Kopier svaret» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
  * its footnotes, and a reference list under it, since an answer must not leave the app without
  * where it came from. One line per numbered excerpt, since two excerpts from one report are on
- * different pages, or per cited document when nothing is numbered. Each part is left out when the
- * source lacks it. With no sources, the clean text alone.
+ * different pages. An answer whose footnotes name only documents is drawn without footnotes, so it
+ * is copied without them, with one unnumbered line per cited document. Each part is left out when
+ * the source lacks it. With no sources, the clean text alone.
  */
 /**
  * How much of an answer on its way is finished, as plain text without footnotes, for a live
@@ -78,9 +77,9 @@ export const finishedText = (markdown: string) => {
 };
 
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
-  const { sources = [], markers, citationMode = 'excerpt', locale = 'nb' } = options;
+  const { sources = [], markers, locale = 'nb' } = options;
   const t = translator(locale);
-  const { pairing } = readFootnotes(text, sources, markers, citationMode);
+  const { pairing } = readFootnotes(text, sources, markers);
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = documentKeys(sources);
   const names = distinctNames(sources, (title, id) => t('sources.sameTitle', { title, id })).map(
@@ -88,15 +87,21 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   );
   const byMarker = new Map(markers?.map((m) => [m.marker, m] as const));
 
-  // The numbers the footnotes carry: excerpts', or documents' while the service cites documents.
-  const documentNumbers = byExcerpt ? new Map<string, number>() : pairing.numbers;
-
   const where = (title: string, page: number | undefined) =>
     page === undefined ? title : t('answer.copyPage', { title, page });
-  const line = (n: number, title: string, page: number | undefined, at: SourceDocument) => {
+  const line = (
+    n: number | undefined,
+    title: string,
+    page: number | undefined,
+    at: SourceDocument,
+  ) => {
     const year = yearOf(at.publishedAt);
     const url = at.url;
-    return [`[${n}]`, `${where(title, page)}${year === undefined ? '' : ` (${year})`}.`, url]
+    return [
+      n === undefined ? undefined : `[${n}]`,
+      `${where(title, page)}${year === undefined ? '' : ` (${year})`}.`,
+      url,
+    ]
       .filter(Boolean)
       .join(' ');
   };
@@ -113,13 +118,9 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
         )
         .toSorted((a, b) => a.n - b.n)
         .map((r) => r.text)
-    : sources
-        .flatMap((source, i) => {
-          const n = documentNumbers.get(keys[i] ?? '');
-          return n === undefined ? [] : [{ n, text: line(n, names[i] ?? '', undefined, source) }];
-        })
-        .toSorted((a, b) => a.n - b.n)
-        .map((r) => r.text);
+    : sources.flatMap((source, i) =>
+        pairing.uses.has(keys[i] ?? '') ? [line(undefined, names[i] ?? '', undefined, source)] : [],
+      );
 
   // Where a written `[N]` leads, by the contract's rule: the marker it names, or the source with
   // `index: N`. One that names nothing is prose, such as a list number, and stays.
@@ -137,8 +138,8 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
         : -1
       : sources.findIndex((s) => s.index === n);
     if ((markers && !marker) || (!markers && at < 0)) return undefined;
-    if (byExcerpt) return (marker && pairing.numbers.get(marker.chunkId)) ?? null;
-    return documentNumbers.get(keys[at] ?? '') ?? null;
+    // One that names only a document is drawn as nothing, so it is copied as nothing.
+    return (byExcerpt && marker && pairing.numbers.get(marker.chunkId)) || null;
   };
 
   const body = plain(text, label);

@@ -67,7 +67,7 @@ const draw = (props: Partial<AnswerProps> = {}) =>
 // The footnote marks in page order: links when the app gives them somewhere to go, else marks.
 const footnotes = () =>
   [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].filter((mark) =>
-    /^(Utdrag|Kilde) \d+: /.test(mark.getAttribute('aria-label') ?? ''),
+    /^Utdrag \d+: /.test(mark.getAttribute('aria-label') ?? ''),
   );
 
 describe('the footnotes in the answer', () => {
@@ -113,30 +113,20 @@ describe('the footnotes in the answer', () => {
     });
   });
 
-  it('numbers the documents in document mode, in the order first cited, in the same round marks', () => {
-    draw({ citationMode: 'document' });
-    expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Kilde 1: Tildelingsbrev Nkom 2022',
-      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-      'Kilde 1: Tildelingsbrev Nkom 2022',
-    ]);
-    expect(footnotes().map((link) => link.textContent)).toEqual(['[1]', '[2]', '[2]', '[1]']);
-    for (const link of footnotes()) {
-      expect(link.classList.contains('uib-answer-mark')).toBe(true);
-      expect(link.querySelector('svg')).toBeNull();
-    }
-    expect(document.body.textContent).not.toMatch(/Utdrag \d/);
-  });
-
-  it('reads [N] as the source with that index when the service cites documents', () => {
-    render(
-      <Answer text="Bevilgningen økte [2], og rapporteringen er fast [1]." sources={sources} />,
+  it('draws no footnote, and guesses no excerpt, when the footnotes name only documents', () => {
+    const { container } = render(
+      <Answer
+        text="Bevilgningen økte [2], og rapporteringen er fast [1]."
+        sources={sources}
+        onOpenCitation={() => {}}
+      />,
     );
-    expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Kilde 1: Tildelingsbrev Nkom 2022',
-      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-    ]);
+    expect(footnotes()).toEqual([]);
+    expect(container.querySelector('.uib-answer-mark')).toBeNull();
+    expect(container.querySelector('.uib-answer-text')?.textContent).toBe(
+      'Bevilgningen økte, og rapporteringen er fast.',
+    );
+    expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
   });
 
   it('draws a footnote the app gives nowhere to go as a mark, not a link to the top of the page', () => {
@@ -213,19 +203,19 @@ describe('the footnotes in the answer', () => {
  * An app as it is meant to wire the two blocks: the same footnotes to both, a footnote's target to
  * Sources, and Sources' way back to the answer's target.
  */
-const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
-  const citations = useMemo(() => answerCitations(text, sources, markers, mode), [mode]);
+const Host = ({ cites = 'excerpts' }: { cites?: 'excerpts' | 'documents' }) => {
+  const named = cites === 'excerpts' ? markers : undefined;
+  const citations = useMemo(() => answerCitations(text, sources, named), [named]);
   const [toSource, setToSource] = useState<SourceTarget>();
   const [toAnswer, setToAnswer] = useState<AnswerTarget>();
-  // What the reader followed, a footnote or a title, is where the way back goes.
+  // What the reader followed, a footnote or a link in the summary, is where the way back goes.
   const [followed, setFollowed] = useState<AnswerTarget>();
   return (
     <>
       <Answer
         text={text}
         sources={sources}
-        markers={markers}
-        citationMode={mode}
+        markers={named}
         target={toAnswer}
         onOpenCitation={(citation, target) => {
           setFollowed({ citation });
@@ -236,11 +226,14 @@ const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
           setFollowed({ document: goal });
           setToSource(goal);
         }}
+        onOpenExcerpt={(goal) => {
+          setFollowed({ document: goal });
+          setToSource(goal);
+        }}
       />
       <Sources
         sources={sources}
         citations={citations}
-        citationMode={mode}
         target={toSource}
         onShowUse={(citation) => setToAnswer({ citation })}
         onReturn={() => {
@@ -251,9 +244,11 @@ const Host = ({ mode = 'excerpt' }: { mode?: 'excerpt' | 'document' }) => {
   );
 };
 
+// «Utdrag n» in Sources: the excerpt's title, a link back when the app takes one.
+const numberSelector = '.uib-sources-excerpt-number, .uib-sources-title-link';
 const excerptRow = (n: number) =>
   screen
-    .getByText(`Utdrag ${n}`, { selector: '.uib-sources-excerpt-number' })
+    .getByText(`Utdrag ${n}`, { selector: numberSelector })
     .closest('.uib-sources-excerpt') as HTMLElement;
 
 describe('the pairing, both ways, between the answer and Sources', () => {
@@ -264,7 +259,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     );
     const inSources = new Set(
       screen
-        .getAllByText(/^Utdrag \d+$/, { selector: '.uib-sources-excerpt-number' })
+        .getAllByText(/^Utdrag \d+$/, { selector: `.uib-sources-excerpt ${numberSelector}` })
         .map((label) => label.textContent?.slice('Utdrag '.length)),
     );
     expect([...inAnswer].sort()).toEqual(['1', '2', '3']);
@@ -274,9 +269,9 @@ describe('the pairing, both ways, between the answer and Sources', () => {
       fireEvent.click(footnote);
       await frame();
       const n = /^Utdrag (\d+)/.exec(footnote.getAttribute('aria-label') ?? '')?.[1];
-      expect(
-        document.activeElement?.querySelector('.uib-sources-excerpt-number')?.textContent,
-      ).toBe(`Utdrag ${n}`);
+      expect(document.activeElement?.querySelector('.uib-sources-title-link')?.textContent).toBe(
+        `Utdrag ${n}`,
+      );
     }
     // The excerpt nothing cites is shown without a number, and says so.
     const uncited = screen
@@ -295,11 +290,12 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     expect(row.textContent).toContain('594,2 mill. kroner');
   });
 
-  it('leads from an excerpt back to each footnote that cites it, by a link of its own', async () => {
+  it('leads from an excerpt’s title back to its first footnote, and from «↩ 2» beside it to the next', async () => {
     render(<Host />);
-    const back = within(excerptRow(1)).getAllByRole('link', { name: /^Til svaret/ });
+    const back = within(excerptRow(1)).getAllByRole('link', { name: /til svaret/i });
+    expect(back.map((link) => link.textContent)).toEqual(['Utdrag 1', '2']);
     expect(back.map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Til svaret, bruk 1, fotnote 1 av 4',
+      'Utdrag 1, til svaret, bruk 1, fotnote 1 av 4',
       'Til svaret, bruk 2, fotnote 4 av 4',
     ]);
     fireEvent.click(back[1] as HTMLElement);
@@ -347,28 +343,26 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     expect(document.activeElement).toBe(title);
   });
 
-  it('pairs by document both ways in document mode, footnote N with the card numbered N', async () => {
-    render(<Host mode="document" />);
-    fireEvent.click(footnotes()[1] as HTMLElement);
+  it('goes from «Utdrag 2» in «Kilder brukt i svaret» to that excerpt in Sources, and back to the link', async () => {
+    render(<Host />);
+    const link = screen.getByRole('link', { name: 'Utdrag 2 i Kilder' });
+    fireEvent.click(link);
     await frame();
-    expect(footnotes()[1]?.textContent).toBe('[2]');
-    expect(document.activeElement?.getAttribute('aria-label')).toBe(`Kilde 2: ${nkom.title}`);
-    const card = screen
-      .getByRole('heading', { name: `Kilde 2: ${nkom.title}` })
-      .closest('.uib-sources-document') as HTMLElement;
-    const head = card.querySelector('.uib-sources-document-head') as HTMLElement;
-    const back = within(head).getAllByRole('link', { name: /^Til svaret/ });
-    expect(back).toHaveLength(2);
-    fireEvent.click(back[1] as HTMLElement);
+    const row = excerptRow(2);
+    expect(row.dataset.active).toBe('true');
+    expect(document.activeElement).toBe(row);
+    fireEvent.keyDown(row, { key: 'Escape' });
     await frame();
-    expect(document.activeElement).toBe(footnotes()[2]);
-    fireEvent.click(back[0] as HTMLElement);
-    await frame();
-    expect(document.activeElement).toBe(footnotes()[1]);
-    const memoCard = screen
-      .getByRole('heading', { name: memo.title })
-      .closest('.uib-sources-document') as HTMLElement;
-    expect(within(memoCard).getByText('Ikke vist til i svaret')).toBeTruthy();
+    expect(document.activeElement).toBe(link);
+  });
+
+  it('numbers nothing on either side when the footnotes name only documents, and still lists the documents', () => {
+    render(<Host cites="documents" />);
+    expect(footnotes()).toEqual([]);
+    expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
+    expect(screen.queryAllByRole('link', { name: /til svaret|i Kilder$/i })).toEqual([]);
+    expect(screen.getByRole('link', { name: nkom.title })).toBeTruthy();
+    expect(screen.getByRole('link', { name: tildeling.title })).toBeTruthy();
   });
 });
 
@@ -378,16 +372,16 @@ describe('«Kilder brukt i svaret»', () => {
       .getAllByRole('listitem')
       .map((row) => row.textContent);
 
-  it('lists each document the answer cites, in the order Sources shows them, with its excerpts’ numbers', () => {
+  it('lists each document the answer cites, in the order Sources shows them, with its excerpts', () => {
     draw();
     expect(screen.getByText('Kilder brukt i svaret').closest('details')?.open).toBe(true);
     expect(rows()).toEqual([
-      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 2–3',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 2, Utdrag 3',
       'Tildelingsbrev Nkom 2022Utdrag 1',
     ]);
   });
 
-  it('writes numbers that are not a run as a list', () => {
+  it('names each excerpt under its title, in order, comma separated, on one small grey line', () => {
     render(
       <Answer
         text="A [3]. B [1]. C [2]."
@@ -396,14 +390,32 @@ describe('«Kilder brukt i svaret»', () => {
       />,
     );
     expect(rows()).toEqual([
-      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 1, 3',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021Utdrag 1, Utdrag 3',
       'Tildelingsbrev Nkom 2022Utdrag 2',
     ]);
+    const line = screen.getAllByRole('listitem')[0]?.querySelector('p') as HTMLElement;
+    expect(line.className).toContain('uib-answer-sources-used-excerpts');
+    expect(line.dataset.size).toBe('xs');
   });
 
-  it('names each document in document mode with the number its footnotes carry', () => {
-    draw({ citationMode: 'document' });
-    expect(rows()).toEqual([`${nkom.title}Kilde 2`, `${tildeling.title}Kilde 1`]);
+  it('makes each excerpt a link to it in Sources, named for a screen reader', () => {
+    const onOpenExcerpt = vi.fn();
+    draw({ onOpenExcerpt, href: (target) => `#utdrag-${target.chunkId ?? ''}` });
+    const links = screen.getAllByRole('link', { name: /^Utdrag \d+ i Kilder$/ });
+    expect(links.map((link) => link.textContent)).toEqual(['Utdrag 2', 'Utdrag 3', 'Utdrag 1']);
+    expect(links[1]?.getAttribute('href')).toBe('#utdrag-kudos::2021-1');
+    expect(fireEvent.click(links[1] as HTMLElement)).toBe(false);
+    expect(onOpenExcerpt).toHaveBeenCalledWith({
+      chunkId: 'kudos::2021-1',
+      documentId: 'kudos::2021',
+      index: 1,
+    });
+  });
+
+  it('lists the documents an answer cites only as wholes, with no excerpts under them', () => {
+    draw({ markers: undefined, onOpenExcerpt: () => {} });
+    expect(rows()).toEqual([nkom.title, tildeling.title, `${memo.title}, ditt dokument`]);
+    expect(screen.queryByText(/Utdrag/)).toBeNull();
   });
 
   it('opens the document itself, not its first excerpt', () => {
@@ -438,8 +450,8 @@ describe('«Kilder brukt i svaret»', () => {
       />,
     );
     expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
-      `${nkom.title}, dokument 90777Kilde 1`,
-      `${nkom.title}, dokument 88640Kilde 2`,
+      `${nkom.title}, dokument 90777`,
+      `${nkom.title}, dokument 88640`,
     ]);
   });
 
@@ -673,13 +685,15 @@ describe('the answer as copied', () => {
     );
   });
 
-  it('numbers documents in the order first cited, one line each, in document mode', () => {
-    const copied = answerCopy(text, { sources, markers, citationMode: 'document' });
-    expect(copied.sources).toBe(2);
-    expect(copied.text).toContain('Nkom rapporterer kvartalsvis. [1]');
-    expect(copied.text).toContain('Internkontrollen følger DFØ [2]');
+  it('copies an answer that cites only documents as drawn, without footnotes, one unnumbered line per document', () => {
+    const copied = answerCopy(text, { sources });
+    // Without markers, [N] is the source with index N: all three documents.
+    expect(copied.sources).toBe(3);
+    expect(copied.text).toContain('Nkom rapporterer kvartalsvis.\n');
+    expect(copied.text).toContain('Internkontrollen følger DFØ, og bevilgningen');
+    expect(copied.text).not.toMatch(/\[\d\]/);
     expect(copied.text.split('Kilder\n')[1]).toBe(
-      '[1] Tildelingsbrev Nkom 2022.\n[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021',
+      'Årsrapport Nasjonal kommunikasjonsmyndighet 2021. https://kudos.dfo.no/dokument/2021\nTildelingsbrev Nkom 2022.\nInternt notat.',
     );
   });
 
@@ -716,7 +730,7 @@ describe('the catalogue', () => {
       screen.getAllByRole('img', { name: /^Excerpt 1: Tildelingsbrev/ }).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText('Sources used in the answer')).toBeTruthy();
-    expect(screen.getByText('Excerpts 2–3')).toBeTruthy();
+    expect(screen.getByText('Excerpt 2, Excerpt 3')).toBeTruthy();
   });
 
   it('has an English text for every Norwegian one', () => {
