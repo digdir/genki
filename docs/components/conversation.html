@@ -120,10 +120,11 @@
               </li>
               <li>
                 <code>follow</code> (on by default) keeps the column at its end while an answer
-                comes, if the reader is within 80 px of it, and lets go when they scroll up.
-                <code>scrollContainer</code> is the column, or the nearest ancestor that scrolls.
-                <code>onAtEndChange</code> says when the reader leaves or reaches the end, for the
-                composer's «Bla til bunnen».
+                comes, if the reader is within 80 px of it, and lets go when they scroll up. A block
+                that first appears with an answer on its way follows it, however far the question
+                already reaches below the edge, as on a phone. <code>scrollContainer</code> is the
+                column, or the nearest ancestor that scrolls. <code>onAtEndChange</code> says when
+                the reader leaves or reaches the end, for the composer's «Bla til bunnen».
               </li>
               <li>
                 <code>slowAfter</code> (30 seconds): an answer on its way with no progress that long
@@ -147,10 +148,12 @@
               </li>
               <li>
                 <code>onOpenCitation</code>, <code>onOpenDocument</code>,
-                <code>onRegenerate</code> and <code>onReply</code>, each with the turn it came from;
-                <code>onRegenerate</code> also gets the question to ask again.
-                <code>target</code> names an answer and, in it, a footnote or a title in «Kilder
-                brukt i svaret» to scroll to and focus: where Sources' way back leads.
+                <code>onOpenExcerpt</code>, <code>onRegenerate</code> and <code>onReply</code>, each
+                with the turn it came from; <code>onRegenerate</code> also gets the question to ask
+                again, and when the pressed button goes away with its turn and focus falls to the
+                page, focus goes to the answer in that turn's place. <code>target</code> names an
+                answer and, in it, a footnote, or a title or an excerpt in «Kilder brukt i svaret»,
+                to scroll to and focus: where Sources' way back leads.
               </li>
               <li>
                 A screen reader hears an answer on its way as Kunnskapsassistenten's chat says it,
@@ -169,9 +172,9 @@
                 answer. Without <code>actions</code>, the row holds the time alone.
               </li>
               <li>
-                <code>search</code>, <code>citationMode</code>, <code>sourcesUsed</code>,
-                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
-                <code>citationId</code> and <code>headingLevel</code>.
+                <code>search</code>, <code>sourcesUsed</code>, <code>closingQuestion</code>,
+                <code>assistantName</code>, <code>href</code>, <code>citationId</code> and
+                <code>headingLevel</code>.
               </li>
               <li>
                 <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set

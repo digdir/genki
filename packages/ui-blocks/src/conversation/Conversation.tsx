@@ -6,7 +6,6 @@ import { finishedText } from '../answer/copy.js';
 import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
 import { findHits, stepHit } from '../markdown/textSearch.js';
-import type { CitationMode } from '../sources/pairing.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { AnswerSearch } from './AnswerSearch.js';
 import { AnswerTime } from './AnswerTime.js';
@@ -39,6 +38,8 @@ export interface ConversationProps {
     ((turn: ConversationAnswer, citation: number, target: SourceTarget) => void) | undefined;
   /** A document in «Kilder brukt i svaret» was chosen, in which answer. */
   onOpenDocument?: ((turn: ConversationAnswer, source: SourceDocument) => void) | undefined;
+  /** An excerpt under a title in «Kilder brukt i svaret» was chosen, in which answer. */
+  onOpenExcerpt?: ((turn: ConversationAnswer, target: SourceTarget) => void) | undefined;
   /**
    * Asks a stopped or failed question again, offered under that answer, with the question it
    * answers. A question nothing answered gets the same offer, with an answer turn that stands in.
@@ -99,8 +100,6 @@ export interface ConversationProps {
   stalledAfter?: number | undefined;
   /** An answer on its way has stalled: the app stops it, as with «Avbryt». */
   onStalled?: ((turn: ConversationAnswer) => void) | undefined;
-  /** The service's choice, or the reader's, for every answer. */
-  citationMode?: CitationMode | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
   sourcesUsed?: boolean | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
@@ -179,6 +178,7 @@ export const Conversation = ({
   loading = false,
   onOpenCitation,
   onOpenDocument,
+  onOpenExcerpt,
   onRegenerate,
   title,
   titleRepeatsQuestion,
@@ -197,7 +197,6 @@ export const Conversation = ({
   slowAfter = SLOW_ANSWER_MS,
   stalledAfter = STALLED_ANSWER_MS,
   onStalled,
-  citationMode = 'excerpt',
   sourcesUsed,
   closingQuestion,
   assistantName,
@@ -213,6 +212,31 @@ export const Conversation = ({
   const listRef = useRef<HTMLOListElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
   const toggles = useRef(new Map<string, HTMLButtonElement>());
+
+  // «Generer på nytt» and «Prøv igjen» go away with the answer they stand under, whether the app
+  // replaces the turn in place or draws a new one. When focus falls to the page with the button
+  // the reader pressed, it goes to the answer that takes its place, the item at the same place.
+  const regenerating = useRef<{ at: number; pressed: Element } | undefined>(undefined);
+  const regenerate = (turn: ConversationAnswer, question: ConversationQuestion | undefined) => {
+    const pressed = document.activeElement;
+    const item = pressed?.closest('.uib-conversation-turn');
+    const at = item && listRef.current ? [...listRef.current.children].indexOf(item) : -1;
+    regenerating.current = pressed && at >= 0 ? { at, pressed } : undefined;
+    onRegenerate?.(turn, question);
+  };
+  useEffect(() => {
+    const asked = regenerating.current;
+    if (!asked) return;
+    const active = document.activeElement;
+    // Not yet redrawn: the button is still there, with focus.
+    if (active === asked.pressed && asked.pressed.isConnected) return;
+    regenerating.current = undefined;
+    // Focus the reader moved elsewhere stays.
+    if (active !== null && active !== document.body) return;
+    const item = listRef.current?.children[asked.at];
+    if (item instanceof HTMLElement && item.dataset.kind === 'answer')
+      item.focus({ preventScroll: true });
+  });
 
   // An answer is on its way from the moment the question stands last, so the question's own
   // growth is followed too.
@@ -322,10 +346,7 @@ export const Conversation = ({
   const searched = search
     ? answers.find((turn) => turn.id === searching && turn.status === 'complete')
     : undefined;
-  const visible = useMemo(
-    () => (searched ? answerVisibleText(searched, citationMode) : undefined),
-    [searched, citationMode],
-  );
+  const visible = useMemo(() => (searched ? answerVisibleText(searched) : undefined), [searched]);
   const hits = useMemo(
     () => (searched && visible ? findHits([{ id: searched.id, text: visible.text }], query) : []),
     [searched, visible, query],
@@ -444,14 +465,15 @@ export const Conversation = ({
     return (
       <li
         key={standIn.id}
-        className="uib-conversation-turn"
+        className="uib-conversation-turn ds-focus"
         data-kind="answer"
         data-unanswered="true"
+        tabIndex={-1}
       >
         <Answer
           text=""
           status="failed"
-          onRegenerate={onRegenerate && (() => onRegenerate(standIn, question))}
+          onRegenerate={onRegenerate && (() => regenerate(standIn, question))}
           assistantName={assistantName}
           headingLevel={headingLevel}
           color={answerColor}
@@ -508,7 +530,8 @@ export const Conversation = ({
       );
 
     return (
-      <li key={turn.id} className="uib-conversation-turn" data-kind="answer">
+      // Focusable from script only: where focus goes when the button it was on goes away.
+      <li key={turn.id} className="uib-conversation-turn ds-focus" data-kind="answer" tabIndex={-1}>
         {/* Over the card: a fact about the question, not part of the answer. */}
         {scopeLine(turn.scope, t('conversation.answerScope'))}
         {header?.(turn, question)}
@@ -517,19 +540,19 @@ export const Conversation = ({
           status={turn.status}
           sources={turn.sources}
           markers={turn.markers}
-          citationMode={citationMode}
           noAnswer={turn.noAnswer}
           onOpenCitation={
             onOpenCitation && ((citation, goal) => onOpenCitation(turn, citation, goal))
           }
           onOpenDocument={onOpenDocument && ((source) => onOpenDocument(turn, source))}
+          onOpenExcerpt={onOpenExcerpt && ((goal) => onOpenExcerpt(turn, goal))}
           href={href && ((goal) => href(turn, goal))}
           citationId={citationId && ((citation) => citationId(turn, citation))}
           target={target?.turnId === turn.id ? answerTarget : undefined}
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
           closingQuestion={closingQuestion}
-          onRegenerate={onRegenerate && (() => onRegenerate(turn, question))}
+          onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}
           actions={rowFor(turn)}
           assistantName={assistantName}

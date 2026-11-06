@@ -2,6 +2,7 @@
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { en, nb } from '../i18n.js';
 import type { SourceDocument } from '../sources/types.js';
@@ -50,6 +51,11 @@ const answer: ConversationAnswer = {
   text: 'Nkom rapporterer kvartalsvis [2], og bevilgningen var 594,2 mill. kroner [1].',
   status: 'complete',
   sources: [nkom, tildeling],
+  // Footnotes are numbered by excerpt only, so the markers name theirs.
+  markers: [
+    { marker: '1', chunkId: 'kudos::2021-1', documentId: 'kudos::2021' },
+    { marker: '2', chunkId: 'kudos::2022-1', documentId: 'kudos::2022' },
+  ],
   createdAt: '2026-09-15T12:32:00Z',
 };
 const followUp: ConversationQuestion = { kind: 'question', id: 'q2', text: 'Og i 2022?' };
@@ -178,24 +184,39 @@ describe('each answer', () => {
     const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
     expect(card?.getAttribute('data-color')).toBe('neutral');
     // Marks, not links: this app gives the footnotes nowhere to go.
-    expect(screen.getAllByRole('img', { name: /^Kilde \d+: / })).toHaveLength(2);
+    expect(screen.getAllByRole('img', { name: /^Utdrag \d+: / })).toHaveLength(2);
     expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
   });
 
-  it('tells the app which answer a footnote or a document was followed in', () => {
+  it('draws no footnote for an answer whose markers name only documents', () => {
+    draw({ turns: [question, { ...answer, markers: undefined }] });
+    expect(screen.queryAllByRole('img', { name: /^(?:Utdrag|Kilde) \d+: / })).toEqual([]);
+    expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
+    expect(screen.getByText(/Nkom rapporterer/).textContent).not.toMatch(/\[\d\]/);
+  });
+
+  it('tells the app which answer a footnote, a document or an excerpt was followed in', () => {
     const onOpenCitation = vi.fn();
     const onOpenDocument = vi.fn();
-    draw({ onOpenCitation, onOpenDocument });
+    const onOpenExcerpt = vi.fn();
+    draw({ onOpenCitation, onOpenDocument, onOpenExcerpt });
     fireEvent.click(
-      screen.getAllByRole('link', { name: /^Kilde 1: Tildelingsbrev/ })[0] as Element,
+      screen.getAllByRole('link', { name: /^Utdrag 1: Tildelingsbrev/ })[0] as Element,
     );
     expect(onOpenCitation).toHaveBeenCalledWith(answer, 0, {
+      chunkId: 'kudos::2022-1',
       documentId: 'kudos::2022',
       index: 2,
     });
     fireEvent.click(screen.getByText('Kilder brukt i svaret'));
     fireEvent.click(screen.getByRole('link', { name: 'Tildelingsbrev Nkom 2022' }));
     expect(onOpenDocument).toHaveBeenCalledWith(answer, tildeling);
+    fireEvent.click(screen.getByRole('link', { name: 'Utdrag 1 i Kilder' }));
+    expect(onOpenExcerpt).toHaveBeenCalledWith(answer, {
+      chunkId: 'kudos::2022-1',
+      documentId: 'kudos::2022',
+      index: 2,
+    });
   });
 
   it('gives each footnote the id the app makes from its answer and its place', () => {
@@ -204,7 +225,7 @@ describe('each answer', () => {
       onOpenCitation: () => {},
     });
     expect(
-      screen.getAllByRole('link', { name: /^Kilde \d+: / }).map((link) => link.getAttribute('id')),
+      screen.getAllByRole('link', { name: /^Utdrag \d+: / }).map((link) => link.getAttribute('id')),
     ).toEqual(['a1-fn-0', 'a1-fn-1']);
   });
 
@@ -222,7 +243,7 @@ describe('each answer', () => {
     await frame();
     const focused = document.activeElement;
     expect(focused?.getAttribute('aria-label')).toBe(
-      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Utdrag 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
     );
     expect(focused?.closest('li')).toBe(items()[3]);
   });
@@ -246,6 +267,59 @@ describe('each answer', () => {
     render(<Conversation turns={[question, stopped]} onRegenerate={onRegenerate} now={now} />);
     fireEvent.click(screen.getByRole('button', { name: 'Generer på nytt' }));
     expect(onRegenerate).toHaveBeenCalledWith(stopped, question);
+  });
+
+  it('puts focus on the new answer when «Generer på nytt» goes away with the turn it was under', () => {
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    const Shell = () => {
+      const [shown, setShown] = useState<ConversationAnswer>(stopped);
+      return (
+        <Conversation
+          turns={[question, shown]}
+          // As an app that replaces the turn in place, with a new id.
+          onRegenerate={() => setShown({ ...answer, id: 'a1-again', status: 'streaming' })}
+        />
+      );
+    };
+    render(<Shell />);
+    const button = screen.getByRole('button', { name: 'Generer på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.queryByRole('button', { name: 'Generer på nytt' })).toBeNull();
+    expect(document.activeElement).toBe(items()[1]);
+    expect((document.activeElement as HTMLElement).dataset.kind).toBe('answer');
+  });
+
+  it('moves no focus when an answer finishes: a control the app owns keeps it', async () => {
+    const field = document.createElement('textarea');
+    document.body.append(field);
+    field.focus();
+    const streaming: ConversationAnswer = { ...answer, status: 'streaming' };
+    const { rerender } = render(<Conversation turns={[question, streaming]} />);
+    rerender(<Conversation turns={[question, answer]} />);
+    await frame();
+    expect(document.activeElement).toBe(field);
+    field.remove();
+  });
+
+  it('leaves focus where the reader moved it before the new answer came', () => {
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    let replace = () => {};
+    const Shell = () => {
+      const [shown, setShown] = useState<ConversationAnswer>(stopped);
+      replace = () => setShown({ ...answer, id: 'a1-again', status: 'streaming' });
+      return <Conversation turns={[question, shown]} onRegenerate={() => {}} />;
+    };
+    render(<Shell />);
+    const button = screen.getByRole('button', { name: 'Generer på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    elsewhere.focus();
+    act(() => replace());
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
   });
 
   it('says under a question nothing answered that it got no answer, and offers to ask it again', () => {
@@ -474,6 +548,32 @@ describe('following an answer on its way', () => {
     box.height = 1800;
     act(() => resized?.());
     expect(box.top).toBe(600);
+    element.remove();
+  });
+
+  it('follows the question that starts the thread, though it already reaches below the edge', () => {
+    // As at 390 px: the block mounts with the first question and the answer's outline, already
+    // 300 px taller than the column.
+    const { element, box } = column();
+    box.top = 0;
+    box.height = 800;
+    const streaming: ConversationAnswer = { ...answer, id: 'a2', status: 'streaming' };
+    render(<Conversation turns={[question, streaming]} scrollContainer={{ current: element }} />);
+    expect(box.top).toBe(800);
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(1400);
+    element.remove();
+  });
+
+  it('leaves a thread that opens with no answer on its way where it is', () => {
+    const { element, box } = column();
+    box.top = 0;
+    box.height = 800;
+    render(<Conversation turns={turns} scrollContainer={{ current: element }} />);
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(0);
     element.remove();
   });
 
