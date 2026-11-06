@@ -66,6 +66,35 @@ const draw = (props: Partial<ConversationProps> = {}) =>
 // The conversation's own items: the first list on the page, and not the lists inside an answer.
 const items = () => [...(screen.getAllByRole('list')[0]?.children ?? [])];
 
+describe('the thread’s title', () => {
+  it('stands over the conversation as a heading, «lg» at level 2, as kunnskapsassistenten’s', () => {
+    draw({ title: 'Rapportering i Nkom' });
+    const heading = screen.getByRole('heading', { level: 2, name: 'Rapportering i Nkom' });
+    expect(heading.getAttribute('data-size')).toBe('lg');
+    expect(heading.classList.contains('ds-sr-only')).toBe(false);
+    expect(
+      heading.compareDocumentPosition(screen.getByText(question.text)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('is in the outline but out of sight when it only repeats the question', () => {
+    draw({ title: 'Hva rapporterer Nkom om' });
+    const heading = screen.getByRole('heading', { level: 2, name: 'Hva rapporterer Nkom om' });
+    expect(heading.classList.contains('ds-sr-only')).toBe(true);
+    cleanup();
+    draw({ title: 'Nkom', titleRepeatsQuestion: true });
+    expect(screen.getByRole('heading', { name: 'Nkom' }).classList.contains('ds-sr-only')).toBe(
+      true,
+    );
+  });
+
+  it('is not drawn when the app gives none', () => {
+    draw();
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
+  });
+});
+
 describe('the conversation', () => {
   it('is one ordered list, a turn per item, in the order they were said', () => {
     const { container } = draw();
@@ -203,7 +232,35 @@ describe('each answer', () => {
     const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
     render(<Conversation turns={[question, stopped]} onRegenerate={onRegenerate} now={now} />);
     fireEvent.click(screen.getByRole('button', { name: 'Generer på nytt' }));
-    expect(onRegenerate).toHaveBeenCalledWith(stopped);
+    expect(onRegenerate).toHaveBeenCalledWith(stopped, question);
+  });
+
+  it('says under a question nothing answered that it got no answer, and offers to ask it again', () => {
+    const onRegenerate = vi.fn();
+    render(<Conversation turns={[question, followUp]} onRegenerate={onRegenerate} />);
+    const standIns = document.querySelectorAll('[data-unanswered="true"]');
+    expect(standIns).toHaveLength(2);
+    expect(standIns[0]?.previousElementSibling?.textContent).toContain(question.text);
+    expect(standIns[0]?.textContent).toContain(
+      'Dette spørsmålet fikk ikke noe svar. Noe gikk galt underveis.',
+    );
+    fireEvent.click(
+      within(standIns[1] as HTMLElement).getByRole('button', { name: 'Generer på nytt' }),
+    );
+    expect(onRegenerate.mock.calls[0]?.[1]).toBe(followUp);
+    expect(onRegenerate.mock.calls[0]?.[0]).toMatchObject({ kind: 'answer', status: 'failed' });
+  });
+
+  it('draws no such note while an answer is on its way, or while the thread is read', () => {
+    render(<Conversation turns={[question]} pending />);
+    expect(document.querySelector('[data-unanswered]')).toBeNull();
+    cleanup();
+    render(<Conversation turns={[question]} loading />);
+    expect(document.querySelector('[data-unanswered]')).toBeNull();
+    cleanup();
+    // A question back is a turn that answers.
+    render(<Conversation turns={[question, clarification]} />);
+    expect(document.querySelector('[data-unanswered]')).toBeNull();
   });
 
   it('says over the card what the question was narrowed to, and to a screen reader that it is the answer’s', () => {

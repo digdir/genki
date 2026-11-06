@@ -133,14 +133,32 @@
               </li>
               <li><code>loading</code>: the thread is being read.</li>
               <li>
+                <code>title</code>: the thread's name, a heading over the conversation at
+                <code>lg</code>, level <code>titleLevel</code> (2 by default), as
+                Kunnskapsassistenten's. A name that only repeats the first question stays in the
+                outline and out of sight; <code>titleRepeatsQuestion</code> says so when the app
+                knows.
+              </li>
+              <li>
+                A question nothing answered, as genki leaves a failed turn, says «Dette spørsmålet
+                fikk ikke noe svar» with «Generer på nytt», as Kunnskapsassistenten draws a failed
+                turn after a reload. <code>pending</code> holds that back while an answer to the
+                last question is on its way and the app has no turn for it yet.
+              </li>
+              <li>
                 <code>onOpenCitation</code>, <code>onOpenDocument</code>,
-                <code>onRegenerate</code> and <code>onReply</code>, each with the turn it came from.
+                <code>onRegenerate</code> and <code>onReply</code>, each with the turn it came from;
+                <code>onRegenerate</code> also gets the question to ask again.
                 <code>target</code> names an answer and a footnote to scroll to and focus.
               </li>
               <li>
-                <code>header(turn, question)</code> over an answer or a question back, and
-                <code>actions(turn, {end, search})</code> under a finished answer. Without
-                <code>actions</code>, the row holds the time alone.
+                <code>now</code>: the moment an answer's «i dag» and «i går» are counted from.
+                <code>className</code> is added to the block's own.
+              </li>
+              <li>
+                <code>header</code>, as <code>header(turn, question)</code>, over an answer or a
+                question back, and <code>actions(turn, {end, search})</code> under a finished
+                answer. Without <code>actions</code>, the row holds the time alone.
               </li>
               <li>
                 <code>search</code>, <code>citationMode</code>, <code>sourcesUsed</code>,
@@ -352,6 +370,11 @@
                   <td><code>--genai-conversation-slow-spacing</code></td>
                   <td><code>--ds-size-4</code></td>
                   <td>the space over that line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-title-spacing</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>the space under the thread's name</td>
                 </tr>
                 <tr>
                   <td><code>--genai-conversation-time-color</code></td>
