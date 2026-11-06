@@ -10,6 +10,7 @@ import { enCorpus, nbCorpus } from './corpus/catalogue.js';
 import { enDocuments, nbDocuments } from './documents/catalogue.js';
 import { enFilter, nbFilter } from './filter/catalogue.js';
 import { enSettings, nbSettings } from './settings/i18n.js';
+import { enAnswerActions, nbAnswerActions } from './answer-actions/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -171,6 +172,7 @@ export const nb = defineCatalogue({
   corpus: nbCorpus,
   documents: nbDocuments,
   settings: nbSettings,
+  answerActions: nbAnswerActions,
 });
 export const en = {
   procedure: enProcedure,
@@ -185,6 +187,7 @@ export const en = {
   corpus: enCorpus,
   documents: enDocuments,
   settings: enSettings,
+  answerActions: enAnswerActions,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
