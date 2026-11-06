@@ -77,6 +77,19 @@ describe('the variant picker', () => {
     expect(option('Svar med kilder').getAttribute('aria-current')).toBeNull();
   });
 
+  it('says «Standard» for a kept choice the service no longer offers, rather than a dead name', () => {
+    render(
+      <VariantPicker variants={variants} chosen="kunnskapsassistenten__gone" onChoose={() => {}} />,
+    );
+    expect(trigger().textContent).toBe('Standard');
+  });
+
+  it('opens its list above the button, since its place is in the question field at the foot', () => {
+    show();
+    const list = screen.getByRole('heading', { name: 'Velg variant', hidden: true }).parentElement;
+    expect(list?.getAttribute('data-placement')).toBe('top-end');
+  });
+
   it('follows the host’s colour family unless the app gives one', () => {
     const { rerender } = render(<VariantPicker variants={variants} onChoose={() => {}} />);
     const list = () =>
