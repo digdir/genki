@@ -3,6 +3,7 @@ import {
   defaultMediaOutputMaxBytes,
   mediaOutputPolicy,
   mediaOutputRules,
+  type MediaInputSource,
   type MediaOutput,
   type MediaOutputConfig,
 } from '@genai/kernel';
@@ -32,3 +33,11 @@ export const blobMediaOutput = (config: MediaOutputConfig, blobs: BlobStore): Me
     );
     return { tenant: info.tenant, path: info.path, sha256: info.sha256 };
   });
+
+/** Reads media a run kept, so a later step may send it once the gate admits it; only the run's own tenant. */
+export const blobMediaInput = (blobs: BlobStore): MediaInputSource => ({
+  read: async (ctx, ref) =>
+    ref.tenant === ctx.tenant
+      ? (await blobs.get({ tenant: ref.tenant, path: ref.path }))?.body
+      : undefined,
+});

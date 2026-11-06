@@ -129,6 +129,7 @@ export const operatorOperationsModule: PlatformModuleFactory = (deps) => ({
             descriptor: id,
             model: body.data.model,
             result: done.value.result,
+            ...(done.value.exchange ? { exchange: done.value.exchange } : {}),
           },
           200,
         );

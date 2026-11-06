@@ -107,6 +107,19 @@ export const serviceSpec = z.strictObject({
       at: z.string().min(1).optional(),
       reasons: z.array(z.string()).default([]),
       riskClass: z.enum(['minimal', 'limited', 'high']).optional(),
+      unmaskedInput: z
+        .array(
+          z.strictObject({
+            mediaType: z
+              .string()
+              .regex(
+                /^[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$/,
+                'must be a media type such as audio/wav or audio/*',
+              ),
+            reason: z.string().trim().min(10, 'say why this input may leave unmasked'),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   variants: z.array(variant).min(1).default(['default']),

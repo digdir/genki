@@ -209,7 +209,7 @@ const boot = async (
       embeddings: {
         endpoints: {
           fake: {
-            protocol: 'fake-embeddings',
+            protocol: 'fake',
             baseURL: 'https://embed.invalid',
             auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
           },
@@ -225,7 +225,7 @@ const boot = async (
       return principal ? { principal } : undefined;
     },
     knowledgePool: pool,
-    embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+    embeddingAdapters: [fakeEmbeddingAdapter()],
     searchOnlyClusters: [typesenseUrl],
     documentConverter: {
       toMarkdown: async () =>

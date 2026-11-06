@@ -32,15 +32,23 @@ export const riskConfirmationProblems = (definition: Definition): ValidationErro
   return [];
 };
 
+const recordsUnmaskedInput = (definition: Definition): definition is ServiceDefinition =>
+  isService(definition) && (definition.spec.riskConfirmation?.unmaskedInput?.length ?? 0) > 0;
+
 export const confirmedAs = (definition: Definition, actor: string, now: Date): Definition => {
-  if (!needsRiskConfirmation(definition) || !definition.spec.riskConfirmation) return definition;
+  if (!needsRiskConfirmation(definition) && !recordsUnmaskedInput(definition)) return definition;
+  const confirmation = definition.spec.riskConfirmation;
+  if (!confirmation) return definition;
   return {
     ...definition,
     spec: {
       ...definition.spec,
       riskConfirmation: {
-        reasons: definition.spec.riskConfirmation.reasons,
+        reasons: confirmation.reasons,
         riskClass: definition.spec.riskClass,
+        ...(confirmation.unmaskedInput?.length
+          ? { unmaskedInput: confirmation.unmaskedInput }
+          : {}),
         by: actor,
         at: now.toISOString(),
       },

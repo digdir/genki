@@ -253,6 +253,12 @@ const serviceNb = {
   'spec.riskConfirmation.by': { label: 'Bekreftet av' },
   'spec.riskConfirmation.at': { label: 'Bekreftet' },
   'spec.riskConfirmation.reasons': { label: 'Begrunnelser' },
+  'spec.riskConfirmation.unmaskedInput': {
+    label: 'Lyd, bilder og filer som kan sendes umaskert',
+    help: 'Slike data kan ikke maskeres. Oppgi medietypen og hvorfor tjenesten trenger den.',
+  },
+  'spec.riskConfirmation.unmaskedInput.mediaType': { label: 'Medietype' },
+  'spec.riskConfirmation.unmaskedInput.reason': { label: 'Begrunnelse' },
   'spec.riskConfirmation.riskClass': {
     label: 'Bekreftet risikonivå',
     values: { minimal: 'Minimal risiko', limited: 'Begrenset risiko', high: 'Høy risiko' },
@@ -285,6 +291,7 @@ const serviceNb = {
       'rag-single-shot': 'Ett søk og ett svar',
       'step-flow': 'Fast stegflyt',
       'remote-agent': 'Egen motor',
+      'live-session': 'Direkte økt',
     },
   },
   'strategy.version': { label: 'Versjon av arbeidsmåten' },
@@ -306,7 +313,7 @@ const serviceNb = {
   'spec.model.roles.judge': { label: 'Modell som vurderer' },
   'spec.model.operations': {
     label: 'Modell per operasjon',
-    help: 'Modellen et call-operation-steg bruker for hver type operasjon, når steget ikke velger selv.',
+    help: 'Modellen et steg som kaller en operasjon bruker for hver type operasjon, når steget ikke velger modell selv.',
   },
   'spec.model.residency': {
     label: 'Hvor data behandles',
@@ -375,6 +382,12 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.riskConfirmation.by': { label: 'Confirmed by' },
   'spec.riskConfirmation.at': { label: 'Confirmed' },
   'spec.riskConfirmation.reasons': { label: 'Reasons' },
+  'spec.riskConfirmation.unmaskedInput': {
+    label: 'Audio, images and files that may be sent unmasked',
+    help: 'Such data cannot be masked. Give the media type and why the service needs it.',
+  },
+  'spec.riskConfirmation.unmaskedInput.mediaType': { label: 'Media type' },
+  'spec.riskConfirmation.unmaskedInput.reason': { label: 'Reason' },
   'spec.riskConfirmation.riskClass': {
     label: 'Confirmed risk level',
     values: { minimal: 'Minimal risk', limited: 'Limited risk', high: 'High risk' },
@@ -407,6 +420,7 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
       'rag-single-shot': 'One search and one answer',
       'step-flow': 'Fixed step flow',
       'remote-agent': 'Own engine',
+      'live-session': 'Live session',
     },
   },
   'strategy.version': { label: 'Version of the way of working' },
@@ -428,7 +442,7 @@ const serviceEn: Record<keyof typeof serviceNb, LabelText> = {
   'spec.model.roles.judge': { label: 'Model that judges' },
   'spec.model.operations': {
     label: 'Model per operation',
-    help: 'The model a call-operation step uses for each kind of operation, when the step names none.',
+    help: 'The model a step that calls an operation uses for each kind of operation, when the step names none.',
   },
   'spec.model.residency': {
     label: 'Where data is processed',

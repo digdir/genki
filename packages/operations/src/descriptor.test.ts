@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { decideShape, embedShape } from '@genai/kernel';
-import { parseDescriptor } from './descriptor.js';
+import { parseDescriptor, reportedUnits } from './descriptor.js';
 import { evaluate } from './mapping.js';
 import { bundledDescriptorDir, loadDescriptors } from './registry.js';
 
-const embedYaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embed@1.yaml'), 'utf8');
+const embedYaml = readFileSync(join(bundledDescriptorDir, 'openai', 'embeddings@1.yaml'), 'utf8');
 
 const refused = (yaml: string) => {
   try {
@@ -20,13 +20,25 @@ const refused = (yaml: string) => {
 describe('operation descriptors', () => {
   it('a typed descriptor declares the same shapes as the operation it serves', () => {
     const registry = loadDescriptors();
-    expect(registry.get('openai/embed@1')?.input).toEqual(embedShape.request);
-    expect(registry.get('openai/embed@1')?.output).toEqual(embedShape.result);
+    expect(registry.get('openai/embeddings@1')?.input).toEqual(embedShape.request);
+    expect(registry.get('openai/embeddings@1')?.output).toEqual(embedShape.result);
     expect(registry.get('openai/decide@1')?.input).toEqual(decideShape.request);
     expect(registry.get('openai/decide@1')?.output).toEqual(decideShape.result);
     expect(refused(embedYaml.replace('input: [text]', 'input: [plain]'))).toMatch(
       /declares the input and output shapes of embed/,
     );
+  });
+
+  it('a usage mapping may name price units or usage fields, and reads as usage fields', () => {
+    const named = parseDescriptor(embedYaml);
+    const byField = parseDescriptor(
+      embedYaml.replace(/^usage:\n {2}input-token:/m, 'usage:\n  inputTokens:'),
+    );
+
+    expect(Object.keys(named.steps[0]?.usage ?? {})).toEqual(['inputTokens', 'requests']);
+    expect(byField.steps[0]?.usage).toEqual(named.steps[0]?.usage);
+    expect(reportedUnits(named.steps[0]?.usage ?? {})).toEqual(['input-token', 'request']);
+    expect(named.units).toEqual(['input-token', 'request']);
   });
 
   it('a descriptor that names a URL is refused', () => {
@@ -47,24 +59,22 @@ describe('operation descriptors', () => {
     ).toMatch(/may not carry store/);
   });
 
-  it('a non-typed descriptor may not declare json in its request', () => {
+  it('a described descriptor may declare json in its input and request', () => {
     const review = embedYaml.replace('status: typed', 'status: review');
-    expect(refused(review)).toBeUndefined();
     expect(
       refused(
         review.replace('      encoding_format: { enum: [float] }', '      encoding_format: json'),
       ),
-    ).toMatch(/not typed may not declare json in its input or wire.request/);
-    expect(
-      refused(
-        review
-          .replace('input: [text]\n', 'input:\n  either: [[text], { object: { image: json } }]\n')
-          .replace(
-            '      input: [text]',
-            '      input: { either: [[text], { object: { image: json } }] }',
-          ),
-      ),
-    ).toMatch(/not typed may not declare json/);
+    ).toBeUndefined();
+  });
+
+  it('only a json request body may carry json', () => {
+    const review = embedYaml
+      .replace('status: typed', 'status: review')
+      .replace('  path: /embeddings', '  path: /embeddings\n  encoding: form')
+      .replace('    input: $input\n', '    input: $input.0\n')
+      .replace('      input: [text]', '      input: json');
+    expect(refused(review)).toMatch(/form request holds single values only|only a json request/);
   });
 
   it('a descriptor that sets a credential header is refused', () => {
@@ -103,13 +113,21 @@ describe('operation descriptors', () => {
     ).toMatch(/request.body.model must be \$deployment/);
   });
 
-  it('a descriptor id names the operation it describes', () => {
-    expect(refused(embedYaml.replace('operation: embed', 'operation: classify'))).toMatch(
-      /a descriptor id names its operation/,
-    );
+  it('a descriptor id names its API, and the operation field names its kind', () => {
+    const descriptor = parseDescriptor(embedYaml);
+    expect(descriptor).toMatchObject({ id: 'openai/embeddings@1', operation: 'embed' });
   });
 
-  it('a descriptor that declares stream events is refused until streaming is built', () => {
+  it("a stored descriptor that names an endpoint protocol is read with that protocol's family", () => {
+    const stored = embedYaml.replace('family: openai', 'protocol: openai-embeddings');
+    expect(parseDescriptor(stored).api.family).toBe('openai');
+    expect(
+      parseDescriptor(embedYaml.replace('family: openai', 'protocol: anthropic-messages')).api
+        .family,
+    ).toBe('anthropic');
+  });
+
+  it('a stream is declared by the step that streams, not on the descriptor', () => {
     expect(
       refused(
         embedYaml.replace(
@@ -117,7 +135,7 @@ describe('operation descriptors', () => {
           'stream:\n  events:\n    done:\n      shape: { object: { usage: plain } }\n      done: true',
         ),
       ),
-    ).toMatch(/stream must be none/);
+    ).toMatch(/stream: Invalid input/);
   });
 
   it('a mapping copies, defaults, omits and orders without code', () => {

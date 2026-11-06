@@ -11,7 +11,7 @@ operation: classify
 status: ${status}
 summary: A made-up classification API, used by a service.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -42,8 +42,49 @@ usage:
 stream: none
 `;
 
+const describeImageYaml = `
+id: example/describe-image@1
+operation: describe-image
+status: described
+summary: A made-up image API that takes a picture, used by a service.
+api:
+  family: openai
+  version: 2026-10-01
+request:
+  method: POST
+  path: /descriptions
+  body:
+    model: $deployment
+    picture: $input.picture
+input:
+  object:
+    picture: { media: image/png }
+output:
+  object:
+    label: plain
+wire:
+  request:
+    object:
+      model: plain
+      picture: { media: image/png }
+  response:
+    object:
+      label: plain
+      usage: { object: { input_tokens: { number: { integer: true, min: 0 } } } }
+result:
+  label: $response.label
+usage:
+  inputTokens: $response.usage.input_tokens
+  requests: 1
+stream: none
+`;
+
 const registry = (status: 'review' | 'described' = 'described') =>
-  descriptorRegistry([...loadDescriptors().list(), parseDescriptor(classifyYaml(status))]);
+  descriptorRegistry([
+    ...loadDescriptors().list(),
+    parseDescriptor(classifyYaml(status)),
+    parseDescriptor(describeImageYaml),
+  ]);
 
 const people: Record<string, Principal> = {
   drift: { kind: 'operator', issuer: 'test', subject: 'drift' },
@@ -73,7 +114,11 @@ afterEach(async () => {
 const reason = 'Styrer en ny type modellkall';
 
 const boot = async (
-  options: { environmentTier?: 'test' | 'production'; status?: 'review' | 'described' } = {},
+  options: {
+    environmentTier?: 'test' | 'production';
+    status?: 'review' | 'described';
+    processorRecords?: 'warn' | 'enforce';
+  } = {},
 ) => {
   const server = await fakeHttp(() => ({
     status: 200,
@@ -84,10 +129,11 @@ const boot = async (
     people,
     descriptors: registry(options.status),
     ...(options.environmentTier ? { environmentTier: options.environmentTier } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
@@ -99,7 +145,7 @@ const boot = async (
           deployment: 'small',
           residency: 'norway',
           capabilities: ['json-schema'],
-          operations: ['chat', 'classify'],
+          operations: ['chat', 'classify', 'describe-image'],
         },
         {
           id: 'lab/classifier',
@@ -350,7 +396,7 @@ describe('the described tier', () => {
 });
 
 describe('maturity per operation kind', () => {
-  it('built-in operation kinds show as production', async () => {
+  it('built-in operation kinds, embed and rerank included, show as production', async () => {
     const { send } = await boot();
     const listed = (await (await send('/operator/operation-kinds', 'drift')).json()) as {
       governs: string;
@@ -361,10 +407,11 @@ describe('maturity per operation kind', () => {
       builtIn: true,
       typed: 'production',
     });
-    expect(listed.data.find((k) => k.kind === 'decide')).toMatchObject({
-      builtIn: true,
-      typed: 'production',
-    });
+    for (const kind of ['decide', 'embed', 'rerank'])
+      expect(listed.data.find((k) => k.kind === kind)).toMatchObject({
+        builtIn: true,
+        typed: 'production',
+      });
     const classify = listed.data.find((k) => k.kind === 'classify');
     expect(classify).toMatchObject({ builtIn: false, maturity: 'test' });
     expect(classify).not.toHaveProperty('typed');
@@ -461,6 +508,25 @@ describe('processor records', () => {
     ).toMatchObject({ outcome: 'refused', refusal: 'processor' });
   });
 
+  it('a processor record names whether the provider may keep state and for how long, and refuses a bad retention', async () => {
+    const booted = await boot();
+    const providerState = {
+      allowed: true,
+      retention: { days: 30, note: 'Files stay for 30 days unless deleted' },
+    };
+    expect((await booted.processorRecord({ providerState })).status).toBe(200);
+    const shown = (await (await booted.send('/operator/processor-records', 'drift')).json()) as {
+      data: { endpoint: string; record: { providerState?: unknown } | null }[];
+    };
+    expect(shown.data.find((e) => e.endpoint === 'lab')?.record?.providerState).toEqual(
+      providerState,
+    );
+    expect(
+      (await booted.processorRecord({ providerState: { allowed: true, retention: { days: -1 } } }))
+        .status,
+    ).toBe(400);
+  });
+
   it('a synthetic operator call needs no processor record', async () => {
     const { send, server } = await boot({ environmentTier: 'test' });
     const tried = await send('/operator/operations/example/classify@1/try', 'drift', {
@@ -483,6 +549,91 @@ describe('processor records', () => {
     expect(
       (await auditOf(booted, refused.task)).find((e) => e.type === 'kernel.gate.call')?.data,
     ).toMatchObject({ outcome: 'refused', refusal: 'media' });
+  });
+
+  const pngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const pictureFlow = () => {
+    const steps = flow({ picture: pngBase64 });
+    const [step] = steps.spec.steps;
+    return {
+      ...steps,
+      spec: {
+        ...steps.spec,
+        steps: [{ ...step, params: { descriptor: 'example/describe-image@1' } }],
+      },
+    };
+  };
+  const consent = {
+    reasons: [],
+    unmaskedInput: [{ mediaType: 'image/*', reason: 'Bilder av skjemaer som skal sorteres' }],
+  };
+  const publishPicture = async ({ platform, send }: Booted, riskConfirmation?: unknown) => {
+    await send('/operator/operation-kinds/describe-image/maturity', 'drift', {
+      body: { maturity: 'production' },
+      reason,
+    });
+    const published = await platform.definitions.publish(pictureFlow(), 'test', 'test');
+    expect(published.ok ? [] : published.errors).toEqual([]);
+    return platform.definitions.publish(
+      { ...service, spec: { ...service.spec, ...(riskConfirmation ? { riskConfirmation } : {}) } },
+      'test',
+      'test',
+    );
+  };
+
+  it('a service cannot publish a call-operation step that takes media without recorded consent', async () => {
+    const booted = await boot();
+    await booted.promote();
+    await booted.processorRecord();
+    expect(messages(await publishPicture(booted))).toMatch(
+      /takes image\/png input, which cannot be masked; the service's risk assessment must record unmasked input/,
+    );
+  });
+
+  it('media input leaves only with consent on the risk assessment, and the gate records its type, size and SHA-256', async () => {
+    const booted = await boot();
+    await booted.promote();
+    await booted.processorRecord();
+    expect(messages(await publishPicture(booted, consent))).toEqual([]);
+    const ran = await run(booted);
+    expect(ran.ok).toBe(true);
+    expect(booted.server.seen[0]?.body).toMatchObject({ picture: pngBase64 });
+    expect(
+      (await auditOf(booted, ran.task)).find((e) => e.type === 'kernel.gate.call')?.data,
+    ).toMatchObject({
+      outcome: 'ok',
+      mediaInput: [
+        {
+          path: 'picture',
+          mediaType: 'image/png',
+          bytes: 70,
+          sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+        },
+      ],
+    });
+  });
+
+  it('a synthetic try may send media input without consent', async () => {
+    const { send, server } = await boot({ environmentTier: 'test' });
+    const tried = await send('/operator/operations/example/describe-image@1/try', 'drift', {
+      body: { model: 'lab/small', input: { picture: pngBase64 }, synthetic: true },
+      reason,
+    });
+    expect(tried.status).toBe(200);
+    expect(server.seen[0]?.body).toMatchObject({ picture: pngBase64 });
+  });
+
+  it('the processor record list says whether typed calls without a record warn or are refused', async () => {
+    const typedCalls = async (booted: Awaited<ReturnType<typeof boot>>) =>
+      (
+        (await (await booted.send('/operator/processor-records', 'drift')).json()) as {
+          typedCalls: string;
+        }
+      ).typedCalls;
+
+    expect(await typedCalls(await boot())).toBe('warn');
+    expect(await typedCalls(await boot({ processorRecords: 'enforce' }))).toBe('enforce');
   });
 
   it('a processor record cannot let unmasked input through', async () => {

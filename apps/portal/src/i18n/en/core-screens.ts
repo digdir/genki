@@ -117,6 +117,8 @@ export const changes = {
   blockSettings: 'changed the settings of the building block',
   catalogDelete: 'deleted from the catalogue',
   catalogPublish: 'published to the catalogue',
+  providerObjectIncident:
+    'could not delete an object at the provider; it has to be deleted by hand',
   batchRunStart: 'started a batch run',
   batchRunCancel: 'stopped a batch run',
   batchRunRetry: 'ran a batch run again',
@@ -127,6 +129,7 @@ export const changes = {
   descriptorUpload: 'uploaded an operation descriptor',
   descriptorStatus: 'changed the status of an operation descriptor',
   descriptorWithdraw: 'withdrew an operation descriptor',
+  descriptorFixture: 'recorded a test case for an operation descriptor',
   processorRecord: 'changed the processor record of a model endpoint',
   taskReviewApprove: 'approved the table',
   taskReviewEdit: 'corrected the table',

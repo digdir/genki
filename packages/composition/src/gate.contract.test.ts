@@ -54,6 +54,20 @@ const endpoint = (protocol: string) => ({
   auth: { kind: 'api-key', secret: 'secret://env/k' },
 });
 
+const connection = (family: string) => ({
+  baseURL: 'https://provider.example',
+  auth: { kind: 'api-key', secret: 'secret://env/k' },
+  families: { [family]: '' },
+});
+
+const fakeApi = (kind: string) => ({
+  id: `fake/${kind}@1`,
+  kind,
+  family: 'fake',
+  modelOptions: z.strictObject({}),
+  default: true,
+});
+
 const without = (value: Record<string, unknown>, key: string) => {
   const copy = { ...value };
   Reflect.deleteProperty(copy, key);
@@ -66,7 +80,7 @@ operation: classify
 status: review
 summary: A made-up classification API for the gate contract.
 api:
-  protocol: openai-chat
+  family: openai
   version: v1
 request:
   method: POST
@@ -103,9 +117,7 @@ stream: none
 const reviewedClassify = { ...classifyDescriptor, status: 'described' as const };
 
 const fakeChatAdapter: ModelAdapter = {
-  protocol: 'fake',
-  endpointOptions: z.object({}),
-  modelOptions: z.object({}),
+  apis: [fakeApi('chat')],
   connect: () => ({
     chat: async () => {
       throw new Error('not used');
@@ -175,9 +187,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     open: (setup): GateLaneRun => {
       const w = watched(setup);
       const adapter: ModelAdapter = {
-        protocol: 'fake',
-        endpointOptions: z.object({}),
-        modelOptions: z.object({}),
+        apis: [fakeApi('chat')],
         connect: () => ({
           chat: async (_model, request) => {
             w.upstream.push(...request.messages.map((m) => m.content));
@@ -213,7 +223,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
       const router = new ModelRouter({
         gate: w.gate,
         catalog: {
-          endpoints: { fake: without(endpoint('fake'), 'engine') },
+          endpoints: { fake: connection('fake') },
           models: [
             {
               id: 'fake/model',
@@ -270,9 +280,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     open: (setup): GateLaneRun => {
       const w = watched(setup);
       const adapter: ModelAdapter = {
-        protocol: 'fake',
-        endpointOptions: z.object({}),
-        modelOptions: z.object({}),
+        apis: [fakeApi('chat'), fakeApi('decide')],
         connect: () => ({
           chat: async () => {
             throw new Error('not used');
@@ -297,14 +305,14 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
       const router = new ModelRouter({
         gate: w.gate,
         catalog: {
-          endpoints: { fake: without(endpoint('fake'), 'engine') },
+          endpoints: { fake: connection('fake') },
           models: [
             {
               id: 'fake/decider',
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
-              operations: ['chat', 'decide'],
+              apis: { chat: 'fake/chat@1', decide: 'fake/decide@1' },
               ...w.shared,
             },
           ],
@@ -357,8 +365,7 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
     open: (setup) => {
       const w = watched(setup);
       const adapter: EmbeddingAdapter = {
-        protocol: 'fake',
-        endpointOptions: z.object({}),
+        api: { id: 'fake/embeddings@1', family: 'fake' },
         modelOptions: z.object({}),
         connect: () => ({
           embed: async (_model, texts) => {
@@ -374,14 +381,15 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
       const router = new EmbeddingRouter({
         gate: w.gate,
         catalog: {
-          endpoints: { fake: without(endpoint('fake'), 'engine') },
+          endpoints: { fake: connection('fake') },
           models: [
             {
               id: 'fake/embedder',
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
-              dimensions: 2,
+              apis: { embed: 'fake/embeddings@1' },
+              embed: { dimensions: 2 },
               ...w.shared,
             },
           ],
@@ -496,19 +504,19 @@ const routerLanes = (makeGate: GateMaker = realGate) => {
       const router = new ModelRouter({
         gate: { ...w.gate, egress: () => fetcher },
         catalog: {
-          endpoints: { fake: without(endpoint('openai-chat'), 'engine') },
+          endpoints: { fake: connection('openai') },
           models: [
             {
               id: 'fake/described',
               endpoint: 'fake',
               deployment: 'd',
               residency: setup.residency ?? 'norway',
-              operations: ['chat', 'classify'],
+              apis: { classify: classifyDescriptor.id },
               ...w.shared,
             },
           ],
         },
-        adapters: [{ ...fakeChatAdapter, protocol: 'openai-chat' }],
+        adapters: [fakeChatAdapter],
         secrets: envSecrets({ K: 'k' }),
         descriptors: descriptorRegistry([
           tier === 'operation' ? classifyDescriptor : reviewedClassify,
@@ -597,6 +605,7 @@ const mutant =
         real.call(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
       stream: (ctx, target, payload, request, send) =>
         real.stream(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
+      session: (ctx, target, options) => real.session(ctxOf(ctx), targetOf(target), options),
     };
   };
 

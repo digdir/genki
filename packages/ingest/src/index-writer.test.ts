@@ -154,9 +154,9 @@ describe('ingest through an index writer', () => {
       catalog: {
         endpoints: {
           foundry: {
-            protocol: 'fake',
             baseURL: 'https://foundry.example/openai/v1',
             auth: { kind: 'api-key', secret: 'secret://env/k' },
+            families: { fake: '' },
           },
         },
         models: [
@@ -165,7 +165,8 @@ describe('ingest through an index writer', () => {
             endpoint: 'foundry',
             deployment: 'text-embedding-3-small',
             residency: 'eu',
-            dimensions: 8,
+            apis: { embed: 'fake/embeddings@1' },
+            embed: { dimensions: 8 },
           },
         ],
       },

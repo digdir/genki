@@ -104,6 +104,14 @@ const inputScope = (input: Input): Record<string, unknown> => {
   };
 };
 
+const withQuestion = (scope: Record<string, unknown>, declared: Record<string, unknown> = {}) => {
+  const names = Object.keys(declared);
+  const only = names.length === 1 ? names[0] : undefined;
+  if (only === undefined || !scope.query) return scope;
+  const given = scope[only];
+  return given === undefined || given === '' ? { ...scope, [only]: scope.query } : scope;
+};
+
 export const resultParts = (value: unknown): Part[] => {
   if (value === undefined || value === null) return [];
   if (typeof value === 'string') return [textPart(value)];
@@ -471,7 +479,7 @@ export const createStepFlow = (options: StepFlowOptions): Strategy<unknown> => {
     );
     const frame: Frame = {
       steps: {},
-      input: inputScope(input),
+      input: withQuestion(inputScope(input), flow.spec.input),
       vars: { ...strategy.vars },
       flows: [strategy.flow],
     };

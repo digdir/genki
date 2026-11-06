@@ -84,6 +84,7 @@ export interface ModelEntry {
   labels?: { nb: string; en: string };
   chat?: boolean;
   batch?: boolean;
+  live?: boolean;
   documents?: string[];
 }
 
@@ -588,6 +589,37 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     });
   });
 
+  app.get('/v1/sessions', async (c) => {
+    if (c.req.header('upgrade')?.toLowerCase() !== 'websocket')
+      return fail(c, 'upgrade_required', 'A live session is opened as a WebSocket upgrade.', 426);
+    const principal = c.get('principal');
+    const url = new URL(c.req.url);
+    const model = url.searchParams.get('model') ?? '';
+    if (model.trim() === '') return fail(c, 'missing_model', '`model` is required.', 400);
+    const pinned = readPin(c.req.header(versionHeader), {});
+    if ('error' in pinned) return fail(c, 'invalid_version', pinned.error, 400);
+    const resolved = await resolver.resolve(principal, model, pinned);
+    if (!resolved.ok)
+      return fail(c, resolved.code, resolved.message, statusFor[resolved.code] ?? 500);
+    if (!resolved.entry.live)
+      return fail(c, 'not_a_live_service', 'This service is not a live session.', 400);
+    const data: Record<string, string> = {};
+    for (const [key, value] of url.searchParams) if (key !== 'model') data[key] = value;
+    try {
+      const run = await kernel.invoke(
+        principal,
+        resolved.entry.capability,
+        { data, parts: [] },
+        { entryPoint: 'openai' },
+      );
+      run.result.catch(() => undefined);
+      return c.json({ task: run.task }, 200, { 'genai-session': run.task });
+    } catch (error) {
+      const e = invokeError(error);
+      return fail(c, e.code, e.message, e.status);
+    }
+  });
+
   app.post('/v1/chat/completions', async (c) => {
     const principal = c.get('principal');
     let body: Record<string, unknown>;
@@ -606,6 +638,8 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
     const resolved = await resolver.resolve(principal, model, pinned);
     if (!resolved.ok)
       return fail(c, resolved.code, resolved.message, statusFor[resolved.code] ?? 500);
+    if (resolved.entry.live)
+      return fail(c, 'live_only', 'This service is a live session: open GET /v1/sessions.', 400);
     const formOnly = Boolean(resolved.entry.inputFields?.length);
     if (messages.length === 0 && !formOnly)
       return fail(c, 'missing_messages', '`messages` must be non-empty.', 400);

@@ -8,7 +8,7 @@ import {
   InMemoryConfigEntryStore,
   strategyModelNeeds,
 } from '@genai/composition';
-import { inputFieldsSchema, type Principal, type Usage } from '@genai/contracts';
+import { inputFieldsSchema, type PriceSpec, type Principal, type Usage } from '@genai/contracts';
 import { createA2aApp } from '@genai/adapter-a2a';
 import { createMcpApp } from '@genai/adapter-mcp';
 import { createRestAdapter, filterMapErrors } from '@genai/adapter-rest';
@@ -134,6 +134,7 @@ import {
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type ProviderObjectStore,
   type MediaOutputConfig,
   type PolicyDecisionPoint,
   type SecretResolver,
@@ -150,6 +151,8 @@ import {
   residencyAllows,
   type Capability,
   type ModelClassificationStore,
+  servesModelPort,
+  type ProcessorRecordCheck,
   type Residency,
 } from '@genai/port-model';
 import { colbert } from '@genai/providers-colbert';
@@ -241,6 +244,7 @@ import { governanceModule } from './governance.js';
 import { serviceTemplateModule } from './service-template.js';
 import { recipesModule } from './recipes.js';
 import { stepBlocksModule } from './step-blocks.js';
+import { stepOperationsModule } from './step-operations.js';
 import { strategyCatalogueModule } from './strategy-catalogue.js';
 import { definitionCompletionModule } from './definition-completion.js';
 import { skillsModule } from './skills.js';
@@ -301,6 +305,7 @@ export const platformModules: PlatformModuleFactory[] = [
   governanceModule,
   serviceTemplateModule,
   stepBlocksModule,
+  stepOperationsModule,
   recipesModule,
   strategyCatalogueModule,
   definitionCompletionModule,
@@ -394,6 +399,7 @@ export interface PlatformInput {
   conversations?: ConversationStore;
   threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
+  providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
   blobStore?: BlobStore;
@@ -408,7 +414,7 @@ export interface PlatformInput {
   ingestionExecutions?: ExecutionStore;
   apiKeys?: TenantApiKeys;
   keyPolicies?: KeyPolicyStore;
-  prices?: Record<string, ModelPrice>;
+  prices?: Record<string, PriceSpec>;
   traces?: () => TraceStatus | undefined;
   databasePing?: () => Promise<unknown>;
   organizationRegistry?: { url: string; fetch?: typeof fetch };
@@ -452,6 +458,7 @@ export interface PlatformInput {
   phraseArchive?: DeclaredPhraseArchive;
   lockdown?: Lockdown;
   environmentTier?: EnvironmentTier;
+  processorRecords?: ProcessorRecordCheck;
   descriptors?: DescriptorRegistry;
 }
 
@@ -554,6 +561,7 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
     variantTitle: variantDisplayName(compiled),
     ...(name === compiled.publicName ? {} : { aliasOf: compiled.publicName }),
     ...(compiled.chat === false ? { chat: false } : {}),
+    ...(strategy.id === 'live-session' ? { live: true } : {}),
   };
 };
 
@@ -951,7 +959,8 @@ export const createPlatform = async (input: PlatformInput) => {
       () => modules,
     ),
   };
-  const prices: Record<string, ModelPrice> = { ...(input.prices ?? {}) };
+  // The runtime keeps this record as the per-1,000-token view of the catalogue's prices.
+  const prices = { ...(input.prices ?? {}) } as Record<string, ModelPrice>;
   const evaluators =
     input.evaluators ??
     new Map<string, Evaluator>([
@@ -1002,6 +1011,7 @@ export const createPlatform = async (input: PlatformInput) => {
       releaseGate(keyGrantPolicy(confinedPolicy(input.policy), namesOf), catalog),
     ...(input.lockdown ? { admitsModelUse: mayUseModels } : {}),
     ...(input.environmentTier ? { environmentTier: input.environmentTier } : {}),
+    ...(input.processorRecords ? { processorRecords: input.processorRecords } : {}),
     published: (capability) => originOf(capability) === 'service',
     ...(input.descriptors ? { descriptors: input.descriptors } : {}),
     log: tracker.log,
@@ -1032,6 +1042,14 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
+    ...(input.providerObjects ? { providerObjects: input.providerObjects } : {}),
+    foreignFetch: (hosts) =>
+      pluginEgress.fetch(
+        hosts.map((h) => {
+          const [host = '', port] = h.split(':');
+          return { host, port: port ? Number(port) : 443 };
+        }),
+      ),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
     ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
@@ -1556,7 +1574,7 @@ export const createPlatform = async (input: PlatformInput) => {
       pluginUsage({
         store: definitions,
         tenants: async () => (await directory.list()).map((t) => t.orgNumber),
-        modelEndpoint: (model) => models.describe().find((m) => m.id === model)?.endpoint,
+        modelApis: (model) => models.describe().find((m) => m.id === model)?.apis,
         datasetEndpoint: (dataset) =>
           config.catalog.get('dataset', knowledge.resolve(dataset) ?? dataset)?.spec.endpoint as
             string | undefined,
@@ -1676,6 +1694,7 @@ export const createPlatform = async (input: PlatformInput) => {
       tier: runtime.environmentTier,
       descriptors: runtime.descriptors,
       governance: runtime.governance,
+      processorRecords: runtime.processorRecords,
       try: runtime.tryOperation,
     },
     enrichmentTask: enrichmentWork.run(() => kernel),
@@ -1890,14 +1909,14 @@ export const createPlatform = async (input: PlatformInput) => {
         });
       const visible = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter(
           (m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant),
         );
       const displayNames = modelDisplayNames(visible);
       const data = models
         .describe()
-        .filter((m) => m.enabled)
+        .filter((m) => m.enabled && servesModelPort(m))
         .filter((m) => !principal.tenant || !ownedElsewhere(config.catalog, m.id, principal.tenant))
         .filter((m) => !residency || residencyAllows(residency, m.residency))
         .filter((m) => wanted.every((w) => m.capabilities.includes(w)))
@@ -2160,6 +2179,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     catalog: config.catalog,
     descriptors: runtime.descriptors,
+    liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,
     guardrailRules: configurables.rules,

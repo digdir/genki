@@ -1,11 +1,20 @@
-import { decodeBase64, isMediaRef, mediaRefKind, type MediaRef } from './media.js';
+import {
+  decodeBase64,
+  isInlineMedia,
+  isMediaInput,
+  isMediaRef,
+  mediaRefKind,
+  mediaTypeCovers,
+  type MediaRef,
+} from './media.js';
 
 export type Shape =
   | { kind: 'text' }
-  | { kind: 'media'; type: string }
+  | { kind: 'media'; type: string; types?: readonly string[] }
   | { kind: 'plain'; min?: number }
   | { kind: 'opaque' }
   | { kind: 'ref'; pattern?: RegExp }
+  | { kind: 'issued'; pattern: RegExp }
   | { kind: 'enum'; values: readonly string[] }
   | { kind: 'number'; integer?: boolean; min?: number; max?: number }
   | { kind: 'boolean' }
@@ -24,14 +33,21 @@ export interface OperationShape {
 
 /** Text that may hold personal data: masked, restored and the only place media can hide. */
 export const text: Shape = { kind: 'text' };
-/** Encoded media of one media type: refused in a request, kept as a blob of the run in a result. */
-export const media = (type: string): Shape => ({ kind: 'media', type });
+/** Media of one type, a `type/*` or a list of types: needs consent in a request, kept as a blob of the run in a result. */
+export const media = (type: string | readonly string[]): Shape =>
+  typeof type === 'string'
+    ? { kind: 'media', type }
+    : type.length === 1
+      ? { kind: 'media', type: type[0] as string }
+      : { kind: 'media', type: type[0] as string, types: type };
 /** A string written by a service or a tool: kept as it is, but a URL or encoded data is refused in a request. */
 export const plain = (min?: number): Shape => ({ kind: 'plain', ...(min ? { min } : {}) });
 /** State the provider issued and an adapter replays unread, such as an encrypted reasoning blob. */
 export const opaque: Shape = { kind: 'opaque' };
 /** An identifier: refused in a request when it is a URL or a provider-side object id. */
 export const ref = (pattern?: RegExp): Shape => ({ kind: 'ref', ...(pattern ? { pattern } : {}) });
+/** An object id the provider issued in an answer of the same run; never taken from input. */
+export const issued = (pattern: RegExp): Shape => ({ kind: 'issued', pattern });
 export const oneOf = (...values: string[]): Shape => ({ kind: 'enum', values });
 export const number = (limits: { integer?: boolean; min?: number; max?: number } = {}): Shape => ({
   kind: 'number',
@@ -57,6 +73,7 @@ export const variant = (key: string, options: Record<string, Record<string, Shap
 export const either = (...options: Shape[]): Shape => ({ kind: 'either', options });
 
 const urlLike = /^(?:[a-z][a-z0-9+.-]*:\/\/|data:|blob:)/i;
+const dataUrl = /data:[a-z0-9.+-]{1,127}\/[a-z0-9.+-]{1,127}[;,]/i;
 export const longestBase64Run = 64;
 const base64Run = new RegExp(`[A-Za-z0-9+/_-]{${longestBase64Run + 1},}`);
 const providerObjectId =
@@ -66,6 +83,18 @@ export interface WalkOptions {
   side: 'request' | 'result';
   map?: (text: string) => string;
   keepMedia?: boolean;
+  /** Object ids the provider issued earlier in the same run; an `issued` value in a request must be one. */
+  issued?: ReadonlySet<string>;
+  /** A walk of what goes on the wire: text may not hold a data URL there. */
+  wire?: boolean;
+  /** Replaces a media value in a request once the gate has admitted and read it. */
+  mapMedia?: (value: unknown) => unknown;
+}
+
+export interface MediaInputFound {
+  path: string;
+  type: string;
+  value: unknown;
 }
 
 export interface MediaFound {
@@ -79,6 +108,7 @@ export interface Walked<T = unknown> {
   problems: string[];
   media: string[];
   outputs: MediaFound[];
+  inputs: MediaInputFound[];
   dropped: number;
 }
 
@@ -97,10 +127,19 @@ const isJson = (value: unknown, depth = 0): boolean => {
 
 const where = (path: string) => path || 'payload';
 
+const mapStrings = (value: unknown, map: (text: string) => string): unknown => {
+  if (typeof value === 'string') return map(value);
+  if (Array.isArray(value)) return value.map((v) => mapStrings(v, map));
+  if (isRecord(value))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [map(k), mapStrings(v, map)]));
+  return value;
+};
+
 const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: string): Walked<T> => {
   const problems: string[] = [];
   const media: string[] = [];
   const outputs: MediaFound[] = [];
+  const inputs: MediaInputFound[] = [];
   let dropped = 0;
   const request = options.side === 'request';
 
@@ -111,6 +150,8 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
     };
     switch (s.kind) {
       case 'text':
+        if (typeof v === 'string' && options.wire && dataUrl.test(v))
+          return problem('a data URL is media, which a media field carries');
         if (typeof v === 'string') return options.map ? options.map(v) : v;
         if (typeof v === 'object' && v !== null) {
           media.push(where(path));
@@ -118,19 +159,36 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
         }
         return problem('must be text');
       case 'media': {
+        const rules = s.types ?? [s.type];
+        const named = rules.join(', ');
+        const single = rules.length === 1 && !s.type.endsWith('/*');
         if (request) {
-          media.push(where(path));
-          return v;
+          const typed =
+            isMediaRef(v) || isInlineMedia(v) || isMediaInput(v) ? v.mediaType : undefined;
+          if (typed !== undefined && !rules.some((r) => mediaTypeCovers(r, typed)))
+            return problem(`must be ${named}, not ${typed}`);
+          if (typed === undefined && (typeof v !== 'string' || !single || !decodeBase64(v)))
+            return problem(`must be ${named} as a media reference or base64`);
+          inputs.push({ path: where(path), type: typed ?? s.type, value: v });
+          return options.mapMedia ? options.mapMedia(v) : v;
         }
         if (isMediaRef(v))
-          return v.mediaType === s.type ? v : problem(`must be ${s.type}, not ${v.mediaType}`);
-        if (typeof v !== 'string') return problem(`must be encoded ${s.type}`);
-        const body = decodeBase64(v);
-        if (!body) return problem(`must be base64 encoded ${s.type}`);
+          return rules.some((r) => mediaTypeCovers(r, v.mediaType))
+            ? v
+            : problem(`must be ${named}, not ${v.mediaType}`);
+        const inline = isInlineMedia(v) ? v : undefined;
+        if (inline && !rules.some((r) => mediaTypeCovers(r, inline.mediaType)))
+          return problem(`must be ${named}, not ${inline.mediaType}`);
+        if (!inline && !single)
+          return problem(`must name its media type, one of ${named}, with its data`);
+        const data = inline ? inline.data : v;
+        if (typeof data !== 'string') return problem(`must be encoded ${named}`);
+        const body = decodeBase64(data);
+        if (!body) return problem(`must be base64 encoded ${named}`);
         if (!options.keepMedia) return v;
         const ref: MediaRef = {
           kind: mediaRefKind,
-          mediaType: s.type,
+          mediaType: inline ? inline.mediaType.toLowerCase() : s.type,
           bytes: body.byteLength,
           sha256: '',
           tenant: '',
@@ -156,6 +214,13 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
           return problem('a provider-side object id is not allowed here');
         if (s.pattern && !s.pattern.test(v)) return problem(`must match ${String(s.pattern)}`);
         return v;
+      case 'issued':
+        if (typeof v !== 'string') return problem('must be a string');
+        if (!s.pattern.test(v)) return problem(`must match ${String(s.pattern)}`);
+        if (request && urlLike.test(v)) return problem('a URL is not allowed here');
+        if (request && !options.issued?.has(v))
+          return problem('must be an id the provider issued earlier in this call, never input');
+        return v;
       case 'enum':
         return typeof v === 'string' && s.values.includes(v)
           ? v
@@ -171,7 +236,8 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
       case 'null':
         return v === null ? v : problem('must be null');
       case 'json':
-        return isJson(v) ? v : problem('must be plain JSON');
+        if (!isJson(v)) return problem('must be plain JSON');
+        return options.map ? mapStrings(v, options.map) : v;
       case 'optional':
         return visit(s.shape, v, path);
       case 'object': {
@@ -223,19 +289,20 @@ const walkAt = <T>(shape: Shape, value: unknown, options: WalkOptions, base: str
         problems.push(...chosen.problems);
         media.push(...chosen.media);
         outputs.push(...chosen.outputs);
+        inputs.push(...chosen.inputs);
         dropped += chosen.dropped;
         return chosen.value;
       }
     }
   };
 
-  return { value: visit(shape, value, base) as T, problems, media, outputs, dropped };
+  return { value: visit(shape, value, base) as T, problems, media, outputs, inputs, dropped };
 };
 
 export const mediaTypesOf = (s: Shape): string[] => {
   switch (s.kind) {
     case 'media':
-      return [s.type];
+      return [...(s.types ?? [s.type])];
     case 'object':
       return [...new Set(Object.values(s.fields).flatMap(mediaTypesOf))];
     case 'array':

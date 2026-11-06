@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
-import { residencies, type Residency } from '@genai/port-model';
+import type { PriceSpec } from '@genai/contracts';
+import { allowedHostPattern, residencies, type Residency } from '@genai/port-model';
 import { z } from 'zod';
 import {
   appendVersion,
@@ -9,6 +10,7 @@ import {
   type ConfigEntry,
   type ConfigEntryStore,
 } from './config-store.js';
+import { checkedPrice } from './prices.js';
 
 export const catalogKinds = [
   'model-endpoint',
@@ -70,7 +72,7 @@ export interface EffectiveCatalogs {
   models: { endpoints: Record<string, unknown>; models: Record<string, unknown>[] };
   knowledge: { endpoints: Record<string, unknown>; datasets: Record<string, unknown>[] };
   rerank: { endpoints: Record<string, unknown>; rerankers: Record<string, unknown>[] };
-  prices: Record<string, { inputPerThousand: number; outputPerThousand: number }>;
+  prices: Record<string, PriceSpec>;
 }
 
 export interface CatalogPolicy {
@@ -105,6 +107,10 @@ export interface CatalogRegistryOptions {
   references?: () => Promise<CatalogReferences>;
   localEngines?: () => ReadonlySet<string>;
   derive?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
+  /** The operation kinds a model binds, which a price in the shape before ADR 0048 is set for. */
+  priceKinds?: (model: string) => string[];
+  /** The open units a model's API for a kind reports, so a price cannot name a unit by mistake. */
+  priceUnits?: (model: string, kind: string) => readonly string[];
   now?: () => Date;
 }
 
@@ -118,13 +124,6 @@ const tenantSecret = /^secret:\/\/tenant(?:\/|-)(\d{9})\/([a-z0-9][a-z0-9._-]*)$
 
 export const catalogSecretRef = (tenant: string, name: string) =>
   `secret://tenant-${tenant}/${name}`;
-
-const price = z.strictObject({
-  inputPerThousand: z.number().min(0),
-  outputPerThousand: z.number().min(0),
-});
-
-export { price as catalogPrice };
 
 const sharing = z.strictObject({
   tenants: z.union([z.literal('*'), z.array(z.string().regex(/^\d{9}$/)).min(1)]),
@@ -376,6 +375,7 @@ export class CatalogRegistry {
     scope: string,
     spec: Record<string, unknown>,
     slots: Map<string, Slot>,
+    id = '',
   ): { spec: Record<string, unknown>; errors: CatalogProblem[] } {
     const errors: CatalogProblem[] = [];
     const out = structuredClone(spec);
@@ -385,11 +385,13 @@ export class CatalogRegistry {
       return { spec: out, errors };
     }
     if (kind === 'price') {
-      const parsed = price.safeParse(out);
-      if (!parsed.success)
-        for (const i of parsed.error.issues)
-          errors.push({ path: ['spec', ...i.path].join('.'), message: i.message });
-      return { spec: out, errors };
+      const priceUnits = this.#options.priceUnits;
+      const checked = checkedPrice(
+        out,
+        this.#options.priceKinds?.(id) ?? ['chat'],
+        priceUnits ? (kind) => priceUnits(id, kind) : undefined,
+      );
+      return checked.ok ? { spec: checked.spec, errors } : { spec: out, errors: checked.errors };
     }
     if (kind === 'dataset' && out.facets !== undefined) {
       const facets = out.facets;
@@ -404,6 +406,22 @@ export class CatalogRegistry {
             message: `facets must be filter fields too: ${missing.join(', ')}`,
           });
       }
+    }
+    if (out.allowedHosts !== undefined) {
+      if (kind !== 'model-endpoint' || scope !== platformScope)
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'only the operator sets allowedHosts, and only on a model connection',
+        });
+      else if (
+        !Array.isArray(out.allowedHosts) ||
+        out.allowedHosts.length > 20 ||
+        out.allowedHosts.some((h) => typeof h !== 'string' || !allowedHostPattern.test(h))
+      )
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'a list of at most 20 host names, each with an optional port',
+        });
     }
     if (scope === platformScope) {
       if (isEndpoint(kind) && out.sharing !== undefined) {
@@ -534,6 +552,7 @@ export class CatalogRegistry {
         input.scope,
         record(input.spec),
         this.#slots,
+        id,
       );
       if (errors.length > 0) return { ok: false, errors };
       if (input.kind === 'dataset') {

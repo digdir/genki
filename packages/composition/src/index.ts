@@ -27,3 +27,5 @@ export * from './media-output.js';
 export * from './operation-governance.js';
 export * from './operation-descriptors.js';
 export { boundPlatformId, knowledgeRecordsOf, openKnowledgePools } from '@genai/providers-pgvector';
+export * from './connection-migration.js';
+export * from './prices.js';

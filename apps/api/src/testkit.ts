@@ -21,6 +21,7 @@ import {
   type createTokenVerifier,
 } from '@genai/identity';
 import type { EnvironmentTier } from '@genai/composition';
+import type { ProcessorRecordCheck } from '@genai/port-model';
 import type { TriggerRunStore } from '@genai/jobs';
 import type { EgressOptions } from '@genai/providers-mcp-client';
 import type { DescriptorRegistry } from '@genai/operations';
@@ -202,7 +203,7 @@ export const setup = (
 export const fakeModels = {
   endpoints: {
     fake: {
-      protocol: 'openai-chat',
+      families: { openai: '' },
       baseURL: 'https://modell.example.no/v1',
       auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
     },
@@ -241,6 +242,7 @@ export interface BootOptions {
   egress?: EgressOptions;
   log?: EventLog;
   mediaOutput?: MediaOutputConfig;
+  processorRecords?: ProcessorRecordCheck;
 }
 
 export const bootPlatform = async (options: BootOptions = {}) => {
@@ -271,6 +273,7 @@ export const bootPlatform = async (options: BootOptions = {}) => {
     ...(options.egress ? { egress: options.egress } : {}),
     ...(options.log ? { log: options.log } : {}),
     ...(options.mediaOutput ? { mediaOutput: options.mediaOutput } : {}),
+    ...(options.processorRecords ? { processorRecords: options.processorRecords } : {}),
     modules: options.modules ?? [...platformModules, onboardingModule, maskinportenClientsModule],
     policy: altinnPolicy({
       altinn: createMockAltinnPdp({}).authorization,

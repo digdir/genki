@@ -106,6 +106,9 @@ export const toCapabilities = (
         knowledge: spec.knowledge,
         tools: spec.tools.map(toolRef),
         guardrails: spec.guardrails,
+        ...(spec.riskConfirmation?.unmaskedInput?.length
+          ? { unmaskedMedia: spec.riskConfirmation.unmaskedInput.map((u) => u.mediaType) }
+          : {}),
       },
       grants: [
         ...spec.knowledge.datasets.map((k) => ({
@@ -117,7 +120,7 @@ export const toCapabilities = (
           ? [{ port: 'rerank', ref: ref('reranker', spec.knowledge.reranker) }]
           : []),
         ...modelGrants.map((id) => ({ port: 'model', ref: ref('model', id) })),
-        ...(strategy.id === 'step-flow'
+        ...(strategy.id === 'step-flow' || strategy.id === 'live-session'
           ? [...modelGrants, ...operationGrants].map((id) => ({
               port: 'described',
               ref: ref('model', id),

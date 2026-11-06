@@ -1,7 +1,13 @@
 import { createRoute, z, type RouteConfig } from '@hono/zod-openapi';
-import { sourceLinkRules } from '@genai/contracts';
+import { priceUnits, sourceLinkRules, unitNamePattern } from '@genai/contracts';
 import { filterKinds, filterValueTypes } from '@genai/port-knowledge';
-import { capabilities, operationKindPattern, parameterRules, residencies } from '@genai/port-model';
+import {
+  apiIdPattern,
+  capabilities,
+  operationKindPattern,
+  parameterRules,
+  residencies,
+} from '@genai/port-model';
 import { catalogKinds } from '../catalog-registry.js';
 import { datasetFields } from '../config-routes.js';
 import { applyBody, proposeBody, revertBody, verifyBody } from '../dataset-enrichment.js';
@@ -43,6 +49,9 @@ const body = <T extends z.ZodType>(schema: T, contentType = 'application/json') 
 });
 
 const Residency = z.enum(residencies);
+const ApiBindings = z
+  .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
+  .openapi({ example: { chat: 'openai/responses@1', decide: 'openai/decide@1' } });
 const Embedding = z.object({ model: z.string(), dimensions: z.number().int() });
 
 const CatalogItem = z
@@ -565,17 +574,67 @@ const VerifyResult = z
   })
   .openapi('EnrichmentVerification');
 
-const ModelEndpointInput = z
+const DiscoveryRule = z
   .object({
-    id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/),
-    protocol: z.enum(['openai-chat', 'anthropic-messages']),
-    baseURL: z.string().openapi({ description: 'HTTPS, without credentials' }),
-    auth: z.object({
-      kind: z.enum(['api-key', 'bearer']),
-      secret: z.string().openapi({ example: 'secret://platform/sigma2-key' }),
-    }),
+    source: z.string().openapi({ example: 'azure-deployments' }),
+    from: z.string().optional().describe('Another connection to list deployments through'),
+    idPrefix: z
+      .string()
+      .optional()
+      .describe(
+        'Discovered models get ids <idPrefix>/<deployment>; the connection id when left out',
+      ),
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+    capabilities: z.array(z.enum(capabilities)).optional(),
+    apis: ApiBindings.optional().describe('The APIs a discovered deployment binds'),
   })
+  .openapi('DiscoveryRule');
+const ModelEndpointFields = {
+  baseURL: z
+    .string()
+    .openapi({ description: 'The provider resource root, HTTPS, without credentials' }),
+  auth: z.object({
+    kind: z.enum(['api-key', 'bearer']),
+    secret: z.string().openapi({ example: 'secret://platform/sigma2-key' }),
+    header: z.string().optional(),
+  }),
+  families: z.record(z.string(), z.string()).openapi({
+    description:
+      'Each API family the connection offers and its base: a path under baseURL or a full HTTPS URL on the same resource',
+    example: { openai: '/openai/v1', anthropic: '/anthropic' },
+  }),
+  discovery: z.array(DiscoveryRule).optional(),
+  allowedHosts: z
+    .array(z.string())
+    .max(20)
+    .optional()
+    .openapi({
+      description:
+        "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
+      example: ['files.provider.example'],
+    }),
+};
+const ModelEndpointInput = z
+  .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
   .openapi('ModelEndpointInput');
+const ModelEndpointUpdate = z.object(ModelEndpointFields).openapi('ModelEndpointUpdate');
+const ApiView = z
+  .object({
+    id: z.string().openapi({ example: 'openai/responses@1' }),
+    kind: z.string(),
+    family: z.string(),
+    source: z.enum(['built-in', 'bundled', 'uploaded']),
+    status: z.enum(['review', 'described', 'typed']),
+    units: z
+      .array(z.string().regex(unitNamePattern))
+      .describe(
+        'The units its usage reports, which prices name: the built-in units and any unit its descriptor names',
+      ),
+    summary: z.string().optional(),
+    models: z.array(z.string()).describe('The models that bind it'),
+  })
+  .openapi('Api');
 const ModelEndpointInUse = Problem.extend({
   services: z.array(z.object({ service: z.string(), tenant: z.string(), tenantName: z.string() })),
   models: z.array(z.object({ id: z.string(), tenant: z.string() })),
@@ -587,10 +646,32 @@ const PlatformModelInput = z
     family: z.string().optional(),
     residency: Residency,
     capabilities: z.array(z.enum(capabilities)).optional(),
+    apis: ApiBindings.optional().describe(
+      'One API per operation kind; kept as it is when left out, and the default chat API of a single-family connection when none is set',
+    ),
+    options: z.record(z.string(), z.unknown()).optional(),
     enabled: z.boolean().optional(),
   })
   .openapi('PlatformModelInput');
 const Price = z.object({ inputPerThousand: z.number(), outputPerThousand: z.number() });
+const UnitPrices = z
+  .object(Object.fromEntries(priceUnits.map((u) => [u, z.number().min(0).optional()])))
+  .catchall(z.number().min(0))
+  .describe(
+    'Kroner per unit: the built-in units, and any other unit a descriptor names, such as page',
+  )
+  .openapi('UnitPrices');
+const ModelPrices = z
+  .record(z.string().regex(operationKindPattern), UnitPrices)
+  .describe('Kroner per unit, per operation kind the model binds')
+  .openapi('ModelPrices', {
+    example: { chat: { 'input-token': 0.0000119, 'output-token': 0.0000952 } },
+  });
+const PriceInput = z
+  .union([ModelPrices, Price])
+  .describe(
+    'Prices per kind and unit, or a price per 1,000 input and output tokens from before ADR 0048, which is set for every kind the model binds',
+  );
 const PublicModel = z
   .object({
     id: z.string(),
@@ -1282,6 +1363,15 @@ const ProcessorRecordBody = z
     retention: z
       .object({ days: z.number().int().min(0), note: z.string().optional() })
       .describe('How long the provider keeps what it is sent'),
+    providerState: z
+      .object({
+        allowed: z.boolean(),
+        retention: z.object({ days: z.number().int().min(0), note: z.string() }),
+      })
+      .optional()
+      .describe(
+        'Whether descriptors may leave objects at the provider, and how long it keeps them',
+      ),
   })
   .openapi('ProcessorRecordInput');
 const ProcessorRecordView = z
@@ -1295,9 +1385,36 @@ const ProcessorRecordView = z
 
 const operatorModelRoutes: RouteConfig[] = [
   createRoute({
+    method: 'get',
+    path: '/operator/apis',
+    summary:
+      'Every API a model can bind, built-in or described, with its kind, family and the models bound to it (operators)',
+    responses: {
+      200: json(z.object({ data: z.array(ApiView) }), 'The APIs'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/model-endpoints/{id}',
+    summary:
+      'Change a platform connection: its root, credential, API families and discovery rules (operators, audited)',
+    request: {
+      params: z.object({ id: param('sigma2') }),
+      headers: reasonHeader,
+      body: body(ModelEndpointUpdate),
+    },
+    responses: {
+      200: audited(CatalogItem, 'Saved'),
+      400: problem('Invalid connection, a model would lose its API, or missing reason'),
+      ...operatorOnly,
+      404: problem('No such platform connection'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/operator/model-endpoints',
-    summary: 'Add a platform model endpoint using a platform secret (operators, audited)',
+    summary: 'Add a platform connection using a platform secret (operators, audited)',
     request: { headers: reasonHeader, body: body(ModelEndpointInput) },
     responses: {
       201: audited(CatalogItem, 'Created'),
@@ -1329,7 +1446,17 @@ const operatorModelRoutes: RouteConfig[] = [
     summary:
       'Every model endpoint with its processor record, or null where it has none (operators)',
     responses: {
-      200: json(z.object({ data: z.array(ProcessorRecordView) }), 'The endpoints'),
+      200: json(
+        z.object({
+          data: z.array(ProcessorRecordView),
+          typedCalls: z
+            .enum(['warn', 'enforce'])
+            .describe(
+              'What a chat or decide call with real data does on an endpoint without a record: warn and go on, or be refused (GENAI_PROCESSOR_RECORDS)',
+            ),
+        }),
+        'The endpoints',
+      ),
       ...operatorOnly,
     },
   }),
@@ -1378,14 +1505,17 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}/price',
     summary:
-      'Set the price of a model in NOK per thousand tokens (operators, audited). The id may contain slashes.',
+      'Set the prices of a model per operation kind and unit, in kroner per unit (operators, audited). The id may contain slashes.',
     request: {
       params: z.object({ id: param('fake/gpt') }),
       headers: reasonHeader,
-      body: body(Price),
+      body: body(PriceInput),
     },
     responses: {
-      200: audited(Price.extend({ id: z.string(), currency: z.literal('NOK') }), 'Saved'),
+      200: audited(
+        Price.extend({ id: z.string(), prices: ModelPrices, currency: z.literal('NOK') }),
+        'Saved',
+      ),
       400: problem('Invalid price or missing reason'),
       ...operatorOnly,
       404: problem('No such model'),
@@ -1395,7 +1525,7 @@ const operatorModelRoutes: RouteConfig[] = [
     method: 'put',
     path: '/operator/models/{id}',
     summary:
-      'Add or change a catalog model on a platform endpoint; a new one starts as a release candidate (operators, audited). The id starts with the endpoint id and a slash.',
+      'Add or change a catalog model on a platform connection; a new one starts as a release candidate (operators, audited). A new id starts with the connection id, or a discovery rule id prefix, and a slash.',
     request: {
       params: z.object({ id: param('sigma2/norallm-7b') }),
       headers: reasonHeader,
