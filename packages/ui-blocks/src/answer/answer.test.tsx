@@ -64,7 +64,7 @@ const text = [
 const draw = (props: Partial<AnswerProps> = {}) =>
   render(<Answer text={text} sources={sources} markers={markers} {...props} />);
 
-const footnotes = () => screen.getAllByRole('link', { name: /^(Utdrag \d+|Kilde): / });
+const footnotes = () => screen.getAllByRole('link', { name: /^(Utdrag|Kilde) \d+: / });
 
 describe('the footnotes in the answer', () => {
   it('numbers only the excerpts the answer cites, 1, 2, 3 in the order it first cites them', () => {
@@ -109,24 +109,29 @@ describe('the footnotes in the answer', () => {
     });
   });
 
-  it('names a document by its title in document mode, and numbers nothing', () => {
+  it('numbers the documents in document mode, in the order first cited, in the same round marks', () => {
     draw({ citationMode: 'document' });
     expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Kilde: Tildelingsbrev Nkom 2022',
-      'Kilde: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-      'Kilde: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-      'Kilde: Tildelingsbrev Nkom 2022',
+      'Kilde 1: Tildelingsbrev Nkom 2022',
+      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Kilde 1: Tildelingsbrev Nkom 2022',
     ]);
+    expect(footnotes().map((link) => link.textContent)).toEqual(['[1]', '[2]', '[2]', '[1]']);
+    for (const link of footnotes()) {
+      expect(link.classList.contains('uib-answer-mark')).toBe(true);
+      expect(link.querySelector('svg')).toBeNull();
+    }
     expect(document.body.textContent).not.toMatch(/Utdrag \d/);
   });
 
   it('reads [N] as the source with that index when the service cites documents', () => {
     render(
-      <Answer text="Bevilgningen økte [1], og rapporteringen er fast [2]." sources={sources} />,
+      <Answer text="Bevilgningen økte [2], og rapporteringen er fast [1]." sources={sources} />,
     );
     expect(footnotes().map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Kilde: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
-      'Kilde: Tildelingsbrev Nkom 2022',
+      'Kilde 1: Tildelingsbrev Nkom 2022',
+      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
     ]);
   });
 
@@ -293,17 +298,21 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     expect(document.activeElement).toBe(footnotes()[3]);
   });
 
-  it('pairs by document both ways in document mode', async () => {
+  it('pairs by document both ways in document mode, footnote N with the card numbered N', async () => {
     render(<Host mode="document" />);
     fireEvent.click(footnotes()[1] as HTMLElement);
     await frame();
-    expect(document.activeElement?.textContent).toBe(nkom.title);
+    expect(footnotes()[1]?.textContent).toBe('[2]');
+    expect(document.activeElement?.textContent).toBe(`Kilde 2: ${nkom.title}`);
     const card = screen
-      .getByRole('heading', { name: nkom.title })
+      .getByRole('heading', { name: `Kilde 2: ${nkom.title}` })
       .closest('.uib-sources-document') as HTMLElement;
-    const firstExcerpt = card.querySelector('.uib-sources-excerpt') as HTMLElement;
-    const back = within(firstExcerpt).getAllByRole('link', { name: /^Til svaret/ });
+    const head = card.querySelector('.uib-sources-document-head') as HTMLElement;
+    const back = within(head).getAllByRole('link', { name: /^Til svaret/ });
     expect(back).toHaveLength(2);
+    fireEvent.click(back[1] as HTMLElement);
+    await frame();
+    expect(document.activeElement).toBe(footnotes()[2]);
     fireEvent.click(back[0] as HTMLElement);
     await frame();
     expect(document.activeElement).toBe(footnotes()[1]);
@@ -343,9 +352,9 @@ describe('«Kilder brukt i svaret»', () => {
     ]);
   });
 
-  it('names the documents and numbers none of them in document mode', () => {
+  it('names each document in document mode with the number its footnotes carry', () => {
     draw({ citationMode: 'document' });
-    expect(rows()).toEqual([nkom.title, tildeling.title]);
+    expect(rows()).toEqual([`${nkom.title}Kilde 2`, `${tildeling.title}Kilde 1`]);
   });
 
   it('opens the document itself, not its first excerpt', () => {
@@ -380,8 +389,8 @@ describe('«Kilder brukt i svaret»', () => {
       />,
     );
     expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
-      `${nkom.title}, dokument 90777`,
-      `${nkom.title}, dokument 88640`,
+      `${nkom.title}, dokument 90777Kilde 1`,
+      `${nkom.title}, dokument 88640Kilde 2`,
     ]);
   });
 

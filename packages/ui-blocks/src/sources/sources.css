@@ -150,9 +150,32 @@
     flex: none;
     color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));
   }
-  :is(.uib-sources-document-toggle, .uib-sources-excerpt-toggle)[aria-expanded='true']
+  :is(
+      .uib-sources-document-toggle,
+      .uib-sources-excerpt-toggle,
+      .uib-sources-passages-toggle
+    )[aria-expanded='true']
     .uib-sources-caret {
     rotate: 180deg;
+  }
+  /* «Kilde 1» over a document's title, while the footnotes cite documents: as «Utdrag 1» over
+     an excerpt's section. */
+  .uib-sources-document-number {
+    display: block;
+    font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-xs-font-size));
+    font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-regular));
+    color: var(--genai-sources-excerpt-number-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-passages-toggle {
+    align-self: start;
+  }
+  .uib-sources-passages {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-body-gap, var(--ds-size-4));
+  }
+  .uib-sources-passages[hidden] {
+    display: none;
   }
   .uib-sources-controls,
   .uib-sources-excerpt-controls {

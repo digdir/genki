@@ -15,6 +15,7 @@ const uses = [...flat.matchAll(/var\((--genai-[a-z-]+), (var\(--[a-z0-9-]+\)|[^)
 // Pinned to a colour family on purpose, each with a comment in the CSS.
 const accentPins = [
   '--genai-answer-footnote-background',
+  '--genai-answer-footnote-border-color',
   '--genai-answer-footnote-color',
   '--genai-answer-footnote-hover-background',
   '--genai-answer-footnote-hover-color',
@@ -61,5 +62,13 @@ describe('the answer styles', () => {
 
   it('keep a footnote from pushing the lines of the answer apart', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
+  });
+
+  it('set the footnote’s circle apart from the card with a strong ring, not the fill alone', () => {
+    // The tinted fill is 1.2:1 on the card; a border-strong ring is over 3:1 in both themes.
+    expect(uses.find((use) => use.name === '--genai-answer-footnote-border-color')?.fallback).toBe(
+      'var(--ds-color-accent-border-strong)',
+    );
+    expect(flat).toMatch(/\.uib-answer-mark \{[^}]*box-shadow: inset 0 0 0 var\(/);
   });
 });

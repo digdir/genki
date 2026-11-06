@@ -14,7 +14,11 @@ export interface SourceCitation {
 export interface Pairing {
   /** The mode drawn: excerpt mode needs every footnote to name its excerpt. */
   mode: CitationMode;
-  /** Excerpt mode only: each cited excerpt's number, 1, 2, 3 in the order of first citation. */
+  /**
+   * Each cited item's number, 1, 2, 3 in the order of first citation: excerpts in excerpt mode,
+   * documents in document mode. Footnotes are always numbers; documents get them only while the
+   * service cites documents, since then the document is what a footnote points at.
+   */
   numbers: ReadonlyMap<string, number>;
   /** Per footnote, the key of the shown item it leads to: a chunk id, or a document key. */
   targets: readonly (string | undefined)[];
@@ -80,7 +84,7 @@ export const pairCitations = (
       unpaired.push(i);
       return undefined;
     }
-    if (mode === 'excerpt' && !numbers.has(key)) numbers.set(key, numbers.size + 1);
+    if (!numbers.has(key)) numbers.set(key, numbers.size + 1);
     uses.set(key, [...(uses.get(key) ?? []), i]);
     return key;
   });

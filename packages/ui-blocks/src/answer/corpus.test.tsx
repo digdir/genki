@@ -119,9 +119,23 @@ describe('the answer on real answers from genki-test', () => {
       render(
         <Answer text={text} sources={sources} noAnswer={noAnswer} onOpenDocument={() => {}} />,
       );
-      const labels = screen
-        .queryAllByRole('link', { name: /^Kilde: / })
-        .map((link) => link.getAttribute('aria-label')?.slice('Kilde: '.length) ?? '');
+      const marks = screen.queryAllByRole('link', { name: /^Kilde \d+: / });
+      const labels = marks.map(
+        (link) => link.getAttribute('aria-label')?.replace(/^Kilde \d+: /, '') ?? '',
+      );
+      // Always a number in the mark, the document's: one number per document, 1, 2, 3 in order.
+      const numberOf = new Map<string, string>();
+      marks.forEach((link, i) => {
+        const number = link.textContent ?? '';
+        const label = labels[i] ?? '';
+        if (!/^\[\d+\]$/.test(number)) problems.push(`${file}: footnote «${number}» is no number`);
+        if ((numberOf.get(label) ?? number) !== number)
+          problems.push(`${file}: «${label}» carries two numbers`);
+        numberOf.set(label, number);
+      });
+      const firsts = [...new Set(numberOf.values())];
+      if (firsts.join() !== firsts.map((_, i) => `[${i + 1}]`).join())
+        problems.push(`${file}: documents numbered ${firsts.join(' ')}`);
       drawn += labels.length;
       if (labels.length !== read.citations.length)
         problems.push(`${file}: ${labels.length} drawn, ${read.citations.length} footnotes`);
@@ -146,7 +160,7 @@ describe('the answer on real answers from genki-test', () => {
     expect(problems).toEqual([]);
   });
 
-  it('gives Sources the same footnotes, so each excerpt of a cited document links back to every use', () => {
+  it('gives Sources the same footnotes, so each cited document carries their number and a link back to each', () => {
     let backLinks = 0;
     for (const { file, text, sources } of answers.filter((a) => a.sources.length)) {
       const { citations, pairing } = readFootnotes(text, sources);
@@ -157,14 +171,18 @@ describe('the answer on real answers from genki-test', () => {
       const cards = [...container.querySelectorAll<HTMLElement>('.uib-sources-document')];
       expect(cards.length, file).toBe(sources.length);
       cards.forEach((card, i) => {
-        const uses = pairing.uses.get(keys[i] ?? '')?.length ?? 0;
-        const rows = [...card.querySelectorAll<HTMLElement>('.uib-sources-excerpt')];
-        // A document with no excerpt carries its links itself.
-        for (const holder of rows.length ? rows : [card]) {
-          const links = within(holder).queryAllByRole('link', { name: /^Til svaret/ });
-          expect(links.length, `${file} document ${i + 1}`).toBe(uses);
-          backLinks += links.length;
-        }
+        const key = keys[i] ?? '';
+        const number = pairing.numbers.get(key);
+        const head = card.querySelector<HTMLElement>('.uib-sources-document-head') as HTMLElement;
+        expect(head.querySelector('.uib-sources-document-number')?.textContent ?? null, file).toBe(
+          number === undefined ? null : `Kilde ${number}`,
+        );
+        const links = within(head).queryAllByRole('link', { name: /^Til svaret/ });
+        expect(links.length, `${file} document ${i + 1}`).toBe(pairing.uses.get(key)?.length ?? 0);
+        // The passages were not cited alone, so they carry neither number nor link.
+        for (const row of card.querySelectorAll<HTMLElement>('.uib-sources-excerpt'))
+          expect(within(row).queryAllByRole('link', { name: /^Til svaret/ })).toHaveLength(0);
+        backLinks += links.length;
       });
       cleanup();
     }

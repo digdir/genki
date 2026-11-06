@@ -91,8 +91,10 @@
                 whatever number the service wrote. Needs the contract's <code>markers</code>.
               </li>
               <li>
-                <strong>By document:</strong> nothing is numbered. A footnote is a mark with a
-                document in it, named by the document's title.
+                <strong>By document</strong>, while a service cites documents: the same round mark,
+                with the document's number, «Kilde 1», «Kilde 2», in the order the answer first
+                cites it. Footnote N leads to the card in Sources numbered N. Footnotes are always
+                numbers, never an icon.
               </li>
               <li>
                 <strong>States:</strong> a skeleton before the first word and a line while it
@@ -248,6 +250,11 @@
                   <td>footnote border width</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-answer-footnote-border-color</code></td>
+                  <td><code>--ds-color-accent-border-strong</code></td>
+                  <td>the ring that sets the footnote's circle apart from the card</td>
+                </tr>
+                <tr>
                   <td><code>--genai-answer-footnote-color</code></td>
                   <td><code>--ds-color-accent-text-default</code></td>
                   <td>footnote color</td>
@@ -276,11 +283,6 @@
                   <td><code>--genai-answer-footnote-hover-color</code></td>
                   <td><code>--ds-color-accent-base-contrast-default</code></td>
                   <td>footnote hover color</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-answer-footnote-icon-size</code></td>
-                  <td><code>1em</code></td>
-                  <td>footnote icon size</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-padding</code></td>
@@ -415,7 +417,13 @@
             <ul>
               <li>
                 «Kilder brukt i svaret» is in the same order as the documents in Sources, and only
-                lists what the answer cites. Its rows are not numbered: only excerpts are.
+                lists what the answer cites. Under each title stand the numbers its footnotes carry:
+                «Utdrag 2–3», or «Kilde 1» while the service cites documents.
+              </li>
+              <li>
+                A tinted circle on the card is 1.2:1 in the digdir theme, and 1.1:1 in dark mode, so
+                its edge is all but gone. A ring in the accent's strong border colour is 6.6:1 and
+                6.2:1; the number on the fill is 11.5:1 in both, and 6.1:1 and 6.3:1 on hover.
               </li>
               <li>
                 Models write the footnote after the full stop: 195 of 237 markers in 37 answers from
@@ -432,10 +440,6 @@
           <div class="wide open-questions">
             <h2>Open questions</h2>
             <ul>
-              <li>
-                In document mode, is a mark with a document in it, named by the title, the right way
-                to name a document in the text?
-              </li>
               <li>
                 genki-test's services cite documents. Excerpt mode on live answers waits for answers
                 that name their excerpts (digdir/genki#283).

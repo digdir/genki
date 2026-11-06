@@ -99,8 +99,11 @@
                 title. Needs footnotes that name their excerpt.
               </li>
               <li>
-                <strong>By document:</strong> nothing is numbered. Each excerpt shown in a cited
-                document links back to the document's uses; a document nothing cites says so.
+                <strong>By document</strong>, while a service cites documents: each cited document
+                is numbered, «Kilde 1», «Kilde 2», in the order the answer first cites it, as its
+                footnotes are, and links back to them. Its passages, which nothing cites alone, are
+                unnumbered and closed behind «Vis utdrag fra dokumentet (n)». A document nothing
+                cites says so.
               </li>
               <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
@@ -126,12 +129,12 @@
                 back. <code>onTargetMissing</code> reports a footnote whose excerpt is not shown.
               </li>
               <li>
-                <code>onShowUse</code> and <code>citationHref</code>: an excerpt has a link back to
-                each footnote that cites it, in the order they stand in the answer, as Wikipedia's
-                back-references. Cited once, «Til svaret»; several times, «↩ 1 2 3». Each is a real
-                link, so a reader can tab to or open any one, and each says to a screen reader which
-                footnote it leads to. They replace one control that cycled (decided 6 November
-                2026).
+                <code>onShowUse</code> and <code>citationHref</code>: a cited excerpt, or a cited
+                document in document mode, has a link back to each footnote that cites it, in the
+                order they stand in the answer, as Wikipedia's back-references. Cited once, «Til
+                svaret»; several times, «↩ 1 2 3». Each is a real link, so a reader can tab to or
+                open any one, and each says to a screen reader which footnote it leads to. They
+                replace one control that cycled (decided 6 November 2026).
               </li>
               <li>
                 <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:

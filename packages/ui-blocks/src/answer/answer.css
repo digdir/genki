@@ -60,7 +60,10 @@
   /* A footnote as a small round mark raised a little beside the word, its number in the smallest
      font size. It stands the smallest size step from what comes before it: two marks in a row are
      then as far apart as WCAG 2.5.8 asks of targets this small. Pinned to accent: in this block
-     accent means it can be pressed, and the card around it is often neutral. */
+     accent means it can be pressed, and the card around it is often neutral.
+     The ring, not the fill, sets the circle apart from the card: the tinted fill on the card is
+     1.2:1 in the digdir theme (1.1:1 dark), the ring 6.6:1 (6.2:1 dark), and the number on the
+     fill 11.5:1 in both (measured 6 November 2026). Inset, so the circle keeps its size. */
   .uib-answer-mark {
     display: inline-block;
     box-sizing: border-box;
@@ -77,12 +80,9 @@
     text-align: center;
     text-decoration: none;
     vertical-align: var(--genai-answer-footnote-raise, var(--ds-size-1));
-  }
-  /* In document mode the mark names a document, so it shows a document, not a number. */
-  .uib-answer-mark-icon {
-    inline-size: var(--genai-answer-footnote-icon-size, 1em);
-    block-size: var(--genai-answer-footnote-icon-size, 1em);
-    vertical-align: middle;
+    box-shadow: inset 0 0 0
+      var(--genai-answer-footnote-border-width, var(--ds-border-width-default))
+      var(--genai-answer-footnote-border-color, var(--ds-color-accent-border-strong));
   }
   /* The brackets, kept in the text for whoever copies the answer but not drawn. Inline and not
      visually hidden: an absolutely positioned element is a block to copying, which then reads
@@ -91,7 +91,9 @@
     font-size: 0;
   }
   /* Hover only where there is one, as Designsystemet does for links: after a tap on a touch
-     screen the fill would otherwise stay. Pinned to accent, as the mark is. */
+     screen the fill would otherwise stay. Pinned to accent, as the mark is: the number on the
+     filled circle is 6.1:1 (6.3:1 dark), and the fill stands 5.0:1 (4.1:1 dark) from the tinted
+     one, so the change is plain. Focus keeps Designsystemet's two rings, 12:1 and more. */
   @media (hover: hover) and (pointer: fine) {
     .uib-answer-mark:hover {
       background: var(
