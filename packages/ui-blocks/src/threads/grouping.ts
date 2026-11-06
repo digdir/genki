@@ -104,6 +104,25 @@ export interface RowTime {
   title: string;
 }
 
+const clockParts = new Intl.DateTimeFormat('en-GB', {
+  timeZone,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * The clock with a colon, «14:32», in every language. kunnskapsassistenten writes it so in its
+ * thread list (`components/threadTime.ts`), and its views are the reference for these blocks
+ * (decided 2026-11-03), so the row does not take the platform's «14.32».
+ */
+export const clock = (date: Date) => {
+  const parts = clockParts.formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00';
+  return `${part('hour')}:${part('minute')}`;
+};
+
 const dayMonthFormats = new Map<string, Intl.DateTimeFormat>();
 const dayMonth = (locale: Locale, month: 'short' | 'long') => {
   const key = `${locale}-${month}`;
@@ -125,8 +144,10 @@ export const rowTime = (
   const date = toDate(value);
   if (!readable(date)) return undefined;
   const days = calendarDay(now).serial - calendarDay(date).serial;
-  const common = { dateTime: date.toISOString(), title: f.dateTime(date) };
-  if (days <= 0) return { ...common, text: f.time(date) };
+  // The whole date as the platform writes it, with the clock as the row writes it.
+  const title = `${f.date(date)}${f.locale === 'en' ? ', ' : ' kl. '}${clock(date)}`;
+  const common = { dateTime: date.toISOString(), title };
+  if (days <= 0) return { ...common, text: clock(date) };
   if (days === 1) return { ...common, text: yesterday };
   if (days < 7) return { ...common, text: f.weekday(date) };
   return { ...common, text: dayMonth(f.locale, days < 30 ? 'short' : 'long').format(date) };
