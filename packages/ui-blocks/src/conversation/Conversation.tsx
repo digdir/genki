@@ -2,6 +2,7 @@ import { Button, Card, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { MagnifyingGlassIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Answer, type AnswerTarget } from '../answer/Answer.js';
+import { finishedText } from '../answer/copy.js';
 import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
 import { findHits, stepHit } from '../markdown/textSearch.js';
@@ -225,9 +226,65 @@ export const Conversation = ({
     atEndChange.current?.(atEnd);
   }, [atEnd]);
 
-  // Progress is a new turn object for the answer on its way: a word, a step, a source.
+  // What the polite region says about an answer on its way, as kunnskapsassistenten's useChat:
+  // that it is coming, each block once it is finished, and how it ended. Only answers seen on
+  // their way: a thread read back says nothing. A failed answer is said by its own alert.
+  const [announcement, setAnnouncement] = useState('');
+  const live = useRef(new Map<string, { status: string; finished: string }>());
+  const lastSeen = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const turn = turns.at(-1);
+    const before = lastSeen.current;
+    lastSeen.current = turn?.id;
+    if (!turn || loading) return;
+    if (turn.kind === 'clarification') {
+      // New after the question it follows, or in place of the answer that was coming.
+      const arrived =
+        turn.id !== before &&
+        before !== undefined &&
+        (turns.at(-2)?.id === before || live.current.has(before));
+      if (arrived)
+        setAnnouncement(
+          assistantName
+            ? t('conversation.clarifying', { name: assistantName })
+            : t('conversation.clarifyingUnnamed'),
+        );
+      return;
+    }
+    if (turn.kind !== 'answer') return;
+    const known = live.current.get(turn.id);
+    if (!known) {
+      if (turn.status !== 'streaming') return;
+      live.current.set(turn.id, { status: 'streaming', finished: '' });
+      setAnnouncement(t('conversation.answerComing'));
+      return;
+    }
+    if (turn.status === 'streaming') {
+      const finished = finishedText(turn.text);
+      if (finished && finished !== known.finished) {
+        known.finished = finished;
+        setAnnouncement(finished);
+      }
+      return;
+    }
+    if (known.status !== 'streaming') return;
+    known.status = turn.status;
+    if (turn.status === 'aborted') setAnnouncement(t('conversation.answerStopped'));
+    if (turn.status !== 'complete') return;
+    // One with no sources carries a warning in its card; «ferdig» alone would hide it.
+    setAnnouncement(
+      turn.noAnswer
+        ? t('conversation.foundNothing')
+        : turn.sources?.length === 0 && turn.text.trim()
+          ? `${t('conversation.answerDone')} ${t('answer.noSources')}`
+          : t('conversation.answerDone'),
+    );
+  }, [turns, loading]);
+
+  // Progress is a new turn object for the answer on its way: a word, a step, a source. The line
+  // shows after each long wait; the region says it once per answer.
   const [slowFor, setSlowFor] = useState<ConversationAnswer>();
-  const [slowSaidFor, setSlowSaidFor] = useState<string>();
+  const slowSaid = useRef(new Set<string>());
   const stalled = useRef(onStalled);
   stalled.current = onStalled;
   useEffect(() => {
@@ -237,7 +294,9 @@ export const Conversation = ({
       timers.push(
         setTimeout(() => {
           setSlowFor(waiting);
-          setSlowSaidFor(waiting.id);
+          if (slowSaid.current.has(waiting.id)) return;
+          slowSaid.current.add(waiting.id);
+          setAnnouncement(t('conversation.slow'));
         }, slowAfter),
       );
     timers.push(setTimeout(() => stalled.current?.(waiting), stalledAfter));
@@ -316,7 +375,12 @@ export const Conversation = ({
 
   // Held by identity: the answer scrolls to its footnote each time it gets a new target.
   const answerTarget = useMemo<AnswerTarget | undefined>(
-    () => (target ? { citation: target.citation } : undefined),
+    () =>
+      target
+        ? 'citation' in target
+          ? { citation: target.citation }
+          : { document: target.document }
+        : undefined,
     [target],
   );
 
@@ -530,14 +594,8 @@ export const Conversation = ({
           {t('conversation.slow')}
         </Paragraph>
       ) : null}
-      {/* The slow answer is said once per answer: the words stay until it ends, so a second
-          wait changes nothing here. */}
       <p aria-live="polite" className="ds-sr-only">
-        {reading && noticeSaid
-          ? t('conversation.loading')
-          : waiting && slowSaidFor === waiting.id
-            ? t('conversation.slow')
-            : ''}
+        {reading && noticeSaid ? t('conversation.loading') : announcement}
       </p>
     </div>
   );

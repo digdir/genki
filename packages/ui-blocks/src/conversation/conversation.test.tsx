@@ -227,6 +227,19 @@ describe('each answer', () => {
     expect(focused?.closest('li')).toBe(items()[3]);
   });
 
+  it('moves focus back to a title in «Kilder brukt i svaret» the app points at', async () => {
+    const { rerender } = render(<Conversation turns={turns} onOpenDocument={() => {}} />);
+    rerender(
+      <Conversation
+        turns={turns}
+        onOpenDocument={() => {}}
+        target={{ turnId: 'a1', document: { documentId: 'kudos::2022' } }}
+      />,
+    );
+    await frame();
+    expect(document.activeElement).toBe(screen.getByRole('link', { name: tildeling.title }));
+  });
+
   it('offers to ask a stopped question again, and says which', () => {
     const onRegenerate = vi.fn();
     const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
@@ -302,6 +315,51 @@ describe('each answer', () => {
   });
 });
 
+describe('what a screen reader hears of an answer on its way', () => {
+  const region = () => document.querySelector('[aria-live="polite"]')?.textContent;
+  const coming: ConversationAnswer = { ...answer, id: 'a2', text: '', status: 'streaming' };
+
+  it('says it is coming, each block once it is finished, and that it is done', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    expect(region()).toBe('Henter svar.');
+    rerender(<Conversation turns={[question, { ...coming, text: 'Nkom rapporterer [1]' }]} />);
+    expect(region()).toBe('Henter svar.');
+    const first = { ...coming, text: 'Nkom rapporterer [1].\n\nBevilg' };
+    rerender(<Conversation turns={[question, first]} />);
+    expect(region()).toBe('Nkom rapporterer.');
+    rerender(<Conversation turns={[question, { ...first, status: 'complete' }]} />);
+    expect(region()).toBe('Svaret er ferdig.');
+  });
+
+  it('says a stopped answer stopped, one that found nothing, and the warning on one with no sources', () => {
+    const ended = (turn: ConversationAnswer) => {
+      cleanup();
+      const { rerender } = render(<Conversation turns={[question, coming]} />);
+      rerender(<Conversation turns={[question, turn]} />);
+      return region();
+    };
+    expect(ended({ ...coming, status: 'aborted' })).toBe('Genereringen ble avbrutt.');
+    expect(ended({ ...coming, status: 'complete', text: 'Ingen treff.', noAnswer: true })).toBe(
+      'Fant ingen utdrag om dette i dokumentene.',
+    );
+    expect(ended({ ...coming, status: 'complete', text: 'Svar.', sources: [] })).toBe(
+      'Svaret er ferdig. Svaret har ingen kilder. Kontroller det mot originaldokumentene før du bruker det.',
+    );
+  });
+
+  it('says that the assistant asks back, and nothing of a thread read back', () => {
+    const { rerender } = render(<Conversation turns={[question]} pending />);
+    rerender(
+      <Conversation turns={[question, clarification]} assistantName="Kunnskapsassistenten" />,
+    );
+    expect(region()).toBe('Kunnskapsassistenten trenger en avklaring.');
+    cleanup();
+    const { rerender: again } = render(<Conversation turns={[]} loading />);
+    again(<Conversation turns={turns} />);
+    expect(region()).toBe('');
+  });
+});
+
 describe('an answer that takes long', () => {
   const streaming: ConversationAnswer = { ...answer, id: 'a2', text: '', status: 'streaming' };
   const region = () => document.querySelector('[aria-live="polite"]')?.textContent;
@@ -316,12 +374,17 @@ describe('an answer that takes long', () => {
       act(() => vi.advanceTimersByTime(1));
       expect(line()?.textContent).toBe('Dette tar lengre tid enn vanlig.');
       expect(region()).toBe('Dette tar lengre tid enn vanlig.');
-      // A word arrives: the line goes, and the region keeps its words, so a second wait is not said again.
-      rerender(<Conversation turns={[question, { ...streaming, text: 'Nkom' }]} />);
+      // A word arrives: the line goes, and the region keeps its words.
+      const word = { ...streaming, text: 'Nkom' };
+      rerender(<Conversation turns={[question, word]} />);
       expect(line()).toBeNull();
       expect(region()).toBe('Dette tar lengre tid enn vanlig.');
-      rerender(<Conversation turns={[question, { ...streaming, status: 'complete' }]} />);
-      expect(region()).toBe('');
+      // A second wait shows the line again, and is not said again.
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(line()).not.toBeNull();
+      expect(region()).toBe('Dette tar lengre tid enn vanlig.');
+      rerender(<Conversation turns={[question, { ...word, status: 'complete' }]} />);
+      expect(region()).toBe('Svaret er ferdig.');
     } finally {
       vi.useRealTimers();
     }
@@ -490,7 +553,8 @@ describe('the slots', () => {
     render(
       <Conversation turns={[question, answer, followUp, streaming]} actions={actions} now={now} />,
     );
-    expect(actions.mock.calls.map(([turn]) => turn.id)).toEqual(['a1']);
+    // Which answers get a row, whatever the number of renders.
+    expect([...new Set(actions.mock.calls.map(([turn]) => turn.id))]).toEqual(['a1']);
     const time = screen.getByText('14:32').closest('time');
     expect(time?.closest('.app-end')).not.toBeNull();
     expect(time?.getAttribute('dateTime')).toBe('2026-09-15T12:32:00.000Z');
