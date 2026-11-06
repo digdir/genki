@@ -89,6 +89,50 @@ describe('operation descriptors', () => {
     );
   });
 
+  it('a request field without a class is refused when the descriptor is loaded', () => {
+    const transcribe = readFileSync(
+      join(bundledDescriptorDir, 'openai', 'transcriptions@1.yaml'),
+      'utf8',
+    ).replace('status: described', 'status: review');
+    expect(
+      refused(
+        transcribe.replace(
+          '    prompt: $input.prompt\n',
+          '    prompt: $input.prompt\n    note: $input.prompt\n',
+        ),
+      ),
+    ).toMatch(/note has no class; every value that goes out is classified/);
+    expect(
+      refused(
+        embedYaml
+          .replace('status: typed', 'status: review')
+          .replace(
+            '    encoding_format: float',
+            '    encoding_format: float\n    options:\n      note: $input.input',
+          ),
+      ),
+    ).toMatch(/wire.request.options: options has no class/);
+  });
+
+  it('a nested request field without a class is refused when the descriptor is loaded', () => {
+    const chat = readFileSync(
+      join(bundledDescriptorDir, 'openai', 'chat-audio@1.yaml'),
+      'utf8',
+    ).replace(
+      '            input_audio:\n              data: $input.audio',
+      '            input_audio:\n              note: $input.instructions\n              data: $input.audio',
+    );
+    expect(refused(chat)).toMatch(/input_audio.note: note has no class/);
+  });
+
+  it('opaque state in a request is never filled from input', () => {
+    const review = embedYaml
+      .replace('status: typed', 'status: review')
+      .replace('      encoding_format: { enum: [float] }', '      encoding_format: opaque')
+      .replace('encoding_format: float', 'encoding_format: $input.input.0');
+    expect(refused(review)).toMatch(/opaque state is replayed from an earlier step/);
+  });
+
   it('a descriptor whose input can choose the model is refused', () => {
     expect(refused(embedYaml.replace('model: $deployment', 'model: $input.model'))).toMatch(
       /request.body.model must be \$deployment/,

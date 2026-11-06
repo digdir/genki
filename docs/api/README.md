@@ -72,6 +72,7 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 - `PUT /operator/operation-descriptors/{id}` takes `modules: { <name>: <base64 WebAssembly> }`; the answer lists `modules: [{ name, sha256 }]`. A fixture may carry `at` and `session`.
 - A provider object that cannot be deleted becomes the audit action `platform.provider-object.incident` (rejected) in the tenant's log.
 - Usage totals carry `units` for open units wherever usage is returned.
+- A descriptor is refused at load when a mapped request field, nested ones included, has no class in `wire.request`, or when an `opaque` request field is filled from input instead of an earlier step.
 
 ### 2026-11-05: descriptors from primitives and media input with consent
 
