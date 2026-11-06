@@ -65,8 +65,14 @@ describe('the sources block', () => {
 
   it('titles an excerpt by its section, with its number before it, as D1 draws it', () => {
     draw({ citations: cite('kudos::2021-1') });
-    const title = screen.getByRole('heading', { level: 4, name: /Ressursbruk og måloppnåelse/ });
-    expect(title.textContent).toBe('Utdrag 1: Ressursbruk og måloppnåelse');
+    const title = screen.getByRole('heading', {
+      level: 4,
+      name: 'Utdrag 1: Ressursbruk og måloppnåelse',
+    });
+    expect([...title.children].map((part) => part.textContent)).toEqual([
+      'Utdrag 1',
+      'Ressursbruk og måloppnåelse',
+    ]);
   });
 
   it('shows a closed excerpt’s first lines, and all of it once opened', () => {
@@ -127,8 +133,8 @@ describe('numbered excerpts, linked both ways', () => {
     draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
     const links = within(rowOf(/Utdrag 2/)).getAllByRole('link', { name: /^Til svaret/ });
     expect(links).toHaveLength(1);
-    expect(links[0]?.textContent).toBe('Til svaret, fotnote 2 av 3');
-    expect(links[0]?.querySelector('.ds-sr-only')?.textContent).toBe(', fotnote 2 av 3');
+    expect(links[0]?.getAttribute('aria-label')).toBe('Til svaret, fotnote 2 av 3');
+    expect(links[0]?.textContent).toBe('Til svaret');
     fireEvent.click(links[0] as HTMLElement);
     expect(onShowUse).toHaveBeenCalledWith(1, {
       source: nkom,
@@ -140,17 +146,12 @@ describe('numbered excerpts, linked both ways', () => {
     const onShowUse = vi.fn();
     draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
     const links = within(rowOf(/Utdrag 1/)).getAllByRole('link', { name: /^Til svaret/ });
-    expect(links.map((link) => link.textContent)).toEqual([
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Til svaret, bruk 1, fotnote 1 av 3',
       'Til svaret, bruk 2, fotnote 3 av 3',
     ]);
-    const visible = links.map((link) =>
-      [...link.childNodes]
-        .filter((node) => !(node instanceof Element && node.classList.contains('ds-sr-only')))
-        .map((node) => node.textContent)
-        .join(''),
-    );
-    expect(visible).toEqual(['1', '2']);
+    // What is seen is in the name (WCAG 2.5.3).
+    expect(links.map((link) => link.textContent)).toEqual(['1', '2']);
     fireEvent.click(links[1] as HTMLElement);
     fireEvent.click(links[0] as HTMLElement);
     expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([2, 0]);
@@ -224,7 +225,7 @@ describe('document mode', () => {
     draw({ citations, citationMode: 'document', onShowUse });
     const head = cardOf(nkom.title).querySelector('.uib-sources-document-head') as HTMLElement;
     const links = within(head).getAllByRole('link', { name: /^Til svaret/ });
-    expect(links.map((link) => link.textContent)).toEqual([
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Til svaret, bruk 1, fotnote 1 av 2',
       'Til svaret, bruk 2, fotnote 2 av 2',
     ]);
