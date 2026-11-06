@@ -150,6 +150,8 @@ describe('the openai/embeddings@1 adapter', () => {
     [401, 'unauthorized'],
     [400, 'bad_request'],
     [503, 'unavailable'],
+    [408, 'unavailable'],
+    [409, 'unavailable'],
   ])('maps HTTP %i to %s', async (status, code) => {
     const { url } = await fake(() => ({ status, json: { error: { message: 'nei' } } }));
 

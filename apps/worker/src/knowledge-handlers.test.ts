@@ -150,6 +150,8 @@ const scenario = async (
     copy?: Omit<CopyListingOptions, 'earlierIds'>;
     /** Holds an embedding call until it resolves. */
     embedWait?: (texts: string[]) => Promise<void>;
+    /** Collects the options each index job opens its embedder with. */
+    opened?: unknown[];
     progress?: RunProgress;
   } = {},
 ) => {
@@ -228,7 +230,8 @@ const scenario = async (
             : listing.load(record),
       };
     },
-    embedder: (d) => {
+    embedder: (d, _ctx, request) => {
+      extra.opened?.push(request);
       if (!d.embedding) return undefined;
       const { model, dimensions } = d.embedding;
       return {
@@ -888,6 +891,20 @@ describe('copying a dataset into the knowledge database', () => {
     ]);
     expect(new Set(embedded)).toEqual(new Set(['fake/large-1536']));
   }, 60_000);
+  it("index jobs open their embedder without the SDK's retries, since they wait out a 429 themselves", async () => {
+    const opened: unknown[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      opened,
+      copy: { source: copySource([typesenseDoc('377252', ['Forord'])]) },
+    });
+
+    await runOnce(s, copyRun(s));
+
+    expect(opened).toEqual([{ retries: 0 }]);
+  }, 60_000);
+
   it('a copy whose embedder answers 429 for its first calls stores every document and fails none', async () => {
     let refused = 0;
     const s = await scenario({}, undefined, {

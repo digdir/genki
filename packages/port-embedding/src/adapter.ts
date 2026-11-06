@@ -68,6 +68,9 @@ export const embeddingErrorFromStatus = (
       retryAfterMs === undefined ? {} : { retryAfterMs },
     );
   }
+  // A timeout or a conflict is worth another try, as the SDK treats them.
+  if (status === 408 || status === 409)
+    return new EmbeddingError('unavailable', 'the embedder is unavailable');
   if (status === 401 || status === 403)
     return new EmbeddingError('unauthorized', 'the embedder refused the credentials');
   if (status !== undefined && status >= 400 && status < 500)

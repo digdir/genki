@@ -437,14 +437,13 @@ const knowledgeHandlers =
             ...(spec.copy?.documents ? { documents: spec.copy.documents } : {}),
           });
         },
-        embedder: (dataset, ctx) => {
+        embedder: (dataset, ctx, request) => {
           const runtime = runtimeFor('embed');
           const residency = runtime.residencyOf(dataset.id);
           return dataset.embedding
             ? runtime.embedders.open({ kind: 'embedder', id: dataset.embedding.model }, ctx, {
+                ...request,
                 ...(residency ? { maxResidency: residency } : {}),
-                // The index job retries itself, so one 429 pauses every job on the model (#400).
-                retries: 0,
               })
             : undefined;
         },

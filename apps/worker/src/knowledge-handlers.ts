@@ -25,7 +25,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import { GenerationBusy } from '@genai/port-knowledge';
-import type { EmbeddingPort } from '@genai/port-embedding';
+import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
 import type { RunProgress } from './run-progress.js';
 import type { PortContext } from '@genai/kernel';
 import type { DatasetConfig } from '@genai/port-knowledge';
@@ -61,7 +61,11 @@ export interface KnowledgeHandlerDeps {
     scope: KnowledgeListingScope,
     signal: AbortSignal,
   ): Promise<Listing>;
-  embedder(dataset: DatasetConfig, ctx: PortContext): EmbeddingPort | undefined;
+  embedder(
+    dataset: DatasetConfig,
+    ctx: PortContext,
+    request?: EmbeddingOpenOptions,
+  ): EmbeddingPort | undefined;
   /**
    * The listing of an engine switch's copy run (#366): the dataset as its current engine holds it,
    * named as the switch decided at its start.
@@ -260,11 +264,14 @@ export const knowledgeWork = (
           );
           // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
           const embedding = await deps.records.embedding(job.data.generation);
+          // Without the SDK's retries: a 429 waits here and pauses this worker's other jobs on the
+          // model, instead of failing the document (#400).
           const opened = embedding
-            ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
+            ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal), {
+                retries: 0,
+              })
             : undefined;
-          // A 429 waits and pauses this worker's other jobs on the model, instead of failing (#400).
-          const embedder = opened && throttledEmbedder(opened, { pauses, signal });
+          const embedder = opened && throttledEmbedder(opened, { pauses, signal, cancelled });
           let chunks = 0;
           let outcome: Awaited<ReturnType<typeof indexRecord>>;
           try {

@@ -89,6 +89,9 @@ export const loggedEmbedders = <
           return await port.embed(texts);
         } catch (error) {
           const code = (error as { code?: unknown } | null)?.code;
+          // A caller that retries itself (a knowledge job, #400) waits a 429 out: it is logged as
+          // `model call throttled`, and counting it as failed would fire the model-provider alert.
+          if (request?.retries === 0 && code === 'rate_limited') throw error;
           void capabilityOf(ctx.task)
             .catch(() => undefined)
             .then((capability) =>

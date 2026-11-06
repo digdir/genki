@@ -18,8 +18,12 @@ export class EmbeddingPauses {
 
 export interface ThrottleOptions {
   pauses: EmbeddingPauses;
-  /** The job's signal: a cancelled run stops the wait. */
+  /** The job's signal: the worker stopping or the job expiring stops the wait. */
   signal?: AbortSignal;
+  /** Whether the job's run was cancelled, read before and during each wait. */
+  cancelled?: () => Promise<boolean>;
+  /** How often a wait reads `cancelled`. */
+  checkEveryMs?: number;
   /** The most one try of a job waits for the quota in all; then a 429 fails it as other errors do. */
   maxWaitMs?: number;
   now?: () => number;
@@ -62,8 +66,26 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
   const sleep = options.sleep ?? abortableSleep;
   const random = options.random ?? Math.random;
   const maxWaitMs = options.maxWaitMs ?? maxThrottleWaitMs;
+  const checkEveryMs = options.checkEveryMs ?? 30_000;
   const model = port.info().id;
   let waited = 0;
+
+  const stopIfCancelled = async () => {
+    if (await options.cancelled?.())
+      throw new EmbeddingError(
+        'cancelled',
+        'the run was cancelled while the embedder was throttled',
+      );
+  };
+
+  /** Sleeps `ms` in steps, so a cancelled run stops the wait within `checkEveryMs`. */
+  const sleepUnlessCancelled = async (ms: number) => {
+    for (let left = ms; left > 0; left -= checkEveryMs) {
+      await stopIfCancelled();
+      await sleep(options.cancelled ? Math.min(left, checkEveryMs) : left, options.signal);
+      if (!options.cancelled) break;
+    }
+  };
 
   const waitForPause = async () => {
     const paused = options.pauses.until(model) - now();
@@ -73,7 +95,7 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
         'rate_limited',
         `the embedder is rate limited; waited ${Math.round(waited / 1000)} s`,
       );
-    await sleep(paused, options.signal);
+    await sleepUnlessCancelled(paused);
     waited += paused;
   };
 
@@ -93,9 +115,13 @@ export const throttledEmbedder = (port: EmbeddingPort, options: ThrottleOptions)
             continue;
           }
           if (code !== 'rate_limited') throw error;
-          const backoff = Math.min(maxBackoffMs, firstBackoffMs * 2 ** throttled++);
+          const backoff = firstBackoffMs * 2 ** throttled++;
           const asked = (error as EmbeddingError).retryAfterMs;
-          const ms = asked ?? Math.round(backoff * (0.8 + 0.4 * random()));
+          // A wait of 0 or one in the past is no wait at all: back off as if none was named.
+          const ms =
+            asked !== undefined && asked > 0
+              ? asked
+              : Math.min(maxBackoffMs, Math.round(backoff * (0.8 + 0.4 * random())));
           if (waited + ms > maxWaitMs) throw error;
           options.pauses.pause(model, now() + ms);
         }

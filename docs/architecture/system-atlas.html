@@ -5506,8 +5506,10 @@
                 'Document records on the knowledge database':
                   "plan a run against a pipeline's records, write its changes, and index one document (ADR 0042)",
               },
+              "Wait out a throttled embedding model in an index job, with one pause per model shared by the worker's jobs (throttledEmbedder)",
             ],
             files: [
+              'packages/ingest/src/throttled-embedder.ts',
               'packages/ingest/src/pipeline.ts',
               'packages/ingest/src/kudos.ts',
               'packages/ingest/src/website.ts',

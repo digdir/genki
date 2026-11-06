@@ -27,7 +27,10 @@ const embedded = () =>
     usage: { prompt_tokens: 9, total_tokens: 9 },
   });
 
-const runtimeWith = async (answers: (attempt: number) => Response) => {
+const runtimeWith = async (
+  answers: (attempt: number) => Response,
+  request?: { retries?: number },
+) => {
   const lines: Record<string, unknown>[] = [];
   const logger = (msg: string, fields: Record<string, unknown>) => lines.push({ msg, ...fields });
   const attempts: { linesBefore: number }[] = [];
@@ -80,6 +83,7 @@ const runtimeWith = async (answers: (attempt: number) => Response) => {
   const embedder = runtime.embedders.open(
     { kind: 'embedder', id: 'foundry/text-embedding-3-large' },
     ctx,
+    request,
   );
   return { embedder, lines, attempts };
 };
@@ -129,5 +133,15 @@ describe('model calls in the log', () => {
     ]);
     expect(JSON.stringify(lines)).not.toContain('fristen');
     expect(JSON.stringify(lines)).not.toContain('exceeded the call rate');
+  });
+
+  it('a 429 on an embedder that retries itself is logged as throttled, never as a failed call', async () => {
+    const { embedder, lines } = await runtimeWith(() => throttled(), { retries: 0 });
+
+    await expect(embedder.embed([question])).rejects.toMatchObject({ code: 'rate_limited' });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(lines.filter((l) => l.msg === 'model call throttled')).toHaveLength(1);
+    expect(lines.filter((l) => l.msg === 'model call failed')).toEqual([]);
   });
 });
