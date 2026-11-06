@@ -15,6 +15,7 @@ const uses = [...flat.matchAll(/var\((--genai-[a-z-]+), (var\(--[a-z0-9-]+\)|[^)
 // Pinned to a colour family on purpose, each with a comment in the CSS.
 const accentPins = [
   '--genai-answer-footnote-background',
+  '--genai-answer-footnote-border-color',
   '--genai-answer-footnote-color',
   '--genai-answer-footnote-hover-background',
   '--genai-answer-footnote-hover-color',
@@ -59,7 +60,36 @@ describe('the answer styles', () => {
     );
   });
 
+  it('style no class and name no variable of the answer actions block, which owns them', () => {
+    // Two blocks in one layer on one class: the later sheet's rules land on the other's element.
+    expect(flat).not.toMatch(/\.uib-answer-actions\b/);
+    expect(flat).not.toContain('--genai-answer-actions-');
+  });
+
+  it('let the app’s row fill the row under the answer, so its far end is the card’s', () => {
+    expect(flat).toMatch(/\.uib-answer-row-slot \{ flex: 1 1 auto; min-inline-size: 0; \}/);
+  });
+
   it('keep a footnote from pushing the lines of the answer apart', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
+  });
+
+  it('draw every footnote mark in one size, whatever data-size a table sets around it', () => {
+    // Designsystemet's size tokens shrink under data-size="sm": 11 px marks in tables, 12 in text.
+    const mark = flat.match(/\.uib-answer-mark \{([^}]*)\}/)?.[1] ?? '';
+    for (const name of ['size', 'gap', 'padding', 'font-size', 'raise'])
+      expect(mark).toMatch(new RegExp(`var\\(--genai-answer-footnote-${name}, [\\d.]+rem\\)`));
+    expect(mark).not.toMatch(/--ds-(?:size|font-size)-/);
+  });
+
+  it('set the footnote’s circle apart from the card with a strong ring, not the fill alone', () => {
+    // The tinted fill is 1.2:1 on the card; a border-strong ring is over 3:1 in both themes.
+    expect(uses.find((use) => use.name === '--genai-answer-footnote-border-color')?.fallback).toBe(
+      'var(--ds-color-accent-border-strong)',
+    );
+    // Off while focused, so Designsystemet's two focus rings stay whole.
+    expect(flat).toMatch(
+      /\.uib-answer-mark:not\(:focus-visible\) \{ box-shadow: inset 0 0 0 var\(/,
+    );
   });
 });

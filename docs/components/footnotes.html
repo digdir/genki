@@ -91,8 +91,10 @@
                 whatever number the service wrote. Needs the contract's <code>markers</code>.
               </li>
               <li>
-                <strong>By document:</strong> nothing is numbered. A footnote is a mark with a
-                document in it, named by the document's title.
+                <strong>By document</strong>, while a service cites documents: the same round mark,
+                with the document's number, «Kilde 1», «Kilde 2», in the order the answer first
+                cites it. Footnote N leads to the card in Sources numbered N. Footnotes are always
+                numbers, never an icon.
               </li>
               <li>
                 <strong>States:</strong> a skeleton before the first word and a line while it
@@ -129,13 +131,34 @@
                 cites, for Sources' <code>target</code>.
               </li>
               <li>
-                <code>target</code>: the footnote to scroll to and focus, where Sources'
-                <code>onShowUse</code> and <code>onReturn</code> lead.
+                <code>target</code>: what to scroll to and focus, where Sources'
+                <code>onShowUse</code> and <code>onReturn</code> lead: a footnote,
+                <code>{ citation }</code>, or a title in «Kilder brukt i svaret»,
+                <code>{ document }</code>, so Escape and «Tilbake til svaret» go back to whichever
+                the reader followed.
               </li>
               <li>
-                <code>onOpenDocument</code>, <code>href</code>, <code>citationId</code>,
-                <code>sourcesUsed</code>, <code>closingQuestion</code>,
-                <code>onRegenerate</code> and the <code>actions</code> slot.
+                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen.
+                <code>href</code> gives a footnote and a title an address, for a new tab; with
+                neither <code>href</code> nor <code>onOpenCitation</code>, a footnote is a mark, not
+                a link. <code>citationId</code> gives each footnote an id.
+              </li>
+              <li>
+                <code>citationMode</code>: <code>excerpt</code> (the default) or
+                <code>document</code>, the service's choice or the reader's. <code>noAnswer</code>:
+                the text is the service's notice that it found nothing, so no sources and no closing
+                question follow.
+              </li>
+              <li>
+                <code>sourcesUsed</code> (on by default), <code>closingQuestion</code> (off),
+                <code>onRegenerate</code> under a stopped or failed answer, and the
+                <code>actions</code> slot under a finished one.
+              </li>
+              <li>
+                <code>assistantName</code>: who answered, for a screen reader; «KI-assistenten»
+                without it. <code>headingLevel</code>: the level of the answer's own top heading, 3
+                by default. <code>color</code> sets Designsystemet's <code>data-color</code> on the
+                card, only when given; <code>className</code> is added to the card's own.
               </li>
             </ul>
             <p>
@@ -182,11 +205,6 @@
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td><code>--genai-answer-actions-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>actions gap</td>
-                </tr>
                 <tr>
                   <td><code>--genai-answer-block-spacing</code></td>
                   <td><code>--ds-size-4</code></td>
@@ -248,13 +266,18 @@
                   <td>footnote border width</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-answer-footnote-border-color</code></td>
+                  <td><code>--ds-color-accent-border-strong</code></td>
+                  <td>the ring that sets the footnote's circle apart from the card</td>
+                </tr>
+                <tr>
                   <td><code>--genai-answer-footnote-color</code></td>
                   <td><code>--ds-color-accent-text-default</code></td>
                   <td>footnote color</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-font-size</code></td>
-                  <td><code>--ds-font-size-1</code></td>
+                  <td>0.75rem</td>
                   <td>footnote font size</td>
                 </tr>
                 <tr>
@@ -264,7 +287,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote gap</td>
                 </tr>
                 <tr>
@@ -278,23 +301,18 @@
                   <td>footnote hover color</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-answer-footnote-icon-size</code></td>
-                  <td><code>1em</code></td>
-                  <td>footnote icon size</td>
-                </tr>
-                <tr>
                   <td><code>--genai-answer-footnote-padding</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote padding</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-raise</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote raise</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-size</code></td>
-                  <td><code>--ds-size-5</code></td>
+                  <td>1.25rem</td>
                   <td>footnote size</td>
                 </tr>
                 <tr>
@@ -341,6 +359,11 @@
                   <td><code>--genai-answer-note-icon-size</code></td>
                   <td><code>1.25em</code></td>
                   <td>note icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the row under the answer: «Generer på nytt» and the app's row</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-skeleton-gap</code></td>
@@ -415,7 +438,13 @@
             <ul>
               <li>
                 «Kilder brukt i svaret» is in the same order as the documents in Sources, and only
-                lists what the answer cites. Its rows are not numbered: only excerpts are.
+                lists what the answer cites. Under each title stand the numbers its footnotes carry:
+                «Utdrag 2–3», or «Kilde 1» while the service cites documents.
+              </li>
+              <li>
+                A tinted circle on the card is 1.2:1 in the digdir theme, and 1.1:1 in dark mode, so
+                its edge is all but gone. A ring in the accent's strong border colour is 6.6:1 and
+                6.2:1; the number on the fill is 11.5:1 in both, and 6.1:1 and 6.3:1 on hover.
               </li>
               <li>
                 Models write the footnote after the full stop: 195 of 237 markers in 37 answers from
@@ -432,10 +461,6 @@
           <div class="wide open-questions">
             <h2>Open questions</h2>
             <ul>
-              <li>
-                In document mode, is a mark with a document in it, named by the title, the right way
-                to name a document in the text?
-              </li>
               <li>
                 genki-test's services cite documents. Excerpt mode on live answers waits for answers
                 that name their excerpts (digdir/genki#283).

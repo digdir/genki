@@ -3,13 +3,18 @@ import { FileTextIcon } from '@navikt/aksel-icons';
 import { useT } from '../i18n.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 
-/** One document the answer used: its name, and in excerpt mode the numbers of its excerpts. */
+/**
+ * One document the answer used: its name, and the numbers its footnotes carry: its excerpts' in
+ * excerpt mode, its own in document mode.
+ */
 export interface UsedDocument {
   key: string;
   source: SourceDocument;
   name: string;
   own: boolean;
   numbers: readonly number[];
+  /** Document mode: the document's own number, «Kilde 1». */
+  number?: number | undefined;
 }
 
 /** «Utdrag 1–3» for an unbroken run, «Utdrag 1, 2, 5» otherwise, as the footnotes call them. */
@@ -23,17 +28,20 @@ const range = (numbers: readonly number[]) => {
 
 /**
  * «Kilder brukt i svaret»: one row per document the answer cites, in the order Sources shows
- * them, each a way into that document. Documents are named, never numbered: in excerpt mode the
- * numbers under a title are its excerpts', the same as the footnotes in the text.
+ * them, each a way into that document. Under a title stand the numbers its footnotes carry: its
+ * excerpts' in excerpt mode, its own, «Kilde 1», while the service cites documents.
  */
 export const SourcesUsed = ({
   documents,
   href,
   onOpenDocument,
+  links,
 }: {
   documents: readonly UsedDocument[];
   href?: ((target: SourceTarget) => string | undefined) | undefined;
   onOpenDocument?: ((source: SourceDocument) => void) | undefined;
+  /** Each title's link, by document key, so the answer can send focus back to one. */
+  links?: Map<string, HTMLElement> | undefined;
 }) => {
   const t = useT();
   if (documents.length === 0) return null;
@@ -48,7 +56,7 @@ export const SourcesUsed = ({
         </Details.Summary>
         <Details.Content>
           <List.Unordered className="uib-answer-sources-used-list" data-size="sm">
-            {documents.map(({ key, source, name, own, numbers }) => {
+            {documents.map(({ key, source, name, own, numbers, number }) => {
               // A file name can look exactly like a corpus title, and a list is read out of
               // context, so the name says whose it is.
               const whose = own ? (
@@ -62,6 +70,11 @@ export const SourcesUsed = ({
                 <List.Item key={key}>
                   {onOpenDocument || address ? (
                     <Link
+                      ref={(element: HTMLAnchorElement | null) => {
+                        if (!links) return;
+                        if (element) links.set(key, element);
+                        else links.delete(key);
+                      }}
                       className="uib-answer-sources-used-link"
                       href={address ?? '#'}
                       onClick={
@@ -87,7 +100,11 @@ export const SourcesUsed = ({
                     <Paragraph data-size="xs" className="uib-answer-sources-used-excerpts">
                       {t('answer.excerpts', { count: numbers.length, numbers: range(numbers) })}
                     </Paragraph>
-                  ) : null}
+                  ) : number === undefined ? null : (
+                    <Paragraph data-size="xs" className="uib-answer-sources-used-excerpts">
+                      {t('sources.documentNumber', { n: number })}
+                    </Paragraph>
+                  )}
                 </List.Item>
               );
             })}

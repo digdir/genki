@@ -1,6 +1,6 @@
 import { Button, Card, Link, Paragraph, Skeleton, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { ArrowsCirclepathIcon, FileTextIcon, InformationSquareIcon } from '@navikt/aksel-icons';
+import { ArrowsCirclepathIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n.js';
 import {
@@ -17,6 +17,9 @@ import { SourcesUsed, type UsedDocument } from './SourcesUsed.js';
 
 export type AnswerStatus = 'streaming' | 'complete' | 'aborted' | 'failed';
 
+// TODO(QA-C2): take ErrorKind, isRetryable and the kinds' texts from the states block (#403)
+// once it is in this stack, so there is one vocabulary. These mirror kunnskapsassistenten's
+// errorText.ts until then.
 /**
  * Why an answer failed, as far as the app can tell: the model, the search in the documents, the
  * time, the key, too many questions, a question too long, a filter the service refused, a thread
@@ -52,9 +55,12 @@ export const failureRetryable = (kind: AnswerFailureKind) =>
 const retryPrompt = /\s*(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*[.!…]*\s*$/iu;
 
 /** A footnote in the answer to show, by its index in the answer's footnotes. */
-export interface AnswerTarget {
-  citation: number;
-}
+/**
+ * Where focus goes back to in the answer: a footnote, by its index in the answer's footnotes, or
+ * a title in «Kilder brukt i svaret», by the document it names. Sources' `onReturn` leads back to
+ * whichever the reader followed.
+ */
+export type AnswerTarget = { citation: number } | { document: SourceTarget };
 
 export interface AnswerProps {
   /** The answer as the service wrote it: Markdown, with `[N]` footnotes. */
@@ -156,49 +162,46 @@ const stillMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)'
 
 interface FootnoteProps {
   citation: number;
-  number: number | undefined;
-  name: string;
+  number: number;
   label: string;
-  href: string;
+  /** Undefined when the app gives the footnote nowhere to go. */
+  href: string | undefined;
   id: string | undefined;
   onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
   footnotes: Map<number, HTMLElement>;
 }
 
-// A link named by its excerpt and the document it is in: a bare «[3]» tells a screen reader user
-// nothing. The brackets stay in the text, out of sight, so a copied answer still reads «[1]».
-const Footnote = ({
-  citation,
-  number,
-  name,
-  label,
-  href,
-  id,
-  onOpen,
-  footnotes,
-}: FootnoteProps) => (
+// Always a number in a round mark, as kunnskapsassistenten draws it: the excerpt's, or the
+// document's while the service cites documents. A link named by what it cites and the document:
+// a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
+// so a copied answer still reads «[1]». With nowhere to go, it is a mark and not a link, which
+// would jump to the top of the page.
+const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: FootnoteProps) => (
   <sup className="uib-answer-footnote">
-    <Link
-      ref={(element: HTMLAnchorElement | null) => {
-        if (element) footnotes.set(citation, element);
-        else footnotes.delete(citation);
-      }}
-      id={id}
-      className="uib-answer-mark"
-      href={href}
-      aria-label={label}
-      title={label}
-      onClick={onOpen}
-    >
-      <span className="uib-answer-copy">[</span>
-      {number ?? (
-        <>
-          <FileTextIcon aria-hidden className="uib-answer-mark-icon" />
-          <span className="uib-answer-copy">{name}</span>
-        </>
-      )}
-      <span className="uib-answer-copy">]</span>
-    </Link>
+    {href === undefined && onOpen === undefined ? (
+      <span id={id} className="uib-answer-mark" role="img" aria-label={label} title={label}>
+        <span className="uib-answer-copy">[</span>
+        {number}
+        <span className="uib-answer-copy">]</span>
+      </span>
+    ) : (
+      <Link
+        ref={(element: HTMLAnchorElement | null) => {
+          if (element) footnotes.set(citation, element);
+          else footnotes.delete(citation);
+        }}
+        id={id}
+        className="uib-answer-mark"
+        href={href ?? '#'}
+        aria-label={label}
+        title={label}
+        onClick={onOpen}
+      >
+        <span className="uib-answer-copy">[</span>
+        {number}
+        <span className="uib-answer-copy">]</span>
+      </Link>
+    )}
   </sup>
 );
 
@@ -282,6 +285,16 @@ export const Answer = ({
   const { pairing } = read;
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = useMemo(() => documentKeys(sources ?? []), [sources]);
+  // The titles in «Kilder brukt i svaret», by document key, for a way back to one of them.
+  const usedLinks = useRef(new Map<string, HTMLElement>());
+  const keyOf = (goal: SourceTarget) => {
+    const at = (sources ?? []).findIndex(
+      (s) =>
+        (goal.documentId !== undefined && s.documentId === goal.documentId) ||
+        (goal.documentId === undefined && goal.index !== undefined && s.index === goal.index),
+    );
+    return at < 0 ? undefined : keys[at];
+  };
   const names = useMemo(
     () =>
       distinctNames(sources ?? [], (title, id) => t('sources.sameTitle', { title, id })).map(
@@ -301,10 +314,13 @@ export const Answer = ({
   useEffect(() => {
     if (!target) return;
     const frame = requestAnimationFrame(() => {
-      const footnote = footnotes.current.get(target.citation);
+      const element =
+        'citation' in target
+          ? footnotes.current.get(target.citation)
+          : usedLinks.current.get(keyOf(target.document) ?? '');
       // Centred, so the sentence the footnote ends is in view above it.
-      footnote?.scrollIntoView?.({ behavior: stillMotion() ? 'auto' : 'smooth', block: 'center' });
-      footnote?.focus({ preventScroll: true });
+      element?.scrollIntoView?.({ behavior: stillMotion() ? 'auto' : 'smooth', block: 'center' });
+      element?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [target]);
@@ -318,7 +334,8 @@ export const Answer = ({
       const source = at === undefined ? undefined : sources?.[at];
       if (item === undefined || at === undefined || !source) return false;
       const name = names[at] ?? source.title;
-      const number = byExcerpt ? pairing.numbers.get(item) : undefined;
+      const number = pairing.numbers.get(item);
+      if (number === undefined) return false;
       const goal: SourceTarget = byExcerpt
         ? { chunkId: item, documentId: source.documentId, index: source.index }
         : { documentId: source.documentId, index: source.index };
@@ -327,13 +344,12 @@ export const Answer = ({
           key={key}
           citation={mark.citation}
           number={number}
-          name={name}
           label={
-            number === undefined
-              ? t('answer.footnoteDocument', { title: name })
-              : t('answer.footnote', { n: number, title: name })
+            byExcerpt
+              ? t('answer.footnote', { n: number, title: name })
+              : t('answer.footnoteDocument', { n: number, title: name })
           }
-          href={href?.(goal) ?? '#'}
+          href={href?.(goal)}
           id={citationId?.(mark.citation)}
           onOpen={
             onOpenCitation
@@ -372,9 +388,10 @@ export const Answer = ({
           return n === undefined ? [] : [n];
         })
       : [];
-    const cited = byExcerpt ? numbers.length > 0 : (pairing.uses.get(key)?.length ?? 0) > 0;
+    const number = byExcerpt ? undefined : pairing.numbers.get(key);
+    const cited = byExcerpt ? numbers.length > 0 : number !== undefined;
     return cited
-      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), numbers }]
+      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), numbers, number }]
       : [];
   });
 
@@ -404,7 +421,9 @@ export const Answer = ({
             {t('answer.noSources')}
           </Paragraph>
         ) : null}
-        {empty ? null : (
+        {/* A failed answer's text is not an answer: genki streams its own error message as text
+            before the failure, in English, for developers. The card says the failure itself. */}
+        {empty || failed ? null : (
           <Markdown
             text={text}
             cite={cite}
@@ -447,7 +466,12 @@ export const Answer = ({
           </div>
         ) : null}
         {finished && sourcesUsed ? (
-          <SourcesUsed documents={used} href={href} onOpenDocument={onOpenDocument} />
+          <SourcesUsed
+            documents={used}
+            href={href}
+            onOpenDocument={onOpenDocument}
+            links={usedLinks.current}
+          />
         ) : null}
         {finished && closingQuestion ? (
           <Paragraph variant="long">{t('answer.closingQuestion')}</Paragraph>
@@ -455,14 +479,15 @@ export const Answer = ({
       </Card.Block>
       {(complete && !empty && actions) || ((aborted || failed) && (again || actions)) ? (
         <Card.Block>
-          <div className="uib-answer-actions">
+          {/* The answer's own row. `uib-answer-actions` is the answer actions block's class. */}
+          <div className="uib-answer-row">
             {again ? (
               <Button ref={retryRef} variant="tertiary" data-size="sm" onClick={onRegenerate}>
                 <ArrowsCirclepathIcon aria-hidden />
                 {told ? t('answer.retry') : t('answer.regenerate')}
               </Button>
             ) : null}
-            {actions}
+            {actions ? <div className="uib-answer-row-slot">{actions}</div> : null}
           </div>
         </Card.Block>
       ) : null}
