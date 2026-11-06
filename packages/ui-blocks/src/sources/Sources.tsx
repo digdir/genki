@@ -2,7 +2,6 @@ import { Button, Card, Heading, Link, Paragraph, Skeleton } from '@digdir/design
 import { useFormat } from '@genai/i18n/react';
 import {
   ArrowLeftIcon,
-  ArrowUndoIcon,
   ChevronDownIcon,
   ExternalLinkIcon,
   InformationSquareIcon,
@@ -14,8 +13,10 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
+import { FootnoteMark } from '../footnote/FootnoteMark.js';
 import { useT } from '../i18n.js';
 import { Markdown, visibleText } from '../markdown/Markdown.js';
 import {
@@ -67,13 +68,18 @@ export interface SourcesProps {
    */
   citations?: readonly SourceCitation[] | undefined;
   /**
-   * A link back to the answer was followed: that footnote's index in `citations`. A cited
-   * excerpt's title, «Utdrag N», links to the first footnote that cites it, and small links
-   * beside it to the others, drawn when this or `citationHref` is given.
+   * A link back to the answer was followed: that footnote's index in `citations`. Beside a cited
+   * excerpt's title, «Utdrag N», stands one link per footnote that cites it, drawn when this or
+   * `citationHref` is given.
    */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
   citationHref?: ((citation: number) => string | undefined) | undefined;
+  /**
+   * Temporary, while the two are compared: the links back as the answer's round footnote marks
+   * (`circle`), or as small links 1, 2, 3 (`link`, the default).
+   */
+  backlinkStyle?: BacklinkStyle | undefined;
   loading?: boolean | undefined;
   variant?: SourcesVariant | undefined;
   title?: ReactNode | false | undefined;
@@ -203,87 +209,93 @@ const prepare = (
 /** The section an excerpt is from: the last step of its heading path. */
 const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
+/**
+ * How the links back to the answer look, while the two are compared: the answer's own round
+ * footnote marks, or small links numbered 1, 2, 3 in the answer's order. Temporary: one goes.
+ */
+export type BacklinkStyle = 'circle' | 'link';
+
 /** What the links back to the answer need beyond an item's uses. */
 interface BackTo {
-  /** How many footnotes the answer has, so each link says which of them it leads to. */
-  total: number;
   /** The answer's number, from 1, when the thread has several. */
   answer: number | undefined;
   href: ((citation: number) => string | undefined) | undefined;
   onShow: ((citation: number) => void) | undefined;
+  style: BacklinkStyle;
 }
 
 /**
- * «Utdrag N» over a cited excerpt, and its way back to the answer, where the excerpt is. The
- * title is a link to the first footnote that cites it. When the answer cites it again, small
- * links right beside the title lead to the others, in the order they stand in the answer, as
- * Wikipedia's back-references: «Utdrag 1 ↩ 2 3». Each is a real link, so a reader can tab to,
- * or open, any one of them, and each says to a screen reader which footnote it leads to. Decided
- * 6 November 2026, in place of a control that cycled and of a row of links on the card's head.
+ * «Utdrag N» over a cited excerpt, a title and not a link, and right beside it the way back to
+ * the answer: one link per footnote that cites the excerpt, in the order they stand in the
+ * answer, as Wikipedia's back-references. Each is a real link, so a reader can tab to, or open,
+ * any one of them, and each says to a screen reader which footnote and which place it leads to:
+ * «Fotnote 2, første sted i svaret». As round marks, each shows the footnote's number as the
+ * text does, so an excerpt cited three times shows three marks with one number; as links, they
+ * read 1, 2, 3. Decided 6 November 2026, in place of a control that cycled, a row on the card's
+ * head, and a title that was itself the first link.
  */
 const ExcerptNumber = ({
+  n,
   label,
   uses,
   back,
 }: {
+  n: number;
   label: string;
   uses: readonly number[];
   back: BackTo | undefined;
 }) => {
   const t = useT();
-  const [first, ...more] = uses;
-  if (!back || first === undefined)
+  if (!back || uses.length === 0)
     return <span className="uib-sources-excerpt-number">{label}</span>;
-  const { total, answer, href, onShow } = back;
-  const where = (citation: number) =>
-    answer === undefined
-      ? t('sources.useWhere', { n: citation + 1, total })
-      : t('sources.useWhereInAnswer', { n: citation + 1, total, answer });
-  // Named by `aria-label`, which starts with what is seen (WCAG 2.5.3): hidden spans inside a
-  // link are boxes of their own to a browser, which then reads «Utdrag 1 , fotnote 2».
-  const link = (citation: number, name: string, text: ReactNode, className: string) => (
-    <Link
-      key={citation}
-      href={href?.(citation) ?? '#'}
-      className={className}
-      aria-label={name}
-      onClick={
-        onShow
-          ? (event) => {
-              // The app moves to the footnote; following the address could reload its route.
-              event.preventDefault();
-              onShow(citation);
-            }
-          : undefined
-      }
-    >
-      {text}
-    </Link>
-  );
-  const toAnswer = t('sources.toAnswerFrom', { label });
+  const { answer, href, onShow, style } = back;
+  const ordinals = t('sources.ordinals').split('|');
+  const name = (place: number) => {
+    if (uses.length === 1)
+      return answer === undefined
+        ? t('sources.useOnce', { n })
+        : t('sources.useOnceInAnswer', { n, answer });
+    const ordinal = ordinals[place] ?? `${place + 1}.`;
+    return answer === undefined
+      ? t('sources.usePlace', { n, place: ordinal })
+      : t('sources.usePlaceInAnswer', { n, place: ordinal, answer });
+  };
   return (
-    <span className="uib-sources-excerpt-number">
-      {link(
-        first,
-        more.length
-          ? `${toAnswer}, ${t('sources.use')} 1, ${where(first)}`
-          : `${toAnswer}, ${where(first)}`,
-        label,
-        'uib-sources-use uib-sources-title-link',
-      )}
-      {more.length ? (
-        <span className="uib-sources-uses">
-          <ArrowUndoIcon aria-hidden className="uib-sources-uses-icon" />
-          {more.map((citation, i) =>
-            link(
-              citation,
-              `${t('sources.toAnswer')}, ${t('sources.use')} ${i + 2}, ${where(citation)}`,
-              i + 2,
-              'uib-sources-use',
-            ),
-          )}
-        </span>
-      ) : null}
+    <span className="uib-sources-excerpt-line">
+      <span className="uib-sources-excerpt-number">{label}</span>
+      <span className="uib-sources-uses" data-style={style}>
+        {uses.map((citation, place) => {
+          const to = href?.(citation) ?? '#';
+          const onClick = onShow
+            ? (event: MouseEvent<HTMLAnchorElement>) => {
+                // The app moves to the footnote; following the address could reload its route.
+                event.preventDefault();
+                onShow(citation);
+              }
+            : undefined;
+          // Named by `aria-label`: hidden spans inside a link are boxes of their own to a
+          // browser, which then reads «2 , fotnote 2».
+          return style === 'circle' ? (
+            <FootnoteMark
+              key={citation}
+              number={n}
+              label={name(place)}
+              href={to}
+              onClick={onClick}
+            />
+          ) : (
+            <Link
+              key={citation}
+              href={to}
+              className="uib-sources-use"
+              aria-label={name(place)}
+              onClick={onClick}
+            >
+              {place + 1}
+            </Link>
+          );
+        })}
+      </span>
     </span>
   );
 };
@@ -733,6 +745,7 @@ const SourceItem = ({
                     {n === undefined || !excerpt ? null : (
                       // In the title, so it works on a closed row too.
                       <ExcerptNumber
+                        n={n}
                         label={t('sources.excerptNumber', { n })}
                         uses={uses}
                         back={backFor(excerpt)}
@@ -869,6 +882,7 @@ export const Sources = ({
   citations,
   onShowUse,
   citationHref,
+  backlinkStyle = 'link',
   loading = false,
   variant = 'panel',
   title,
@@ -1007,10 +1021,10 @@ export const Sources = ({
   const back: ItemProps['back'] =
     onShowUse || citationHref
       ? {
-          total: citations?.length ?? 0,
           answer: answerCount > 1 ? answerIndex + 1 : undefined,
           href: citationHref,
           show: onShowUse,
+          style: backlinkStyle,
         }
       : undefined;
   // One string for the visible count and the live region; empty keeps the region silent.

@@ -186,4 +186,62 @@ describe('the Sources styles', () => {
     expect(rule).toContain('min-inline-size: var(--genai-sources-use-min-size, 24px)');
     expect(rule).toContain('min-block-size: var(--genai-sources-use-min-size, 24px)');
   });
+
+  it('draw «Utdrag N» a step larger and bolder than the links back beside it', () => {
+    const title = flat.match(/\.uib-sources-excerpt-number \{([^}]*)\}/)?.[1] ?? '';
+    const uses = flat.match(/\.uib-sources-uses \{([^}]*)\}/)?.[1] ?? '';
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-size, var(--ds-body-sm-font-size))',
+    );
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-medium))',
+    );
+    expect(uses).toContain('var(--genai-sources-uses-font-size, var(--ds-body-xs-font-size))');
+    expect(uses).toContain('var(--genai-sources-uses-font-weight, var(--ds-font-weight-regular))');
+  });
+});
+
+describe('the shared footnote mark', () => {
+  const flat = sheets.find((sheet) => sheet.path === 'footnote/footnote.css')?.flat ?? '';
+  const uses = genaiUses(flat);
+  const pins = [
+    '--genai-footnote-background',
+    '--genai-footnote-border-color',
+    '--genai-footnote-color',
+    '--genai-footnote-hover-background',
+    '--genai-footnote-hover-color',
+  ];
+
+  it('follows the host’s colour family, but for its five accent pins', () => {
+    const pinned = uses
+      .filter((use) =>
+        /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.fallback),
+      )
+      .map((use) => use.name);
+    expect([...new Set(pinned)].sort()).toEqual(pins.sort());
+    for (const name of pins)
+      expect(uses.find((use) => use.name === name)?.fallback).toMatch(/^var\(--ds-color-accent-/);
+  });
+
+  it('is drawn in one size wherever it stands, whatever data-size a table sets around it', () => {
+    // Designsystemet's size tokens shrink under data-size="sm": 11 px marks in tables, 12 in text.
+    const mark = flat.match(/\.uib-footnote-mark \{([^}]*)\}/)?.[1] ?? '';
+    for (const name of ['size', 'padding', 'font-size'])
+      expect(mark).toMatch(new RegExp(`var\\(--genai-footnote-${name}, [\\d.]+rem\\)`));
+    expect(mark).not.toMatch(/--ds-(?:size|font-size)-/);
+    const raised = flat.match(/\.uib-footnote-mark\[data-raised\] \{([^}]*)\}/)?.[1] ?? '';
+    for (const name of ['gap', 'raise'])
+      expect(raised).toMatch(new RegExp(`var\\(--genai-footnote-${name}, [\\d.]+rem\\)`));
+  });
+
+  it('sets the circle apart from the card with a strong ring, not the fill alone', () => {
+    // The tinted fill is 1.2:1 on the card; a border-strong ring is over 3:1 in both themes.
+    expect(uses.find((use) => use.name === '--genai-footnote-border-color')?.fallback).toBe(
+      'var(--ds-color-accent-border-strong)',
+    );
+    // Off while focused, so Designsystemet's two focus rings stay whole.
+    expect(flat).toMatch(
+      /\.uib-footnote-mark:not\(:focus-visible\) \{ box-shadow: inset 0 0 0 var\(/,
+    );
+  });
 });
