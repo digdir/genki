@@ -93,6 +93,7 @@ import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowle
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
+import { runProgress } from './run-progress.js';
 import { scheduleUsagePolls, usagePollWork, type PolledSource } from './usage-poll.js';
 import { createWorker, ownTenantOnly } from './worker.js';
 
@@ -340,10 +341,12 @@ const knowledgeRunRecords = db
       }),
     )
   : undefined;
+const knowledgeProgress = runProgress(log);
 const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
         indexConcurrency,
+        progress: knowledgeProgress,
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
           send: (queue, data, options) => openedKnowledge().send(queue, data, options),
@@ -724,7 +727,13 @@ const worker = createWorker({
   ...(lease ? { active: () => lease.tryAcquire() } : {}),
   locked: lockdown,
 });
-log('worker started', { blobDir, ...(await worker.sync()) });
+log('worker started', {
+  version: process.env.APP_VERSION ?? 'dev',
+  blobDir,
+  knowledgeIndexConcurrency: indexConcurrency,
+  ...(knowledgeServer ? { knowledgePoolSize: knowledgePoolSizeOf(indexConcurrency) } : {}),
+  ...(await worker.sync()),
+});
 const following = followPublished({
   sync: async () => {
     const synced = await worker.sync();
@@ -860,6 +869,7 @@ const knowledgeReconciler = knowledgeRunRecords
   : undefined;
 
 const stop = () => {
+  knowledgeProgress.stop();
   retention?.stop();
   providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
