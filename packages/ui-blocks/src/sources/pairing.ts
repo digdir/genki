@@ -43,6 +43,24 @@ export const documentKeys = (sources: readonly SourceDocument[]): string[] => {
   });
 };
 
+/**
+ * The order to show the documents in, as indexes into `sources`: those with a numbered excerpt
+ * by their lowest number, so the cards run 1, 2, 3 as the footnotes do, and the rest after them,
+ * in the service's order. Without numbers, the service's order.
+ */
+export const documentOrder = (
+  sources: readonly SourceDocument[],
+  pairing: Pairing | undefined,
+): number[] => {
+  const first = sources.map((source) =>
+    Math.min(...source.excerpts.map((e) => pairing?.numbers.get(e.chunkId) ?? Infinity)),
+  );
+  // Infinity less Infinity is NaN, which falls through to the service's order.
+  return sources
+    .map((_, i) => i)
+    .toSorted((a, b) => (first[a] ?? Infinity) - (first[b] ?? Infinity) || a - b);
+};
+
 export const citesExcerpts = (citations: readonly SourceCitation[]) =>
   citations.every((citation) => citation.chunkId !== undefined);
 

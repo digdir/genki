@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pairCitations, type SourceCitation } from './pairing.js';
+import { documentOrder, pairCitations, type SourceCitation } from './pairing.js';
 import type { SourceDocument } from './types.js';
 
 const sources: SourceDocument[] = [
@@ -79,5 +79,13 @@ describe('pairing footnotes with what is shown', () => {
     expect(pairing.mode).toBe('document');
     expect(pairing.numbers.size).toBe(0);
     expect(pairing.uses.get('kudos::a')).toEqual([0]);
+  });
+
+  it('orders the documents by their lowest number, the rest after in the service’s order', () => {
+    const third: SourceDocument = { index: 3, title: 'Notat', excerpts: [] };
+    const all = [sources[0], sources[1], third] as SourceDocument[];
+    expect(documentOrder(all, pairCitations(all, cite('b1', 'a3')))).toEqual([1, 0, 2]);
+    expect(documentOrder(all, pairCitations(all, [{ index: 2 }, { index: 1 }]))).toEqual([0, 1, 2]);
+    expect(documentOrder(all, undefined)).toEqual([0, 1, 2]);
   });
 });
