@@ -238,6 +238,33 @@ export const qualityMock = (options: QualityMockOptions = {}): MockHandler => {
     const rest = tenantRoute[2] ?? '';
     const parts = rest.split('/').map(decodeURIComponent);
 
+    if (rest === 'service-drafts' && req.method === 'GET')
+      return req.json({
+        data: [...drafts.entries()]
+          .filter(([, d]) => !d.deleted)
+          .sort(([, a], [, b]) => b.at.localeCompare(a.at))
+          .map(([service, d]) => {
+            const metadata = (d.definition.metadata ?? {}) as { name?: unknown };
+            const spec = (d.definition.spec ?? {}) as {
+              purpose?: unknown;
+              output?: { kind?: unknown };
+            };
+            const published = options.published?.(service);
+            return {
+              id: service,
+              name:
+                typeof metadata.name === 'string' && metadata.name.trim() ? metadata.name : null,
+              purpose: typeof spec.purpose === 'string' ? spec.purpose : '',
+              outputKind: typeof spec.output?.kind === 'string' ? spec.output.kind : 'answer',
+              latestVersion: published ? versionOf(published) : null,
+              revision: d.revision,
+              at: d.at,
+              by: 'employee:ansattporten:kari',
+              byName: 'Kari Nordmann',
+            };
+          }),
+      });
+
     if (
       parts[0] === 'services' &&
       parts[1] &&

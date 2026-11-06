@@ -11,6 +11,7 @@ import {
 } from '@genai/eval';
 import type { Context, Env, Hono, Schema } from 'hono';
 import { enterTenant } from './access.js';
+import { actorNames } from './actor-names.js';
 import { AdminRefused, refusedBy, routeOnly } from './admin.js';
 import type { LeaseOptions } from './background-lease.js';
 import { VersionConflict, type ConfigEntry } from './config-store.js';
@@ -213,6 +214,32 @@ export const createQualityModule =
             rebasedFrom: baseVersion,
           };
         };
+
+        app.get('/tenants/:tenant/service-drafts', async (c) => {
+          const guard = await member(c);
+          if (guard.response) return guard.response;
+          const found = await evals.drafts.list(guard.tenant);
+          const people = await actorNames(deps.configEntries).namesOf(found.map((d) => d.by));
+          const data = await Promise.all(
+            found.map(async (draft) => {
+              const { metadata, spec } = draft.spec.definition;
+              const output = isRecord(spec) ? spec.output : undefined;
+              const byName = people.get(draft.by);
+              return {
+                id: draft.id,
+                name: (isRecord(metadata) && text(metadata.name)) || null,
+                purpose: (isRecord(spec) && text(spec.purpose)) || '',
+                outputKind: (isRecord(output) && text(output.kind)) || 'answer',
+                latestVersion: (await evals.drafts.latestVersion(guard.tenant, draft.id)) ?? null,
+                revision: draft.version,
+                at: draft.at,
+                by: draft.by,
+                ...(byName ? { byName } : {}),
+              };
+            }),
+          );
+          return c.json({ data });
+        });
 
         // 200 with a JSON null body when the service has no draft
         app.get('/tenants/:tenant/services/:id/draft', async (c) => {
