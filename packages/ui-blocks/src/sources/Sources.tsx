@@ -74,8 +74,13 @@ export interface SourcesProps {
   citationMode?: CitationMode | undefined;
   /** Lets the reader switch between the modes. */
   onCitationModeChange?: ((mode: CitationMode) => void) | undefined;
-  /** The reader asked to see where the answer uses an item: that footnote's index in `citations`. */
+  /**
+   * A link back to the answer was followed: that footnote's index in `citations`. Each excerpt
+   * has one link per footnote that cites it, drawn when this or `citationHref` is given.
+   */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
+  /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
+  citationHref?: ((citation: number) => string | undefined) | undefined;
   loading?: boolean | undefined;
   variant?: SourcesVariant | undefined;
   title?: ReactNode | false | undefined;
@@ -203,40 +208,78 @@ const prepare = (
 /** The section an excerpt is from: the last step of its heading path. */
 const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
-const UseLink = ({
-  uses,
-  name,
-  onShow,
-}: {
-  uses: readonly number[];
-  name: string;
-  onShow: (citation: number) => void;
-}) => {
+/** What the links back to the answer need beyond an item's uses. */
+interface BackTo {
+  /** How many footnotes the answer has, so each link says which of them it leads to. */
+  total: number;
+  /** The answer's number, from 1, when the thread has several. */
+  answer: number | undefined;
+  href: ((citation: number) => string | undefined) | undefined;
+  onShow: ((citation: number) => void) | undefined;
+}
+
+/**
+ * Where the answer cites an item: one link per footnote, in the order they stand in the answer,
+ * as Wikipedia's back-references. Cited once, «Til svaret»; several times, «↩ 1 2 3». Each is a
+ * real link, so a reader can tab to, or open, any one of them, and each says to a screen reader
+ * which footnote it leads to. Decided 6 November 2026, in place of one control that cycled.
+ */
+const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) => {
   const t = useT();
-  const [at, setAt] = useState(0);
-  const count = `${at === 0 ? 1 : at}/${uses.length}`;
-  return (
-    <Button
-      type="button"
-      variant="tertiary"
+  const { total, answer, href, onShow } = back;
+  const where = (citation: number) =>
+    answer === undefined
+      ? t('sources.useWhere', { n: citation + 1, total })
+      : t('sources.useWhereInAnswer', { n: citation + 1, total, answer });
+  const link = (citation: number, label: ReactNode) => (
+    <Link
+      key={citation}
+      href={href?.(citation) ?? '#'}
       data-size="sm"
-      icon={uses.length === 1}
-      className="uib-sources-uses"
-      aria-label={
-        uses.length > 1
-          ? t('sources.showUseCount', { name, place: count })
-          : t('sources.showUse', { name })
+      className="uib-sources-use"
+      onClick={
+        onShow
+          ? (event) => {
+              // The app moves to the footnote; following the address could reload its route.
+              event.preventDefault();
+              onShow(citation);
+            }
+          : undefined
       }
-      onClick={() => {
-        const next = (at % uses.length) + 1;
-        setAt(next);
-        const citation = uses[next - 1];
-        if (citation !== undefined) onShow(citation);
-      }}
     >
-      <ArrowUndoIcon aria-hidden />
-      {uses.length > 1 ? <span>{count}</span> : null}
-    </Button>
+      {label}
+    </Link>
+  );
+  const [only] = uses;
+  if (uses.length === 1 && only !== undefined)
+    return (
+      <p className="uib-sources-uses">
+        {link(
+          only,
+          <>
+            <ArrowUndoIcon aria-hidden />
+            {t('sources.toAnswer')}
+            <span className="ds-sr-only">, {where(only)}</span>
+          </>,
+        )}
+      </p>
+    );
+  return (
+    <p className="uib-sources-uses">
+      <ArrowUndoIcon aria-hidden className="uib-sources-uses-icon" />
+      {uses.map((citation, i) =>
+        link(
+          citation,
+          <>
+            <span className="ds-sr-only">
+              {t('sources.toAnswer')}, {t('sources.use')}{' '}
+            </span>
+            {i + 1}
+            <span className="ds-sr-only">, {where(citation)}</span>
+          </>,
+        ),
+      )}
+    </p>
   );
 };
 
@@ -384,11 +427,16 @@ type ItemProps = Pick<
   | 'onReturn'
   | 'headerColor'
   | 'excerptId'
-  | 'onShowUse'
 > & {
   document: Prepared;
   level: number;
   pairing: Pairing | undefined;
+  /** The links back to the answer, when the app takes them. */
+  back:
+    | (Omit<BackTo, 'onShow'> & {
+        show: ((citation: number, selection: SourceSelection) => void) | undefined;
+      })
+    | undefined;
   openRows: ReadonlySet<string>;
   onRowOpenChange: (key: string, open: boolean) => void;
   open: boolean;
@@ -418,7 +466,7 @@ const SourceItem = ({
   onReturn,
   headerColor,
   excerptId,
-  onShowUse,
+  back,
 }: ItemProps) => {
   const t = useT();
   const f = useFormat();
@@ -434,6 +482,19 @@ const SourceItem = ({
   const byExcerpt = pairing?.mode === 'excerpt';
   const documentUses = pairing && !byExcerpt ? (pairing.uses.get(documentKey) ?? []) : [];
   const documentUncited = pairing !== undefined && !byExcerpt && documentUses.length === 0;
+  // In document mode a footnote cites the whole document, so each excerpt shown links to its uses.
+  const backLinks = (uses: readonly number[], excerpt?: SourceExcerpt) =>
+    back && uses.length ? (
+      <BackLinks
+        uses={uses}
+        back={{
+          ...back,
+          onShow:
+            back.show &&
+            ((citation) => back.show?.(citation, excerpt ? { source, excerpt } : { source })),
+        }}
+      />
+    ) : null;
 
   useEffect(() => {
     if (!target) return;
@@ -503,15 +564,8 @@ const SourceItem = ({
             <ChevronDownIcon aria-hidden className="uib-sources-caret" />
           </button>
         </Heading>
-        {details || actions || documentUses.length ? (
+        {details || actions ? (
           <div className="uib-sources-controls">
-            {documentUses.length && onShowUse ? (
-              <UseLink
-                uses={documentUses}
-                name={title}
-                onShow={(citation) => onShowUse(citation, { source })}
-              />
-            ) : null}
             {details ? (
               <Button
                 variant="tertiary"
@@ -536,6 +590,8 @@ const SourceItem = ({
             {subtitle}
           </Paragraph>
         ) : null}
+        {/* A cited document with no excerpt to carry its links carries them itself. */}
+        {rows.length === 0 ? backLinks(documentUses) : null}
         {documentUncited ? (
           <Paragraph data-size="xs" className="uib-sources-uncited">
             {t('sources.uncited')}
@@ -582,7 +638,11 @@ const SourceItem = ({
           const rowHits = hitsFor(hits, key);
           const here = excerpt !== undefined && excerpt.chunkId === active;
           const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
-          const uses = n !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
+          const uses = byExcerpt
+            ? n !== undefined && excerpt
+              ? (pairing.uses.get(excerpt.chunkId) ?? [])
+              : []
+            : documentUses;
           const uncited = byExcerpt && n === undefined;
           const path = headingText(excerpt?.heading);
           const section = sectionOf(path);
@@ -638,13 +698,8 @@ const SourceItem = ({
                   {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
                 </Heading>
                 <div className="uib-sources-excerpt-controls">
-                  {uses.length && excerpt && onShowUse ? (
-                    <UseLink
-                      uses={uses}
-                      name={name}
-                      onShow={(citation) => onShowUse(citation, { source, excerpt })}
-                    />
-                  ) : null}
+                  {/* Beside the title, so they work on a closed row too. */}
+                  {backLinks(uses, excerpt)}
                   <Button
                     type="button"
                     variant="tertiary"
@@ -771,6 +826,8 @@ export const Sources = ({
   citations,
   citationMode = 'excerpt',
   onCitationModeChange,
+  onShowUse,
+  citationHref,
   loading = false,
   variant = 'panel',
   title,
@@ -898,6 +955,15 @@ export const Sources = ({
       ? emptyKind(answerStatus, citations?.length ?? 0, sourcesNotStored)
       : undefined;
   const stepping = onAnswerChange !== undefined && answerCount > 1;
+  const back: ItemProps['back'] =
+    onShowUse || citationHref
+      ? {
+          total: citations?.length ?? 0,
+          answer: answerCount > 1 ? answerIndex + 1 : undefined,
+          href: citationHref,
+          show: onShowUse,
+        }
+      : undefined;
   // One string for the visible count and the live region; empty keeps the region silent.
   const answerLabel = stepping
     ? t('sources.answerOf', { n: answerIndex + 1, total: answerCount })
@@ -1000,6 +1066,7 @@ export const Sources = ({
                 currentHit={currentHit}
                 corpus={corpus}
                 headerColor={headerColor}
+                back={back}
                 {...item}
                 target={i === hit ? item.target : undefined}
               />

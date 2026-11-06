@@ -112,30 +112,68 @@ describe('numbered excerpts, linked both ways', () => {
     expect(within(row).getByRole('heading').textContent).toBe('Utdrag');
     expect(row.dataset.uncited).toBe('true');
     expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
-    expect(within(row).queryByRole('button', { name: /Vis hvor svaret bruker/ })).toBeNull();
+    expect(within(row).queryByRole('link', { name: /^Til svaret/ })).toBeNull();
   });
 
   it('numbers nothing and links nothing back without the answer’s footnotes', () => {
     draw({ onShowUse: () => {} });
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
     expect(screen.queryByText('Ikke vist til i svaret')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Vis hvor svaret bruker/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^Til svaret/ })).toBeNull();
   });
 
-  it('steps from an excerpt through each place the answer uses it, and wraps', () => {
+  it('links an excerpt cited once back to its footnote as «Til svaret», saying which footnote', () => {
     const onShowUse = vi.fn();
     draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
-    const back = within(rowOf(/Utdrag 1/)).getByRole('button', {
-      name: 'Vis hvor svaret bruker utdrag 1 (1/2)',
+    const links = within(rowOf(/Utdrag 2/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]?.textContent).toBe('Til svaret, fotnote 2 av 3');
+    expect(links[0]?.querySelector('.ds-sr-only')?.textContent).toBe(', fotnote 2 av 3');
+    fireEvent.click(links[0] as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, {
+      source: nkom,
+      excerpt: nkom.excerpts[1],
     });
-    expect(back.textContent).toBe('1/2');
-    fireEvent.click(back);
-    expect(back.getAttribute('aria-label')).toBe('Vis hvor svaret bruker utdrag 1 (1/2)');
-    fireEvent.click(back);
-    expect(back.getAttribute('aria-label')).toBe('Vis hvor svaret bruker utdrag 1 (2/2)');
-    fireEvent.click(back);
-    expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([0, 2, 0]);
-    expect(onShowUse.mock.calls[0]?.[1]?.excerpt?.chunkId).toBe('kudos::2021-1');
+  });
+
+  it('gives an excerpt cited several times one link per footnote, «↩ 1 2», in the answer’s order', () => {
+    const onShowUse = vi.fn();
+    draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
+    const links = within(rowOf(/Utdrag 1/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Til svaret, bruk 1, fotnote 1 av 3',
+      'Til svaret, bruk 2, fotnote 3 av 3',
+    ]);
+    const visible = links.map((link) =>
+      [...link.childNodes]
+        .filter((node) => !(node instanceof Element && node.classList.contains('ds-sr-only')))
+        .map((node) => node.textContent)
+        .join(''),
+    );
+    expect(visible).toEqual(['1', '2']);
+    fireEvent.click(links[1] as HTMLElement);
+    fireEvent.click(links[0] as HTMLElement);
+    expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([2, 0]);
+  });
+
+  it('makes each link back a real link to the footnote’s address, which the app passes', () => {
+    draw({
+      citations: cite('kudos::2021-1', 'kudos::2021-1'),
+      citationHref: (citation) => `#fotnote-${citation}`,
+    });
+    const links = within(rowOf(/Utdrag 1/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['#fotnote-0', '#fotnote-1']);
+  });
+
+  it('says which answer a link leads to when the thread has several', () => {
+    draw({
+      citations: cite('kudos::2021-1'),
+      onShowUse: () => {},
+      answerIndex: 1,
+      answerCount: 3,
+      onAnswerChange: () => {},
+    });
+    expect(screen.getByRole('link', { name: 'Til svaret, fotnote 1 av 1 i svar 2' })).toBeTruthy();
   });
 
   it('pairs every footnote with a numbered excerpt shown, and every numbered excerpt with a footnote', () => {
@@ -148,9 +186,7 @@ describe('numbered excerpts, linked both ways', () => {
     );
     for (const label of screen.getAllByText(/^Utdrag \d+$/)) {
       const row = label.closest('.uib-sources-excerpt') as HTMLElement;
-      expect(
-        within(row).getByRole('button', { name: /^Vis hvor svaret bruker utdrag \d+/ }),
-      ).toBeTruthy();
+      expect(within(row).getAllByRole('link', { name: /^Til svaret/ }).length).toBeGreaterThan(0);
     }
     expect(pairing.unpaired).toEqual([]);
   });
@@ -159,15 +195,34 @@ describe('numbered excerpts, linked both ways', () => {
 describe('document mode', () => {
   const citations: SourceCitation[] = [{ index: 1 }, { index: 1 }];
 
-  it('numbers no excerpt, and links each cited document back to its uses', () => {
+  it('numbers no excerpt, and links each excerpt of a cited document back to the document’s uses', () => {
     const onShowUse = vi.fn();
     draw({ citations, citationMode: 'document', onShowUse });
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
-    const back = screen.getByRole('button', {
-      name: `Vis hvor svaret bruker ${nkom.title} (1/2)`,
+    const card = screen.getByRole('heading', { name: nkom.title }).closest('.uib-sources-document');
+    const head = card?.querySelector('.uib-sources-document-head') as HTMLElement;
+    expect(within(head).queryByRole('link')).toBeNull();
+    const rows = [...(card?.querySelectorAll('.uib-sources-excerpt') ?? [])] as HTMLElement[];
+    expect(rows).toHaveLength(3);
+    for (const row of rows)
+      expect(
+        within(row)
+          .getAllByRole('link', { name: /^Til svaret/ })
+          .map((link) => link.textContent),
+      ).toEqual(['Til svaret, bruk 1, fotnote 1 av 2', 'Til svaret, bruk 2, fotnote 2 av 2']);
+    fireEvent.click(within(rows[1] as HTMLElement).getAllByRole('link')[1] as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom, excerpt: nkom.excerpts[1] });
+  });
+
+  it('puts the links on the card itself when a cited document has no excerpt to carry them', () => {
+    const bare: SourceDocument = { ...nkom, excerpts: [] };
+    draw({
+      sources: [bare],
+      citations: [{ index: 1 }],
+      citationMode: 'document',
+      onShowUse: () => {},
     });
-    fireEvent.click(back);
-    expect(onShowUse).toHaveBeenCalledWith(0, { source: nkom });
+    expect(screen.getByRole('link', { name: 'Til svaret, fotnote 1 av 1' })).toBeTruthy();
   });
 
   it('says which documents nothing cites', () => {
@@ -414,9 +469,7 @@ describe('the catalogue', () => {
       </InLocale>,
     );
     expect(screen.getByRole('heading', { name: /Excerpt 1.*Ressursbruk/ })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Show where the answer uses excerpt 1' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'To the answer, footnote 1 of 1' })).toBeTruthy();
   });
 
   it('has an English text for every Norwegian one', () => {

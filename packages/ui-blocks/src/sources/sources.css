@@ -216,6 +216,26 @@
   .uib-sources-excerpt-controls {
     flex: none;
   }
+  /* The links back to the answer, one per footnote, as Wikipedia's back-references. */
+  .uib-sources-uses {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--genai-sources-uses-gap, var(--ds-size-2));
+    margin: 0;
+  }
+  .uib-sources-uses-icon {
+    color: var(--genai-sources-uses-icon-color, var(--ds-color-text-subtle));
+  }
+  /* A number alone is a small target: each is at least 24 px both ways (WCAG 2.5.8). */
+  .uib-sources-use {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--genai-sources-use-gap, var(--ds-size-1));
+    min-inline-size: var(--genai-sources-use-min-size, var(--ds-size-6));
+    min-block-size: var(--genai-sources-use-min-size, var(--ds-size-6));
+  }
   .uib-sources-excerpt-toggle {
     --dsc-button-color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));
     --dsc-button-color--hover: var(
