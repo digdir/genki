@@ -1,4 +1,4 @@
-# 0049 Answers cite excerpts, not whole documents
+# 0052 Answers cite excerpts, not whole documents
 
 Status: proposed, 2026-11-03 (prototype, agent loop only)
 
