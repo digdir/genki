@@ -73,6 +73,12 @@ beforeAll(async () => {
         audiences: [OTHER_API],
       },
       {
+        clientId: 'local-portal',
+        redirectUris: ['http://localhost:5173/callback'],
+        postLogoutRedirectUris: ['http://localhost:5173/'],
+        audience: API,
+      },
+      {
         clientId: 'genai-backend',
         redirectUris: ['https://backend.test/callback'],
         audience: API,
@@ -1008,6 +1014,116 @@ describe('mock Ansattporten tokens have the real shape', () => {
       name: 'Kari Nordmann',
       locale: 'nb',
     });
+  });
+
+  it('accepts a registered loopback redirect on any port, as RFC 8252 allows, and nothing looser', async () => {
+    const { ansattporten } = setup();
+    const authorize = (redirect_uri: string) =>
+      ansattporten.app.request(
+        `/authorize?${new URLSearchParams({ client_id: 'local-portal', response_type: 'code', code_challenge: 'x', code_challenge_method: 'S256', redirect_uri })}`,
+      );
+
+    expect((await authorize('http://localhost:5173/callback')).status).toBe(200);
+    expect((await authorize('http://localhost:8281/callback')).status).toBe(200);
+    expect((await authorize('http://localhost:8281/other')).status).toBe(400);
+    expect((await authorize('http://127.0.0.1:8281/callback')).status).toBe(400);
+    expect((await authorize('https://localhost:8281/callback')).status).toBe(400);
+    expect((await authorize('http://evil.test:5173/callback')).status).toBe(400);
+
+    const logout = await ansattporten.app.request(
+      `/logout?client_id=local-portal&post_logout_redirect_uri=${encodeURIComponent('http://localhost:8281/')}`,
+    );
+    expect(logout.headers.get('location')).toBe('http://localhost:8281/');
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])(
+    'accepts alternate ports for %s in authorize and logout',
+    async (host) => {
+      const { app } = createMockAnsattporten({
+        issuer: ISSUER,
+        key,
+        testData: {
+          clients: [
+            {
+              clientId: 'loopback',
+              redirectUris: [`http://${host}:5173/callback`],
+              postLogoutRedirectUris: [`http://${host}:5173/callback`],
+              audience: API,
+            },
+          ],
+        },
+      });
+      for (const port of [':5173', ':8281', ':80', '']) {
+        const uri = `http://${host}${port}/callback`;
+        const authorize = await app.request(
+          `/authorize?${authorizeParams({ client_id: 'loopback', redirect_uri: uri }).params}`,
+        );
+        expect(authorize.status).toBe(200);
+        const logout = await app.request(
+          `/logout?${new URLSearchParams({ client_id: 'loopback', post_logout_redirect_uri: uri, state: 's' })}`,
+        );
+        expect(logout.status).toBe(302);
+        expect(logout.headers.get('location')).toBe(`${new URL(uri).origin}/callback?state=s`);
+      }
+    },
+  );
+
+  it.each([
+    ['localhost', 'http://LOCALHOST:8281/callback'],
+    ['localhost', 'HTTP://localhost:8281/callback'],
+    ['localhost', 'http://localhost:8281/nested/../callback'],
+    ['localhost', 'http://localhost:8281/%2e/callback'],
+    ['localhost', 'http://localhost:8281\\callback'],
+    ['localhost', 'http://localhost:8281/callback\n'],
+    ['127.0.0.1', 'http://127.1:8281/callback'],
+    ['127.0.0.1', 'http://2130706433:8281/callback'],
+    ['[::1]', 'http://[0:0:0:0:0:0:0:1]:8281/callback'],
+  ])('refuses normalization beyond the port for %s: %s', async (host, uri) => {
+    const { app } = createMockAnsattporten({
+      issuer: ISSUER,
+      key,
+      testData: {
+        clients: [
+          {
+            clientId: 'loopback',
+            redirectUris: [`http://${host}:5173/callback`],
+            postLogoutRedirectUris: [`http://${host}:5173/callback`],
+            audience: API,
+          },
+        ],
+      },
+    });
+    const authorize = await app.request(
+      `/authorize?${authorizeParams({ client_id: 'loopback', redirect_uri: uri }).params}`,
+    );
+    const logout = await app.request(
+      `/logout?${new URLSearchParams({ client_id: 'loopback', post_logout_redirect_uri: uri })}`,
+    );
+    expect(authorize.status).toBe(400);
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get('location')).toBeNull();
+  });
+
+  it('binds an authorization code to the requested loopback port', async () => {
+    const { ansattporten } = setup();
+    const params = {
+      client_id: 'local-portal',
+      redirect_uri: 'http://localhost:8281/callback',
+    };
+    const flow = await login(ansattporten.app, '45840375084', { params });
+    expect(flow.location.origin).toBe('http://localhost:8281');
+    expect((await flow.exchange(flow.location.searchParams.get('code'))).status).toBe(200);
+
+    const wrongPort = await login(ansattporten.app, '45840375084', { params });
+    const refused = await wrongPort.exchange(
+      wrongPort.location.searchParams.get('code'),
+      {},
+      {
+        redirect_uri: 'http://localhost:5173/callback',
+      },
+    );
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ error: 'invalid_grant' });
   });
 
   it('redirects after logout only to a registered address', async () => {
