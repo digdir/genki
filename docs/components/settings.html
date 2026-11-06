@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings · Components</title>
+    <meta
+      name="description"
+      content="The reader's own choices, starting with the colour scheme: light, dark, or the same as the operating system."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Settings</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="settings"
+        data-component="settings"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="settings-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="settings-title">Settings</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">A page of its own</span>
+            </div>
+            <p class="summary">
+              The reader's own choices, starting with the colour scheme: light, dark, or the same as
+              the operating system. Each choice takes effect at once, so there is no «Lagre».
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Innstillinger»</dd>
+              <dt>Sits in</dt>
+              <dd>A page of its own, or a dialog</dd>
+              <dt>Issues</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/170"
+                  >kunnskapsassistenten#170</a
+                >, <a href="https://github.com/digdir/kunnskapsassistenten/issues/173">#173</a>,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/229">#229</a>
+              </dd>
+              <dt>Code</dt>
+              <dd><code>Settings</code> in <code>packages/ui-blocks</code></dd>
+              <dt>Canvas</dt>
+              <dd>00-Innstillinger (IN-1, IN-2, IN-5)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-bar" x="28" y="22" width="60" height="8" rx="4" />
+            <rect class="s-bar" x="28" y="40" width="38" height="5" rx="2.5" />
+            <rect class="s-soft" x="28" y="51" width="96" height="16" rx="5" />
+            <rect class="s-accent-soft" x="94" y="53" width="28" height="12" rx="4" />
+            <circle class="s-bar" cx="38" cy="59" r="3" />
+            <rect class="s-bar" x="44" y="57" width="12" height="4" rx="2" />
+            <circle class="s-bar" cx="70" cy="59" r="3" />
+            <rect class="s-bar" x="76" y="57" width="12" height="4" rx="2" />
+            <circle class="s-accent" cx="102" cy="59" r="3" />
+            <rect class="s-accent" x="108" y="57" width="10" height="4" rx="2" />
+            <rect class="s-bar" x="28" y="77" width="30" height="5" rx="2.5" />
+            <rect class="s-soft" x="28" y="87" width="80" height="6" rx="3" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                The reader should choose light or dark mode, rather than only follow the system.
+              </li>
+              <li>The app has more choices of its own that belong on the same page.</li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                To brand the assistant. The brand is the service owner's, chosen when the assistant
+                is set up, not the reader's. See <a href="branding.html">Branding</a>.
+              </li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li><strong>The block:</strong> «Innstillinger» with its sections.</li>
+              <li>
+                <strong>The colour scheme alone:</strong> <code>ColorSchemeToggle</code>, for an app
+                that places it somewhere else.
+              </li>
+              <li>
+                <strong>The other choices alone:</strong> <code>DisplayLevelChoice</code> and
+                <code>ExperimentSwitches</code>.
+              </li>
+              <li>
+                <strong>The links to it:</strong> <code>SettingsLinks</code>, for the foot of the
+                navigation panel: «Innstillinger» first, then the app's own pages, such as the pages
+                about the service.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>colorScheme</code>: <code>'light'</code>, <code>'dark'</code> or
+                <code>'auto'</code>, as the app keeps it. Without it, «Auto» is chosen.
+              </li>
+              <li>
+                <code>onColorSchemeChange</code>: the scheme the reader chose. The app stores it and
+                sets <code>data-color-scheme</code> on its root. The block shows the app's value, so
+                a choice the app has not taken is not shown as taken.
+              </li>
+              <li>
+                <code>displayLevel</code> and <code>onDisplayLevelChange</code>: how much an answer
+                shows of how it was made, <code>'standard'</code> or <code>'detailed'</code>. The
+                section «Svar» is drawn only when the app takes the choice.
+              </li>
+              <li>
+                <code>experiments</code> and <code>onExperimentChange</code>: the trials, each with
+                an <code>id</code>, <code>title</code>, <code>description</code>, whether it is
+                <code>on</code>, and a link (<code>href</code>, <code>hrefLabel</code>) to where it
+                is discussed. The section «Eksperimenter» is drawn only when there are trials and
+                the app takes the change. The event says which trial and whether it is now on.
+              </li>
+              <li>
+                <code>headingLevel</code>: the level of «Innstillinger», 2 by default. Each
+                section's heading is one below. On a page of its own, the app passes 1.
+              </li>
+              <li>
+                <code>children</code>: the app's own sections after the block's, each a
+                <code>SettingsSection</code> with a <code>title</code>.
+              </li>
+              <li>
+                <code>note</code>: a quiet line after every section, such as where the choices are
+                kept, which only the app knows.
+              </li>
+              <li>
+                <code>SettingsLinks</code>: <code>settingsHref</code>, the app's
+                <code>links</code> (<code>href</code>, <code>title</code>, an
+                <code>aria-hidden</code> <code>icon</code>), <code>currentHref</code> for
+                <code>aria-current</code>, <code>onNavigate</code> for the app's router, and
+                <code>assistantName</code> for the list's name, «Innstillinger og om …».
+              </li>
+              <li>
+                <code>color</code>: Designsystemet's <code>data-color</code> for the block, set only
+                when given.
+              </li>
+              <li>
+                <code>colorSchemes</code>, <code>isColorScheme</code>,
+                <code>displayLevels</code> and <code>isDisplayLevel</code> are exported for an app
+                that reads a stored choice.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li>
+                <a href="branding.html">Branding</a>: how a service brands every block, of which the
+                colour scheme is one part
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. One is pinned to neutral on purpose:
+              the note, which in the accent family would read as a link, as kunnskapsassistenten
+              draws it. The choice itself is Designsystemet's <code>ToggleGroup</code>, which the
+              block does not restyle: an app changes it with Designsystemet's own
+              <code>--dsc-togglegroup-*</code> variables.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Variable</th>
+                    <th scope="col">Default</th>
+                    <th scope="col">Styles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>--genai-settings-experiments-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between the trials' switches</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-font-family</code></td>
+                    <td><code>--ds-font-family</code></td>
+                    <td>the font of the whole block, and of the links</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-gap</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>between the heading and each section</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-link-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-semibold</code></td>
+                    <td>the link to the page on screen</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-link-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between a link's icon and its title</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-links-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the links</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-note-color</code></td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the note after the sections, pinned to neutral</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-padding-block-end</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>the room after the last section</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-settings-section-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between a section's heading and its choice</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                «Innstillinger», then the section «Fargemodus»: a Designsystemet
+                <code>ToggleGroup</code> with «Lys», «Mørk» and «Auto», each with its icon (sun,
+                moon, screen). Words beside the icons, since Designsystemet asks for a tooltip on
+                icon-only items.
+              </li>
+              <li>
+                A toggle group, not a switch: «Auto» is where the reader starts, and must be
+                reachable again after trying the other two. A screen reader hears a group of three
+                radio buttons named «Fargemodus».
+              </li>
+              <li>
+                Data in, events out. The block never stores the choice or touches the page: the app
+                keeps it, sets <code>data-color-scheme</code>, and passes it back in. A value the
+                block does not know shows as «Auto».
+              </li>
+              <li>
+                «Fargemodus» comes first, as the page's main choice: light and dark mode live in the
+                settings, not in the panel's foot (decided 2026-11-06).
+              </li>
+              <li>
+                «Svar»: «Standard» or «Detaljert» as radio buttons, each with a line on what it
+                shows. «Eksperimenter»: a line that all are off until turned on, then a
+                Designsystemet <code>Switch</code> per trial, since each takes effect at once, with
+                a link that opens in a new tab and says so in words.
+              </li>
+              <li>The app's own sections share the look and the heading level of «Fargemodus».</li>
+              <li>
+                <code>SettingsLinks</code> is a named list, not a <code>nav</code>: the panel around
+                it is already the navigation landmark. The page on screen is marked by weight, not
+                colour.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Made from kunnskapsassistenten's colour scheme toggle and settings page, with the
+                same words, icons, sizes and spacing. Its tests are ported, but for the ones about
+                storage, which stay with the app.
+              </li>
+              <li>
+                What the app keeps: kunnskapsassistenten stores the choice in the browser, applies
+                it before the first paint from a script file of its own (its Content Security Policy
+                refuses an inline one), and follows a choice made in another tab.
+              </li>
+              <li>
+                How much the answer shows and the experiments are sections of the block, with
+                kunnskapsassistenten's words, so every app need not build them again. What stays the
+                app's: which trials exist, storing every choice, turning the trials off when the
+                reader signs out, and a development section such as kunnskapsassistenten's choice of
+                a pinned or scrolling foot.
+              </li>
+              <li>genki's portal, console and workspace are light only today.</li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Should the language choice be a section of the block? genki has one already,
+                <code>LanguageChoice</code> in <code>@genai/i18n/react</code>, but it reads and sets
+                the language itself rather than taking it as data.
+              </li>
+              <li>
+                The brand colour (kunnskapsassistenten#170) is chosen in the app builder, by the
+                service owner, not here.
+              </li>
+              <li>
+                Is a font choice in scope (kunnskapsassistenten#173), and how would it be loaded?
+                Every block already takes a font through its variables.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="notes.html" rel="prev"><small>Previous</small>Notes</a>
+        <a class="next" href="branding.html" rel="next"><small>Next</small>Branding</a>
+      </nav>
+    </main>
+  </body>
+</html>
