@@ -52,6 +52,7 @@ const tenantTables = [
   'knowledge_job_requests',
   'trigger_runs',
   'api_key_policies',
+  'provider_objects',
 ];
 
 const publishedTables = { definition_versions: 'tenant', config_entries: 'scope' };
@@ -94,6 +95,7 @@ const definerFunctions = [
   'usage_open_starts(text)',
   'platform_usage_buckets(text[], timestamptz, timestamptz)',
   'platform_usage_unassigned(timestamptz, timestamptz)',
+  'due_provider_objects(timestamptz, integer)',
 ];
 
 const platformAccess = `coalesce(current_setting('app.platform_access', true), '') <> ''`;
@@ -735,6 +737,33 @@ const migrations: string[] = [
   `alter table trigger_runs add column if not exists cost_micro_nok bigint`,
   `create index if not exists trigger_runs_recent on trigger_runs (tenant, trigger_id, at desc)`,
   ...tenantIsolation('trigger_runs'),
+  `create table if not exists provider_objects (
+     tenant text not null,
+     connection text not null,
+     object_id text not null,
+     run text not null,
+     descriptor text not null,
+     deployment text not null,
+     step text not null,
+     field text not null,
+     delete_by timestamptz not null,
+     deletable boolean not null,
+     state text not null check (state in ('open', 'deleted', 'incident', 'retained')),
+     created_at timestamptz not null default now(),
+     settled_at timestamptz,
+     incident text,
+     primary key (tenant, connection, object_id)
+   )`,
+  `create index if not exists provider_objects_due on provider_objects (delete_by) where state = 'open'`,
+  ...tenantIsolation('provider_objects'),
+  `create or replace function due_provider_objects(before timestamptz, max_rows integer)
+     returns setof provider_objects
+     language plpgsql stable security definer set search_path = public
+     as $$ begin
+       perform require_platform_access();
+       return query select * from provider_objects
+         where state = 'open' and delete_by <= before order by delete_by limit max_rows;
+     end $$`,
   `create table if not exists config_entries (
      kind text not null,
      scope text not null,
@@ -870,6 +899,24 @@ const migrations: string[] = [
   `create or replace trigger ingestion_executions_admission
      before insert or update on ingestion_executions
      for each row execute function refuse_worker_admission()`,
+  // A switch's runs write into the switch's generation (ADR 0025); where a run writes is the API's call.
+  `alter table ingestion_executions
+     add column if not exists generation text,
+     add column if not exists engine_switch text`,
+  `create or replace function refuse_worker_generation() returns trigger
+     language plpgsql as $$ begin
+       if current_user = '${workerRole}' and (
+            (tg_op = 'INSERT' and (new.generation is not null or new.engine_switch is not null))
+         or (tg_op = 'UPDATE' and (new.generation is distinct from old.generation
+                                   or new.engine_switch is distinct from old.engine_switch))) then
+         raise exception 'only the API names the generation and the engine switch of an ingestion run'
+           using errcode = 'insufficient_privilege';
+       end if;
+       return new;
+     end $$`,
+  `create or replace trigger ingestion_executions_generation
+     before insert or update on ingestion_executions
+     for each row execute function refuse_worker_generation()`,
   `create table if not exists knowledge_job_requests (
      id text primary key,
      scope text not null,

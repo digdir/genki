@@ -114,7 +114,7 @@ const boot = async (lockdown: boolean) => {
       models: {
         endpoints: {
           fake: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: `${model.url}/v1`,
             auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
           },
@@ -275,6 +275,19 @@ describe('lockdown', () => {
 
     expect(res.status).toBe(200);
     expect(JSON.stringify(await res.json())).toContain('Hei.');
+  });
+
+  it('lets a trusted Entra login create an organisation-wide key in its own organisation, though it is an operator', async () => {
+    const { chat, send } = await boot(true);
+
+    const created = await send(`/tenants/${digdir}/api-keys`, 'entra', {
+      body: { name: 'KA test', agents: ['klarsprak'] },
+      reason,
+    });
+    const { key } = await json<{ key: string }>(created);
+
+    expect(created.status).toBe(201);
+    expect((await chat(key)).status).toBe(200);
   });
 
   it('keeps a key admitted after an Entra user rotates it', async () => {
@@ -519,12 +532,26 @@ describe('lockdown', () => {
 
     expect(started).toMatchObject({ ok: false, errors: [{ path: 'principal' }] });
     expect(ingestion.jobs).toHaveLength(0);
+
+    // An engine switch's runs into the knowledge database start from activation as well.
+    const person: Principal = { kind: 'employee', issuer: 'test', subject: 'kari', tenant: digdir };
+    expect(
+      await platform.ingestion.startSwitchRun({
+        pipeline,
+        generation: 'g-20261104-aa11bb',
+        engineSwitch: 'sider:1',
+        by: 'kari',
+        principal: person,
+      }),
+    ).toMatchObject({ ok: false, message: expect.stringContaining('the environment is locked') });
   });
 
   it.each([
     `/tenants/${digdir}/datasets/sider/engine-switches`,
     `/tenants/${digdir}/datasets/sider/engine-switches/1/retry`,
+    `/tenants/${digdir}/datasets/sider/engine-switches/1/activate`,
     `/operator/datasets/sider/engine-switches`,
+    `/operator/datasets/sider/engine-switches/1/activate`,
     `/tenants/${digdir}/datasets/sider/enrichment/hypothetical-questions/apply`,
     `/tenants/${digdir}/connectors/kobling/sync`,
   ])('refuses new embeddings for a person in lockdown (%s)', async (path) => {
@@ -536,7 +563,11 @@ describe('lockdown', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(await json(res)).toMatchObject({ type: lockedEnvironmentType });
+    // Refused as ingestion, not only as a change to configuration.
+    expect(await json(res)).toMatchObject({
+      type: lockedEnvironmentType,
+      title: expect.stringMatching(/innlesing|ingestion/),
+    });
     expect(model.seen).toHaveLength(0);
   });
 

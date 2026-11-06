@@ -14,10 +14,13 @@ import {
 } from '@genai/kernel';
 import type { RerankAdapter, RerankConnection, RerankerConfig } from './adapter.js';
 import { parseRerankCatalog, type CatalogReranker } from './catalog.js';
+import { parseModelRerankers } from './models.js';
 import { RerankError, type Ranked, type RerankPort, type Residency } from './port.js';
 
 export interface RerankRouterOptions {
   catalog: unknown;
+  /** The model catalogue; its models that bind `rerank` are rerankers too. */
+  models?: unknown;
   adapters: RerankAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
@@ -55,12 +58,59 @@ const valid = (ranking: Ranked[], count: number) =>
 
 export class RerankRouter implements PortProvider<RerankPort> {
   readonly #routes = new Map<string, Route>();
+  #engineRoutes = new Map<string, Route>();
+  #modelRoutes = new Map<string, Route>();
   readonly #warned = new Set<string>();
   readonly #gate: Gate;
 
   constructor(private readonly options: RerankRouterOptions) {
     this.#gate = options.gate ?? createGate();
     this.reload(options.catalog);
+    if (options.models !== undefined) this.reloadModels(options.models);
+  }
+
+  #publish() {
+    this.#routes.clear();
+    for (const [k, v] of [...this.#engineRoutes, ...this.#modelRoutes]) this.#routes.set(k, v);
+  }
+
+  /** What keeps the rerankers of a model catalogue from running. */
+  problems(models: unknown): { path: string; message: string }[] {
+    const result = parseModelRerankers(models, this.options.adapters);
+    return result.ok ? [] : result.errors;
+  }
+
+  reloadModels(models: unknown) {
+    const result = parseModelRerankers(models, this.options.adapters);
+    if (!result.ok)
+      throw new Error(
+        `invalid rerank models: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+      );
+    const options = this.options;
+    const routes = new Map<string, Route>();
+    for (const m of result.rerankers) {
+      const adapter = options.adapters.find((a) => a.api?.id === m.api) as RerankAdapter;
+      routes.set(m.id, {
+        reranker: {
+          id: m.id,
+          endpoint: m.endpoint,
+          residency: m.residency,
+          onFailure: m.onFailure,
+          ...(m.tenants ? { tenants: m.tenants } : {}),
+          options: m.options,
+        },
+        config: { id: m.id, options: adapter.rerankerOptions.parse(m.options) },
+        connection: adapter.connect({
+          baseURL: m.baseURL,
+          credential: credentialFor(m.auth, options.secrets, options.tokenProviders, m.baseURL),
+          options: adapter.endpointOptions.parse({}),
+          timeoutMs: options.timeoutMs ?? 10_000,
+          fetch: this.#gate.egress(m.endpoint),
+        }),
+      });
+    }
+    this.#modelRoutes = routes;
+    this.#publish();
   }
 
   reload(catalog: unknown) {
@@ -101,8 +151,8 @@ export class RerankRouter implements PortProvider<RerankPort> {
         connection: connections.get(reranker.endpoint) as RerankConnection,
       });
     }
-    this.#routes.clear();
-    for (const [k, v] of routes) this.#routes.set(k, v);
+    this.#engineRoutes = routes;
+    this.#publish();
   }
 
   rerankers(): string[] {

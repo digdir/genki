@@ -70,6 +70,7 @@ export interface TimelineBlock {
   title?: string;
   body?: string;
   sources?: string[];
+  media?: { id: string; mediaType: string; bytes: number }[];
 }
 
 export type TimelineStepState =
@@ -137,6 +138,7 @@ export interface ModelOption {
   family?: string;
   residency: Residency;
   capabilities: string[];
+  operations?: string[];
   price?: ModelPrice | null;
   parameters?: {
     temperature?: { mode: 'unsupported' } | { mode: 'fixed'; value: number | string };

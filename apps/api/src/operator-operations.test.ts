@@ -7,11 +7,11 @@ import { bootPlatform, digdir } from './testkit.js';
 
 const classify = parseDescriptor(`
 id: example/classify@1
-operation: chat
+operation: classify
 status: review
 summary: A made-up classification API, to try a new kind.
 api:
-  protocol: openai-chat
+  family: openai
   version: 2026-10-01
 request:
   method: POST
@@ -74,12 +74,20 @@ const boot = async (environmentTier?: 'test' | 'production', lockdown = false) =
     models: {
       endpoints: {
         lab: {
-          protocol: 'openai-chat',
+          families: { openai: '' },
           baseURL: `${server.url}/v1`,
           auth: { kind: 'api-key', secret: 'secret://env/fake-key' },
         },
       },
-      models: [{ id: 'lab/small', endpoint: 'lab', deployment: 'small', residency: 'norway' }],
+      models: [
+        {
+          id: 'lab/small',
+          endpoint: 'lab',
+          deployment: 'small',
+          residency: 'norway',
+          operations: ['chat', 'classify'],
+        },
+      ],
     },
   });
   return { ...booted, server };
@@ -189,7 +197,7 @@ describe('the raw tier', () => {
       events.push(e);
     expect(events.find((e) => e.type === 'kernel.gate.call')?.data).toEqual({
       port: 'operation',
-      operation: 'chat',
+      operation: 'classify',
       model: 'lab/small',
       endpoint: 'lab',
       descriptor: 'example/classify@1',

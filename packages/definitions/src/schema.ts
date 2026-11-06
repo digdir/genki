@@ -107,6 +107,19 @@ export const serviceSpec = z.strictObject({
       at: z.string().min(1).optional(),
       reasons: z.array(z.string()).default([]),
       riskClass: z.enum(['minimal', 'limited', 'high']).optional(),
+      unmaskedInput: z
+        .array(
+          z.strictObject({
+            mediaType: z
+              .string()
+              .regex(
+                /^[a-z0-9][a-z0-9!#$&^_.+-]*\/(?:\*|[a-z0-9][a-z0-9!#$&^_.+-]*)$/,
+                'must be a media type such as audio/wav or audio/*',
+              ),
+            reason: z.string().trim().min(10, 'say why this input may leave unmasked'),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   variants: z.array(variant).min(1).default(['default']),
@@ -193,6 +206,9 @@ export const serviceSpec = z.strictObject({
         planner: z.string().min(1).optional(),
         judge: z.string().min(1).optional(),
       })
+      .optional(),
+    operations: z
+      .record(z.string().regex(/^[a-z][a-z0-9-]*$/, 'must be an operation kind'), z.string().min(1))
       .optional(),
     residency: z.enum(residencies),
   }),
@@ -428,6 +444,10 @@ export const publicNamesOf = (definition: ServiceDefinition, v: Variant) => {
   const listed = typeof v === 'string' ? [] : v.aliases;
   return { primary, aliases: listed.map((a) => (typeof a === 'string' ? a : a.name)) };
 };
+
+/** The models a service names for one operation kind each, used only by its `call-operation` steps. */
+export const operationModelsOf = (model: { operations?: Record<string, string> | undefined }) =>
+  Object.values(model.operations ?? {});
 
 export const decisionModelOf = (spec: Pick<ServiceDefinition['spec'], 'guardrails'>) => {
   const model = (spec.guardrails['purpose-check'] as { model?: unknown } | undefined)?.model;

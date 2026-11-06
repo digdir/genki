@@ -149,7 +149,14 @@ export interface DatasetExport {
   vectors: boolean;
   documents(): AsyncIterable<IndexDocument>;
   count(cap: number): Promise<number>;
+  /** The documents without their chunks, for a copy that reads each one later (#366). */
+  list?(): AsyncIterable<ExportedDocument>;
+  /** One document with its chunks, or undefined when the engine no longer has it. */
+  document?(id: string): Promise<IndexDocument | undefined>;
 }
+
+/** A document as an export lists it: what an engine keeps of it, without its chunks. */
+export type ExportedDocument = Omit<IndexDocument, 'chunks' | 'phrases'>;
 
 export type KnowledgeErrorCode =
   | 'rate_limited'

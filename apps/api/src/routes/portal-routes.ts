@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { Event, Principal, Task, Usage } from '@genai/contracts';
+import { usageUnits, type Event, type Principal, type Task, type Usage } from '@genai/contracts';
 import { invalidInputProblem } from '@genai/adapter-openai';
 import { isAdmittedEntraLogin } from '@genai/composition';
 import type { CompiledCapability, DefinitionStore } from '@genai/definitions';
@@ -353,6 +353,8 @@ interface Tally {
   requests: number;
   pricedMicroNok: number;
   unpricedTokens: number;
+  units: Record<string, number>;
+  unpricedUnits: Record<string, number>;
 }
 
 const empty = (): Tally => ({
@@ -361,7 +363,20 @@ const empty = (): Tally => ({
   requests: 0,
   pricedMicroNok: 0,
   unpricedTokens: 0,
+  units: {},
+  unpricedUnits: {},
 });
+
+const countedUnits = new Set(['input-token', 'output-token', 'cached-input-token', 'request']);
+
+const unitsOf = (usage: Usage) =>
+  Object.fromEntries(Object.entries(usageUnits(usage)).filter(([unit]) => !countedUnits.has(unit)));
+
+const sumUnits = (a: Record<string, number>, b: Record<string, number>) => {
+  const sum = { ...a };
+  for (const [unit, count] of Object.entries(b)) sum[unit] = (sum[unit] ?? 0) + count;
+  return sum;
+};
 
 const tokensOf = (u: Usage) => (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
 
@@ -373,6 +388,8 @@ export const tallyOf = (usage: Usage, price?: ModelPrice): Tally => {
     requests: usage.requests ?? 0,
     pricedMicroNok: known ? priced(usage, price) : 0,
     unpricedTokens: known ? 0 : tokensOf(usage),
+    units: unitsOf(usage),
+    unpricedUnits: usage.costMicroNok === undefined ? unitsOf(usage) : {},
   };
 };
 
@@ -382,6 +399,8 @@ const minus = (t: Tally): Tally => ({
   requests: 0,
   pricedMicroNok: -t.pricedMicroNok,
   unpricedTokens: -t.unpricedTokens,
+  units: {},
+  unpricedUnits: {},
 });
 
 export const gatewaySource = 'gateway';
@@ -397,6 +416,8 @@ const gatewayTally = (row: AssignedUsageRow, rates: readonly CurrencyRate[]) => 
       requests: row.requests,
       pricedMicroNok: converted?.micros ?? 0,
       unpricedTokens: converted && !nothingPriced ? 0 : tokens,
+      units: {},
+      unpricedUnits: {},
     },
     rate: converted?.rate,
   };
@@ -416,6 +437,8 @@ const add = (a: Tally, b: Tally): Tally => ({
   requests: a.requests + b.requests,
   pricedMicroNok: a.pricedMicroNok + b.pricedMicroNok,
   unpricedTokens: a.unpricedTokens + b.unpricedTokens,
+  units: sumUnits(a.units, b.units),
+  unpricedUnits: sumUnits(a.unpricedUnits, b.unpricedUnits),
 });
 
 export const usageView = (t: Tally) => {
@@ -425,8 +448,10 @@ export const usageView = (t: Tally) => {
     outputTokens: t.outputTokens,
     requests: t.requests,
     costMicroNok: tokens > 0 && t.unpricedTokens >= tokens ? null : t.pricedMicroNok,
-    priced: t.unpricedTokens === 0,
+    priced: t.unpricedTokens === 0 && Object.keys(t.unpricedUnits).length === 0,
     unpricedTokens: t.unpricedTokens,
+    units: t.units,
+    unpricedUnits: t.unpricedUnits,
   };
 };
 
@@ -1142,11 +1167,15 @@ export const registerPortalRoutes = <E extends Env, S extends Schema, B extends 
   app.post('/tenants/:tenant/api-keys', async (c) => {
     const principal = await deps.authenticate(c.req.raw);
     if (!principal) return problem(c, 401, 'Unauthorized');
-    if (principal.kind === 'operator')
-      return access(principal, c.req.param('tenant') ?? '', c.req.raw)
-        ? problem(c, 403, 'API-nøkler lages av virksomheten selv')
-        : problem(c, 404, 'Not found');
     const tenant = c.req.param('tenant') ?? '';
+    if (principal.kind === 'operator') {
+      // An operator who is also one of the organisation's own people (a trusted
+      // Entra login in its platform organisation, ADR 0033) acts as that person.
+      const acting = access(principal, tenant, c.req.raw);
+      if (!acting) return problem(c, 404, 'Not found');
+      if (acting.kind === 'operator')
+        return problem(c, 403, 'API-nøkler lages av virksomheten selv');
+    }
     if (!isReasonLongEnough(reasonOf(c)))
       return problem(c, 400, 'Invalid request', [
         { path: 'change-reason', message: reasonTooShort },

@@ -121,6 +121,8 @@ export const steps = {
   clarifyTitle: 'Asked for a clarification',
   clarifySummary: 'Asked the user before answering',
   fields: 'Fields',
+  media: 'Media kept for the run',
+  mediaBytes: '{bytes} bytes, kept as {id}',
   answerWithSources: 'Answer with {sources}',
   unknownModel: 'unknown',
 } satisfies Translation<typeof source>;

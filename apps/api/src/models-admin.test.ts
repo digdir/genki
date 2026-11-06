@@ -222,6 +222,28 @@ describe('operator model changes', () => {
     expect(models.calls).toEqual([]);
   });
 
+  it('a classification binds one API per kind and no longer takes a list of operations', async () => {
+    const { send, models } = setup();
+
+    const bound = await send(gpt, 'operator', {
+      method: 'PATCH',
+      body: { apis: { chat: 'openai/responses@1', decide: 'openai/decide@1' } },
+      reason: 'Responses for denne modellen',
+    });
+    const listed = await send(gpt, 'operator', {
+      method: 'PATCH',
+      body: { operations: ['chat'] },
+      reason: 'Responses for denne modellen',
+    });
+
+    expect(bound.status).toBe(200);
+    expect(await bound.json()).toMatchObject({
+      apis: { chat: 'openai/responses@1', decide: 'openai/decide@1' },
+    });
+    expect(listed.status).toBe(400);
+    expect(models.calls).toEqual(['classify:foundry-openai/gpt-4o-2m-tps']);
+  });
+
   it('lists runtime transport selection for operators and describes it in the OpenAPI document', async () => {
     const { app, send } = setup();
 

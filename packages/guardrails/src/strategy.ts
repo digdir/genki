@@ -113,6 +113,7 @@ type PurposeVerdict = 'within' | 'outside' | 'uncertain' | 'refused';
 interface RuntimeConfig {
   guardrails?: unknown;
   model?: { primary?: string; tenant?: string; residency?: Residency };
+  unmaskedMedia?: string[];
 }
 
 const questionOf = (input: Input) => {
@@ -226,6 +227,7 @@ export const guardStrategy = <C>(
             withUse(options, {
               guards: [guard],
               ...(serviceResidency ? { serviceResidency } : {}),
+              ...(runtime.unmaskedMedia?.length ? { unmaskedMedia: runtime.unmaskedMedia } : {}),
             }),
           ),
       };

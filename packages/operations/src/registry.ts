@@ -1,13 +1,18 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { parseDescriptor, type Descriptor } from './descriptor.js';
+import { currentApiId, parseDescriptor, type Descriptor } from './descriptor.js';
 import { DescriptorError } from './shape.js';
 
 export const bundledDescriptorDir = join(import.meta.dirname, '..', 'descriptors');
+export const bundledFixtureDir = join(import.meta.dirname, '..', 'fixtures');
 
 export interface DescriptorRegistry {
   get(id: string): Descriptor | undefined;
   list(): Descriptor[];
+  /** Reads descriptors uploaded since the last read; a registry of files alone has none. */
+  refresh?(): Promise<void>;
+  /** The bytes of an uploaded module by its SHA-256. */
+  module?(sha256: string): Uint8Array | undefined;
 }
 
 export const descriptorRegistry = (descriptors: readonly Descriptor[]): DescriptorRegistry => {
@@ -17,7 +22,7 @@ export const descriptorRegistry = (descriptors: readonly Descriptor[]): Descript
     byId.set(d.id, d);
   }
   return {
-    get: (id) => byId.get(id),
+    get: (id) => byId.get(currentApiId(id)),
     list: () => [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)),
   };
 };
