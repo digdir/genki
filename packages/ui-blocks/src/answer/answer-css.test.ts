@@ -13,19 +13,15 @@ const uses = [...flat.matchAll(/var\((--genai-[a-z-]+), (var\(--[a-z0-9-]+\)|[^)
 );
 
 // Pinned to a colour family on purpose, each with a comment in the CSS.
+// The footnote mark's own pins are the shared mark's, in footnote/footnote.css.
 const accentPins = [
-  '--genai-answer-footnote-background',
-  '--genai-answer-footnote-border-color',
-  '--genai-answer-footnote-color',
-  '--genai-answer-footnote-hover-background',
-  '--genai-answer-footnote-hover-color',
   '--genai-answer-sources-used-link-color',
   '--genai-answer-sources-used-link-hover-color',
 ];
 const infoPins = ['--genai-answer-note-icon-color'];
 
 describe('the answer styles', () => {
-  it('follow the host’s colour family, but for the seven deliberate pins', () => {
+  it('follow the host’s colour family, but for the three deliberate pins', () => {
     const pinned = uses
       .filter((use) =>
         /--ds-color-(?:accent|neutral|brand\d|success|warning|danger|info)-/.test(use.fallback),
@@ -74,22 +70,8 @@ describe('the answer styles', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
   });
 
-  it('draw every footnote mark in one size, whatever data-size a table sets around it', () => {
-    // Designsystemet's size tokens shrink under data-size="sm": 11 px marks in tables, 12 in text.
-    const mark = flat.match(/\.uib-answer-mark \{([^}]*)\}/)?.[1] ?? '';
-    for (const name of ['size', 'gap', 'padding', 'font-size', 'raise'])
-      expect(mark).toMatch(new RegExp(`var\\(--genai-answer-footnote-${name}, [\\d.]+rem\\)`));
-    expect(mark).not.toMatch(/--ds-(?:size|font-size)-/);
-  });
-
-  it('set the footnote’s circle apart from the card with a strong ring, not the fill alone', () => {
-    // The tinted fill is 1.2:1 on the card; a border-strong ring is over 3:1 in both themes.
-    expect(uses.find((use) => use.name === '--genai-answer-footnote-border-color')?.fallback).toBe(
-      'var(--ds-color-accent-border-strong)',
-    );
-    // Off while focused, so Designsystemet's two focus rings stay whole.
-    expect(flat).toMatch(
-      /\.uib-answer-mark:not\(:focus-visible\) \{ box-shadow: inset 0 0 0 var\(/,
-    );
+  it('draw no footnote mark of their own: it is the shared mark, also beside an excerpt in Sources', () => {
+    expect(flat).not.toMatch(/\.uib-answer-mark\b/);
+    expect(flat).not.toContain('--genai-answer-footnote-');
   });
 });
