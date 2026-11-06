@@ -7,10 +7,13 @@ import type { ComposerAttachment, ComposerAttachmentError, ComposerAttachments }
 export const useAttachmentText = (attachments: ComposerAttachments | undefined) => {
   const t = useT();
   const f = useFormat();
-  const types = attachments?.fileTypes?.length
-    ? f.list(attachments.fileTypes, 'disjunction')
-    : undefined;
-  const max = attachments?.maxMegabytes;
+  const named = attachments?.types ?? attachments?.fileTypes;
+  const types = named?.length ? f.list(named, 'disjunction') : undefined;
+  // Whole megabytes of 1024 × 1024 bytes, as OwnDocuments writes its limit.
+  const max =
+    attachments?.maxBytes !== undefined
+      ? Math.round(attachments.maxBytes / 1024 / 1024)
+      : attachments?.maxMegabytes;
   const error = (code: ComposerAttachmentError) => {
     if (code === 'too-large')
       return max === undefined ? t('composer.tooLargeUnknown') : t('composer.tooLarge', { max });

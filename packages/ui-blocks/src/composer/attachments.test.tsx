@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useAttachmentText } from './Attachments.js';
 import { Composer, type ComposerAttachment, type ComposerAttachments } from './Composer.js';
 
 document.getAnimations ??= () => [];
@@ -80,7 +81,7 @@ describe('attaching files to the question', () => {
   });
 
   it('names the file types it takes on the paperclip, since the picker filters silently', () => {
-    render(<Controlled attachments={attachmentsWith({ fileTypes: ['PDF', '.docx'] })} />);
+    render(<Controlled attachments={attachmentsWith({ types: ['PDF', '.docx'] })} />);
     expect(
       screen.getByRole('button', { name: 'Legg ved dokument (PDF eller .docx)' }),
     ).toBeTruthy();
@@ -196,8 +197,8 @@ describe('attaching files to the question', () => {
             { id: 'odd', name: 'bilde.png', status: 'failed', error: 'wrong-type' },
           ],
           onRetry: () => {},
-          maxMegabytes: 20,
-          fileTypes: ['PDF', '.docx'],
+          maxBytes: 20 * 1024 * 1024,
+          types: ['PDF', '.docx'],
         })}
       />,
     );
@@ -309,6 +310,18 @@ describe('attaching where uploading is coming', () => {
     fireEvent.dragEnter(frame(), { dataTransfer: { files: [], types: ['Files'] } });
     expect(frame().getAttribute('data-dragging')).toBe('true');
     expect(screen.queryByText('Slipp filen for å legge den ved')).toBeNull();
+  });
+
+  it('still takes fileTypes and maxMegabytes, the old names, until hosts have moved', () => {
+    let text!: ReturnType<typeof useAttachmentText>;
+    const Probe = () => {
+      text = useAttachmentText(attachmentsWith({ fileTypes: ['PDF'], maxMegabytes: 20 }));
+      return null;
+    };
+    render(<Probe />);
+    const { error } = text;
+    expect(error('too-large')).toBe('Filen er større enn 20 MB.');
+    expect(error('wrong-type')).toMatch(/PDF/);
   });
 });
 

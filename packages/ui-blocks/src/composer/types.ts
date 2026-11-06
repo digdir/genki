@@ -22,7 +22,12 @@ export interface ComposerAttachments {
   onRetry?: ((id: string) => void) | undefined;
   /** The file picker's `accept`, such as `.pdf,.docx`. */
   accept?: string | undefined;
-  /** The file types as the reader knows them, such as `['PDF', '.docx']`. */
+  /** The file types as the reader knows them, such as `['PDF', '.docx']`. Named as in `OwnDocuments`. */
+  types?: readonly string[] | undefined;
+  /** The largest file, in bytes, shown in whole megabytes. Named as in `OwnDocuments`. */
+  maxBytes?: number | undefined;
+  /** @deprecated `types`, the name `OwnDocuments` uses too; kept until hosts have moved. */
   fileTypes?: readonly string[] | undefined;
+  /** @deprecated `maxBytes`, as `OwnDocuments`; kept until hosts have moved. */
   maxMegabytes?: number | undefined;
 }
