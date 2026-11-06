@@ -11,6 +11,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import { classes } from '../dom.js';
 import { useT } from '../i18n.js';
 import { useMedia, useScrollPadding, useScrollTabStop, useViewportWidth } from './hooks.js';
 import {
@@ -119,7 +120,6 @@ export interface ShellProps {
   className?: string | undefined;
 }
 
-const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 const colored = (color: string | undefined) => (color ? { 'data-color': color } : {});
 
 const sized = (side: ShellSide, size: Partial<ShellPanelSize> | undefined) => ({
