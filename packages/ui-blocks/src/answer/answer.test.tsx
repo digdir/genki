@@ -64,7 +64,11 @@ const text = [
 const draw = (props: Partial<AnswerProps> = {}) =>
   render(<Answer text={text} sources={sources} markers={markers} {...props} />);
 
-const footnotes = () => screen.getAllByRole('link', { name: /^(Utdrag|Kilde) \d+: / });
+// The footnote marks in page order: links when the app gives them somewhere to go, else marks.
+const footnotes = () =>
+  [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].filter((mark) =>
+    /^(Utdrag|Kilde) \d+: /.test(mark.getAttribute('aria-label') ?? ''),
+  );
 
 describe('the footnotes in the answer', () => {
   it('numbers only the excerpts the answer cites, 1, 2, 3 in the order it first cites them', () => {
@@ -133,6 +137,14 @@ describe('the footnotes in the answer', () => {
       'Kilde 1: Tildelingsbrev Nkom 2022',
       'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
     ]);
+  });
+
+  it('draws a footnote the app gives nowhere to go as a mark, not a link to the top of the page', () => {
+    render(<Answer text={text} sources={sources} markers={markers} />);
+    expect(screen.queryAllByRole('link', { name: /^Utdrag \d+: / })).toHaveLength(0);
+    const marks = screen.getAllByRole('img', { name: /^Utdrag \d+: / });
+    expect(marks.map((mark) => mark.textContent)).toEqual(['[1]', '[2]', '[3]', '[1]']);
+    expect(marks[0]?.getAttribute('aria-label')).toBe('Utdrag 1: Tildelingsbrev Nkom 2022');
   });
 
   it('leaves a [N] no source has as the text it is, and draws a footnote to nothing as nothing', () => {
@@ -239,7 +251,7 @@ const excerptRow = (n: number) =>
     .closest('.uib-sources-excerpt') as HTMLElement;
 
 describe('the pairing, both ways, between the answer and Sources', () => {
-  it('pairs every footnote with an excerpt shown under its number, and every numbered excerpt with a footnote', () => {
+  it('pairs every footnote with an excerpt shown under its number, and every numbered excerpt with a footnote', async () => {
     render(<Host />);
     const inAnswer = new Set(
       footnotes().map((link) => /^Utdrag (\d+)/.exec(link.getAttribute('aria-label') ?? '')?.[1]),
@@ -251,6 +263,15 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     );
     expect([...inAnswer].sort()).toEqual(['1', '2', '3']);
     expect([...inSources].sort()).toEqual([...inAnswer].sort());
+    // Footnote n leads to «Utdrag n», each one followed.
+    for (const footnote of footnotes()) {
+      fireEvent.click(footnote);
+      await frame();
+      const n = /^Utdrag (\d+)/.exec(footnote.getAttribute('aria-label') ?? '')?.[1];
+      expect(
+        document.activeElement?.querySelector('.uib-sources-excerpt-number')?.textContent,
+      ).toBe(`Utdrag ${n}`);
+    }
     // The excerpt nothing cites is shown without a number, and says so.
     const uncited = screen
       .getByText('Ledelsen vurderer måloppnåelsen som god.')
@@ -491,6 +512,23 @@ describe('the answer’s states', () => {
 });
 
 describe('a failed answer', () => {
+  it('draws no text, only its own failure, since genki streams its error message as text', () => {
+    draw({ status: 'failed', text: 'Error: the service failed' });
+    expect(screen.queryByText(/Error: the service failed/)).toBeNull();
+    expect(
+      screen.getByText('Dette spørsmålet fikk ikke noe svar. Noe gikk galt underveis.'),
+    ).toBeTruthy();
+  });
+
+  it('is drawn as the app passes it, also after a reload, failed or stopped', () => {
+    draw({ status: 'failed', text: '', onRegenerate: () => {} });
+    expect(screen.getByRole('button', { name: 'Generer på nytt' })).toBeTruthy();
+    cleanup();
+    draw({ status: 'aborted', onRegenerate: () => {} });
+    expect(screen.getByText(/Svaret ble avbrutt/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Generer på nytt' })).toBeTruthy();
+  });
+
   it('says which failure it was, what happened and what to do', () => {
     draw({ status: 'failed', text: '', failure: { kind: 'timeout' }, onRegenerate: () => {} });
     expect(screen.getByText('Svaret tok for lang tid')).toBeTruthy();
@@ -640,7 +678,7 @@ describe('the catalogue', () => {
       </InLocale>,
     );
     expect(
-      screen.getAllByRole('link', { name: /^Excerpt 1: Tildelingsbrev/ }).length,
+      screen.getAllByRole('img', { name: /^Excerpt 1: Tildelingsbrev/ }).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText('Sources used in the answer')).toBeTruthy();
     expect(screen.getByText('Excerpts 2–3')).toBeTruthy();

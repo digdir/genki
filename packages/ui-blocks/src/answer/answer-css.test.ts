@@ -74,6 +74,14 @@ describe('the answer styles', () => {
     expect(flat).toContain('.uib-answer-footnote, .uib-answer-lost { line-height: 0; }');
   });
 
+  it('draw every footnote mark in one size, whatever data-size a table sets around it', () => {
+    // Designsystemet's size tokens shrink under data-size="sm": 11 px marks in tables, 12 in text.
+    const mark = flat.match(/\.uib-answer-mark \{([^}]*)\}/)?.[1] ?? '';
+    for (const name of ['size', 'gap', 'padding', 'font-size', 'raise'])
+      expect(mark).toMatch(new RegExp(`var\\(--genai-answer-footnote-${name}, [\\d.]+rem\\)`));
+    expect(mark).not.toMatch(/--ds-(?:size|font-size)-/);
+  });
+
   it('set the footnote’s circle apart from the card with a strong ring, not the fill alone', () => {
     // The tinted fill is 1.2:1 on the card; a border-strong ring is over 3:1 in both themes.
     expect(uses.find((use) => use.name === '--genai-answer-footnote-border-color')?.fallback).toBe(
