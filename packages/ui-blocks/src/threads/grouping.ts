@@ -134,21 +134,28 @@ const dayMonth = (locale: Locale, month: 'short' | 'long') => {
   return format;
 };
 
+/** The catalogue's words for a row's time: «i går», and the whole date with the clock. */
+export interface RowTimeWords {
+  yesterday: string;
+  /** The whole date and the clock as one phrase, «{date} kl. {clock}» in bokmål. */
+  dateAtClock: (date: string, clock: string) => string;
+}
+
 /** The row's time: the clock today, «i går», the weekday this week, then day and month. */
 export const rowTime = (
   value: ThreadItem['updatedAt'],
   f: Format,
-  yesterday: string,
+  words: RowTimeWords,
   now: Date = new Date(),
 ): RowTime | undefined => {
   const date = toDate(value);
   if (!readable(date)) return undefined;
   const days = calendarDay(now).serial - calendarDay(date).serial;
   // The whole date as the platform writes it, with the clock as the row writes it.
-  const title = `${f.date(date)}${f.locale === 'en' ? ', ' : ' kl. '}${clock(date)}`;
+  const title = words.dateAtClock(f.date(date), clock(date));
   const common = { dateTime: date.toISOString(), title };
   if (days <= 0) return { ...common, text: clock(date) };
-  if (days === 1) return { ...common, text: yesterday };
+  if (days === 1) return { ...common, text: words.yesterday };
   if (days < 7) return { ...common, text: f.weekday(date) };
   return { ...common, text: dayMonth(f.locale, days < 30 ? 'short' : 'long').format(date) };
 };

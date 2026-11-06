@@ -1,7 +1,6 @@
 import { defineNamespace, type Translation } from '@genai/i18n';
 
 export const nbThreads = defineNamespace({
-  title: 'Tråder',
   earlier: 'Tidligere tråder',
   newThread: 'Ny tråd',
   firstThread: 'Start din første tråd',
@@ -19,6 +18,7 @@ export const nbThreads = defineNamespace({
   last30: 'Siste 30 dager',
   undated: 'Uten dato',
   yesterday: 'i går',
+  dateAtClock: '{date} kl. {clock}',
   more: 'Flere valg for {title}',
   rename: 'Endre navn',
   delete: 'Slett',
@@ -28,6 +28,7 @@ export const nbThreads = defineNamespace({
   cancel: 'Avbryt',
   renamed: 'Tråden heter nå «{title}».',
   renameFailed: 'Klarte ikke å endre navnet. Tråden heter fortsatt «{title}».',
+  renameGone: '«{title}» finnes ikke lenger. Den kan være slettet et annet sted.',
   deleteQuestion: 'Slette tråden?',
   deleteWarning:
     '«{title}» blir borte for godt, med alle spørsmålene og svarene i den. Det kan ikke angres.',
@@ -40,7 +41,6 @@ export const nbThreads = defineNamespace({
 });
 
 export const enThreads = {
-  title: 'Threads',
   earlier: 'Earlier threads',
   newThread: 'New thread',
   firstThread: 'Start your first thread',
@@ -58,6 +58,7 @@ export const enThreads = {
   last30: 'Last 30 days',
   undated: 'No date',
   yesterday: 'yesterday',
+  dateAtClock: '{date}, {clock}',
   more: 'More options for {title}',
   rename: 'Rename',
   delete: 'Delete',
@@ -67,6 +68,7 @@ export const enThreads = {
   cancel: 'Cancel',
   renamed: 'The thread is now called “{title}”.',
   renameFailed: 'Could not rename the thread. It is still called “{title}”.',
+  renameGone: '“{title}” no longer exists. It may have been deleted elsewhere.',
   deleteQuestion: 'Delete the thread?',
   deleteWarning:
     '“{title}” will be gone for good, with all its questions and answers. This cannot be undone.',

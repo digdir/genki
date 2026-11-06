@@ -108,49 +108,57 @@ const tuesday = new Date(2026, 8, 15, 14, 0, 0);
 const at = (...args: [number, number, number, number?, number?]) => new Date(...args).toISOString();
 const nb = createFormat('nb');
 const en = createFormat('en');
+const nbWords = {
+  yesterday: 'i går',
+  dateAtClock: (date: string, clock: string) => `${date} kl. ${clock}`,
+};
+const enWords = {
+  yesterday: 'yesterday',
+  dateAtClock: (date: string, clock: string) => `${date}, ${clock}`,
+};
 
 describe('the time on a row', () => {
   it('shows the clock for today, since the heading already says «I dag»', () => {
-    expect(rowTime(at(2026, 8, 15, 14, 32), nb, 'i går', tuesday)?.text).toBe('14:32');
+    expect(rowTime(at(2026, 8, 15, 14, 32), nb, nbWords, tuesday)?.text).toBe('14:32');
   });
 
   it('writes the clock with a colon, as kunnskapsassistenten does, in every language', () => {
-    expect(rowTime(at(2026, 8, 15, 9, 5), nb, 'i går', tuesday)?.text).toBe('09:05');
-    expect(rowTime(at(2026, 8, 15, 9, 5), en, 'yesterday', tuesday)?.text).toBe('09:05');
+    expect(rowTime(at(2026, 8, 15, 9, 5), nb, nbWords, tuesday)?.text).toBe('09:05');
+    expect(rowTime(at(2026, 8, 15, 9, 5), en, enWords, tuesday)?.text).toBe('09:05');
   });
 
   it('says «i går» rather than naming the weekday', () => {
-    expect(rowTime(at(2026, 8, 14, 9, 5), nb, 'i går', tuesday)?.text).toBe('i går');
+    expect(rowTime(at(2026, 8, 14, 9, 5), nb, nbWords, tuesday)?.text).toBe('i går');
   });
 
   it('names the weekday inside «Siste 7 dager»', () => {
-    expect(rowTime(at(2026, 8, 11, 9, 5), nb, 'i går', tuesday)?.text).toBe('fredag');
+    expect(rowTime(at(2026, 8, 11, 9, 5), nb, nbWords, tuesday)?.text).toBe('fredag');
   });
 
   it('switches to day and month once the weekday stops being enough', () => {
-    expect(rowTime(at(2026, 7, 28, 9, 5), nb, 'i går', tuesday)?.text).toBe('28. aug.');
+    expect(rowTime(at(2026, 7, 28, 9, 5), nb, nbWords, tuesday)?.text).toBe('28. aug.');
   });
 
   it('writes day and month in the month and year groups, since the heading has the year', () => {
-    expect(rowTime(at(2026, 6, 12, 9, 5), nb, 'i går', tuesday)?.text).toBe('12. juli');
-    expect(rowTime(at(2025, 4, 12, 9, 5), nb, 'i går', tuesday)?.text).toBe('12. mai');
+    expect(rowTime(at(2026, 6, 12, 9, 5), nb, nbWords, tuesday)?.text).toBe('12. juli');
+    expect(rowTime(at(2025, 4, 12, 9, 5), nb, nbWords, tuesday)?.text).toBe('12. mai');
   });
 
   it('carries the machine date and the whole date, whatever the short text says', () => {
     const iso = at(2025, 4, 12, 9, 5);
-    const time = rowTime(iso, nb, 'i går', tuesday);
+    const time = rowTime(iso, nb, nbWords, tuesday);
     expect(time?.dateTime).toBe(iso);
     expect(time?.title).toBe('12. mai 2025 kl. 09:05');
-    expect(rowTime(iso, en, 'yesterday', tuesday)?.title).toBe('12 May 2025, 09:05');
+    expect(rowTime(iso, en, enWords, tuesday)?.title).toBe('12 May 2025, 09:05');
   });
 
   it('speaks English when the person does', () => {
-    expect(rowTime(at(2026, 8, 11, 9, 5), en, 'yesterday', tuesday)?.text).toBe('Friday');
-    expect(rowTime(at(2026, 6, 12, 9, 5), en, 'yesterday', tuesday)?.text).toBe('12 July');
+    expect(rowTime(at(2026, 8, 11, 9, 5), en, enWords, tuesday)?.text).toBe('Friday');
+    expect(rowTime(at(2026, 6, 12, 9, 5), en, enWords, tuesday)?.text).toBe('12 July');
   });
 
   it('gives up quietly on a timestamp it cannot read', () => {
-    expect(rowTime('ikke en dato', nb, 'i går', tuesday)).toBeUndefined();
+    expect(rowTime('ikke en dato', nb, nbWords, tuesday)).toBeUndefined();
   });
 
   it('never contradicts the group heading it sits under', () => {
@@ -164,7 +172,7 @@ describe('the time on a row', () => {
     ];
     const labelled = groupThreads(threads, tuesday).map((group) => [
       group.period,
-      ...group.threads.map((t) => rowTime(t.updatedAt, nb, 'i går', tuesday)?.text),
+      ...group.threads.map((t) => rowTime(t.updatedAt, nb, nbWords, tuesday)?.text),
     ]);
     expect(labelled).toEqual([
       ['today', '14:32'],

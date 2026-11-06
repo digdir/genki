@@ -130,7 +130,16 @@
                 <code>onRename</code> and <code>onDelete</code>: events the host handles. Return a
                 promise, and the block shows the change at once and puts it back, with a message, if
                 it rejects. It keeps the change until the host's list moves past it, so a read that
-                was already out cannot undo it.
+                was already out cannot undo it. A thread the host finds already gone: resolve the
+                rename with <code>'gone'</code>, and its row goes with a message; resolve the
+                delete, which then counts as done.
+              </li>
+              <li>
+                <code>onShowFilters</code> and <code>focusShowFilters</code>: «Filtrer dokumenter»
+                over the list, for a filter that shares the panel, with focus on it when the person
+                just came from the filter. <code>headingLevel</code>, 2 by default, for the list's
+                hidden heading, with the groups one below. <code>color</code>: Designsystemet's
+                <code>data-color</code>, set only when given.
               </li>
               <li>
                 <code>failed</code> and <code>onRetry</code>, <code>currentId</code>,

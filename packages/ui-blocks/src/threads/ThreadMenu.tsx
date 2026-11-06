@@ -26,6 +26,7 @@ export const ThreadMenu = ({ title, onRename, onDelete, ref }: ThreadMenuProps) 
       <Dropdown.Trigger
         ref={ref}
         variant="tertiary"
+        // Pinned to neutral, as kunnskapsassistenten draws it: one in every row, so it stays quiet.
         data-color="neutral"
         data-size="sm"
         icon

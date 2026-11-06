@@ -114,6 +114,32 @@ describe('renaming a thread', () => {
     ).toBeTruthy();
   });
 
+  it('takes the row away and says so when the host finds the thread already gone', async () => {
+    let gone!: (value: 'gone') => void;
+    draw({ onRename: () => new Promise<'gone'>((resolve) => (gone = resolve)) });
+    renameTo('Måloppnåelse i Nkom', 'Nkom 2024');
+    await act(async () => gone('gone'));
+    expect(
+      screen.queryByRole('button', { name: /Flere valg for (Nkom 2024|Måloppnåelse)/ }),
+    ).toBeNull();
+    expect(
+      within(screen.getByRole('alert')).getByText(
+        '«Måloppnåelse i Nkom» finnes ikke lenger. Den kan være slettet et annet sted.',
+      ),
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(menu('Årsrapport for Digdir'));
+  });
+
+  it('counts a delete as done when the host resolves it, also for a thread already gone', async () => {
+    let gone!: (value: 'gone') => void;
+    draw({ onDelete: () => new Promise<'gone'>((resolve) => (gone = resolve)) });
+    choose('Måloppnåelse i Nkom', 'Slett');
+    fireEvent.click(screen.getByRole('button', { name: 'Slett tråden' }));
+    await act(async () => gone('gone'));
+    expect(screen.queryByRole('button', { name: 'Flere valg for Måloppnåelse i Nkom' })).toBeNull();
+    expect(screen.queryByRole('alert')?.textContent ?? '').not.toMatch(/Klarte ikke/);
+  });
+
   it('leaves it as it was on Escape, with focus on the menu', () => {
     const onRename = vi.fn();
     draw({ onRename });

@@ -40,3 +40,29 @@ describe('the Threads styles', () => {
       expect(uses.find((use) => use.name === name)?.token).toMatch(/^--ds-color-(?:surface|text)-/);
   });
 });
+
+// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
+// each is named here and justified by the comment on the line above it.
+const markupPins: Record<string, string[]> = {
+  'Threads.tsx': ['uib-threads-show-filters'],
+  'ThreadMenu.tsx': ['Dropdown.Trigger'],
+};
+
+describe('the Threads markup', () => {
+  it.each(Object.entries(markupPins))(
+    'pins to neutral in %s only what kunnskapsassistenten draws neutral, each with its reason',
+    (file, named) => {
+      const lines = readFileSync(`${import.meta.dirname}/${file}`, 'utf8').split('\n');
+      const at = lines.flatMap((line, index) =>
+        line.includes('data-color="neutral"') ? [index] : [],
+      );
+      expect(at).toHaveLength(named.length);
+      at.forEach((index, n) => {
+        expect(lines[index - 1]?.trim()).toMatch(
+          /^\/\/ Pinned to neutral, as kunnskapsassistenten/,
+        );
+        expect(lines.slice(index - 5, index).join('\n')).toContain(named[n]);
+      });
+    },
+  );
+});
