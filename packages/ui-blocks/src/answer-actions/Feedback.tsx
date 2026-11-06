@@ -8,7 +8,7 @@ import {
   Textarea,
 } from '@digdir/designsystemet-react';
 import { ThumbDownIcon, ThumbUpIcon } from '@navikt/aksel-icons';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { translator, useT } from '../i18n.js';
 import type { AnswerFeedback, AnswerFeedbackStatus, AnswerRating } from './types.js';
 
@@ -43,12 +43,24 @@ export const Feedback = ({ status, onSend }: FeedbackProps) => {
   const counterId = useId();
   const sent = status === 'sent';
   const busy = status === 'sending';
+  const form = useRef<HTMLDivElement>(null);
+  const opened = useRef(false);
 
   const choose = (value: AnswerRating) => {
     if (sent) return;
+    opened.current = rating === undefined;
     setRating(value);
     setChanged(true);
   };
+
+  // The form opens under the answer, often at the foot of the column, where a docked question
+  // field can hide its buttons. Brought into sight once, when the reader opens it; the field's
+  // scroll margin keeps it clear of the field.
+  useEffect(() => {
+    if (!opened.current) return;
+    opened.current = false;
+    form.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [rating]);
 
   const submit = (details: boolean) => {
     if (!rating || busy || sent) return;
@@ -94,7 +106,7 @@ export const Feedback = ({ status, onSend }: FeedbackProps) => {
         {thumb('down')}
       </div>
       {rating && !sent ? (
-        <div className="uib-answer-actions-form">
+        <div className="uib-answer-actions-form" ref={form}>
           {rating === 'down' ? (
             <Fieldset data-size="sm">
               <Fieldset.Legend>{t('answerActions.whatWrong')}</Fieldset.Legend>

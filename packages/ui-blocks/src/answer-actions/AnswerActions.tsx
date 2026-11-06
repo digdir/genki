@@ -28,7 +28,7 @@ export interface AnswerActionsProps {
   actions?: ReactNode;
   /** At the far end of the row, outside every button: when the answer came, for example. */
   end?: ReactNode;
-  /** Designsystemet's `data-color` for the block, set only when given. */
+  /** Designsystemet's `data-color` for the block. Neutral unless given, as kunnskapsassistenten. */
   color?: string | undefined;
   className?: string | undefined;
 }
@@ -65,7 +65,7 @@ export const AnswerActions = ({
   feedbackStatus,
   actions,
   end,
-  color,
+  color = 'neutral',
   className,
 }: AnswerActionsProps) => {
   const t = useT();
