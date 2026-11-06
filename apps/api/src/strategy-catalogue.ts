@@ -170,6 +170,36 @@ const described: Record<string, Described> = {
     ),
     pipeline: [],
   },
+  'live-session': {
+    how: 'single',
+    description: text(
+      'En direkte økt mot en ekstern tjeneste, for eksempel tale til tekst mens noen snakker. Hver melding begge veier går gjennom plattformens vern, og økten er kjøringen.',
+      'A live session with an external service, such as speech to text while someone talks. Every message both ways passes the platform safeguards, and the session is the run.',
+    ),
+    pipeline: [
+      step(
+        text('Åpner økten', 'Opens the session'),
+        text(
+          'Plattformen kobler til leverandøren med nøkkelen sin, aldri med din.',
+          'The platform connects to the provider with its own key, never yours.',
+        ),
+      ),
+      step(
+        text('Sjekker hver melding', 'Checks every message'),
+        text(
+          'Tekst maskeres på vei ut og gjenopprettes på vei inn. Lyd krever at tjenesten har sagt ja til det.',
+          'Text is masked on the way out and restored on the way back. Audio needs the service to have agreed to it.',
+        ),
+      ),
+      step(
+        text('Avslutter og lagrer', 'Ends and records'),
+        text(
+          'Økten stopper ved lengste varighet eller når typen settes tilbake til test. Utskrift, forbruk og logg følger kjøringen.',
+          'The session stops at its longest duration or when the kind is set back to test. Transcript, usage and log follow the run.',
+        ),
+      ),
+    ],
+  },
   'remote-agent': {
     how: 'single',
     description: text(

@@ -1,0 +1,47 @@
+{
+  "source": "Made up for this test",
+  "deployment": "model-1",
+  "input": {
+    "query": "all rows"
+  },
+  "steps": [
+    {
+      "step": "start",
+      "request": {
+        "method": "POST",
+        "path": "/exports",
+        "body": {
+          "query": "all rows"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "location": "https://contract.invalid/files/e1.csv"
+        }
+      }
+    },
+    {
+      "step": "fetch",
+      "request": {
+        "method": "GET",
+        "path": "contract.invalid/files/e1.csv"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "mediaType": "text/csv",
+          "data": "YSxiCjEsMgo="
+        }
+      }
+    }
+  ],
+  "result": {
+    "data": {
+      "mediaType": "text/csv",
+      "data": "YSxiCjEsMgo="
+    }
+  },
+  "usage": {},
+  "dropped": 0
+}

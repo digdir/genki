@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { textPart, type Principal } from '@genai/contracts';
-import { createGate, createKernel, envSecrets } from '@genai/kernel';
+import { createGate, createKernel, envSecrets, InMemoryProviderObjects } from '@genai/kernel';
 import {
   bundledDescriptorDir,
   descriptorRegistry,
@@ -1459,5 +1459,129 @@ describe('embedding and rerank models in the model catalogue (ADR 0048)', () => 
 
     expect(apis.get('openai/embed@1')).toMatchObject({ id: 'openai/embeddings@1', kind: 'embed' });
     expect(apis.get('openai/embeddings@1')?.units).toEqual(['input-token', 'request']);
+  });
+});
+
+describe('provider-side objects and the processor record', () => {
+  const keepNote = parseDescriptor(`
+id: example/keep-note@1
+operation: keep-note
+status: described
+summary: A made-up API that stores a note at the provider, answers from it and deletes it.
+api: { family: example, version: '1' }
+input: { object: { text: text } }
+output: { object: { answer: text } }
+resources:
+  - { id: create.note, delete: remove_note, longestSeconds: 3600 }
+steps:
+  - name: create
+    request: { method: POST, path: /notes, body: { text: $input.text } }
+    wire:
+      request: { object: { text: text } }
+      response: { object: { id: plain } }
+    bind:
+      note: { from: $response.id, class: { issued: '^note-[a-z0-9]+$' } }
+  - name: ask
+    request: { method: POST, path: /answers, body: { note: $steps.create.note } }
+    wire:
+      request: { object: { note: { issued: '^note-[a-z0-9]+$' } } }
+      response: { object: { text: text } }
+finally:
+  - name: remove_note
+    request: { method: DELETE, path: '/notes/{steps.create.note}' }
+    wire: { response: { object: { deleted: boolean } } }
+result: { answer: $response.text }
+`);
+  const lab = {
+    endpoints: {
+      lab: {
+        baseURL: 'https://lab.example/v1',
+        auth: { kind: 'api-key', secret: 'secret://env/key-a' },
+        families: { example: '' },
+      },
+    },
+    models: [
+      {
+        id: 'lab/small',
+        endpoint: 'lab',
+        deployment: 'small',
+        residency: 'eu',
+        apis: { 'keep-note': 'example/keep-note@1' },
+      },
+    ],
+  };
+
+  const provider = (failDelete = false) => {
+    const seen: string[] = [];
+    const egress: typeof fetch = async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      seen.push(`${init?.method} ${path}`);
+      if (path === '/v1/notes') return Response.json({ id: 'note-a1' });
+      if (path === '/v1/answers') return Response.json({ text: 'done' });
+      return failDelete ? new Response('no', { status: 500 }) : Response.json({ deleted: true });
+    };
+    return { seen, egress };
+  };
+
+  const routerFor = (
+    stateAllowed: boolean,
+    egress: typeof fetch,
+    objects: InMemoryProviderObjects,
+  ) =>
+    new ModelRouter({
+      catalog: lab,
+      adapters: [recording('proto-a').adapter],
+      secrets: envSecrets({ KEY_A: 'key-from-env' }),
+      descriptors: descriptorRegistry([keepNote]),
+      governance: {
+        maturity: async () => 'production',
+        processorRecorded: async () => true,
+        providerStateAllowed: async () => stateAllowed,
+      },
+      objects,
+      gate: { ...createGate({ tier: 'test' }), egress: () => egress },
+    });
+
+  const run = (router: ModelRouter) =>
+    router
+      .described()
+      .open({ kind: 'model', id: 'lab/small' }, testContext().ctx)
+      .call('example/keep-note@1', { text: 'hei' });
+
+  it('a descriptor that leaves objects at the provider is refused as processor when the processor record does not allow provider state', async () => {
+    const { seen, egress } = provider();
+    await expect(
+      run(routerFor(false, egress, new InMemoryProviderObjects())),
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/does not name the provider's retention/),
+    });
+    expect(seen).toEqual([]);
+  });
+
+  it('writes the object to the ledger when it is issued and strikes it when the finally step deletes it', async () => {
+    const { seen, egress } = provider();
+    const objects = new InMemoryProviderObjects();
+    await expect(run(routerFor(true, egress, objects))).resolves.toEqual({ answer: 'done' });
+    expect(seen).toEqual(['POST /v1/notes', 'POST /v1/answers', 'DELETE /v1/notes/note-a1']);
+    const [note] = await objects.list(testContext().ctx.tenant);
+    expect(note).toMatchObject({ objectId: 'note-a1', state: 'deleted', connection: 'lab' });
+  });
+
+  it('leaves the object open in the ledger when the provider will not delete it, so the sweep finds it', async () => {
+    const { egress } = provider(true);
+    const objects = new InMemoryProviderObjects();
+    await run(routerFor(true, egress, objects)).catch(() => undefined);
+    const [note] = await objects.list(testContext().ctx.tenant);
+    expect(note).toMatchObject({ objectId: 'note-a1', state: 'open' });
+  });
+
+  it('the sweep deletes a leftover object through the descriptor of the call that made it', async () => {
+    const failing = provider(true);
+    const objects = new InMemoryProviderObjects();
+    await run(routerFor(true, failing.egress, objects)).catch(() => undefined);
+    const [left] = await objects.list(testContext().ctx.tenant, 'open');
+    const healthy = provider();
+    await routerFor(true, healthy.egress, objects).removeProviderObject(left as never);
+    expect(healthy.seen).toEqual(['DELETE /v1/notes/note-a1']);
   });
 });

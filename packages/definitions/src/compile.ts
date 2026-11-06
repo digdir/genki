@@ -120,7 +120,7 @@ export const toCapabilities = (
           ? [{ port: 'rerank', ref: ref('reranker', spec.knowledge.reranker) }]
           : []),
         ...modelGrants.map((id) => ({ port: 'model', ref: ref('model', id) })),
-        ...(strategy.id === 'step-flow'
+        ...(strategy.id === 'step-flow' || strategy.id === 'live-session'
           ? [...modelGrants, ...operationGrants].map((id) => ({
               port: 'described',
               ref: ref('model', id),

@@ -33,7 +33,7 @@ steps:
           id: { ref: '^job_[a-z0-9]+$' }
           status: { enum: [queued, running, succeeded, failed] }
     bind:
-      job: { from: $response.id, class: { ref: '^job_[a-z0-9]+$' } }
+      job: { from: $response.id, class: { issued: '^job_[a-z0-9]+$' } }
     usage:
       job: 1
     errors:

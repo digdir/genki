@@ -50,6 +50,15 @@ export const ProcessorRecordSpec = z.strictObject({
     days: z.number().int().min(0).max(3650),
     note: text(1000).optional(),
   }),
+  providerState: z
+    .strictObject({
+      allowed: z.boolean(),
+      retention: z.strictObject({
+        days: z.number().int().min(0).max(3650),
+        note: text(1000),
+      }),
+    })
+    .optional(),
 });
 
 export type ProcessorRecord = z.infer<typeof ProcessorRecordSpec>;
@@ -87,6 +96,8 @@ export const operationGovernance = (
       ),
     processorRecord,
     processorRecorded: async (endpoint) => (await processorRecord(endpoint)) !== undefined,
+    providerStateAllowed: async (endpoint) =>
+      (await processorRecord(endpoint))?.spec.providerState?.allowed === true,
     processorRecords: async () =>
       (await store.latest({ kind: processorRecordKind, scope: platformScope })).filter(
         (e) => !e.deleted,

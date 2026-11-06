@@ -19,6 +19,8 @@ output:
     summary: plain
 steps:
   - name: token
+    credential:
+      basic: { username: genki-client }
     request:
       method: POST
       path: /oauth/token

@@ -1,3 +1,5 @@
+import type { Server } from 'node:http';
+import { attachSessionUpgrade } from './session-upgrade.js';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -541,6 +543,7 @@ const platform = await createPlatform({
         conversations: db.conversations,
         threadErasure: db.threadErasure,
         modelClassifications: db.modelClassifications,
+        providerObjects: db.providerObjects,
         tenantSecrets: db.tenantSecrets,
         connections: db.connections,
         evalStores: db.eval,
@@ -731,6 +734,7 @@ if (mock) {
   });
 }
 
-serve({ fetch: app.fetch, port }, (info) => {
+const server = serve({ fetch: app.fetch, port }, (info) => {
   log('api listening', { port: info.port, version, mockLogin: Boolean(mock) });
 });
+attachSessionUpgrade(server as unknown as Server, app, platform.liveSessions);

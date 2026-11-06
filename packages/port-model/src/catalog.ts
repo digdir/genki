@@ -33,6 +33,9 @@ const discoveryRule = z.strictObject({
   apis: bindings.optional(),
 });
 
+export const allowedHostPattern =
+  /^(?![\d.]+(?::\d+)?$)(?=.{1,253}(?::\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\d{1,5})?$/;
+
 const endpoint = z.strictObject({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
@@ -40,6 +43,7 @@ const endpoint = z.strictObject({
     .record(z.string().regex(apiFamilyPattern), familyBase)
     .refine((f) => Object.keys(f).length > 0, 'a connection offers at least one API family'),
   discovery: z.array(discoveryRule).default([]),
+  allowedHosts: z.array(z.string().regex(allowedHostPattern)).max(20).optional(),
 });
 
 export const rerankFailureModes = ['degrade', 'fail'] as const;

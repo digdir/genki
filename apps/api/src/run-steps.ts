@@ -1,4 +1,4 @@
-import type { Event, Part } from '@genai/contracts';
+import { usageUnits, type Event, type Part, type Usage } from '@genai/contracts';
 import { mediaAttachments } from '@genai/kernel';
 import { intlLocale } from '@genai/i18n';
 import { failureOf, failureReason } from './failures.js';
@@ -54,8 +54,15 @@ export interface RunStats {
   cachedInputTokens?: number;
   costMicroNok: number;
   unpricedTokens: number;
+  units?: Record<string, number>;
+  unpricedUnits?: Record<string, number>;
   byModel: ModelTokens[];
 }
+
+const countedUnits = new Set(['input-token', 'output-token', 'cached-input-token', 'request']);
+
+const otherUnits = (usage: Usage) =>
+  Object.entries(usageUnits(usage)).filter(([unit]) => !countedUnits.has(unit));
 
 export interface HitView {
   id: string;
@@ -341,6 +348,8 @@ export class RunMapper {
   private cachedInputTokens = 0;
   private costMicroNok = 0;
   private unpricedTokens = 0;
+  private units: Record<string, number> = {};
+  private unpricedUnits: Record<string, number> = {};
 
   constructor(options: RunMapperOptions = {}) {
     this.details = options.details ?? false;
@@ -361,6 +370,8 @@ export class RunMapper {
       ...(this.cachedInputTokens ? { cachedInputTokens: this.cachedInputTokens } : {}),
       costMicroNok: this.costMicroNok,
       unpricedTokens: this.unpricedTokens,
+      ...(Object.keys(this.units).length ? { units: this.units } : {}),
+      ...(Object.keys(this.unpricedUnits).length ? { unpricedUnits: this.unpricedUnits } : {}),
       byModel: [...this.byModel.values()],
     };
   }
@@ -1205,6 +1216,10 @@ export class RunMapper {
     const cost = num(usage.costMicroNok);
     if (cost === undefined) this.unpricedTokens += input + output;
     else this.costMicroNok += cost;
+    for (const [unit, count] of otherUnits(usage as Usage)) {
+      this.units[unit] = (this.units[unit] ?? 0) + count;
+      if (cost === undefined) this.unpricedUnits[unit] = (this.unpricedUnits[unit] ?? 0) + count;
+    }
     const seen = this.byModel.get(model) ?? { model, inputTokens: 0, outputTokens: 0, calls: 0 };
     const modelCost = cost === undefined ? seen.costMicroNok : (seen.costMicroNok ?? 0) + cost;
     this.byModel.set(model, {

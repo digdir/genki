@@ -605,6 +605,7 @@ const mutant =
         real.call(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
       stream: (ctx, target, payload, request, send) =>
         real.stream(ctxOf(ctx), targetOf(target), payloadOf(payload), request, send),
+      session: (ctx, target, options) => real.session(ctxOf(ctx), targetOf(target), options),
     };
   };
 

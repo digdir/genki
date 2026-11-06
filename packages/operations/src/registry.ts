@@ -11,6 +11,8 @@ export interface DescriptorRegistry {
   list(): Descriptor[];
   /** Reads descriptors uploaded since the last read; a registry of files alone has none. */
   refresh?(): Promise<void>;
+  /** The bytes of an uploaded module by its SHA-256. */
+  module?(sha256: string): Uint8Array | undefined;
 }
 
 export const descriptorRegistry = (descriptors: readonly Descriptor[]): DescriptorRegistry => {

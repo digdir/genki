@@ -4,6 +4,7 @@ import {
   chatShape,
   decideShape,
   embedShape,
+  issued,
   json,
   longestBase64Run,
   maxDecisionQuestions,
@@ -209,5 +210,35 @@ describe('closed payload shapes', () => {
     expect(walk(shape, { signature: 3 }, request).problems).toEqual([
       'signature: must be a string',
     ]);
+  });
+});
+
+describe('issued ids', () => {
+  const id = issued(/^file-[a-z0-9]+$/);
+
+  it('an issued id in a request must be one the provider issued earlier in the call', () => {
+    expect(walk(id, 'file-a1', { ...request, issued: new Set(['file-a1']) }).problems).toEqual([]);
+    expect(walk(id, 'file-a1', request).problems).toEqual([
+      'payload: must be an id the provider issued earlier in this call, never input',
+    ]);
+    expect(walk(id, 'file-b2', { ...request, issued: new Set(['file-a1']) }).problems).toHaveLength(
+      1,
+    );
+  });
+
+  it('an issued id must match its pattern, and a URL is never one', () => {
+    expect(walk(id, 'x/../y', { ...request, issued: new Set(['x/../y']) }).problems[0]).toMatch(
+      /must match/,
+    );
+    const open = issued(/^.+$/);
+    expect(
+      walk(open, 'https://evil.example', { ...request, issued: new Set(['https://evil.example']) })
+        .problems[0],
+    ).toMatch(/URL/);
+  });
+
+  it('an issued id in an answer needs only its pattern', () => {
+    expect(walk(id, 'file-a1', result).problems).toEqual([]);
+    expect(walk(id, 'nope', result).problems).toHaveLength(1);
   });
 });

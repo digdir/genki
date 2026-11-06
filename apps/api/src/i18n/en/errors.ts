@@ -105,6 +105,7 @@ export const catalogErrors = {
   familyAndBase: 'name at least one API family and its base',
   noApiFamily: 'no API in the {family} family; one of {knownFamilies}',
   familyBase: 'a path under baseURL, or an HTTPS address without credentials',
+  allowedHostList: 'a list of at most 20 host names, each with an optional port',
   discoveryRules: 'a list of discovery rules',
   apiKeyOrBearer: 'api-key or bearer',
   usePlatformSecret: 'use a platform secret: secret://platform/<name>',

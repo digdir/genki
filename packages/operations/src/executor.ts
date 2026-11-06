@@ -2,13 +2,16 @@ import type { ResourceProvenance, Usage } from '@genai/contracts';
 import {
   encodeBase64,
   isMediaInput,
+  shape as shapes,
   ShapeError,
   walk,
   withoutTrailingSlashes,
   type Credential,
   type Gate,
+  type GateChunk,
   type GatePayload,
   type GateTarget,
+  type ObjectLedger,
   type PortContext,
   type Shape,
 } from '@genai/kernel';
@@ -19,6 +22,7 @@ import {
   type Descriptor,
   type ErrorRule,
   type OperationErrorKind,
+  type Resource,
   type Step,
 } from './descriptor.js';
 import {
@@ -27,9 +31,13 @@ import {
   contentTypeFits,
   decodeAnswer,
   encodeBody,
+  readFrames,
   recordedBody,
+  streamTypeFits,
 } from './encoding.js';
 import { evaluate, holds } from './mapping.js';
+import type { ConnectProvider } from './websocket.js';
+import { ModuleError, runModule, sha256Of } from './module.js';
 import { unwrapped } from './shape.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -51,6 +59,18 @@ export interface DescribedEndpoint {
   credential: Credential;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /** Hosts besides the connection's own that an answer URL may lead to; the operator sets them. */
+  allowedHosts?: readonly string[];
+  /** The connection's name, as the ledger records it. */
+  connection?: string;
+  tenant?: string;
+  run?: string;
+  ledger?: ObjectLedger;
+  /** Opens the provider's WebSocket for a session step; tests give a connection to a fake provider. */
+  connect?: ConnectProvider;
+  /** The bytes of a module by its SHA-256; a descriptor's module runs only from bytes that match its pin. */
+  modules?: (sha256: string) => Uint8Array | undefined;
+  now?: () => Date;
   /** Waits between polls and before a retry; tests pass one that does not wait. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
@@ -62,6 +82,7 @@ export interface Answer<Res = unknown> {
 }
 
 export const maxRequestsPerCall = 100;
+export const maxStreamEvents = 50_000;
 export const maxAnswerBytes = 32 * 1024 * 1024;
 
 /** One request and its answer as a fixture records it. */
@@ -183,6 +204,7 @@ interface RunState {
   deployment: string;
   steps: Record<string, Record<string, unknown>>;
   secrets: Map<string, string>;
+  links: Map<string, string>;
   issued: Set<string>;
   usage: Usage;
   dropped: number;
@@ -195,23 +217,29 @@ interface RunState {
 const credentialValue = async (credential: Credential) =>
   credential.kind === 'bearer' ? credential.token() : credential.key();
 
-const placed = (placement: CredentialPlacement, value: string) =>
-  placement.place === 'query'
-    ? { query: { [placement.name]: value }, headers: {} }
-    : {
-        query: {},
-        headers: {
-          [placement.name]: placement.scheme ? `${placement.scheme} ${value}` : value,
-        },
-      };
+const placed = (placement: CredentialPlacement, value: string) => {
+  if (placement.place === 'query') return { query: { [placement.name]: value }, headers: {} };
+  if (placement.place === 'header')
+    return {
+      query: {},
+      headers: { [placement.name]: placement.scheme ? `${placement.scheme} ${value}` : value },
+    };
+  return { query: {}, headers: {} };
+};
+
+interface Placed {
+  query: Record<string, string>;
+  headers: Record<string, string>;
+  fields?: Record<string, string>;
+  value: string;
+}
 
 /** Only the gate places a credential: the connection's, or a secret an earlier step bound. */
 const credentialFor = async (
-  descriptor: Descriptor,
   step: Step,
   endpoint: DescribedEndpoint,
   state: RunState,
-) => {
+): Promise<Placed> => {
   if (step.auth) {
     const secret = state.secrets.get(`${step.auth.secret.step}.${step.auth.secret.field}`);
     if (!secret) throw new ShapeError(`step ${step.name} has no secret to place`);
@@ -219,6 +247,17 @@ const credentialFor = async (
   }
   const { credential } = endpoint;
   const value = await credentialValue(credential);
+  const placement = step.credential;
+  if (placement.place === 'basic')
+    return {
+      query: {},
+      headers: {
+        authorization: `Basic ${Buffer.from(`${placement.username}:${value}`).toString('base64')}`,
+      },
+      value,
+    };
+  if (placement.place === 'form')
+    return { query: {}, headers: {}, fields: { [placement.name]: value }, value };
   if (credential.kind === 'bearer')
     return { query: {}, headers: { authorization: `Bearer ${value}` }, value };
   if (credential.header) {
@@ -229,7 +268,7 @@ const credentialFor = async (
       value,
     };
   }
-  return { ...placed(descriptor.auth, value), value };
+  return { ...placed(placement, value), value };
 };
 
 const walkedOrRefused = (
@@ -241,7 +280,7 @@ const walkedOrRefused = (
   state: RunState,
   options: SendOptions,
 ) => {
-  const walked = walk(shape, value, { side: 'request', issued: state.issued });
+  const walked = walk(shape, value, { side: 'request', issued: state.issued, wire: true });
   const notRead = walked.inputs.filter((i) => !isMediaInput(i.value)).map((i) => i.path);
   const problems = [
     ...walked.problems,
@@ -318,15 +357,66 @@ const runChecks = (descriptor: Descriptor, step: Step, scope: Record<string, unk
   }
 };
 
-const runStep = async (
+interface Prepared {
+  body: unknown;
+  query: Record<string, string>;
+  headers: Record<string, string>;
+  filenames: Record<string, string> | undefined;
+  path: string;
+  follow: URL | undefined;
+  media: string[];
+  deletes: boolean;
+}
+
+const mediaTypesFrom = (shape: Shape): string[] => {
+  const u = unwrapped(shape);
+  return u.kind === 'media' ? [...(u.types ?? [u.type])] : [];
+};
+
+const hostAllowed = (url: URL, endpoint: DescribedEndpoint) => {
+  const own = new URL(endpoint.baseURL);
+  return (
+    url.host === own.host ||
+    (endpoint.allowedHosts ?? []).some((h) => h.toLowerCase() === url.host.toLowerCase())
+  );
+};
+
+const followed = (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+) => {
+  const follow = step.request.follow;
+  if (!follow) return undefined;
+  const text = state.links.get(`${follow.step}.${follow.field}`);
+  const at = `${descriptor.id} step ${step.name}`;
+  if (!text) throw new ShapeError(`${at}: no link was bound by ${follow.step}`);
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new ShapeError(`${at}: the answer's link is not a URL`);
+  }
+  const own = new URL(endpoint.baseURL);
+  if (url.username || url.password)
+    throw new ShapeError(`${at}: the answer's link carries a login`);
+  if (url.protocol !== 'https:' && url.protocol !== own.protocol)
+    throw new ShapeError(`${at}: the answer's link is not https`);
+  if (!hostAllowed(url, endpoint))
+    throw new ShapeError(
+      `${at}: the answer's link leads to ${url.host}, which is neither the connection's host nor one the operator allows`,
+    );
+  return url;
+};
+
+const prepare = (
   descriptor: Descriptor,
   step: Step,
   endpoint: DescribedEndpoint,
   state: RunState,
   options: SendOptions,
-  fail: NonNullable<SendOptions['fail']>,
-) => {
-  const sleep = endpoint.sleep ?? defaultSleep;
+): Prepared => {
   const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
   const built = evaluate(step.request.body, scope);
   const body =
@@ -371,58 +461,170 @@ const runStep = async (
         ),
       )
     : {};
-  const path = pathOf(descriptor, step, state);
-  const responseMedia =
-    step.response.encoding === 'binary'
-      ? (unwrapped(step.wire.response) as { type: string }).type
-      : undefined;
-  let waited = 0;
+  const filenames = step.wire.filenames
+    ? stringValues(
+        walkedOrRefused(
+          descriptor,
+          step,
+          'file names',
+          step.wire.filenames,
+          evaluate(step.request.filenames, scope),
+          state,
+          options,
+        ),
+      )
+    : undefined;
+  const follow = followed(descriptor, step, endpoint, state);
+  return {
+    body,
+    query,
+    headers,
+    filenames,
+    path: follow ? '' : pathOf(descriptor, step, state),
+    follow,
+    media: step.response.encoding === 'binary' ? mediaTypesFrom(step.wire.response) : [],
+    deletes: descriptor.resources.some((r) => r.delete === step.name),
+  };
+};
+
+const bytesOf = async (body: RequestInit['body']): Promise<Uint8Array> => {
+  if (body === undefined || body === null) return new Uint8Array();
+  if (typeof body === 'string') return new TextEncoder().encode(body);
+  if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString());
+  if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
+  throw new ShapeError('a module signs a text body');
+};
+
+/** The headers a step's module returns for the request about to go out, walked against what the step declares. */
+const moduleHeaders = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  sent: { body: RequestInit['body']; path: string; key: string },
+): Promise<Record<string, string>> => {
+  const spec = step.module;
+  if (!spec) return {};
+  const at = `${descriptor.id} step ${step.name}`;
+  const declared = descriptor.modules[spec.use];
+  const bytes = declared ? endpoint.modules?.(declared.sha256) : undefined;
+  if (!declared || !bytes) throw new ShapeError(`${at}: the module ${spec.use} is not stored`);
+  if (sha256Of(bytes) !== declared.sha256)
+    throw new ShapeError(`${at}: the module ${spec.use} does not match its pinned SHA-256`);
+  const text = (value: string) => new TextEncoder().encode(value);
+  const now = (endpoint.now ?? (() => new Date()))();
+  let emitted: [string, string][];
+  try {
+    emitted = await runModule({
+      bytes,
+      inputs: {
+        body: await bytesOf(sent.body),
+        method: text(step.request.method),
+        path: text(sent.path),
+        timestamp: text(String(Math.floor(now.getTime() / 1000))),
+      },
+      keys: declared.keys.includes('connection') ? { connection: sent.key } : {},
+    });
+  } catch (error) {
+    if (error instanceof ModuleError) throw new ShapeError(`${at}: ${error.message}`);
+    throw error;
+  }
+  const names = emitted.map(([name]) => name);
+  const twice = names.filter((n, i) => names.indexOf(n) !== i);
+  if (twice.length > 0) throw new ShapeError(`${at}: the module returned ${twice[0]} twice`);
+  const walked = walkedOrRefused(
+    descriptor,
+    step,
+    'what the module returned',
+    shapes.object(spec.emits),
+    Object.fromEntries(emitted),
+    state,
+    options,
+  ) as Record<string, string>;
+  return Object.fromEntries(
+    Object.entries(spec.headers).map(([header, name]) => [header, walked[name] ?? '']),
+  );
+};
+
+type Dispatched =
+  { response: Response; request: RecordedRequest } | { gone: true; request: RecordedRequest };
+
+const dispatch = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  fail: NonNullable<SendOptions['fail']>,
+  prepared: Prepared,
+): Promise<Dispatched> => {
+  const sleep = endpoint.sleep ?? defaultSleep;
   let retries = 0;
   for (;;) {
     state.requests += 1;
     if (state.requests > maxRequestsPerCall)
       throw fail(undefined, `${descriptor.id} made more than ${maxRequestsPerCall} requests`);
-    const credential = await credentialFor(descriptor, step, endpoint, state);
-    const url = new URL(`${withoutTrailingSlashes(endpoint.baseURL)}${path}`);
-    for (const [name, value] of Object.entries({
-      ...descriptor.api.query,
-      ...query,
-      ...credential.query,
-    }))
-      url.searchParams.set(name, value);
-    const encoded = encodeBody(step.request.encoding, body);
+    const own = !prepared.follow || prepared.follow.host === new URL(endpoint.baseURL).host;
+    const credential: Placed = own
+      ? await credentialFor(step, endpoint, state)
+      : { query: {}, headers: {}, value: '' };
+    const url =
+      prepared.follow ?? new URL(`${withoutTrailingSlashes(endpoint.baseURL)}${prepared.path}`);
+    if (!prepared.follow)
+      for (const [name, value] of Object.entries({
+        ...descriptor.api.query,
+        ...prepared.query,
+        ...credential.query,
+      }))
+        url.searchParams.set(name, value);
+    const filenames = prepared.filenames ? { filenames: prepared.filenames } : {};
+    const encoded = encodeBody(step.request.encoding, prepared.body, {
+      ...filenames,
+      ...(credential.fields ? { fields: credential.fields } : {}),
+    });
+    const signed = await moduleHeaders(descriptor, step, endpoint, state, options, {
+      body: encoded.body,
+      path: prepared.path,
+      key: credential.value,
+    });
     const signals = [
       ...(options.signal ? [options.signal] : []),
       ...(endpoint.timeoutMs ? [AbortSignal.timeout(endpoint.timeoutMs)] : []),
     ];
     const response = await (endpoint.fetch ?? globalThis.fetch)(url, {
       method: step.request.method,
+      redirect: 'manual',
       headers: {
         ...(encoded.contentType ? { 'content-type': encoded.contentType } : {}),
-        accept: acceptOf(step.response.encoding, responseMedia),
-        ...descriptor.api.headers,
-        ...headers,
+        accept: step.response.stream
+          ? step.response.stream.framing === 'sse'
+            ? 'text/event-stream'
+            : 'application/x-ndjson, text/plain'
+          : acceptOf(step.response.encoding, prepared.media),
+        ...(prepared.follow ? {} : descriptor.api.headers),
+        ...prepared.headers,
+        ...signed,
         ...credential.headers,
       },
       ...(encoded.body === undefined ? {} : { body: encoded.body }),
       ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
     }).catch((error: unknown) => {
-      if (
-        Object.keys(credential.query).length > 0 &&
-        error instanceof Error &&
-        error.message.includes(credential.value)
-      )
+      if (credential.value && error instanceof Error && error.message.includes(credential.value))
         throw new Error(error.message.replaceAll(credential.value, '[redacted]'));
       throw error;
     });
+    const recorded = credential.fields
+      ? encodeBody(step.request.encoding, prepared.body, filenames)
+      : encoded;
     const request: RecordedRequest = {
       method: step.request.method,
-      path,
-      ...(Object.keys({ ...descriptor.api.query, ...query }).length
-        ? { query: { ...descriptor.api.query, ...query } }
-        : {}),
-      ...(Object.keys(headers).length ? { headers } : {}),
-      body: await recordedBody(encoded.body, encoded.contentType ?? null),
+      path: prepared.follow ? `${prepared.follow.host}${prepared.follow.pathname}` : prepared.path,
+      ...(prepared.follow || !Object.keys({ ...descriptor.api.query, ...prepared.query }).length
+        ? {}
+        : { query: { ...descriptor.api.query, ...prepared.query } }),
+      ...(Object.keys(prepared.headers).length ? { headers: prepared.headers } : {}),
+      body: await recordedBody(recorded.body, recorded.contentType ?? null),
     };
     if (!response.ok) {
       const errorBody = await readErrorBody(response);
@@ -432,6 +634,7 @@ const runStep = async (
         request,
         response: { status: response.status, body: errorBody },
       });
+      if (prepared.deletes && response.status === 404) return { gone: true, request };
       const rule = step.errors.find((r) => statusMatches(r.status, response.status));
       const kind = rule?.kind ?? (response.status === 429 ? 'rate-limited' : undefined);
       const after = retryAfterSeconds(response.headers.get('retry-after'));
@@ -456,15 +659,119 @@ const runStep = async (
         rule?.kind,
       );
     }
+    return { response, request };
+  }
+};
+
+const ledgerNow = (endpoint: DescribedEndpoint) => (endpoint.now ?? (() => new Date()))();
+
+const finish = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  scope: Record<string, unknown>,
+  answer: { response: unknown; headers: Record<string, unknown> },
+) => {
+  runChecks(descriptor, step, { ...scope, ...answer });
+  const bound: Record<string, unknown> = {};
+  for (const [field, spec] of Object.entries(step.bind)) {
+    const value = evaluate(spec.from, answer);
+    if (spec.class.kind === 'secret') {
+      if (typeof value !== 'string' || !value)
+        throw new ShapeError(`${descriptor.id} step ${step.name}: the secret ${field} is not text`);
+      state.secrets.set(`${step.name}.${field}`, value);
+      continue;
+    }
+    if (spec.class.kind === 'url') {
+      if (typeof value !== 'string' || !value)
+        throw new ShapeError(`${descriptor.id} step ${step.name}: the link ${field} is not text`);
+      state.links.set(`${step.name}.${field}`, value);
+      continue;
+    }
+    const checked = walk(spec.class.shape, value, { side: 'result' });
+    if (checked.problems.length > 0)
+      throw new ShapeError(
+        `${descriptor.id} step ${step.name}: bind.${field}: ${checked.problems.join('; ')}`,
+      );
+    bound[field] = checked.value;
+    if (unwrapped(spec.class.shape).kind === 'issued' && typeof checked.value === 'string') {
+      state.issued.add(checked.value);
+      const resource = descriptor.resources.find((r) => r.step === step.name && r.field === field);
+      if (resource) await record(descriptor, resource, endpoint, state, checked.value);
+    }
+  }
+  state.steps[step.name] = bound;
+  state.ran.add(step.name);
+  for (const resource of descriptor.resources) {
+    const id = state.steps[resource.step]?.[resource.field];
+    if (resource.delete === step.name && typeof id === 'string' && endpoint.ledger)
+      await endpoint.ledger.deleted({
+        tenant: endpoint.tenant ?? '',
+        connection: endpoint.connection ?? '',
+        objectId: id,
+      });
+  }
+};
+
+const record = async (
+  descriptor: Descriptor,
+  resource: Resource,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  objectId: string,
+) => {
+  if (!endpoint.ledger)
+    throw new ShapeError(
+      `${descriptor.id} keeps objects at the provider and the call has no ledger`,
+    );
+  await endpoint.ledger.created({
+    tenant: endpoint.tenant ?? '',
+    run: endpoint.run ?? '',
+    connection: endpoint.connection ?? '',
+    descriptor: descriptor.id,
+    deployment: state.deployment,
+    step: resource.step,
+    field: resource.field,
+    objectId,
+    deleteBy: new Date(
+      ledgerNow(endpoint).getTime() + resource.longestSeconds * 1000,
+    ).toISOString(),
+    deletable: resource.delete !== undefined,
+  });
+};
+
+const runStep = async (
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  fail: NonNullable<SendOptions['fail']>,
+) => {
+  if (step.session)
+    throw fail(undefined, `${descriptor.id} is a live session; it runs as a session`);
+  const sleep = endpoint.sleep ?? defaultSleep;
+  const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
+  const prepared = prepare(descriptor, step, endpoint, state, options);
+  let waited = 0;
+  for (;;) {
+    const sent = await dispatch(descriptor, step, endpoint, state, options, fail, prepared);
+    if ('gone' in sent) {
+      const answer = { response: undefined, headers: {} };
+      await finish(descriptor, step, endpoint, state, scope, answer);
+      return answer;
+    }
+    const { response, request } = sent;
     const contentType = response.headers.get('content-type');
-    if (!contentTypeFits(step.response.encoding, contentType, responseMedia))
+    if (!contentTypeFits(step.response.encoding, contentType, prepared.media))
       throw fail(
         undefined,
-        `${descriptor.id} step ${step.name} declares a ${responseMedia ?? step.response.encoding} answer, and the provider answered ${contentType ?? 'without a content type'}`,
+        `${descriptor.id} step ${step.name} declares a ${prepared.media.join(' or ') || step.response.encoding} answer, and the provider answered ${contentType ?? 'without a content type'}`,
       );
     let raw: unknown;
     try {
-      raw = await decodeAnswer(step.response.encoding, response, maxAnswerBytes);
+      raw = await decodeAnswer(step.response.encoding, response, maxAnswerBytes, prepared.media);
     } catch (error) {
       if (error instanceof AnswerFormatError)
         throw fail(undefined, `${descriptor.id} step ${step.name}: ${error.message}`);
@@ -502,48 +809,167 @@ const runStep = async (
       headers: walkedHeaders.value as Record<string, unknown>,
     };
     addUsage(state.usage, evaluate(step.usage, answer));
-    if (
-      step.until &&
-      !holds(evaluate(step.until.test, answer), evaluate(step.until.equals, answer))
-    ) {
-      const after = retryAfterSeconds(response.headers.get('retry-after'));
-      const wait = Math.max(step.until.intervalSeconds, Math.min(after ?? 0, maxRetryWaitSeconds));
-      if (waited + wait > step.until.longestSeconds)
+    const until = step.until;
+    if (until) {
+      const failing = until.fail;
+      if (
+        failing &&
+        holds(evaluate(failing.test ?? until.test, answer), evaluate(failing.equals, answer))
+      ) {
+        const mapped = evaluate(failing.message, answer);
         throw fail(
           undefined,
-          `${descriptor.id} step ${step.name} did not finish within ${step.until.longestSeconds} seconds`,
-          'unavailable',
+          typeof mapped === 'string'
+            ? mapped.slice(0, 500)
+            : `${descriptor.id} step ${step.name}: the provider reported a failure`,
+          failing.kind,
         );
-      waited += wait;
-      await sleep(wait * 1000, options.signal);
-      continue;
-    }
-    runChecks(descriptor, step, { ...scope, ...answer });
-    const bound: Record<string, unknown> = {};
-    for (const [field, spec] of Object.entries(step.bind)) {
-      const value = evaluate(spec.from, answer);
-      if (spec.class.kind === 'secret') {
-        if (typeof value !== 'string' || !value)
-          throw new ShapeError(
-            `${descriptor.id} step ${step.name}: the secret ${field} is not text`,
+      }
+      if (!holds(evaluate(until.test, answer), evaluate(until.equals, answer))) {
+        const after = retryAfterSeconds(response.headers.get('retry-after'));
+        const wait = Math.max(until.intervalSeconds, Math.min(after ?? 0, maxRetryWaitSeconds));
+        if (waited + wait > until.longestSeconds)
+          throw fail(
+            undefined,
+            `${descriptor.id} step ${step.name} did not finish within ${until.longestSeconds} seconds`,
+            'unavailable',
           );
-        state.secrets.set(`${step.name}.${field}`, value);
+        waited += wait;
+        await sleep(wait * 1000, options.signal);
         continue;
       }
-      const checked = walk(spec.class.shape, value, { side: 'result' });
-      if (checked.problems.length > 0)
-        throw new ShapeError(
-          `${descriptor.id} step ${step.name}: bind.${field}: ${checked.problems.join('; ')}`,
-        );
-      if (unwrapped(spec.class.shape).kind === 'ref' && typeof checked.value === 'string')
-        state.issued.add(checked.value);
-      bound[field] = checked.value;
     }
-    state.steps[step.name] = bound;
-    state.ran.add(step.name);
+    await finish(descriptor, step, endpoint, state, scope, answer);
     return answer;
   }
 };
+
+const lookupPath = (value: unknown, path: readonly string[]): unknown => {
+  let at = value;
+  for (const key of path) {
+    if (Array.isArray(at)) at = at[Number(key)];
+    else at = isRecord(at) ? at[key] : undefined;
+  }
+  return at;
+};
+
+export interface StreamedText {
+  kind: 'delta';
+  text: string;
+}
+
+async function* runStreamStep(
+  descriptor: Descriptor,
+  step: Step,
+  endpoint: DescribedEndpoint,
+  state: RunState,
+  options: SendOptions,
+  fail: NonNullable<SendOptions['fail']>,
+): AsyncGenerator<StreamedText, { response: unknown; headers: Record<string, unknown> }> {
+  const spec = step.response.stream as NonNullable<Step['response']['stream']>;
+  const at = `${descriptor.id} step ${step.name}`;
+  const scope = { input: state.input, deployment: state.deployment, steps: state.steps };
+  const prepared = prepare(descriptor, step, endpoint, state, options);
+  const sent = await dispatch(descriptor, step, endpoint, state, options, fail, prepared);
+  if ('gone' in sent) throw fail(undefined, `${at}: the provider has no stream to read`);
+  const { response, request } = sent;
+  const contentType = response.headers.get('content-type');
+  if (!streamTypeFits(spec.framing, contentType))
+    throw fail(
+      undefined,
+      `${at} declares a ${spec.framing} stream, and the provider answered ${contentType ?? 'without a content type'}`,
+    );
+  const waitsForEnd = spec.end !== undefined || Object.values(spec.events).some((e) => e.done);
+  const frames: { event?: string; data: unknown }[] = [];
+  const usage: Record<string, unknown> = {};
+  let text = '';
+  let last: unknown;
+  let ended = false;
+  try {
+    for await (const frame of readFrames(response, spec.framing, maxAnswerBytes)) {
+      if (spec.end !== undefined && frame.data === spec.end) {
+        frames.push({ ...(frame.event ? { event: frame.event } : {}), data: frame.data });
+        ended = true;
+        break;
+      }
+      if (frames.length >= maxStreamEvents)
+        throw fail(undefined, `${at}: the stream sent more than ${maxStreamEvents} events`);
+      let parsed: unknown = frame.data;
+      const parse = () => {
+        try {
+          return JSON.parse(frame.data) as unknown;
+        } catch {
+          throw fail(undefined, `${at}: the stream sent a part that is not JSON`);
+        }
+      };
+      let name: string;
+      if (spec.framing === 'lines') name = 'line';
+      else if (spec.name) {
+        parsed = parse();
+        const named = lookupPath(parsed, spec.name);
+        name = typeof named === 'string' ? named : '';
+      } else name = frame.event ?? 'message';
+      const event = spec.events[name];
+      if (!event)
+        throw fail(
+          undefined,
+          `${at}: the stream sent an event it does not declare (${name.slice(0, 64)}), so it is ended`,
+        );
+      if (spec.framing !== 'lines' && !spec.name)
+        parsed = ['text', 'plain'].includes(event.shape.kind) ? frame.data : parse();
+      frames.push({ ...(frame.event ? { event: frame.event } : {}), data: parsed });
+      const walked = walk(event.shape, parsed, { side: 'result' });
+      if (walked.problems.length > 0)
+        throw new ShapeError(
+          `the provider streamed ${at} an event outside its shape (${name}): ${walked.problems.join('; ')}`,
+        );
+      state.dropped += walked.dropped;
+      if (event.fail) {
+        const mapped = evaluate(event.fail.message, { event: walked.value });
+        throw fail(
+          undefined,
+          typeof mapped === 'string'
+            ? mapped.slice(0, 500)
+            : `${at}: the provider reported a failure`,
+          event.fail.kind,
+        );
+      }
+      last = walked.value;
+      const mappedUsage = evaluate(step.usage, { response: walked.value, headers: {} });
+      if (isRecord(mappedUsage))
+        for (const [key, value] of Object.entries(mappedUsage))
+          if (value !== undefined && value !== null) usage[key] = value;
+      if (event.delta) {
+        const piece = lookupPath(walked.value, event.delta);
+        if (typeof piece === 'string' && piece !== '') {
+          text += piece;
+          yield { kind: 'delta', text: piece };
+        }
+      }
+      if (event.done) {
+        ended = true;
+        break;
+      }
+    }
+  } catch (error) {
+    if (error instanceof AnswerFormatError) throw fail(undefined, `${at}: ${error.message}`);
+    throw error;
+  }
+  if (waitsForEnd && !ended)
+    throw fail(undefined, `${at}: the stream ended without its final event`, 'unavailable');
+  state.exchanges.push({
+    step: step.name,
+    request,
+    response: { status: response.status, body: frames },
+  });
+  addUsage(state.usage, usage);
+  const answer = {
+    response: { text, ...(last === undefined ? {} : { last }) },
+    headers: {},
+  };
+  await finish(descriptor, step, endpoint, state, scope, answer);
+  return answer;
+}
 
 const readsOnly = (step: Step, ran: Set<string>) =>
   JSON.stringify([step.request, step.auth ?? null])
@@ -566,42 +992,55 @@ const withoutSecrets = (exchange: WireExchange, secrets: Iterable<string>): Wire
   return JSON.parse(text) as WireExchange;
 };
 
-/** Sends a typed input that the gate has already held to its shape, step by step, and maps the answer back. */
-export const describedSend = async <Res = unknown>(
+const newState = (input: unknown, deployment: string): RunState => ({
+  input,
+  deployment,
+  steps: {},
+  secrets: new Map(),
+  links: new Map(),
+  issued: new Set(),
+  usage: {},
+  dropped: 0,
+  exchanges: [],
+  last: { response: undefined, headers: {} },
+  requests: 0,
+  ran: new Set(),
+});
+
+async function* runDescriptor<Res>(
   descriptor: Descriptor,
   endpoint: DescribedEndpoint,
   deployment: string,
   input: unknown,
-  options: SendOptions = {},
-): Promise<Answer<Res>> => {
+  options: SendOptions,
+): AsyncGenerator<StreamedText, Answer<Res>> {
   const fail =
     options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
-  const state: RunState = {
-    input,
-    deployment,
-    steps: {},
-    secrets: new Map(),
-    issued: new Set(),
-    usage: {},
-    dropped: 0,
-    exchanges: [],
-    last: { response: undefined, headers: {} },
-    requests: 0,
-    ran: new Set(),
-  };
+  if (descriptor.resources.length > 0 && !endpoint.ledger)
+    throw fail(
+      undefined,
+      `${descriptor.id} keeps objects at the provider and the call has no ledger`,
+      'processor',
+    );
+  const state = newState(input, deployment);
   let failure: unknown;
   try {
-    for (const step of descriptor.steps)
-      state.last = await runStep(descriptor, step, endpoint, state, options, fail);
-  } catch (error) {
-    failure = error;
-  }
-  for (const step of descriptor.finally) {
-    if (!readsOnly(step, state.ran)) continue;
     try {
-      await runStep(descriptor, step, endpoint, state, options, fail);
+      for (const step of descriptor.steps)
+        state.last = step.response.stream
+          ? yield* runStreamStep(descriptor, step, endpoint, state, options, fail)
+          : await runStep(descriptor, step, endpoint, state, options, fail);
     } catch (error) {
-      failure ??= error;
+      failure = error;
+    }
+  } finally {
+    for (const step of descriptor.finally) {
+      if (!readsOnly(step, state.ran)) continue;
+      try {
+        await runStep(descriptor, step, endpoint, state, options, fail);
+      } catch (error) {
+        if (!descriptor.resources.some((r) => r.delete === step.name)) failure ??= error;
+      }
     }
   }
   if (failure !== undefined) throw failure;
@@ -632,6 +1071,65 @@ export const describedSend = async <Res = unknown>(
     );
   }
   return { result, usage, dropped: state.dropped };
+}
+
+/** Sends a typed input that the gate has already held to its shape, step by step, and maps the answer back. */
+export const describedSend = async <Res = unknown>(
+  descriptor: Descriptor,
+  endpoint: DescribedEndpoint,
+  deployment: string,
+  input: unknown,
+  options: SendOptions = {},
+): Promise<Answer<Res>> => {
+  const run = runDescriptor<Res>(descriptor, endpoint, deployment, input, options);
+  for (;;) {
+    const next = await run.next();
+    if (next.done) return next.value;
+  }
+};
+
+/** Streams a descriptor's text deltas, then its answer; the gate masks, restores and meters what passes. */
+export async function* describedStream<Res = unknown>(
+  descriptor: Descriptor,
+  endpoint: DescribedEndpoint,
+  deployment: string,
+  input: unknown,
+  options: SendOptions = {},
+): AsyncGenerator<StreamedText | { kind: 'answer'; answer: Answer<Res> }> {
+  const run = runDescriptor<Res>(descriptor, endpoint, deployment, input, options);
+  for (;;) {
+    const next = await run.next();
+    if (next.done) {
+      yield { kind: 'answer', answer: next.value };
+      return;
+    }
+    yield next.value;
+  }
+}
+
+/** Deletes one leftover object at the provider by running its descriptor's delete step alone. */
+export const deleteProviderObject = async (
+  descriptor: Descriptor,
+  resource: Resource,
+  endpoint: DescribedEndpoint,
+  object: { objectId: string; deployment: string },
+  options: SendOptions = {},
+): Promise<void> => {
+  const step = [...descriptor.steps, ...descriptor.finally].find((s) => s.name === resource.delete);
+  if (!step)
+    throw new ShapeError(`${descriptor.id} has no step ${resource.delete ?? ''} to delete with`);
+  const fail =
+    options.fail ?? ((status, message, kind) => new OperationError(status, message, kind));
+  const binding = descriptor.steps.find((s) => s.name === resource.step)?.bind[resource.field];
+  if (binding?.class.kind === 'shape') {
+    const checked = walk(binding.class.shape, object.objectId, { side: 'result' });
+    if (checked.problems.length > 0)
+      throw new ShapeError(`${descriptor.id}: ${object.objectId} is not an id of this descriptor`);
+  }
+  const state = newState({}, object.deployment);
+  state.steps[resource.step] = { [resource.field]: object.objectId };
+  state.issued.add(object.objectId);
+  await runStep(descriptor, step, endpoint, state, options, fail);
 };
 
 export interface DescribedCall {
@@ -677,3 +1175,56 @@ export const describedCall = async <Res = unknown>(
     },
   );
 };
+
+/** The same call as a stream: the descriptor's text deltas pass through the gate's masking, then its result. */
+export const describedStreamCall = <Res = unknown>(
+  call: DescribedCall,
+  input: unknown,
+): AsyncIterable<GateChunk<Res>> => {
+  const { descriptor } = call;
+  let answered: Answer<Res> | undefined;
+  const payload: GatePayload<Res> = {
+    shape: { request: descriptor.input, result: descriptor.output },
+    usage: () => answered && (call.priced ? call.priced(answered.usage) : answered.usage),
+    dropped: () => answered?.dropped,
+    ...(call.provenance ? { provenance: call.provenance } : {}),
+  };
+  return call.gate.stream<unknown, Res>(
+    call.ctx,
+    { ...call.target, descriptor: descriptor.id },
+    payload,
+    input,
+    async function* (sent) {
+      for await (const part of describedStream<Res>(
+        descriptor,
+        call.endpoint,
+        call.deployment,
+        sent,
+        {
+          signal: call.ctx.signal,
+          ...(call.fail ? { fail: call.fail } : {}),
+          ...(call.inspect ? { inspect: call.inspect } : {}),
+        },
+      )) {
+        if (part.kind === 'delta') yield part;
+        else {
+          answered = part.answer;
+          yield { kind: 'done', result: part.answer.result };
+        }
+      }
+    },
+  );
+};
+
+/** What the session executor shares with this file; not part of the package's surface. */
+export const executorInternals = {
+  newState,
+  prepare,
+  credentialFor,
+  runStep,
+  readsOnly,
+  lookupPath,
+  addUsage,
+  isRecord,
+};
+export type { RunState };

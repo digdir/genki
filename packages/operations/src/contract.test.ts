@@ -263,12 +263,15 @@ describe('media output in descriptors', () => {
     expect(() => parseDescriptor(imageField('{ media: image/png }'))).not.toThrow();
   });
 
-  it('a media marker names one media type', () => {
+  it('a media marker names a media type, or a list of them', () => {
     for (const type of ['image', '"image/png; charset=x"'])
-      expect(() => parseDescriptor(mediaYaml(type))).toThrow('must be one media type');
+      expect(() => parseDescriptor(mediaYaml(type))).toThrow('must be a media type');
   });
 
-  it('media coming back names one media type, not a wildcard', () => {
-    expect(() => parseDescriptor(mediaYaml('image/*'))).toThrow('must be one media type');
+  it('media coming back names its media types, never a wildcard', () => {
+    expect(() => parseDescriptor(mediaYaml('image/*'))).toThrow('names its media types');
+    expect(() => parseDescriptor(mediaYaml('[image/png, image/*]'))).toThrow(
+      'names its media types',
+    );
   });
 });

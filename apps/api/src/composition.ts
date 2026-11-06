@@ -134,6 +134,7 @@ import {
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type ProviderObjectStore,
   type MediaOutputConfig,
   type PolicyDecisionPoint,
   type SecretResolver,
@@ -398,6 +399,7 @@ export interface PlatformInput {
   conversations?: ConversationStore;
   threadErasure?: ThreadErasure;
   modelClassifications?: ModelClassificationStore;
+  providerObjects?: ProviderObjectStore;
   onWarning?: (message: string) => void;
   observe?: (log: EventLog) => EventLog;
   blobStore?: BlobStore;
@@ -559,6 +561,7 @@ const entryOf = (compiled: CompiledCapability, name: string): ModelEntry => {
     variantTitle: variantDisplayName(compiled),
     ...(name === compiled.publicName ? {} : { aliasOf: compiled.publicName }),
     ...(compiled.chat === false ? { chat: false } : {}),
+    ...(strategy.id === 'live-session' ? { live: true } : {}),
   };
 };
 
@@ -1039,6 +1042,14 @@ export const createPlatform = async (input: PlatformInput) => {
     ...(input.mediaOutput ? { mediaOutput: input.mediaOutput } : {}),
     ...(input.connections ? { connections: input.connections } : {}),
     ...(input.modelClassifications ? { modelClassifications: input.modelClassifications } : {}),
+    ...(input.providerObjects ? { providerObjects: input.providerObjects } : {}),
+    foreignFetch: (hosts) =>
+      pluginEgress.fetch(
+        hosts.map((h) => {
+          const [host = '', port] = h.split(':');
+          return { host, port: port ? Number(port) : 443 };
+        }),
+      ),
     ...(input.knowledgePool ? { knowledgePool: input.knowledgePool } : {}),
     ...(input.knowledgeServer ? { knowledgeServer: input.knowledgeServer } : {}),
     ...(input.embeddingAdapters ? { embeddingAdapters: input.embeddingAdapters } : {}),
@@ -2164,6 +2175,7 @@ export const createPlatform = async (input: PlatformInput) => {
     writers,
     catalog: config.catalog,
     descriptors: runtime.descriptors,
+    liveSessions: runtime.liveSessions,
     ingestion: config.ingestion,
     gates: configurables.gates,
     guardrailRules: configurables.rules,
