@@ -1,7 +1,8 @@
-import { Button, Card, Link, Paragraph, Skeleton, Spinner } from '@digdir/designsystemet-react';
+import { Button, Card, Paragraph, Skeleton, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { ArrowsCirclepathIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { FootnoteMark } from '../footnote/FootnoteMark.js';
 import { useT } from '../i18n.js';
 import {
   Markdown,
@@ -173,37 +174,22 @@ interface FootnoteProps {
   footnotes: Map<number, HTMLElement>;
 }
 
-// Always the excerpt's number in a round mark, as kunnskapsassistenten draws it, and never a
-// document's. A link named by what it cites and the document:
-// a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
-// so a copied answer still reads «[1]». With nowhere to go, it is a mark and not a link, which
-// would jump to the top of the page.
+// Always the excerpt's number in the shared round mark, as kunnskapsassistenten draws it, and
+// never a document's, raised beside the word before it. Named by what it cites and the document.
 const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: FootnoteProps) => (
   <sup className="uib-answer-footnote">
-    {href === undefined && onOpen === undefined ? (
-      <span id={id} className="uib-answer-mark" role="img" aria-label={label} title={label}>
-        <span className="uib-answer-copy">[</span>
-        {number}
-        <span className="uib-answer-copy">]</span>
-      </span>
-    ) : (
-      <Link
-        ref={(element: HTMLAnchorElement | null) => {
-          if (element) footnotes.set(citation, element);
-          else footnotes.delete(citation);
-        }}
-        id={id}
-        className="uib-answer-mark"
-        href={href ?? '#'}
-        aria-label={label}
-        title={label}
-        onClick={onOpen}
-      >
-        <span className="uib-answer-copy">[</span>
-        {number}
-        <span className="uib-answer-copy">]</span>
-      </Link>
-    )}
+    <FootnoteMark
+      number={number}
+      label={label}
+      href={href}
+      onClick={onOpen}
+      id={id}
+      raised
+      linkRef={(element: HTMLAnchorElement | null) => {
+        if (element) footnotes.set(citation, element);
+        else footnotes.delete(citation);
+      }}
+    />
   </sup>
 );
 

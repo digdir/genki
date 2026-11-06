@@ -74,7 +74,7 @@ const BLOCKS = new Set([
   'H4',
   'H5',
 ]);
-const HIDDEN = '.uib-answer-copy, .uib-markdown-cite-space, .ds-sr-only, [aria-hidden="true"]';
+const HIDDEN = '.uib-footnote-copy, .uib-markdown-cite-space, .ds-sr-only, [aria-hidden="true"]';
 
 // What a reader sees: text that is drawn, with a line break between blocks.
 const visible = (node: Node): string => {
@@ -130,7 +130,7 @@ describe('the answer on real answers from genki-test', () => {
           onOpenExcerpt={() => {}}
         />,
       );
-      const marks = container.querySelectorAll('.uib-answer-mark');
+      const marks = container.querySelectorAll('.uib-footnote-mark');
       if (marks.length) problems.push(`${file}: ${marks.length} footnotes drawn`);
       if (/\b(?:Kilde|Utdrag) \d/.test(visible(container)))
         problems.push(`${file}: a number is shown`);
@@ -164,7 +164,7 @@ describe('the answer on real answers from genki-test', () => {
       const cards = [...container.querySelectorAll<HTMLElement>('.uib-sources-document')];
       expect(cards.length, file).toBe(sources.length);
       expect(container.textContent, file).not.toMatch(/\b(?:Kilde|Utdrag) \d/);
-      expect(within(container).queryAllByRole('link', { name: /til svaret/i }), file).toEqual([]);
+      expect(within(container).queryAllByRole('link', { name: /^Fotnote \d/ }), file).toEqual([]);
       cards.forEach((card, i) => {
         // A document no footnote names says so; a cited one does not.
         expect(

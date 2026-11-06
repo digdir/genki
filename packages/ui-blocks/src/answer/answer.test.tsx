@@ -66,8 +66,8 @@ const draw = (props: Partial<AnswerProps> = {}) =>
 
 // The footnote marks in page order: links when the app gives them somewhere to go, else marks.
 const footnotes = () =>
-  [...document.querySelectorAll<HTMLElement>('.uib-answer-mark')].filter((mark) =>
-    /^Utdrag \d+: /.test(mark.getAttribute('aria-label') ?? ''),
+  [...document.querySelectorAll<HTMLElement>('.uib-answer-footnote .uib-footnote-mark')].filter(
+    (mark) => /^Utdrag \d+: /.test(mark.getAttribute('aria-label') ?? ''),
   );
 
 describe('the footnotes in the answer', () => {
@@ -85,8 +85,9 @@ describe('the footnotes in the answer', () => {
   it('draws the number in a mark, the brackets kept for copying but out of sight', () => {
     draw();
     const mark = footnotes()[0] as HTMLElement;
-    expect(mark.className).toContain('uib-answer-mark');
-    expect([...mark.querySelectorAll('.uib-answer-copy')].map((s) => s.textContent)).toEqual([
+    expect(mark.className).toContain('uib-footnote-mark');
+    expect(mark.hasAttribute('data-raised')).toBe(true);
+    expect([...mark.querySelectorAll('.uib-footnote-copy')].map((s) => s.textContent)).toEqual([
       '[',
       ']',
     ]);
@@ -122,7 +123,7 @@ describe('the footnotes in the answer', () => {
       />,
     );
     expect(footnotes()).toEqual([]);
-    expect(container.querySelector('.uib-answer-mark')).toBeNull();
+    expect(container.querySelector('.uib-footnote-mark')).toBeNull();
     expect(container.querySelector('.uib-answer-text')?.textContent).toBe(
       'Bevilgningen økte, og rapporteringen er fast.',
     );
@@ -245,7 +246,7 @@ const Host = ({ cites = 'excerpts' }: { cites?: 'excerpts' | 'documents' }) => {
 };
 
 // «Utdrag n» in Sources: the excerpt's title, a link back when the app takes one.
-const numberSelector = '.uib-sources-excerpt-number, .uib-sources-title-link';
+const numberSelector = '.uib-sources-excerpt-number';
 const excerptRow = (n: number) =>
   screen
     .getByText(`Utdrag ${n}`, { selector: numberSelector })
@@ -269,9 +270,9 @@ describe('the pairing, both ways, between the answer and Sources', () => {
       fireEvent.click(footnote);
       await frame();
       const n = /^Utdrag (\d+)/.exec(footnote.getAttribute('aria-label') ?? '')?.[1];
-      expect(document.activeElement?.querySelector('.uib-sources-title-link')?.textContent).toBe(
-        `Utdrag ${n}`,
-      );
+      expect(
+        document.activeElement?.querySelector('.uib-sources-excerpt-number')?.textContent,
+      ).toBe(`Utdrag ${n}`);
     }
     // The excerpt nothing cites is shown without a number, and says so.
     const uncited = screen
@@ -290,13 +291,13 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     expect(row.textContent).toContain('594,2 mill. kroner');
   });
 
-  it('leads from an excerpt’s title back to its first footnote, and from «↩ 2» beside it to the next', async () => {
+  it('leads from the links beside an excerpt’s title back to each footnote that cites it', async () => {
     render(<Host />);
-    const back = within(excerptRow(1)).getAllByRole('link', { name: /til svaret/i });
-    expect(back.map((link) => link.textContent)).toEqual(['Utdrag 1', '2']);
+    const back = within(excerptRow(1)).getAllByRole('link', { name: /^Fotnote \d/ });
+    expect(back.map((link) => link.textContent)).toEqual(['1', '2']);
     expect(back.map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Utdrag 1, til svaret, bruk 1, fotnote 1 av 4',
-      'Til svaret, bruk 2, fotnote 4 av 4',
+      'Fotnote 1, første sted i svaret',
+      'Fotnote 1, andre sted i svaret',
     ]);
     fireEvent.click(back[1] as HTMLElement);
     await frame();
@@ -360,7 +361,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     render(<Host cites="documents" />);
     expect(footnotes()).toEqual([]);
     expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
-    expect(screen.queryAllByRole('link', { name: /til svaret|i Kilder$/i })).toEqual([]);
+    expect(screen.queryAllByRole('link', { name: /^Fotnote \d|i Kilder$/i })).toEqual([]);
     expect(screen.getByRole('link', { name: nkom.title })).toBeTruthy();
     expect(screen.getByRole('link', { name: tildeling.title })).toBeTruthy();
   });
