@@ -148,7 +148,7 @@ describe('each answer', () => {
     draw({ answerColor: 'neutral' });
     const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
     expect(card?.getAttribute('data-color')).toBe('neutral');
-    expect(screen.getAllByRole('link', { name: /^Kilde: / })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: /^Kilde \d+: / })).toHaveLength(2);
     expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
   });
 
@@ -156,7 +156,9 @@ describe('each answer', () => {
     const onOpenCitation = vi.fn();
     const onOpenDocument = vi.fn();
     draw({ onOpenCitation, onOpenDocument });
-    fireEvent.click(screen.getAllByRole('link', { name: /^Kilde: Tildelingsbrev/ })[0] as Element);
+    fireEvent.click(
+      screen.getAllByRole('link', { name: /^Kilde 1: Tildelingsbrev/ })[0] as Element,
+    );
     expect(onOpenCitation).toHaveBeenCalledWith(answer, 0, {
       documentId: 'kudos::2022',
       index: 2,
@@ -169,7 +171,7 @@ describe('each answer', () => {
   it('gives each footnote the id the app makes from its answer and its place', () => {
     draw({ citationId: (turn, citation) => `${turn.id}-fn-${citation}` });
     expect(
-      screen.getAllByRole('link', { name: /^Kilde: / }).map((link) => link.getAttribute('id')),
+      screen.getAllByRole('link', { name: /^Kilde \d+: / }).map((link) => link.getAttribute('id')),
     ).toEqual(['a1-fn-0', 'a1-fn-1']);
   });
 
@@ -181,7 +183,7 @@ describe('each answer', () => {
     await frame();
     const focused = document.activeElement;
     expect(focused?.getAttribute('aria-label')).toBe(
-      'Kilde: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+      'Kilde 2: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
     );
     expect(focused?.closest('li')).toBe(items()[3]);
   });

@@ -92,7 +92,7 @@ describe('the conversation on real answers from genki-test', () => {
     let footnotes = 0;
     for (const [i, { answer }] of exchanges.entries()) {
       const drawn = within(items[2 * i + 1] as HTMLElement).queryAllByRole('link', {
-        name: /^Kilde: /,
+        name: /^Kilde \d+: /,
       }).length;
       expect(drawn, answer.id).toBe(readFootnotes(answer.text, answer.sources).citations.length);
       footnotes += drawn;
