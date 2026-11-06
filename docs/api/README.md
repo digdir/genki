@@ -63,6 +63,16 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 ## API changes
 
+### 2026-11-06: any provider API by descriptor
+
+- Descriptors gain the classes `issued` and `url`, per-step `credential` placements (`header`, `query`, `form`, `basic`), multipart `filenames`, `request.follow`, `until.fail`, the mapping functions `$dataUrl`, `$add`, `$sub`, `$mul` and `$coalesce`, several media types in one output, and `response.stream` (`sse`, `ndjson`, `lines`) with `resources`, `modules` and `websocket` steps (ADR 0049, [operations.md](operations.md)).
+- `GET /v1/sessions?model=<service>` with an upgrade to WebSocket opens a live session on a service whose way of working is `live-session@1`. A request without an upgrade answers `426 upgrade_required`; `/v1/chat/completions` answers `400 live_only` for such a service. The close codes are 1000, 1001, 4001 (longest duration), 4002 (kind moved back to test) and 1011.
+- `/v1/chat/completions` with `stream: true` streams the deltas of a `call-operation@1` step with `stream: true`.
+- `PUT /operator/model-endpoints/{id}/processor-record` takes `providerState: { allowed, retention: { days, note } }`; `GET /operator/processor-records` shows it. `allowedHosts` on a model connection is set by operators only.
+- `PUT /operator/operation-descriptors/{id}` takes `modules: { <name>: <base64 WebAssembly> }`; the answer lists `modules: [{ name, sha256 }]`. A fixture may carry `at` and `session`.
+- A provider object that cannot be deleted becomes the audit action `platform.provider-object.incident` (rejected) in the tenant's log.
+- Usage totals carry `units` for open units wherever usage is returned.
+
 ### 2026-11-05: descriptors from primitives and media input with consent
 
 - Operation descriptors may be a list of `steps` with `bind`, `until`, `finally`, request encodings `multipart`, `form`, `binary`, `text` and `ndjson`, answer encodings `binary`, `text` and `ndjson`, classified query parameters and headers, open usage units, `errors` and `checks` (ADR 0049, [operations.md](operations.md)). One-request descriptors and their fixtures are read unchanged; a fixture may record `steps: [{ step, request, response }]`.

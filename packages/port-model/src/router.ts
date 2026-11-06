@@ -13,12 +13,22 @@ import {
   type Credential,
   type Gate,
   type GateTarget,
+  type ObjectLedger,
+  type ProviderObjectRecord,
   type PortContext,
   type PortProvider,
   type SecretResolver,
   type Shape,
 } from '@genai/kernel';
-import { describedCall, describedSend } from '@genai/operations';
+import {
+  describedCall,
+  describedSend,
+  deleteProviderObject,
+  describedSession,
+  describedStreamCall,
+  type DescribedCall,
+  type SessionIO,
+} from '@genai/operations';
 import {
   describedError,
   errorFromStatus,
@@ -43,7 +53,12 @@ import {
   type ModelCatalog,
 } from './catalog.js';
 import type { DecisionPort, DecisionRequest, DecisionResult } from './decision.js';
-import { unrecordedGovernance, type OperationGovernance, type OperationPort } from './operation.js';
+import {
+  unrecordedGovernance,
+  type OperationCallOptions,
+  type OperationGovernance,
+  type OperationPort,
+} from './operation.js';
 import { chatPayload, decidePayload, modelRefusal } from './gate.js';
 import { applyParameterRules, type ParameterRules, type TunableParameter } from './parameters.js';
 import {
@@ -90,6 +105,9 @@ export interface ModelRouterOptions {
   gate?: Gate;
   descriptors?: ApiDescriptors;
   governance?: OperationGovernance;
+  objects?: ObjectLedger;
+  /** A fetch that only reaches the listed hosts and never a private address; used for answer links. */
+  foreignFetch?: (hosts: string[]) => typeof fetch;
 }
 
 export type ModelPrice = UsagePrice;
@@ -258,13 +276,27 @@ export class ModelRouter implements PortProvider<ModelPort> {
     this.#load(catalog);
   }
 
-  #described(model: CatalogModel, family: string) {
-    const endpoint = this.#catalog.endpoints[model.endpoint] as CatalogEndpoint;
+  #described(connection: string, family: string) {
+    const endpoint = this.#catalog.endpoints[connection] as CatalogEndpoint;
+    const baseURL = familyURL(endpoint, endpoint.families[family] ?? '');
+    const own = this.#gate.egress(connection);
+    const hosts = endpoint.allowedHosts ?? [];
+    const foreign = hosts.length > 0 ? this.options.foreignFetch?.(hosts) : undefined;
+    const ownHost = new URL(baseURL).host;
     return {
-      baseURL: familyURL(endpoint, endpoint.families[family] ?? ''),
-      credential: this.#credentials.get(model.endpoint) as Credential,
-      fetch: this.#gate.egress(model.endpoint),
+      baseURL,
+      credential: this.#credentials.get(connection) as Credential,
+      fetch: foreign
+        ? (((input, init) =>
+            new URL(input instanceof Request ? input.url : String(input)).host === ownHost
+              ? own(input, init)
+              : foreign(input, init)) satisfies typeof fetch)
+        : own,
       timeoutMs: this.options.timeoutMs ?? 120_000,
+      ...(this.options.descriptors?.module
+        ? { modules: (sha: string) => this.options.descriptors?.module?.(sha) }
+        : {}),
+      ...(hosts.length > 0 ? { allowedHosts: hosts } : {}),
     };
   }
 
@@ -581,7 +613,7 @@ export class ModelRouter implements PortProvider<ModelPort> {
                 (
                   await describedSend<DecisionResult>(
                     described,
-                    this.#described(model, described.api.family),
+                    this.#described(model.endpoint, described.api.family),
                     config.deployment,
                     sent,
                     { signal, fail: errorFromStatus },
@@ -617,58 +649,104 @@ export class ModelRouter implements PortProvider<ModelPort> {
     const plain: GateTarget = { ...target };
     Reflect.deleteProperty(plain, 'refuse');
     const governance = this.options.governance ?? unrecordedGovernance;
+    const resolved = async (id: string, options?: OperationCallOptions): Promise<DescribedCall> => {
+      await this.options.descriptors?.refresh?.();
+      const descriptor = this.options.descriptors?.get(id);
+      if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
+      if (tier === 'described' && descriptor.status === 'review')
+        throw new ModelError(
+          'refused',
+          `${id} is in review; only an operator tries it, in the raw tier`,
+        );
+      const api = bound(descriptor.operation);
+      if (api !== id)
+        throw new ModelError(
+          'unsupported',
+          `model ${model.id} binds ${api} for ${descriptor.operation}, not ${id}`,
+        );
+      const families = (this.#catalog.endpoints[model.endpoint] as CatalogEndpoint).families;
+      if (!(descriptor.api.family in families))
+        throw new ModelError(
+          'unsupported',
+          `the connection of ${model.id} does not offer the ${descriptor.api.family} family`,
+        );
+      const endpoint = this.#described(model.endpoint, descriptor.api.family);
+      const [maturity, processorRecord, stateAllowed] = await Promise.all([
+        governance.maturity(descriptor.operation),
+        governance.processorRecorded(model.endpoint),
+        governance.providerStateAllowed?.(model.endpoint) ?? false,
+      ]);
+      const keeps = descriptor.resources.length > 0;
+      return {
+        gate: this.#gate,
+        ctx,
+        target: {
+          ...plain,
+          port: tier === 'raw' ? 'operation' : 'described',
+          operation: descriptor.operation,
+          maturity,
+          synthetic: tier === 'raw',
+          processorRecord: processorRecord && (!keeps || stateAllowed),
+          ...(keeps && processorRecord && !stateAllowed
+            ? {
+                processorNote: `endpoint ${model.endpoint} keeps no state at the provider: its processor record does not name the provider's retention and allow provider-side state, which ${descriptor.id} needs`,
+              }
+            : {}),
+        },
+        descriptor,
+        endpoint: {
+          ...endpoint,
+          connection: model.endpoint,
+          tenant: ctx.tenant,
+          run: ctx.task,
+          ...(this.options.objects ? { ledger: this.options.objects } : {}),
+        },
+        deployment: model.deployment,
+        priced: (usage) => pricedUsage(usage, this.#unitPrices(model.id, descriptor.operation)),
+        provenance: () => ({ model: served }),
+        fail: describedError,
+        ...(tier === 'raw' && options?.observe ? { observe: options.observe } : {}),
+      };
+    };
     return {
       info,
-      call: async (id, input, options) => {
-        await this.options.descriptors?.refresh?.();
-        const descriptor = this.options.descriptors?.get(id);
-        if (!descriptor) throw new ModelError('bad_request', `no descriptor ${id}`);
-        if (tier === 'described' && descriptor.status === 'review')
-          throw new ModelError(
-            'refused',
-            `${id} is in review; only an operator tries it, in the raw tier`,
-          );
-        const api = bound(descriptor.operation);
-        if (api !== id)
-          throw new ModelError(
-            'unsupported',
-            `model ${model.id} binds ${api} for ${descriptor.operation}, not ${id}`,
-          );
-        const families = (this.#catalog.endpoints[model.endpoint] as CatalogEndpoint).families;
-        if (!(descriptor.api.family in families))
-          throw new ModelError(
-            'unsupported',
-            `the connection of ${model.id} does not offer the ${descriptor.api.family} family`,
-          );
-        const endpoint = this.#described(model, descriptor.api.family);
-        const [maturity, processorRecord] = await Promise.all([
-          governance.maturity(descriptor.operation),
-          governance.processorRecorded(model.endpoint),
-        ]);
-        return describedCall(
-          {
-            gate: this.#gate,
-            ctx,
-            target: {
-              ...plain,
-              port: tier === 'raw' ? 'operation' : 'described',
-              operation: descriptor.operation,
-              maturity,
-              synthetic: tier === 'raw',
-              processorRecord,
-            },
-            descriptor,
-            endpoint,
-            deployment: model.deployment,
-            priced: (usage) => pricedUsage(usage, this.#unitPrices(model.id, descriptor.operation)),
-            provenance: () => ({ model: served }),
-            fail: describedError,
-            ...(tier === 'raw' && options?.observe ? { observe: options.observe } : {}),
-          },
+      call: async (id, input, options) => describedCall(await resolved(id, options), input),
+      stream: async function* (id, input) {
+        yield* describedStreamCall(await resolved(id), input);
+      },
+      session: async (id: string, input: unknown, io: SessionIO) => {
+        const call = await resolved(id);
+        return describedSession(
+          { ...call, maturity: () => governance.maturity(call.descriptor.operation) },
           input,
+          io,
         );
       },
     };
+  }
+
+  /** Deletes a leftover provider object by running its descriptor's delete step; throws when it cannot. */
+  async removeProviderObject(record: ProviderObjectRecord): Promise<void> {
+    const descriptor = this.options.descriptors?.get(record.descriptor);
+    const resource = descriptor?.resources.find(
+      (r) => r.step === record.step && r.field === record.field,
+    );
+    if (!descriptor || !resource)
+      throw new ModelError('unsupported', `${record.descriptor} is not known any more`);
+    if (!this.#catalog.endpoints[record.connection])
+      throw new ModelError('unsupported', `the connection ${record.connection} is gone`);
+    await deleteProviderObject(
+      descriptor,
+      resource,
+      {
+        ...this.#described(record.connection, descriptor.api.family),
+        connection: record.connection,
+        tenant: record.tenant,
+        run: record.run,
+      },
+      record,
+      { fail: describedError },
+    );
   }
 
   open(ref: Ref, ctx: PortContext): ModelPort {

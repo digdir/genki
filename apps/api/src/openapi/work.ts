@@ -86,8 +86,16 @@ const Usage = z
     outputTokens: z.number().int(),
     requests: z.number().int(),
     costMicroNok: z.number().nullable().describe('Null when no token in the period has a price'),
-    priced: z.boolean(),
+    priced: z.boolean().describe('False when any token or open unit in the period has no price'),
     unpricedTokens: z.number().int(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens and requests, built in or open, by name'),
+    unpricedUnits: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('The part of units that has no price and is shown as not priced'),
   })
   .openapi('UsageTotals');
 const BySource = z

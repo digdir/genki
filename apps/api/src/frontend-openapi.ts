@@ -301,6 +301,28 @@ export const frontendRoutes: RouteConfig[] = [
     },
   }),
   createRoute({
+    method: 'get',
+    path: '/v1/sessions',
+    summary: 'Open a live session on a service whose way of working is live-session@1',
+    request: {
+      query: z.object({
+        model: z.string().openapi({ param: { name: 'model', in: 'query' } }),
+      }),
+    },
+    responses: {
+      101: {
+        description:
+          'The connection is upgraded to a WebSocket. Text and binary messages go through the same gate as a chat call; the run is the session. The server closes with 1000 when done, 1001 when cancelled, 4001 at the longest duration, 4002 when the kind is moved back to test and 1011 on an error.',
+      },
+      400: v1Error('missing_model, invalid_version, not_a_live_service'),
+      401: v1Error('Invalid or missing credentials'),
+      403: v1Error('The credential may not reach the service'),
+      404: v1Error('model_not_found, agent_not_found'),
+      426: v1Error('upgrade_required'),
+      503: v1Error('service_paused'),
+    },
+  }),
+  createRoute({
     method: 'post',
     path: '/v1/chat/completions',
     summary: 'Ask a service, whole or streamed',

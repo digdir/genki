@@ -37,6 +37,7 @@ import { connectionInput, toolConnectionSchemaLabels } from '@genai/providers-mc
 import { agentLoopSchemaLabels } from '@genai/strategy-agent-loop';
 import { platformServiceSchemaLabels } from '@genai/strategy-builder';
 import { ragSchemaLabels } from '@genai/strategy-rag';
+import { liveSessionSchemaLabels } from '@genai/operations';
 import { remoteAgentSchemaLabels } from '@genai/strategy-remote';
 import { singleCallSchemaLabels } from '@genai/strategy-single-call';
 import {
@@ -105,6 +106,7 @@ const strategyLabels: Record<string, SchemaLabels> = {
   'rag-single-shot': ragSchemaLabels,
   'step-flow': stepFlowConfigSchemaLabels,
   'remote-agent': remoteAgentSchemaLabels,
+  'live-session': liveSessionSchemaLabels,
   'builder-assistant': platformServiceSchemaLabels,
   optimiser: platformServiceSchemaLabels,
 };

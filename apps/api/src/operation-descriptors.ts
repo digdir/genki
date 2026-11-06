@@ -57,9 +57,20 @@ const problem = (c: Context, status: Status, errors: { path: string; message: st
     'content-type': 'application/problem+json',
   });
 
-const contractView = async (descriptor: Descriptor, fixtures: readonly OperationFixture[]) => {
+const moduleLookup = (modules: Record<string, string> | undefined) => (sha256: string) => {
+  const base64 = modules?.[sha256];
+  return base64 === undefined ? undefined : new Uint8Array(Buffer.from(base64, 'base64'));
+};
+
+const contractView = async (
+  descriptor: Descriptor,
+  fixtures: readonly OperationFixture[],
+  modules?: Record<string, string>,
+) => {
   if (fixtures.length === 0) return null;
-  const results = await operationContract(descriptor, fixtures);
+  const results = await operationContract(descriptor, fixtures, {
+    modules: moduleLookup(modules),
+  });
   const failed = contractFailures(results);
   return {
     suite: operationContractVersion,
@@ -189,7 +200,10 @@ const uploadedView = async (
     summary: typeof document.summary === 'string' ? document.summary : '',
     family: loaded?.api.family ?? null,
     fixtures: entry.spec.fixtures.length,
-    contract: loaded ? await contractView(loaded, entry.spec.fixtures) : null,
+    modules: loaded
+      ? Object.entries(loaded.modules).map(([name, m]) => ({ name, sha256: m.sha256 }))
+      : [],
+    contract: loaded ? await contractView(loaded, entry.spec.fixtures, entry.spec.modules) : null,
     ...(loadProblem ? { problems: [loadProblem] } : {}),
     version: entry.version,
     by: entry.by,
@@ -345,6 +359,7 @@ export const operationDescriptorsModule: PlatformModuleFactory = (deps) => ({
                 status: checked.upload.status,
                 fixtures: checked.upload.fixtures.length,
                 checks: checked.checks,
+                modules: Object.keys(checked.upload.modules ?? {}),
               },
             },
           }),
@@ -385,7 +400,9 @@ export const operationDescriptorsModule: PlatformModuleFactory = (deps) => ({
         return problem(c, 422, [{ path: 'descriptor', message: loadProblem }]);
       if (status === 'described') {
         const loaded = guard.operations.descriptors.get(id);
-        const contract = loaded ? await contractView(loaded, before.spec.fixtures) : null;
+        const contract = loaded
+          ? await contractView(loaded, before.spec.fixtures, before.spec.modules)
+          : null;
         if (!contract)
           return problem(c, 422, [
             {

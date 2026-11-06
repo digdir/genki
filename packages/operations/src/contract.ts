@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -9,8 +10,11 @@ import {
   isInlineMedia,
   isMediaRef,
   mediaInputKind,
+  mediaTypesOf,
   walk,
   type GateRecord,
+  type LedgerObject,
+  type ObjectLedger,
   type MediaOutput,
   type PayloadGuard,
   type PortContext,
@@ -22,6 +26,8 @@ import type { Descriptor, Step } from './descriptor.js';
 import { recordedBody } from './encoding.js';
 import { describedCall, describedSend, type RecordedRequest } from './executor.js';
 import { unwrapped } from './shape.js';
+import { sessionChecks, type SessionFixture } from './session-contract.js';
+import { sessionOfDescriptor } from './session.js';
 
 export const operationContractVersion = 'operation@1';
 
@@ -44,10 +50,13 @@ export interface OperationFixture {
   name: string;
   source?: string;
   deployment: string;
+  /** The time a module signs with, when the descriptor has one. */
+  at?: string;
   input: unknown;
   request?: FixtureRequest;
   response?: FixtureResponse;
   steps?: { step: string; request: FixtureRequest; response: FixtureResponse }[];
+  session?: SessionFixture;
   result: unknown;
   usage: Usage;
   dropped?: number;
@@ -74,6 +83,7 @@ export const OperationFixtureSpec = z
     name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
     source: z.string().max(500).optional(),
     deployment: z.string().min(1).max(200),
+    at: z.iso.datetime().optional(),
     input: z.unknown(),
     request: fixtureRequest.optional(),
     response: fixtureResponse.optional(),
@@ -87,6 +97,25 @@ export const OperationFixtureSpec = z
       )
       .min(1)
       .max(100)
+      .optional(),
+    session: z
+      .strictObject({
+        request: z.strictObject({
+          path: z.string().min(1).max(500),
+          query: z.record(z.string(), z.string()).optional(),
+          headers: z.record(z.string(), z.string()).optional(),
+        }),
+        messages: z
+          .array(
+            z.strictObject({
+              from: z.enum(['client', 'server']),
+              message: z.unknown(),
+              binary: z.string().max(1_000_000).optional(),
+            }),
+          )
+          .min(1)
+          .max(500),
+      })
       .optional(),
     result: z.unknown(),
     usage: z.strictObject({
@@ -103,8 +132,11 @@ export const OperationFixtureSpec = z
     dropped: z.number().int().min(0).optional(),
   })
   .refine(
-    (f) => (f.steps === undefined) === (f.request !== undefined && f.response !== undefined),
-    'a fixture records request and response, or steps',
+    (f) =>
+      f.session
+        ? f.steps === undefined && f.request === undefined && f.response === undefined
+        : (f.steps === undefined) === (f.request !== undefined && f.response !== undefined),
+    'a fixture records request and response, steps, or a session',
   );
 
 /** The recorded requests and answers of a fixture, in order, with the step each belongs to. */
@@ -190,6 +222,8 @@ const wireTextFromInputText = async (
     {
       baseURL: 'https://contract.invalid/base',
       credential: { kind: 'api-key', key: async () => contractKey },
+      ledger: memoryLedger().ledger,
+      ...moduleEndpoint(fixture),
       fetch: async () => {
         const answer = recorded[at];
         at += 1;
@@ -308,6 +342,13 @@ interface Recorded extends RecordedRequest {
 const contractKey = 'contract-key';
 
 const defaultContentType = (step: Step | undefined) => {
+  const stream = step?.response.stream;
+  if (stream)
+    return stream.framing === 'sse'
+      ? 'text/event-stream'
+      : stream.framing === 'ndjson'
+        ? 'application/x-ndjson'
+        : 'text/plain; charset=utf-8';
   switch (step?.response.encoding) {
     case 'binary':
       return (unwrapped(step.wire.response) as { type: string }).type;
@@ -320,21 +361,56 @@ const defaultContentType = (step: Step | undefined) => {
   }
 };
 
+const typedBytes = (body: unknown) =>
+  isRecord(body) && typeof body.mediaType === 'string' && typeof body.data === 'string'
+    ? { type: body.mediaType, bytes: Buffer.from(body.data, 'base64') }
+    : undefined;
+
 const replayed = (step: Step | undefined, response: FixtureResponse) => {
-  const headers = { 'content-type': defaultContentType(step), ...response.headers };
+  const typed = step?.response.encoding === 'binary' ? typedBytes(response.body) : undefined;
+  const headers = {
+    'content-type': typed?.type ?? defaultContentType(step),
+    ...response.headers,
+  };
   const status = response.status ?? 200;
+  const stream = step?.response.stream;
   const body =
-    status < 300 && step?.response.encoding === 'binary'
-      ? Buffer.from(String(response.body), 'base64')
-      : status < 300 && step?.response.encoding === 'text'
-        ? String(response.body)
-        : status < 300 && step?.response.encoding === 'ndjson'
-          ? (response.body as unknown[]).map((l) => `${JSON.stringify(l)}\n`).join('')
-          : JSON.stringify(response.body);
+    status < 300 && stream
+      ? (response.body as { event?: string; data: unknown }[])
+          .map((frame) => {
+            const data = typeof frame.data === 'string' ? frame.data : JSON.stringify(frame.data);
+            return stream.framing === 'sse'
+              ? `${frame.event ? `event: ${frame.event}\n` : ''}data: ${data}\n\n`
+              : `${data}\n`;
+          })
+          .join('')
+      : status < 300 && step?.response.encoding === 'binary'
+        ? (typed?.bytes ?? Buffer.from(String(response.body), 'base64'))
+        : status < 300 && step?.response.encoding === 'text'
+          ? String(response.body)
+          : status < 300 && step?.response.encoding === 'ndjson'
+            ? (response.body as unknown[]).map((l) => `${JSON.stringify(l)}\n`).join('')
+            : JSON.stringify(response.body);
   return new Response(body, { status, headers });
 };
 
-const keptInMemory = () => {
+/** A ledger that keeps what a call issues, so a check can see that nothing is left at the provider. */
+export const memoryLedger = () => {
+  const open = new Map<string, LedgerObject>();
+  const all: LedgerObject[] = [];
+  const ledger: ObjectLedger = {
+    created: async (o) => {
+      open.set(o.objectId, o);
+      all.push(o);
+    },
+    deleted: async (k) => {
+      open.delete(k.objectId);
+    },
+  };
+  return { ledger, open, all };
+};
+
+const keptInMemory = (typed: boolean) => {
   const bodies = new Map<string, Uint8Array>();
   const media: MediaOutput = {
     allows: () => true,
@@ -346,13 +422,28 @@ const keptInMemory = () => {
     },
   };
   const encoded = (value: unknown): unknown => {
-    if (isMediaRef(value)) return Buffer.from(bodies.get(value.path) ?? []).toString('base64');
+    if (isMediaRef(value)) {
+      const data = Buffer.from(bodies.get(value.path) ?? []).toString('base64');
+      return typed ? { mediaType: value.mediaType, data } : data;
+    }
     if (Array.isArray(value)) return value.map(encoded);
     if (typeof value === 'object' && value !== null)
       return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, encoded(v)]));
     return value;
   };
   return { media, encoded };
+};
+
+type ModuleLookup = (sha256: string) => Uint8Array | undefined;
+
+const contractModules = new AsyncLocalStorage<ModuleLookup | undefined>();
+
+const moduleEndpoint = (fixture: OperationFixture) => {
+  const modules = contractModules.getStore();
+  return {
+    ...(modules ? { modules } : {}),
+    ...(fixture.at ? { now: () => new Date(fixture.at as string) } : {}),
+  };
 };
 
 const run = async (
@@ -362,7 +453,8 @@ const run = async (
   guards: readonly PayloadGuard[] = [],
   inspect?: (shape: Shape, value: unknown) => void,
 ) => {
-  const kept = keptInMemory();
+  const kept = keptInMemory(mediaTypesOf(descriptor.output).length > 1);
+  const objects = memoryLedger();
   const sent: Recorded[] = [];
   const audit: GateRecord[] = [];
   const metered: Usage[] = [];
@@ -375,12 +467,24 @@ const run = async (
     const at = sent.length;
     const step = allSteps.find((s) => s.name === recorded[at]?.step);
     const secret = step?.auth;
+    const placement = step?.credential;
+    const basic = `Basic ${Buffer.from(`${placement?.place === 'basic' ? placement.username : ''}:${contractKey}`).toString('base64')}`;
+    const recordedBodyOf = await recordedBody(init?.body, headers['content-type'] ?? null);
+    const formField = placement?.place === 'form' && !secret ? placement.name : undefined;
+    const body =
+      formField && isRecord(recordedBodyOf)
+        ? Object.fromEntries(Object.entries(recordedBodyOf).filter(([k]) => k !== formField))
+        : recordedBodyOf;
     const credentialSent = secret
       ? secret.place === 'query'
         ? secret.name in sentQuery
         : secret.name in headers
-      : Object.values(headers).some((v) => v.includes(contractKey)) ||
-        Object.values(sentQuery).includes(contractKey);
+      : formField
+        ? isRecord(recordedBodyOf) && recordedBodyOf[formField] === contractKey
+        : placement?.place === 'basic'
+          ? headers.authorization === basic
+          : Object.values(headers).some((v) => v.includes(contractKey)) ||
+            Object.values(sentQuery).includes(contractKey);
     const query = Object.fromEntries(
       Object.entries(sentQuery).filter(
         ([name, value]) =>
@@ -390,10 +494,12 @@ const run = async (
     const mapped = Object.keys(step?.request.headers ?? {}).map((h) => h.toLowerCase());
     sent.push({
       method: init?.method ?? 'GET',
-      path: target.pathname.replace(/^\/base/, ''),
+      path: step?.request.follow
+        ? `${target.host}${target.pathname}`
+        : target.pathname.replace(/^\/base/, ''),
       query,
       headers: Object.fromEntries(Object.entries(headers).filter(([h]) => mapped.includes(h))),
-      body: await recordedBody(init?.body, headers['content-type'] ?? null),
+      body,
       credentialSent,
     });
     const answer = recorded[at]?.response;
@@ -431,6 +537,11 @@ const run = async (
       endpoint: {
         baseURL: 'https://contract.invalid/base',
         credential: { kind: 'api-key', key: async () => contractKey },
+        ledger: objects.ledger,
+        ...moduleEndpoint(fixture),
+        connection: 'contract',
+        tenant: '999888777',
+        run: 'operation-contract',
         fetch: fetcher,
         sleep: async () => undefined,
       },
@@ -442,7 +553,7 @@ const run = async (
     (result) => ({ result: kept.encoded(result) }),
     (error: unknown) => ({ error }),
   );
-  return { outcome, sent, audit, metered };
+  return { outcome, sent, audit, metered, objects };
 };
 
 /** A typed descriptor's plain and ref fields are Genki's own; any other descriptor may only send text. */
@@ -531,6 +642,19 @@ const checks: {
     },
   },
   {
+    name: 'every object the call keeps at the provider is in the ledger and deleted by the call',
+    run: async (descriptor, fixture) => {
+      if (descriptor.resources.length === 0) return [];
+      const { objects, outcome } = await run(descriptor, fixture, fixture.input);
+      if ('error' in outcome) return [`the call failed: ${String(outcome.error)}`];
+      const left = [...objects.open.values()].filter((o) => o.deletable);
+      return [
+        ...(objects.all.length === 0 ? ['the call recorded no object in the ledger'] : []),
+        ...left.map((o) => `${o.step}.${o.field} ${o.objectId} was left at the provider`),
+      ];
+    },
+  },
+  {
     name: 'only input text reaches a text field on the wire',
     run: wireTextFromInputText,
   },
@@ -544,10 +668,28 @@ const checks: {
 export const operationContract = async (
   descriptor: Descriptor,
   fixtures: readonly OperationFixture[],
+  options: { modules?: (sha256: string) => Uint8Array | undefined } = {},
+): Promise<OperationCheckResult[]> =>
+  contractModules.run(options.modules, () => runContract(descriptor, fixtures));
+
+const runContract = async (
+  descriptor: Descriptor,
+  fixtures: readonly OperationFixture[],
 ): Promise<OperationCheckResult[]> => {
   if (fixtures.length === 0)
     return [{ check: 'has recorded fixtures', problems: [`${descriptor.id} has no fixtures`] }];
   const results: OperationCheckResult[] = [];
+  if (sessionOfDescriptor(descriptor)) {
+    for (const fixture of fixtures)
+      for (const check of sessionChecks(contractKey))
+        results.push({
+          check: `${fixture.name}: ${check.name}`,
+          problems: fixture.session
+            ? await check.run(descriptor, { ...fixture, session: fixture.session })
+            : [`${descriptor.id} is a session, so its fixture records a session`],
+        });
+    return results;
+  }
   for (const fixture of fixtures)
     for (const check of checks)
       results.push({

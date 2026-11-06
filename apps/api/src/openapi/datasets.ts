@@ -567,6 +567,15 @@ const ModelEndpointFields = {
     example: { openai: '/openai/v1', anthropic: '/anthropic' },
   }),
   discovery: z.array(DiscoveryRule).optional(),
+  allowedHosts: z
+    .array(z.string())
+    .max(20)
+    .optional()
+    .openapi({
+      description:
+        "Hosts besides the connection's own that an answer link of a descriptor may lead to, each with an optional port; only the operator sets them, and a change is audited",
+      example: ['files.provider.example'],
+    }),
 };
 const ModelEndpointInput = z
   .object({ id: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,62}$/), ...ModelEndpointFields })
@@ -1312,6 +1321,15 @@ const ProcessorRecordBody = z
     retention: z
       .object({ days: z.number().int().min(0), note: z.string().optional() })
       .describe('How long the provider keeps what it is sent'),
+    providerState: z
+      .object({
+        allowed: z.boolean(),
+        retention: z.object({ days: z.number().int().min(0), note: z.string() }),
+      })
+      .optional()
+      .describe(
+        'Whether descriptors may leave objects at the provider, and how long it keeps them',
+      ),
   })
   .openapi('ProcessorRecordInput');
 const ProcessorRecordView = z

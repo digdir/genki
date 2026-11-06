@@ -50,11 +50,18 @@ export const pricesForKinds = (price: UsagePrice, kinds: readonly string[]): Mod
     (kinds.length > 0 ? kinds : ['chat']).map((k) => [k, unitPricesOfPerThousand(price)]),
   );
 
+/** The open units each kind may price besides the built-in ones; a kind it does not list takes built-in units only. */
+export type OpenUnits = (kind: string) => readonly string[] | undefined;
+
 export type PriceCheck =
   { ok: true; spec: ModelPrices } | { ok: false; errors: { path: string; message: string }[] };
 
 /** Checks a price, and reads one in the shape before ADR 0048 as prices for the model's kinds. */
-export const checkedPrice = (spec: unknown, kinds: readonly string[]): PriceCheck => {
+export const checkedPrice = (
+  spec: unknown,
+  kinds: readonly string[],
+  openUnits?: OpenUnits,
+): PriceCheck => {
   if (isPerThousandPrice(spec)) {
     const legacy = perThousand.safeParse(spec);
     if (!legacy.success)
@@ -76,6 +83,18 @@ export const checkedPrice = (spec: unknown, kinds: readonly string[]): PriceChec
         message: i.message,
       })),
     };
+  if (openUnits) {
+    const errors = Object.entries(parsed.data as ModelPrices).flatMap(([kind, prices]) => {
+      const valid = [...priceUnits, ...(openUnits(kind) ?? [])] as string[];
+      return Object.keys(prices)
+        .filter((unit) => !valid.includes(unit))
+        .map((unit) => ({
+          path: ['spec', kind, unit].join('.'),
+          message: `${unit} is not a unit that ${kind} reports for this model; valid units are ${valid.join(', ')}`,
+        }));
+    });
+    if (errors.length > 0) return { ok: false, errors };
+  }
   return { ok: true, spec: parsed.data as ModelPrices };
 };
 

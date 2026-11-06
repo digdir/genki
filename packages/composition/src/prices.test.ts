@@ -58,6 +58,18 @@ describe('prices per kind and unit (ADR 0048)', () => {
     expect(checked).toEqual({ ok: true, spec: { ocr: { page: 0.05, request: 0 } } });
   });
 
+  it('a price names only a built-in unit or one the API of the model for that kind reports', () => {
+    const open = (kind: string) => (kind === 'ocr' ? ['page'] : undefined);
+    expect(checkedPrice({ ocr: { page: 0.05, request: 0.1 } }, ['ocr'], open).ok).toBe(true);
+    const typo = checkedPrice({ ocr: { pages: 0.05 } }, ['ocr'], open);
+    expect(typo.ok).toBe(false);
+    if (!typo.ok) {
+      expect(typo.errors[0]?.path).toBe('spec.ocr.pages');
+      expect(typo.errors[0]?.message).toMatch(/valid units are input-token.*request, page/);
+    }
+    expect(checkedPrice({ chat: { page: 0.05 } }, ['chat'], open).ok).toBe(false);
+  });
+
   it('a per-1000 price published to the registry is stored per kind and unit', async () => {
     const store = new InMemoryConfigEntryStore();
     const registry = new CatalogRegistry({

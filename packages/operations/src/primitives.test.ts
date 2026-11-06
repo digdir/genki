@@ -1,17 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Usage } from '@genai/contracts';
-import {
-  createGate,
-  GateError,
-  type GateRecord,
-  type MediaRef,
-  type PortContext,
-} from '@genai/kernel';
+import { GateError, type MediaRef } from '@genai/kernel';
 import { contractFailures, fixturesFor, operationContract } from './contract.js';
-import { parseDescriptor, type Descriptor } from './descriptor.js';
-import { describedCall, OperationError, type WireExchange } from './executor.js';
+import { call, json, png, refused, wav } from './kit.test-utils.js';
+import { parseDescriptor } from './descriptor.js';
+import { OperationError } from './executor.js';
 import { evaluate } from './mapping.js';
 import { bundledDescriptorDir, loadDescriptors } from './registry.js';
 
@@ -25,114 +19,6 @@ const example = (id: string) => {
   return found;
 };
 
-const png =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-const wav = 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
-
-interface Reply {
-  status?: number;
-  type?: string;
-  headers?: Record<string, string>;
-  body: unknown;
-}
-
-const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Reply => ({
-  status,
-  body,
-  headers,
-});
-
-const call = async (
-  descriptor: Descriptor,
-  input: unknown,
-  replies: Reply[],
-  options: {
-    synthetic?: boolean;
-    unmaskedMedia?: string[];
-    readMedia?: (ref: MediaRef) => Uint8Array | undefined;
-  } = {},
-) => {
-  const sent: { url: URL; init: RequestInit | undefined }[] = [];
-  const slept: number[] = [];
-  const audit: GateRecord[] = [];
-  const metered: Usage[] = [];
-  const exchanges: WireExchange[] = [];
-  const fetcher: typeof fetch = async (url, init) => {
-    sent.push({ url: new URL(String(url)), init });
-    const reply = replies[sent.length - 1];
-    if (!reply) return Response.json({ error: { message: 'no more replies' } }, { status: 500 });
-    const type = reply.type ?? 'application/json';
-    const body =
-      type === 'application/json' ? JSON.stringify(reply.body) : (reply.body as BodyInit);
-    return new Response(body, {
-      status: reply.status ?? 200,
-      headers: { 'content-type': type, ...reply.headers },
-    });
-  };
-  const ctx: PortContext = {
-    tenant: '999888777',
-    principal: { kind: 'operator', issuer: 'test', subject: 'ola' },
-    task: 't1',
-    signal: new AbortController().signal,
-    meter: async (usage) => {
-      metered.push(usage);
-    },
-    audit: async (record) => {
-      audit.push(record);
-    },
-    ...(options.unmaskedMedia ? { unmaskedMedia: options.unmaskedMedia } : {}),
-  };
-  const outcome = await describedCall(
-    {
-      gate: createGate({
-        media: {
-          allows: () => true,
-          maxBytes: () => 1_000_000,
-          keep: async (c) => ({ tenant: c.tenant, path: 'kept/1', sha256: 'abc' }),
-        },
-        ...(options.readMedia
-          ? { mediaInput: { read: async (_c, ref) => options.readMedia?.(ref) } }
-          : {}),
-      }),
-      ctx,
-      target: {
-        port: 'described',
-        operation: descriptor.operation,
-        model: { kind: 'model', id: 'lab/model' },
-        endpoint: 'lab',
-        residency: 'norway',
-        admission: 'open',
-        ...(options.synthetic === false ? {} : { synthetic: true }),
-      },
-      descriptor,
-      endpoint: {
-        baseURL: 'https://provider.example.test/base',
-        credential: { kind: 'api-key', key: async () => 'connection-key' },
-        fetch: fetcher,
-        sleep: async (ms) => {
-          slept.push(ms);
-        },
-      },
-      deployment: 'model-1',
-      observe: (e) => exchanges.push(e),
-    },
-    input,
-  ).then(
-    (result) => ({ result }),
-    (error: unknown) => ({ error }),
-  );
-  return { outcome, sent, slept, audit, metered, exchanges };
-};
-
-const refused = (yaml: string) => {
-  try {
-    parseDescriptor(yaml);
-    return undefined;
-  } catch (error) {
-    return (error as Error).message;
-  }
-};
-
 describe('example descriptors built from primitives', () => {
   for (const descriptor of examples.list())
     it(`${descriptor.id} passes operation@1 against its recorded fixtures`, async () => {
@@ -144,7 +30,7 @@ describe('example descriptors built from primitives', () => {
   it('a descriptor with one request is read as one step, unchanged', () => {
     for (const descriptor of loadDescriptors(bundledDescriptorDir).list()) {
       expect(descriptor.steps.length).toBeGreaterThanOrEqual(1);
-      expect(descriptor.finally).toEqual([]);
+      if (descriptor.resources.length === 0) expect(descriptor.finally).toEqual([]);
     }
     const embed = loadDescriptors(bundledDescriptorDir).get('openai/embeddings@1');
     expect(embed?.steps.map((s) => [s.name, s.request.encoding, s.response.encoding])).toEqual([
@@ -241,7 +127,9 @@ describe('steps', () => {
       ],
     );
     expect('result' in outcome).toBe(true);
-    expect(new Headers(sent[0]?.init?.headers).get('authorization')).toBe('Bearer connection-key');
+    expect(new Headers(sent[0]?.init?.headers).get('authorization')).toBe(
+      `Basic ${Buffer.from('genki-client:connection-key').toString('base64')}`,
+    );
     expect(new Headers(sent[1]?.init?.headers).get('authorization')).toBe('Bearer tok-very-secret');
     expect(JSON.stringify(exchanges)).not.toContain('tok-very-secret');
   });
@@ -502,7 +390,7 @@ describe('what never changes: hostile descriptors are refused', () => {
     expect(
       refused(
         job().replace(
-          "      job: { from: $response.id, class: { ref: '^job_[a-z0-9]+$' } }",
+          "      job: { from: $response.id, class: { issued: '^job_[a-z0-9]+$' } }",
           '      job: { from: $response.id }',
         ),
       ),
@@ -541,11 +429,11 @@ describe('what never changes: hostile descriptors are refused', () => {
     expect(
       refused(
         job().replace(
-          "      job: { from: $response.id, class: { ref: '^job_[a-z0-9]+$' } }",
+          "      job: { from: $response.id, class: { issued: '^job_[a-z0-9]+$' } }",
           '      job: { from: $response.id, class: plain }',
         ),
       ),
-    ).toMatch(/bound as a ref with a pattern/);
+    ).toMatch(/bound as an issued id/);
   });
 
   it('a model from input is refused at load', () => {
@@ -592,8 +480,8 @@ describe('what never changes: hostile descriptors are refused', () => {
     expect(
       refused(
         job().replace(
-          "      job: { from: $response.id, class: { ref: '^job_[a-z0-9]+$' } }",
-          () => "      job: { from: $input.language, class: { ref: '^job_[a-z0-9]+$' } }",
+          "      job: { from: $response.id, class: { issued: '^job_[a-z0-9]+$' } }",
+          () => "      job: { from: $input.language, class: { issued: '^job_[a-z0-9]+$' } }",
         ),
       ),
     ).toMatch(/reads \$input, which is not available here/);

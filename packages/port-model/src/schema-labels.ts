@@ -106,6 +106,10 @@ const nb = {
   secret: { label: 'Hemmelighet', help: 'En secret://-referanse, aldri selve nøkkelen.' },
   header: { label: 'Header' },
   provider: { label: 'Tokenleverandør' },
+  allowedHosts: {
+    label: 'Tillatte verter for svarlenker',
+    help: 'Verter utenom endepunktets egen som en lenke i et svar kan føre til. Bare en operatør setter dem.',
+  },
   discovery: { label: 'Finn modeller automatisk' },
   'discovery.source': { label: 'Kilde' },
   'discovery.from': { label: 'Bruk oppslaget fra endepunktet' },
@@ -186,6 +190,10 @@ const en: Record<keyof typeof nb, LabelText> = {
   secret: { label: 'Secret', help: 'A secret:// reference, never the key itself.' },
   header: { label: 'Header' },
   provider: { label: 'Token provider' },
+  allowedHosts: {
+    label: 'Allowed hosts for answer links',
+    help: "Hosts besides the endpoint's own that a link in an answer may lead to. Only an operator sets them.",
+  },
   discovery: { label: 'Find models automatically' },
   'discovery.source': { label: 'Source' },
   'discovery.from': { label: 'Use the lookup from the endpoint' },

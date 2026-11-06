@@ -1,3 +1,4 @@
+import { isMediaInput } from '@genai/kernel';
 import { DescriptorError } from './shape.js';
 
 export type Scope = Readonly<Record<string, unknown>>;
@@ -16,6 +17,11 @@ const operators = [
   '$concat',
   '$join',
   '$if',
+  '$add',
+  '$sub',
+  '$mul',
+  '$coalesce',
+  '$dataUrl',
 ];
 
 const isPath = (value: unknown): value is string =>
@@ -58,6 +64,25 @@ export const holds = (value: unknown, equals?: unknown): boolean => {
   return value !== undefined && value !== null && value !== false && value !== 0 && value !== '';
 };
 
+const numberOf = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))
+    return Number(value);
+  return undefined;
+};
+
+const arithmetic = (name: string, spec: unknown, scope: Scope): number | undefined => {
+  if (!Array.isArray(spec) || spec.length < 2 || (name === '$sub' && spec.length !== 2))
+    throw new DescriptorError(`${name} takes a list of numbers`);
+  const values = spec.map((t) => evaluate(t, scope));
+  if (values.some((v) => v === undefined || v === null)) return undefined;
+  const numbers = values.map(numberOf);
+  if (numbers.some((n) => n === undefined)) throw new DescriptorError(`${name} reads numbers only`);
+  const [first = 0, ...rest] = numbers as number[];
+  if (name === '$sub') return first - (rest[0] ?? 0);
+  return rest.reduce((sum, n) => (name === '$add' ? sum + n : sum * n), first);
+};
+
 const conditional = (spec: unknown, scope: Scope): unknown => {
   if (!isRecord(spec) || !('test' in spec) || !('then' in spec))
     throw new DescriptorError('$if needs test and then, and may have equals and else');
@@ -87,6 +112,23 @@ export const evaluate = (template: unknown, scope: Scope): unknown => {
     throw new DescriptorError(`unknown mapping operator ${unknown.join(', ')}`);
   if ('$literal' in template) return template.$literal;
   if ('$if' in template) return conditional(template.$if, scope);
+  for (const name of ['$add', '$sub', '$mul'])
+    if (name in template) return arithmetic(name, template[name], scope);
+  if ('$coalesce' in template) {
+    if (!Array.isArray(template.$coalesce) || template.$coalesce.length < 2)
+      throw new DescriptorError('$coalesce takes a list of values');
+    for (const t of template.$coalesce) {
+      const value = evaluate(t, scope);
+      if (value !== undefined && value !== null) return value;
+    }
+    return undefined;
+  }
+  if ('$dataUrl' in template) {
+    const value = evaluate(template.$dataUrl, scope);
+    if (value === undefined) return undefined;
+    if (!isMediaInput(value)) throw new DescriptorError('$dataUrl reads a media value');
+    return { ...value, dataUrl: true };
+  }
   if ('$concat' in template) {
     if (!Array.isArray(template.$concat)) throw new DescriptorError('$concat takes a list');
     const parts = template.$concat.map((t) => evaluate(t, scope)).filter((p) => p !== undefined);
@@ -125,7 +167,7 @@ export const evaluate = (template: unknown, scope: Scope): unknown => {
     return omit.includes(value) ? undefined : value;
   }
   throw new DescriptorError(
-    `a mapping operator needs $from, $each, $concat, $join, $if or $literal`,
+    'a mapping operator needs $from, $each, $concat, $join, $if, $literal, $add, $sub, $mul, $coalesce or $dataUrl',
   );
 };
 

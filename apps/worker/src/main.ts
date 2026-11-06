@@ -34,6 +34,7 @@ import {
   InMemoryTriggerRuns,
   monthlyQuotaGate,
   recordTriggerRuns,
+  scheduleProviderObjectSweep,
   scheduleRetention,
   triggerId,
   lifecycleBlock,
@@ -735,6 +736,30 @@ const retention = db
   : undefined;
 log('retention', { scheduled: retention?.next()?.toISOString() ?? null });
 
+const sweepLease = db
+  ? new PostgresLeaderLease(db.pool, 'genai-worker-provider-objects')
+  : undefined;
+const providerObjectSweep = db
+  ? scheduleProviderObjectSweep({
+      store: db.providerObjects,
+      remove: (record) => runtime.models.removeProviderObject(record),
+      report: (record, reason) =>
+        db.adminRecords.appendAudit({
+          task: record.run,
+          tenant: record.tenant,
+          action: 'platform.provider-object.incident',
+          actor: 'platform',
+          at: new Date().toISOString(),
+          outcome: 'rejected',
+          target: `${record.connection}/${record.objectId}`,
+          reason: `${record.descriptor} left ${record.objectId} at ${record.connection} and it could not be deleted: ${reason}`,
+        }),
+      ...(sweepLease ? { active: () => sweepLease.tryAcquire() } : {}),
+      onRun: (run) => log('provider objects swept', { ...run }),
+      onError: (error) => log('provider object sweep failed', { error: String(error) }),
+    })
+  : undefined;
+
 // Ends runs whose jobs have ended, starts queued runs and applies send-backs (ADR 0042, "Jobs").
 const knowledgeRunsLease = db
   ? new PostgresLeaderLease(db.pool, 'genai-worker-knowledge-runs')
@@ -794,6 +819,7 @@ const knowledgeReconciler = knowledgeRunRecords
 
 const stop = () => {
   retention?.stop();
+  providerObjectSweep?.stop();
   if (knowledgeReconciler) clearInterval(knowledgeReconciler);
   if (nightWindowTimer) clearInterval(nightWindowTimer);
   stopFollowingChanges?.();
@@ -809,6 +835,7 @@ const stop = () => {
     await db?.close();
     await lease?.release();
     await retentionLease?.release();
+    await sweepLease?.release();
     await knowledgeRunsLease?.release();
     await db?.runtimePool.end();
     await db?.pool.end();

@@ -508,6 +508,25 @@ describe('processor records', () => {
     ).toMatchObject({ outcome: 'refused', refusal: 'processor' });
   });
 
+  it('a processor record names whether the provider may keep state and for how long, and refuses a bad retention', async () => {
+    const booted = await boot();
+    const providerState = {
+      allowed: true,
+      retention: { days: 30, note: 'Files stay for 30 days unless deleted' },
+    };
+    expect((await booted.processorRecord({ providerState })).status).toBe(200);
+    const shown = (await (await booted.send('/operator/processor-records', 'drift')).json()) as {
+      data: { endpoint: string; record: { providerState?: unknown } | null }[];
+    };
+    expect(shown.data.find((e) => e.endpoint === 'lab')?.record?.providerState).toEqual(
+      providerState,
+    );
+    expect(
+      (await booted.processorRecord({ providerState: { allowed: true, retention: { days: -1 } } }))
+        .status,
+    ).toBe(400);
+  });
+
   it('a synthetic operator call needs no processor record', async () => {
     const { send, server } = await boot({ environmentTier: 'test' });
     const tried = await send('/operator/operations/example/classify@1/try', 'drift', {

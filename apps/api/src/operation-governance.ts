@@ -184,6 +184,7 @@ const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | u
         agreement: entry.spec.agreement,
         subProcessors: entry.spec.subProcessors,
         retention: entry.spec.retention,
+        ...(entry.spec.providerState ? { providerState: entry.spec.providerState } : {}),
       }
     : null,
   ...(entry ? { by: entry.by, at: entry.at } : {}),

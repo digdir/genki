@@ -33,10 +33,12 @@ import {
   checkCapability,
   createGate,
   createKernel,
+  InMemoryProviderObjects,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
   type MediaOutputConfig,
+  type ProviderObjectStore,
   type PolicyDecisionPoint,
   type PortContext,
   type PortProvider,
@@ -56,7 +58,13 @@ import {
   type IndexWriterAdapter,
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
-import { loadDescriptors, type DescriptorRegistry } from '@genai/operations';
+import {
+  liveSession,
+  liveSessionConfig,
+  loadDescriptors,
+  SessionChannels,
+  type DescriptorRegistry,
+} from '@genai/operations';
 import { liveDescriptors } from './operation-descriptors.js';
 import {
   migratedCatalog,
@@ -165,6 +173,7 @@ export const strategyModelNeeds = new Map<string, Capability[]>([
   [strategyKey('single-call', 1), []],
   [strategyKey('remote-agent', 1), []],
   [strategyKey('step-flow', 1), ['json-schema']],
+  [strategyKey('live-session', 1), []],
 ]);
 
 export const inMemoryClassifications = (): ModelClassificationStore => {
@@ -206,6 +215,9 @@ export interface PolicyParts {
   catalog(): CatalogRegistry | undefined;
 }
 
+const draftRefusal =
+  'a call-operation step runs only in a published service version, not in a draft';
+
 /** The described port for published service versions only; a draft cannot run a call-operation step. */
 export const publishedOnly = (
   provider: PortProvider<OperationPort>,
@@ -216,13 +228,25 @@ export const publishedOnly = (
     return {
       info: () => port.info(),
       call: async (descriptor, input) => {
-        if (!(await published(ctx.task)))
-          throw new ModelError(
-            'refused',
-            'a call-operation step runs only in a published service version, not in a draft',
-          );
+        if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
         return port.call(descriptor, input);
       },
+      ...(port.stream
+        ? {
+            stream: async function* (descriptor, input) {
+              if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
+              yield* (port.stream as NonNullable<OperationPort['stream']>)(descriptor, input);
+            },
+          }
+        : {}),
+      ...(port.session
+        ? {
+            session: async (descriptor, input, io) => {
+              if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
+              return (port.session as NonNullable<OperationPort['session']>)(descriptor, input, io);
+            },
+          }
+        : {}),
     };
   },
 });
@@ -278,6 +302,9 @@ export interface RuntimeInput {
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
+  foreignFetch?: (hosts: string[]) => typeof fetch;
+  providerObjects?: ProviderObjectStore;
+  liveSessions?: SessionChannels;
   agents?: (id: string) => RegisteredAgent | undefined;
 }
 
@@ -485,10 +512,13 @@ export const createRuntime = async (input: RuntimeInput) => {
     pgvector ? [] : [pgvectorEngineName],
     input.onWarning,
   );
+  const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
   const models = new ModelRouter({
     gate,
     descriptors,
     governance,
+    objects: providerObjects,
+    ...(input.foreignFetch ? { foreignFetch: input.foreignFetch } : {}),
     catalog: modelSeed,
     adapters: modelAdapters,
     portApis,
@@ -601,6 +631,7 @@ export const createRuntime = async (input: RuntimeInput) => {
   );
   const wrap = input.wrapStrategy ?? ((strategy: Strategy) => strategy);
   const preferences = userPreferenceReader(configEntries);
+  const liveSessions = input.liveSessions ?? new SessionChannels();
   const serviceStrategies: Strategy[] = [
     singleCall as Strategy,
     agentLoop as Strategy,
@@ -611,6 +642,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       }),
     ) as Strategy,
     stepFlow,
+    liveSession(liveSessions) as Strategy,
     createRemoteAgent({
       transport: createRemoteTransport({ guard: toolSourceOptions.guard, secrets: catalogSecrets }),
       ...(input.agents ? { agents: input.agents } : {}),
@@ -649,6 +681,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       [strategyKey('agent-loop', 1), agentLoopConfig],
       [strategyKey('rag-single-shot', 1), ragConfig],
       [strategyKey('step-flow', 1), stepFlowConfig],
+      [strategyKey('live-session', 1), liveSessionConfig],
       [
         strategyKey('remote-agent', 1),
         input.egress?.testOverride?.allowHttp
@@ -836,6 +869,10 @@ export const createRuntime = async (input: RuntimeInput) => {
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
     priceKinds: kindsOf,
+    priceUnits: (id, kind) => {
+      const api = models.describe().find((m) => m.id === id)?.apis[kind];
+      return api ? (models.apis().get(api)?.units ?? []) : [];
+    },
     ...(input.now ? { now: input.now } : {}),
   });
   await catalog.initialize();
@@ -1004,6 +1041,8 @@ export const createRuntime = async (input: RuntimeInput) => {
     followKnowledge,
     quarantined: () => [...quarantine.values()],
     descriptors,
+    providerObjects,
+    liveSessions,
     environmentTier,
     governance,
     processorRecords: typedCalls,

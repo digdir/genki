@@ -127,7 +127,7 @@ describe('operation descriptors', () => {
     ).toBe('anthropic');
   });
 
-  it('a descriptor that declares stream events is refused until streaming is built', () => {
+  it('a stream is declared by the step that streams, not on the descriptor', () => {
     expect(
       refused(
         embedYaml.replace(
@@ -135,7 +135,7 @@ describe('operation descriptors', () => {
           'stream:\n  events:\n    done:\n      shape: { object: { usage: plain } }\n      done: true',
         ),
       ),
-    ).toMatch(/stream must be none/);
+    ).toMatch(/stream: Invalid input/);
   });
 
   it('a mapping copies, defaults, omits and orders without code', () => {

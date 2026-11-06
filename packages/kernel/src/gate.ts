@@ -16,10 +16,12 @@ import {
   mediaTypesOf,
   walk,
   type MediaInputFound,
+  type Shape,
   type OperationShape,
   type Walked,
 } from './payload.js';
 import type { PortContext } from './spi.js';
+import { addUsage } from './usage-sum.js';
 
 export const residencies = ['norway', 'eu', 'global'] as const;
 export type Residency = (typeof residencies)[number];
@@ -138,6 +140,8 @@ export interface GateTarget {
   maturity?: Maturity;
   synthetic?: boolean;
   processorRecord?: boolean;
+  /** Says why a connection without a processor record is refused, when the descriptor needs more than the record. */
+  processorNote?: string;
   refuse?: (refusal: GateRefusal, message: string) => Error;
 }
 
@@ -165,6 +169,28 @@ export interface GateOptions {
   mediaInput?: MediaInputSource;
 }
 
+export interface GateSession {
+  /** A text message to the provider: walked as a request, masked, and held to the guards. */
+  outbound(shape: Shape, message: unknown): Promise<unknown>;
+  /** A binary frame to the provider: media that needs the service's recorded consent and stays under the cap. */
+  outboundBinary(path: string, type: string, bytes: Uint8Array): Promise<Uint8Array>;
+  /** A message from the provider: walked as a result and restored; the text at `hold` waits for a token cut in two. */
+  inbound(shape: Shape, message: unknown, hold?: readonly string[]): unknown;
+  /** A binary frame from the provider: media the environment keeps, within its cap. */
+  inboundBinary(type: string, bytes: Uint8Array): void;
+  /** What the held text ends with, restored; call once when the session ends. */
+  flush(): string;
+  /** Whether the kind is still admitted at this maturity; false ends the session. */
+  stillAdmitted(maturity: Maturity): boolean;
+  meter(usage: Usage): Promise<void>;
+  end(outcome: 'ok' | 'failed'): Promise<void>;
+}
+
+export interface GateSessionOptions {
+  binaryIn?: string;
+  binaryOut?: string;
+}
+
 export interface Gate {
   /** The fetch an adapter gets for an endpoint; the gate applies the endpoint's egress guard on every request. */
   egress(endpoint: string): typeof fetch;
@@ -182,6 +208,8 @@ export interface Gate {
     request: Req,
     send: (request: Req) => AsyncIterable<GateChunk<Res>>,
   ): AsyncIterable<GateChunk<Res>>;
+  /** A live session: the gate admits it once, then walks every message both ways until it ends. */
+  session(ctx: PortContext, target: GateTarget, options?: GateSessionOptions): Promise<GateSession>;
 }
 
 const distinct = <T>(items: readonly T[]) => [...new Set(items)];
@@ -219,7 +247,8 @@ export const createGate = (options: GateOptions = {}): Gate => {
     if (target.processorRecord === false && !synthetic)
       refuse(
         'processor',
-        `endpoint ${target.endpoint ?? ''} has no processor record, so it cannot carry real data`,
+        target.processorNote ??
+          `endpoint ${target.endpoint ?? ''} has no processor record, so it cannot carry real data`,
       );
   };
 
@@ -581,11 +610,176 @@ export const createGate = (options: GateOptions = {}): Gate => {
     yield { kind: 'done', result: finished };
   }
 
+  const textAt = (value: unknown, path: readonly string[]): string | undefined => {
+    let at = value;
+    for (const key of path) {
+      if (typeof at !== 'object' || at === null) return undefined;
+      at = (at as Record<string, unknown>)[key];
+    }
+    return typeof at === 'string' ? at : undefined;
+  };
+
+  const withText = (value: unknown, path: readonly string[], text: string): unknown => {
+    const [key, ...rest] = path;
+    if (key === undefined) return text;
+    if (typeof value !== 'object' || value === null) return value;
+    const record = value as Record<string, unknown>;
+    return { ...record, [key]: withText(record[key], rest, text) };
+  };
+
+  const session = async (
+    ctx: PortContext,
+    target: GateTarget,
+    sessionOptions: GateSessionOptions = {},
+  ): Promise<GateSession> => {
+    const noted: Pick<GateRecord, 'mediaInput'> = { mediaInput: [] };
+    const record = recorder(ctx, target, noted);
+    const guards = distinct(ctx.guards ?? []);
+    try {
+      admit(ctx, target);
+      if (sessionOptions.binaryOut && !options.media?.allows(sessionOptions.binaryOut))
+        throw new GateError(
+          'media',
+          `this environment keeps no ${sessionOptions.binaryOut} output; an operator allows the media type first`,
+        );
+      if (guards.some((g) => g.holdsStream))
+        throw new GateError(
+          'shape',
+          'a live session streams as it goes, so a guard that must see the whole answer first cannot be used',
+        );
+    } catch (error) {
+      if (!(error instanceof GateError)) {
+        await record('refused', { refusal: 'guard' });
+        throw error;
+      }
+      await record('refused', { refusal: error.refusal });
+      throw target.refuse?.(error.refusal, error.message) ?? error;
+    }
+    const maskers = distinct(guards.flatMap((g) => (g.masker ? [g.masker] : [])));
+    const restoring = maskers.filter((m) => m.unmask);
+    const restore = (text: string) =>
+      restoring.reduceRight((t, m) => (m.unmask ? m.unmask(t) : t), text);
+    const call: GateCall = {
+      port: target.port,
+      operation: target.operation,
+      model: target.model.id,
+    };
+    let usage: Usage = {};
+    let mediaBytes = 0;
+    let carry = '';
+    const refuse = (error: GateError) => target.refuse?.(error.refusal, error.message) ?? error;
+    return {
+      outbound: async (shape, message) => {
+        const checked = walk(shape, message, { side: 'request' });
+        if (checked.media.length > 0 || checked.problems.length > 0)
+          throw refuse(
+            new GateError(
+              checked.media.length > 0 ? 'media' : 'shape',
+              `the message is outside its shape: ${[...checked.problems, ...checked.media].join('; ')}`,
+            ),
+          );
+        const masked = walk(shape, message, {
+          side: 'request',
+          map: (text) => maskers.reduce((t, m) => m.mask(t), text),
+        });
+        let body: unknown = masked.value;
+        for (const guard of guards) if (guard.request) body = await guard.request(call, body);
+        const final = walk(shape, body, { side: 'request' });
+        if (final.problems.length > 0)
+          throw refuse(
+            new GateError(
+              'shape',
+              `the message is outside its shape: ${final.problems.join('; ')}`,
+            ),
+          );
+        return final.value;
+      },
+      outboundBinary: async (path, type, bytes) => {
+        try {
+          consented(ctx, target, [{ path, type, value: bytes }] as MediaInputFound[]);
+        } catch (error) {
+          if (error instanceof GateError) throw refuse(error);
+          throw error;
+        }
+        const cap = options.media?.maxBytes(type) ?? defaultMediaOutputMaxBytes;
+        if (bytes.byteLength > cap)
+          throw refuse(
+            new GateError(
+              'media',
+              `${path}: ${bytes.byteLength} bytes of ${type} is over the cap of ${cap} bytes`,
+            ),
+          );
+        noted.mediaInput?.push({
+          path,
+          mediaType: type,
+          bytes: bytes.byteLength,
+          sha256: await sha256Hex(bytes),
+        });
+        return bytes;
+      },
+      inbound: (shape, message, hold) => {
+        let value = message;
+        if (hold && restoring.length > 0) {
+          const text = textAt(message, hold);
+          if (text !== undefined) {
+            const all = carry + text;
+            const keep = Math.min(
+              Math.max(0, ...restoring.map((m) => m.pending?.(all) ?? 0)),
+              all.length,
+            );
+            carry = all.slice(all.length - keep);
+            value = withText(message, hold, restore(all.slice(0, all.length - keep)));
+          }
+        }
+        const walked = walk(shape, value, {
+          side: 'result',
+          ...(restoring.length > 0 ? { map: restore } : {}),
+        });
+        if (walked.problems.length > 0)
+          throw new ShapeError(
+            `the provider sent a message outside its shape: ${walked.problems.join('; ')}`,
+          );
+        return walked.value;
+      },
+      inboundBinary: (type, bytes) => {
+        if (!options.media?.allows(type))
+          throw refuse(new GateError('media', `this environment keeps no ${type} output`));
+        const cap = options.media.maxBytes(type);
+        if (bytes.byteLength > cap)
+          throw refuse(
+            new GateError(
+              'media',
+              `${bytes.byteLength} bytes of ${type} is over the cap of ${cap} bytes`,
+            ),
+          );
+        mediaBytes += bytes.byteLength;
+      },
+      flush: () => {
+        const rest = restoring.length > 0 ? restore(carry) : carry;
+        carry = '';
+        return rest;
+      },
+      stillAdmitted: (maturity) =>
+        maturityAdmits(maturity, options.tier ?? 'production', target.synthetic === true),
+      meter: async (more) => {
+        usage = addUsage(usage, more);
+        await ctx.meter(more, target.model);
+        await outside(ctx)?.meter(ctx, more, target.model);
+      },
+      end: async (outcome) => {
+        await record(outcome, {
+          ...(Object.keys(usage).length > 0 ? { usage } : {}),
+          ...(mediaBytes > 0 ? { mediaBytes } : {}),
+        });
+      },
+    };
+  };
+
   const egress = (endpoint: string): typeof fetch => {
     const guarded: typeof fetch = (input, init) =>
       (options.egress?.(endpoint) ?? globalThis.fetch)(input, init);
     return guarded;
   };
 
-  return { egress, call, stream };
+  return { egress, call, stream, session };
 };

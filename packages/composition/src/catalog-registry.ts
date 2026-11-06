@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { PriceSpec } from '@genai/contracts';
-import { residencies, type Residency } from '@genai/port-model';
+import { allowedHostPattern, residencies, type Residency } from '@genai/port-model';
 import { z } from 'zod';
 import {
   appendVersion,
@@ -109,6 +109,8 @@ export interface CatalogRegistryOptions {
   derive?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   /** The operation kinds a model binds, which a price in the shape before ADR 0048 is set for. */
   priceKinds?: (model: string) => string[];
+  /** The open units a model's API for a kind reports, so a price cannot name a unit by mistake. */
+  priceUnits?: (model: string, kind: string) => readonly string[];
   now?: () => Date;
 }
 
@@ -383,7 +385,12 @@ export class CatalogRegistry {
       return { spec: out, errors };
     }
     if (kind === 'price') {
-      const checked = checkedPrice(out, this.#options.priceKinds?.(id) ?? ['chat']);
+      const priceUnits = this.#options.priceUnits;
+      const checked = checkedPrice(
+        out,
+        this.#options.priceKinds?.(id) ?? ['chat'],
+        priceUnits ? (kind) => priceUnits(id, kind) : undefined,
+      );
       return checked.ok ? { spec: checked.spec, errors } : { spec: out, errors: checked.errors };
     }
     if (kind === 'dataset' && out.facets !== undefined) {
@@ -399,6 +406,22 @@ export class CatalogRegistry {
             message: `facets must be filter fields too: ${missing.join(', ')}`,
           });
       }
+    }
+    if (out.allowedHosts !== undefined) {
+      if (kind !== 'model-endpoint' || scope !== platformScope)
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'only the operator sets allowedHosts, and only on a model connection',
+        });
+      else if (
+        !Array.isArray(out.allowedHosts) ||
+        out.allowedHosts.length > 20 ||
+        out.allowedHosts.some((h) => typeof h !== 'string' || !allowedHostPattern.test(h))
+      )
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'a list of at most 20 host names, each with an optional port',
+        });
     }
     if (scope === platformScope) {
       if (isEndpoint(kind) && out.sharing !== undefined) {

@@ -115,9 +115,29 @@ export const shapeOf = (spec: unknown, at = 'shape'): Shape => {
   }
   if ('media' in spec) {
     only(spec, ['media'], at);
-    if (typeof spec.media !== 'string' || !mediaRule.test(spec.media.toLowerCase()))
-      throw new DescriptorError(`${at}.media: must be one media type, such as type/subtype`);
-    return shape.media(spec.media.toLowerCase());
+    const types = Array.isArray(spec.media) ? spec.media : [spec.media];
+    if (
+      types.length === 0 ||
+      types.some((t) => typeof t !== 'string' || !mediaRule.test(t.toLowerCase()))
+    )
+      throw new DescriptorError(
+        `${at}.media: must be a media type such as type/subtype, or a list of them`,
+      );
+    return shape.media(
+      Array.isArray(spec.media)
+        ? types.map((t) => String(t).toLowerCase())
+        : String(spec.media).toLowerCase(),
+    );
+  }
+  if ('issued' in spec) {
+    only(spec, ['issued'], at);
+    if (typeof spec.issued !== 'string')
+      throw new DescriptorError(`${at}.issued: must be a pattern`);
+    try {
+      return shape.issued(new RegExp(spec.issued));
+    } catch {
+      throw new DescriptorError(`${at}.issued: not a valid pattern`);
+    }
   }
   if ('ref' in spec) {
     only(spec, ['ref'], at);
@@ -165,25 +185,60 @@ export const holdsMedia = (s: Shape): boolean => mediaTypesOf(s).length > 0;
 export const isScalar = (s: Shape): boolean =>
   s.kind === 'optional'
     ? isScalar(s.shape)
-    : ['text', 'plain', 'ref', 'enum', 'number', 'boolean', 'opaque'].includes(s.kind);
+    : ['text', 'plain', 'ref', 'issued', 'enum', 'number', 'boolean', 'opaque'].includes(s.kind);
 
 export const unwrapped = (s: Shape): Shape => (s.kind === 'optional' ? unwrapped(s.shape) : s);
 
-export const holdsJson = (s: Shape): boolean => {
+export const holdsKind = (s: Shape, kind: Shape['kind']): boolean => {
+  if (s.kind === kind) return true;
   switch (s.kind) {
-    case 'json':
-      return true;
     case 'object':
-      return Object.values(s.fields).some(holdsJson);
+      return Object.values(s.fields).some((f) => holdsKind(f, kind));
     case 'array':
-      return holdsJson(s.item);
+      return holdsKind(s.item, kind);
     case 'optional':
-      return holdsJson(s.shape);
+      return holdsKind(s.shape, kind);
     case 'variant':
-      return Object.values(s.options).some(holdsJson);
+      return Object.values(s.options).some((o) => holdsKind(o, kind));
     case 'either':
-      return s.options.some(holdsJson);
+      return s.options.some((o) => holdsKind(o, kind));
     default:
       return false;
+  }
+};
+
+export const holdsJson = (s: Shape): boolean => holdsKind(s, 'json');
+
+/** The shape at a path of field names and list indexes, or undefined when the path leaves the shape. */
+export const shapeAtPath = (s: Shape, path: readonly string[]): Shape | undefined => {
+  const [head, ...rest] = path;
+  const here = unwrapped(s);
+  if (head === undefined) return here;
+  if (here.kind === 'object') {
+    const field = here.fields[head];
+    return field ? shapeAtPath(field, rest) : undefined;
+  }
+  if (here.kind === 'array' && /^\d+$/.test(head)) return shapeAtPath(here.item, rest);
+  return undefined;
+};
+
+/** The shapes of every field with the given name, at any depth. */
+export const shapesNamed = (s: Shape, name: string): Shape[] => {
+  switch (s.kind) {
+    case 'object':
+      return Object.entries(s.fields).flatMap(([k, v]) => [
+        ...(k === name ? [unwrapped(v)] : []),
+        ...shapesNamed(v, name),
+      ]);
+    case 'array':
+      return shapesNamed(s.item, name);
+    case 'optional':
+      return shapesNamed(s.shape, name);
+    case 'variant':
+      return Object.values(s.options).flatMap((o) => shapesNamed(o, name));
+    case 'either':
+      return s.options.flatMap((o) => shapesNamed(o, name));
+    default:
+      return [];
   }
 };

@@ -1,6 +1,6 @@
 # 0049 Any provider API through descriptors
 
-Status: proposed, 2026-11-05 (not built; rewritten from a list of API patterns to primitives, 2026-11-05)
+Status: built except the blind-provider proof and the genki-test runs, 2026-11-06. Built: classes (`issued`, multipart filenames, `$dataUrl`), credential placements `header`, `query`, `form` and `basic`, arithmetic `$add $sub $mul $coalesce`, multi-type media output, `until.fail`, open units in usage totals, streaming (sse, ndjson, lines) through the gate and on `/v1/chat/completions`, `resources` with the ledger, `finally` deletion, the nightly sweep and incidents in Revisjon, the processor record's provider state, operator `allowedHosts`, WebAssembly modules, live sessions (`websocket`, `GET /v1/sessions`, `live-session@1`) and the hostile descriptors of each. Described and fixtured, never run live: `openai/chat-stream@1`, `openai/batch@1`, `openai/realtime-transcription@1`. See "What building changed" below.
 
 Replaces the "Kept out" section of ADR 0047. Builds on ADR 0048.
 
@@ -21,7 +21,7 @@ The platform does not know APIs or patterns. It knows a few primitives, each a s
 A step uses one transport:
 
 - `http`: one request, one answer.
-- `http` with `response.stream`: one request, an answer that arrives in parts, framed as `sse`, `ndjson` or `lines`.
+- `http` with `response.stream` on a step: one request, an answer that arrives in parts, framed as `sse`, `ndjson` or `lines`. A step streams its text deltas through the gate.
 - `websocket`: a live session with client and server messages, text or binary frames.
 
 ### 2. Encodings
@@ -46,7 +46,8 @@ Every field that goes out or comes in has a class from the payload shapes the ga
 - `text`: may hold personal data. Masked going out, restored coming back, also across stream parts and session messages.
 - `plain`: written by the service or a tool. A URL or a long base64 run is refused going out.
 - `media` with a media type: audio, images, video and documents. It cannot be masked, so it goes out only when the service's confirmed risk assessment records unmasked input for that media type with a reason (#326), or in a try marked synthetic. The run keeps it as a blob under the service's retention, and `kernel.gate.call` records its type, size and SHA-256. Media coming back is kept as a blob, as in #314.
-- `ref`: an identifier the provider issued. It comes only from an answer in the same run, never from input. It may fill a path segment, checked against its pattern.
+- `issued`: an identifier the provider issued, written `{ issued: '<anchored pattern>' }`. It comes only from an answer in the same run (`bind` with `class: { issued: ... }`), never from input, and is the only class that may fill a path segment or go back out as an id; the pattern is checked every time. A plain `ref` in an answer shape is read but cannot be sent anywhere.
+- `url`: a link in an answer, bound only for `request.follow` (section 6).
 - `number`, `enum`, `boolean`: as today.
 - `json`: arbitrary JSON. The walker masks every string inside it, and the masking probe of `operation@1` puts synthetic personal data into every string it allows.
 - `opaque`: state the provider gave that is replayed unread, only within the same run.
@@ -55,29 +56,29 @@ The mapping language gains indexing (`$response.items.0`), `$concat`, `$join` an
 
 ### 5. Credentials and signing
 
-The credential stays on the connection (ADR 0048) and never appears in a descriptor, a module, a log or an answer. A descriptor says where it goes: a header with a scheme, or a query parameter, which is then redacted from every log. A token from an exchange step is bound as `secret`, a class that only the gate can place and that nothing else can read. Signing a request over its body, a timestamp or a header set is done by a module (section 8) through a host function that takes the key's name, never the key.
+The credential stays on the connection (ADR 0048) and never appears in a descriptor, a module, a log or an answer. A descriptor says where it goes, per step: a header with a scheme, a query parameter, a form field or HTTP basic (`credential: { place: header | query | form | basic, ... }`); a query parameter is redacted from every log. A token from an exchange step is bound as `secret`, a class that only the gate can place and that nothing else can read. Signing a request over its body, a timestamp or a header set is done by a module (section 8) through a host function that takes the key's name, never the key.
 
 ### 6. Where requests may go
 
-Every request goes to the connection's resource, at a path the descriptor states. A URL in an answer, such as a signed download link, is followed only when its host is the connection's own or one the operator lists on the connection under `allowedHosts`, a change that is audited. Input never names a URL, so an API in which the provider fetches a URL given by the caller cannot be described; it is refused at load.
+Every request goes to the connection's resource, at a path the descriptor states. Redirects are never followed. A URL in an answer, such as a signed download link, is followed only through a step's `request.follow`, from a value bound with the `url` class, over https, without a login, and only when its host is the connection's own or one the operator lists on the connection under `allowedHosts`, a change that is audited. The credential is never sent to a host other than the connection's own; those calls go through the egress guard. Input never names a URL, so an API in which the provider fetches a URL given by the caller cannot be described; it is refused at load.
 
 ### 7. Things kept at the provider
 
-A `ref` that names something the provider keeps, such as an uploaded file, a job, a session, a stored response or a conversation, is declared under `resources` with the step that deletes it and its longest life.
+A `ref` that names something the provider keeps, such as an uploaded file, a job, a session, a stored response or a conversation, is declared under `resources: [{ id: <step>.<bound field>, delete: <step name>, longestSeconds }]`. A resource with no `delete` is `retained`: it is in the ledger as kept, never due, and needs the processor record's retention.
 
 - The executor records every such object in a ledger: tenant, run, connection, object id, created and delete-by.
-- The object is deleted by the descriptor's `finally` steps, or at its longest life. A nightly sweep deletes what is left and reports what it could not delete as an incident in Revisjon.
-- A connection serves descriptors that keep things at the provider only when its processor record states the provider's retention and allows provider-side state. Otherwise the call is refused as `processor`.
+- The object is deleted by the descriptor's `finally` steps, or at its longest life. A failing delete in `finally` does not fail the call; the object stays open for the nightly sweep (`packages/jobs`, cron `43 3 * * *`), which deletes what is left. What it cannot delete becomes an incident (`platform.provider-object.incident` in Revisjon, state `incident`); an incident is final, the sweep does not retry it, and an operator deletes it by hand.
+- A connection serves descriptors that keep things at the provider only when its processor record has `providerState: { allowed: true, retention: { days, note } }`. Otherwise the call is refused as `processor`.
 - A `ref` the provider can keep but offers no way to delete is allowed only when the processor record names that retention.
 
 ### 8. Modules for what the language cannot say
 
-A descriptor may name a module: a WebAssembly component, pinned by its SHA-256, uploaded and reviewed with the descriptor. It is for what data cannot express, such as a request signature, a binary framing or an unusual codec. It runs inside the gate with fixed limits on time and memory and only these host functions:
+A descriptor may name a module: a WebAssembly component, pinned by its SHA-256, uploaded and reviewed with the descriptor. It is for what data cannot express, such as a request signature, a binary framing or an unusual codec. It is declared as `modules: { <name>: { sha256, keys: [connection] } }` (at most two), used by a step as `module: { use, emits, headers }`, and uploaded with the descriptor (`PUT /operator/operation-descriptors/{id}` with `modules`, 128 KiB at most each; the SHA-256 pin must match). It runs in a worker with 250 ms, 16 pages of memory and 1 MiB of input, and only these host functions (`genki.input_read`, `sha256`, `hmac_sha256`, `hex_encode`, `hex_decode`, `base64_encode`, `base64_decode`, `emit`):
 
 - encode and decode bytes, hash, and sign with a named key (the key never enters the module);
 - read the step's classified values and return classified values, which the gate walks like any answer.
 
-A module has no network, no file system, no clock beyond what the gate passes and no access to other runs. Its output goes through the same shapes and masking as everything else, so a module can change how bytes look, never what leaves.
+A module has no network, no file system, no clock beyond the timestamp the gate passes and no access to other runs; a module that declares its own memory or any other import is refused. It emits at most eight values of 512 bytes. Each emit must be pinned by the descriptor to an anchored `ref` pattern or an enum and goes only to a declared, non-credential header, so a module can change how bytes look, never what leaves. A module signs requests; it does not frame streams or sessions.
 
 ### 9. Usage and units
 
@@ -89,11 +90,23 @@ A descriptor maps the provider's error envelope to Genki's error kinds (`invalid
 
 ### 11. Sessions
 
-A `websocket` step is a session. Genki relays it: the frontend connects to Genki at `GET /v1/sessions` with an upgrade, under the same access as `/v1/chat/completions`, and Genki connects to the provider. The credential and any short-lived provider key stay in Genki. Every message in both directions is walked against its class: text is masked and restored, audio frames are `media`. The run is the session; its transcript, usage and audit belong to the run, and it ends at its longest duration or when the service's kind is moved back to test. Tool calls in a session go through the service's tools and the gate. A service uses a session through the way of working `live-session@1`, whose config names the descriptor.
+A `websocket` step is a session. Genki relays it: the frontend connects to Genki at `GET /v1/sessions` with an upgrade, under the same access as `/v1/chat/completions`, and Genki connects to the provider. The credential and any short-lived provider key stay in Genki. Every message in both directions is walked against its class: text is masked and restored, audio frames are `media`. The run is the session; its transcript, usage and audit belong to the run, and it ends at its longest duration (close code 4001), when the service's kind is moved back to test (4002), when the caller closes, or when the provider sends its declared `done` event. The step is `websocket: { longestSeconds, maxMessages, maxMessageBytes, client, server }`: each declared event has a shape, and a server event may map `transcript`, `usage`, `done` or `fail`; an event the descriptor does not declare ends the session as an error. A client binary frame is media under consent and may be sent on as a declared JSON event with `client.binaryAs`. A guardrail that holds a stream back (`holdsStream`) refuses a session. Tool calls in a session go through the service's tools and the gate. A service uses a session through the way of working `live-session@1`, whose config names the descriptor; the way of working waits 15 seconds for the connection the route hands over, and its answer is the transcript.
 
 ### 12. Checks
 
 A descriptor may declare `checks` on an answer: `same-names` (every question has one answer), `count` and `one-of`. A failed check fails the call.
+
+### What building changed
+
+- `stream` is a property of a step (`response.stream`), not of the descriptor.
+- Answer URLs are never followed by redirect; `request.follow` with the `url` class is the one way, and only for https links to allowed hosts.
+- `issued` replaced `ref` as the class that may be sent; `resources` has `retained`, and an undeletable object is a final incident.
+- Multipart filenames are mapped (`filenames`), and `credential` is placed per step.
+- A signature cannot be proven by a fixture, because the contract uses its own probe key; module headers are left out of the recorded request, and the signing is proven by tests with a hand-built module (`packages/operations/src/module.test.ts`). A fixture may carry `at`, the signing time.
+- A session fixture records `session: { request, messages: [{ from, message, binary? }] }` and `operation@1` replays it against a scripted provider.
+- A descriptor polls for 600 seconds at most, so `openai/batch@1` serves batches that end within ten minutes; longer batches need work that outlives a call, which this record does not build.
+- The kernel's usage totals add open units (`units`), and the API shows them wherever usage is returned; the portal does not show them yet.
+- Bundled descriptors cannot ship modules yet; a module comes in an upload.
 
 ### What never changes
 
@@ -138,4 +151,5 @@ Turned down:
 - ADR 0044 still holds for the built-in chat implementations: they stay stateless.
 - The session relay adds long-lived connections to the API; their limits are set per environment.
 - A provider object that cannot be deleted is an incident.
+- A module runs in a fresh worker per call; a service that signs many requests a second would need a pool.
 - Not built yet: everything above, #326 and #302.

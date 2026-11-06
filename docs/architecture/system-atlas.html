@@ -2164,6 +2164,7 @@
               'apps/api/src/routes/portal-routes.ts',
               'apps/api/src/routes/console-routes.ts',
               'apps/api/src/batch-runs.ts',
+              'apps/api/src/session-upgrade.ts',
               'apps/api/src/projects.ts',
               'apps/api/src/task-export.ts',
               'apps/api/src/operation-governance.ts',
@@ -5881,6 +5882,7 @@
               'packages/jobs/src/retention.ts',
               'packages/jobs/src/retention-policy.ts',
               'packages/jobs/src/batch.ts',
+              'packages/jobs/src/provider-object-sweep.ts',
               'packages/jobs/src/scheduler.ts',
               'packages/jobs/src/cron.ts',
               'packages/jobs/src/job-queue.ts',
@@ -6581,6 +6583,15 @@
                               additionalProperties: false,
                             },
                           },
+                          allowedHosts: {
+                            maxItems: 20,
+                            type: 'array',
+                            items: {
+                              type: 'string',
+                              pattern:
+                                '^(?![\\d.]+(?::\\d+)?$)(?=.{1,253}(?::\\d{1,5})?$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:\\d{1,5})?$',
+                            },
+                          },
                         },
                         required: ['baseURL', 'auth', 'families'],
                         additionalProperties: false,
@@ -6779,13 +6790,15 @@
             summary:
               'A new kind of model API as a reviewed descriptor file and recorded fixtures, run by one executor through the kernel gate.',
             description:
-              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). A descriptor may be a list of steps with bound values, polling, finally steps, several body encodings, classified query parameters and headers, open usage units, error mapping and answer checks (ADR 0049). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
+              "Descriptors are versioned YAML files, data and never code, that name the endpoint path, the API version and headers they are keyed on, the typed and wire payload shapes in the kernel's closed vocabulary, a declarative mapping between them, the usage mapping and the stream events (ADR 0047). A descriptor may be a list of steps with bound values, polling, finally steps, several body encodings, classified query parameters and headers, open usage units, error mapping and answer checks, streaming, provider-side objects in a ledger, pinned WebAssembly modules and live WebSocket sessions (ADR 0049). One executor turns a descriptor into a gated call. The contract suite operation@1 proves every descriptor against its recorded fixtures in CI. A catalogue may run embed or decide through a typed descriptor instead of the hand-written adapter; operators try descriptors in review through the raw tier, in test only.",
             responsibilities: [
               'Load and validate descriptors, refusing URLs, credential headers and kept-out APIs',
               'Map typed input to the wire request and the wire answer back, without code',
               'Run steps in order, bind classified values between them, poll, clean up and map errors and units',
               'Encode json, multipart, form, binary, text and ndjson bodies and refuse an answer of another content type',
               "Run a descriptor call through the gate with the endpoint's credential and egress guard",
+              'Stream answers and relay live sessions through the gate, masking and restoring in both directions',
+              'Record objects kept at the provider and delete them, and run pinned WebAssembly modules with fixed limits',
               'Prove each descriptor against recorded fixtures (operation@1)',
               'Show an observer the masked wire exchange of a call, so a raw-tier try can become a fixture',
             ],
@@ -6797,6 +6810,11 @@
               'packages/operations/src/executor.ts',
               'packages/operations/src/registry.ts',
               'packages/operations/src/contract.ts',
+              'packages/operations/src/module.ts',
+              'packages/operations/src/session.ts',
+              'packages/operations/src/websocket.ts',
+              'packages/operations/src/live-session.ts',
+              'packages/operations/src/session-contract.ts',
             ],
             input: 'A descriptor, a catalogue endpoint and typed input',
             output: 'The typed result, usage and the count of dropped fields',
@@ -6872,40 +6890,69 @@
                           required: ['query'],
                           additionalProperties: false,
                         },
+                        {
+                          type: 'object',
+                          properties: { form: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' } },
+                          required: ['form'],
+                          additionalProperties: false,
+                        },
+                        {
+                          type: 'object',
+                          properties: {
+                            basic: {
+                              type: 'object',
+                              properties: {
+                                username: { type: 'string', pattern: '^[A-Za-z0-9._@-]{1,64}$' },
+                              },
+                              required: ['username'],
+                              additionalProperties: false,
+                            },
+                          },
+                          required: ['basic'],
+                          additionalProperties: false,
+                        },
                       ],
                     },
                     input: {},
                     output: {},
                     result: {},
-                    stream: {
-                      anyOf: [
-                        { type: 'string', const: 'none' },
-                        {
-                          type: 'object',
-                          properties: {
-                            events: {
-                              type: 'object',
-                              propertyNames: { type: 'string', pattern: '^[a-z0-9._-]+$' },
-                              additionalProperties: {
-                                type: 'object',
-                                properties: {
-                                  shape: {},
-                                  delta: {
-                                    type: 'string',
-                                    format: 'starts_with',
-                                    pattern: '^\\$.*',
-                                  },
-                                  done: { type: 'boolean', const: true },
-                                },
-                                required: ['shape'],
-                                additionalProperties: false,
-                              },
-                            },
+                    stream: { default: 'none', type: 'string', const: 'none' },
+                    resources: {
+                      default: [],
+                      maxItems: 10,
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: {
+                            type: 'string',
+                            pattern: '^[a-z][a-z0-9_]{0,31}\\.[a-z][a-zA-Z0-9_]{0,31}$',
                           },
-                          required: ['events'],
-                          additionalProperties: false,
+                          delete: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                          longestSeconds: { type: 'integer', minimum: 60, maximum: 2592000 },
                         },
-                      ],
+                        required: ['id', 'longestSeconds'],
+                        additionalProperties: false,
+                      },
+                    },
+                    modules: {
+                      default: {},
+                      type: 'object',
+                      propertyNames: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                      additionalProperties: {
+                        type: 'object',
+                        properties: {
+                          sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+                          keys: {
+                            default: [],
+                            maxItems: 1,
+                            type: 'array',
+                            items: { type: 'string', enum: ['connection'] },
+                          },
+                        },
+                        required: ['sha256'],
+                        additionalProperties: false,
+                      },
                     },
                     steps: {
                       minItems: 1,
@@ -6946,6 +6993,217 @@
                               },
                             ],
                           },
+                          credential: {
+                            anyOf: [
+                              {
+                                type: 'object',
+                                properties: {
+                                  keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                },
+                                required: ['keyHeader'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  header: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                  scheme: { type: 'string', pattern: '^[A-Za-z-]{1,32}$' },
+                                },
+                                required: ['header'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  query: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                },
+                                required: ['query'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  form: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                },
+                                required: ['form'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  basic: {
+                                    type: 'object',
+                                    properties: {
+                                      username: {
+                                        type: 'string',
+                                        pattern: '^[A-Za-z0-9._@-]{1,64}$',
+                                      },
+                                    },
+                                    required: ['username'],
+                                    additionalProperties: false,
+                                  },
+                                },
+                                required: ['basic'],
+                                additionalProperties: false,
+                              },
+                            ],
+                          },
+                          websocket: {
+                            type: 'object',
+                            properties: {
+                              longestSeconds: { type: 'number', minimum: 1, maximum: 3600 },
+                              maxMessages: {
+                                default: 10000,
+                                type: 'integer',
+                                minimum: 1,
+                                maximum: 100000,
+                              },
+                              maxMessageBytes: {
+                                default: 262144,
+                                type: 'integer',
+                                minimum: 1,
+                                maximum: 1048576,
+                              },
+                              client: {
+                                type: 'object',
+                                properties: {
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: { shape: {} },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  binary: { type: 'string' },
+                                  binaryAs: {
+                                    type: 'object',
+                                    properties: {
+                                      event: { type: 'string', pattern: '^[a-z0-9._:-]{1,64}$' },
+                                      field: {
+                                        type: 'string',
+                                        pattern: '^[a-z][a-zA-Z0-9_]{0,31}$',
+                                      },
+                                    },
+                                    required: ['event', 'field'],
+                                    additionalProperties: false,
+                                  },
+                                },
+                                required: ['events'],
+                                additionalProperties: false,
+                              },
+                              server: {
+                                type: 'object',
+                                properties: {
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: {
+                                        shape: {},
+                                        transcript: {
+                                          type: 'string',
+                                          format: 'starts_with',
+                                          pattern: '^\\$event.*',
+                                        },
+                                        usage: {
+                                          type: 'object',
+                                          propertyNames: {
+                                            anyOf: [
+                                              { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                              {
+                                                type: 'string',
+                                                enum: [
+                                                  'inputTokens',
+                                                  'outputTokens',
+                                                  'cachedInputTokens',
+                                                  'audioSeconds',
+                                                  'images',
+                                                  'videoSeconds',
+                                                  'characters',
+                                                  'requests',
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                          additionalProperties: {},
+                                        },
+                                        done: { type: 'boolean', const: true },
+                                        fail: {
+                                          type: 'object',
+                                          properties: {
+                                            kind: {
+                                              type: 'string',
+                                              enum: [
+                                                'invalid',
+                                                'unavailable',
+                                                'rate-limited',
+                                                'refused',
+                                                'processor',
+                                              ],
+                                            },
+                                            message: {},
+                                          },
+                                          required: ['kind'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  binary: { type: 'string' },
+                                },
+                                required: ['events'],
+                                additionalProperties: false,
+                              },
+                            },
+                            required: ['longestSeconds', 'client', 'server'],
+                            additionalProperties: false,
+                          },
+                          module: {
+                            type: 'object',
+                            properties: {
+                              use: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                              emits: {
+                                type: 'object',
+                                propertyNames: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-z0-9_]{0,31}$',
+                                },
+                                additionalProperties: {},
+                              },
+                              headers: {
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-z0-9_]{0,31}$',
+                                },
+                              },
+                            },
+                            required: ['use', 'emits', 'headers'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -6954,6 +7212,11 @@
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
                               path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              follow: {
+                                type: 'string',
+                                format: 'starts_with',
+                                pattern: '^\\$steps\\..*',
+                              },
                               encoding: {
                                 default: 'json',
                                 type: 'string',
@@ -6961,6 +7224,14 @@
                               },
                               body: {},
                               parts: {},
+                              filenames: {
+                                type: 'object',
+                                propertyNames: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-zA-Z0-9_]{0,31}$',
+                                },
+                                additionalProperties: {},
+                              },
                               query: {
                                 default: {},
                                 type: 'object',
@@ -6974,7 +7245,7 @@
                                 additionalProperties: {},
                               },
                             },
-                            required: ['method', 'path'],
+                            required: ['method'],
                             additionalProperties: false,
                           },
                           response: {
@@ -6992,13 +7263,71 @@
                                 propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
                                 additionalProperties: {},
                               },
+                              stream: {
+                                type: 'object',
+                                properties: {
+                                  framing: { type: 'string', enum: ['sse', 'ndjson', 'lines'] },
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  end: { type: 'string', minLength: 1, maxLength: 64 },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: {
+                                        shape: {},
+                                        delta: {
+                                          type: 'string',
+                                          format: 'starts_with',
+                                          pattern: '^\\$event.*',
+                                        },
+                                        done: { type: 'boolean', const: true },
+                                        fail: {
+                                          type: 'object',
+                                          properties: {
+                                            kind: {
+                                              type: 'string',
+                                              enum: [
+                                                'invalid',
+                                                'unavailable',
+                                                'rate-limited',
+                                                'refused',
+                                                'processor',
+                                              ],
+                                            },
+                                            message: {},
+                                          },
+                                          required: ['kind'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                },
+                                required: ['framing', 'events'],
+                                additionalProperties: false,
+                              },
                             },
                             additionalProperties: false,
                           },
                           wire: {
                             type: 'object',
-                            properties: { request: {}, query: {}, headers: {}, response: {} },
-                            required: ['response'],
+                            properties: {
+                              request: {},
+                              query: {},
+                              headers: {},
+                              filenames: {},
+                              response: {},
+                            },
                             additionalProperties: false,
                           },
                           usage: {
@@ -7042,6 +7371,26 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              fail: {
+                                type: 'object',
+                                properties: {
+                                  test: {},
+                                  equals: {},
+                                  kind: {
+                                    type: 'string',
+                                    enum: [
+                                      'invalid',
+                                      'unavailable',
+                                      'rate-limited',
+                                      'refused',
+                                      'processor',
+                                    ],
+                                  },
+                                  message: {},
+                                },
+                                required: ['kind'],
+                                additionalProperties: false,
+                              },
                             },
                             required: ['test', 'intervalSeconds', 'longestSeconds'],
                             additionalProperties: false,
@@ -7193,6 +7542,217 @@
                               },
                             ],
                           },
+                          credential: {
+                            anyOf: [
+                              {
+                                type: 'object',
+                                properties: {
+                                  keyHeader: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                },
+                                required: ['keyHeader'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  header: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                  scheme: { type: 'string', pattern: '^[A-Za-z-]{1,32}$' },
+                                },
+                                required: ['header'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  query: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                },
+                                required: ['query'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  form: { type: 'string', pattern: '^[a-z0-9_.[\\]-]+$' },
+                                },
+                                required: ['form'],
+                                additionalProperties: false,
+                              },
+                              {
+                                type: 'object',
+                                properties: {
+                                  basic: {
+                                    type: 'object',
+                                    properties: {
+                                      username: {
+                                        type: 'string',
+                                        pattern: '^[A-Za-z0-9._@-]{1,64}$',
+                                      },
+                                    },
+                                    required: ['username'],
+                                    additionalProperties: false,
+                                  },
+                                },
+                                required: ['basic'],
+                                additionalProperties: false,
+                              },
+                            ],
+                          },
+                          websocket: {
+                            type: 'object',
+                            properties: {
+                              longestSeconds: { type: 'number', minimum: 1, maximum: 3600 },
+                              maxMessages: {
+                                default: 10000,
+                                type: 'integer',
+                                minimum: 1,
+                                maximum: 100000,
+                              },
+                              maxMessageBytes: {
+                                default: 262144,
+                                type: 'integer',
+                                minimum: 1,
+                                maximum: 1048576,
+                              },
+                              client: {
+                                type: 'object',
+                                properties: {
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: { shape: {} },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  binary: { type: 'string' },
+                                  binaryAs: {
+                                    type: 'object',
+                                    properties: {
+                                      event: { type: 'string', pattern: '^[a-z0-9._:-]{1,64}$' },
+                                      field: {
+                                        type: 'string',
+                                        pattern: '^[a-z][a-zA-Z0-9_]{0,31}$',
+                                      },
+                                    },
+                                    required: ['event', 'field'],
+                                    additionalProperties: false,
+                                  },
+                                },
+                                required: ['events'],
+                                additionalProperties: false,
+                              },
+                              server: {
+                                type: 'object',
+                                properties: {
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: {
+                                        shape: {},
+                                        transcript: {
+                                          type: 'string',
+                                          format: 'starts_with',
+                                          pattern: '^\\$event.*',
+                                        },
+                                        usage: {
+                                          type: 'object',
+                                          propertyNames: {
+                                            anyOf: [
+                                              { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' },
+                                              {
+                                                type: 'string',
+                                                enum: [
+                                                  'inputTokens',
+                                                  'outputTokens',
+                                                  'cachedInputTokens',
+                                                  'audioSeconds',
+                                                  'images',
+                                                  'videoSeconds',
+                                                  'characters',
+                                                  'requests',
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                          additionalProperties: {},
+                                        },
+                                        done: { type: 'boolean', const: true },
+                                        fail: {
+                                          type: 'object',
+                                          properties: {
+                                            kind: {
+                                              type: 'string',
+                                              enum: [
+                                                'invalid',
+                                                'unavailable',
+                                                'rate-limited',
+                                                'refused',
+                                                'processor',
+                                              ],
+                                            },
+                                            message: {},
+                                          },
+                                          required: ['kind'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                  binary: { type: 'string' },
+                                },
+                                required: ['events'],
+                                additionalProperties: false,
+                              },
+                            },
+                            required: ['longestSeconds', 'client', 'server'],
+                            additionalProperties: false,
+                          },
+                          module: {
+                            type: 'object',
+                            properties: {
+                              use: { type: 'string', pattern: '^[a-z][a-z0-9_]{0,31}$' },
+                              emits: {
+                                type: 'object',
+                                propertyNames: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-z0-9_]{0,31}$',
+                                },
+                                additionalProperties: {},
+                              },
+                              headers: {
+                                type: 'object',
+                                propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
+                                additionalProperties: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-z0-9_]{0,31}$',
+                                },
+                              },
+                            },
+                            required: ['use', 'emits', 'headers'],
+                            additionalProperties: false,
+                          },
                           request: {
                             type: 'object',
                             properties: {
@@ -7201,6 +7761,11 @@
                                 enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
                               },
                               path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                              follow: {
+                                type: 'string',
+                                format: 'starts_with',
+                                pattern: '^\\$steps\\..*',
+                              },
                               encoding: {
                                 default: 'json',
                                 type: 'string',
@@ -7208,6 +7773,14 @@
                               },
                               body: {},
                               parts: {},
+                              filenames: {
+                                type: 'object',
+                                propertyNames: {
+                                  type: 'string',
+                                  pattern: '^[a-z][a-zA-Z0-9_]{0,31}$',
+                                },
+                                additionalProperties: {},
+                              },
                               query: {
                                 default: {},
                                 type: 'object',
@@ -7221,7 +7794,7 @@
                                 additionalProperties: {},
                               },
                             },
-                            required: ['method', 'path'],
+                            required: ['method'],
                             additionalProperties: false,
                           },
                           response: {
@@ -7239,13 +7812,71 @@
                                 propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
                                 additionalProperties: {},
                               },
+                              stream: {
+                                type: 'object',
+                                properties: {
+                                  framing: { type: 'string', enum: ['sse', 'ndjson', 'lines'] },
+                                  name: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  end: { type: 'string', minLength: 1, maxLength: 64 },
+                                  events: {
+                                    type: 'object',
+                                    propertyNames: {
+                                      type: 'string',
+                                      pattern: '^[a-z0-9._:-]{1,64}$',
+                                    },
+                                    additionalProperties: {
+                                      type: 'object',
+                                      properties: {
+                                        shape: {},
+                                        delta: {
+                                          type: 'string',
+                                          format: 'starts_with',
+                                          pattern: '^\\$event.*',
+                                        },
+                                        done: { type: 'boolean', const: true },
+                                        fail: {
+                                          type: 'object',
+                                          properties: {
+                                            kind: {
+                                              type: 'string',
+                                              enum: [
+                                                'invalid',
+                                                'unavailable',
+                                                'rate-limited',
+                                                'refused',
+                                                'processor',
+                                              ],
+                                            },
+                                            message: {},
+                                          },
+                                          required: ['kind'],
+                                          additionalProperties: false,
+                                        },
+                                      },
+                                      required: ['shape'],
+                                      additionalProperties: false,
+                                    },
+                                  },
+                                },
+                                required: ['framing', 'events'],
+                                additionalProperties: false,
+                              },
                             },
                             additionalProperties: false,
                           },
                           wire: {
                             type: 'object',
-                            properties: { request: {}, query: {}, headers: {}, response: {} },
-                            required: ['response'],
+                            properties: {
+                              request: {},
+                              query: {},
+                              headers: {},
+                              filenames: {},
+                              response: {},
+                            },
                             additionalProperties: false,
                           },
                           usage: {
@@ -7289,6 +7920,26 @@
                               equals: {},
                               intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                               longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                              fail: {
+                                type: 'object',
+                                properties: {
+                                  test: {},
+                                  equals: {},
+                                  kind: {
+                                    type: 'string',
+                                    enum: [
+                                      'invalid',
+                                      'unavailable',
+                                      'rate-limited',
+                                      'refused',
+                                      'processor',
+                                    ],
+                                  },
+                                  message: {},
+                                },
+                                required: ['kind'],
+                                additionalProperties: false,
+                              },
                             },
                             required: ['test', 'intervalSeconds', 'longestSeconds'],
                             additionalProperties: false,
@@ -7406,6 +8057,11 @@
                       properties: {
                         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
                         path: { type: 'string', pattern: '^\\/[A-Za-z0-9/_.{}-]*$' },
+                        follow: {
+                          type: 'string',
+                          format: 'starts_with',
+                          pattern: '^\\$steps\\..*',
+                        },
                         encoding: {
                           default: 'json',
                           type: 'string',
@@ -7413,6 +8069,11 @@
                         },
                         body: {},
                         parts: {},
+                        filenames: {
+                          type: 'object',
+                          propertyNames: { type: 'string', pattern: '^[a-z][a-zA-Z0-9_]{0,31}$' },
+                          additionalProperties: {},
+                        },
                         query: {
                           default: {},
                           type: 'object',
@@ -7426,7 +8087,7 @@
                           additionalProperties: {},
                         },
                       },
-                      required: ['method', 'path'],
+                      required: ['method'],
                       additionalProperties: false,
                     },
                     response: {
@@ -7444,13 +8105,64 @@
                           propertyNames: { type: 'string', pattern: '^[a-z0-9-]+$' },
                           additionalProperties: {},
                         },
+                        stream: {
+                          type: 'object',
+                          properties: {
+                            framing: { type: 'string', enum: ['sse', 'ndjson', 'lines'] },
+                            name: { type: 'string', format: 'starts_with', pattern: '^\\$event.*' },
+                            end: { type: 'string', minLength: 1, maxLength: 64 },
+                            events: {
+                              type: 'object',
+                              propertyNames: { type: 'string', pattern: '^[a-z0-9._:-]{1,64}$' },
+                              additionalProperties: {
+                                type: 'object',
+                                properties: {
+                                  shape: {},
+                                  delta: {
+                                    type: 'string',
+                                    format: 'starts_with',
+                                    pattern: '^\\$event.*',
+                                  },
+                                  done: { type: 'boolean', const: true },
+                                  fail: {
+                                    type: 'object',
+                                    properties: {
+                                      kind: {
+                                        type: 'string',
+                                        enum: [
+                                          'invalid',
+                                          'unavailable',
+                                          'rate-limited',
+                                          'refused',
+                                          'processor',
+                                        ],
+                                      },
+                                      message: {},
+                                    },
+                                    required: ['kind'],
+                                    additionalProperties: false,
+                                  },
+                                },
+                                required: ['shape'],
+                                additionalProperties: false,
+                              },
+                            },
+                          },
+                          required: ['framing', 'events'],
+                          additionalProperties: false,
+                        },
                       },
                       additionalProperties: false,
                     },
                     wire: {
                       type: 'object',
-                      properties: { request: {}, query: {}, headers: {}, response: {} },
-                      required: ['response'],
+                      properties: {
+                        request: {},
+                        query: {},
+                        headers: {},
+                        filenames: {},
+                        response: {},
+                      },
                       additionalProperties: false,
                     },
                     usage: {
@@ -7482,6 +8194,26 @@
                         equals: {},
                         intervalSeconds: { type: 'number', minimum: 0.1, maximum: 60 },
                         longestSeconds: { type: 'number', minimum: 1, maximum: 600 },
+                        fail: {
+                          type: 'object',
+                          properties: {
+                            test: {},
+                            equals: {},
+                            kind: {
+                              type: 'string',
+                              enum: [
+                                'invalid',
+                                'unavailable',
+                                'rate-limited',
+                                'refused',
+                                'processor',
+                              ],
+                            },
+                            message: {},
+                          },
+                          required: ['kind'],
+                          additionalProperties: false,
+                        },
                       },
                       required: ['test', 'intervalSeconds', 'longestSeconds'],
                       additionalProperties: false,
@@ -7591,7 +8323,6 @@
                     'input',
                     'output',
                     'result',
-                    'stream',
                   ],
                   additionalProperties: false,
                 },
@@ -9059,6 +9790,7 @@
               'packages/providers-postgres/src/tenancy.ts',
               'packages/providers-postgres/src/crypto.ts',
               'packages/providers-postgres/src/retention.ts',
+              'packages/providers-postgres/src/provider-objects.ts',
               'packages/providers-postgres/src/job-runs.ts',
             ],
             input: 'Store calls',

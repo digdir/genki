@@ -25,6 +25,7 @@ const actionKeys: Record<string, PlainKey> = {
   'platform.block.settings': 'changes.blockSettings',
   'platform.catalog.delete': 'changes.catalogDelete',
   'platform.catalog.publish': 'changes.catalogPublish',
+  'platform.provider-object.incident': 'changes.providerObjectIncident',
   'platform.batch-run.start': 'changes.batchRunStart',
   'platform.batch-run.cancel': 'changes.batchRunCancel',
   'platform.batch-run.retry': 'changes.batchRunRetry',
