@@ -317,6 +317,25 @@ describe('following a footnote', () => {
     expect(document.activeElement?.textContent).toBe(nkom.title);
     expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
   });
+
+  it('follows a target once, so new sources with the target still held move no focus', async () => {
+    const target = { documentId: 'kudos::2021' };
+    const { rerender } = render(<Sources sources={[nkom, memo]} target={target} />);
+    await frame();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    // Another answer's sources: every card remounts, with the same target object still passed.
+    const again = { ...nkom, excerpts: nkom.excerpts.slice(0, 1) };
+    rerender(<Sources sources={[again, memo]} target={target} />);
+    await frame();
+    expect(document.activeElement).toBe(outside);
+    // A new target object, as a new footnote press gives, is followed.
+    rerender(<Sources sources={[again, memo]} target={{ documentId: 'kudos::2021' }} />);
+    await frame();
+    expect(document.activeElement?.textContent).toBe(nkom.title);
+    outside.remove();
+  });
 });
 
 describe('the cards and the search', () => {

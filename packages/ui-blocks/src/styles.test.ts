@@ -169,4 +169,10 @@ describe('the Sources styles', () => {
   it('say that a closed card’s body is hidden, which the layer would otherwise undo', () => {
     expect(flat).toContain('.uib-sources-document-body[hidden] { display: none; }');
   });
+
+  it('keep each link back at least 24 px both ways, which a size token under data-size="sm" is not', () => {
+    const rule = flat.match(/\.uib-sources-use \{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).toContain('min-inline-size: var(--genai-sources-use-min-size, 24px)');
+    expect(rule).toContain('min-block-size: var(--genai-sources-use-min-size, 24px)');
+  });
 });
