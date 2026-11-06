@@ -304,6 +304,35 @@ describe.each([['memory'], ['postgres']])('%s admin stores', (name) => {
     expect(await reopened.list(ORG_B)).toEqual([]);
   });
 
+  it('reads a test set stored before expected.criteria with its criteria moved there', async () => {
+    const { testSets } = backend().stores();
+    const old = testSet(ORG_A, 'nynorsk', 1);
+    await testSets.put({
+      ...old,
+      spec: {
+        cases: [
+          {
+            ...(old.spec.cases[0] as TestSet['spec']['cases'][number]),
+            type: 'criteria',
+            expected: { sources: [], referenceAnswer: 'Svaret er skrive på nynorsk.' },
+          },
+        ],
+      },
+    });
+
+    const reopened = (await backend().reopen()).testSets;
+    const [read] = (await reopened.get(ORG_A, 'nynorsk'))?.spec.cases ?? [];
+    const [listed] = (await reopened.list(ORG_A))
+      .filter((s) => s.metadata.id === 'nynorsk')
+      .flatMap((s) => s.spec.cases);
+
+    expect(read?.expected).toEqual({
+      sources: [],
+      criteria: { criteria: 'Svaret er skrive på nynorsk.' },
+    });
+    expect(listed?.expected).toEqual(read?.expected);
+  });
+
   it('stores eval runs and filters them newest first', async () => {
     const { runs } = backend().stores();
     await runs.save({

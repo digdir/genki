@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Principal } from '@genai/contracts';
 import {
+  caseExpectation,
   caseFrom,
   caseView,
   isCaseSplit,
@@ -379,7 +380,14 @@ export const createQualityModule =
           if (!set) return problem(c, 404, 'Fant ikke');
           const data = await body(c);
           const input = text(data.input);
-          const expected = text(data.expected);
+          const structured = isRecord(data.expected)
+            ? caseExpectation.safeParse(data.expected)
+            : undefined;
+          const expected = structured ? structured.data : text(data.expected);
+          const described =
+            typeof expected === 'string' ||
+            expected?.referenceAnswer !== undefined ||
+            Object.keys(expected?.criteria ?? {}).length > 0;
           const type = data.type ?? 'criteria';
           const errors = [
             ...(input ? [] : [{ path: 'input', message: 'the input is required' }]),
@@ -389,9 +397,26 @@ export const createQualityModule =
             ...(data.split === undefined || isCaseSplit(data.split)
               ? []
               : [{ path: 'split', message: 'split is locked or open' }]),
-            ...(type !== 'must_reject' && !expected
-              ? [{ path: 'expected', message: 'the expected answer or criteria are required' }]
-              : []),
+            ...(structured && !structured.success
+              ? [
+                  {
+                    path: 'expected',
+                    message: 'expected is a text, or a reference answer and named criteria',
+                  },
+                ]
+              : type !== 'must_reject' && !described
+                ? [{ path: 'expected', message: 'the expected answer or criteria are required' }]
+                : // Given as fields, a case needs the one its type is judged on.
+                  structured?.success && type === 'criteria' && !structured.data.criteria
+                  ? [{ path: 'expected.criteria', message: 'a criteria case needs criteria' }]
+                  : structured?.success && type === 'exact' && !structured.data.referenceAnswer
+                    ? [
+                        {
+                          path: 'expected.referenceAnswer',
+                          message: 'an exact case needs the text to find',
+                        },
+                      ]
+                    : []),
             ...(data.id === undefined || (typeof data.id === 'string' && slug.test(data.id))
               ? []
               : [{ path: 'id', message: 'lowercase letters, digits and dashes' }]),
@@ -405,7 +430,7 @@ export const createQualityModule =
             id,
             input,
             type,
-            ...(expected ? { expected } : {}),
+            ...(expected && described ? { expected } : {}),
             ...(isCaseSplit(data.split) ? { split: data.split } : {}),
           });
           const result = await mountDeps.admin.perform(guard.principal, 'platform.testset.save', {
