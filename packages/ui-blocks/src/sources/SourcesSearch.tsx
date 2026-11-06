@@ -1,7 +1,7 @@
-import { Button, Label, Paragraph, Search } from '@digdir/designsystemet-react';
+import { Label, Paragraph, Search } from '@digdir/designsystemet-react';
 import { useId } from 'react';
 import { useT } from '../i18n.js';
-import { MIN_QUERY_LENGTH } from '../markdown/textSearch.js';
+import { searchStatus, SearchSteps } from '../markdown/SearchSteps.js';
 
 export interface SourcesSearchProps {
   query: string;
@@ -24,18 +24,16 @@ export const SourcesSearch = ({
 }: SourcesSearchProps) => {
   const t = useT();
   const fieldId = useId();
-  const atFirst = currentHitIndex === 0;
-  const atLast = currentHitIndex >= hitCount - 1;
-
-  const typed = query.trim().length;
-  const status =
-    typed === 0
-      ? ''
-      : typed < MIN_QUERY_LENGTH
-        ? t('sources.searchMin', { n: MIN_QUERY_LENGTH })
-        : hitCount === 0
-          ? t('sources.searchNone')
-          : t('sources.searchCount', { n: currentHitIndex + 1, total: hitCount });
+  const status = searchStatus(
+    {
+      min: (n) => t('sources.searchMin', { n }),
+      none: t('sources.searchNone'),
+      count: (n, total) => t('sources.searchCount', { n, total }),
+    },
+    query,
+    hitCount,
+    currentHitIndex,
+  );
 
   return (
     <search className="uib-sources-search">
@@ -57,31 +55,16 @@ export const SourcesSearch = ({
           <Paragraph data-size="xs" aria-live="polite" className="uib-sources-search-status">
             {status}
           </Paragraph>
-          {hitCount > 0 ? (
-            <div className="uib-sources-search-steps">
-              {/* aria-disabled, not disabled, so focus stays at the last hit. */}
-              <Button
-                type="button"
-                variant="tertiary"
-                data-size="sm"
-                aria-label={t('sources.previousHit')}
-                aria-disabled={atFirst || undefined}
-                onClick={() => !atFirst && onStep(-1)}
-              >
-                {t('sources.previous')}
-              </Button>
-              <Button
-                type="button"
-                variant="tertiary"
-                data-size="sm"
-                aria-label={t('sources.nextHit')}
-                aria-disabled={atLast || undefined}
-                onClick={() => !atLast && onStep(1)}
-              >
-                {t('sources.next')}
-              </Button>
-            </div>
-          ) : null}
+          <SearchSteps
+            className="uib-sources-search-steps"
+            hitCount={hitCount}
+            currentHitIndex={currentHitIndex}
+            onStep={onStep}
+            previous={t('sources.previous')}
+            next={t('sources.next')}
+            previousName={t('sources.previousHit')}
+            nextName={t('sources.nextHit')}
+          />
         </div>
       </form>
     </search>
