@@ -1,4 +1,5 @@
 import {
+  copyOwner,
   GenerationBusy,
   KnowledgeError,
   tombstoneHash,
@@ -159,16 +160,19 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       applied: string | null;
       applied_at: Date | null;
       files: { name: string; sha256: string | null }[];
+      copied: boolean;
     }>(
       `select d.number::text, d.id, d.metadata_hash, d.state, d.missing, d.change::text,
               a.change::text as applied, a.applied_at,
               coalesce((select jsonb_agg(jsonb_build_object('name', f.file, 'sha256', f.sha256) order by f.file)
-                          from src_files f where f.dataset = d.dataset and f.document = d.id), '[]') as files
+                          from src_files f where f.dataset = d.dataset and f.document = d.id), '[]') as files,
+              not ($2 = any(d.owners)) as copied
          from src_documents d
          left join kn_applied a on a.generation = $3 and a.id = d.id
-        where d.dataset = $1 and $2 = any(d.owners)
+        where d.dataset = $1
+          and ($2 = any(d.owners) or ($2 <> $4 and $4 = any(d.owners)))
         order by d.change`,
-      [dataset, pipeline, generation],
+      [dataset, pipeline, generation, copyOwner],
     );
     return rows.map((r) => ({
       number: r.number,
@@ -183,6 +187,7 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
       change: Number(r.change),
       ...(r.applied === null ? {} : { applied: Number(r.applied) }),
       ...(r.applied_at === null ? {} : { appliedAt: r.applied_at.toISOString() }),
+      ...(r.copied ? { copied: true } : {}),
     }));
   },
 
@@ -223,16 +228,18 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     }),
 
   chunking: async <Chunking>(generation: string, pipeline: string, current: Chunking) => {
-    const { rows } = await writer.query<{ chunking: Chunking }>(
-      `with kept as (
-         update kn_generations
-            set recipe = jsonb_set(recipe, '{chunking}',
-                                   coalesce(recipe -> 'chunking', '{}') || jsonb_build_object($2::text, $3::jsonb))
-          where generation = $1 and not coalesce((recipe -> 'chunking') ? $2, false)
-          returning recipe)
-       select coalesce((select recipe -> 'chunking' -> $2 from kept),
-                       (select recipe -> 'chunking' -> $2 from kn_generations where generation = $1)) as chunking`,
+    // Two statements: a job that waited on another's update reads what that one kept, which a
+    // read in the same statement, on its older snapshot, would not see.
+    await writer.query(
+      `update kn_generations
+          set recipe = jsonb_set(recipe, '{chunking}',
+                                 coalesce(recipe -> 'chunking', '{}') || jsonb_build_object($2::text, $3::jsonb))
+        where generation = $1 and not coalesce((recipe -> 'chunking') ? $2, false)`,
       [generation, pipeline, JSON.stringify(current)],
+    );
+    const { rows } = await writer.query<{ chunking: Chunking }>(
+      `select recipe -> 'chunking' -> $2 as chunking from kn_generations where generation = $1`,
+      [generation, pipeline],
     );
     const kept = rows[0]?.chunking;
     if (kept === undefined || kept === null)

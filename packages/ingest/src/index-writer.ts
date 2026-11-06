@@ -73,6 +73,29 @@ export const toIndexDocument = (
   };
 };
 
+/**
+ * The most an embedding input may hold, in UTF-8 bytes. text-embedding-3 reads at most 8,192 tokens
+ * and its byte-level tokens are at least one byte each, so no input this long can be refused.
+ */
+export const maxEmbeddingBytes = 8191;
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder('utf-8', { fatal: false });
+
+/** A text's start of at most `maxEmbeddingBytes` bytes, cut back to a whole character. */
+const embeddingInput = (text: string) => {
+  const bytes = encoder.encode(text);
+  if (bytes.length <= maxEmbeddingBytes) return text;
+  let end = maxEmbeddingBytes;
+  // Step back over continuation bytes (10xxxxxx), so no character is cut in half.
+  while (end > 0 && ((bytes[end] ?? 0) & 0xc0) === 0x80) end--;
+  return decoder.decode(bytes.subarray(0, end));
+};
+
+/**
+ * Embeds a document's chunks and phrases. A text longer than the model takes, such as a long table
+ * copied from another engine (#366), is embedded by its start and stored whole.
+ */
 export const embedIndexDocument = async (
   doc: IndexDocument,
   embedder: EmbeddingPort,
@@ -82,7 +105,7 @@ export const embedIndexDocument = async (
   const vectors = new Map<string, number[]>();
   for (let at = 0; at < texts.length; at += batchSize) {
     const batch = texts.slice(at, at + batchSize);
-    const result = await embedder.embed(batch);
+    const result = await embedder.embed(batch.map(embeddingInput));
     batch.forEach((text, i) => {
       const vector = result.vectors[i];
       if (!vector) throw new Error(`the embedder returned no vector for text ${at + i}`);

@@ -23,6 +23,7 @@ responsibilities:
   - Fire schedules from one worker at a time through a Postgres advisory lock
   - Install the knowledge job queues on both servers and reconcile knowledge runs every minute (ADR 0042)
   - Work knowledge.ingest on the platform server and knowledge.index on the knowledge server, behind admission on the run and the knowledge binding
+  - Work KNOWLEDGE_INDEX_CONCURRENCY knowledge.index and knowledge.fill jobs at once (8 by default), with knowledge pools sized to hold them
   - Work knowledge.build and knowledge.fill only inside knowledge.nightWindow, and knowledge.check every night at its start
   - Work knowledge.drop on the platform server for one generation an engine switch left, never the active one
   - End a knowledge run with VACUUM (ANALYZE), and send a run's documents as fill jobs past knowledge.heavyThreshold
