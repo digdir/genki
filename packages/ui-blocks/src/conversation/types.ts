@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AnswerFailure, AnswerStatus } from '../answer/Answer.js';
 import type { AnswerMarker } from '../answer/citations.js';
-import type { SourceDocument } from '../sources/types.js';
+import type { SourceDocument, SourceTarget } from '../sources/types.js';
 
 /** What the reader asked. */
 export interface ConversationQuestion {
@@ -63,11 +63,12 @@ export interface ConversationClarification {
 export type ConversationTurn =
   ConversationQuestion | ConversationAnswer | ConversationClarification;
 
-/** A footnote to scroll to and focus: which answer, and its index in that answer's footnotes. */
-export interface ConversationTarget {
-  turnId: string;
-  citation: number;
-}
+/**
+ * Where focus goes back to: which answer, and in it a footnote, by its index in that answer's
+ * footnotes, or a title in «Kilder brukt i svaret», by its document.
+ */
+export type ConversationTarget =
+  { turnId: string; citation: number } | { turnId: string; document: SourceTarget };
 
 /** What the conversation hands the app's row under a finished answer. */
 export interface ConversationActionParts {

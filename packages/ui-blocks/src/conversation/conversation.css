@@ -48,6 +48,12 @@
 
   /* «Avgrenset til: Årsrapport · 2023» over an answer: a statement about a question already
      asked, so not a chip, which is a control. */
+  /* The thread's name, with the column's gap under it, as kunnskapsassistenten's chat column. */
+  .uib-conversation-title {
+    margin: 0 0 var(--genai-conversation-title-spacing, var(--ds-size-8));
+    overflow-wrap: break-word;
+  }
+
   .uib-conversation-slow {
     margin-block: var(--genai-conversation-slow-spacing, var(--ds-size-4)) 0;
     color: var(--genai-conversation-slow-color, var(--ds-color-text-subtle));

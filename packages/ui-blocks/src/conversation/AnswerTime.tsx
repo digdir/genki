@@ -17,7 +17,15 @@ export interface AnswerTimeProps {
 export const AnswerTime = ({ at, now, className }: AnswerTimeProps) => {
   const t = useT();
   const f = useFormat();
-  const when = answerTime(at, f, t('conversation.yesterday'), now);
+  const when = answerTime(
+    at,
+    f,
+    {
+      yesterday: t('conversation.yesterday'),
+      dateTime: (date, time) => t('conversation.dateTime', { date, time }),
+    },
+    now,
+  );
   if (!when) return null;
   return (
     <time

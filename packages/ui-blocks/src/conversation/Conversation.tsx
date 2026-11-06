@@ -1,7 +1,8 @@
-import { Button, Card, Paragraph } from '@digdir/designsystemet-react';
+import { Button, Card, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { MagnifyingGlassIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Answer, type AnswerTarget } from '../answer/Answer.js';
+import { finishedText } from '../answer/copy.js';
 import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
 import { findHits, stepHit } from '../markdown/textSearch.js';
@@ -38,8 +39,26 @@ export interface ConversationProps {
     ((turn: ConversationAnswer, citation: number, target: SourceTarget) => void) | undefined;
   /** A document in «Kilder brukt i svaret» was chosen, in which answer. */
   onOpenDocument?: ((turn: ConversationAnswer, source: SourceDocument) => void) | undefined;
-  /** Asks a stopped or failed question again, offered under that answer. */
-  onRegenerate?: ((turn: ConversationAnswer) => void) | undefined;
+  /**
+   * Asks a stopped or failed question again, offered under that answer, with the question it
+   * answers. A question nothing answered gets the same offer, with an answer turn that stands in.
+   */
+  onRegenerate?:
+    ((turn: ConversationAnswer, question: ConversationQuestion | undefined) => void) | undefined;
+  /** The thread's name, as a visible heading over the conversation. */
+  title?: string | undefined;
+  /**
+   * The name only repeats the first question, so the heading is there for the outline and hidden
+   * from the eye. Without it, the block compares the name with the question's first sentence.
+   */
+  titleRepeatsQuestion?: boolean | undefined;
+  /** The title's heading level, 2 by default; the answers' headings follow under it. */
+  titleLevel?: 1 | 2 | 3 | undefined;
+  /**
+   * An answer to the last question is on its way, before the app has a turn for it. Without it, a
+   * last question with nothing after it, outside `loading`, got no answer and says so.
+   */
+  pending?: boolean | undefined;
   /** One of the answers a question back offers was chosen. */
   onReply?: ((turn: ConversationClarification, option: string) => void) | undefined;
   /** Where a footnote or a document leads, for a new tab and for copying. */
@@ -114,6 +133,41 @@ const questionBefore = (turns: readonly ConversationTurn[], index: number) => {
   return undefined;
 };
 
+// A thread named after its question: kunnskapsassistenten's threadHeading.ts takes the first
+// sentence, cut on a word at 80 characters. Such a title says nothing the question under it
+// doesn't, so it stays in the outline and out of sight.
+const titleLength = 80;
+const firstSentence = (question: string) => {
+  const text = question.trim().replace(/\s+/gu, ' ');
+  const end = text.search(/[.?!…]+(?=\s)/u);
+  const sentence = end < 0 ? text : text.slice(0, end + text.slice(end).search(/\s/u));
+  return sentence.replace(/[.?!…]+$/u, '').trimEnd();
+};
+const shortened = (text: string) => {
+  if (text.length <= titleLength) return text;
+  const cut = text.lastIndexOf(' ', titleLength);
+  return `${text.slice(0, cut > 0 ? cut : titleLength).trimEnd()} …`;
+};
+const repeatsQuestion = (title: string, question: string | undefined) => {
+  if (question === undefined) return false;
+  const name = title.trim();
+  const whole = question.trim().replace(/\s+/gu, ' ');
+  const sentence = firstSentence(question);
+  return name === whole || name === sentence || name === shortened(sentence);
+};
+
+/** A question with no answer, question back or stand-in after it, before the next question. */
+const unanswered = (
+  turns: readonly ConversationTurn[],
+  index: number,
+  stillComing: boolean,
+): boolean => {
+  if (turns[index]?.kind !== 'question') return false;
+  const next = turns[index + 1];
+  if (next === undefined) return !stillComing;
+  return next.kind === 'question';
+};
+
 /**
  * The conversation: the reader's questions, the answers and the questions back, as an ordered
  * list, because the order is the meaning. Who said what is said in words to a screen reader, not
@@ -126,6 +180,10 @@ export const Conversation = ({
   onOpenCitation,
   onOpenDocument,
   onRegenerate,
+  title,
+  titleRepeatsQuestion,
+  titleLevel = 2,
+  pending = false,
   onReply,
   href,
   citationId,
@@ -168,9 +226,65 @@ export const Conversation = ({
     atEndChange.current?.(atEnd);
   }, [atEnd]);
 
-  // Progress is a new turn object for the answer on its way: a word, a step, a source.
+  // What the polite region says about an answer on its way, as kunnskapsassistenten's useChat:
+  // that it is coming, each block once it is finished, and how it ended. Only answers seen on
+  // their way: a thread read back says nothing. A failed answer is said by its own alert.
+  const [announcement, setAnnouncement] = useState('');
+  const live = useRef(new Map<string, { status: string; finished: string }>());
+  const lastSeen = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const turn = turns.at(-1);
+    const before = lastSeen.current;
+    lastSeen.current = turn?.id;
+    if (!turn || loading) return;
+    if (turn.kind === 'clarification') {
+      // New after the question it follows, or in place of the answer that was coming.
+      const arrived =
+        turn.id !== before &&
+        before !== undefined &&
+        (turns.at(-2)?.id === before || live.current.has(before));
+      if (arrived)
+        setAnnouncement(
+          assistantName
+            ? t('conversation.clarifying', { name: assistantName })
+            : t('conversation.clarifyingUnnamed'),
+        );
+      return;
+    }
+    if (turn.kind !== 'answer') return;
+    const known = live.current.get(turn.id);
+    if (!known) {
+      if (turn.status !== 'streaming') return;
+      live.current.set(turn.id, { status: 'streaming', finished: '' });
+      setAnnouncement(t('conversation.answerComing'));
+      return;
+    }
+    if (turn.status === 'streaming') {
+      const finished = finishedText(turn.text);
+      if (finished && finished !== known.finished) {
+        known.finished = finished;
+        setAnnouncement(finished);
+      }
+      return;
+    }
+    if (known.status !== 'streaming') return;
+    known.status = turn.status;
+    if (turn.status === 'aborted') setAnnouncement(t('conversation.answerStopped'));
+    if (turn.status !== 'complete') return;
+    // One with no sources carries a warning in its card; «ferdig» alone would hide it.
+    setAnnouncement(
+      turn.noAnswer
+        ? t('conversation.foundNothing')
+        : turn.sources?.length === 0 && turn.text.trim()
+          ? `${t('conversation.answerDone')} ${t('answer.noSources')}`
+          : t('conversation.answerDone'),
+    );
+  }, [turns, loading]);
+
+  // Progress is a new turn object for the answer on its way: a word, a step, a source. The line
+  // shows after each long wait; the region says it once per answer.
   const [slowFor, setSlowFor] = useState<ConversationAnswer>();
-  const [slowSaidFor, setSlowSaidFor] = useState<string>();
+  const slowSaid = useRef(new Set<string>());
   const stalled = useRef(onStalled);
   stalled.current = onStalled;
   useEffect(() => {
@@ -180,7 +294,9 @@ export const Conversation = ({
       timers.push(
         setTimeout(() => {
           setSlowFor(waiting);
-          setSlowSaidFor(waiting.id);
+          if (slowSaid.current.has(waiting.id)) return;
+          slowSaid.current.add(waiting.id);
+          setAnnouncement(t('conversation.slow'));
         }, slowAfter),
       );
     timers.push(setTimeout(() => stalled.current?.(waiting), stalledAfter));
@@ -259,7 +375,12 @@ export const Conversation = ({
 
   // Held by identity: the answer scrolls to its footnote each time it gets a new target.
   const answerTarget = useMemo<AnswerTarget | undefined>(
-    () => (target ? { citation: target.citation } : undefined),
+    () =>
+      target
+        ? 'citation' in target
+          ? { citation: target.citation }
+          : { document: target.document }
+        : undefined,
     [target],
   );
 
@@ -310,6 +431,41 @@ export const Conversation = ({
       </p>
     ) : null;
   };
+
+  // A question nothing answered: a failed turn the store did not keep, as genki leaves it. It
+  // says so, with «Generer på nytt», as kunnskapsassistenten draws a failed turn after a reload.
+  const drawUnanswered = (question: ConversationQuestion) => {
+    const standIn: ConversationAnswer = {
+      kind: 'answer',
+      id: `${question.id}:unanswered`,
+      text: '',
+      status: 'failed',
+    };
+    return (
+      <li
+        key={standIn.id}
+        className="uib-conversation-turn"
+        data-kind="answer"
+        data-unanswered="true"
+      >
+        <Answer
+          text=""
+          status="failed"
+          onRegenerate={onRegenerate && (() => onRegenerate(standIn, question))}
+          assistantName={assistantName}
+          headingLevel={headingLevel}
+          color={answerColor}
+        />
+      </li>
+    );
+  };
+
+  const drawTurns = () =>
+    turns.flatMap((turn, index) =>
+      turn.kind === 'question' && unanswered(turns, index, pending || loading)
+        ? [drawTurn(turn, index), drawUnanswered(turn)]
+        : [drawTurn(turn, index)],
+    );
 
   const drawTurn = (turn: ConversationTurn, index: number) => {
     if (turn.kind === 'question')
@@ -373,7 +529,7 @@ export const Conversation = ({
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
           closingQuestion={closingQuestion}
-          onRegenerate={onRegenerate && (() => onRegenerate(turn))}
+          onRegenerate={onRegenerate && (() => onRegenerate(turn, question))}
           failure={turn.failure}
           actions={rowFor(turn)}
           assistantName={assistantName}
@@ -392,6 +548,21 @@ export const Conversation = ({
 
   return (
     <div ref={rootRef} className={classes('uib-conversation', className)} data-color={color}>
+      {/* The thread's name over the conversation, «lg» as kunnskapsassistenten's h2. */}
+      {title?.trim() ? (
+        <Heading
+          level={titleLevel}
+          data-size="lg"
+          className={
+            (titleRepeatsQuestion ??
+            repeatsQuestion(title, turns.find((turn) => turn.kind === 'question')?.text))
+              ? 'ds-sr-only'
+              : 'uib-conversation-title'
+          }
+        >
+          {title.trim()}
+        </Heading>
+      ) : null}
       {/* First, so the tab order meets the strip before the answer it searches. */}
       {searched ? (
         <AnswerSearch
@@ -412,7 +583,7 @@ export const Conversation = ({
           the reader's own words, and an outline over it would take them away. */}
       {turns.length ? (
         <ol className="uib-conversation-turns" ref={listRef}>
-          {turns.map(drawTurn)}
+          {drawTurns()}
         </ol>
       ) : reading ? (
         <ThreadLoading color={answerColor} />
@@ -423,14 +594,8 @@ export const Conversation = ({
           {t('conversation.slow')}
         </Paragraph>
       ) : null}
-      {/* The slow answer is said once per answer: the words stay until it ends, so a second
-          wait changes nothing here. */}
       <p aria-live="polite" className="ds-sr-only">
-        {reading && noticeSaid
-          ? t('conversation.loading')
-          : waiting && slowSaidFor === waiting.id
-            ? t('conversation.slow')
-            : ''}
+        {reading && noticeSaid ? t('conversation.loading') : announcement}
       </p>
     </div>
   );

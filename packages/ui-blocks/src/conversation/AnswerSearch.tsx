@@ -2,7 +2,7 @@ import { Button, Label, Search } from '@digdir/designsystemet-react';
 import { XMarkIcon } from '@navikt/aksel-icons';
 import { useId, type RefObject } from 'react';
 import { useT } from '../i18n.js';
-import { MIN_QUERY_LENGTH } from '../markdown/textSearch.js';
+import { searchStatus, SearchSteps } from '../markdown/SearchSteps.js';
 
 export interface AnswerSearchProps {
   query: string;
@@ -19,9 +19,9 @@ export interface AnswerSearchProps {
 }
 
 /**
- * Search in one answer, the same control as Sources' search. It leaves the browser's own find
- * alone, and the counter is a live region, because a `<mark>` is not announced and the count is
- * the only sign anything happened.
+ * Search in one answer, with the status and steps Sources' search uses (`markdown/SearchSteps`),
+ * in this block's own words. It leaves the browser's own find alone, and the counter is a live
+ * region, because a `<mark>` is not announced and the count is the only sign anything happened.
  */
 export const AnswerSearch = ({
   query,
@@ -35,18 +35,16 @@ export const AnswerSearch = ({
 }: AnswerSearchProps) => {
   const t = useT();
   const fieldId = useId();
-  const atFirst = currentHitIndex === 0;
-  const atLast = currentHitIndex >= hitCount - 1;
-
-  const typed = query.trim().length;
-  const status =
-    typed === 0
-      ? ''
-      : typed < MIN_QUERY_LENGTH
-        ? t('sources.searchMin', { n: MIN_QUERY_LENGTH })
-        : hitCount === 0
-          ? t('sources.searchNone')
-          : t('sources.searchCount', { n: currentHitIndex + 1, total: hitCount });
+  const status = searchStatus(
+    {
+      min: (n) => t('conversation.searchMin', { n }),
+      none: t('conversation.searchNone'),
+      count: (n, total) => t('conversation.searchCount', { n, total }),
+    },
+    query,
+    hitCount,
+    currentHitIndex,
+  );
 
   return (
     <search className="uib-conversation-search">
@@ -77,38 +75,24 @@ export const AnswerSearch = ({
           />
           {/* The reset clears the field; the state behind it is cleared too, or React puts the
               old value straight back. */}
-          <Search.Clear aria-label={t('sources.clearSearch')} onClick={() => onQueryChange('')} />
+          <Search.Clear
+            aria-label={t('conversation.clearSearch')}
+            onClick={() => onQueryChange('')}
+          />
         </Search>
         <p aria-live="polite" className="uib-conversation-search-count">
           {status}
         </p>
-        {/* No previous or next before there is something to step through: a control the reader
-            has never been able to use only adds a tab stop. */}
-        {hitCount > 0 ? (
-          <div className="uib-conversation-search-steps">
-            {/* aria-disabled, not disabled, so focus stays on the button at the last hit. */}
-            <Button
-              type="button"
-              variant="tertiary"
-              data-size="sm"
-              aria-label={t('conversation.previousHit')}
-              aria-disabled={atFirst || undefined}
-              onClick={() => !atFirst && onStep(-1)}
-            >
-              {t('sources.previous')}
-            </Button>
-            <Button
-              type="button"
-              variant="tertiary"
-              data-size="sm"
-              aria-label={t('conversation.nextHit')}
-              aria-disabled={atLast || undefined}
-              onClick={() => !atLast && onStep(1)}
-            >
-              {t('sources.next')}
-            </Button>
-          </div>
-        ) : null}
+        <SearchSteps
+          className="uib-conversation-search-steps"
+          hitCount={hitCount}
+          currentHitIndex={currentHitIndex}
+          onStep={onStep}
+          previous={t('conversation.previous')}
+          next={t('conversation.next')}
+          previousName={t('conversation.previousHit')}
+          nextName={t('conversation.nextHit')}
+        />
         <Button
           type="button"
           variant="tertiary"
