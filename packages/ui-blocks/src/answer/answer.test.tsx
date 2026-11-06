@@ -271,7 +271,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
   it('leads from an excerpt back to each footnote that cites it, by a link of its own', async () => {
     render(<Host />);
     const back = within(excerptRow(1)).getAllByRole('link', { name: /^Til svaret/ });
-    expect(back.map((link) => link.textContent)).toEqual([
+    expect(back.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Til svaret, bruk 1, fotnote 1 av 4',
       'Til svaret, bruk 2, fotnote 4 av 4',
     ]);
@@ -303,7 +303,7 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     fireEvent.click(footnotes()[1] as HTMLElement);
     await frame();
     expect(footnotes()[1]?.textContent).toBe('[2]');
-    expect(document.activeElement?.textContent).toBe(`Kilde 2: ${nkom.title}`);
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(`Kilde 2: ${nkom.title}`);
     const card = screen
       .getByRole('heading', { name: `Kilde 2: ${nkom.title}` })
       .closest('.uib-sources-document') as HTMLElement;
