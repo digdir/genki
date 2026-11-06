@@ -258,6 +258,8 @@
     gap: var(--genai-sources-use-gap, var(--ds-size-1));
     min-inline-size: var(--genai-sources-use-min-size, var(--ds-size-6));
     min-block-size: var(--genai-sources-use-min-size, var(--ds-size-6));
+    white-space: nowrap;
+    hyphens: none;
   }
   .uib-sources-excerpt-toggle {
     --dsc-button-color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));
