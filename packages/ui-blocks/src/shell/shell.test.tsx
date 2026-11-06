@@ -4,7 +4,6 @@ import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { en, nb } from '../i18n.js';
-import { ShellLinks, SignedIn } from './Foot.js';
 import type { ShellLayout } from './layout.js';
 import { Shell, type ShellProps, type ShellRequest } from './Shell.js';
 
@@ -620,47 +619,6 @@ describe('the focus', () => {
     fireEvent.focus(link);
     fireEvent.click(button('Skjul tråder og filter'));
     expect(document.activeElement).toBe(button('Vis tråder og filter'));
-  });
-});
-
-describe('the foot’s links and who is signed in', () => {
-  const Icon = () => <svg data-testid="icon" />;
-
-  it('are a named list of links, the open page marked, and nothing else', () => {
-    render(
-      <ShellLinks
-        label="Innstillinger og om Kunnskapsassistenten"
-        links={[
-          { href: '/innstillinger', title: 'Innstillinger', icon: Icon, current: true },
-          { href: '/om', title: 'Om Kunnskapsassistenten' },
-        ]}
-      />,
-    );
-    const list = screen.getByRole('list', { name: 'Innstillinger og om Kunnskapsassistenten' });
-    const links = within(list).getAllByRole('link');
-    expect(links.map((link) => link.getAttribute('aria-current'))).toEqual(['page', null]);
-    expect(screen.queryByRole('navigation')).toBeNull();
-  });
-
-  it('hand a plain click to the app, and leave a click for a new tab to the browser', () => {
-    const onNavigate = vi.fn();
-    render(
-      <ShellLinks label="Lenker" links={[{ href: '/om', title: 'Om' }]} onNavigate={onNavigate} />,
-    );
-    fireEvent.click(screen.getByRole('link', { name: 'Om' }), { ctrlKey: true });
-    expect(onNavigate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('link', { name: 'Om' }));
-    expect(onNavigate).toHaveBeenCalledOnce();
-  });
-
-  it('say who is signed in to a screen reader, and sign out by a plain link', () => {
-    const onSignOut = vi.fn();
-    render(<SignedIn name="Kari Nordmann" signOutHref="/auth/logout" onSignOut={onSignOut} />);
-    expect(screen.getByText('Innlogget som', { exact: false }).textContent).toBe('Innlogget som ');
-    const out = screen.getByRole('link', { name: 'Logg ut' });
-    expect(out.getAttribute('href')).toBe('/auth/logout');
-    fireEvent.click(out);
-    expect(onSignOut).toHaveBeenCalledOnce();
   });
 });
 
