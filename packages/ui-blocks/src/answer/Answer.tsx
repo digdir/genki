@@ -55,9 +55,12 @@ export const failureRetryable = (kind: AnswerFailureKind) =>
 const retryPrompt = /\s*(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*[.!…]*\s*$/iu;
 
 /** A footnote in the answer to show, by its index in the answer's footnotes. */
-export interface AnswerTarget {
-  citation: number;
-}
+/**
+ * Where focus goes back to in the answer: a footnote, by its index in the answer's footnotes, or
+ * a title in «Kilder brukt i svaret», by the document it names. Sources' `onReturn` leads back to
+ * whichever the reader followed.
+ */
+export type AnswerTarget = { citation: number } | { document: SourceTarget };
 
 export interface AnswerProps {
   /** The answer as the service wrote it: Markdown, with `[N]` footnotes. */
@@ -282,6 +285,16 @@ export const Answer = ({
   const { pairing } = read;
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = useMemo(() => documentKeys(sources ?? []), [sources]);
+  // The titles in «Kilder brukt i svaret», by document key, for a way back to one of them.
+  const usedLinks = useRef(new Map<string, HTMLElement>());
+  const keyOf = (goal: SourceTarget) => {
+    const at = (sources ?? []).findIndex(
+      (s) =>
+        (goal.documentId !== undefined && s.documentId === goal.documentId) ||
+        (goal.documentId === undefined && goal.index !== undefined && s.index === goal.index),
+    );
+    return at < 0 ? undefined : keys[at];
+  };
   const names = useMemo(
     () =>
       distinctNames(sources ?? [], (title, id) => t('sources.sameTitle', { title, id })).map(
@@ -301,10 +314,13 @@ export const Answer = ({
   useEffect(() => {
     if (!target) return;
     const frame = requestAnimationFrame(() => {
-      const footnote = footnotes.current.get(target.citation);
+      const element =
+        'citation' in target
+          ? footnotes.current.get(target.citation)
+          : usedLinks.current.get(keyOf(target.document) ?? '');
       // Centred, so the sentence the footnote ends is in view above it.
-      footnote?.scrollIntoView?.({ behavior: stillMotion() ? 'auto' : 'smooth', block: 'center' });
-      footnote?.focus({ preventScroll: true });
+      element?.scrollIntoView?.({ behavior: stillMotion() ? 'auto' : 'smooth', block: 'center' });
+      element?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [target]);
@@ -450,7 +466,12 @@ export const Answer = ({
           </div>
         ) : null}
         {finished && sourcesUsed ? (
-          <SourcesUsed documents={used} href={href} onOpenDocument={onOpenDocument} />
+          <SourcesUsed
+            documents={used}
+            href={href}
+            onOpenDocument={onOpenDocument}
+            links={usedLinks.current}
+          />
         ) : null}
         {finished && closingQuestion ? (
           <Paragraph variant="long">{t('answer.closingQuestion')}</Paragraph>
