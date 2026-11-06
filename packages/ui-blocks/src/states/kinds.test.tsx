@@ -3,7 +3,7 @@ import { InLocale } from '@genai/i18n/react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { errorKindFromStatus, errorKinds, isErrorKind, isRetryable } from './errorKinds.js';
-import { ErrorState } from './States.js';
+import { ErrorState, useErrorText } from './States.js';
 
 afterEach(cleanup);
 
@@ -111,5 +111,31 @@ describe('the error kinds', () => {
   it('show nothing while there is neither a kind nor a message', () => {
     render(<ErrorState assistantName="Kunnskapsassistenten" />);
     expect(alertText()).toBe('');
+  });
+  it('give any block the texts the error state shows, as one set, in the reader’s language', () => {
+    const Card = ({ kind }: { kind: (typeof errorKinds)[number] }) => {
+      const text = useErrorText()(kind, 'Kunnskapsassistenten');
+      return <p>{[text.title, text.what, text.advice].join(' ')}</p>;
+    };
+    for (const kind of errorKinds) {
+      const { container } = render(<Card kind={kind} />);
+      const shared = container.textContent;
+      cleanup();
+      render(<ErrorState kind={kind} assistantName="Kunnskapsassistenten" />);
+      const heading = screen.getByRole('heading', { level: 3 }).textContent ?? '';
+      expect(shared).toBe(`${heading} ${alertText().slice(heading.length)}`);
+      cleanup();
+    }
+    render(
+      <InLocale locale="en">
+        <Card kind="model-unavailable" />
+      </InLocale>,
+    );
+    expect(screen.getByText(/^The assistant/)).toBeTruthy();
+  });
+
+  it('put the heading at the level the host gives it', () => {
+    render(<ErrorState kind="timeout" headingLevel={4} />);
+    expect(screen.getByRole('heading', { level: 4 }).textContent).toBe('Svaret tok for lang tid');
   });
 });
