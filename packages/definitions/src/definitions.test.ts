@@ -77,6 +77,7 @@ const plugins: PluginSchemas = {
     ['mcp-client@1', z.strictObject({ connection: z.string() })],
     ['digdir.klarsprak@2.3', z.strictObject({})],
     ['saker.sok@1', z.strictObject({})],
+    ['github.search_issues@1', z.strictObject({})],
   ]),
   guardrails: new Map<string, z.ZodType>([
     ['pii-before-model', z.strictObject({ categories: z.array(z.string()).min(1) })],
@@ -171,6 +172,10 @@ describe('service definitions', () => {
     expect(errorsOf(withSpec({ tools: ['digdir.klarsprak'] })).map((e) => e.path)).toEqual([
       'spec.tools[0]',
     ]);
+  });
+
+  it('accepts a connected tool whose name has an underscore, as MCP and OpenAPI tools often do', () => {
+    expect(errorsOf(withSpec({ tools: ['github.search_issues@1'] }))).toEqual([]);
   });
 
   it("validates each guardrail's settings with its own schema", () => {
