@@ -1,8 +1,9 @@
-import { withListPrice, type Ref, type UsagePrice } from '@genai/contracts';
+import { pricedUsage, type Ref, type UnitPrices } from '@genai/contracts';
 import {
   createGate,
   credentialFor,
   embedShape,
+  type Credential,
   type Gate,
   type GatePayload,
   type GateRefusal,
@@ -24,15 +25,16 @@ import {
   type EmbeddingConnection,
   type EmbeddingModelConfig,
 } from './adapter.js';
-import { parseEmbeddingCatalog, type CatalogEmbedder } from './catalog.js';
+import { parseEmbedders, type CatalogEmbedder } from './catalog.js';
 import { EmbeddingError, type EmbeddingPort, type EmbedResult, type Residency } from './port.js';
 
 export interface EmbeddingRouterOptions {
+  /** The model catalogue; its models that bind `embed` are the embedders. */
   catalog: unknown;
   adapters: EmbeddingAdapter[];
   secrets: SecretResolver;
   tokenProviders?: TokenProviders;
-  priceOf?: (id: string) => UsagePrice | undefined;
+  priceOf?: (id: string) => UnitPrices | undefined;
   maxResidency?: Residency;
   maxRetries?: number;
   timeoutMs?: number;
@@ -56,7 +58,7 @@ export interface EmbedderDescription {
 interface Route {
   model: CatalogEmbedder;
   config: EmbeddingModelConfig;
-  connection: EmbeddingConnection;
+  connection?: EmbeddingConnection;
   described?: { descriptor: Descriptor; endpoint: DescribedEndpoint };
 }
 
@@ -87,73 +89,59 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     this.reload(options.catalog);
   }
 
+  /** What keeps the embedders of a model catalogue from running. */
+  problems(catalog: unknown): { path: string; message: string }[] {
+    const result = parseEmbedders(catalog, this.options.adapters, this.options.descriptors);
+    return result.ok ? [] : result.errors;
+  }
+
   reload(catalog: unknown) {
-    const result = parseEmbeddingCatalog(catalog, this.options.adapters);
+    const options = this.options;
+    const result = parseEmbedders(catalog, options.adapters, options.descriptors);
     if (!result.ok) {
       throw new Error(
-        `invalid embedding catalog: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+        `invalid embedding models: ${result.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
       );
     }
-    const options = this.options;
-    const adapters = new Map(options.adapters.map((a) => [a.protocol, a]));
-    const problems: string[] = [];
-    for (const model of result.catalog.models) {
-      const id = model.descriptors?.embed;
-      if (!id) continue;
-      const descriptor = options.descriptors?.get(id);
-      const protocol = result.catalog.endpoints[model.endpoint]?.protocol;
-      if (!descriptor) problems.push(`${model.id}: no descriptor ${id}`);
-      else if (descriptor.status !== 'typed' || descriptor.operation !== 'embed')
-        problems.push(`${model.id}: ${id} is not a typed embed descriptor`);
-      else if (descriptor.api.protocol !== protocol)
-        problems.push(`${model.id}: ${id} is for ${descriptor.api.protocol}, not ${protocol}`);
-    }
-    if (problems.length > 0) throw new Error(`invalid embedding catalog: ${problems.join('; ')}`);
-    const connections = new Map<string, EmbeddingConnection>();
-    const endpoints = new Map<string, DescribedEndpoint>();
-    for (const [name, endpoint] of Object.entries(result.catalog.endpoints)) {
-      const adapter = adapters.get(endpoint.protocol) as EmbeddingAdapter;
-      const credential = credentialFor(
-        endpoint.auth,
-        options.secrets,
-        options.tokenProviders,
-        endpoint.baseURL,
-      );
-      const timeoutMs = options.timeoutMs ?? 60_000;
-      const fetch = this.#gate.egress(name);
-      endpoints.set(name, { baseURL: endpoint.baseURL, credential, fetch, timeoutMs });
-      connections.set(
+    const credentials = new Map<string, Credential>();
+    for (const [name, spec] of Object.entries(result.catalog.connections))
+      credentials.set(
         name,
-        adapter.connect({
-          baseURL: endpoint.baseURL,
-          credential,
-          options: adapter.endpointOptions.parse(endpoint.options),
-          maxRetries: options.maxRetries ?? 3,
-          timeoutMs,
-          fetch,
-        }),
+        credentialFor(spec.auth, options.secrets, options.tokenProviders, spec.baseURL),
       );
-    }
+    const timeoutMs = options.timeoutMs ?? 60_000;
+    const connections = new Map<string, EmbeddingConnection>();
     const routes = new Map<string, Route>();
-    for (const model of result.catalog.models) {
-      const descriptor = model.descriptors?.embed
-        ? options.descriptors?.get(model.descriptors.embed)
-        : undefined;
-      const endpoint = result.catalog.endpoints[model.endpoint];
-      const adapter = adapters.get(endpoint?.protocol ?? '') as EmbeddingAdapter;
+    for (const model of result.catalog.embedders) {
+      const credential = credentials.get(model.endpoint) as Credential;
+      const fetch = this.#gate.egress(model.endpoint);
+      const adapter = options.adapters.find((a) => a.api.id === model.api);
+      const key = `${model.endpoint}\u0000${model.api}`;
+      if (adapter && !connections.has(key))
+        connections.set(
+          key,
+          adapter.connect({
+            baseURL: model.baseURL,
+            credential,
+            maxRetries: options.maxRetries ?? 3,
+            timeoutMs,
+            fetch,
+          }),
+        );
+      const descriptor = adapter ? undefined : options.descriptors?.get(model.api);
       routes.set(model.id, {
         model,
         config: {
           deployment: model.deployment,
           dimensions: model.dimensions,
-          options: adapter.modelOptions.parse(model.options),
+          options: adapter ? adapter.modelOptions.parse(model.options) : {},
         },
-        connection: connections.get(model.endpoint) as EmbeddingConnection,
+        ...(adapter ? { connection: connections.get(key) as EmbeddingConnection } : {}),
         ...(descriptor
           ? {
               described: {
                 descriptor,
-                endpoint: endpoints.get(model.endpoint) as DescribedEndpoint,
+                endpoint: { baseURL: model.baseURL, credential, fetch, timeoutMs },
               },
             }
           : {}),
@@ -197,7 +185,7 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
     const payload: GatePayload<EmbedResult> = {
       shape: embedShape,
       usage: (result) =>
-        withListPrice(
+        pricedUsage(
           { inputTokens: result.usage.inputTokens, requests: 1 },
           this.options.priceOf?.(model.id),
         ),
@@ -216,7 +204,8 @@ export class EmbeddingRouter implements PortProvider<EmbeddingPort> {
           );
           dropped(answer.dropped);
           result = answer.result;
-        } else result = await connection.embed(config, texts, ctx.signal);
+        } else if (connection) result = await connection.embed(config, texts, ctx.signal);
+        else throw new EmbeddingError('unavailable', `${model.api} has no implementation`);
       } catch (error) {
         if (error instanceof EmbeddingError) throw error;
         if (ctx.signal.aborted) throw new EmbeddingError('cancelled', 'the request was cancelled');

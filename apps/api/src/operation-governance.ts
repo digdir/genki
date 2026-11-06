@@ -12,16 +12,17 @@ import {
   type ProcessorRecord,
 } from '@genai/composition';
 import {
+  operationModelsOf,
   variantModelOf,
   type FlowStep,
   type ServiceDefinition,
   type StepFlowDefinition,
   type ValidationError,
 } from '@genai/definitions';
-import { maturities, residencyAllows } from '@genai/kernel';
+import { maturities, mediaTypeCovers, mediaTypesOf, residencyAllows } from '@genai/kernel';
 import type { DescriptorRegistry } from '@genai/operations';
-import type { ModelDescription } from '@genai/port-model';
-import { callOperationRef } from '@genai/strategy-step-flow';
+import { builtInOperations, type ModelDescription } from '@genai/port-model';
+import { callOperationModel, callOperationRef } from '@genai/strategy-step-flow';
 import type { Context } from 'hono';
 import { actorOf, AdminRefused, refusedBy, routeOnlyActions } from './admin.js';
 import { changeReasonOf, isReasonLongEnough, reasonTooShort } from './http.js';
@@ -44,7 +45,7 @@ const problem = (c: Context, status: Status, errors: ValidationError[] = []) =>
     'content-type': 'application/problem+json',
   });
 
-const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
+export const stepsIn = (steps: readonly FlowStep[]): FlowStep[] =>
   steps.flatMap((s) => [
     s,
     ...stepsIn(s.repeat?.steps ?? []),
@@ -66,6 +67,7 @@ const serviceModels = (spec: ServiceDefinition['spec']) =>
       spec.model.primary,
       spec.model.fallback,
       ...Object.values(spec.model.roles ?? {}),
+      ...operationModelsOf(spec.model),
       ...spec.variants.map(variantModelOf),
     ].filter((m): m is string => typeof m === 'string'),
   );
@@ -78,6 +80,7 @@ export const describedStepProblems = async (
   deps: DescribedStepDeps,
 ): Promise<ValidationError[]> => {
   const path = 'spec.strategy.config.flow';
+  await deps.descriptors.refresh?.();
   const own = serviceModels(service.spec);
   const catalogue = new Map(deps.models().map((m) => [m.id, m]));
   const seen = new Set<string>([flowRef]);
@@ -94,7 +97,10 @@ export const describedStepProblems = async (
       const refuse = (message: string) => problems.push({ path, message: `${at}: ${message}` });
       const params = (step.params ?? {}) as { descriptor?: unknown; model?: unknown };
       const id = typeof params.descriptor === 'string' ? params.descriptor : '';
-      const modelId = params.model === undefined ? service.spec.model.primary : params.model;
+      const modelId =
+        params.model === undefined
+          ? callOperationModel(id, undefined, service.spec.model)
+          : params.model;
       if (id.includes('{{') || (typeof modelId === 'string' && modelId.includes('{{'))) {
         refuse(
           'the operation and the model are fixed values, not filled in while the service runs',
@@ -106,6 +112,20 @@ export const describedStepProblems = async (
         refuse(`there is no operation descriptor ${id}`);
         continue;
       }
+      if (descriptor.operation === 'decide')
+        refuse(
+          'decide is served only through the purpose-check guardrail, which sends a refusal or a low-confidence answer to a person',
+        );
+      const consented = service.spec.riskConfirmation?.unmaskedInput ?? [];
+      for (const mediaType of mediaTypesOf(descriptor.input))
+        if (!consented.some((c) => mediaTypeCovers(c.mediaType, mediaType)))
+          refuse(
+            `${id} takes ${mediaType} input, which cannot be masked; the service's risk assessment must record unmasked input of ${mediaType} with a reason`,
+          );
+      if (!('pii-before-model' in service.spec.guardrails))
+        refuse(
+          'a call-operation step needs the pii-before-model guardrail, so the text it sends is masked',
+        );
       if (descriptor.status === 'review')
         refuse(
           `${id} is in review; an operator tries it in the raw tier, and a service can use it once it is reviewed`,
@@ -124,6 +144,13 @@ export const describedStepProblems = async (
         refuse(`there is no model ${modelId} in the catalogue`);
         continue;
       }
+      const bound = model.apis[descriptor.operation];
+      if (bound !== id)
+        refuse(
+          bound
+            ? `the model ${modelId} binds ${bound} for ${descriptor.operation}, not ${id}`
+            : `the model ${modelId} binds no API for ${descriptor.operation}`,
+        );
       if (!residencyAllows(service.spec.model.residency, model.residency))
         refuse(
           `the model ${modelId} runs in ${model.residency}, outside ${service.spec.model.residency}`,
@@ -138,17 +165,28 @@ export const describedStepProblems = async (
   return problems;
 };
 
+const builtInKinds: readonly string[] = [...builtInOperations, 'embed', 'rerank'];
+
 const maturityView = (state: MaturityState, descriptors: DescriptorRegistry) => ({
   ...state,
+  builtIn: builtInKinds.includes(state.kind),
+  ...(builtInKinds.includes(state.kind) ? { typed: 'production' as const } : {}),
   descriptors: descriptors
     .list()
     .filter((d) => d.operation === state.kind)
-    .map((d) => ({ id: d.id, status: d.status })),
+    .map((d) => ({ id: d.id, status: d.status, family: d.api.family })),
 });
 
 const processorView = (endpoint: string, entry: ConfigEntry<ProcessorRecord> | undefined) => ({
   endpoint,
-  record: entry ? entry.spec : null,
+  record: entry
+    ? {
+        agreement: entry.spec.agreement,
+        subProcessors: entry.spec.subProcessors,
+        retention: entry.spec.retention,
+        ...(entry.spec.providerState ? { providerState: entry.spec.providerState } : {}),
+      }
+    : null,
   ...(entry ? { by: entry.by, at: entry.at } : {}),
 });
 
@@ -208,7 +246,9 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const guard = await operator(c);
       if ('response' in guard) return guard.response;
       const { governance, descriptors } = guard.operations;
+      await descriptors.refresh();
       const kinds = new Set([
+        ...builtInKinds,
         ...descriptors.list().map((d) => d.operation),
         ...(await governance.maturities()).map((m) => m.kind),
       ]);
@@ -217,7 +257,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
           .sort()
           .map(async (k) => maturityView(await governance.maturityOf(k), descriptors)),
       );
-      return c.json({ environment: governance.tier, data });
+      return c.json({ environment: governance.tier, governs: 'descriptor-calls', data });
     });
 
     app.post('/operator/operation-kinds/:kind/maturity', async (c) => {
@@ -227,6 +267,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       const kind = c.req.param('kind') ?? '';
       if (!isReasonLongEnough(reasonOf(c)))
         return problem(c, 400, [{ path: 'change-reason', message: reasonTooShort }]);
+      await descriptors.refresh();
       if (!descriptors.list().some((d) => d.operation === kind))
         return problem(c, 404, [{ path: 'kind', message: `no descriptor describes ${kind}` }]);
       const body = (await c.req.json().catch(() => ({}))) as { maturity?: unknown };
@@ -282,6 +323,7 @@ export const operationGovernanceModule: PlatformModuleFactory = (deps) => ({
       ]);
       return c.json({
         data: [...endpoints].sort().map((e) => processorView(e, records.get(e))),
+        typedCalls: guard.operations.processorRecords ?? 'warn',
       });
     });
 

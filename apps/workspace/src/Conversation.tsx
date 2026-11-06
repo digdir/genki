@@ -1,11 +1,19 @@
 import { Alert, Button, Details, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
 import { Feedback } from './Feedback';
 import { useT } from './i18n';
-import type { AssistantMessage, ChatMessage, FeedbackInput, Source } from './types';
+import type {
+  AssistantMessage,
+  ChatMessage,
+  FeedbackInput,
+  MediaAttachment,
+  Source,
+} from './types';
+
+type LoadMedia = (url: string, signal?: AbortSignal) => Promise<Blob>;
 
 interface Props {
   messages: ChatMessage[];
@@ -14,7 +22,62 @@ interface Props {
   onRetry: (message: AssistantMessage) => void;
   onFeedback: (input: FeedbackInput) => Promise<void>;
   onOpenTable?: (message: AssistantMessage) => void;
+  loadMedia?: LoadMedia;
 }
+
+type Loaded = { status: 'loading' } | { status: 'ready'; src: string } | { status: 'failed' };
+
+const MediaCard = ({ item, load }: { item: MediaAttachment; load: LoadMedia }) => {
+  const t = useT();
+  const f = useFormat();
+  const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
+  useEffect(() => {
+    const controller = new AbortController();
+    let src: string | undefined;
+    load(item.url, controller.signal).then(
+      (blob) => {
+        src = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(blob) : undefined;
+        if (!controller.signal.aborted)
+          setLoaded(src ? { status: 'ready', src } : { status: 'failed' });
+      },
+      () => !controller.signal.aborted && setLoaded({ status: 'failed' }),
+    );
+    return () => {
+      controller.abort();
+      if (src) URL.revokeObjectURL(src);
+    };
+  }, [item.url, load]);
+  const kind = item.mediaType.split('/')[0];
+  return (
+    <figure className="media-card">
+      {loaded.status === 'ready' ? (
+        kind === 'image' ? (
+          <img src={loaded.src} alt={t('answer.mediaImage')} />
+        ) : kind === 'audio' ? (
+          <audio controls src={loaded.src} />
+        ) : null
+      ) : (
+        <Paragraph data-size="sm" role={loaded.status === 'failed' ? 'alert' : undefined}>
+          {loaded.status === 'loading' ? t('answer.mediaLoading') : t('answer.mediaFailed')}
+        </Paragraph>
+      )}
+      <figcaption className="subtle-sm">
+        {t('answer.mediaMeta', {
+          mediaType: item.mediaType,
+          size: f.number(Math.max(1, Math.round(item.bytes / 1024))),
+        })}
+        {loaded.status === 'ready' ? (
+          <>
+            {' · '}
+            <a href={loaded.src} download={item.id}>
+              {t('answer.mediaDownload')}
+            </a>
+          </>
+        ) : null}
+      </figcaption>
+    </figure>
+  );
+};
 
 const SourceItem = ({ source, id }: { source: Source; id: string }) => {
   const t = useT();
@@ -54,6 +117,7 @@ const Answer = ({
   onRetry,
   onFeedback,
   onOpenTable,
+  loadMedia,
 }: Omit<Props, 'messages'> & { message: AssistantMessage }) => {
   const t = useT();
   const f = useFormat();
@@ -102,6 +166,13 @@ const Answer = ({
           sources={message.sources}
           anchorPrefix={anchors}
         />
+      ) : null}
+      {loadMedia && message.media?.length ? (
+        <div className="media-list" aria-label={t('answer.media')} role="group">
+          {message.media.map((item) => (
+            <MediaCard key={item.url} item={item} load={loadMedia} />
+          ))}
+        </div>
       ) : null}
       {message.sources.length ? (
         <div>

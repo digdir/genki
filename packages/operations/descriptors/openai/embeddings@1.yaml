@@ -1,9 +1,9 @@
-id: openai/embed@1
+id: openai/embeddings@1
 operation: embed
 status: typed
-summary: Embeddings on an OpenAI-compatible endpoint, as the hand-written openai-embeddings adapter sends them.
+summary: Embeddings on an OpenAI-compatible endpoint, as the built-in openai/embeddings@1 implementation sends them.
 api:
-  protocol: openai-embeddings
+  family: openai
   version: v1
 auth:
   keyHeader: authorization
@@ -46,6 +46,6 @@ result:
   usage:
     inputTokens: { $from: $response.usage.prompt_tokens, $default: 0 }
 usage:
-  inputTokens: { $from: $response.usage.prompt_tokens, $default: 0 }
-  requests: 1
+  input-token: { $from: $response.usage.prompt_tokens, $default: 0 }
+  request: 1
 stream: none

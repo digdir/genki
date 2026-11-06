@@ -3,8 +3,13 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  copyListing,
+  copyOwner,
+  documentId,
   knowledgeListingOf,
   pipelineSpec,
+  type CopyListingOptions,
+  type CopySource,
   type IngestSourceOptions,
   type PipelineSpec,
 } from '@genai/ingest';
@@ -18,7 +23,7 @@ import {
   type QueueWork,
 } from '@genai/jobs';
 import type { EmbeddingPort } from '@genai/port-embedding';
-import type { DatasetConfig } from '@genai/port-knowledge';
+import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import {
   attachGeneration,
   generationLockSpace,
@@ -46,6 +51,8 @@ import { knowledgeWork } from './knowledge-handlers.js';
 const ORG = '991825827';
 const signal = new AbortController().signal;
 
+/** Generations the ingest handler asked the owner to prepare. */
+const ownerPrepares: string[] = [];
 let platformContainer: StartedPostgreSqlContainer;
 let knowledgeContainer: StartedPostgreSqlContainer;
 let platform: Awaited<ReturnType<typeof createPostgresStores>>;
@@ -132,19 +139,29 @@ const scenario = async (
     bound?: () => void;
     /** `knowledge.heavyThreshold` and `knowledge.nightWindow` as the worker reads them. */
     heavy?: { threshold: number; window: string; now?: Date };
+    /** Leaves the catalog's generation unmade, as for a dataset just published. */
+    unprepared?: boolean;
+    /** How the dataset differs at an engine switch's endpoint, for runs that name the switch. */
+    switched?: Partial<DatasetConfig>;
+    /** A platform dataset, such as digdir/genki-docs, instead of one of the organisation's. */
+    platform?: boolean;
+    /** What a copy run reads from the dataset's current engine. */
+    copy?: Omit<CopyListingOptions, 'earlierIds'>;
   } = {},
 ) => {
   datasets += 1;
   const dataset: DatasetConfig = {
-    id: `${ORG}/docs-${datasets}`,
+    id: extra.platform ? `digdir/docs-${datasets}` : `${ORG}/docs-${datasets}`,
     filters: {},
     options: {},
     generation: `g-handlers-${datasets}`,
     ...(extra.catalogEmbedding ? { embedding: extra.catalogEmbedding } : {}),
   };
   const built = { ...dataset, ...(extra.builtWith ? { embedding: extra.builtWith } : {}) };
-  await prepareGeneration(owner(), built, dataset.generation as string);
-  await attachGeneration(owner(), built, dataset.generation as string);
+  if (!extra.unprepared) {
+    await prepareGeneration(owner(), built, dataset.generation as string);
+    await attachGeneration(owner(), built, dataset.generation as string);
+  }
   const folder = `docs-${datasets}`;
   await mkdir(join(folderRoot, folder));
   const spec = pipelineSpec.parse({
@@ -184,6 +201,19 @@ const scenario = async (
     runs: runRecords,
     pipeline: async () => spec,
     dataset: (id) => (id === dataset.id ? dataset : undefined),
+    switchDataset: async (run) =>
+      run.dataset === dataset.id && run.engineSwitch === 'docs:1' && extra.switched
+        ? { ...dataset, ...extra.switched }
+        : undefined,
+    generationExists: async (generation) =>
+      Boolean(
+        (await owner().query(`select 1 from kn_generations where generation = $1`, [generation]))
+          .rowCount,
+      ),
+    prepare: (d, generation) => {
+      ownerPrepares.push(generation);
+      return prepareGeneration(owner(), d, generation);
+    },
     listingOf: async (pipeline: PipelineSpec, scope, s) => {
       const listing = await knowledgeListingOf(pipeline, sourceOptions ?? { folderRoot }, scope, s);
       return {
@@ -206,6 +236,12 @@ const scenario = async (
       } as unknown as EmbeddingPort;
     },
     ...(extra.bound ? { bound: extra.bound } : {}),
+    ...(extra.copy
+      ? {
+          copyListingOf: async () =>
+            copyListing({ ...(extra.copy as CopyListingOptions), earlierIds: copyEarlierIds }),
+        }
+      : {}),
     admission: { records: runRecords, platformTenant: ORG, lockdown: false },
   });
   const file = (name: string, text: string) => writeFile(join(folderRoot, folder, name), text);
@@ -221,13 +257,24 @@ const scenario = async (
   };
 };
 
-const startRun = async (dataset: string) => {
+const startRun = async (
+  dataset: string,
+  names: { generation?: string; engineSwitch?: string; pipeline?: string } = {},
+) => {
   const id = crypto.randomUUID();
   await platform.pool.query(
     `insert into ingestion_executions (id, scope, dataset, pipeline, pipeline_version, backend,
-       status, started_by, started_at, runs_as_jobs, admitted_at)
-     values ($1, $2, $3, 'docs', 1, 'index-writer', 'running', 'test', $4, true, $4)`,
-    [id, ORG, dataset, new Date().toISOString()],
+       status, started_by, started_at, runs_as_jobs, admitted_at, generation, engine_switch)
+     values ($1, $2, $3, $7, 1, 'index-writer', 'running', 'test', $4, true, $4, $5, $6)`,
+    [
+      id,
+      ORG,
+      dataset,
+      new Date().toISOString(),
+      names.generation ?? null,
+      names.engineSwitch ?? null,
+      names.pipeline ?? 'docs',
+    ],
   );
   return id;
 };
@@ -247,8 +294,11 @@ const handler = (work: QueueWork[], queue: string) => {
 };
 
 /** Runs a run as the worker would: its ingest job, then each index job it sent. */
-const runOnce = async (s: Awaited<ReturnType<typeof scenario>>) => {
-  const run = await startRun(s.dataset.id);
+const runOnce = async (
+  s: Awaited<ReturnType<typeof scenario>>,
+  names: Parameters<typeof startRun>[1] = {},
+) => {
+  const run = await startRun(s.dataset.id, names);
   const before = s.sent.length;
   await handler(
     s.work.platform,
@@ -392,6 +442,21 @@ describe('knowledge.ingest and knowledge.index', () => {
     const v = await versions(s.dataset.id, s.generation);
     expect(v?.data_version).toBe(v?.last_change);
     expect(v?.last_change).toBe('3');
+  }, 60_000);
+
+  it("a folder dataset's documents get ids by its owner: platform or the organisation number", async () => {
+    const s = await scenario({}, undefined, { platform: true });
+    await s.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(s);
+    expect((await docsIn(s.generation)).map((d) => d.id)).toEqual([
+      `folder:platform/${documentId(`docs-${datasets}/a.md`)}`,
+    ]);
+    const tenant = await scenario();
+    await tenant.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(tenant);
+    expect((await docsIn(tenant.generation)).map((d) => d.id)).toEqual([
+      `folder:${ORG}/${documentId(`docs-${datasets}/a.md`)}`,
+    ]);
   }, 60_000);
 
   it("a run's report counts new, changed, deleted, unchanged, stored, skipped and failed documents", async () => {
@@ -602,5 +667,171 @@ describe('knowledge.ingest and knowledge.index', () => {
       s.dataset.id,
     ]);
     expect(rows).toEqual([]);
+  }, 60_000);
+
+  it('an ingest job into a generation that exists does not log in as the owner', async () => {
+    const ready = await scenario();
+    await ready.file('a.md', '# A\n\nInnhold i a.');
+    ownerPrepares.length = 0;
+    await runOnce(ready);
+    expect((await docsIn(ready.generation)).map((d) => d.title)).toEqual(['A']);
+    expect(ownerPrepares).toEqual([]);
+  }, 60_000);
+
+  it("a cancelled run's ingest job prepares nothing", async () => {
+    const switched = await scenario({}, undefined, {
+      unprepared: true,
+      switched: { embedding: { model: 'fake/embed', dimensions: 3 }, options: {} },
+    });
+    const target = `g-20261104-c${String(datasets).padStart(5, '0')}`;
+    const run = await startRun(switched.dataset.id, { generation: target, engineSwitch: 'docs:1' });
+    await platform.pool.query(
+      `update ingestion_executions set cancel_requested_at = $2, cancelled_by = 'test' where id = $1`,
+      [run, new Date().toISOString()],
+    );
+    ownerPrepares.length = 0;
+    await handler(
+      switched.work.platform,
+      knowledgeIngestQueue.name,
+    )(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    expect(ownerPrepares).toEqual([]);
+  }, 60_000);
+
+  it('the first ingest job prepares a generation that does not exist yet', async () => {
+    // A dataset just published on the knowledge database: its catalog generation is not made yet.
+    const fresh = await scenario({}, undefined, { unprepared: true });
+    await fresh.file('a.md', '# A\n\nInnhold i a.');
+    await runOnce(fresh);
+    expect((await docsIn(fresh.generation)).map((d) => d.title)).toEqual(['A']);
+
+    // A switch's run: the catalog still names the old engine, the run names the switch's generation.
+    const embedding = { model: 'fake/embed', dimensions: 3 };
+    const switched = await scenario({}, undefined, {
+      unprepared: true,
+      switched: { embedding, options: { textSearchConfig: 'english' } },
+    });
+    const target = `g-20261104-${String(datasets).padStart(6, '0')}`;
+    await switched.file('b.md', '# B\n\nInnhold i b.');
+    const run = await startRun(switched.dataset.id, { generation: target, engineSwitch: 'docs:1' });
+    const before = switched.sent.length;
+    await handler(
+      switched.work.platform,
+      knowledgeIngestQueue.name,
+    )(job(knowledgeIngestQueue.name, { run, tenant: ORG }));
+    for (const data of switched.sent.slice(before))
+      await handler(
+        switched.work.knowledge,
+        knowledgeIndexQueue.name,
+      )(job(knowledgeIndexQueue.name, data));
+    const { rows } = await admin.query<{ dataset: string; state: string; recipe: unknown }>(
+      `select dataset, state, recipe from kn_generations where generation = $1`,
+      [target],
+    );
+    expect(rows[0]).toMatchObject({
+      dataset: switched.dataset.id,
+      state: 'standalone',
+      recipe: { embedding, textSearchConfig: 'english' },
+    });
+    expect((await docsIn(target)).map((d) => d.title)).toEqual(['B']);
+    expect(switched.sent.slice(before).every((d) => d.generation === target)).toBe(true);
+  }, 60_000);
+});
+
+const copyEarlierIds = new Map([['kudos:de77ffc7-1a57-456a-af49-167e699a4e6e', ['377252']]]);
+
+const typesenseDoc = (id: string, texts: string[]): IndexDocument => ({
+  id,
+  title: `Rapport ${id}`,
+  fields: {
+    type: 'Statusrapport',
+    files: [{ url: `https://kudos.example/${id}.pdf`, sha256: `sha-${id}` }],
+  },
+  chunks: texts.map((text, position) => ({
+    id: 'reused-by-typesense',
+    position,
+    text,
+    metadata: { metadata: '{}' },
+  })),
+  phrases: [],
+});
+
+const copySource = (docs: IndexDocument[]): CopySource => ({
+  list: async function* () {
+    for (const { chunks, phrases, ...rest } of docs) {
+      void chunks;
+      void phrases;
+      yield rest;
+    }
+  },
+  document: async (id) => docs.find((d) => d.id === id),
+});
+
+/** A copy run of the engine switch `docs:1`, into the scenario's generation. */
+const copyRun = (s: Awaited<ReturnType<typeof scenario>>) => ({
+  pipeline: copyOwner,
+  engineSwitch: 'docs:1',
+  generation: s.generation,
+});
+
+describe('copying a dataset into the knowledge database', () => {
+  const embedding = { model: 'fake/large-1536', dimensions: 3 };
+
+  it('a switch into the knowledge database can copy a dataset, with a record per document', async () => {
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      copy: {
+        source: copySource([typesenseDoc('377252', ['Forord']), typesenseDoc('364', ['Borte'])]),
+        ids: 'kudos',
+      },
+    });
+    const { run } = await runOnce(s, copyRun(s));
+    const { rows } = await admin.query<{
+      id: string;
+      owners: string[];
+      earlier_ids: string[];
+      record: Record<string, unknown>;
+      state: string;
+    }>(`select id, owners, earlier_ids, record, state from src_documents where dataset = $1`, [
+      s.dataset.id,
+    ]);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'kudos:de77ffc7-1a57-456a-af49-167e699a4e6e',
+        owners: [copyOwner],
+        earlier_ids: ['377252'],
+        record: expect.objectContaining({ id: '377252', title: 'Rapport 377252' }),
+        state: 'stored',
+      }),
+    ]);
+    const files = await admin.query<{ file: string; sha256: string }>(
+      `select file, sha256 from src_files where dataset = $1`,
+      [s.dataset.id],
+    );
+    expect(files.rows).toEqual([
+      { file: 'https://kudos.example/377252.pdf', sha256: 'sha-377252' },
+    ]);
+    expect(await reportOf(run)).toMatchObject({ new: 1, stored: 1, 'skipped.no_uuid': 1 });
+  }, 60_000);
+
+  it("copied chunks keep their text and order and are embedded with the target's model", async () => {
+    const embedded: string[] = [];
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      embedded,
+      copy: { source: copySource([typesenseDoc('15d652024721', ['første', 'andre', 'tredje'])]) },
+    });
+    await runOnce(s, copyRun(s));
+    const { rows } = await admin.query<{ position: number; text: string; dims: number }>(
+      `select position, text, vector_dims(vec::vector) as dims
+         from ${partitionOf('kn_chunks', s.generation)} order by position`,
+    );
+    expect(rows).toEqual([
+      { position: 0, text: 'første', dims: 3 },
+      { position: 1, text: 'andre', dims: 3 },
+      { position: 2, text: 'tredje', dims: 3 },
+    ]);
+    expect(new Set(embedded)).toEqual(new Set(['fake/large-1536']));
   }, 60_000);
 });

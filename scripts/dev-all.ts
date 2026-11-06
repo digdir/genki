@@ -67,6 +67,7 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
   const ports = devPorts(env);
   const api = `http://localhost:${ports.api}`;
   const custom = ports.api !== defaultPorts.api;
+  const devMode = !env.GENAI_DEV_MODE || env.GENAI_DEV_MODE === 'true';
   const apiEnv = custom
     ? {
         GENAI_API_PORT: String(ports.api),
@@ -85,7 +86,12 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
             port: modelPort,
             command: process.execPath,
             args: ['scripts/local-model.ts'],
-            env: { LOCAL_MODEL_PORT: String(modelPort) },
+            env: {
+              LOCAL_MODEL_PORT: String(modelPort),
+              ...(env.LOCAL_MODEL_RESPONSES
+                ? { LOCAL_MODEL_RESPONSES: env.LOCAL_MODEL_RESPONSES }
+                : {}),
+            },
           },
         ]
       : []),
@@ -94,7 +100,11 @@ export const devProcesses = (env: Record<string, string | undefined>): DevProces
       port: ports.api,
       ...npmCommand(['run', 'dev', '--workspace', 'apps/api']),
       env: {
-        ...unlessSet(env, { GENAI_DEV_MODE: 'true' }),
+        ...unlessSet(env, {
+          GENAI_DEV_MODE: 'true',
+          ...(devMode ? { GENAI_ENV: 'test' } : {}),
+          ...(devMode && !env.ANSATTPORTEN_ISSUER ? { GENAI_MOCK_RIGHTS: 'true' } : {}),
+        }),
         ...(custom ? { PORT: String(ports.api) } : {}),
       },
     },

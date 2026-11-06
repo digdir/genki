@@ -119,6 +119,8 @@ export const steps = defineNamespace({
   clarifyTitle: 'Ba om en avklaring',
   clarifySummary: 'Spurte brukeren før den svarte',
   fields: 'Felter',
+  media: 'Medier lagret for kjøringen',
+  mediaBytes: '{bytes} byte, lagret som {id}',
   answerWithSources: 'Svar med {sources}',
   unknownModel: 'ukjent',
 });

@@ -427,7 +427,7 @@ describe('the bar before real data', () => {
     expect((await attempt('test', { ...bare, synthetic: true }, hei)).outcome).toBe('ok');
   });
 
-  it('media passes only to a target whose endpoint records acceptsUnmaskedInput', async () => {
+  it('media input to a descriptor call is refused', async () => {
     const image = {
       messages: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }],
     };
@@ -436,9 +436,6 @@ describe('the bar before real data', () => {
       outcome: 'media',
       sent: false,
     });
-    expect((await attempt('production', { ...ready, unmaskedInput: true }, image)).outcome).toBe(
-      'ok',
-    );
   });
 });
 

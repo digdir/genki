@@ -20,6 +20,10 @@ export interface SearchEnginesMockOptions {
   failAt?: number;
   endpoints?: KnowledgeEndpointView[];
   defaultEmbedding?: DefaultEmbedding | null;
+  /** Activation refreshes the switch's generation first, as a switch into the knowledge database does. */
+  refresh?: boolean;
+  /** Documents of the fill whose jobs ended as dead letters. */
+  failedDocuments?: number;
 }
 
 export const exampleDefaultEmbedding: DefaultEmbedding = {
@@ -319,9 +323,30 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
     };
   };
 
+  const activated = (sw: EngineSwitchView, reason: string): EngineSwitchView => {
+    const s = stateOf(sw.dataset);
+    const keptUntil = new Date(Date.now() + retentionDays * 86_400_000).toISOString();
+    s.previous = { endpoint: s.endpoint, keptUntil, switch: sw.id };
+    s.endpoint = sw.to;
+    delete s.switch;
+    return {
+      ...sw,
+      state: 'active',
+      previousKeptUntil: keptUntil,
+      canRollback: true,
+      decision: {
+        action: 'activate',
+        by: 'employee:altinn:kari',
+        at: new Date().toISOString(),
+        reason,
+      },
+    };
+  };
+
   const advance = (sw: EngineSwitchView) => {
     if (sw.state === 'comparing') {
       sw.state = 'ready';
+      if (options.failedDocuments) sw.failedDocuments = options.failedDocuments;
       if (options.scenario === 'no-test-set')
         sw.comparisonNote = 'Datasettet har ikke noe testsett med forventede kilder.';
       else {
@@ -422,6 +447,7 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
     const sw = s.switch?.sid === switchId ? s.switch : undefined;
     if (!action && method === 'GET') {
       if (!sw) return request.notFound();
+      if (sw.state === 'activating') return request.json(activated(sw, sw.decision?.reason ?? ''));
       advance(sw);
       return request.json(sw);
     }
@@ -449,23 +475,17 @@ export const searchEnginesMock = (options: SearchEnginesMockOptions = {}): MockH
       const reason = reasonOf();
       if (reason.length < sw.minimumReasonLength)
         return problem(400, 'Begrunnelsen er for kort', 'reason');
-      const keptUntil = new Date(Date.now() + retentionDays * 86_400_000).toISOString();
-      s.previous = { endpoint: s.endpoint, keptUntil, switch: sw.id };
-      s.endpoint = sw.to;
-      delete s.switch;
-      const done: EngineSwitchView = {
-        ...sw,
-        state: 'active',
-        previousKeptUntil: keptUntil,
-        canRollback: true,
-        decision: {
+      if (options.refresh) {
+        sw.state = 'activating';
+        sw.decision = {
           action: 'activate',
           by: 'employee:altinn:kari',
           at: new Date().toISOString(),
           reason,
-        },
-      };
-      return request.json(done);
+        };
+        return request.json(sw, 202);
+      }
+      return request.json(activated(sw, reason));
     }
     const previous = s.previous;
     if (action === 'rollback' && previous && previous.switch.endsWith(`:${switchId}`)) {

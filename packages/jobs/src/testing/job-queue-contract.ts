@@ -55,6 +55,7 @@ export const contractQueues = {
   alsoListed: contractQueue('also-listed'),
   givingWay: contractQueue('giving-way', { policy: 'exclusive', retryLimit: 2 }),
   retimed: contractQueue('retimed'),
+  concurrent: contractQueue('concurrent', { policy: 'exclusive' }),
 };
 
 export const waitFor = async <T>(
@@ -132,6 +133,33 @@ export const describeJobQueueContract = (
       await pause(1_000);
       expect(seen).toEqual([`${ORG_A}/once`]);
     });
+
+    it('a queue worked eight at a time runs eight jobs at once, each under its own key', async () => {
+      let running = 0;
+      let most = 0;
+      let done = 0;
+      await workQueues(target.queue, [
+        queueWork(
+          q.concurrent,
+          async () => {
+            running += 1;
+            most = Math.max(most, running);
+            await pause(1_500);
+            running -= 1;
+            done += 1;
+          },
+          { concurrency: 8 },
+        ),
+      ]);
+      for (let i = 0; i < 16; i += 1)
+        await target.queue.send(
+          q.concurrent,
+          { tenant: ORG_A, item: `doc-${i}` },
+          { key: `doc-${i}` },
+        );
+      await waitFor(() => done === 16, 30_000);
+      expect(most).toBe(8);
+    }, 40_000);
 
     it("works every queue on the worker's list with its own handler", async () => {
       const seen: string[] = [];
