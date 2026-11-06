@@ -9,7 +9,7 @@ import { Sources } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { Answer, type AnswerProps, type AnswerTarget } from './Answer.js';
 import { answerCitations, type AnswerMarker } from './citations.js';
-import { answerCopy } from './copy.js';
+import { answerCopy, finishedText } from './copy.js';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -686,6 +686,13 @@ describe('the answer as copied', () => {
   it('is the clean text alone, without footnotes, when no source came', () => {
     const copied = answerCopy('Svaret står her [1].\n\n- Et punkt', {});
     expect(copied).toEqual({ text: 'Svaret står her.\n\nEt punkt', sources: 0 });
+  });
+
+  it('gives a live region only the finished blocks of an answer on its way, without footnotes', () => {
+    expect(finishedText('Nkom rapporterer')).toBe('');
+    expect(finishedText('### Rapportering\n\nNkom rapporterer [1].\n\nInternkontrollen føl')).toBe(
+      'Rapportering\n\nNkom rapporterer.',
+    );
   });
 
   it('writes the reference list in the reader’s language', () => {
