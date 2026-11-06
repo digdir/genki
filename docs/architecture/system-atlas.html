@@ -1738,7 +1738,7 @@
             status: 'Library',
             packages: ['@genai/ui-blocks'],
             summary:
-              "Shared React components for assistants, such as Approach and Sources, used by the workspace and later the builder's preview.",
+              "Shared React components for assistants, such as Approach, Sources and Filter, used by the workspace and later the builder's preview.",
             description:
               "A shared React package (ADR 0046) with the components an assistant is made from, built on Designsystemet. Components get plain props and report what the person did through callbacks; they do not fetch. The workspace turns the stream into props, and the builder's preview will draw the draft with the same components. Each component has a page in docs/components.",
             responsibilities: [
@@ -1747,14 +1747,18 @@
               'Accessible status and live updates while the assistant works',
               "Pair an answer's footnotes with the excerpts they cite, both ways",
               'Every token a block uses can be changed through its own CSS variable',
+              "Narrow the documents by the dataset's facets, and show the collection and its documents",
             ],
             files: [
               'packages/ui-blocks/src/procedure/Procedure.tsx',
               'packages/ui-blocks/src/sources/Sources.tsx',
               'packages/ui-blocks/src/sources/pairing.ts',
+              'packages/ui-blocks/src/filter/Filter.tsx',
+              'packages/ui-blocks/src/corpus/Corpus.tsx',
+              'packages/ui-blocks/src/documents/Documents.tsx',
               'packages/ui-blocks/src/i18n.ts',
             ],
-            input: 'Steps, sources, footnotes and state as props',
+            input: 'Steps, sources, footnotes, counts, facets, documents and state as props',
             output: 'Rendered components and callbacks',
             replaces: [],
             edges: [
@@ -1767,7 +1771,7 @@
               },
             ],
             keywords:
-              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes designsystemet react',
+              'ui blocks building blocks components approach fremgangsmåte sources kilder footnotes filter utvalg corpus documents dokumenter facets designsystemet react',
             schemas: [],
           },
           {

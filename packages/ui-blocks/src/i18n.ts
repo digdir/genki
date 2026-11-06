@@ -6,6 +6,9 @@ import { enVariantPicker, nbVariantPicker } from './variant-picker/i18n.js';
 import { enThreads, nbThreads } from './threads/i18n.js';
 import { enComposer, nbComposer } from './composer/i18n.js';
 import { enWelcome, nbWelcome } from './welcome/i18n.js';
+import { enCorpus, nbCorpus } from './corpus/catalogue.js';
+import { enDocuments, nbDocuments } from './documents/catalogue.js';
+import { enFilter, nbFilter } from './filter/catalogue.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -163,6 +166,9 @@ export const nb = defineCatalogue({
   threads: nbThreads,
   composer: nbComposer,
   welcome: nbWelcome,
+  filter: nbFilter,
+  corpus: nbCorpus,
+  documents: nbDocuments,
 });
 export const en = {
   procedure: enProcedure,
@@ -173,6 +179,9 @@ export const en = {
   threads: enThreads,
   composer: enComposer,
   welcome: enWelcome,
+  filter: enFilter,
+  corpus: enCorpus,
+  documents: enDocuments,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
