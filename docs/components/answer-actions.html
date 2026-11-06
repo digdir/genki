@@ -122,14 +122,16 @@
                 <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
                 <code>{ rating, reasons, comment }</code>, the platform's feedback without the task
                 id, which the app adds. <code>feedbackStatus</code> is <code>'sending'</code>,
-                <code>'sent'</code> or <code>'failed'</code>.
+                <code>'sent'</code> or <code>'failed'</code>. The form scrolls into sight once when
+                the person opens it.
               </li>
               <li>
                 <code>actions</code>: the app's own buttons after the copy buttons.
                 <code>end</code>: what sits at the far end, such as when the answer came.
               </li>
               <li>
-                <code>color</code>: Designsystemet's <code>data-color</code>, set only when given.
+                <code>color</code>: Designsystemet's <code>data-color</code>. Neutral unless given,
+                as kunnskapsassistenten draws the actions under an answer.
               </li>
             </ul>
             <h2>Related</h2>

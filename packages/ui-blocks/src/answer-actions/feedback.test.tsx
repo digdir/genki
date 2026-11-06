@@ -77,6 +77,24 @@ describe('the feedback on an answer', () => {
     expect(within(group()).queryByRole('textbox')).toBeNull();
   });
 
+  it('brings the form into sight once when the person opens it, above a docked question field', () => {
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      draw();
+      fireEvent.click(button('Nei'));
+      expect(scrolled).toHaveLength(1);
+      expect(within(scrolled[0] as HTMLElement).getByRole('button', { name: 'Send' })).toBeTruthy();
+      fireEvent.click(button('Ja'));
+      expect(scrolled).toHaveLength(1);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it('sends only the rating when the person skips the details', () => {
     const { sent, redraw } = draw();
     fireEvent.click(button('Ja'));

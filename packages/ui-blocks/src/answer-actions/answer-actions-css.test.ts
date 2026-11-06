@@ -79,4 +79,11 @@ describe('the answer actions’ styles', () => {
     expect(names.length).toBeGreaterThan(20);
     expect(names.filter((name) => !page.includes(`<code>${name}</code>`))).toEqual([]);
   });
+
+  it('stretch the rows across the column, so the time stands at its far end', () => {
+    const root = css.slice(css.indexOf(' .uib-answer-actions {'));
+    expect(root.slice(0, root.indexOf('}'))).toContain('align-items: stretch;');
+    const end = css.slice(css.indexOf(' .uib-answer-actions-end {'));
+    expect(end.slice(0, end.indexOf('}'))).toContain('margin-inline-start: auto;');
+  });
 });

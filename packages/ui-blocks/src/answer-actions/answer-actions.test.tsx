@@ -102,14 +102,14 @@ describe('the answer actions', () => {
     expect(time.closest('.uib-answer-actions-end')).not.toBeNull();
   });
 
-  it('follow the host’s colour family unless the app names one', () => {
+  it('are neutral unless the app names another colour family, as kunnskapsassistenten draws them', () => {
     const { container, rerender } = draw();
     const root = container.firstElementChild as HTMLElement;
-    expect(root.hasAttribute('data-color')).toBe(false);
+    expect(root.getAttribute('data-color')).toBe('neutral');
     for (const button of screen.getAllByRole('button'))
       expect(button.hasAttribute('data-color')).toBe(false);
-    rerender(<AnswerActions {...both} color="neutral" />);
-    expect(root.getAttribute('data-color')).toBe('neutral');
+    rerender(<AnswerActions {...both} color="brand1" />);
+    expect(root.getAttribute('data-color')).toBe('brand1');
   });
 
   it('speak English when the person does', () => {

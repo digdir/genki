@@ -4,9 +4,13 @@
 @layer ds.theme, ds.base, ds.components, genai.components;
 
 @layer genai.components {
+  /* The rows span the column, so the actions start at its edge and the time stands at its far
+     end, as kunnskapsassistenten draws them, also where a wrapper around the block would centre
+     its items. */
   .uib-answer-actions {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: var(--genai-answer-actions-gap, var(--ds-size-2));
     font-family: var(--genai-answer-actions-font-family, var(--ds-font-family)), sans-serif;
   }
