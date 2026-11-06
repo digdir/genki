@@ -3,7 +3,12 @@ import { useFormat } from '@genai/i18n/react';
 import { ArrowsCirclepathIcon, FileTextIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n.js';
-import { Markdown, type CiteRenderer, type TableFacts } from '../markdown/Markdown.js';
+import {
+  Markdown,
+  type CiteRenderer,
+  type MarkdownHighlight,
+  type TableFacts,
+} from '../markdown/Markdown.js';
 import { documentKeys, type CitationMode } from '../sources/pairing.js';
 import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
@@ -39,6 +44,8 @@ export interface AnswerProps {
   citationId?: ((citation: number) => string) | undefined;
   /** The footnote to scroll to and focus: where Sources' `onShowUse` and `onReturn` lead. */
   target?: AnswerTarget | undefined;
+  /** Search hits to mark in the text, found in the words the answer is drawn with. */
+  highlight?: MarkdownHighlight | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
   sourcesUsed?: boolean | undefined;
   /** «Er det noe mer jeg kan hjelpe deg med?» under a finished answer. */
@@ -150,6 +157,7 @@ export const Answer = ({
   href,
   citationId,
   target,
+  highlight,
   sourcesUsed = true,
   closingQuestion = false,
   onRegenerate,
@@ -298,6 +306,7 @@ export const Answer = ({
             className="uib-markdown uib-answer-text"
             headingLevel={headingLevel}
             tableName={tableName}
+            highlight={highlight}
           />
         )}
         {/* The app's live region says it in words, so this line is for the eye. */}

@@ -1,0 +1,418 @@
+// @vitest-environment jsdom
+import { catalogueProblems } from '@genai/i18n';
+import { InLocale } from '@genai/i18n/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { en, nb } from '../i18n.js';
+import type { SourceDocument } from '../sources/types.js';
+import { Conversation, type ConversationProps } from './Conversation.js';
+import type {
+  ConversationAnswer,
+  ConversationClarification,
+  ConversationQuestion,
+  ConversationTurn,
+} from './types.js';
+
+document.getAnimations ??= () => [];
+beforeAll(() => {
+  Element.prototype.scrollIntoView ??= () => {};
+});
+afterEach(cleanup);
+
+const frame = () => act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+
+const nkom: SourceDocument = {
+  index: 1,
+  title: 'Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+  documentId: 'kudos::2021',
+  excerpts: [
+    { chunkId: 'kudos::2021-1', text: 'Nkoms totale utgiftsbevilgning var 594,2 mill. kroner.' },
+  ],
+};
+const tildeling: SourceDocument = {
+  index: 2,
+  title: 'Tildelingsbrev Nkom 2022',
+  documentId: 'kudos::2022',
+  excerpts: [{ chunkId: 'kudos::2022-1', text: 'Nkom skal rapportere kvartalsvis.' }],
+};
+
+// 14.00 in Oslo on a Tuesday, so «i går» and the weekday are not the same day.
+const now = new Date('2026-09-15T12:00:00Z');
+
+const question: ConversationQuestion = {
+  kind: 'question',
+  id: 'q1',
+  text: 'Hva rapporterer Nkom om?',
+};
+const answer: ConversationAnswer = {
+  kind: 'answer',
+  id: 'a1',
+  text: 'Nkom rapporterer kvartalsvis [2], og bevilgningen var 594,2 mill. kroner [1].',
+  status: 'complete',
+  sources: [nkom, tildeling],
+  createdAt: '2026-09-15T12:32:00Z',
+};
+const followUp: ConversationQuestion = { kind: 'question', id: 'q2', text: 'Og i 2022?' };
+const clarification: ConversationClarification = {
+  kind: 'clarification',
+  id: 'c1',
+  text: 'Mener du tildelingsbrevet eller årsrapporten [1]?',
+};
+const turns: ConversationTurn[] = [question, answer, followUp, clarification];
+
+const draw = (props: Partial<ConversationProps> = {}) =>
+  render(<Conversation turns={turns} now={now} {...props} />);
+
+// The conversation's own items: the first list on the page, and not the lists inside an answer.
+const items = () => [...(screen.getAllByRole('list')[0]?.children ?? [])];
+
+describe('the conversation', () => {
+  it('is one ordered list, a turn per item, in the order they were said', () => {
+    const { container } = draw();
+    expect(container.querySelector('ol.uib-conversation-turns')).not.toBeNull();
+    expect(items().map((item) => item.getAttribute('data-kind'))).toEqual([
+      'question',
+      'answer',
+      'question',
+      'clarification',
+    ]);
+  });
+
+  it('draws nothing but its live region when there is nothing to draw', () => {
+    const { container } = render(<Conversation turns={[]} />);
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('');
+  });
+
+  it('speaks English when the reader does', () => {
+    render(
+      <InLocale locale="en">
+        <Conversation turns={turns} now={now} />
+      </InLocale>,
+    );
+    expect(screen.getAllByText('You wrote:')).toHaveLength(2);
+    expect(screen.getByText('Needs clarification')).toBeTruthy();
+    expect(screen.getByText(/^The answer came 15 September 2026/)).toBeTruthy();
+  });
+
+  it('has an English text for every Norwegian one', () => {
+    expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+});
+
+describe('the reader’s question', () => {
+  it('stands in a tinted box of its own, at the end of the line, in the colour the host passes', () => {
+    draw({ questionColor: 'accent' });
+    const box = screen.getByText(question.text).closest('.uib-conversation-question');
+    expect(box?.classList.contains('ds-card')).toBe(true);
+    expect(box?.getAttribute('data-variant')).toBe('tinted');
+    expect(box?.getAttribute('data-color')).toBe('accent');
+    expect(box?.closest('li')?.getAttribute('data-kind')).toBe('question');
+  });
+
+  it('follows the host’s colour family when the host passes none', () => {
+    draw();
+    const box = screen.getByText(question.text).closest('.uib-conversation-question');
+    expect(box?.hasAttribute('data-color')).toBe(false);
+  });
+
+  it('is said to be the reader’s, in words', () => {
+    draw();
+    const [first] = items();
+    expect(first?.querySelector('.ds-sr-only')?.textContent).toBe('Du skrev:');
+  });
+
+  it('is written in the size of the answer, not larger, and is the only thing in such a box', () => {
+    const { container } = draw();
+    expect(screen.getByText(question.text).getAttribute('data-size')).toBeNull();
+    expect(container.querySelectorAll('.uib-conversation-question')).toHaveLength(2);
+    expect(screen.getByText(/Nkom rapporterer/).closest('.uib-conversation-question')).toBeNull();
+  });
+
+  it('names the documents it was asked with under the words, and keeps its own language', () => {
+    render(
+      <Conversation
+        turns={[{ ...question, attachments: ['notat.pdf', 'brev.docx'], lang: 'en' }]}
+      />,
+    );
+    const words = screen.getByText(question.text);
+    const files = screen.getByText('Med vedlegg: notat.pdf, brev.docx');
+    expect(words.compareDocumentPosition(files)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(words.getAttribute('lang')).toBe('en');
+  });
+});
+
+describe('each answer', () => {
+  it('is the Answer block, with its footnotes and «Kilder brukt i svaret»', () => {
+    draw({ answerColor: 'neutral' });
+    const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
+    expect(card?.getAttribute('data-color')).toBe('neutral');
+    expect(screen.getAllByRole('link', { name: /^Kilde: / })).toHaveLength(2);
+    expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
+  });
+
+  it('tells the app which answer a footnote or a document was followed in', () => {
+    const onOpenCitation = vi.fn();
+    const onOpenDocument = vi.fn();
+    draw({ onOpenCitation, onOpenDocument });
+    fireEvent.click(screen.getAllByRole('link', { name: /^Kilde: Tildelingsbrev/ })[0] as Element);
+    expect(onOpenCitation).toHaveBeenCalledWith(answer, 0, {
+      documentId: 'kudos::2022',
+      index: 2,
+    });
+    fireEvent.click(screen.getByText('Kilder brukt i svaret'));
+    fireEvent.click(screen.getByRole('link', { name: 'Tildelingsbrev Nkom 2022' }));
+    expect(onOpenDocument).toHaveBeenCalledWith(answer, tildeling);
+  });
+
+  it('gives each footnote the id the app makes from its answer and its place', () => {
+    draw({ citationId: (turn, citation) => `${turn.id}-fn-${citation}` });
+    expect(
+      screen.getAllByRole('link', { name: /^Kilde: / }).map((link) => link.getAttribute('id')),
+    ).toEqual(['a1-fn-0', 'a1-fn-1']);
+  });
+
+  it('moves focus to the footnote the app points at, in that answer only', async () => {
+    const second: ConversationAnswer = { ...answer, id: 'a2' };
+    const both = [question, answer, followUp, second];
+    const { rerender } = render(<Conversation turns={both} />);
+    rerender(<Conversation turns={both} target={{ turnId: 'a2', citation: 1 }} />);
+    await frame();
+    const focused = document.activeElement;
+    expect(focused?.getAttribute('aria-label')).toBe(
+      'Kilde: Årsrapport Nasjonal kommunikasjonsmyndighet 2021',
+    );
+    expect(focused?.closest('li')).toBe(items()[3]);
+  });
+
+  it('offers to ask a stopped question again, and says which', () => {
+    const onRegenerate = vi.fn();
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    render(<Conversation turns={[question, stopped]} onRegenerate={onRegenerate} now={now} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Generer på nytt' }));
+    expect(onRegenerate).toHaveBeenCalledWith(stopped);
+  });
+
+  it('says over the card what the question was narrowed to, and to a screen reader that it is the answer’s', () => {
+    render(<Conversation turns={[question, { ...answer, scope: 'Avgrenset til: Årsrapport' }]} />);
+    const line = document.querySelector('.uib-conversation-scope');
+    expect(line?.textContent).toBe('Svaret er Avgrenset til: Årsrapport');
+    const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
+    expect(line?.compareDocumentPosition(card as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('draws no scope line for a question asked of everything', () => {
+    draw();
+    expect(document.querySelector('.uib-conversation-scope')).toBeNull();
+  });
+});
+
+describe('the slots', () => {
+  it('put the app’s header over an answer and a question back, with the question it answers', () => {
+    const header = vi.fn((turn: ConversationAnswer | ConversationClarification) => (
+      <p>Fremgangsmåte for {turn.id}</p>
+    ));
+    draw({ header });
+    expect(header.mock.calls.map(([turn, asked]) => [turn.id, asked?.id])).toEqual([
+      ['a1', 'q1'],
+      ['c1', 'q2'],
+    ]);
+    const over = screen.getByText('Fremgangsmåte for a1');
+    const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
+    expect(over.compareDocumentPosition(card as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('find the question back over the turn a question back stands between', () => {
+    const header = vi.fn(() => null);
+    const after: ConversationAnswer = { ...answer, id: 'a2' };
+    render(<Conversation turns={[question, clarification, after]} header={header} />);
+    expect(header.mock.calls.map(([turn, asked]) => [turn.id, asked?.id])).toEqual([
+      ['c1', 'q1'],
+      ['a2', 'q1'],
+    ]);
+  });
+
+  it('hand the app’s row the time for its far end, under a finished answer only', () => {
+    const actions = vi.fn((_turn: ConversationAnswer, parts: { end: unknown }) => (
+      <div className="app-row">
+        <button type="button">Kopier svaret</button>
+        <span className="app-end">{parts.end as never}</span>
+      </div>
+    ));
+    const streaming: ConversationAnswer = { ...answer, id: 'a2', status: 'streaming' };
+    render(
+      <Conversation turns={[question, answer, followUp, streaming]} actions={actions} now={now} />,
+    );
+    expect(actions.mock.calls.map(([turn]) => turn.id)).toEqual(['a1']);
+    const time = screen.getByText('14.32').closest('time');
+    expect(time?.closest('.app-end')).not.toBeNull();
+    expect(time?.getAttribute('dateTime')).toBe('2026-09-15T12:32:00.000Z');
+  });
+
+  it('draw the time alone at the end of the row when the app has no row of its own', () => {
+    draw();
+    const time = screen.getByText('14.32').closest('time');
+    expect(time?.parentElement?.classList.contains('uib-answer-actions')).toBe(true);
+  });
+});
+
+describe('the time an answer came', () => {
+  it('stands outside every button, so no button’s name changes with the clock', () => {
+    const { container } = draw({
+      actions: (_turn, parts) => (
+        <>
+          <button type="button">Kopier svaret</button>
+          {parts.end}
+        </>
+      ),
+    });
+    const times = container.querySelectorAll('time');
+    expect(times).toHaveLength(1);
+    expect(times[0]?.closest('button, a')).toBeNull();
+    for (const button of screen.getAllByRole('button'))
+      expect(button.textContent).not.toMatch(/14/);
+  });
+
+  it('is said in full to a screen reader, since the short text leaves out the year', () => {
+    render(
+      <Conversation
+        turns={[question, { ...answer, createdAt: '2025-05-12T07:05:00Z' }]}
+        now={now}
+      />,
+    );
+    const time = screen.getByText('12. mai').closest('time');
+    expect(time?.querySelector('[aria-hidden="true"]')?.textContent).toBe('12. mai');
+    expect(time?.querySelector('.ds-sr-only')?.textContent).toBe(
+      'Svaret kom 12. mai 2025 kl. 09.05',
+    );
+    expect(time?.getAttribute('title')).toBe('12. mai 2025 kl. 09.05');
+  });
+
+  it('stands under a stopped answer too, beside «Generer på nytt»', () => {
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    render(<Conversation turns={[question, stopped]} onRegenerate={() => {}} now={now} />);
+    const row = screen.getByRole('button', { name: 'Generer på nytt' }).parentElement;
+    expect(row?.querySelector('time')).not.toBeNull();
+  });
+
+  it('is not drawn on an answer still being written, on a question back, or on a question', () => {
+    const { container } = render(
+      <Conversation
+        turns={[
+          { ...question, id: 'q0' },
+          { ...answer, id: 'a0', status: 'streaming', text: '', sources: undefined },
+          question,
+          { ...answer, status: 'streaming', sources: undefined },
+          followUp,
+          { ...clarification, id: 'c9' },
+        ]}
+        now={now}
+      />,
+    );
+    expect(container.querySelectorAll('time')).toHaveLength(0);
+  });
+
+  it('is left out when the answer has no time, or one that cannot be read', () => {
+    const { container } = render(
+      <Conversation
+        turns={[
+          question,
+          { ...answer, createdAt: undefined },
+          followUp,
+          { ...answer, id: 'a2', createdAt: 'ikke en dato' },
+        ]}
+      />,
+    );
+    expect(container.querySelectorAll('time')).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/Invalid/);
+  });
+});
+
+describe('the question back', () => {
+  it('is marked as a question with an info tag, in words', () => {
+    draw();
+    const tag = screen.getByText('Trenger avklaring');
+    expect(tag.classList.contains('ds-tag')).toBe(true);
+    expect(tag.getAttribute('data-color')).toBe('info');
+  });
+
+  it('is said to be the assistant’s question, by name when the host gives one', () => {
+    draw();
+    expect(screen.getByText('KI-assistenten spurte:')).toBeTruthy();
+    cleanup();
+    draw({ assistantName: 'Kunnskapsassistenten' });
+    expect(screen.getByText('Kunnskapsassistenten spurte:')).toBeTruthy();
+  });
+
+  it('leaves a bracketed number as text, because nothing was retrieved for it', () => {
+    render(<Conversation turns={[question, clarification]} />);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByText(/årsrapporten \[1\]\?/)).toBeTruthy();
+  });
+
+  it('has no row: no button, no time and no actions, since the one move is to answer', () => {
+    const actions = vi.fn(() => <button type="button">Kopier</button>);
+    const { container } = render(
+      <Conversation turns={[question, clarification]} actions={actions} search now={now} />,
+    );
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(container.querySelector('time')).toBeNull();
+    expect(actions).not.toHaveBeenCalled();
+  });
+
+  it('offers the service’s answers as choices when the app takes the reply, and says which turn', () => {
+    const onReply = vi.fn();
+    const choosing = { ...clarification, options: ['Tildelingsbrevet', 'Årsrapporten'] };
+    render(<Conversation turns={[question, choosing]} onReply={onReply} />);
+    const group = screen.getByRole('group', { name: 'Velg et svar' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Årsrapporten' }));
+    expect(onReply).toHaveBeenCalledWith(choosing, 'Årsrapporten');
+  });
+
+  it('draws no choices the app cannot take', () => {
+    render(<Conversation turns={[question, { ...clarification, options: ['Ja', 'Nei'] }]} />);
+    expect(screen.queryByRole('group')).toBeNull();
+  });
+
+  it('says over the card what it was narrowed to, as documents and not as a fetched question', () => {
+    render(<Conversation turns={[question, { ...clarification, scope: 'Hentet fra Kudos' }]} />);
+    expect(document.querySelector('.uib-conversation-scope')?.textContent).toBe(
+      'Spørsmålet bygger på dokumenter Hentet fra Kudos',
+    );
+  });
+});
+
+describe('while the thread is read', () => {
+  it('stands in a question and an answer in outline, hidden from a screen reader', () => {
+    const { container } = render(<Conversation turns={[]} loading answerColor="neutral" />);
+    const outline = container.querySelector('.uib-conversation-loading');
+    expect(outline?.getAttribute('aria-hidden')).toBe('true');
+    expect(outline?.querySelectorAll('.uib-answer-skeleton-line')).toHaveLength(4);
+    expect(outline?.querySelector('.ds-card')?.getAttribute('data-color')).toBe('neutral');
+  });
+
+  it('says so in words through a region that was already in the page, empty at first', async () => {
+    const { container } = render(<Conversation turns={[]} loading />);
+    const region = container.querySelector('[aria-live="polite"]');
+    expect(region?.textContent).toBe('');
+    await act(() => new Promise((done) => setTimeout(done)));
+    expect(region?.textContent).toBe('Henter samtalen');
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('keeps what is already on screen, and draws no outline over the reader’s own words', () => {
+    const { container } = render(<Conversation turns={[question]} loading />);
+    expect(screen.getByText(question.text)).toBeTruthy();
+    expect(container.querySelector('.uib-conversation-loading')).toBeNull();
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('');
+  });
+
+  it('stops saying it once the turns are there', async () => {
+    const { container, rerender } = render(<Conversation turns={[]} loading />);
+    await act(() => new Promise((done) => setTimeout(done)));
+    rerender(<Conversation turns={turns} />);
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toBe('');
+    expect(container.querySelector('.uib-conversation-loading')).toBeNull();
+  });
+});
