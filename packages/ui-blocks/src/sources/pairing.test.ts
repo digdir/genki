@@ -61,21 +61,24 @@ describe('pairing footnotes with what is shown', () => {
     expect(counted).toBe(citations.length);
   });
 
-  it('pairs documents in document mode, by excerpt, id or index, and numbers nothing', () => {
+  it('pairs documents in document mode, by excerpt, id or index, and numbers them in the order first cited', () => {
     const pairing = pairCitations(
       sources,
       [{ chunkId: 'a2' }, { documentId: 'kudos::b' }, { index: 1 }],
       'document',
     );
     expect(pairing.mode).toBe('document');
-    expect(pairing.numbers.size).toBe(0);
+    expect([...pairing.numbers]).toEqual([
+      ['kudos::a', 1],
+      ['kudos::b', 2],
+    ]);
     expect(pairing.uses.get('kudos::a')).toEqual([0, 2]);
     expect(pairing.uses.get('kudos::b')).toEqual([1]);
   });
 
-  it('falls back to document mode when a footnote names only its document', () => {
+  it('falls back to document mode when a footnote names only its document, and numbers documents', () => {
     const pairing = pairCitations(sources, [{ chunkId: 'a1' }, { index: 2 }], 'excerpt');
     expect(pairing.mode).toBe('document');
-    expect(pairing.numbers.size).toBe(0);
+    expect([...pairing.numbers.keys()]).toEqual(['kudos::a', 'kudos::b']);
   });
 });
