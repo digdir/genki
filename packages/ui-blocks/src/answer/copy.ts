@@ -67,6 +67,16 @@ const yearOf = (date: string | undefined) => {
  * different pages, or per cited document when nothing is numbered. Each part is left out when the
  * source lacks it. With no sources, the clean text alone.
  */
+/**
+ * How much of an answer on its way is finished, as plain text without footnotes, for a live
+ * region: everything up to the last blank line, since the tail is still being written. Empty
+ * before the first block is done. kunnskapsassistenten's `announcedText`.
+ */
+export const finishedText = (markdown: string) => {
+  const lastBreak = markdown.lastIndexOf('\n\n');
+  return lastBreak < 0 ? '' : plain(markdown.slice(0, lastBreak), () => null);
+};
+
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
   const { sources = [], markers, citationMode = 'excerpt', locale = 'nb' } = options;
   const t = translator(locale);
