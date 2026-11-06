@@ -88,13 +88,20 @@
               </li>
               <li>
                 <strong>Feedback</strong>, as in genki's workspace: «Var svaret nyttig?» with «Ja»
-                and «Nei», then reasons for a no, a comment, «Send» and «Hopp over».
+                and «Nei», then reasons for a no, a comment, «Send» and «Hopp over». Off unless the
+                app asks for it with <code>feedback</code>: kunnskapsassistenten took the feedback
+                under each answer out on 6 October 2026, because it adds a lot of noise under every
+                answer, and has it to be rethought.
               </li>
               <li><strong>Both</strong>, the copy row first and the feedback under a rule.</li>
             </ul>
             <p>
-              Each part is drawn only when the app passes its event, and the block draws nothing
-              when it has none.
+              Each copy button is drawn only when the app passes its event, the feedback only when
+              it also passes <code>feedback</code>, and the block draws nothing when it has none.
+            </p>
+            <p>
+              The answer block's <code>answerCopy</code> gives the text for «Kopier svaret» with its
+              reference list, and the count for the receipt.
             </p>
           </div>
           <div>
@@ -112,9 +119,10 @@
                 browser, and the block says so.
               </li>
               <li>
-                <code>onFeedback</code>: <code>{ rating, reasons, comment }</code>, the platform's
-                feedback without the task id, which the app adds. <code>feedbackStatus</code> is
-                <code>'sending'</code>, <code>'sent'</code> or <code>'failed'</code>.
+                <code>feedback</code> and <code>onFeedback</code>: the form, off by default, and
+                <code>{ rating, reasons, comment }</code>, the platform's feedback without the task
+                id, which the app adds. <code>feedbackStatus</code> is <code>'sending'</code>,
+                <code>'sent'</code> or <code>'failed'</code>.
               </li>
               <li>
                 <code>actions</code>: the app's own buttons after the copy buttons.
@@ -342,7 +350,11 @@
           <div class="wide open-questions">
             <h2>Open questions</h2>
             <ul>
-              <li>Should kunnskapsassistenten ask for feedback too? It has none today.</li>
+              <li>
+                Should kunnskapsassistenten ask for feedback again, and where? It took the link
+                under each answer out on 6 October 2026, to be rethought; the block keeps the form
+                behind <code>feedback</code>.
+              </li>
               <li>
                 Should an answer opened again show the rating already given? The block can only show
                 what the app passes in.

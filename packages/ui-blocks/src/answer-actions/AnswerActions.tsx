@@ -14,7 +14,13 @@ export interface AnswerActionsProps {
   linkOnlyHere?: boolean | undefined;
   /** What the app's last copy did. Pass a new object for each copy; the receipt clears itself. */
   copied?: AnswerCopied | undefined;
-  /** Shows «Var svaret nyttig?». The app sends the rating, reasons and comment. */
+  /**
+   * Shows «Var svaret nyttig?» under the answer, with `onFeedback`. Off unless asked for:
+   * kunnskapsassistenten took the feedback under each answer out on 6 October 2026, because it
+   * adds a lot of noise under every answer, and its decision log has it to be rethought.
+   */
+  feedback?: boolean | undefined;
+  /** The app sends the rating, reasons and comment. Drawn only with `feedback`. */
   onFeedback?: ((feedback: AnswerFeedback) => void) | undefined;
   /** How the app's sending went. */
   feedbackStatus?: AnswerFeedbackStatus | undefined;
@@ -54,6 +60,7 @@ export const AnswerActions = ({
   onCopyLink,
   linkOnlyHere,
   copied,
+  feedback = false,
   onFeedback,
   feedbackStatus,
   actions,
@@ -79,7 +86,8 @@ export const AnswerActions = ({
 
   const copies = Boolean(onCopyAnswer || onCopyLink);
   const row = copies || actions !== undefined || end !== undefined;
-  if (!row && !onFeedback) return null;
+  const asks = feedback && onFeedback !== undefined;
+  if (!row && !asks) return null;
 
   const receiptText = !receipt
     ? ''
@@ -132,7 +140,7 @@ export const AnswerActions = ({
           ) : null}
         </div>
       ) : null}
-      {onFeedback ? <Feedback status={feedbackStatus} onSend={onFeedback} /> : null}
+      {asks ? <Feedback status={feedbackStatus} onSend={onFeedback} /> : null}
     </div>
   );
 };

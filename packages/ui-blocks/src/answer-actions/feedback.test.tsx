@@ -15,9 +15,13 @@ afterEach(() => {
 
 const draw = (status?: AnswerFeedbackStatus) => {
   const sent: AnswerFeedback[] = [];
-  const view = render(<AnswerActions onFeedback={(f) => sent.push(f)} feedbackStatus={status} />);
+  const view = render(
+    <AnswerActions feedback onFeedback={(f) => sent.push(f)} feedbackStatus={status} />,
+  );
   const redraw = (next?: AnswerFeedbackStatus) =>
-    view.rerender(<AnswerActions onFeedback={(f) => sent.push(f)} feedbackStatus={next} />);
+    view.rerender(
+      <AnswerActions feedback onFeedback={(f) => sent.push(f)} feedbackStatus={next} />,
+    );
   return { sent, redraw, container: view.container };
 };
 
@@ -26,6 +30,15 @@ const button = (name: string) => within(group()).getByRole('button', { name });
 const status = () => within(group()).getByRole('status');
 
 describe('the feedback on an answer', () => {
+  it('is not asked for unless the app asks, as kunnskapsassistenten took it out', () => {
+    const { container } = render(<AnswerActions onFeedback={() => {}} />);
+    expect(container.innerHTML).toBe('');
+    cleanup();
+    render(<AnswerActions onCopyAnswer={() => {}} onFeedback={() => {}} />);
+    expect(screen.queryByRole('group', { name: 'Tilbakemelding på svaret' })).toBeNull();
+    expect(screen.queryByText('Var svaret nyttig?')).toBeNull();
+  });
+
   it('records a thumbs down with reasons and a comment for the service, not the person', () => {
     const { sent, redraw, container } = draw();
     const yes = button('Ja');
@@ -130,7 +143,7 @@ describe('the feedback on an answer', () => {
     const sent: AnswerFeedback[] = [];
     render(
       <InLocale locale="en">
-        <AnswerActions onFeedback={(f) => sent.push(f)} />
+        <AnswerActions feedback onFeedback={(f) => sent.push(f)} />
       </InLocale>,
     );
     const feedback = screen.getByRole('group', { name: 'Feedback on the answer' });
