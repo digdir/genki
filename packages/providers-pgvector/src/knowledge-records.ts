@@ -228,16 +228,18 @@ export const knowledgeRecordsOf = (writer: Pool): DocumentRecords => ({
     }),
 
   chunking: async <Chunking>(generation: string, pipeline: string, current: Chunking) => {
-    const { rows } = await writer.query<{ chunking: Chunking }>(
-      `with kept as (
-         update kn_generations
-            set recipe = jsonb_set(recipe, '{chunking}',
-                                   coalesce(recipe -> 'chunking', '{}') || jsonb_build_object($2::text, $3::jsonb))
-          where generation = $1 and not coalesce((recipe -> 'chunking') ? $2, false)
-          returning recipe)
-       select coalesce((select recipe -> 'chunking' -> $2 from kept),
-                       (select recipe -> 'chunking' -> $2 from kn_generations where generation = $1)) as chunking`,
+    // Two statements: a job that waited on another's update reads what that one kept, which a
+    // read in the same statement, on its older snapshot, would not see.
+    await writer.query(
+      `update kn_generations
+          set recipe = jsonb_set(recipe, '{chunking}',
+                                 coalesce(recipe -> 'chunking', '{}') || jsonb_build_object($2::text, $3::jsonb))
+        where generation = $1 and not coalesce((recipe -> 'chunking') ? $2, false)`,
       [generation, pipeline, JSON.stringify(current)],
+    );
+    const { rows } = await writer.query<{ chunking: Chunking }>(
+      `select recipe -> 'chunking' -> $2 as chunking from kn_generations where generation = $1`,
+      [generation, pipeline],
     );
     const kept = rows[0]?.chunking;
     if (kept === undefined || kept === null)

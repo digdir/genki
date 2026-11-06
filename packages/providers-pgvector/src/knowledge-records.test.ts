@@ -488,6 +488,13 @@ describe('document records on the knowledge server', () => {
     ).toEqual(first);
   });
 
+  it('index jobs that start together all get the chunking the first one kept', async () => {
+    const generation = await freshGeneration('digdir/chunking-together');
+    const settings = Array.from({ length: 16 }, (_, i) => ({ maximumLength: 1000 + i }));
+    const kept = await Promise.all(settings.map((c) => records.chunking(generation, 'docs', c)));
+    expect(new Set(kept.map((c) => JSON.stringify(c))).size).toBe(1);
+  });
+
   it('lists the records a pipeline owns with the change its generation holds', async () => {
     const name = 'digdir/owned';
     const generation = await freshGeneration(name);

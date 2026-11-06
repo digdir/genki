@@ -67,6 +67,8 @@ export interface KnowledgeHandlerDeps {
   /** Throws while the knowledge server is bound to another platform server (ADR 0042). */
   bound?: () => void;
   admission: AdmissionDeps;
+  /** How many index and fill jobs this worker works at once; 1 when left out. */
+  indexConcurrency?: number;
 }
 
 const tenantOf = (run: IngestionExecution, platformTenant: string) => {
@@ -149,10 +151,33 @@ const contextOf = (
 export const givingWayMs = 2 * 60_000;
 
 /**
+ * How many `knowledge.index` and `knowledge.fill` jobs one worker works at once, from
+ * `KNOWLEDGE_INDEX_CONCURRENCY` (8 when unset). Documents embed side by side; their writes still
+ * take the generation's row lock one at a time.
+ */
+export const indexConcurrencyOf = (env: NodeJS.ProcessEnv): number => {
+  const raw = env.KNOWLEDGE_INDEX_CONCURRENCY;
+  if (raw === undefined) return 8;
+  const value = Number(raw);
+  if (raw.trim() === '' || !Number.isInteger(value) || value < 1 || value > 32)
+    throw new Error(
+      `KNOWLEDGE_INDEX_CONCURRENCY must be a whole number from 1 to 32, not "${raw}"`,
+    );
+  return value;
+};
+
+/**
  * The worker's handlers of `knowledge.ingest` (platform server), `knowledge.index` (knowledge
  * server) and `knowledge.fill` (knowledge server, worked only in the night window), each behind the
  * run's admission (ADR 0042, "Jobs"). Job data names a document only by its record's number.
  */
+/**
+ * Connections in each of the worker's knowledge pools: one for every index and fill job it works at
+ * once, which holds it while waiting its turn for the generation's lock, and room for the queues'
+ * pollers and the other knowledge jobs. Never below pg's 10.
+ */
+export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * concurrency + 6);
+
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
@@ -196,6 +221,8 @@ export const knowledgeWork = (
     },
     deps.admission,
   );
+
+  const documentOptions = { concurrency: deps.indexConcurrency ?? 1 };
 
   const documentWork = (queue: typeof knowledgeIndexQueue | typeof knowledgeFillQueue) =>
     admittedWork(
@@ -261,7 +288,7 @@ export const knowledgeWork = (
 
   return {
     platform: [ingest as QueueWork],
-    knowledge: [documentWork(knowledgeIndexQueue) as QueueWork],
-    heavy: [documentWork(knowledgeFillQueue) as QueueWork],
+    knowledge: [{ ...documentWork(knowledgeIndexQueue), options: documentOptions } as QueueWork],
+    heavy: [{ ...documentWork(knowledgeFillQueue), options: documentOptions } as QueueWork],
   };
 };

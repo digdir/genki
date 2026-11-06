@@ -88,7 +88,7 @@ import {
 } from './knowledge-binding.js';
 import { buildWork, checkWork, finishRun, heavyWindow, type HeavyDeps } from './heavy-work.js';
 import { dropWork } from './knowledge-drop.js';
-import { knowledgeWork } from './knowledge-handlers.js';
+import { indexConcurrencyOf, knowledgePoolSizeOf, knowledgeWork } from './knowledge-handlers.js';
 import { openWorkerJobs } from './knowledge-jobs.js';
 import { platformWork } from './platform-work.js';
 import { reconcileKnowledgeRuns } from './reconciler.js';
@@ -136,7 +136,11 @@ const db = databaseSource
 log('storage', { kind: db ? 'postgres' : 'memory' });
 
 const knowledgeSource = db ? knowledgeSourceFromEnv(process.env, 'worker') : undefined;
-const knowledgeServer = knowledgeSource ? openKnowledgePools(knowledgeSource, 'worker') : undefined;
+// Read at start, so a bad value stops the worker before it takes a job.
+const indexConcurrency = indexConcurrencyOf(process.env);
+const knowledgeServer = knowledgeSource
+  ? openKnowledgePools({ ...knowledgeSource, max: knowledgePoolSizeOf(indexConcurrency) }, 'worker')
+  : undefined;
 const knowledgeWriter = knowledgeServer?.pools.writer;
 // Set once the runtime exists: filter indexes skipped while unbound are followed when the binding is fixed.
 let followKnowledge = () => {};
@@ -311,7 +315,7 @@ const heavyDeps: HeavyDeps | undefined = knowledgeServer?.pools.owner
       server: knowledgeHeavyWork(knowledgeServer.pools.owner),
       queue: {
         send: (queue, data, options) => openedKnowledge().send(queue, data, options),
-        work: (queue, handler) => openedKnowledge().work(queue, handler),
+        work: (queue, handler, options) => openedKnowledge().work(queue, handler, options),
         retime: (queues, startAfter) => openedKnowledge().retime(queues, startAfter),
         schedule: (queue, cron, data, options) =>
           openedKnowledge().schedule(queue, cron, data, options),
@@ -338,6 +342,7 @@ const knowledgeRunRecords = db
 const knowledgeHandlers =
   db && knowledgeRunRecords && knowledgeWriter
     ? knowledgeWork({
+        indexConcurrency,
         records: knowledgeRecordsOf(knowledgeWriter),
         knowledge: {
           send: (queue, data, options) => openedKnowledge().send(queue, data, options),
