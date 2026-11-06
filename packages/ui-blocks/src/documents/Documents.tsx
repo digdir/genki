@@ -13,6 +13,7 @@ import { useFormat } from '@genai/i18n/react';
 import { CloudUpIcon, TrashIcon } from '@navikt/aksel-icons';
 import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { corpusName, type CorpusOption } from '../corpus/Corpus.js';
+import { hasFiles } from '../dom.js';
 import { useT } from '../i18n.js';
 import { fileSize, limitText } from './uploadText.js';
 
@@ -135,7 +136,7 @@ export const Documents = ({
                     <Link href={item.url} target="_blank" rel="noreferrer">
                       {item.title}
                       {/* In words: Designsystemet advises against an icon alone. */}
-                      <span className="uib-visually-hidden"> {t('documents.opensInNewTab')}</span>
+                      <span className="ds-sr-only"> {t('documents.opensInNewTab')}</span>
                     </Link>
                   )}
                   {line !== '' && (
@@ -201,8 +202,6 @@ export interface OwnDocumentsProps {
   headingLevel?: 3 | 4 | 5 | 6 | undefined;
   className?: string | undefined;
 }
-
-const hasFiles = (event: DragEvent<HTMLElement>) => [...event.dataTransfer.types].includes('Files');
 
 /** The reader's own documents: a place to drop files, and what they dropped. */
 export const OwnDocuments = ({
@@ -362,7 +361,7 @@ export const OwnDocuments = ({
 
       {/* Mounted even when silent: a region that appears together with its text is not
           announced. */}
-      <output className="uib-visually-hidden">{refusal || announcement}</output>
+      <output className="ds-sr-only">{refusal || announcement}</output>
 
       {documents.length > 0 && (
         <ul className="uib-documents-own-list" id={listId}>

@@ -191,7 +191,7 @@ export const CorpusChoice = ({
           ))}
         </Select>
       </Field>
-      {filterAnnouncer ? null : <output className="uib-visually-hidden">{own}</output>}
+      {filterAnnouncer ? null : <output className="ds-sr-only">{own}</output>}
     </>
   );
 };
