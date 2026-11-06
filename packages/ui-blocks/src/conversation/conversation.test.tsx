@@ -2,6 +2,7 @@
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { en, nb } from '../i18n.js';
 import type { SourceDocument } from '../sources/types.js';
@@ -268,6 +269,59 @@ describe('each answer', () => {
     expect(onRegenerate).toHaveBeenCalledWith(stopped, question);
   });
 
+  it('puts focus on the new answer when «Generer på nytt» goes away with the turn it was under', () => {
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    const Shell = () => {
+      const [shown, setShown] = useState<ConversationAnswer>(stopped);
+      return (
+        <Conversation
+          turns={[question, shown]}
+          // As an app that replaces the turn in place, with a new id.
+          onRegenerate={() => setShown({ ...answer, id: 'a1-again', status: 'streaming' })}
+        />
+      );
+    };
+    render(<Shell />);
+    const button = screen.getByRole('button', { name: 'Generer på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.queryByRole('button', { name: 'Generer på nytt' })).toBeNull();
+    expect(document.activeElement).toBe(items()[1]);
+    expect((document.activeElement as HTMLElement).dataset.kind).toBe('answer');
+  });
+
+  it('moves no focus when an answer finishes: a control the app owns keeps it', async () => {
+    const field = document.createElement('textarea');
+    document.body.append(field);
+    field.focus();
+    const streaming: ConversationAnswer = { ...answer, status: 'streaming' };
+    const { rerender } = render(<Conversation turns={[question, streaming]} />);
+    rerender(<Conversation turns={[question, answer]} />);
+    await frame();
+    expect(document.activeElement).toBe(field);
+    field.remove();
+  });
+
+  it('leaves focus where the reader moved it before the new answer came', () => {
+    const stopped: ConversationAnswer = { ...answer, status: 'aborted', sources: undefined };
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    let replace = () => {};
+    const Shell = () => {
+      const [shown, setShown] = useState<ConversationAnswer>(stopped);
+      replace = () => setShown({ ...answer, id: 'a1-again', status: 'streaming' });
+      return <Conversation turns={[question, shown]} onRegenerate={() => {}} />;
+    };
+    render(<Shell />);
+    const button = screen.getByRole('button', { name: 'Generer på nytt' });
+    button.focus();
+    fireEvent.click(button);
+    elsewhere.focus();
+    act(() => replace());
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
   it('says under a question nothing answered that it got no answer, and offers to ask it again', () => {
     const onRegenerate = vi.fn();
     render(<Conversation turns={[question, followUp]} onRegenerate={onRegenerate} />);
@@ -494,6 +548,32 @@ describe('following an answer on its way', () => {
     box.height = 1800;
     act(() => resized?.());
     expect(box.top).toBe(600);
+    element.remove();
+  });
+
+  it('follows the question that starts the thread, though it already reaches below the edge', () => {
+    // As at 390 px: the block mounts with the first question and the answer's outline, already
+    // 300 px taller than the column.
+    const { element, box } = column();
+    box.top = 0;
+    box.height = 800;
+    const streaming: ConversationAnswer = { ...answer, id: 'a2', status: 'streaming' };
+    render(<Conversation turns={[question, streaming]} scrollContainer={{ current: element }} />);
+    expect(box.top).toBe(800);
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(1400);
+    element.remove();
+  });
+
+  it('leaves a thread that opens with no answer on its way where it is', () => {
+    const { element, box } = column();
+    box.top = 0;
+    box.height = 800;
+    render(<Conversation turns={turns} scrollContainer={{ current: element }} />);
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(0);
     element.remove();
   });
 

@@ -62,7 +62,11 @@ export const useFollowAnswer = (
       report();
     };
 
-    stuck.current = near();
+    // Set up while an answer is on its way, the column has just been given the question that
+    // starts the thread: the reader asked it, so the column follows it, however far the question
+    // and the answer's outline already reach below the edge, as on a phone.
+    stuck.current = near() || following.current;
+    if (following.current && !near()) toEnd(element);
     report();
     target.addEventListener('scroll', scrolled, { passive: true });
 

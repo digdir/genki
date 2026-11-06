@@ -213,6 +213,31 @@ export const Conversation = ({
   const fieldRef = useRef<HTMLInputElement>(null);
   const toggles = useRef(new Map<string, HTMLButtonElement>());
 
+  // «Generer på nytt» and «Prøv igjen» go away with the answer they stand under, whether the app
+  // replaces the turn in place or draws a new one. When focus falls to the page with the button
+  // the reader pressed, it goes to the answer that takes its place, the item at the same place.
+  const regenerating = useRef<{ at: number; pressed: Element } | undefined>(undefined);
+  const regenerate = (turn: ConversationAnswer, question: ConversationQuestion | undefined) => {
+    const pressed = document.activeElement;
+    const item = pressed?.closest('.uib-conversation-turn');
+    const at = item && listRef.current ? [...listRef.current.children].indexOf(item) : -1;
+    regenerating.current = pressed && at >= 0 ? { at, pressed } : undefined;
+    onRegenerate?.(turn, question);
+  };
+  useEffect(() => {
+    const asked = regenerating.current;
+    if (!asked) return;
+    const active = document.activeElement;
+    // Not yet redrawn: the button is still there, with focus.
+    if (active === asked.pressed && asked.pressed.isConnected) return;
+    regenerating.current = undefined;
+    // Focus the reader moved elsewhere stays.
+    if (active !== null && active !== document.body) return;
+    const item = listRef.current?.children[asked.at];
+    if (item instanceof HTMLElement && item.dataset.kind === 'answer')
+      item.focus({ preventScroll: true });
+  });
+
   // An answer is on its way from the moment the question stands last, so the question's own
   // growth is followed too.
   const last = turns.at(-1);
@@ -440,14 +465,15 @@ export const Conversation = ({
     return (
       <li
         key={standIn.id}
-        className="uib-conversation-turn"
+        className="uib-conversation-turn ds-focus"
         data-kind="answer"
         data-unanswered="true"
+        tabIndex={-1}
       >
         <Answer
           text=""
           status="failed"
-          onRegenerate={onRegenerate && (() => onRegenerate(standIn, question))}
+          onRegenerate={onRegenerate && (() => regenerate(standIn, question))}
           assistantName={assistantName}
           headingLevel={headingLevel}
           color={answerColor}
@@ -504,7 +530,8 @@ export const Conversation = ({
       );
 
     return (
-      <li key={turn.id} className="uib-conversation-turn" data-kind="answer">
+      // Focusable from script only: where focus goes when the button it was on goes away.
+      <li key={turn.id} className="uib-conversation-turn ds-focus" data-kind="answer" tabIndex={-1}>
         {/* Over the card: a fact about the question, not part of the answer. */}
         {scopeLine(turn.scope, t('conversation.answerScope'))}
         {header?.(turn, question)}
@@ -525,7 +552,7 @@ export const Conversation = ({
           highlight={turn.id === searchedId ? highlight : undefined}
           sourcesUsed={sourcesUsed}
           closingQuestion={closingQuestion}
-          onRegenerate={onRegenerate && (() => onRegenerate(turn, question))}
+          onRegenerate={onRegenerate && (() => regenerate(turn, question))}
           failure={turn.failure}
           actions={rowFor(turn)}
           assistantName={assistantName}
