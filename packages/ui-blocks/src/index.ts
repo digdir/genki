@@ -5,4 +5,5 @@ export * from './sources/Sources.js';
 export type * from './sources/types.js';
 export * from './states/States.js';
 export * from './variant-picker/VariantPicker.js';
+export * from './threads/index.js';
 export { nb as uiBlocksNb, en as uiBlocksEn } from './i18n.js';

@@ -3,6 +3,7 @@ import { defineTranslations } from '@genai/i18n/react';
 import { enAnswer, nbAnswer } from './answer/i18n.js';
 import { enStates, nbStates } from './states/i18n.js';
 import { enVariantPicker, nbVariantPicker } from './variant-picker/i18n.js';
+import { enThreads, nbThreads } from './threads/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -157,6 +158,7 @@ export const nb = defineCatalogue({
   answer: nbAnswer,
   states: nbStates,
   variantPicker: nbVariantPicker,
+  threads: nbThreads,
 });
 export const en = {
   procedure: enProcedure,
@@ -164,6 +166,7 @@ export const en = {
   answer: enAnswer,
   states: enStates,
   variantPicker: enVariantPicker,
+  threads: enThreads,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });

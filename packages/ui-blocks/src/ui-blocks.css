@@ -3,6 +3,7 @@
 @import './answer/answer.css';
 @import './states/states.css';
 @import './variant-picker/variant-picker.css';
+@import './threads/threads.css';
 
 .uib-visually-hidden {
   position: absolute;
