@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shell · Components</title>
+    <meta
+      name="description"
+      content="Three columns that hold the other blocks: a primary panel, the main column and a secondary panel, which fold, resize and become drawers."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Shell</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="shell"
+        data-component="shell"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="shell-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="shell-title">Shell</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Holds the others</span>
+            </div>
+            <p class="summary">
+              Three columns, as in Visual Studio Code: a primary panel, the main column and a
+              secondary panel. The panels are slots: the shell knows nothing of threads or sources.
+              A panel folds to a rail, is resized by dragging, clicking or the keys, and becomes a
+              drawer over the main column in a narrow window. The shell reports every change; the
+              app stores it.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Tre paneler»</dd>
+              <dt>Sits in</dt>
+              <dd>The page; every other block sits in it</dd>
+              <dt>Issues</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/168"
+                  >kunnskapsassistenten#168</a
+                >, <a href="https://github.com/digdir/kunnskapsassistenten/issues/80">#80</a>,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/81">#81</a>,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/120">#120</a>,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/122">#122</a>,
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/123">#123</a>
+              </dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Shell</code>, <code>ShellLinks</code> and <code>SignedIn</code> in
+                <code>packages/ui-blocks</code>
+              </dd>
+              <dt>Canvas</dt>
+              <dd>SP2-Layout; resizing and folding are not drawn</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="6" y="12" width="40" height="100" rx="8" />
+            <rect class="s-bar" x="14" y="22" width="24" height="6" rx="3" />
+            <rect class="s-soft" x="14" y="36" width="24" height="5" rx="2.5" />
+            <rect class="s-soft" x="14" y="46" width="20" height="5" rx="2.5" />
+            <rect class="s-accent" x="47" y="12" width="2" height="100" rx="1" />
+            <rect class="s-bar" x="60" y="22" width="56" height="6" rx="3" />
+            <rect class="s-soft" x="60" y="36" width="56" height="5" rx="2.5" />
+            <rect class="s-soft" x="60" y="46" width="44" height="5" rx="2.5" />
+            <rect class="s-soft" x="60" y="84" width="56" height="12" rx="6" />
+            <rect class="s-panel" x="126" y="12" width="28" height="100" rx="8" />
+            <rect class="s-bar" x="134" y="22" width="12" height="6" rx="3" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>An assistant has more than the conversation: threads, a filter, sources.</li>
+              <li>
+                The reader should keep the answer and its sources side by side, and choose how wide
+                each is.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>The assistant is only a conversation. Leave both panels out, or use no shell.</li>
+              <li>The app has a page layout of its own, such as genki's portal.</li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li><strong>Three columns:</strong> both panels, as kunnskapsassistenten.</li>
+              <li>
+                <strong>One panel:</strong> leave <code>primary</code> or <code>secondary</code>
+                out. The breakpoints follow.
+              </li>
+              <li>
+                <strong>The bar:</strong> <code>compactBar</code> puts both rails in a bar above the
+                main column in a phone's width (kunnskapsassistenten#120).
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>primary</code> and <code>secondary</code>: each a panel, with
+                <code>label</code> (its name, after what is in it: «Tråder og filter»),
+                <code>children</code> (what scrolls), <code>head</code> (controls on the panel's
+                row, beside «Skjul»), <code>pinned</code> (pinned to the top of what scrolls),
+                <code>foot</code> and <code>footPinned</code>,
+                <code>size</code> (<code>width</code>, <code>minWidth</code>,
+                <code>maxWidth</code>), <code>defaultCollapsed</code> and <code>landmark</code>.
+              </li>
+              <li>
+                <code>children</code> and <code>mainPinned</code>: the main column, and what stays
+                at its top. <code>mainSize</code>: its floor and reading width, 640 and 800.
+              </li>
+              <li>
+                <code>initialLayout</code> and <code>onLayoutChange</code>: which panels are folded,
+                the widths the reader moved, and whether the reader shut a panel. The shell never
+                stores anything; the app does, and passes it back.
+              </li>
+              <li>
+                <code>request</code>: <code>open</code> a panel the reader asked for, such as by a
+                footnote; <code>offer</code> one that has new content, such as an answer with
+                sources; or <code>close-drawers</code>, such as after choosing a thread. A new
+                object is acted on once.
+              </li>
+              <li>
+                <code>skipLinks</code>: more skip links after «Hopp til hovedinnhold», such as «Hopp
+                til skrivefeltet».
+              </li>
+              <li>
+                <code>gap</code> and <code>rail</code>: 32 and 67 by default. The sums use them, so
+                they must match <code>--genai-shell-gap</code> and the rail's button and padding.
+              </li>
+              <li>
+                <code>color</code>: Designsystemet's <code>data-color</code> for the shell, set only
+                when given.
+              </li>
+              <li>
+                <code>ShellLinks</code>: a panel's foot of links, named, with the open page marked.
+                <code>SignedIn</code>: who is signed in, and «Logg ut».
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li>
+                <a href="threads.html">Threads</a> and <a href="filter.html">Filter</a>, in the
+                primary panel
+              </li>
+              <li><a href="sources.html">Sources</a>, in the secondary panel</li>
+              <li><a href="settings.html">Settings</a>, from the primary panel's foot</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                <strong>Three columns on one row,</strong> named after their place, never a side:
+                the primary panel is a <code>nav</code>, the secondary one an <code>aside</code>,
+                each named by the app after what is in it, so a panel that moves keeps a true name
+                (decided 8 and 11 September). The main column scrolls as a whole and centres an 800
+                px reading width, so the wheel works in its margins.
+              </li>
+              <li>
+                <strong>Widths:</strong> the primary panel 400 (328 inside), the secondary panel 432
+                with a floor of 336, and the main column 640 to 800. A panel has no ceiling: it may
+                grow until the main column is at 640 (kunnskapsassistenten#122). When a window is
+                too narrow for what is open, the secondary panel gives first, then the primary one
+                (14 September).
+              </li>
+              <li>
+                <strong>Folding:</strong> «Skjul …» folds a panel to a 67 px rail with an icon
+                button, «Vis …», which carries <code>aria-expanded</code>,
+                <code>aria-controls</code> and a tooltip with the same words. On the open primary
+                panel the button shows the word «Skjul». No count on the rail
+                (kunnskapsassistenten#87).
+              </li>
+              <li>
+                <strong>Resizing</strong> (kunnskapsassistenten#80, #81): drag the edge, with a
+                mouse, a pen or a finger. A click on the edge makes the panel as wide as the window
+                allows and the next click puts it back, so no drag is needed (WCAG 2.5.7). The edge
+                is a <code>separator</code> that takes the keyboard: the arrows move it 16 px, Shift
+                and an arrow 64, Home and End go to the narrowest and the widest, and Enter goes
+                back to the design's width. It reports the width in pixels. Dragged past half its
+                floor, a panel folds instead of becoming unreadable, and dragging back 16 px past
+                the line opens it again. Where floor and ceiling are the same, as at 1440 with both
+                panels open, there is no edge to drag, so none is drawn (17 September).
+              </li>
+              <li>
+                <strong>One panel below 1440:</strong> where both do not fit, opening one folds the
+                other, and a window that shrinks past 1440 folds the secondary panel. Growing back
+                opens nothing (14 September).
+              </li>
+              <li>
+                <strong>Drawers below 1139:</strong> both panels stand as rails, and an open panel
+                is Designsystemet's modal <code>Dialog</code> over the main column, in from its own
+                edge, at the design's width and never wider than the window: focus is trapped,
+                Escape closes it, focus goes back, and it has «Lukk …». Entering drawer mode folds
+                both, so nothing opens over the answer by itself (17 September). In the bar, below
+                774, the same drawers open from the bar's buttons.
+              </li>
+              <li>
+                <strong>Focus:</strong> when a panel folds with the focus in it, the focus goes to
+                the panel's button, never to <code>&lt;body&gt;</code>. A region that scrolls with
+                nothing in it to reach becomes a tab stop of its own. Pinned heads set scroll
+                padding, so nothing with focus hides under them (WCAG 2.4.11).
+              </li>
+              <li>
+                <strong>The height budget</strong> (21 September): the reading window is the main
+                column less its pinned head and the compose field. The shell keeps
+                kunnskapsassistenten's paddings, 32 above the column and around the panels, 12 under
+                a pinned head, so the budget is the same; the panel's controls share one row.
+              </li>
+              <li>
+                <strong>Remembered:</strong> which panels are folded, the widths the reader moved
+                (and only those, so a reset is forgotten), and whether the reader shut a panel, so
+                new content does not open it again until they ask for it.
+              </li>
+              <li>
+                <strong>Data in, events out.</strong> The shell never stores or fetches anything.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              The block sits in <code>@layer genai.components</code>, after Designsystemet's layers,
+              follows <code>data-color</code>, <code>data-color-scheme</code> and
+              <code>data-size</code>, and reads every token through its own variable, with the token
+              as the fallback. Seven are pinned to the neutral family on purpose, as
+              kunnskapsassistenten's shell: the page, the panels, the rails, the bar, the drawer and
+              the borders stay grey whatever <code>data-color</code> the app sets, because accent
+              belongs to the content and to what can be pressed. The separator's line takes the
+              accent role without a family. The widths are not tokens: the shell sets them from its
+              own sums.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Variable</th>
+                    <th scope="col">Default</th>
+                    <th scope="col">Styles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>--genai-shell-background</code></td>
+                    <td><code>--ds-color-neutral-background-tinted</code></td>
+                    <td>the page, the main column and the secondary panel (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-primary-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the open primary panel (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>a folded panel's rail (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-bar-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the bar in a phone's width (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-drawer-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>a drawer, and its pinned head (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-border-color</code></td>
+                    <td><code>--ds-color-neutral-border-default</code></td>
+                    <td>the panels' edges, pinned heads, the foot and the bar (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-signed-in-border-color</code></td>
+                    <td><code>--ds-color-neutral-border-subtle</code></td>
+                    <td>the line above who is signed in (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-border-width</code></td>
+                    <td><code>--ds-border-width-default</code></td>
+                    <td>every line the shell draws</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-font-family</code></td>
+                    <td><code>--ds-font-family</code></td>
+                    <td>the font of the whole shell</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-gap</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>beside an open panel; must match the <code>gap</code> prop</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-padding-block</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>above and below a panel's content</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-padding-inline</code></td>
+                    <td><code>--ds-size-5</code></td>
+                    <td>beside a panel's content</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-rail-padding-inline</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>beside a rail's button; part of the <code>rail</code> width</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-box-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between a panel's row, content and foot</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-header-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the controls on a panel's row</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-content-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between what is in a panel</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-pinned-background</code></td>
+                    <td>the region's ground</td>
+                    <td>a pinned head, so what scrolls under it is hidden</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-pinned-gap</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>between what is in a pinned head</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-pinned-padding-block-end</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>under a pinned head, above its line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-foot-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between what is in the foot</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-foot-padding-block-start</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between the foot's line and its content, and under the foot</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-foot-margin-block-start</code></td>
+                    <td><code>--ds-size-6</code></td>
+                    <td>above a foot that ends the scrolling content</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-separator-grip</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>how wide the edge takes the pointer</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-separator-line-width</code></td>
+                    <td><code>--ds-border-width-focus</code></td>
+                    <td>the edge's line while pointed at or dragged</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-separator-line-color</code></td>
+                    <td><code>--ds-color-base-default</code></td>
+                    <td>the edge's line while pointed at or dragged</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-padding-block-start</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>above the main column</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-padding-block-end</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>under the main column, plus the safe area</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-padding-inline-min</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>beside the main column on a phone</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-padding-inline-fluid</code></td>
+                    <td><code>4vw</code></td>
+                    <td>beside the main column between a phone and a desktop</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-main-padding-inline-max</code></td>
+                    <td><code>--ds-size-8</code></td>
+                    <td>beside the main column on a desktop</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-bar-padding-block</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>above and below the bar's buttons</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-drawer-close-margin</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>around a drawer's close button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-links-gap</code></td>
+                    <td><code>--ds-size-2</code></td>
+                    <td>between the foot's links, their icons, and the signed-in line</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-links-current-font-weight</code></td>
+                    <td><code>--ds-font-weight-semibold</code></td>
+                    <td>the link to the open page</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-user-gap</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between the person icon and the name</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Made from kunnskapsassistenten's <code>layout/</code>: <code>Shell</code>,
+                <code>PanelSeparator</code>, <code>PanelHead</code>, <code>ViewHead</code>,
+                <code>SidebarFooter</code>, <code>LayoutProvider</code>'s rules,
+                <code>viewModel</code>'s and <code>resize</code>'s sums, and <code>SignedIn</code>,
+                with the same words, sizes, breakpoints and spacing. Their tests are ported,
+                including the sweep of every width from 280 to 2000 px that checks nothing scrolls
+                sideways.
+              </li>
+              <li>
+                What the app keeps: kunnskapsassistenten stores the layout in the browser under
+                <code>ka.layout.v1</code>, and decides itself when the sources panel is offered (an
+                answer with sources) or opened (a footnote).
+              </li>
+              <li>
+                Which content sits in which panel is the app's. Kunnskapsassistenten puts threads
+                and the filter in the primary panel, as two views with «Filtrer dokumenter» and «←
+                Tråder» between them, and tries the filter over the sources behind the experiment
+                <code>filters-right-panel</code> (kunnskapsassistenten#84). Both are the app's
+                content, not the shell's.
+              </li>
+              <li>
+                Decisions behind it: the vision of 8 September (VS Code's structure, resizable
+                columns, named after their role), 14 September (one panel below 1440, the sources
+                give way to 336), 15 September (the 67 px rail; a pointer path without dragging), 17
+                September (drawers below 1139; no edge where there is nothing to drag), 21 September
+                (the height budget: the panel's controls on one row, «Skjul» as an icon button), and
+                the issues above.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Moving a view to the other panel: kunnskapsassistenten's model can, but it has no
+                control for it. The vision says the reader should choose, later.
+              </li>
+              <li>
+                kunnskapsassistenten#168 asks the secondary panel to switch between tools with tabs
+                for two and a menu for three or more. Kunnskapsassistenten has no such switch, so it
+                is not built; an app can put one in the panel's <code>head</code>.
+              </li>
+              <li>
+                The bar on phones (kunnskapsassistenten#120) was chosen by the designer, but is
+                still an experiment in kunnskapsassistenten, so it is off by default here too.
+              </li>
+              <li>The app builder (genki#210) would place blocks in the shell's panels.</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="index.html" rel="prev"><small>Previous</small>Components</a>
+        <a class="next" href="chat.html" rel="next"><small>Next</small>Chat</a>
+      </nav>
+    </main>
+  </body>
+</html>
