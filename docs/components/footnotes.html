@@ -135,9 +135,27 @@
                 <code>onShowUse</code> and <code>onReturn</code> lead.
               </li>
               <li>
-                <code>onOpenDocument</code>, <code>href</code>, <code>citationId</code>,
-                <code>sourcesUsed</code>, <code>closingQuestion</code>,
-                <code>onRegenerate</code> and the <code>actions</code> slot.
+                <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen.
+                <code>href</code> gives a footnote and a title an address, for a new tab; with
+                neither <code>href</code> nor <code>onOpenCitation</code>, a footnote is a mark, not
+                a link. <code>citationId</code> gives each footnote an id.
+              </li>
+              <li>
+                <code>citationMode</code>: <code>excerpt</code> (the default) or
+                <code>document</code>, the service's choice or the reader's. <code>noAnswer</code>:
+                the text is the service's notice that it found nothing, so no sources and no closing
+                question follow.
+              </li>
+              <li>
+                <code>sourcesUsed</code> (on by default), <code>closingQuestion</code> (off),
+                <code>onRegenerate</code> under a stopped or failed answer, and the
+                <code>actions</code> slot under a finished one.
+              </li>
+              <li>
+                <code>assistantName</code>: who answered, for a screen reader; «KI-assistenten»
+                without it. <code>headingLevel</code>: the level of the answer's own top heading, 3
+                by default. <code>color</code> sets Designsystemet's <code>data-color</code> on the
+                card, only when given; <code>className</code> is added to the card's own.
               </li>
             </ul>
             <p>
@@ -184,11 +202,6 @@
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td><code>--genai-answer-actions-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>actions gap</td>
-                </tr>
                 <tr>
                   <td><code>--genai-answer-block-spacing</code></td>
                   <td><code>--ds-size-4</code></td>
@@ -261,7 +274,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-font-size</code></td>
-                  <td><code>--ds-font-size-1</code></td>
+                  <td>0.75rem</td>
                   <td>footnote font size</td>
                 </tr>
                 <tr>
@@ -271,7 +284,7 @@
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote gap</td>
                 </tr>
                 <tr>
@@ -286,17 +299,17 @@
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-padding</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote padding</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-raise</code></td>
-                  <td><code>--ds-size-1</code></td>
+                  <td>0.25rem</td>
                   <td>footnote raise</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-footnote-size</code></td>
-                  <td><code>--ds-size-5</code></td>
+                  <td>1.25rem</td>
                   <td>footnote size</td>
                 </tr>
                 <tr>
@@ -343,6 +356,11 @@
                   <td><code>--genai-answer-note-icon-size</code></td>
                   <td><code>1.25em</code></td>
                   <td>note icon size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-row-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the row under the answer: «Generer på nytt» and the app's row</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-skeleton-gap</code></td>

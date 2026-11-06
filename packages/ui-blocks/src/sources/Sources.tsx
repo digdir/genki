@@ -445,6 +445,8 @@ type ItemProps = Pick<
   passagesOpen: boolean;
   onPassagesOpenChange: (open: boolean) => void;
   rowRefs: Map<string, HTMLElement>;
+  /** The targets already followed, by identity, kept by `Sources` across a card's remount. */
+  applied: WeakSet<SourceTarget>;
   hits: readonly SearchHit[];
   currentHit: SearchHit | undefined;
 };
@@ -460,6 +462,7 @@ const SourceItem = ({
   passagesOpen,
   onPassagesOpenChange,
   rowRefs,
+  applied,
   hits,
   currentHit,
   details,
@@ -513,7 +516,10 @@ const SourceItem = ({
     ) : null;
 
   useEffect(() => {
-    if (!target) return;
+    // Once per target the app passes: new sources remount every card, and a target the app
+    // still holds must not move focus again.
+    if (!target || applied.has(target)) return;
+    applied.add(target);
     if (target.chunkId && holds(source, target)) {
       onRowOpenChange(target.chunkId, true);
       if (byDocument) onPassagesOpenChange(true);
@@ -916,6 +922,7 @@ export const Sources = ({
   const [query, setQuery] = useState('');
   const [hitIndex, setHitIndex] = useState(0);
   const rowRefs = useRef(new Map<string, HTMLElement>());
+  const applied = useRef(new WeakSet<SourceTarget>());
   const frame = useRef(0);
 
   const prepared = useMemo(
@@ -1034,11 +1041,18 @@ export const Sources = ({
   const listKey = (sources ?? [])
     .map((s, i) => `${prepared[i]?.key}:${s.excerpts.map((e) => e.chunkId).join(',')}`)
     .join('|');
+  // A heading one level over the documents', as kunnskapsassistenten's «Kilder» is the h2 over
+  // its h3 cards, so the cards sit under it in the outline.
   const heading =
     title === false ? null : (
-      <span id={titleId} className="uib-sources-title">
+      <Heading
+        id={titleId}
+        level={Math.max(2, headingLevel - 1) as Level}
+        data-size={variant === 'compact' ? '2xs' : 'sm'}
+        className="uib-sources-title"
+      >
         {title ?? t('sources.title')}
-      </span>
+      </Heading>
     );
   const named = heading ? { 'aria-labelledby': titleId } : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
@@ -1133,6 +1147,7 @@ export const Sources = ({
                   })
                 }
                 rowRefs={rowRefs.current}
+                applied={applied.current}
                 hits={hits}
                 currentHit={currentHit}
                 corpus={corpus}

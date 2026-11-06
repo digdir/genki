@@ -55,7 +55,7 @@
     vertical-align: baseline;
   }
   .uib-answer-lost {
-    margin-inline-start: var(--genai-answer-footnote-gap, var(--ds-size-1));
+    margin-inline-start: var(--genai-answer-footnote-gap, 0.25rem);
   }
   /* A footnote as a small round mark raised a little beside the word, its number in the smallest
      font size. It stands the smallest size step from what comes before it: two marks in a row are
@@ -64,22 +64,25 @@
      The ring, not the fill, sets the circle apart from the card: the tinted fill on the card is
      1.2:1 in the digdir theme (1.1:1 dark), the ring 6.6:1 (6.2:1 dark), and the number on the
      fill 11.5:1 in both (measured 6 November 2026). Inset, so the circle keeps its size. */
+  /* One size wherever the mark stands: Designsystemet's size tokens shrink under a table's
+     data-size="sm", which drew the marks at 11 px there and 12 px in the text. In rem, the 20 px,
+     12 px and 4 px of kunnskapsassistenten's mark at the default size. */
   .uib-answer-mark {
     display: inline-block;
     box-sizing: border-box;
-    min-inline-size: var(--genai-answer-footnote-size, var(--ds-size-5));
-    block-size: var(--genai-answer-footnote-size, var(--ds-size-5));
-    margin-inline-start: var(--genai-answer-footnote-gap, var(--ds-size-1));
-    padding-inline: var(--genai-answer-footnote-padding, var(--ds-size-1));
+    min-inline-size: var(--genai-answer-footnote-size, 1.25rem);
+    block-size: var(--genai-answer-footnote-size, 1.25rem);
+    margin-inline-start: var(--genai-answer-footnote-gap, 0.25rem);
+    padding-inline: var(--genai-answer-footnote-padding, 0.25rem);
     border-radius: var(--genai-answer-footnote-border-radius, var(--ds-border-radius-full));
     background: var(--genai-answer-footnote-background, var(--ds-color-accent-surface-tinted));
     color: var(--genai-answer-footnote-color, var(--ds-color-accent-text-default));
-    font-size: var(--genai-answer-footnote-font-size, var(--ds-font-size-1));
+    font-size: var(--genai-answer-footnote-font-size, 0.75rem);
     font-weight: var(--genai-answer-footnote-font-weight, var(--ds-font-weight-semibold));
-    line-height: var(--genai-answer-footnote-size, var(--ds-size-5));
+    line-height: var(--genai-answer-footnote-size, 1.25rem);
     text-align: center;
     text-decoration: none;
-    vertical-align: var(--genai-answer-footnote-raise, var(--ds-size-1));
+    vertical-align: var(--genai-answer-footnote-raise, 0.25rem);
   }
   /* Not while focused, where Designsystemet's own two rings take the shadow. */
   .uib-answer-mark:not(:focus-visible) {
@@ -98,7 +101,7 @@
      filled circle is 6.1:1 (6.3:1 dark), and the fill stands 5.0:1 (4.1:1 dark) from the tinted
      one, so the change is plain. Focus keeps Designsystemet's two rings, 12:1 and more. */
   @media (hover: hover) and (pointer: fine) {
-    .uib-answer-mark:hover {
+    .uib-answer-mark:any-link:hover {
       background: var(
         --genai-answer-footnote-hover-background,
         var(--ds-color-accent-base-default)
@@ -221,11 +224,21 @@
     color: var(--genai-answer-sources-used-excerpts-color, var(--ds-color-text-subtle));
   }
 
-  .uib-answer-actions {
+  /* The row under the answer: «Generer på nytt», then the app's own row. The app's row fills
+     what is left, so its far end is the card's, as kunnskapsassistenten puts the time. */
+  .uib-answer-row,
+  .uib-answer-row-slot {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--genai-answer-actions-gap, var(--ds-size-2));
+    gap: var(--genai-answer-row-gap, var(--ds-size-2));
+  }
+  .uib-answer-row-slot {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+  .uib-answer-row-slot > :only-child {
+    flex: 1 1 auto;
   }
 
   @container uib-answer (inline-size >= 410px) {

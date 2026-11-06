@@ -56,6 +56,16 @@ const toggleOf = (name: RegExp | string) =>
   within(rowOf(name)).getByRole('button', { name: /^(Åpne|Lukk|Open|Close) / });
 
 describe('the sources block', () => {
+  it('heads its documents with «Kilder» one level up, as kunnskapsassistenten’s outline does', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    expect(screen.getByRole('heading', { level: 2, name: 'Kilder' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: nkom.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 4, name: /^Utdrag 1/ })).toBeTruthy();
+    cleanup();
+    draw({ headingLevel: 4 });
+    expect(screen.getByRole('heading', { level: 3, name: 'Kilder' })).toBeTruthy();
+  });
+
   it('names each document by its title and never by a number', () => {
     draw({ citations: cite('kudos::2021-2') });
     const heading = screen.getByRole('heading', { level: 3, name: nkom.title });
@@ -317,6 +327,25 @@ describe('following a footnote', () => {
     expect(document.activeElement?.textContent).toBe(nkom.title);
     expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
   });
+
+  it('follows a target once, so new sources with the target still held move no focus', async () => {
+    const target = { documentId: 'kudos::2021' };
+    const { rerender } = render(<Sources sources={[nkom, memo]} target={target} />);
+    await frame();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    // Another answer's sources: every card remounts, with the same target object still passed.
+    const again = { ...nkom, excerpts: nkom.excerpts.slice(0, 1) };
+    rerender(<Sources sources={[again, memo]} target={target} />);
+    await frame();
+    expect(document.activeElement).toBe(outside);
+    // A new target object, as a new footnote press gives, is followed.
+    rerender(<Sources sources={[again, memo]} target={{ documentId: 'kudos::2021' }} />);
+    await frame();
+    expect(document.activeElement?.textContent).toBe(nkom.title);
+    outside.remove();
+  });
 });
 
 describe('the cards and the search', () => {
@@ -484,7 +513,10 @@ describe('a panel with no sources says why', () => {
   it('shows the loading state while the answer is still on its way', () => {
     draw({ sources: undefined, answerStatus: 'streaming' });
     expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
-    expect(screen.queryByRole('heading')).toBeNull();
+    // «Kilder» only: no empty state under it.
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'Kilder',
+    ]);
   });
 
   it('draws nothing when the app passes neither sources nor a status', () => {

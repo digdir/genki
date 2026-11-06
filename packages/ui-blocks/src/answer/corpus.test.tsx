@@ -119,7 +119,8 @@ describe('the answer on real answers from genki-test', () => {
       render(
         <Answer text={text} sources={sources} noAnswer={noAnswer} onOpenDocument={() => {}} />,
       );
-      const marks = screen.queryAllByRole('link', { name: /^Kilde \d+: / });
+      // Links when the app takes them; here it doesn't, so they are marks.
+      const marks = screen.queryAllByRole('img', { name: /^Kilde \d+: / });
       const labels = marks.map(
         (link) => link.getAttribute('aria-label')?.replace(/^Kilde \d+: /, '') ?? '',
       );

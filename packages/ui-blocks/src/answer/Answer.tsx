@@ -17,6 +17,9 @@ import { SourcesUsed, type UsedDocument } from './SourcesUsed.js';
 
 export type AnswerStatus = 'streaming' | 'complete' | 'aborted' | 'failed';
 
+// TODO(QA-C2): take ErrorKind, isRetryable and the kinds' texts from the states block (#403)
+// once it is in this stack, so there is one vocabulary. These mirror kunnskapsassistenten's
+// errorText.ts until then.
 /**
  * Why an answer failed, as far as the app can tell: the model, the search in the documents, the
  * time, the key, too many questions, a question too long, a filter the service refused, a thread
@@ -158,7 +161,8 @@ interface FootnoteProps {
   citation: number;
   number: number;
   label: string;
-  href: string;
+  /** Undefined when the app gives the footnote nowhere to go. */
+  href: string | undefined;
   id: string | undefined;
   onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
   footnotes: Map<number, HTMLElement>;
@@ -167,25 +171,34 @@ interface FootnoteProps {
 // Always a number in a round mark, as kunnskapsassistenten draws it: the excerpt's, or the
 // document's while the service cites documents. A link named by what it cites and the document:
 // a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
-// so a copied answer still reads «[1]».
+// so a copied answer still reads «[1]». With nowhere to go, it is a mark and not a link, which
+// would jump to the top of the page.
 const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: FootnoteProps) => (
   <sup className="uib-answer-footnote">
-    <Link
-      ref={(element: HTMLAnchorElement | null) => {
-        if (element) footnotes.set(citation, element);
-        else footnotes.delete(citation);
-      }}
-      id={id}
-      className="uib-answer-mark"
-      href={href}
-      aria-label={label}
-      title={label}
-      onClick={onOpen}
-    >
-      <span className="uib-answer-copy">[</span>
-      {number}
-      <span className="uib-answer-copy">]</span>
-    </Link>
+    {href === undefined && onOpen === undefined ? (
+      <span id={id} className="uib-answer-mark" role="img" aria-label={label} title={label}>
+        <span className="uib-answer-copy">[</span>
+        {number}
+        <span className="uib-answer-copy">]</span>
+      </span>
+    ) : (
+      <Link
+        ref={(element: HTMLAnchorElement | null) => {
+          if (element) footnotes.set(citation, element);
+          else footnotes.delete(citation);
+        }}
+        id={id}
+        className="uib-answer-mark"
+        href={href ?? '#'}
+        aria-label={label}
+        title={label}
+        onClick={onOpen}
+      >
+        <span className="uib-answer-copy">[</span>
+        {number}
+        <span className="uib-answer-copy">]</span>
+      </Link>
+    )}
   </sup>
 );
 
@@ -320,7 +333,7 @@ export const Answer = ({
               ? t('answer.footnote', { n: number, title: name })
               : t('answer.footnoteDocument', { n: number, title: name })
           }
-          href={href?.(goal) ?? '#'}
+          href={href?.(goal)}
           id={citationId?.(mark.citation)}
           onOpen={
             onOpenCitation
@@ -392,7 +405,9 @@ export const Answer = ({
             {t('answer.noSources')}
           </Paragraph>
         ) : null}
-        {empty ? null : (
+        {/* A failed answer's text is not an answer: genki streams its own error message as text
+            before the failure, in English, for developers. The card says the failure itself. */}
+        {empty || failed ? null : (
           <Markdown
             text={text}
             cite={cite}
@@ -443,14 +458,15 @@ export const Answer = ({
       </Card.Block>
       {(complete && !empty && actions) || ((aborted || failed) && (again || actions)) ? (
         <Card.Block>
-          <div className="uib-answer-actions">
+          {/* The answer's own row. `uib-answer-actions` is the answer actions block's class. */}
+          <div className="uib-answer-row">
             {again ? (
               <Button ref={retryRef} variant="tertiary" data-size="sm" onClick={onRegenerate}>
                 <ArrowsCirclepathIcon aria-hidden />
                 {told ? t('answer.retry') : t('answer.regenerate')}
               </Button>
             ) : null}
-            {actions}
+            {actions ? <div className="uib-answer-row-slot">{actions}</div> : null}
           </div>
         </Card.Block>
       ) : null}
