@@ -1,3 +1,7 @@
+@import './filter/filter.css';
+@import './corpus/corpus.css';
+@import './documents/documents.css';
+
 .uib-visually-hidden {
   position: absolute;
   width: 1px;
