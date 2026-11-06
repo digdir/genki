@@ -5,9 +5,13 @@ export const architectureArea = {
   architecture: {
     title: 'Architecture assistant',
     draftTag: 'Draft',
-    lead: 'Analyses the architecture of a solution and points out what to consider.',
-    draftTitle: 'The architecture assistant is being built',
+    lead: 'Answers questions about the national architecture: capabilities, principles and shared resources.',
+    loading: 'Loading the architecture assistant',
     draft:
-      'This is a draft. The assistant is not connected to the platform yet, so it cannot answer.',
+      'The assistant is being tried out, and its answers can be wrong or incomplete. Check the sources under each answer before you use it.',
+    missingTitle: 'The architecture assistant does not exist in {tenant}',
+    missing:
+      'The page uses the service with the id "{service}", and it is not published in your organisation, or you do not have access to it. Ask someone who manages services in your organisation to publish it or give you access.',
+    toServices: 'Go to services',
   },
 } satisfies Translation<typeof source>;

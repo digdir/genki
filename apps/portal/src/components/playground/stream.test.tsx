@@ -101,6 +101,9 @@ const harness = () => {
   return { api, requests, streams };
 };
 
+// jsdom has no popover API, so an open popover still counts as hidden.
+const inPopover = { hidden: true };
+
 const ask = async (question: string, label = 'Spørsmål') => {
   fireEvent.change(await screen.findByRole('textbox', { name: label }), {
     target: { value: question },
@@ -163,7 +166,7 @@ describe('the playground stream', () => {
     );
   });
 
-  it('shows steps, reasoning and the streamed answer while the run is going, then the result', async () => {
+  it('shows reasoning and the streamed answer while the run is going, with the steps in a closed Hva skjer popup, then the result and Hva skjedde', async () => {
     const { api, streams } = harness();
     render(<PlaygroundPanel layout="full" api={api} tenant="999888777" />);
     await ask('Hva sier rapportene?');
@@ -206,19 +209,24 @@ describe('the playground stream', () => {
 
     expect(screen.getByText('Kjører', { selector: '.ds-tag' })).toBeTruthy();
     expect(screen.getByText('Jeg må søke først.').className).toBe('log-reasoning');
-    const steps = screen.getByRole('list', { name: 'Hva skjedde' });
+    const details = screen.getByRole('button', { name: 'Hva skjer (2 steg)' });
+    expect(details.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('list', { name: 'Hva skjer', ...inPopover })).toBeNull();
+    fireEvent.click(details);
+    expect(details.getAttribute('aria-expanded')).toBe('true');
+    const steps = screen.getByRole('list', { name: 'Hva skjer', ...inPopover });
     expect(within(steps).getByText('Planla søket')).toBeTruthy();
     expect(within(steps).getByText('Genererte 2 søk: «a», «b»')).toBeTruthy();
     expect(
       within(steps)
-        .getByRole('button', { name: /Modellkall · runde 1/ })
+        .getByRole('button', { name: /Modellkall · runde 1/, ...inPopover })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     const head = screen.getByText('Verktøykall').parentElement;
     expect(head?.textContent).toBe('Verktøykall3');
 
-    fireEvent.click(within(steps).getByRole('button', { name: /Planla søket/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Vis rådata' }));
+    fireEvent.click(within(steps).getByRole('button', { name: /Planla søket/, ...inPopover }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vis rådata', ...inPopover }));
     expect(screen.getByText(/"queries"/)).toBeTruthy();
 
     await stream.push([{ event: 'delta', setup: 'setup', text: 'Et utkast', channel: 'answer' }]);
@@ -230,6 +238,7 @@ describe('the playground stream', () => {
     expect(await screen.findByRole('link', { name: 'Se kjøringen' })).toBeTruthy();
     expect(screen.getByText('Ferdig', { selector: '.ds-tag' })).toBeTruthy();
     expect(screen.getByText('Unike dokumenter')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hva skjedde (1 steg)' })).toBeTruthy();
   });
 
   it('streams both setups when comparing', async () => {
@@ -245,11 +254,15 @@ describe('the playground stream', () => {
       { event: 'step', setup: 'compareWith', step: step('e1', { title: 'Søk i B' }) },
       { event: 'step', setup: 'setup', step: step('e1', { title: 'Søk i A' }) },
     ]);
-    const lists = screen.getAllByRole('list', { name: 'Hva skjedde' });
-    expect(lists.map((l) => l.textContent)).toEqual([
-      expect.stringContaining('Søk i A'),
-      expect.stringContaining('Søk i B'),
-    ]);
+    const [detailsA, detailsB] = screen.getAllByRole('button', { name: 'Hva skjer (1 steg)' });
+    fireEvent.click(detailsA as HTMLElement);
+    expect(screen.getByRole('list', { name: 'Hva skjer', ...inPopover }).textContent).toContain(
+      'Søk i A',
+    );
+    fireEvent.click(detailsB as HTMLElement);
+    expect(screen.getByRole('list', { name: 'Hva skjer', ...inPopover }).textContent).toContain(
+      'Søk i B',
+    );
 
     await stream.push([
       { event: 'result', setup: 'compareWith', result: result({ runId: 'tp-2' }) },
