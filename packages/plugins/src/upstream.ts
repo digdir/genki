@@ -12,6 +12,8 @@ export interface FakeReply {
   json?: unknown;
   sse?: { event?: string; data: unknown }[];
   delayMs?: number;
+  /** Response headers beside the content type, such as `retry-after-ms`. */
+  headers?: Record<string, string>;
 }
 
 export interface FakeServer {
@@ -33,7 +35,7 @@ export const fakeHttp = async (
       const r = reply(body, seen.length, req.url ?? '');
       setTimeout(() => {
         if (r.sse) {
-          res.writeHead(r.status, { 'content-type': 'text/event-stream' });
+          res.writeHead(r.status, { ...r.headers, 'content-type': 'text/event-stream' });
           for (const frame of r.sse) {
             const data = typeof frame.data === 'string' ? frame.data : JSON.stringify(frame.data);
             res.write(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${data}\n\n`);
@@ -41,7 +43,7 @@ export const fakeHttp = async (
           res.end();
           return;
         }
-        res.writeHead(r.status, { 'content-type': 'application/json' });
+        res.writeHead(r.status, { ...r.headers, 'content-type': 'application/json' });
         res.end(JSON.stringify(r.json ?? {}));
       }, r.delayMs ?? 0);
     });

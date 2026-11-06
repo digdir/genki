@@ -22,7 +22,7 @@ import {
   type JobData,
   type QueueWork,
 } from '@genai/jobs';
-import type { EmbeddingPort } from '@genai/port-embedding';
+import { EmbeddingError, type EmbeddingPort } from '@genai/port-embedding';
 import type { DatasetConfig, IndexDocument } from '@genai/port-knowledge';
 import {
   attachGeneration,
@@ -887,5 +887,33 @@ describe('copying a dataset into the knowledge database', () => {
       { position: 2, text: 'tredje', dims: 3 },
     ]);
     expect(new Set(embedded)).toEqual(new Set(['fake/large-1536']));
+  }, 60_000);
+  it('a copy whose embedder answers 429 for its first calls stores every document and fails none', async () => {
+    let refused = 0;
+    const s = await scenario({}, undefined, {
+      builtWith: embedding,
+      switched: { embedding },
+      copy: {
+        source: copySource([
+          typesenseDoc('377252', ['Forord']),
+          typesenseDoc('364', ['Kapittel']),
+          typesenseDoc('15d652024721', ['første', 'andre']),
+        ]),
+      },
+      embedWait: () => {
+        if (refused >= 4) return Promise.resolve();
+        refused += 1;
+        return Promise.reject(
+          new EmbeddingError('rate_limited', 'the embedder is rate limited', { retryAfterMs: 5 }),
+        );
+      },
+    });
+
+    const { run } = await runOnce(s, copyRun(s));
+
+    expect(refused).toBe(4);
+    expect(await docsIn(s.generation)).toHaveLength(3);
+    expect(await reportOf(run)).toMatchObject({ stored: 3 });
+    expect((await reportOf(run))?.failed ?? []).toEqual([]);
   }, 60_000);
 });

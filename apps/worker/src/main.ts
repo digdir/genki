@@ -443,6 +443,8 @@ const knowledgeHandlers =
           return dataset.embedding
             ? runtime.embedders.open({ kind: 'embedder', id: dataset.embedding.model }, ctx, {
                 ...(residency ? { maxResidency: residency } : {}),
+                // The index job retries itself, so one 429 pauses every job on the model (#400).
+                retries: 0,
               })
             : undefined;
         },

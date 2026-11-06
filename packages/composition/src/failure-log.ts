@@ -1,6 +1,10 @@
 import type { Ref } from '@genai/contracts';
 import type { EventLog, PortContext } from '@genai/kernel';
-import type { EmbeddingOpenOptions, EmbeddingPort } from '@genai/port-embedding';
+import {
+  retryAfterMsOf,
+  type EmbeddingOpenOptions,
+  type EmbeddingPort,
+} from '@genai/port-embedding';
 import { ModelError, type ChatRequest, type ModelPort } from '@genai/port-model';
 
 export type ApiLog = (msg: string, fields: Record<string, unknown>) => void;
@@ -114,17 +118,6 @@ export const loggedEmbedders = <
   });
 };
 
-const retryAfterMs = (headers: Headers): number | undefined => {
-  const ms = Number(headers.get('retry-after-ms') ?? Number.NaN);
-  if (Number.isFinite(ms) && ms >= 0) return ms;
-  const after = headers.get('retry-after');
-  if (after === null) return undefined;
-  const seconds = Number(after);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
-  const at = Date.parse(after);
-  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
-};
-
 const requestedModel = (body: unknown): string | undefined => {
   if (typeof body !== 'string') return undefined;
   try {
@@ -144,7 +137,7 @@ export const throttleLoggedFetch =
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : {}));
     const retries = Number(headers.get('x-stainless-retry-count') ?? 0);
     const model = requestedModel(init?.body);
-    const wait = retryAfterMs(response.headers);
+    const wait = retryAfterMsOf(response.headers);
     log('model call throttled', {
       endpoint,
       ...(model ? { model } : {}),

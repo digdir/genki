@@ -5,6 +5,8 @@ import {
   indexRecord,
   ingestListing,
   pipelineSpec,
+  throttledEmbedder,
+  EmbeddingPauses,
   type ChunkDocumentConfig,
   type CopyListing,
   type DocumentRecords,
@@ -184,6 +186,7 @@ export const knowledgePoolSizeOf = (concurrency: number) => Math.max(10, 2 * con
 export const knowledgeWork = (
   deps: KnowledgeHandlerDeps,
 ): { platform: QueueWork[]; knowledge: QueueWork[]; heavy: QueueWork[] } => {
+  const pauses = new EmbeddingPauses();
   const ingest = admittedWork(
     knowledgeIngestQueue,
     async ({ job, run, cancelled }) => {
@@ -257,9 +260,11 @@ export const knowledgeWork = (
           );
           // The generation's model, so a catalog edit never mixes vectors of two models in one partition.
           const embedding = await deps.records.embedding(job.data.generation);
-          const embedder = embedding
+          const opened = embedding
             ? deps.embedder({ ...dataset, embedding }, contextOf(run, principal, tenant, signal))
             : undefined;
+          // A 429 waits and pauses this worker's other jobs on the model, instead of failing (#400).
+          const embedder = opened && throttledEmbedder(opened, { pauses, signal });
           let chunks = 0;
           let outcome: Awaited<ReturnType<typeof indexRecord>>;
           try {
