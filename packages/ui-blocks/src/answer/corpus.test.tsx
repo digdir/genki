@@ -104,42 +104,36 @@ describe('the answer on real answers from genki-test', () => {
     expect(unresolved(kept)).toEqual([]);
   });
 
-  it('leads every footnote it draws to one document shown, and gives every document it lists a footnote', () => {
+  // genki-test's answers cite documents: `[N]` is the source with `index: N`, and a cited document
+  // often carries several excerpts, so no footnote says which excerpt it means.
+  it('draws no footnote on answers that cite only documents, and lists every document they cite', () => {
     let written = 0;
-    let drawn = 0;
-    let merged = 0;
+    let cited = 0;
     let listed = 0;
     const problems: string[] = [];
     for (const { file, text, noAnswer, sources } of answers) {
       const read = readFootnotes(text, sources);
       written += read.written;
-      merged += [...read.marks.values()].filter((m) => m.kind === 'dropped').length;
+      if (read.pairing.mode !== 'document' && read.citations.length)
+        problems.push(`${file}: footnotes read as excerpts`);
       if (read.pairing.unpaired.length) problems.push(`${file}: unpaired ${read.pairing.unpaired}`);
+      const keys = documentKeys(sources);
+      const used = sources.filter((_, i) => read.pairing.uses.has(keys[i] ?? ''));
+      cited += used.length;
 
-      render(
-        <Answer text={text} sources={sources} noAnswer={noAnswer} onOpenDocument={() => {}} />,
+      const { container } = render(
+        <Answer
+          text={text}
+          sources={sources}
+          noAnswer={noAnswer}
+          onOpenDocument={() => {}}
+          onOpenExcerpt={() => {}}
+        />,
       );
-      // Links when the app takes them; here it doesn't, so they are marks.
-      const marks = screen.queryAllByRole('img', { name: /^Kilde \d+: / });
-      const labels = marks.map(
-        (link) => link.getAttribute('aria-label')?.replace(/^Kilde \d+: /, '') ?? '',
-      );
-      // Always a number in the mark, the document's: one number per document, 1, 2, 3 in order.
-      const numberOf = new Map<string, string>();
-      marks.forEach((link, i) => {
-        const number = link.textContent ?? '';
-        const label = labels[i] ?? '';
-        if (!/^\[\d+\]$/.test(number)) problems.push(`${file}: footnote «${number}» is no number`);
-        if ((numberOf.get(label) ?? number) !== number)
-          problems.push(`${file}: «${label}» carries two numbers`);
-        numberOf.set(label, number);
-      });
-      const firsts = [...new Set(numberOf.values())];
-      if (firsts.join() !== firsts.map((_, i) => `[${i + 1}]`).join())
-        problems.push(`${file}: documents numbered ${firsts.join(' ')}`);
-      drawn += labels.length;
-      if (labels.length !== read.citations.length)
-        problems.push(`${file}: ${labels.length} drawn, ${read.citations.length} footnotes`);
+      const marks = container.querySelectorAll('.uib-answer-mark');
+      if (marks.length) problems.push(`${file}: ${marks.length} footnotes drawn`);
+      if (/\b(?:Kilde|Utdrag) \d/.test(visible(container)))
+        problems.push(`${file}: a number is shown`);
       const summary = screen.queryByText('Kilder brukt i svaret')?.closest('details');
       const rows = summary
         ? within(summary as HTMLElement)
@@ -147,22 +141,20 @@ describe('the answer on real answers from genki-test', () => {
             .map((link) => link.textContent ?? '')
         : [];
       listed += rows.length;
-      // Both ways: each footnote names a document in the list, and each listed document has one.
-      for (const label of new Set(labels))
-        if (!rows.includes(label)) problems.push(`${file}: footnote to «${label}» not listed`);
-      for (const row of rows)
-        if (!labels.includes(row)) problems.push(`${file}: «${row}» listed without a footnote`);
+      if (!noAnswer && rows.length !== used.length)
+        problems.push(`${file}: ${rows.length} listed, ${used.length} cited`);
       cleanup();
     }
     console.info(
-      `${answers.length} answers: ${written} [N] written, ${drawn} footnotes drawn, ${merged} merged with the one before, ${listed} documents listed`,
+      `${answers.length} answers: ${written} [N] written, ${cited} documents cited, ${listed} listed, 0 footnotes drawn`,
     );
     expect(written).toBeGreaterThan(100);
+    expect(listed).toBeGreaterThan(0);
     expect(problems).toEqual([]);
   });
 
-  it('gives Sources the same footnotes, so each cited document carries their number and a link back to each', () => {
-    let backLinks = 0;
+  it('gives Sources the same footnotes, which number nothing and link nothing back', () => {
+    let documents = 0;
     for (const { file, text, sources } of answers.filter((a) => a.sources.length)) {
       const { citations, pairing } = readFootnotes(text, sources);
       const keys = documentKeys(sources);
@@ -171,23 +163,19 @@ describe('the answer on real answers from genki-test', () => {
       );
       const cards = [...container.querySelectorAll<HTMLElement>('.uib-sources-document')];
       expect(cards.length, file).toBe(sources.length);
+      expect(container.textContent, file).not.toMatch(/\b(?:Kilde|Utdrag) \d/);
+      expect(within(container).queryAllByRole('link', { name: /til svaret/i }), file).toEqual([]);
       cards.forEach((card, i) => {
-        const key = keys[i] ?? '';
-        const number = pairing.numbers.get(key);
-        const head = card.querySelector<HTMLElement>('.uib-sources-document-head') as HTMLElement;
-        expect(head.querySelector('.uib-sources-document-number')?.textContent ?? null, file).toBe(
-          number === undefined ? null : `Kilde ${number}`,
-        );
-        const links = within(head).queryAllByRole('link', { name: /^Til svaret/ });
-        expect(links.length, `${file} document ${i + 1}`).toBe(pairing.uses.get(key)?.length ?? 0);
-        // The passages were not cited alone, so they carry neither number nor link.
-        for (const row of card.querySelectorAll<HTMLElement>('.uib-sources-excerpt'))
-          expect(within(row).queryAllByRole('link', { name: /^Til svaret/ })).toHaveLength(0);
-        backLinks += links.length;
+        // A document no footnote names says so; a cited one does not.
+        expect(
+          within(card).queryByText('Ikke vist til i svaret') === null,
+          `${file} document ${i + 1}`,
+        ).toBe(pairing.uses.has(keys[i] ?? ''));
       });
+      documents += cards.length;
       cleanup();
     }
-    expect(backLinks).toBeGreaterThan(0);
+    expect(documents).toBeGreaterThan(0);
   });
 
   it('draws no leftover from the source format in what a reader sees', () => {

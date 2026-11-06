@@ -1,50 +1,52 @@
 import { Card, Details, Link, List, Paragraph } from '@digdir/designsystemet-react';
 import { FileTextIcon } from '@navikt/aksel-icons';
+import { Fragment } from 'react';
 import { useT } from '../i18n.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 
-/**
- * One document the answer used: its name, and the numbers its footnotes carry: its excerpts' in
- * excerpt mode, its own in document mode.
- */
+/** One document the answer used: its name, and the numbered excerpts its footnotes cite. */
 export interface UsedDocument {
   key: string;
   source: SourceDocument;
   name: string;
   own: boolean;
-  numbers: readonly number[];
-  /** Document mode: the document's own number, «Kilde 1». */
-  number?: number | undefined;
+  /**
+   * The document's excerpts that footnotes cite, by number, «Utdrag 1». Empty when the answer
+   * cites the document only as a whole, since footnotes are numbered by excerpt only.
+   */
+  excerpts: readonly { n: number; chunkId: string }[];
 }
-
-/** «Utdrag 1–3» for an unbroken run, «Utdrag 1, 2, 5» otherwise, as the footnotes call them. */
-const range = (numbers: readonly number[]) => {
-  const sorted = numbers.toSorted((a, b) => a - b);
-  const unbroken = sorted.every((n, i) => i === 0 || n === (sorted[i - 1] ?? 0) + 1);
-  return sorted.length > 1 && unbroken
-    ? `${sorted[0]}–${sorted.at(-1)}`
-    : sorted.map(String).join(', ');
-};
 
 /**
  * «Kilder brukt i svaret»: one row per document the answer cites, in the order Sources shows
- * them, each a way into that document. Under a title stand the numbers its footnotes carry: its
- * excerpts' in excerpt mode, its own, «Kilde 1», while the service cites documents.
+ * them, each a way into that document. Under a title, the excerpts its footnotes cite, «Utdrag 1,
+ * Utdrag 3», each a quiet link to that excerpt in Sources.
  */
 export const SourcesUsed = ({
   documents,
   href,
   onOpenDocument,
+  onOpenExcerpt,
   links,
+  excerptLinks,
 }: {
   documents: readonly UsedDocument[];
   href?: ((target: SourceTarget) => string | undefined) | undefined;
   onOpenDocument?: ((source: SourceDocument) => void) | undefined;
+  onOpenExcerpt?: ((target: SourceTarget) => void) | undefined;
   /** Each title's link, by document key, so the answer can send focus back to one. */
   links?: Map<string, HTMLElement> | undefined;
+  /** Each excerpt's link, by chunk id, so the answer can send focus back to one. */
+  excerptLinks?: Map<string, HTMLElement> | undefined;
 }) => {
   const t = useT();
   if (documents.length === 0) return null;
+  const keep = (map: Map<string, HTMLElement> | undefined, key: string) =>
+    map &&
+    ((element: HTMLAnchorElement | null) => {
+      if (element) map.set(key, element);
+      else map.delete(key);
+    });
   return (
     <Card className="uib-answer-sources-used-card" variant="tinted">
       <Details className="uib-answer-sources-used" defaultOpen>
@@ -56,7 +58,7 @@ export const SourcesUsed = ({
         </Details.Summary>
         <Details.Content>
           <List.Unordered className="uib-answer-sources-used-list" data-size="sm">
-            {documents.map(({ key, source, name, own, numbers, number }) => {
+            {documents.map(({ key, source, name, own, excerpts }) => {
               // A file name can look exactly like a corpus title, and a list is read out of
               // context, so the name says whose it is.
               const whose = own ? (
@@ -70,11 +72,7 @@ export const SourcesUsed = ({
                 <List.Item key={key}>
                   {onOpenDocument || address ? (
                     <Link
-                      ref={(element: HTMLAnchorElement | null) => {
-                        if (!links) return;
-                        if (element) links.set(key, element);
-                        else links.delete(key);
-                      }}
+                      ref={keep(links, key)}
                       className="uib-answer-sources-used-link"
                       href={address ?? '#'}
                       onClick={
@@ -96,15 +94,41 @@ export const SourcesUsed = ({
                       {whose}
                     </>
                   )}
-                  {numbers.length ? (
+                  {excerpts.length ? (
                     <Paragraph data-size="xs" className="uib-answer-sources-used-excerpts">
-                      {t('answer.excerpts', { count: numbers.length, numbers: range(numbers) })}
+                      {excerpts.map(({ n, chunkId }, i) => {
+                        const label = t('sources.excerptNumber', { n });
+                        const goal: SourceTarget = { ...target, chunkId };
+                        const to = href?.(goal);
+                        return (
+                          <Fragment key={chunkId}>
+                            {i > 0 ? ', ' : null}
+                            {onOpenExcerpt || to ? (
+                              <Link
+                                ref={keep(excerptLinks, chunkId)}
+                                className="uib-answer-sources-used-excerpt"
+                                href={to ?? '#'}
+                                aria-label={t('answer.excerptInSources', { label })}
+                                onClick={
+                                  onOpenExcerpt
+                                    ? (event) => {
+                                        // The app shows the excerpt in Sources.
+                                        event.preventDefault();
+                                        onOpenExcerpt(goal);
+                                      }
+                                    : undefined
+                                }
+                              >
+                                {label}
+                              </Link>
+                            ) : (
+                              label
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </Paragraph>
-                  ) : number === undefined ? null : (
-                    <Paragraph data-size="xs" className="uib-answer-sources-used-excerpts">
-                      {t('sources.documentNumber', { n: number })}
-                    </Paragraph>
-                  )}
+                  ) : null}
                 </List.Item>
               );
             })}

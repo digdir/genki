@@ -86,15 +86,16 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>By excerpt</strong> (the default): a footnote is a small round mark with its
-                excerpt's number, «Utdrag 1», «Utdrag 2», in the order the answer first cites them,
-                whatever number the service wrote. Needs the contract's <code>markers</code>.
+                <strong>Footnotes that name excerpts</strong>: a footnote is a small round mark with
+                its excerpt's number, «Utdrag 1», «Utdrag 2», in the order the answer first cites
+                them, whatever number the service wrote. Needs the contract's <code>markers</code>.
+                Footnotes are always numbers, never an icon.
               </li>
               <li>
-                <strong>By document</strong>, while a service cites documents: the same round mark,
-                with the document's number, «Kilde 1», «Kilde 2», in the order the answer first
-                cites it. Footnote N leads to the card in Sources numbered N. Footnotes are always
-                numbers, never an icon.
+                <strong>Footnotes that name only documents</strong>, as long as a service cites
+                documents: no footnote is drawn, since footnotes are numbered by excerpt and never
+                by document, and no excerpt number is guessed. «Kilder brukt i svaret» still lists
+                the documents the answer cites.
               </li>
               <li>
                 <strong>States:</strong> a skeleton before the first word and a line while it
@@ -133,21 +134,21 @@
               <li>
                 <code>target</code>: what to scroll to and focus, where Sources'
                 <code>onShowUse</code> and <code>onReturn</code> lead: a footnote,
-                <code>{ citation }</code>, or a title in «Kilder brukt i svaret»,
-                <code>{ document }</code>, so Escape and «Tilbake til svaret» go back to whichever
-                the reader followed.
+                <code>{ citation }</code>, or a link in «Kilder brukt i svaret»,
+                <code>{ document }</code>: an excerpt's when it names a <code>chunkId</code>, else
+                the title. Escape and «Tilbake til svaret» go back to whichever the reader followed.
               </li>
               <li>
                 <code>onOpenDocument</code>: a title in «Kilder brukt i svaret» was chosen.
-                <code>href</code> gives a footnote and a title an address, for a new tab; with
-                neither <code>href</code> nor <code>onOpenCitation</code>, a footnote is a mark, not
-                a link. <code>citationId</code> gives each footnote an id.
+                <code>onOpenExcerpt</code>: an excerpt under a title, «Utdrag 1», was chosen, with
+                the excerpt to show in Sources. <code>href</code> gives a footnote, a title and an
+                excerpt an address, for a new tab; with neither <code>href</code> nor
+                <code>onOpenCitation</code>, a footnote is a mark, not a link.
+                <code>citationId</code> gives each footnote an id.
               </li>
               <li>
-                <code>citationMode</code>: <code>excerpt</code> (the default) or
-                <code>document</code>, the service's choice or the reader's. <code>noAnswer</code>:
-                the text is the service's notice that it found nothing, so no sources and no closing
-                question follow.
+                <code>noAnswer</code>: the text is the service's notice that it found nothing, so no
+                sources and no closing question follow.
               </li>
               <li>
                 <code>sourcesUsed</code> (on by default), <code>closingQuestion</code> (off),
@@ -172,7 +173,8 @@
             <p>
               <code>answerCopy</code> gives the text for «Kopier svaret», as kunnskapsassistenten
               copies it: the answer with its footnotes numbered as drawn, and «Kilder» under it, one
-              line per numbered excerpt with its title, page, year and address. Its
+              line per numbered excerpt with its title, page, year and address. An answer that cites
+              only documents is copied without footnotes, with one unnumbered line per document. Its
               <code>sources</code> count is the receipt's.
             </p>
             <h2>Related</h2>
@@ -377,7 +379,12 @@
                 <tr>
                   <td><code>--genai-answer-sources-used-excerpts-color</code></td>
                   <td><code>--ds-color-text-subtle</code></td>
-                  <td>sources used excerpts color</td>
+                  <td>«Utdrag 1, Utdrag 3» under a title, and their links</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-sources-used-excerpts-hover-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>an excerpt's link under the pointer</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-sources-used-icon-size</code></td>
@@ -442,8 +449,9 @@
             <ul>
               <li>
                 «Kilder brukt i svaret» is in the same order as the documents in Sources, and only
-                lists what the answer cites. Under each title stand the numbers its footnotes carry:
-                «Utdrag 2–3», or «Kilde 1» while the service cites documents.
+                lists what the answer cites. Under each title stand the excerpts its footnotes cite,
+                «Utdrag 2, Utdrag 3», each a link to the excerpt in Sources. A document cited only
+                as a whole has none.
               </li>
               <li>
                 A tinted circle on the card is 1.2:1 in the digdir theme, and 1.1:1 in dark mode, so
@@ -466,8 +474,8 @@
             <h2>Open questions</h2>
             <ul>
               <li>
-                genki-test's services cite documents. Excerpt mode on live answers waits for answers
-                that name their excerpts (digdir/genki#283).
+                genki-test's services cite documents, so their answers draw no footnotes until
+                answers name their excerpts (digdir/genki#283).
               </li>
               <li>
                 kunnskapsassistenten's reference list starts each line with the publisher. The

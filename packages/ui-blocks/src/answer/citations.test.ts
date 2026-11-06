@@ -31,8 +31,8 @@ const markers: AnswerMarker[] = [
   { marker: '9', chunkId: 'gone', documentId: 'kudos::c' },
 ];
 
-const drawn = (text: string, mode: 'excerpt' | 'document' = 'excerpt', given = markers) => {
-  const read = readFootnotes(text, sources, given, mode);
+const drawn = (text: string) => {
+  const read = readFootnotes(text, sources, markers);
   return [...read.marks.values()].map((mark) =>
     mark.kind === 'footnote' ? read.pairing.targets[mark.citation] : mark.kind,
   );
@@ -81,9 +81,18 @@ describe('reading an answer’s footnotes', () => {
     ).toHaveLength(2);
   });
 
-  it('keeps side-by-side markers for two excerpts of one document apart by excerpt, and as one by document', () => {
+  it('keeps side-by-side markers for two excerpts of one document apart, and two for one document as one', () => {
     expect(drawn('To utdrag [1][3].')).toEqual(['a2', 'a1']);
-    expect(drawn('To utdrag [1][3].', 'document')).toEqual(['kudos::a', 'dropped']);
+    const read = readFootnotes('Ett dokument [1][1].', sources);
+    expect([...read.marks.values()].map((mark) => mark.kind)).toEqual(['footnote', 'dropped']);
+    expect(read.pairing.targets).toEqual(['kudos::a']);
+  });
+
+  it('numbers nothing when the footnotes name only documents, so the answer draws none', () => {
+    const read = readFootnotes('Ett [2] og to [1].', sources);
+    expect(read.pairing.mode).toBe('document');
+    expect(read.pairing.numbers.size).toBe(0);
+    expect(read.citations).toHaveLength(2);
   });
 
   it('makes nothing a footnote before the sources have come', () => {
