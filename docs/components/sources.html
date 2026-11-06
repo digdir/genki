@@ -146,7 +146,44 @@
                 <code>answerStatus</code> and <code>sourcesNotStored</code>: an empty panel says
                 why. Nothing asked yet, stopped before the sources came, failed, waiting on a
                 question back, or sources the store did not keep. <code>streaming</code> shows the
-                loading state.
+                loading state. <code>loading</code> shows it too, before anything is known.
+                <code>assistantName</code> names who asked back, «KI-assistenten» without it.
+              </li>
+              <li>
+                <code>citationMode</code>: <code>excerpt</code> (the default) or
+                <code>document</code>, the service's choice. <code>onCitationModeChange</code> lets
+                a reader switch, when the footnotes name excerpts.
+              </li>
+              <li>
+                <code>variant</code>: <code>panel</code> (the default) or <code>compact</code>.
+                <code>search</code> draws the search over the excerpts, on in the panel.
+                <code>title</code> is the heading, «Kilder», or <code>false</code> for none.
+                <code>headingLevel</code> is each document's heading level, 2 to 5, 3 by default.
+                <code>documentsClosed</code> starts every card closed.
+              </li>
+              <li>
+                <code>corpus</code> names the collection in the disclaimer and the links, «Les
+                dokumentet på Kudos». <code>disclaimer</code> (on by default) says the text is
+                quoted, not generated; <code>disclaimerId</code> is that sentence's id, which the
+                search field is described by, when the app needs to know it.
+                <code>hasOwnDocuments</code> says the reader's own documents are among the sources,
+                when the ids don't tell.
+              </li>
+              <li>
+                <code>details</code> shows each document's and chunk's ids behind an info control.
+                <code>itemId</code> and <code>excerptId</code> give each card and excerpt an id the
+                app can link to.
+              </li>
+              <li>
+                <code>onSelect</code>: the reader opened an excerpt or followed a document's link.
+                <code>excerptActions</code> and <code>sourceActions</code> are slots for the app's
+                own buttons, on an open excerpt and on a card's head.
+              </li>
+              <li>
+                <code>color</code> and <code>headerColor</code> set Designsystemet's
+                <code>data-color</code> on the block and on the cards' heads, each only when given.
+                <code>className</code> is added to the block's own; <code>children</code> come after
+                the cards.
               </li>
             </ul>
             <p>
