@@ -39,7 +39,13 @@ import {
   soundsLikeRefusal,
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
-import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
+import {
+  chunkIdsToMarkers,
+  normaliseCitationMarkers,
+  parseCitations,
+  sourcesFirst,
+  stripPageMarkers,
+} from './citations.js';
 import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';
@@ -824,6 +830,8 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         }
       }
     }
+
+    if (!clarification && answer !== undefined) answer = normaliseCitationMarkers(answer);
 
     if (
       !clarification &&
