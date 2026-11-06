@@ -31,7 +31,7 @@ export const SignedIn = ({ name, email, signOutHref, onSignOut, className }: Sig
       <Paragraph data-size="sm" className="uib-threads-user" title={email}>
         <PersonIcon aria-hidden="true" />
         <span>
-          <span className="uib-visually-hidden">{t('threads.signedInAs')} </span>
+          <span className="ds-sr-only">{t('threads.signedInAs')} </span>
           {name}
         </span>
       </Paragraph>

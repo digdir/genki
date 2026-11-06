@@ -53,7 +53,7 @@ const renameTo = (from: string, to: string) => {
 };
 
 const announced = (container: HTMLElement) =>
-  container.querySelector('.uib-threads > output.uib-visually-hidden')?.textContent;
+  container.querySelector('.uib-threads > output.ds-sr-only')?.textContent;
 
 describe('the thread menu', () => {
   it('has one per row, named after the thread', () => {
