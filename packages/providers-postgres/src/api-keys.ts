@@ -19,7 +19,9 @@ export interface PostgresApiKey {
   allowedConfigKeys?: string[];
   policy?: PostgresKeyPolicy;
   admittedInLockdown?: boolean;
+  createdAt?: string;
   lastUsedAt?: string;
+  usageCount?: number;
   revokedAt?: string;
   expiresAt?: string;
 }
@@ -47,12 +49,9 @@ export interface NewApiKey extends PostgresApiKey {
   tenant: string;
   prefix?: string;
   lastFour?: string;
-  createdAt?: string;
 }
 
-export interface RestoredApiKey extends NewApiKey {
-  usageCount?: number;
-}
+export type RestoredApiKey = NewApiKey;
 
 interface KeyRow {
   id: string;
@@ -70,7 +69,9 @@ interface KeyRow {
   allowed_config_keys: string[];
   policy_id: string | null;
   admitted_in_lockdown: boolean;
+  created_at: Date;
   last_used_at: Date | null;
+  usage_count: string;
   revoked_at: Date | null;
   expires_at: Date | null;
 }
@@ -111,7 +112,9 @@ const toKey = (row: KeyRow): PostgresApiKey => ({
   ...(row.allowed_config_keys.length ? { allowedConfigKeys: row.allowed_config_keys } : {}),
   ...(row.policy_id === null ? {} : { policy: { id: row.policy_id } }),
   ...(row.admitted_in_lockdown ? { admittedInLockdown: true } : {}),
+  createdAt: row.created_at.toISOString(),
   ...(row.last_used_at === null ? {} : { lastUsedAt: row.last_used_at.toISOString() }),
+  usageCount: Number(row.usage_count),
   ...(row.revoked_at === null ? {} : { revokedAt: row.revoked_at.toISOString() }),
   ...(row.expires_at === null ? {} : { expiresAt: row.expires_at.toISOString() }),
 });

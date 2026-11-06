@@ -177,6 +177,59 @@ describe('Integrasjoner: Nøkler', () => {
     expectAccessible();
   });
 
+  it('shows when each key was made, when it was last used and how many calls it has had, from the API', async () => {
+    const key = (
+      id: string,
+      name: string,
+      use: { lastUsedAt: string | null; usageCount: number },
+    ) => ({
+      id,
+      name,
+      prefix: 'gk_live',
+      lastFour: 'abcd',
+      scopes: ['query'],
+      datasets: [],
+      agents: [],
+      callsPerMinute: 120,
+      createdAt: '2026-10-01T08:00:00Z',
+      expiresAt: null,
+      revokedAt: null,
+      ...use,
+    });
+    const base = mockFetch();
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (/\/tenants\/[^/]+\/access$/.test(new URL(url, 'http://x').pathname))
+        return new Response(
+          JSON.stringify({
+            services: [],
+            keys: [
+              key('key-used', 'Brukt nøkkel', {
+                lastUsedAt: '2026-11-03T13:02:00Z',
+                usageCount: 1234,
+              }),
+              key('key-new', 'Ubrukt nøkkel', { lastUsedAt: null, usageCount: 0 }),
+            ],
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        );
+      return base(input, init);
+    };
+    const auth = mockAnsattporten(kari);
+    await auth.login();
+    window.location.hash = '#/developer/keys';
+    render(<App auth={auth} fetch={fetch} live />);
+    const list = await screen.findByRole('list', { name: 'API-nøkler' });
+    const [used, unused] = within(list).getAllByRole('listitem');
+
+    expect(used?.textContent).toMatch(
+      /120 kall per minutt · sist brukt 3\. nov\. 2026 kl\. 14\.02 · 1\s234 kall totalt/,
+    );
+    expect(used?.textContent).toMatch(/laget 1\. okt\. 2026/);
+    expect(unused?.textContent).toMatch(/120 kall per minutt · ikke brukt ennå · 0 kall totalt/);
+    expect(list.textContent).not.toMatch(/sist brukt ikke brukt|ukjent dato/);
+  });
+
   it('offers the server default of 120 calls per minute for a new key', async () => {
     await renderAt('#/developer/keys');
     await screen.findByRole('list', { name: 'API-nøkler' });

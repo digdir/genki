@@ -119,7 +119,8 @@ export const Keys = ({
     const rate = k.callsPerMinute ?? known.rate;
     const extra = {
       rate,
-      last: known.last ?? t('integKeys.notUsedYet'),
+      last: k.lastUsedAt ? f.dateTime(k.lastUsedAt, 'medium') : known.last,
+      calls: k.usageCount ?? undefined,
       created:
         known.created ??
         (known.origin === 'new'
@@ -433,10 +434,17 @@ export const Keys = ({
                           ].join(', ')}
                     </span>
                     <span className="meta">
-                      {t('integKeys.rateLastUsed', {
-                        rate: f.number(v.extra.rate),
-                        last: v.extra.last,
-                      })}
+                      {[
+                        v.extra.last
+                          ? t('integKeys.rateLastUsed', {
+                              rate: f.number(v.extra.rate),
+                              last: v.extra.last,
+                            })
+                          : t('integKeys.rateNotUsed', { rate: f.number(v.extra.rate) }),
+                        ...(v.extra.calls === undefined
+                          ? []
+                          : [t('integKeys.callsTotal', { count: v.extra.calls })]),
+                      ].join(' · ')}
                     </span>
                   </span>
                 </div>
