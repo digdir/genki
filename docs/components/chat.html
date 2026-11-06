@@ -129,6 +129,17 @@
                 <code>sticky</code>.
               </li>
               <li>
+                <code>actions</code> is where the variant picker goes: kunnskapsassistenten decided
+                on 6 October 2026 that the choice of who answers sits in the question field, like
+                the model choice in claude.ai, not in the conversation's head. Its list opens above
+                the field, a long name ends in an ellipsis, and on a narrow field the paperclip
+                drops «Kommer snart» first.
+              </li>
+              <li>
+                The field is controlled, so the draft is the host's: it passes <code>value</code>
+                back after a reload or a sign-in, as kunnskapsassistenten keeps it for the tab.
+              </li>
+              <li>
                 <code>color</code> sets Designsystemet's <code>data-color</code> on the block, and
                 <code>actionColor</code> on the send button and the follow-ups, each only when
                 given. Kunnskapsassistenten's look is <code>neutral</code> with
