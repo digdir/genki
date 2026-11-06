@@ -414,7 +414,7 @@ describe.each([['memory'], ['postgres']])('%s durable stores', (name) => {
   it("adds up a tenant's usage per model the same way after a restart", async () => {
     const stores = backend().stores();
     const org = name === 'memory' ? '310000011' : '310000012';
-    const run = task(`${name}-u1`, org, '2026-10-20T08:00:00.000Z');
+    const run = task(`${name}-u1`, org, new Date(Date.now() - 86_400_000).toISOString());
     await record(stores, run);
     await stores.log.append(
       {
