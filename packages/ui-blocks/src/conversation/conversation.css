@@ -48,6 +48,11 @@
 
   /* «Avgrenset til: Årsrapport · 2023» over an answer: a statement about a question already
      asked, so not a chip, which is a control. */
+  .uib-conversation-slow {
+    margin-block: var(--genai-conversation-slow-spacing, var(--ds-size-4)) 0;
+    color: var(--genai-conversation-slow-color, var(--ds-color-text-subtle));
+  }
+
   .uib-conversation-scope {
     margin: 0;
     padding-inline: var(--genai-conversation-scope-padding-inline, var(--ds-size-2));

@@ -10,7 +10,14 @@ const text = (at: string, f = nb, yesterday = 'i går') => answerTime(at, f, yes
 
 describe('when an answer came', () => {
   it('is the clock today, as the thread list writes a row from today', () => {
-    expect(text('2026-09-15T12:32:00Z')).toBe('14.32');
+    expect(text('2026-09-15T12:32:00Z')).toBe('14:32');
+  });
+
+  it('writes the clock with a colon, «14:32», as kunnskapsassistenten does, in every language', () => {
+    expect(text('2026-09-15T12:32:00Z', en, 'yesterday')).toBe('14:32');
+    expect(answerTime('2026-09-15T07:05:00Z', en, 'yesterday', now)?.title).toBe(
+      '15 September 2026, 09:05',
+    );
   });
 
   it('is «i går» the day before, the weekday this week, and day and month after that', () => {
@@ -24,7 +31,7 @@ describe('when an answer came', () => {
     expect(answerTime('2025-05-12T07:05:00Z', nb, 'i går', now)).toEqual({
       text: '12. mai',
       dateTime: '2025-05-12T07:05:00.000Z',
-      title: '12. mai 2025 kl. 09.05',
+      title: '12. mai 2025 kl. 09:05',
     });
   });
 
@@ -35,7 +42,7 @@ describe('when an answer came', () => {
   });
 
   it('reads a time ahead of the clock as today, rather than arguing with the clock', () => {
-    expect(text('2026-09-15T20:00:00Z')).toBe('22.00');
+    expect(text('2026-09-15T20:00:00Z')).toBe('22:00');
   });
 
   it('gives up quietly on a time it cannot read', () => {

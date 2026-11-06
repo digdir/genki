@@ -206,6 +206,183 @@ describe('each answer', () => {
     draw();
     expect(document.querySelector('.uib-conversation-scope')).toBeNull();
   });
+
+  it('words the scope from the filter and the corpus, as two facts, as kunnskapsassistenten does', () => {
+    const line = (scope: ConversationAnswer['scope']) => {
+      cleanup();
+      render(<Conversation turns={[question, { ...answer, scope }]} />);
+      return document.querySelector('.uib-conversation-scope')?.textContent ?? null;
+    };
+    expect(line({ narrowedTo: ['Årsrapport', '2023'] })).toBe(
+      'Svaret er Avgrenset til: Årsrapport · 2023',
+    );
+    expect(line({ narrowedTo: ['Årsrapport'], corpus: 'Kudos' })).toBe(
+      'Svaret er Avgrenset til: Årsrapport, fra Kudos',
+    );
+    expect(line({ corpus: 'Kudos' })).toBe('Svaret er Hentet fra Kudos');
+    expect(line({ narrowedTo: [] })).toBeNull();
+  });
+
+  it('passes on why an answer failed, so the card says it', () => {
+    render(
+      <Conversation
+        turns={[question, { ...answer, text: '', status: 'failed', failure: { kind: 'timeout' } }]}
+      />,
+    );
+    expect(screen.getByText('Svaret tok for lang tid')).toBeTruthy();
+  });
+});
+
+describe('an answer that takes long', () => {
+  const streaming: ConversationAnswer = { ...answer, id: 'a2', text: '', status: 'streaming' };
+  const region = () => document.querySelector('[aria-live="polite"]')?.textContent;
+  const line = () => document.querySelector('.uib-conversation-slow');
+
+  it('says after 30 seconds without progress that it takes longer than usual, as a line and once to a screen reader', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(<Conversation turns={[question, streaming]} />);
+      act(() => vi.advanceTimersByTime(29_999));
+      expect(line()).toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      expect(line()?.textContent).toBe('Dette tar lengre tid enn vanlig.');
+      expect(region()).toBe('Dette tar lengre tid enn vanlig.');
+      // A word arrives: the line goes, and the region keeps its words, so a second wait is not said again.
+      rerender(<Conversation turns={[question, { ...streaming, text: 'Nkom' }]} />);
+      expect(line()).toBeNull();
+      expect(region()).toBe('Dette tar lengre tid enn vanlig.');
+      rerender(<Conversation turns={[question, { ...streaming, status: 'complete' }]} />);
+      expect(region()).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the app after five minutes without progress, so it can stop the answer', () => {
+    vi.useFakeTimers();
+    try {
+      const onStalled = vi.fn();
+      const { rerender } = render(
+        <Conversation turns={[question, streaming]} onStalled={onStalled} />,
+      );
+      act(() => vi.advanceTimersByTime(299_000));
+      rerender(
+        <Conversation turns={[question, { ...streaming, text: 'N' }]} onStalled={onStalled} />,
+      );
+      act(() => vi.advanceTimersByTime(299_000));
+      expect(onStalled).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(onStalled.mock.calls.map(([turn]) => turn.id)).toEqual(['a2']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('draws no line when the host turns it off', () => {
+    vi.useFakeTimers();
+    try {
+      render(<Conversation turns={[question, streaming]} slowAfter={false} />);
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(line()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('following an answer on its way', () => {
+  // jsdom lays nothing out, so the column's sizes and the observer are the test's.
+  let resized: (() => void) | undefined;
+  beforeAll(() => {
+    globalThis.ResizeObserver ??= class {
+      constructor(callback: () => void) {
+        resized = callback;
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+  });
+
+  const column = () => {
+    const element = document.createElement('div');
+    const box = { top: 500, height: 1000 };
+    Object.defineProperties(element, {
+      scrollTop: { get: () => box.top, set: (value: number) => (box.top = value) },
+      scrollHeight: { get: () => box.height },
+      clientHeight: { get: () => 500 },
+    });
+    document.body.append(element);
+    return { element, box };
+  };
+
+  it('keeps the column at its end while the reader is there, and lets go when they scroll up', () => {
+    const { element, box } = column();
+    const onAtEndChange = vi.fn();
+    const streaming: ConversationAnswer = { ...answer, id: 'a2', status: 'streaming' };
+    render(
+      <Conversation
+        turns={[question, streaming]}
+        scrollContainer={{ current: element }}
+        onAtEndChange={onAtEndChange}
+      />,
+    );
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(1400);
+    // The browser reports the block's own jump as a scroll.
+    act(() => {
+      element.dispatchEvent(new Event('scroll'));
+    });
+    box.top = 600;
+    act(() => {
+      element.dispatchEvent(new Event('scroll'));
+    });
+    expect(onAtEndChange).toHaveBeenLastCalledWith(false);
+    box.height = 1800;
+    act(() => resized?.());
+    expect(box.top).toBe(600);
+    element.remove();
+  });
+
+  it('counts the last 80 pixels as the end', () => {
+    const { element, box } = column();
+    const onAtEndChange = vi.fn();
+    render(
+      <Conversation
+        turns={turns}
+        scrollContainer={{ current: element }}
+        onAtEndChange={onAtEndChange}
+      />,
+    );
+    box.top = 420;
+    act(() => {
+      element.dispatchEvent(new Event('scroll'));
+    });
+    expect(onAtEndChange).toHaveBeenLastCalledWith(true);
+    box.top = 419;
+    act(() => {
+      element.dispatchEvent(new Event('scroll'));
+    });
+    expect(onAtEndChange).toHaveBeenLastCalledWith(false);
+    element.remove();
+  });
+
+  it('leaves the column alone when the host turns following off', () => {
+    const { element, box } = column();
+    const streaming: ConversationAnswer = { ...answer, id: 'a2', status: 'streaming' };
+    render(
+      <Conversation
+        turns={[question, streaming]}
+        follow={false}
+        scrollContainer={{ current: element }}
+      />,
+    );
+    box.height = 1400;
+    act(() => resized?.());
+    expect(box.top).toBe(500);
+    element.remove();
+  });
 });
 
 describe('the slots', () => {
@@ -245,14 +422,14 @@ describe('the slots', () => {
       <Conversation turns={[question, answer, followUp, streaming]} actions={actions} now={now} />,
     );
     expect(actions.mock.calls.map(([turn]) => turn.id)).toEqual(['a1']);
-    const time = screen.getByText('14.32').closest('time');
+    const time = screen.getByText('14:32').closest('time');
     expect(time?.closest('.app-end')).not.toBeNull();
     expect(time?.getAttribute('dateTime')).toBe('2026-09-15T12:32:00.000Z');
   });
 
   it('draw the time alone at the end of the row when the app has no row of its own', () => {
     draw();
-    const time = screen.getByText('14.32').closest('time');
+    const time = screen.getByText('14:32').closest('time');
     expect(time?.parentElement?.classList.contains('uib-answer-actions')).toBe(true);
   });
 });
@@ -284,9 +461,9 @@ describe('the time an answer came', () => {
     const time = screen.getByText('12. mai').closest('time');
     expect(time?.querySelector('[aria-hidden="true"]')?.textContent).toBe('12. mai');
     expect(time?.querySelector('.ds-sr-only')?.textContent).toBe(
-      'Svaret kom 12. mai 2025 kl. 09.05',
+      'Svaret kom 12. mai 2025 kl. 09:05',
     );
-    expect(time?.getAttribute('title')).toBe('12. mai 2025 kl. 09.05');
+    expect(time?.getAttribute('title')).toBe('12. mai 2025 kl. 09:05');
   });
 
   it('stands under a stopped answer too, beside «Generer på nytt»', () => {

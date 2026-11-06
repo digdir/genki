@@ -1,6 +1,6 @@
 import { Button, Card, Paragraph } from '@digdir/designsystemet-react';
 import { MagnifyingGlassIcon } from '@navikt/aksel-icons';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Answer, type AnswerTarget } from '../answer/Answer.js';
 import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
@@ -10,6 +10,7 @@ import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { AnswerSearch } from './AnswerSearch.js';
 import { AnswerTime } from './AnswerTime.js';
 import { Clarification } from './Clarification.js';
+import { useFollowAnswer } from './follow.js';
 import { answerVisibleText } from './search.js';
 import { ThreadLoading } from './ThreadLoading.js';
 import type {
@@ -17,9 +18,15 @@ import type {
   ConversationAnswer,
   ConversationClarification,
   ConversationQuestion,
+  ConversationScope,
   ConversationTarget,
   ConversationTurn,
 } from './types.js';
+
+/** Without progress this long, an answer on its way says it takes longer than usual. */
+export const SLOW_ANSWER_MS = 30_000;
+/** Without progress this long, the app is told the answer has stalled, to stop it. */
+export const STALLED_ANSWER_MS = 300_000;
 
 export interface ConversationProps {
   /** The turns in the order they were said: the order is the meaning. */
@@ -53,8 +60,26 @@ export interface ConversationProps {
    * `search` among its actions. Without it, the row holds those two alone.
    */
   actions?: ((turn: ConversationAnswer, parts: ConversationActionParts) => ReactNode) | undefined;
-  /** «Søk i svaret» under each finished answer, and the search strip over the conversation. */
+  /**
+   * «Søk i svaret» under each finished answer, and the search strip over the conversation. Off
+   * unless asked for: kunnskapsassistenten took it out (digdir/kunnskapsassistenten#209).
+   */
   search?: boolean | undefined;
+  /** Keeps the column at its end while an answer comes, if the reader was there. On by default. */
+  follow?: boolean | undefined;
+  /** The column the conversation scrolls in. Without it, the nearest ancestor that scrolls. */
+  scrollContainer?: RefObject<HTMLElement | null> | undefined;
+  /** The reader came to or left the end of the column: for the composer's «Bla til bunnen». */
+  onAtEndChange?: ((atEnd: boolean) => void) | undefined;
+  /**
+   * How long an answer on its way may go without progress, a new turn object, before a line says
+   * it takes longer than usual. `false` draws no line.
+   */
+  slowAfter?: number | false | undefined;
+  /** How long without progress before `onStalled`. */
+  stalledAfter?: number | undefined;
+  /** An answer on its way has stalled: the app stops it, as with «Avbryt». */
+  onStalled?: ((turn: ConversationAnswer) => void) | undefined;
   /** The service's choice, or the reader's, for every answer. */
   citationMode?: CitationMode | undefined;
   /** «Kilder brukt i svaret» under a finished answer. */
@@ -108,6 +133,12 @@ export const Conversation = ({
   header,
   actions,
   search = false,
+  follow = true,
+  scrollContainer,
+  onAtEndChange,
+  slowAfter = SLOW_ANSWER_MS,
+  stalledAfter = STALLED_ANSWER_MS,
+  onStalled,
   citationMode = 'excerpt',
   sourcesUsed,
   closingQuestion,
@@ -120,9 +151,42 @@ export const Conversation = ({
   className,
 }: ConversationProps) => {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
   const toggles = useRef(new Map<string, HTMLButtonElement>());
+
+  // An answer is on its way from the moment the question stands last, so the question's own
+  // growth is followed too.
+  const last = turns.at(-1);
+  const waiting = last?.kind === 'answer' && last.status === 'streaming' ? last : undefined;
+  const answering = waiting !== undefined || (last?.kind === 'question' && !loading);
+  const atEnd = useFollowAnswer(rootRef, answering, follow, scrollContainer);
+  const atEndChange = useRef(onAtEndChange);
+  atEndChange.current = onAtEndChange;
+  useEffect(() => {
+    atEndChange.current?.(atEnd);
+  }, [atEnd]);
+
+  // Progress is a new turn object for the answer on its way: a word, a step, a source.
+  const [slowFor, setSlowFor] = useState<ConversationAnswer>();
+  const [slowSaidFor, setSlowSaidFor] = useState<string>();
+  const stalled = useRef(onStalled);
+  stalled.current = onStalled;
+  useEffect(() => {
+    if (!waiting) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (slowAfter !== false)
+      timers.push(
+        setTimeout(() => {
+          setSlowFor(waiting);
+          setSlowSaidFor(waiting.id);
+        }, slowAfter),
+      );
+    timers.push(setTimeout(() => stalled.current?.(waiting), stalledAfter));
+    return () => timers.forEach(clearTimeout);
+  }, [waiting, slowAfter, stalledAfter]);
+  const slow = waiting !== undefined && slowFor === waiting;
 
   // The thread is read through a region that is already in the page: one that arrives with its
   // words was inserted, not changed, and says nothing. The timer makes the words a change.
@@ -226,13 +290,26 @@ export const Conversation = ({
     ) : undefined;
   };
 
-  const scopeLine = (scope: string | undefined, said: string) =>
-    scope ? (
+  // The corpus and the filter as two facts: in one list, «Kudos · Årsrapport · 2023» reads as
+  // three things the reader chose. Nothing narrowed is not «avgrenset»: it was asked of all of it.
+  const scopeWords = (scope: string | ConversationScope | undefined) => {
+    if (scope === undefined || typeof scope === 'string') return scope;
+    const values = (scope.narrowedTo ?? []).filter(Boolean).join(' · ');
+    if (values && scope.corpus)
+      return t('conversation.narrowedFrom', { values, corpus: scope.corpus });
+    if (values) return t('conversation.narrowed', { values });
+    return scope.corpus ? t('conversation.fetchedFrom', { corpus: scope.corpus }) : undefined;
+  };
+
+  const scopeLine = (scope: string | ConversationScope | undefined, said: string) => {
+    const words = scopeWords(scope);
+    return words ? (
       <p className="uib-conversation-scope">
         <span className="ds-sr-only">{said} </span>
-        {scope}
+        {words}
       </p>
     ) : null;
+  };
 
   const drawTurn = (turn: ConversationTurn, index: number) => {
     if (turn.kind === 'question')
@@ -297,6 +374,7 @@ export const Conversation = ({
           sourcesUsed={sourcesUsed}
           closingQuestion={closingQuestion}
           onRegenerate={onRegenerate && (() => onRegenerate(turn))}
+          failure={turn.failure}
           actions={rowFor(turn)}
           assistantName={assistantName}
           headingLevel={headingLevel}
@@ -313,7 +391,7 @@ export const Conversation = ({
   };
 
   return (
-    <div className={classes('uib-conversation', className)} data-color={color}>
+    <div ref={rootRef} className={classes('uib-conversation', className)} data-color={color}>
       {/* First, so the tab order meets the strip before the answer it searches. */}
       {searched ? (
         <AnswerSearch
@@ -339,8 +417,20 @@ export const Conversation = ({
       ) : reading ? (
         <ThreadLoading color={answerColor} />
       ) : null}
+      {/* A line and not an alert: nothing has gone wrong yet, and «Avbryt» is still the way out. */}
+      {slow ? (
+        <Paragraph data-size="sm" variant="long" className="uib-conversation-slow">
+          {t('conversation.slow')}
+        </Paragraph>
+      ) : null}
+      {/* The slow answer is said once per answer: the words stay until it ends, so a second
+          wait changes nothing here. */}
       <p aria-live="polite" className="ds-sr-only">
-        {reading && noticeSaid ? t('conversation.loading') : ''}
+        {reading && noticeSaid
+          ? t('conversation.loading')
+          : waiting && slowSaidFor === waiting.id
+            ? t('conversation.slow')
+            : ''}
       </p>
     </div>
   );

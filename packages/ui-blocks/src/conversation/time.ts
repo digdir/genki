@@ -19,6 +19,25 @@ const daySerial = (date: Date) => {
   return Date.UTC(part('year'), part('month') - 1, part('day')) / msPerDay;
 };
 
+const clockParts = new Intl.DateTimeFormat('en-GB', {
+  timeZone,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * The clock as kunnskapsassistenten writes it, «14:32», in every language. The platform's format
+ * writes «14.32» in Norwegian; the blocks follow kunnskapsassistenten, their north star, on this
+ * (decided 3 November 2026), as its thread list and its answers do.
+ */
+export const clock = (date: Date) => {
+  const parts = clockParts.formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00';
+  return `${part('hour')}:${part('minute')}`;
+};
+
 // Built once per locale: a long thread formats a time for every answer on every render.
 const dayMonthFormats = new Map<Locale, Intl.DateTimeFormat>();
 const dayMonth = (locale: Locale) => {
@@ -57,9 +76,11 @@ export const answerTime = (
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return undefined;
   const days = daySerial(now) - daySerial(date);
-  const common = { dateTime: date.toISOString(), title: f.dateTime(date) };
+  // The whole date as the platform writes it, with the same clock as the short text.
+  const title = `${f.date(date, 'long')}${f.locale === 'en' ? ', ' : ' kl. '}${clock(date)}`;
+  const common = { dateTime: date.toISOString(), title };
   // A time ahead of the machine's clock reads as today: the answer does not argue with the clock.
-  if (days <= 0) return { ...common, text: f.time(date) };
+  if (days <= 0) return { ...common, text: clock(date) };
   if (days === 1) return { ...common, text: yesterday };
   if (days < 7) return { ...common, text: f.weekday(date) };
   return { ...common, text: dayMonth(f.locale).format(date) };
