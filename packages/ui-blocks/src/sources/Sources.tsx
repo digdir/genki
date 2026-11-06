@@ -231,12 +231,15 @@ const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) =>
     answer === undefined
       ? t('sources.useWhere', { n: citation + 1, total })
       : t('sources.useWhereInAnswer', { n: citation + 1, total, answer });
-  const link = (citation: number, label: ReactNode) => (
+  // Named by `aria-label`, which holds what is seen (WCAG 2.5.3): hidden spans inside a link are
+  // boxes of their own to a browser, which then reads «Til svaret , fotnote 2».
+  const link = (citation: number, name: string, label: ReactNode) => (
     <Link
       key={citation}
       href={href?.(citation) ?? '#'}
       data-size="sm"
       className="uib-sources-use"
+      aria-label={name}
       onClick={
         onShow
           ? (event) => {
@@ -256,10 +259,10 @@ const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) =>
       <p className="uib-sources-uses">
         {link(
           only,
+          `${t('sources.toAnswer')}, ${where(only)}`,
           <>
             <ArrowUndoIcon aria-hidden />
             {t('sources.toAnswer')}
-            <span className="ds-sr-only">, {where(only)}</span>
           </>,
         )}
       </p>
@@ -270,13 +273,8 @@ const BackLinks = ({ uses, back }: { uses: readonly number[]; back: BackTo }) =>
       {uses.map((citation, i) =>
         link(
           citation,
-          <>
-            <span className="ds-sr-only">
-              {t('sources.toAnswer')}, {t('sources.use')}{' '}
-            </span>
-            {i + 1}
-            <span className="ds-sr-only">, {where(citation)}</span>
-          </>,
+          `${t('sources.toAnswer')}, ${t('sources.use')} ${i + 1}, ${where(citation)}`,
+          i + 1,
         ),
       )}
     </p>
@@ -492,6 +490,12 @@ const SourceItem = ({
   const documentNumber = byDocument ? pairing.numbers.get(documentKey) : undefined;
   const documentUses = byDocument ? (pairing.uses.get(documentKey) ?? []) : [];
   const documentUncited = byDocument && documentUses.length === 0;
+  // «Kilde 1: Tittel» for the heading and its button. The number stands on a line of its own,
+  // which a browser would read «Kilde 1 Tittel».
+  const numberedTitle =
+    documentNumber === undefined
+      ? undefined
+      : `${t('sources.documentNumber', { n: documentNumber })}: ${given || t('sources.untitled')}`;
   const passagesId = useId();
   const backLinks = (uses: readonly number[], excerpt?: SourceExcerpt) =>
     back && uses.length ? (
@@ -589,13 +593,14 @@ const SourceItem = ({
     >
       <Card.Block className="uib-sources-document-head" data-color={headerColor}>
         {/* The heading stays a heading, and the button inside it is the whole band to press. */}
-        <Heading level={level as Level} data-size="xs">
+        <Heading level={level as Level} data-size="xs" aria-label={numberedTitle}>
           <button
             ref={head}
             type="button"
             className="uib-sources-document-toggle ds-focus"
             aria-expanded={open}
             aria-controls={bodyId}
+            aria-label={numberedTitle}
             onClick={() => onOpenChange(!open)}
           >
             {documentNumber === undefined ? (
@@ -605,8 +610,7 @@ const SourceItem = ({
                 <span className="uib-sources-document-number">
                   {t('sources.documentNumber', { n: documentNumber })}
                 </span>
-                {/* The space stays outside the hidden colon, or the name reads «Kilde 1:Tittel». */}
-                <span className="ds-sr-only">:</span> {title}
+                {title}
               </span>
             )}
             <ChevronDownIcon aria-hidden className="uib-sources-caret" />
@@ -735,17 +739,19 @@ const SourceItem = ({
                     level={(level + 1) as Level}
                     data-size="2xs"
                     className="uib-sources-excerpt-title"
+                    // The number stands on a line of its own, which a browser reads without the
+                    // colon between them.
+                    aria-label={
+                      section && n !== undefined
+                        ? `${t('sources.excerptNumber', { n })}: ${section}`
+                        : undefined
+                    }
                   >
                     {n === undefined ? null : (
                       <span className="uib-sources-excerpt-number">
                         {t('sources.excerptNumber', { n })}
                       </span>
                     )}
-                    {section && n !== undefined ? (
-                      <>
-                        <span className="ds-sr-only">:</span>{' '}
-                      </>
-                    ) : null}
                     {section ? <span>{section}</span> : null}
                     {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
                   </Heading>
