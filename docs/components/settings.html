@@ -173,9 +173,10 @@
               <code>@layer genai.components</code>, after Designsystemet's layers, follows
               <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
               and reads every token through its own variable, with the token as the fallback. Set
-              one on any ancestor to change that detail only. None is pinned to a colour family. The
-              choice itself is Designsystemet's <code>ToggleGroup</code>, which the block does not
-              restyle: an app changes it with Designsystemet's own
+              one on any ancestor to change that detail only. One is pinned to neutral on purpose:
+              the note, which in the accent family would read as a link, as kunnskapsassistenten
+              draws it. The choice itself is Designsystemet's <code>ToggleGroup</code>, which the
+              block does not restyle: an app changes it with Designsystemet's own
               <code>--dsc-togglegroup-*</code> variables.
             </p>
             <div class="table-wrap">
@@ -220,8 +221,8 @@
                   </tr>
                   <tr>
                     <td><code>--genai-settings-note-color</code></td>
-                    <td><code>--ds-color-text-subtle</code></td>
-                    <td>the note after the sections</td>
+                    <td><code>--ds-color-neutral-text-subtle</code></td>
+                    <td>the note after the sections, pinned to neutral</td>
                   </tr>
                   <tr>
                     <td><code>--genai-settings-padding-block-end</code></td>

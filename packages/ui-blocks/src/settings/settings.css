@@ -25,9 +25,14 @@
     display: grid;
     gap: var(--genai-settings-experiments-gap, var(--ds-size-4));
   }
-  /* Quiet: where the choices are kept is worth knowing, not a choice. */
+  /* «Sak 115» and its new-tab icon wrap as one, so the icon never stands alone on a line. */
+  .uib-settings-experiments .ds-link {
+    white-space: nowrap;
+  }
+  /* Quiet: where the choices are kept is worth knowing, not a choice. Pinned to neutral, as
+     kunnskapsassistenten draws it: in the accent family a sentence reads as a link. */
   .uib-settings-note {
-    color: var(--genai-settings-note-color, var(--ds-color-text-subtle));
+    color: var(--genai-settings-note-color, var(--ds-color-neutral-text-subtle));
   }
 
   /* No markers: a bullet beside an icon is two markers for one item. The list keeps its role. */
