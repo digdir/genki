@@ -69,6 +69,9 @@ describe('the answer styles', () => {
     expect(uses.find((use) => use.name === '--genai-answer-footnote-border-color')?.fallback).toBe(
       'var(--ds-color-accent-border-strong)',
     );
-    expect(flat).toMatch(/\.uib-answer-mark \{[^}]*box-shadow: inset 0 0 0 var\(/);
+    // Off while focused, so Designsystemet's two focus rings stay whole.
+    expect(flat).toMatch(
+      /\.uib-answer-mark:not\(:focus-visible\) \{ box-shadow: inset 0 0 0 var\(/,
+    );
   });
 });
