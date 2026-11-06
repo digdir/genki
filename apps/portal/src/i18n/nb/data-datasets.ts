@@ -462,6 +462,11 @@ export const searchEngine = defineNamespace({
   swFirstNow: 'Første treff nå:',
   swFirstWith: 'Første treff med {engine}:',
   swNotFound: 'Ikke funnet blant de 5 første',
+  swFailedDocuments:
+    '{count} dokumenter kunne ikke leses inn. De leses inn på nytt før byttet tas i bruk.',
+  swRefreshing:
+    'Leser inn det som er endret i kilden siden overføringen. Deretter tas {engine} i bruk.',
+  swRefreshFailed: 'Innlesingen før byttet stoppet: {message}. Prøv å ta i bruk på nytt.',
   swAdoptHeading: 'Ta i bruk {engine}',
   swRetained:
     '{engine} beholdes i {days} dager <undecided/>, så du kan gå tilbake uten å lese inn på nytt.',

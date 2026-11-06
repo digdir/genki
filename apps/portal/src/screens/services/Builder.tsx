@@ -73,6 +73,8 @@ import { initialTestState, scoreText, testKind, type TestState } from './testSta
 import { latestRunFact, type DraftConflict, type ServiceDraft } from '../../api/quality';
 import { setAt } from '../../definition-path';
 import { checkFlowInputs } from '../../data/flow-inputs';
+import { hasOperationSteps, operationKindsIn } from '../../data/step-operations';
+import { PublishedTest } from '../service/PublishedTest';
 import { DraftOutdated, type ConflictPick } from './DraftOutdated';
 import { VersionsTab, type VersionItem } from './VersionsTab';
 import { YamlTab } from './YamlTab';
@@ -245,7 +247,7 @@ export const Builder = ({
   );
   const modelCatalog =
     live && catalog.status === 'ready'
-      ? catalog.data.map((m) => modelFor(m.id, m.residency, true))
+      ? catalog.data.map((m) => ({ ...modelFor(m.id, m.residency, true), price: m.price ?? null }))
       : live
         ? []
         : undefined;
@@ -616,6 +618,25 @@ export const Builder = ({
         .catch(() => undefined);
     },
     [api, tenant, flowRef],
+  );
+  const [operationCatalog] = useAsync((signal) => api.listModels({}, signal), [api]);
+  const pinnedFlow =
+    flowDefinition.status === 'ready' ? flowDefinition.data?.definition : undefined;
+  const operationModels = useMemo(
+    () =>
+      operationKindsIn(pinnedFlow).map((kind) => ({
+        kind,
+        models:
+          operationCatalog.status === 'ready'
+            ? operationCatalog.data
+                .filter((m) => m.operations?.includes(kind))
+                .map((m) => {
+                  const choice = modelFor(m.id, m.residency, true);
+                  return { id: m.id, name: choice.name, where: choice.where };
+                })
+            : [],
+      })),
+    [pinnedFlow, operationCatalog],
   );
   const flowCheck =
     flowRef && flowDefinition.status === 'ready' && flowDefinition.data
@@ -1062,6 +1083,7 @@ export const Builder = ({
       inputLookup={inputLookup}
       tenant={tenant}
       flowCheck={flowCheck}
+      operationModels={operationModels}
       api={api}
       strategy={<StrategyPanel api={api} tenant={tenant} definition={service} patch={patch} />}
       instructionsAssist={improveSlot}
@@ -1106,6 +1128,13 @@ export const Builder = ({
               if (decision === 'accepted') setTest((t) => ({ ...t, testset: true }));
             }}
           />
+          {hasOperationSteps(pinnedFlow) ? (
+            <PublishedTest
+              api={api}
+              model={variantsOf(service.spec)[0]?.publicName || `${serviceId}__default`}
+              version={isNew ? undefined : shown?.n}
+            />
+          ) : null}
           <PlaygroundPanel
             layout="full"
             context="service"

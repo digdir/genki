@@ -102,6 +102,21 @@ describe('ApiCall', () => {
     expect(panel.getAttribute('aria-modal')).toBe('true');
   });
 
+  it('opens in the page body with a close button, so a sticky column it opens from cannot cover it', () => {
+    render(
+      <div className="assistant" data-testid="column">
+        <ApiCallLink call={call} />
+      </div>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Vis API-kall' }));
+
+    const panel = screen.getByRole('dialog');
+    expect(panel.parentElement).toBe(document.body);
+    expect(within(screen.getByTestId('column')).queryByRole('dialog')).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lukk' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('marks a proposed call as not decided', () => {
     render(<ApiCallLink call={{ ...call, notDecided: { what: 'byggeklosser' } }} />);
 

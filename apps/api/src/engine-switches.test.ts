@@ -50,26 +50,30 @@ const principals: Record<string, Principal> = {
   },
 };
 
+const kudosPage = {
+  data: [
+    {
+      id: 7,
+      title: 'Tildelingsbrev 2025',
+      type: 'Tildelingsbrev',
+      publish_date: '2025-01-15',
+      files: [
+        {
+          url: 'https://93.184.216.34/filer/7.pdf',
+          mimetype: 'application/pdf',
+          sha256: createHash('sha256').update('%PDF-1.7').digest('hex'),
+        },
+      ],
+    },
+    { id: 8, title: 'Årsrapport', type: 'Årsrapport', publish_date: '2025-03-01', files: [] },
+  ],
+  meta: { current_page: 1, last_page: 1, total: 2 },
+};
+// The estimate reads the first page in KUDOS's own order; a listing names its order.
 const kudosPages: Record<string, unknown> = {
-  'https://kudos.dfo.no/api/v0/documents/search?page=1&type=Tildelingsbrev': {
-    data: [
-      {
-        id: 7,
-        title: 'Tildelingsbrev 2025',
-        type: 'Tildelingsbrev',
-        publish_date: '2025-01-15',
-        files: [
-          {
-            url: 'https://93.184.216.34/filer/7.pdf',
-            mimetype: 'application/pdf',
-            sha256: createHash('sha256').update('%PDF-1.7').digest('hex'),
-          },
-        ],
-      },
-      { id: 8, title: 'Årsrapport', type: 'Årsrapport', publish_date: '2025-03-01', files: [] },
-    ],
-    meta: { current_page: 1, last_page: 1 },
-  },
+  'https://kudos.dfo.no/api/v0/documents?page=1&per_page=50&type=Tildelingsbrev': kudosPage,
+  'https://kudos.dfo.no/api/v0/documents?page=1&per_page=50&type=Tildelingsbrev&sort=newest':
+    kudosPage,
 };
 const kudosFetch = (async (input: string | URL | Request) => {
   const url = String(input);
@@ -205,7 +209,7 @@ const boot = async (
       embeddings: {
         endpoints: {
           fake: {
-            protocol: 'fake-embeddings',
+            protocol: 'fake',
             baseURL: 'https://embed.invalid',
             auth: { kind: 'api-key', secret: 'secret://env/embed-key' },
           },
@@ -221,7 +225,7 @@ const boot = async (
       return principal ? { principal } : undefined;
     },
     knowledgePool: pool,
-    embeddingAdapters: [fakeEmbeddingAdapter('fake-embeddings')],
+    embeddingAdapters: [fakeEmbeddingAdapter()],
     searchOnlyClusters: [typesenseUrl],
     documentConverter: {
       toMarkdown: async () =>

@@ -1,4 +1,4 @@
-import type { ModelDescription } from '@genai/port-model';
+import { servesModelPort, type ModelDescription } from '@genai/port-model';
 import type { CatalogRegistry } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
 
@@ -38,7 +38,9 @@ export const modelsForTenant = (
   deps: { catalog: Pick<CatalogRegistry, 'get'>; models: { describe(): ModelDescription[] } },
   tenant: string,
 ): ModelDescription[] =>
-  deps.models.describe().filter((m) => m.enabled && !ownedElsewhere(deps.catalog, m.id, tenant));
+  deps.models
+    .describe()
+    .filter((m) => m.enabled && servesModelPort(m) && !ownedElsewhere(deps.catalog, m.id, tenant));
 
 export const modelDisplayNames = (
   models: Pick<ModelDescription, 'id' | 'family' | 'deployment'>[],

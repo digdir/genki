@@ -86,8 +86,16 @@ const Usage = z
     outputTokens: z.number().int(),
     requests: z.number().int(),
     costMicroNok: z.number().nullable().describe('Null when no token in the period has a price'),
-    priced: z.boolean(),
+    priced: z.boolean().describe('False when any token or open unit in the period has no price'),
     unpricedTokens: z.number().int(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens and requests, built in or open, by name'),
+    unpricedUnits: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('The part of units that has no price and is shown as not priced'),
   })
   .openapi('UsageTotals');
 const BySource = z
@@ -100,14 +108,103 @@ const OperationKind = z
   .object({
     kind: z.string(),
     environment: z.enum(['test', 'production']),
-    maturity: z.enum(['test', 'production']),
+    maturity: z
+      .enum(['test', 'production'])
+      .describe('Governs descriptor calls of the kind (raw and described tiers) only'),
+    builtIn: z.boolean().describe('A kind Genki has its own types for, such as chat and decide'),
+    typed: z
+      .literal('production')
+      .optional()
+      .describe('Typed calls of a built-in kind are production by construction'),
     by: z.string().optional().describe('The operator who last set the maturity'),
     at: z.string().optional(),
     descriptors: z.array(
-      z.object({ id: z.string(), status: z.enum(['review', 'described', 'typed']) }),
+      z.object({
+        id: z.string(),
+        status: z.enum(['review', 'described', 'typed']),
+        family: z
+          .string()
+          .describe('The API family the descriptor speaks, offered by a connection'),
+      }),
     ),
   })
   .openapi('OperationKind');
+
+const OperationDescriptorView = z
+  .object({
+    id: z.string().describe('<provider>/<api>@<version>'),
+    operation: z.string(),
+    status: z.enum(['review', 'described', 'typed']),
+    source: z
+      .enum(['bundled', 'uploaded'])
+      .describe('Bundled with Genki in packages/operations, or uploaded by an operator'),
+    summary: z.string(),
+    family: z.string().nullable().describe('The API family, such as openai or anthropic'),
+    fixtures: z.number().int().describe('How many recorded fixtures prove it'),
+    contract: z
+      .object({
+        suite: z.literal('operation@1'),
+        checks: z.number().int(),
+        passed: z.boolean(),
+        failures: z.array(z.object({ check: z.string(), problems: z.array(z.string()) })),
+      })
+      .nullable()
+      .describe('operation@1 run now against its fixtures; null without fixtures'),
+    problems: z
+      .array(z.string())
+      .optional()
+      .describe('Why a stored upload no longer loads; it is then left out of the registry'),
+    version: z.number().int().optional().describe('The version of the upload in the config store'),
+    by: z.string().optional(),
+    at: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .openapi('OperationDescriptor');
+
+const OperationFixture = z
+  .object({
+    name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
+    source: z.string().optional().describe('Where the recording comes from'),
+    deployment: z.string(),
+    input: z.unknown().describe("The descriptor's typed input"),
+    request: z.object({
+      method: z.string(),
+      path: z.string(),
+      query: z.record(z.string(), z.string()).optional(),
+      body: z.unknown(),
+    }),
+    response: z.object({ status: z.number().int().optional(), body: z.unknown() }),
+    result: z.unknown(),
+    usage: z.object({
+      inputTokens: z.number().int().optional(),
+      outputTokens: z.number().int().optional(),
+      cachedInputTokens: z.number().int().optional(),
+      requests: z.number().int().optional(),
+    }),
+    dropped: z.number().int().optional(),
+  })
+  .openapi('OperationFixture');
+
+const WireExchange = z
+  .object({
+    deployment: z.string(),
+    input: z.unknown().describe('The typed input as it was sent, masked'),
+    request: z.object({
+      method: z.string(),
+      path: z.string(),
+      query: z.record(z.string(), z.string()).optional(),
+      body: z.unknown().describe('The wire request, built from the masked input'),
+    }),
+    response: z.object({ status: z.number().int(), body: z.unknown() }),
+    result: z.unknown().describe('The typed result mapped from the answer, media still encoded'),
+    usage: z.record(z.string(), z.number()),
+    dropped: z.number().int(),
+  })
+  .openapi('WireExchange');
+
+const ServiceUse = z
+  .object({ tenant: z.string(), service: z.string(), version: z.number().int() })
+  .openapi('ServiceUse');
 
 const taskStatus = z.enum(['queued', 'running', 'interrupted', 'completed', 'failed', 'cancelled']);
 
@@ -2038,6 +2135,9 @@ const qualityRoutes: RouteConfig[] = [
           descriptor: z.string(),
           model: z.string(),
           result: z.unknown(),
+          exchange: WireExchange.optional().describe(
+            'What was sent and answered, masked; record it as a fixture of an upload in review',
+          ),
         }),
         'The typed result',
       ),
@@ -2057,6 +2157,9 @@ const qualityRoutes: RouteConfig[] = [
       200: json(
         z.object({
           environment: z.enum(['test', 'production']),
+          governs: z
+            .literal('descriptor-calls')
+            .describe('Maturity governs descriptor calls only, never typed calls'),
           data: z.array(OperationKind),
         }),
         'The kinds',
@@ -2088,6 +2191,167 @@ const qualityRoutes: RouteConfig[] = [
       400: problem('Invalid maturity or missing change reason'),
       ...operatorOnly,
       404: problem('No descriptor describes the kind'),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors',
+    summary: 'The bundled and uploaded operation descriptors, with operation@1 on their fixtures',
+    description: described(operator, notAudited),
+    responses: {
+      200: json(z.object({ data: z.array(OperationDescriptorView) }), 'The descriptors'),
+      ...operatorOnly,
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'One operation descriptor; an upload with its document and fixtures',
+    description: described(
+      operator,
+      notAudited,
+      'The id may contain slashes, such as example/classify@1.',
+    ),
+    request: { params: z.object({ id: pathParam('id', 'example/classify@1') }) },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          input: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe("The descriptor's typed input shape, to build a form from"),
+          usedBy: z
+            .array(ServiceUse)
+            .describe('Published services whose step flows call the descriptor'),
+          document: z.record(z.string(), z.unknown()).optional(),
+          fixtureCases: z.array(OperationFixture).optional(),
+        }),
+        'The descriptor',
+      ),
+      ...operatorOnly,
+      404: problem('No such descriptor'),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Upload an operation descriptor with its recorded fixtures, without a deploy',
+    description: described(
+      operator,
+      audited,
+      'The loader rules, and operation@1 with the masking probe on any fixtures, run before anything is stored. An upload starts in review: an operator tries it in the raw tier (test only) and records fixtures from the tries. It cannot replace a bundled descriptor, nor a described upload; upload a new version instead. At most 20 fixtures and 512 KiB.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          descriptor: z
+            .union([z.string(), z.record(z.string(), z.unknown())])
+            .describe('The descriptor as YAML or JSON text, or as a JSON object'),
+          fixtures: z.array(OperationFixture).max(20).optional(),
+        }),
+      ),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({ step: z.literal('replaced') }),
+        'An upload in review replaced',
+      ),
+      201: json(OperationDescriptorView.extend({ step: z.literal('uploaded') }), 'Uploaded'),
+      400: problem('Missing change reason, or a body that is not JSON'),
+      ...operatorOnly,
+      409: problem('A bundled descriptor, or a described upload, has the id'),
+      413: problem('The body is larger than 512 KiB'),
+      422: problem(
+        'The descriptor breaks a loader rule, a fixture is malformed, or operation@1 fails; errors lists every reason',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-descriptors/{id}/status',
+    summary: 'Move an uploaded descriptor to described, or back to review',
+    description: described(
+      operator,
+      audited,
+      'One operator decides. Described lets a service use it in a call-operation step when the kind is production and the endpoint has a processor record. Typed is never set here: it means Genki has its own code for the operation. Moving back to review stops services at their next call.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(z.object({ status: z.enum(['review', 'described']) })),
+    },
+    responses: {
+      200: json(
+        OperationDescriptorView.extend({
+          step: z.enum(['described', 'back-to-review', 'unchanged']),
+        }),
+        'The descriptor after the change',
+      ),
+      400: problem('Invalid status or missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
+      422: problem(
+        'The stored upload no longer passes the loader rules, or to described without fixtures that pass operation@1',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/operator/operation-descriptors/{id}/fixtures',
+    summary: 'Record a synthetic try as a fixture of an upload in review (test only)',
+    description: described(
+      operator,
+      audited,
+      'The exchange must be the one the try answered: the try kept its digest. The fixture holds the masked input. operation@1 runs on every fixture before anything is stored.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+      body: body(
+        z.object({
+          task: z.string().describe('The task of the try, from its answer'),
+          name: z.string().describe('Lower case letters, digits and dashes'),
+          exchange: WireExchange,
+        }),
+      ),
+    },
+    responses: {
+      201: json(
+        OperationDescriptorView.extend({ step: z.literal('fixture-recorded') }),
+        'The descriptor with the new fixture',
+      ),
+      400: problem('Invalid body or missing change reason'),
+      401: problem('Not signed in'),
+      403: problem('Not an operator, or not a test environment'),
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor, or a described upload'),
+      422: problem(
+        'Not a finished try of this descriptor, an exchange it did not answer, a name in use, or operation@1 fails',
+      ),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/operator/operation-descriptors/{id}',
+    summary: 'Withdraw an uploaded descriptor',
+    description: described(
+      operator,
+      audited,
+      'The history stays in the config store. A service step that uses it is refused at its next call, as when a kind is moved back to test.',
+    ),
+    request: {
+      params: z.object({ id: pathParam('id', 'example/classify@1') }),
+      headers: operatorWriteHeaders,
+    },
+    responses: {
+      204: { description: 'Withdrawn' },
+      400: problem('Missing change reason'),
+      ...operatorOnly,
+      404: problem('No such upload'),
+      409: problem('A bundled descriptor changes through a pull request'),
     },
   }),
   createRoute({

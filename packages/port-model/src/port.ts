@@ -54,9 +54,10 @@ export type ChatChunk = { kind: 'delta'; text: string } | { kind: 'done'; result
 export const capabilities = ['stream', 'tools', 'json-schema', 'reasoning'] as const;
 export type Capability = (typeof capabilities)[number];
 
-export const operations = ['chat', 'decide'] as const;
-export type Operation = (typeof operations)[number];
-export const defaultOperations: Operation[] = ['chat'];
+export const builtInOperations = ['chat', 'decide'] as const;
+export type BuiltInOperation = (typeof builtInOperations)[number];
+export type Operation = string;
+export const operationKindPattern = /^[a-z][a-z0-9-]*$/;
 
 export interface ModelInfo {
   id: string;

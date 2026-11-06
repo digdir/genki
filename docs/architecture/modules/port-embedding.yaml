@@ -7,15 +7,16 @@ color: '#74a7ff'
 status: Port
 packages:
   - '@genai/port-embedding'
-summary: Turns text into vectors through a catalog of embedding models.
+summary: Turns text into vectors with the embedding models of the model catalogue.
 description:
-  Same router shape as the model and rerank ports. Checks dimensions, batches input and calls
+  Same router shape as the model and rerank ports. Its embedders are the models in the model
+  catalogue that bind an API for embed (ADR 0048), so they change without a deploy. Checks dimensions, batches input and calls
   through the kernel's gate (ADR 0047), which checks tenant sharing and residency, holds the
   texts and vectors to their closed shape, masks, meters and audits, also for ingestion and search
   outside a run, so search engines without built-in embedding can use vectors. Embedding is open in
   lockdown, as ADR 0033 intends.
 responsibilities:
-  - Embedding catalog
+  - Embedding models from the model catalogue, by API id
   - Dimension checks and batching
   - Calls through the kernel gate, which applies the endpoint's egress guard
 files:
@@ -50,7 +51,7 @@ edges:
       file: packages/port-embedding/src/adapter.ts
       imports: '@genai/kernel'
 contract:
-  - name: catalog
+  - name: embedding model
     file: packages/port-embedding/src/catalog.ts
-    export: embeddingCatalog
-keywords: embedding port vectors catalog
+    export: embeddingModel
+keywords: embedding port vectors catalogue openai/embeddings@1

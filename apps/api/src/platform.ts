@@ -2,7 +2,12 @@ import { createRoute, z, type OpenAPIHono } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { toJSONSchema } from 'zod';
 import type { Principal, Task } from '@genai/contracts';
-import { parameterRuleProblems, parameterRules } from '@genai/port-model';
+import {
+  apiIdPattern,
+  operationKindPattern,
+  parameterRuleProblems,
+  parameterRules,
+} from '@genai/port-model';
 import {
   exportTenant,
   importTenant,
@@ -222,6 +227,9 @@ const Block = z.object({
   sources: z.array(z.string()).optional(),
   calls: z.literal(true).optional(),
   usage: z.literal(true).optional(),
+  media: z
+    .array(z.object({ id: z.string(), mediaType: z.string(), bytes: z.number().int() }))
+    .optional(),
 });
 
 const RunStats = z
@@ -236,6 +244,8 @@ const RunStats = z
     cachedInputTokens: z.number().int().optional(),
     costMicroNok: z.number().int().optional(),
     unpricedTokens: z.number().int().optional(),
+    units: z.record(z.string(), z.number()).optional(),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
     byModel: z
       .array(
         z.object({
@@ -263,6 +273,11 @@ const Timeline = z
     inputTokens: z.number().optional(),
     outputTokens: z.number().optional(),
     costOre: z.number().optional(),
+    units: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe('Units besides tokens, built in or open, by name'),
+    unpricedUnits: z.record(z.string(), z.number()).optional(),
     costMicroNok: z.number().int().nullable().optional(),
     priced: z.boolean().optional(),
     erasure: RunErasure.optional(),
@@ -616,7 +631,11 @@ const OperatorModel = z
     family: z.string().optional(),
     residency: z.string(),
     capabilities: z.array(z.string()),
-    operations: z.array(z.string()).optional(),
+    apis: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The API the model binds for each operation kind it offers'),
+    operations: z.array(z.string()).optional().describe('The kinds it offers, the keys of apis'),
     enabled: z.boolean(),
     origin: z.string().optional(),
     classified: z.boolean().optional(),
@@ -632,10 +651,12 @@ const ModelClassificationBody = z
   .strictObject({
     residency: z.enum(['norway', 'eu', 'global']).optional(),
     capabilities: z.array(z.enum(['stream', 'tools', 'json-schema', 'reasoning'])).optional(),
-    operations: z
-      .array(z.enum(['chat', 'decide']))
-      .min(1)
-      .optional(),
+    apis: z
+      .record(z.string().regex(operationKindPattern), z.string().regex(apiIdPattern))
+      .optional()
+      .describe(
+        'One API per operation kind, such as { chat: openai/responses@1 }; the API must be of that kind and in a family the connection offers',
+      ),
     enabled: z.boolean().optional(),
     parameters: parameterRules.optional(),
   })

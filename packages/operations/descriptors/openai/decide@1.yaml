@@ -3,7 +3,7 @@ operation: decide
 status: typed
 summary: The Decisions API on an OpenAI-compatible v1 endpoint, as the hand-written decide adapter sends it.
 api:
-  protocol: openai-chat
+  family: openai
   version: v1
 auth:
   keyHeader: authorization
@@ -156,8 +156,8 @@ result:
   calibrated: true
   dropped: { $from: $dropped, $omitWhen: [0] }
 usage:
-  inputTokens: $response.usage.input_tokens
-  outputTokens: $response.usage.output_tokens
-  cachedInputTokens: { $from: $response.usage.input_tokens_details.cached_tokens, $omitWhen: [0] }
-  requests: 1
+  input-token: $response.usage.input_tokens
+  output-token: $response.usage.output_tokens
+  cached-input-token: { $from: $response.usage.input_tokens_details.cached_tokens, $omitWhen: [0] }
+  request: 1
 stream: none

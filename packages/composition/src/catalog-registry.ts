@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
-import { residencies, type Residency } from '@genai/port-model';
+import type { PriceSpec } from '@genai/contracts';
+import { allowedHostPattern, residencies, type Residency } from '@genai/port-model';
 import { z } from 'zod';
 import {
   appendVersion,
@@ -9,6 +10,7 @@ import {
   type ConfigEntry,
   type ConfigEntryStore,
 } from './config-store.js';
+import { checkedPrice } from './prices.js';
 
 export const catalogKinds = [
   'model-endpoint',
@@ -70,7 +72,7 @@ export interface EffectiveCatalogs {
   models: { endpoints: Record<string, unknown>; models: Record<string, unknown>[] };
   knowledge: { endpoints: Record<string, unknown>; datasets: Record<string, unknown>[] };
   rerank: { endpoints: Record<string, unknown>; rerankers: Record<string, unknown>[] };
-  prices: Record<string, { inputPerThousand: number; outputPerThousand: number }>;
+  prices: Record<string, PriceSpec>;
 }
 
 export interface CatalogPolicy {
@@ -105,6 +107,10 @@ export interface CatalogRegistryOptions {
   references?: () => Promise<CatalogReferences>;
   localEngines?: () => ReadonlySet<string>;
   derive?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
+  /** The operation kinds a model binds, which a price in the shape before ADR 0048 is set for. */
+  priceKinds?: (model: string) => string[];
+  /** The open units a model's API for a kind reports, so a price cannot name a unit by mistake. */
+  priceUnits?: (model: string, kind: string) => readonly string[];
   now?: () => Date;
 }
 
@@ -118,13 +124,6 @@ const tenantSecret = /^secret:\/\/tenant(?:\/|-)(\d{9})\/([a-z0-9][a-z0-9._-]*)$
 
 export const catalogSecretRef = (tenant: string, name: string) =>
   `secret://tenant-${tenant}/${name}`;
-
-const price = z.strictObject({
-  inputPerThousand: z.number().min(0),
-  outputPerThousand: z.number().min(0),
-});
-
-export { price as catalogPrice };
 
 const sharing = z.strictObject({
   tenants: z.union([z.literal('*'), z.array(z.string().regex(/^\d{9}$/)).min(1)]),
@@ -376,6 +375,7 @@ export class CatalogRegistry {
     scope: string,
     spec: Record<string, unknown>,
     slots: Map<string, Slot>,
+    id = '',
   ): { spec: Record<string, unknown>; errors: CatalogProblem[] } {
     const errors: CatalogProblem[] = [];
     const out = structuredClone(spec);
@@ -385,11 +385,13 @@ export class CatalogRegistry {
       return { spec: out, errors };
     }
     if (kind === 'price') {
-      const parsed = price.safeParse(out);
-      if (!parsed.success)
-        for (const i of parsed.error.issues)
-          errors.push({ path: ['spec', ...i.path].join('.'), message: i.message });
-      return { spec: out, errors };
+      const priceUnits = this.#options.priceUnits;
+      const checked = checkedPrice(
+        out,
+        this.#options.priceKinds?.(id) ?? ['chat'],
+        priceUnits ? (kind) => priceUnits(id, kind) : undefined,
+      );
+      return checked.ok ? { spec: checked.spec, errors } : { spec: out, errors: checked.errors };
     }
     if (kind === 'dataset' && out.facets !== undefined) {
       const facets = out.facets;
@@ -404,6 +406,22 @@ export class CatalogRegistry {
             message: `facets must be filter fields too: ${missing.join(', ')}`,
           });
       }
+    }
+    if (out.allowedHosts !== undefined) {
+      if (kind !== 'model-endpoint' || scope !== platformScope)
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'only the operator sets allowedHosts, and only on a model connection',
+        });
+      else if (
+        !Array.isArray(out.allowedHosts) ||
+        out.allowedHosts.length > 20 ||
+        out.allowedHosts.some((h) => typeof h !== 'string' || !allowedHostPattern.test(h))
+      )
+        errors.push({
+          path: 'spec.allowedHosts',
+          message: 'a list of at most 20 host names, each with an optional port',
+        });
     }
     if (scope === platformScope) {
       if (isEndpoint(kind) && out.sharing !== undefined) {
@@ -510,6 +528,8 @@ export class CatalogRegistry {
     by: string;
     reason: string;
     ifVersion?: number;
+    /** Only an engine switch's activation moves a dataset onto the knowledge server (ADR 0025). */
+    movedBySwitch?: boolean;
   }): Promise<CatalogResult> {
     return this.#serial(async () => {
       const id = this.qualify(input.scope, input.id);
@@ -532,10 +552,11 @@ export class CatalogRegistry {
         input.scope,
         record(input.spec),
         this.#slots,
+        id,
       );
       if (errors.length > 0) return { ok: false, errors };
       if (input.kind === 'dataset') {
-        const problem = this.#nameGeneration(spec, existing?.spec);
+        const problem = this.#nameGeneration(spec, existing?.spec, input.movedBySwitch === true);
         if (problem) return { ok: false, errors: [problem] };
       }
       const candidate = new Map(this.#slots);
@@ -563,14 +584,36 @@ export class CatalogRegistry {
     return record(record(slot?.spec).options).connection === 'knowledge';
   }
 
+  /** A new generation id, `g-<yyyymmdd>-<6 hex>`, that no dataset's entry names. */
+  newGeneration(): string {
+    const day = (this.#options.now?.() ?? new Date())
+      .toISOString()
+      .slice(0, 10)
+      .replaceAll('-', '');
+    for (;;) {
+      const generation = `g-${day}-${randomBytes(3).toString('hex')}`;
+      if (!this.generationTaken(generation)) return generation;
+    }
+  }
+
+  /** Whether a dataset's entry names this generation, which is then no one else's to fill. */
+  generationTaken(generation: string, except?: string) {
+    return [...this.#slots.values()].some(
+      (slot) =>
+        slot.kind === 'dataset' && slot.id !== except && slot.spec.generation === generation,
+    );
+  }
+
   /** A dataset on the knowledge server is read by the generation its entry names. */
   #nameGeneration(
     spec: Record<string, unknown>,
     previous: Record<string, unknown> | undefined,
+    movedBySwitch = false,
   ): CatalogProblem | undefined {
     if (!this.#onKnowledgeServer(spec.endpoint)) return undefined;
-    // A moved dataset would go live on a generation nothing has filled, named or not.
-    if (previous && previous.endpoint !== spec.endpoint)
+    // A moved dataset would go live on a generation nothing has filled, named or not; only an
+    // engine switch fills one first, and its activation names it (ADR 0025).
+    if (previous && previous.endpoint !== spec.endpoint && !(movedBySwitch && spec.generation))
       return {
         path: 'spec.endpoint',
         message:
@@ -594,11 +637,7 @@ export class CatalogRegistry {
       spec.generation = previous.generation;
       return undefined;
     }
-    const day = (this.#options.now?.() ?? new Date())
-      .toISOString()
-      .slice(0, 10)
-      .replaceAll('-', '');
-    spec.generation = `g-${day}-${randomBytes(3).toString('hex')}`;
+    spec.generation = this.newGeneration();
     return undefined;
   }
 

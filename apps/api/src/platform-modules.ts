@@ -1,11 +1,11 @@
 import type {
   EnvironmentTier,
+  LiveDescriptorRegistry,
   OperationGovernanceStore,
   OperationTry,
   OperationTryOutcome,
 } from '@genai/composition';
 import type { Event, Principal, Task } from '@genai/contracts';
-import type { DescriptorRegistry } from '@genai/operations';
 import type {
   DefinitionStore,
   PluginSchemas,
@@ -17,7 +17,7 @@ import type { Capability as KernelCapability, Kernel, TaskStore } from '@genai/k
 import type { TriggerRunStore } from '@genai/jobs';
 import type { BlobStore } from '@genai/port-blob';
 import type { IndexWriterRouter, KnowledgeRouter } from '@genai/port-knowledge';
-import type { ModelRouter, Residency } from '@genai/port-model';
+import type { ModelRouter, ProcessorRecordCheck, Residency } from '@genai/port-model';
 import type { ConnectionRegistry } from '@genai/providers-mcp-client';
 import type { Env, Hono, Schema } from 'hono';
 import type { Access } from './access.js';
@@ -71,8 +71,9 @@ export interface ModuleDeps extends Omit<SearchModuleExtras, 'now'> {
   kernel: Kernel;
   operations?: {
     tier: EnvironmentTier;
-    descriptors: DescriptorRegistry;
+    descriptors: LiveDescriptorRegistry;
     governance: OperationGovernanceStore;
+    processorRecords?: ProcessorRecordCheck;
     try(operator: Principal, request: OperationTry): Promise<OperationTryOutcome>;
   };
   enrichmentTask?: TrackedWork;

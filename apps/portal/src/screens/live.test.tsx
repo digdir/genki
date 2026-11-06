@@ -453,7 +453,7 @@ describe('live service page', () => {
       { id: 'step-flow', version: 1, config: { flow: 'fact-checker@1' } },
       'Fast stegflyt',
       'Stegflyt',
-      'fact-checker@1',
+      'fact-checker@1 (ikke publisert hos virksomheten)',
     ],
     [
       {

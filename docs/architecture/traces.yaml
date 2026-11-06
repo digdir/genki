@@ -32,7 +32,10 @@
         module: port-model,
         text: 'The model router checks residency and capabilities, then calls the model.',
       }
-    - { module: providers-openai, text: 'The openai-chat adapter talks to the Foundry deployment.' }
+    - {
+        module: providers-openai,
+        text: 'The OpenAI adapter talks to the Foundry deployment through the API the model binds.',
+      }
     - { module: azure-foundry, text: 'Azure AI Foundry generates the answer.' }
     - {
         module: providers-postgres,

@@ -21,6 +21,7 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@genai/ingest": "0.0.0",
     "@genai/port-knowledge": "0.0.0",
     "@genai/providers-typesense": "0.0.0"
   }

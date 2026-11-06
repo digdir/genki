@@ -1,6 +1,6 @@
 # 0021 Model access through protocol adapters
 
-Status: accepted, 2026-10-12 (built; Responses API behind `openai-chat`, ADR 0044, 2026-11-03). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; Responses API behind `openai-chat`, ADR 0044, 2026-11-03; adapters per protocol and the endpoint protocol superseded by [ADR 0048](0048-connections-serve-many-apis.md), 2026-11-05). Proposed 2026-10-06
 
 ## Decision
 
