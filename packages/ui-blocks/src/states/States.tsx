@@ -1,5 +1,6 @@
 import { Alert, Button, Heading, Link, Paragraph } from '@digdir/designsystemet-react';
-import { useEffect, useRef, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { plainClick } from '../dom.js';
 import { useT } from '../i18n.js';
 import { errorTextKey, isRetryable, type ErrorKind } from './errorKinds.js';
 
@@ -159,9 +160,6 @@ export interface NotFoundStateProps {
   /** Why it may not be there. */
   description?: string | undefined;
 }
-
-const plainClick = (event: MouseEvent) =>
-  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /** An address or item that does not exist, with the one way out. The page is this, so no alert. */
 export const NotFoundState = ({ homeHref, onGoHome, title, description }: NotFoundStateProps) => {

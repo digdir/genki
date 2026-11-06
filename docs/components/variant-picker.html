@@ -111,15 +111,22 @@
                 from the platform's <code>id</code> and <code>_variant_title</code>.
               </li>
               <li>
-                <code>chosen</code>: the id of the variant in use. Without it the button says
+                <code>value</code>: the id of the variant in use. Without it the button says
                 «Standard».
               </li>
               <li>
-                <code>onChoose</code>: the id the person chose. The app sends it as
+                <code>onChange</code>: the id the person chose, named as in every block with a
+                controlled choice of one, such as <code>CorpusChoice</code>. The app sends it as
                 <code>model</code>, and keeps it if it should last: kunnskapsassistenten stores it
                 in the browser only when it is not the default, forgets it at «Logg ut», and passes
-                it back as <code>chosen</code>. A kept id the service no longer offers shows as
-                «Standard».
+                it back as <code>value</code>. A kept id the service no longer offers shows as
+                «Standard». The old names, <code>chosen</code> and <code>onChoose</code>, still work
+                until hosts have moved.
+              </li>
+              <li>
+                <code>headingLevel</code>: «Velg variant» as a heading at this level. None by
+                default: the picker sits in another block's slot, the question field, where a
+                heading would break the page's outline. It names the list either way.
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the button and the

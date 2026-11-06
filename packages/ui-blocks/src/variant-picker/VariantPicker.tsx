@@ -1,6 +1,6 @@
 import { Dropdown } from '@digdir/designsystemet-react';
 import { CheckmarkIcon, ChevronDownIcon } from '@navikt/aksel-icons';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useT } from '../i18n.js';
 
 export interface VariantOption {
@@ -16,13 +16,24 @@ export interface VariantPickerProps {
   /** The variants a person may pick, the platform's `_pickable` rows of one service. */
   variants: readonly VariantOption[];
   /** The id of the variant in use. Without it the button says «Standard». */
+  value?: string | undefined;
+  /** The person chose a variant, by its id. As `CorpusChoice`, a controlled choice of one. */
+  onChange?: ((id: string) => void) | undefined;
+  /** @deprecated `value`, the name every block uses; kept until hosts have moved. */
   chosen?: string | undefined;
-  onChoose: (id: string) => void;
+  /** @deprecated `onChange`, the name every block uses; kept until hosts have moved. */
+  onChoose?: ((id: string) => void) | undefined;
   /**
    * Designsystemet's `data-color` for the button and the list. Neutral unless given, as
    * kunnskapsassistenten draws its picker in the question field.
    */
   color?: string | undefined;
+  /**
+   * «Velg variant» as a heading at this level. None by default: the picker sits in another
+   * block's slot, such as the question field, where a heading would break the page's outline. It
+   * names the list either way.
+   */
+  headingLevel?: 2 | 3 | 4 | 5 | 6 | undefined;
   /** On the button, for the block it sits in to place it. */
   className?: string | undefined;
 }
@@ -35,12 +46,17 @@ const colored = (color: string | undefined) => (color ? { 'data-color': color } 
  */
 export const VariantPicker = ({
   variants,
-  chosen,
+  value,
+  onChange,
+  chosen: oldChosen,
   onChoose,
   color = 'neutral',
+  headingLevel,
   className,
 }: VariantPickerProps) => {
   const t = useT();
+  const titleId = useId();
+  const chosen = value ?? oldChosen;
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   if (variants.length < 2) return null;
@@ -49,7 +65,7 @@ export const VariantPicker = ({
 
   const choose = (id: string) => {
     setOpen(false);
-    onChoose(id);
+    (onChange ?? onChoose)?.(id);
     trigger.current?.focus();
   };
 
@@ -77,8 +93,15 @@ export const VariantPicker = ({
         open={open}
         placement="top-end"
       >
-        <Dropdown.Heading>{t('variantPicker.heading')}</Dropdown.Heading>
-        <Dropdown.List>
+        {/* Drawn as Designsystemet's list heading either way; an outline entry only when asked. */}
+        <Dropdown.Heading
+          id={titleId}
+          level={headingLevel ?? 2}
+          role={headingLevel === undefined ? 'none' : undefined}
+        >
+          {t('variantPicker.heading')}
+        </Dropdown.Heading>
+        <Dropdown.List aria-labelledby={titleId}>
           {variants.map((variant) => {
             const isChosen = variant.id === chosen;
             return (

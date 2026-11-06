@@ -19,7 +19,7 @@ const variants: VariantOption[] = [
 const [answer, fast] = variants as [VariantOption, VariantOption];
 
 const show = (chosen: string | undefined = answer.id, onChoose = vi.fn()) => {
-  render(<VariantPicker variants={variants} chosen={chosen} onChoose={onChoose} />);
+  render(<VariantPicker variants={variants} value={chosen} onChange={onChoose} />);
   return onChoose;
 };
 
@@ -64,39 +64,49 @@ describe('the variant picker', () => {
 
   it('is not shown when there is nothing to choose between', () => {
     const { container, rerender } = render(
-      <VariantPicker variants={[answer]} chosen={answer.id} onChoose={() => {}} />,
+      <VariantPicker variants={[answer]} value={answer.id} onChange={() => {}} />,
     );
     expect(container.innerHTML).toBe('');
-    rerender(<VariantPicker variants={[]} onChoose={() => {}} />);
+    rerender(<VariantPicker variants={[]} onChange={() => {}} />);
     expect(container.innerHTML).toBe('');
   });
 
   it('says «Standard» when the app does not know which variant is in use', () => {
-    render(<VariantPicker variants={variants} onChoose={() => {}} />);
+    render(<VariantPicker variants={variants} onChange={() => {}} />);
     expect(trigger().textContent).toBe('Standard');
     expect(option('Svar med kilder').getAttribute('aria-current')).toBeNull();
   });
 
   it('says «Standard» for a kept choice the service no longer offers, rather than a dead name', () => {
     render(
-      <VariantPicker variants={variants} chosen="kunnskapsassistenten__gone" onChoose={() => {}} />,
+      <VariantPicker variants={variants} value="kunnskapsassistenten__gone" onChange={() => {}} />,
     );
     expect(trigger().textContent).toBe('Standard');
   });
 
+  it('draws no heading in the page’s outline in another block’s slot, and one at the level asked for', () => {
+    const { rerender } = render(<VariantPicker variants={variants} onChange={() => {}} />);
+    expect(screen.queryByRole('heading', { hidden: true })).toBeNull();
+    expect(screen.getByRole('list', { name: 'Velg variant', hidden: true })).toBeTruthy();
+    rerender(<VariantPicker variants={variants} onChange={() => {}} headingLevel={3} />);
+    expect(
+      screen.getByRole('heading', { name: 'Velg variant', level: 3, hidden: true }),
+    ).toBeTruthy();
+  });
+
   it('opens its list above the button, since its place is in the question field at the foot', () => {
     show();
-    const list = screen.getByRole('heading', { name: 'Velg variant', hidden: true }).parentElement;
+    const list = screen.getByRole('list', { name: 'Velg variant', hidden: true }).parentElement;
     expect(list?.getAttribute('data-placement')).toBe('top-end');
   });
 
   it('is neutral unless the app gives it another colour family, as in kunnskapsassistenten’s field', () => {
-    const { rerender } = render(<VariantPicker variants={variants} onChoose={() => {}} />);
+    const { rerender } = render(<VariantPicker variants={variants} onChange={() => {}} />);
     const list = () =>
-      screen.getByRole('heading', { name: 'Velg variant', hidden: true }).parentElement;
+      screen.getByRole('list', { name: 'Velg variant', hidden: true }).parentElement;
     expect(trigger().getAttribute('data-color')).toBe('neutral');
     expect(list()?.getAttribute('data-color')).toBe('neutral');
-    rerender(<VariantPicker variants={variants} onChoose={() => {}} color="brand1" />);
+    rerender(<VariantPicker variants={variants} onChange={() => {}} color="brand1" />);
     expect(trigger().getAttribute('data-color')).toBe('brand1');
     expect(list()?.getAttribute('data-color')).toBe('brand1');
   });
@@ -104,14 +114,25 @@ describe('the variant picker', () => {
   it('speaks English when the person does', () => {
     render(
       <InLocale locale="en">
-        <VariantPicker variants={variants} onChoose={() => {}} />
+        <VariantPicker variants={variants} onChange={() => {}} />
       </InLocale>,
     );
     expect(trigger().getAttribute('aria-label')).toBe('Variant: Default');
-    expect(screen.getByRole('heading', { name: 'Choose a variant', hidden: true })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Choose a variant', hidden: true })).toBeTruthy();
   });
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('still takes the old names, chosen and onChoose, until hosts have moved', () => {
+    const onChoose = vi.fn();
+    render(
+      <VariantPicker variants={variants} chosen="kunnskapsassistenten__mini" onChoose={onChoose} />,
+    );
+    expect(trigger().textContent).toContain('Rask');
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole('button', { name: /Svar med kilder/, hidden: true }));
+    expect(onChoose).toHaveBeenCalledWith('kunnskapsassistenten__default');
   });
 });
