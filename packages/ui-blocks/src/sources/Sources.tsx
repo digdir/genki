@@ -46,8 +46,28 @@ import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } fro
 
 export type SourcesVariant = 'panel' | 'compact';
 
+/** What became of the answer the sources belong to, or `unasked` before the first question. */
+export type SourcesAnswerStatus =
+  'unasked' | 'streaming' | 'complete' | 'aborted' | 'failed' | 'clarification';
+
 export interface SourcesProps {
   sources?: readonly SourceDocument[] | undefined;
+  /**
+   * What became of the answer, so a panel with no sources says why: nothing asked yet, stopped
+   * before the sources came, failed, or waiting on a question back. `streaming` is the loading
+   * state until sources arrive.
+   */
+  answerStatus?: SourcesAnswerStatus | undefined;
+  /** The app's store keeps no sources with a turn, so an empty list is not known to mean none. */
+  sourcesNotStored?: boolean | undefined;
+  /** Who answers, for the state after a question back. Without it, the AI assistant. */
+  assistantName?: string | undefined;
+  /** Which of the thread's answers these sources are for, from 0, when it has several. */
+  answerIndex?: number | undefined;
+  /** How many answers the thread has. From two, the block steps between them. */
+  answerCount?: number | undefined;
+  /** The reader stepped to another answer: its index. The app passes that answer's sources. */
+  onAnswerChange?: ((index: number) => void) | undefined;
   /** The answer's footnotes in order. Without them nothing is numbered and nothing links back. */
   citations?: readonly SourceCitation[] | undefined;
   /** The service's choice. Excerpt mode needs footnotes that name their excerpt. */
@@ -219,6 +239,129 @@ const UseLink = ({
       <ArrowUndoIcon aria-hidden />
       {uses.length > 1 ? <span>{count}</span> : null}
     </Button>
+  );
+};
+
+/**
+ * «Kilder til svar 2 av 3», which keeps «Utdrag 2» unambiguous: every answer numbers its excerpts
+ * from 1. The count is for the eye; the block's live region says it. `aria-disabled` and not
+ * `disabled` at the ends, so focus stays on the button the reader pressed.
+ */
+const AnswerSwitcher = ({
+  label,
+  index,
+  count,
+  onChange,
+}: {
+  label: string;
+  index: number;
+  count: number;
+  onChange: (index: number) => void;
+}) => {
+  const t = useT();
+  const atFirst = index <= 0;
+  const atLast = index >= count - 1;
+  return (
+    <div className="uib-sources-answers">
+      <Paragraph aria-hidden="true" data-size="xs" className="uib-sources-answers-count">
+        {label}
+      </Paragraph>
+      <div className="uib-sources-answers-steps">
+        <Button
+          type="button"
+          variant="tertiary"
+          data-size="sm"
+          aria-label={t('sources.previousAnswer')}
+          aria-disabled={atFirst || undefined}
+          onClick={() => !atFirst && onChange(index - 1)}
+        >
+          {t('sources.previous')}
+        </Button>
+        <Button
+          type="button"
+          variant="tertiary"
+          data-size="sm"
+          aria-label={t('sources.nextAnswer')}
+          aria-disabled={atLast || undefined}
+          onClick={() => !atLast && onChange(index + 1)}
+        >
+          {t('sources.next')}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+type EmptyKind =
+  'unasked' | 'none' | 'aborted' | 'failed' | 'clarification' | 'notStored' | 'notKept';
+
+/**
+ * Why an answer has no sources. A finished answer whose footnotes cite something lost its sources
+ * on the way to the store; one from a store that keeps none is unknown, not empty.
+ */
+const emptyKind = (
+  status: SourcesAnswerStatus | undefined,
+  citationCount: number,
+  sourcesNotStored: boolean,
+): EmptyKind => {
+  if (status === 'unasked' || status === 'aborted' || status === 'failed') return status;
+  if (status === 'clarification') return 'clarification';
+  if (citationCount > 0) return 'notStored';
+  return sourcesNotStored ? 'notKept' : 'none';
+};
+
+/** A normal state, not an error: no alert, and nothing announced. */
+const EmptyState = ({
+  kind,
+  level,
+  corpus,
+  assistantName,
+  byDocument,
+}: {
+  kind: EmptyKind;
+  level: number;
+  corpus: string | undefined;
+  assistantName: string | undefined;
+  byDocument: boolean;
+}) => {
+  const t = useT();
+  const quote = byDocument
+    ? undefined
+    : corpus
+      ? t('sources.unaskedQuote', { corpus })
+      : t('sources.unaskedQuoteNoCorpus');
+  const [title, description] = (() => {
+    switch (kind) {
+      case 'unasked':
+        return [t('sources.unaskedTitle'), [t('sources.unasked'), quote].filter(Boolean).join(' ')];
+      case 'aborted':
+        return [t('sources.abortedTitle'), t('sources.aborted')];
+      case 'failed':
+        return [t('sources.failedTitle'), t('sources.failed')];
+      case 'clarification':
+        return [
+          assistantName
+            ? t('sources.clarificationTitle', { name: assistantName })
+            : t('sources.clarificationTitleUnnamed'),
+          t('sources.clarification'),
+        ];
+      case 'notStored':
+        return [t('sources.notStoredTitle'), t('sources.notStored')];
+      case 'notKept':
+        return [t('sources.notStoredTitle'), t('sources.notKept')];
+      default:
+        return [t('sources.noneTitle'), t('sources.none')];
+    }
+  })();
+  return (
+    <div className="uib-sources-empty" data-kind={kind}>
+      <Heading level={level as Level} data-size="2xs">
+        {title}
+      </Heading>
+      <Paragraph data-size="sm" variant="long">
+        {description}
+      </Paragraph>
+    </div>
   );
 };
 
@@ -621,6 +764,12 @@ const SourceItem = ({
 
 export const Sources = ({
   sources,
+  answerStatus,
+  sourcesNotStored = false,
+  assistantName,
+  answerIndex = 0,
+  answerCount = 1,
+  onAnswerChange,
   citations,
   citationMode = 'excerpt',
   onCitationModeChange,
@@ -674,6 +823,14 @@ export const Sources = ({
   );
   const hits = useMemo(() => findHits(index, query), [index, query]);
   const currentHit = hits[hitIndex];
+
+  // Another answer's sources start a fresh search: the count was of a set no longer on screen.
+  const [shownAnswer, setShownAnswer] = useState(answerIndex);
+  if (shownAnswer !== answerIndex) {
+    setShownAnswer(answerIndex);
+    setQuery('');
+    setHitIndex(0);
+  }
 
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
@@ -735,7 +892,18 @@ export const Sources = ({
   const setCardOpen = (key: string, open: boolean) =>
     setOpenCards((was) => new Map(was).set(key, open));
 
-  if (!sources && !loading) return null;
+  if (!sources && !loading && answerStatus === undefined) return null;
+  const waiting = loading || (answerStatus === 'streaming' && !sources?.length);
+  // Before the first question there is no answer to read from, whatever the app passes.
+  const empty =
+    !waiting && (answerStatus === 'unasked' || !sources?.length)
+      ? emptyKind(answerStatus, citations?.length ?? 0, sourcesNotStored)
+      : undefined;
+  const stepping = onAnswerChange !== undefined && answerCount > 1;
+  // One string for the visible count and the live region; empty keeps the region silent.
+  const answerLabel = stepping
+    ? t('sources.answerOf', { n: answerIndex + 1, total: answerCount })
+    : '';
   const hit = sources ? targetPosition(sources, item.target) : -1;
   const listKey = (sources ?? [])
     .map((s, i) => `${prepared[i]?.key}:${s.excerpts.map((e) => e.chunkId).join(',')}`)
@@ -748,7 +916,7 @@ export const Sources = ({
     );
   const named = heading ? { 'aria-labelledby': titleId } : { 'aria-label': t('sources.title') };
   const own = hasOwnDocuments ?? sources?.some(isOwn) ?? false;
-  const searching = (search ?? variant === 'panel') && Boolean(sources?.length);
+  const searching = (search ?? variant === 'panel') && !empty && Boolean(sources?.length);
   const switching =
     onCitationModeChange !== undefined &&
     citations !== undefined &&
@@ -757,9 +925,20 @@ export const Sources = ({
   const describedBy = disclaimer && sources?.length ? (disclaimerId ?? madeId) : undefined;
   return (
     <div className={classes('uib-sources', className)} data-variant={variant} data-color={color}>
-      {heading || searching || switching ? (
+      {/* In the page from the first render: a live region announces only a change to it. */}
+      {onAnswerChange ? <output className="ds-sr-only">{answerLabel}</output> : null}
+      {heading || searching || switching || stepping ? (
         <div className="uib-sources-head">
           {heading}
+          {/* Also when this answer has no sources: stepping back is the point. */}
+          {stepping ? (
+            <AnswerSwitcher
+              label={answerLabel}
+              index={answerIndex}
+              count={answerCount}
+              onChange={onAnswerChange}
+            />
+          ) : null}
           {switching ? (
             <ToggleGroup
               data-size="sm"
@@ -784,20 +963,28 @@ export const Sources = ({
           ) : null}
         </div>
       ) : null}
-      {disclaimer && (loading || sources?.length) ? (
+      {disclaimer && (waiting || (!empty && sources?.length)) ? (
         <Paragraph id={disclaimerId ?? madeId} data-size="xs" className="uib-sources-disclaimer">
           {corpus
             ? t(own ? 'sources.disclaimerWithOwn' : 'sources.disclaimer', { corpus })
             : t('sources.disclaimerNoCorpus')}
         </Paragraph>
       ) : null}
-      {loading ? (
+      {waiting ? (
         <div className="uib-sources-documents" aria-busy="true">
           <output className="ds-sr-only">{t('sources.loading')}</output>
           {['a', 'b', 'c', 'd'].map((key) => (
             <Skeleton key={key} variant="rectangle" height="var(--ds-size-18)" />
           ))}
         </div>
+      ) : empty ? (
+        <EmptyState
+          kind={empty}
+          level={headingLevel}
+          corpus={corpus}
+          assistantName={assistantName}
+          byDocument={citationMode === 'document'}
+        />
       ) : sources?.length ? (
         <ol key={listKey} className="uib-sources-documents" {...named}>
           {prepared.map((document, i) => (
@@ -821,9 +1008,7 @@ export const Sources = ({
             </li>
           ))}
         </ol>
-      ) : (
-        <Paragraph data-size="sm">{t('sources.none')}</Paragraph>
-      )}
+      ) : null}
       {children}
     </div>
   );

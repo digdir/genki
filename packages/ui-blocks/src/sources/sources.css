@@ -31,6 +31,31 @@
     margin: 0;
     color: var(--genai-sources-disclaimer-color, var(--ds-color-text-subtle));
   }
+  .uib-sources-answers {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--genai-sources-answers-gap, var(--ds-size-2));
+  }
+  .uib-sources-answers-count {
+    margin: 0;
+    color: var(--genai-sources-answers-count-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-answers-steps {
+    display: flex;
+    gap: var(--genai-sources-answers-steps-gap, var(--ds-size-1));
+  }
+  .uib-sources-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    gap: var(--genai-sources-empty-gap, var(--ds-size-2));
+    color: var(--genai-sources-empty-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-empty > * {
+    margin: 0;
+  }
   .uib-sources-search-form {
     display: flex;
     flex-direction: column;
