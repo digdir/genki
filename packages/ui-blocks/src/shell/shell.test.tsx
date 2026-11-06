@@ -588,6 +588,18 @@ describe('the head, the pinned head and the foot', () => {
     );
   });
 
+  it('hands the host its pinned region, for a block that draws its own head there', () => {
+    const given: (HTMLDivElement | null)[] = [];
+    const pinnedRef = (element: HTMLDivElement | null) => given.push(element);
+    const { unmount } = draw({
+      primary: { label: 'Tråder og filter', pinnedRef, children: <p>Felter</p> },
+    });
+    const region = primary().querySelector('.uib-shell-pinned');
+    expect(given).toEqual([region]);
+    unmount();
+    expect(given).toEqual([region, null]);
+  });
+
   it('ends the scrolling region with the foot, or pins it under when asked', () => {
     const { redraw } = draw();
     const foot = () =>
