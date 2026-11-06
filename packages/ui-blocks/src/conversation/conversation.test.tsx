@@ -148,7 +148,8 @@ describe('each answer', () => {
     draw({ answerColor: 'neutral' });
     const card = screen.getByText(/Nkom rapporterer/).closest('.uib-answer');
     expect(card?.getAttribute('data-color')).toBe('neutral');
-    expect(screen.getAllByRole('link', { name: /^Kilde \d+: / })).toHaveLength(2);
+    // Marks, not links: this app gives the footnotes nowhere to go.
+    expect(screen.getAllByRole('img', { name: /^Kilde \d+: / })).toHaveLength(2);
     expect(screen.getByText('Kilder brukt i svaret')).toBeTruthy();
   });
 
@@ -169,7 +170,10 @@ describe('each answer', () => {
   });
 
   it('gives each footnote the id the app makes from its answer and its place', () => {
-    draw({ citationId: (turn, citation) => `${turn.id}-fn-${citation}` });
+    draw({
+      citationId: (turn, citation) => `${turn.id}-fn-${citation}`,
+      onOpenCitation: () => {},
+    });
     expect(
       screen.getAllByRole('link', { name: /^Kilde \d+: / }).map((link) => link.getAttribute('id')),
     ).toEqual(['a1-fn-0', 'a1-fn-1']);
@@ -178,8 +182,14 @@ describe('each answer', () => {
   it('moves focus to the footnote the app points at, in that answer only', async () => {
     const second: ConversationAnswer = { ...answer, id: 'a2' };
     const both = [question, answer, followUp, second];
-    const { rerender } = render(<Conversation turns={both} />);
-    rerender(<Conversation turns={both} target={{ turnId: 'a2', citation: 1 }} />);
+    const { rerender } = render(<Conversation turns={both} onOpenCitation={() => {}} />);
+    rerender(
+      <Conversation
+        turns={both}
+        onOpenCitation={() => {}}
+        target={{ turnId: 'a2', citation: 1 }}
+      />,
+    );
     await frame();
     const focused = document.activeElement;
     expect(focused?.getAttribute('aria-label')).toBe(
@@ -432,7 +442,7 @@ describe('the slots', () => {
   it('draw the time alone at the end of the row when the app has no row of its own', () => {
     draw();
     const time = screen.getByText('14:32').closest('time');
-    expect(time?.parentElement?.classList.contains('uib-answer-actions')).toBe(true);
+    expect(time?.parentElement?.classList.contains('uib-answer-row-slot')).toBe(true);
   });
 });
 
