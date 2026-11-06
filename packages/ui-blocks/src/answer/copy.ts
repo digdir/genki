@@ -78,12 +78,8 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   );
   const byMarker = new Map(markers?.map((m) => [m.marker, m] as const));
 
-  // Documents are numbered in the order the answer first cites them, as excerpts are.
-  const documentNumbers = new Map<string, number>();
-  if (!byExcerpt)
-    for (const key of pairing.targets)
-      if (key !== undefined && !documentNumbers.has(key))
-        documentNumbers.set(key, documentNumbers.size + 1);
+  // The numbers the footnotes carry: excerpts', or documents' while the service cites documents.
+  const documentNumbers = byExcerpt ? new Map<string, number>() : pairing.numbers;
 
   const where = (title: string, page: number | undefined) =>
     page === undefined ? title : t('answer.copyPage', { title, page });

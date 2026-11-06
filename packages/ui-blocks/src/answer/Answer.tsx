@@ -1,6 +1,6 @@
 import { Button, Card, Link, Paragraph, Skeleton, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
-import { ArrowsCirclepathIcon, FileTextIcon, InformationSquareIcon } from '@navikt/aksel-icons';
+import { ArrowsCirclepathIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n.js';
 import { Markdown, type CiteRenderer, type TableFacts } from '../markdown/Markdown.js';
@@ -149,8 +149,7 @@ const stillMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)'
 
 interface FootnoteProps {
   citation: number;
-  number: number | undefined;
-  name: string;
+  number: number;
   label: string;
   href: string;
   id: string | undefined;
@@ -158,18 +157,11 @@ interface FootnoteProps {
   footnotes: Map<number, HTMLElement>;
 }
 
-// A link named by its excerpt and the document it is in: a bare «[3]» tells a screen reader user
-// nothing. The brackets stay in the text, out of sight, so a copied answer still reads «[1]».
-const Footnote = ({
-  citation,
-  number,
-  name,
-  label,
-  href,
-  id,
-  onOpen,
-  footnotes,
-}: FootnoteProps) => (
+// Always a number in a round mark, as kunnskapsassistenten draws it: the excerpt's, or the
+// document's while the service cites documents. A link named by what it cites and the document:
+// a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
+// so a copied answer still reads «[1]».
+const Footnote = ({ citation, number, label, href, id, onOpen, footnotes }: FootnoteProps) => (
   <sup className="uib-answer-footnote">
     <Link
       ref={(element: HTMLAnchorElement | null) => {
@@ -184,12 +176,7 @@ const Footnote = ({
       onClick={onOpen}
     >
       <span className="uib-answer-copy">[</span>
-      {number ?? (
-        <>
-          <FileTextIcon aria-hidden className="uib-answer-mark-icon" />
-          <span className="uib-answer-copy">{name}</span>
-        </>
-      )}
+      {number}
       <span className="uib-answer-copy">]</span>
     </Link>
   </sup>
@@ -310,7 +297,8 @@ export const Answer = ({
       const source = at === undefined ? undefined : sources?.[at];
       if (item === undefined || at === undefined || !source) return false;
       const name = names[at] ?? source.title;
-      const number = byExcerpt ? pairing.numbers.get(item) : undefined;
+      const number = pairing.numbers.get(item);
+      if (number === undefined) return false;
       const goal: SourceTarget = byExcerpt
         ? { chunkId: item, documentId: source.documentId, index: source.index }
         : { documentId: source.documentId, index: source.index };
@@ -319,11 +307,10 @@ export const Answer = ({
           key={key}
           citation={mark.citation}
           number={number}
-          name={name}
           label={
-            number === undefined
-              ? t('answer.footnoteDocument', { title: name })
-              : t('answer.footnote', { n: number, title: name })
+            byExcerpt
+              ? t('answer.footnote', { n: number, title: name })
+              : t('answer.footnoteDocument', { n: number, title: name })
           }
           href={href?.(goal) ?? '#'}
           id={citationId?.(mark.citation)}
@@ -364,9 +351,10 @@ export const Answer = ({
           return n === undefined ? [] : [n];
         })
       : [];
-    const cited = byExcerpt ? numbers.length > 0 : (pairing.uses.get(key)?.length ?? 0) > 0;
+    const number = byExcerpt ? undefined : pairing.numbers.get(key);
+    const cited = byExcerpt ? numbers.length > 0 : number !== undefined;
     return cited
-      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), numbers }]
+      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), numbers, number }]
       : [];
   });
 
