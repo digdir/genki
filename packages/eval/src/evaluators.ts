@@ -47,6 +47,7 @@ const skipped = (evaluator: Evaluator, metric: string, reason: string): Score =>
 
 export const defaultRefusalPatterns = [
   '(?i)\\b(vet ikke|finner ikke|fant ikke|har ikke (nok )?informasjon|kan ikke svare|ikke dekket)\\b',
+  '(?i)\\b(veit ikkje|finn ikkje|fann ikkje|har ikkje (nok )?informasjon|kan ikkje svare|ikkje dekt)\\b',
   "(?i)\\b(i don't know|i do not know|could not find|couldn't find|no information|cannot answer|not covered)\\b",
 ];
 

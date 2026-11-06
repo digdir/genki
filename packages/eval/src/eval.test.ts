@@ -191,6 +191,30 @@ describe('evaluators', () => {
     expect(values(fields)['fields-match']).toBe(0.5);
   });
 
+  it('counts a refusal in nynorsk as a refusal and keeps bokmål and English refusals as before', async () => {
+    const contract = contractAssertions();
+    const refusal = async (answer: string) =>
+      values(
+        await contract.evaluate(
+          caseOf({ id: 'r', grounding: 'refusal-expected' }),
+          observation({ answer }),
+          ctx,
+        ),
+      ).refusal;
+
+    expect(await refusal('Eg veit ikkje kva parti du bør røyste på.')).toBe(1);
+    expect(await refusal('Eg finn ikkje dette i kjeldene.')).toBe(1);
+    expect(await refusal('Eg kan ikkje svare på det.')).toBe(1);
+    expect(await refusal('Dette er ikkje dekt i kjeldene.')).toBe(1);
+    expect(
+      await refusal('ID-porten er ei felles innloggingsløysing for offentlege tenester.'),
+    ).toBe(0);
+    expect(await refusal('Du treng ikkje søkje på nytt.')).toBe(0);
+    expect(await refusal('Jeg vet ikke.')).toBe(1);
+    expect(await refusal("I don't know.")).toBe(1);
+    expect(await refusal('ID-porten er en felles innloggingsløsning.')).toBe(0);
+  });
+
   it('scores recall at k and whether citations are inside what was retrieved', async () => {
     const recall = retrievalRecall(3);
     const c = caseOf({
