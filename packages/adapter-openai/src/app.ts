@@ -37,7 +37,9 @@ import {
 import {
   documentLimits,
   documentsField,
+  mediaLimits,
   readDocuments,
+  readMedia,
   type RuntimeDocumentStore,
 } from './documents.js';
 import { tableMarker } from './table.js';
@@ -87,6 +89,7 @@ export interface ModelEntry {
   batch?: boolean;
   live?: boolean;
   documents?: string[];
+  media?: string[];
 }
 
 export type ResolveErrorCode =
@@ -533,6 +536,15 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
                 },
               }
             : {}),
+          ...(e.media?.length && options.documents
+            ? {
+                _media: {
+                  accepts: e.media,
+                  max_bytes: mediaLimits.maxBytes,
+                  max_count: mediaLimits.maxCount,
+                },
+              }
+            : {}),
           ...(e.status
             ? { status: e.status, ...(e.statusReason ? { status_reason: e.statusReason } : {}) }
             : {}),
@@ -723,14 +735,22 @@ export const createOpenAiAdapter = (options: OpenAiAdapterOptions) => {
       query = checked.query;
       values = checked.values;
     }
-    const read =
+    const sentDocuments =
       body[documentsField] === undefined
         ? []
         : readDocuments(
             body[documentsField],
             options.documents ? resolved.entry.documents : undefined,
           );
-    if (!Array.isArray(read)) return fail(c, read.code, read.message, read.status);
+    if (!Array.isArray(sentDocuments))
+      return fail(c, sentDocuments.code, sentDocuments.message, sentDocuments.status);
+    const sentMedia = readMedia(
+      messages.findLast((m) => m.role === 'user')?.content,
+      options.documents ? resolved.entry.media : undefined,
+    );
+    if (!Array.isArray(sentMedia))
+      return fail(c, sentMedia.code, sentMedia.message, sentMedia.status);
+    const read = [...sentDocuments, ...sentMedia];
     if (read.length && options.documents && !principal.tenant)
       return fail(c, 'documents_not_accepted', 'Documents need an organisation.', 400);
     const attachments = read.map((d) => d.name);
