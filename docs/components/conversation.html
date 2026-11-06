@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conversation · Components</title>
+    <meta
+      name="description"
+      content="The conversation in the chat: the reader's questions, the answers and the questions back, in order, with when each answer came, the thread while it is read, and search in an answer."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <a href="chat.html">Chat</a> /
+          <span aria-current="page">Conversation</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="conversation"
+        data-component="conversation"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="conversation-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="conversation-title">Conversation</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Part of Chat</span
+              ><span class="badge">Main area</span>
+            </div>
+            <p class="summary">
+              The conversation in the chat: the reader's questions, the answers and the questions
+              back, in order, with when each answer came, the thread while it is read, and search in
+              an answer.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Samtalen»</dd>
+              <dt>Sits in</dt>
+              <dd>Main area, over the question field</dd>
+              <dt>Code</dt>
+              <dd>
+                <code>Conversation</code> and <code>AnswerTime</code> in
+                <code>@genai/ui-blocks</code>. Each answer is <a href="footnotes.html">Answer</a>.
+              </dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/174"
+                  >kunnskapsassistenten#174</a
+                >
+              </dd>
+              <dt>Canvas</dt>
+              <dd>00-Chat (FM-0, FM-0b, FM-0c, FM-0d, FM-2b)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-accent-soft" x="76" y="20" width="56" height="12" rx="6" />
+            <rect class="s-soft" x="26" y="38" width="108" height="28" rx="8" />
+            <rect class="s-bar" x="34" y="45" width="80" height="5" rx="2.5" />
+            <rect class="s-bar" x="34" y="55" width="56" height="5" rx="2.5" />
+            <rect class="s-accent-soft" x="88" y="72" width="44" height="12" rx="6" />
+            <rect class="s-soft" x="26" y="90" width="108" height="16" rx="8" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>An assistant answers questions in a thread, one turn after another.</li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>Question:</strong> the reader's words in a tinted box at the end of the
+                line, with the documents it was asked with under them.
+              </li>
+              <li>
+                <strong>Answer:</strong> the <a href="footnotes.html">Answer</a> block, with the
+                line about what the question was narrowed to over it, and when it came at the end of
+                the row under it.
+              </li>
+              <li>
+                <strong>Question back</strong> («Trenger avklaring»): a finished turn, not a
+                failure. No time and no row; the answers the service offers are choices when the app
+                takes the reply.
+              </li>
+              <li>
+                <strong>Thread being read:</strong> a question and an answer in outline, said once
+                in words through a live region. What is already on screen wins over the outline.
+              </li>
+              <li>
+                <strong>Search in an answer</strong> («Søk i svaret», when the host asks for it):
+                one strip pinned over the conversation, one answer at a time, with the count as a
+                live region, steps that stop at the ends, and Escape back to the button.
+              </li>
+            </ul>
+            <p>
+              The block draws and raises events. The app holds the thread, sends, and fills two
+              slots: over each answer (for <a href="approach.html">Approach</a>) and the row under
+              it (for the answer actions, which take the time as their <code>end</code>).
+            </p>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>turns</code>: questions, answers and questions back, in order. An answer
+                carries what <code>Answer</code> takes, its <code>createdAt</code> and its
+                <code>scope</code> line.
+              </li>
+              <li><code>loading</code>: the thread is being read.</li>
+              <li>
+                <code>onOpenCitation</code>, <code>onOpenDocument</code>,
+                <code>onRegenerate</code> and <code>onReply</code>, each with the turn it came from.
+                <code>target</code> names an answer and a footnote to scroll to and focus.
+              </li>
+              <li>
+                <code>header(turn, question)</code> over an answer or a question back, and
+                <code>actions(turn, {end, search})</code> under a finished answer. Without
+                <code>actions</code>, the row holds the time alone.
+              </li>
+              <li>
+                <code>search</code>, <code>citationMode</code>, <code>sourcesUsed</code>,
+                <code>closingQuestion</code>, <code>assistantName</code>, <code>href</code>,
+                <code>citationId</code> and <code>headingLevel</code>.
+              </li>
+              <li>
+                <code>questionColor</code>, <code>answerColor</code> and <code>color</code> set
+                Designsystemet's <code>data-color</code>, each only when given.
+                Kunnskapsassistenten's look is <code>accent</code> questions and
+                <code>neutral</code> answers.
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="chat.html">Chat</a>: the question field under the conversation</li>
+              <li><a href="footnotes.html">Footnotes</a>: each answer, with its footnotes</li>
+              <li><a href="approach.html">Approach</a>: over an answer, in the header slot</li>
+              <li><a href="sources.html">Sources</a>: where a footnote leads, and back</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, follows <code>data-color</code>,
+              <code>data-color-scheme</code> and <code>data-size</code>, and reads every token
+              through its own variable, with the token as the fallback. Four are pinned to warning
+              on purpose, as Kunnskapsassistenten marks search matches: the answer spends accent on
+              its footnotes. The question back's tag is <code>info</code>. Four values are not
+              tokens: the question's width, the search field's width and widest width, and the
+              strip's stacking order.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-conversation-attachments-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>the documents a question was asked with</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-attachments-spacing</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space over that line</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>the block's font</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-gap</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>space between turns</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-loading-question-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>the stand-in question's inset</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-mark-background</code></td>
+                  <td><code>--ds-color-warning-surface-tinted</code></td>
+                  <td>a search match</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-mark-border-radius</code></td>
+                  <td><code>--ds-border-radius-sm</code></td>
+                  <td>a search match's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-mark-color</code></td>
+                  <td><code>--ds-color-warning-text-default</code></td>
+                  <td>a search match's text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-mark-current-background</code></td>
+                  <td><code>--ds-color-warning-base-default</code></td>
+                  <td>the match the reader stands on</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-mark-current-color</code></td>
+                  <td><code>--ds-color-warning-base-contrast-default</code></td>
+                  <td>its text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-options-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space between the answers a question back offers</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-question-border-color</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>the question's border, the colour of its ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-question-max-inline-size</code></td>
+                  <td>85%</td>
+                  <td>the question's widest width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-question-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the question's padding over and under</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-question-padding-inline</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>the question's padding at the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-scope-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>the line over an answer about what it was narrowed to</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-scope-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>its size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-scope-padding-inline</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>its inset</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-background</code></td>
+                  <td><code>--ds-color-background-default</code></td>
+                  <td>the search strip's ground, which hides what scrolls behind it</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-border-color</code></td>
+                  <td><code>--ds-color-border-default</code></td>
+                  <td>the rule under the strip</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>its width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-count-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«1 av 4 treff»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-count-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>its size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-field-inline-size</code></td>
+                  <td>14rem</td>
+                  <td>the search field's width before it grows or shrinks</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-field-max-inline-size</code></td>
+                  <td>22rem</td>
+                  <td>its widest width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space in the strip</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-inset-block-start</code></td>
+                  <td>0</td>
+                  <td>where the strip sticks: the height of a host's own sticky band</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-label-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«Søk i svar 2 av 3»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-padding-block</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>the strip's padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-spacing</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>space under the strip</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-steps-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space between «Forrige» and «Neste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-search-z-index</code></td>
+                  <td>1</td>
+                  <td>the strip's place over the conversation</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-time-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>when an answer came</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-time-font-size</code></td>
+                  <td><code>--ds-font-size-minus-1</code></td>
+                  <td>its size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-conversation-turn-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>space inside a turn</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>Parity with Kunnskapsassistenten</h2>
+            <p>
+              Read against <code>MessageList</code>, <code>AnswerMessage</code>,
+              <code>AnswerTime</code>, <code>Clarification</code>, <code>ThreadLoading</code> and
+              its tests on kunnskapsassistenten's main, and <code>AnswerSearch</code> as it was
+              before kunnskapsassistenten#209 took it out of the answer's row.
+            </p>
+            <ul>
+              <li>
+                <strong>Ported, with tests:</strong> the ordered list and «Du skrev:»; the
+                question's box, size and attachments line; the scope line over an answer and a
+                question back, with its words for a screen reader; one time per answer, finished or
+                stopped, never on a question, a question back or an answer still written, outside
+                every button, and none for a time that cannot be read; the question back's info tag,
+                its <code>[N]</code> as text and no row; the outline while a thread is read, said
+                through a region already in the page; search with its count, steps, Escape and
+                focus.
+              </li>
+              <li>
+                <strong>Changed:</strong> the time follows genki's format, «14.32» and not «14:32».
+                Search counts answers only in «Søk i svar 2 av 3», where Kunnskapsassistenten
+                counted questions back too. Search is off unless the host asks, as
+                Kunnskapsassistenten has none since #209. A question back draws the choices the
+                contract's <code>clarification.options</code> carries, which Kunnskapsassistenten
+                never got.
+              </li>
+              <li>
+                <strong>The app's, not the block's:</strong> «Fremgangsmåte» and the thinking panel
+                go in the header slot; which turn an error alert speaks for decides when the app
+                passes <code>failed</code>; the announcements when an answer or a question back
+                arrives stay with the app's stream.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                On the 37 answers genki-test gave on 6 November 2026, each after its question, the
+                conversation draws 237 footnotes, as many as the answer block draws alone, and the
+                scan finds 0 leftovers from the source format in the 74 turns.
+              </li>
+              <li>
+                Search looks in the words the answer is drawn with, through the same walk as the
+                drawing: 139 searches in those 37 answers marked 253 matches, each on the characters
+                searched for. A footnote's number is never a match.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Should search come back to the answer's row? Kunnskapsassistenten took it out in
+                #209; the block keeps it behind <code>search</code>.
+              </li>
+              <li>
+                The fixture holds no question back from genki-test, so that state is tested on
+                written examples only.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="chat.html" rel="prev"><small>Previous</small>Chat</a>
+        <a class="next" href="approach.html" rel="next"><small>Next</small>Approach</a>
+      </nav>
+    </main>
+  </body>
+</html>

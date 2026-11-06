@@ -1,0 +1,41 @@
+import { defineNamespace, type Translation } from '@genai/i18n';
+
+export const nbConversation = defineNamespace({
+  youWrote: 'Du skrev:',
+  attachments: 'Med vedlegg: {names}',
+  asked: '{name} spurte:',
+  askedUnnamed: 'KI-assistenten spurte:',
+  answerScope: 'Svaret er',
+  clarificationScope: 'Spørsmålet bygger på dokumenter',
+  needsClarification: 'Trenger avklaring',
+  chooseReply: 'Velg et svar',
+  loading: 'Henter samtalen',
+  answered: 'Svaret kom {time}',
+  yesterday: 'i går',
+  search: 'Søk i svaret',
+  searchOf: 'Søk i svar {n} av {total}',
+  searchPlaceholder: 'Søk i svaret',
+  previousHit: 'Forrige treff i svaret',
+  nextHit: 'Neste treff i svaret',
+  closeSearch: 'Lukk søk i svaret',
+});
+
+export const enConversation = {
+  youWrote: 'You wrote:',
+  attachments: 'With attachments: {names}',
+  asked: '{name} asked:',
+  askedUnnamed: 'The AI assistant asked:',
+  answerScope: 'The answer is',
+  clarificationScope: 'The question builds on documents',
+  needsClarification: 'Needs clarification',
+  chooseReply: 'Choose an answer',
+  loading: 'Loading the conversation',
+  answered: 'The answer came {time}',
+  yesterday: 'yesterday',
+  search: 'Search the answer',
+  searchOf: 'Search answer {n} of {total}',
+  searchPlaceholder: 'Search the answer',
+  previousHit: 'Previous match in the answer',
+  nextHit: 'Next match in the answer',
+  closeSearch: 'Close the search in the answer',
+} satisfies Translation<typeof nbConversation>;

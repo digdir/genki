@@ -11,6 +11,7 @@
 @import './documents/documents.css';
 @import './settings/settings.css';
 @import './answer-actions/answer-actions.css';
+@import './conversation/conversation.css';
 
 .uib-visually-hidden {
   position: absolute;
