@@ -20,16 +20,17 @@
     flex-direction: column;
     gap: var(--genai-sources-title-gap, var(--ds-size-3));
   }
+  /* A Designsystemet heading, «sm» in the panel as kunnskapsassistenten's «Kilder». */
   .uib-sources-title {
-    font-size: var(--genai-sources-title-font-size, var(--ds-body-sm-font-size));
-    font-weight: var(--genai-sources-title-font-weight, var(--ds-font-weight-semibold));
+    margin: 0;
   }
   .uib-sources-mode {
     inline-size: fit-content;
   }
   .uib-sources > .uib-sources-disclaimer {
     margin: 0;
-    color: var(--genai-sources-disclaimer-color, var(--ds-color-text-subtle));
+    /* Pinned to neutral, as kunnskapsassistenten draws it: a quiet line, not the host's accent. */
+    color: var(--genai-sources-disclaimer-color, var(--ds-color-neutral-text-subtle));
   }
   .uib-sources-answers {
     display: flex;
@@ -109,10 +110,13 @@
     --dsc-card-block-border-width: 0;
     background: transparent;
   }
+  /* The title has the card's whole width, and the links back and the app's controls stand under
+     it, as kunnskapsassistenten puts its way back: beside it, a long title is squeezed into a
+     narrow column at the panel's 336 px. */
   .uib-sources-document-head {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
     gap: var(--genai-sources-head-gap, var(--ds-size-2));
     padding: var(--genai-sources-head-padding, var(--_head-padding));
     border: var(--genai-sources-head-border-width, var(--ds-border-width-default)) solid
@@ -130,9 +134,10 @@
     flex: 1 1 auto;
     min-inline-size: 0;
   }
+  /* The chevron stays by the title's first line when the title wraps. */
   .uib-sources-document-toggle {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: var(--genai-sources-head-toggle-gap, var(--ds-size-2));
     inline-size: 100%;
@@ -150,9 +155,32 @@
     flex: none;
     color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));
   }
-  :is(.uib-sources-document-toggle, .uib-sources-excerpt-toggle)[aria-expanded='true']
+  :is(
+      .uib-sources-document-toggle,
+      .uib-sources-excerpt-toggle,
+      .uib-sources-passages-toggle
+    )[aria-expanded='true']
     .uib-sources-caret {
     rotate: 180deg;
+  }
+  /* «Kilde 1» over a document's title, while the footnotes cite documents: as «Utdrag 1» over
+     an excerpt's section. */
+  .uib-sources-document-number {
+    display: block;
+    font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-xs-font-size));
+    font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-regular));
+    color: var(--genai-sources-excerpt-number-color, var(--ds-color-text-subtle));
+  }
+  .uib-sources-passages-toggle {
+    align-self: start;
+  }
+  .uib-sources-passages {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-sources-body-gap, var(--ds-size-4));
+  }
+  .uib-sources-passages[hidden] {
+    display: none;
   }
   .uib-sources-controls,
   .uib-sources-excerpt-controls {
@@ -215,6 +243,30 @@
   }
   .uib-sources-excerpt-controls {
     flex: none;
+  }
+  /* The links back to the answer, one per footnote, as Wikipedia's back-references. */
+  .uib-sources-uses {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--genai-sources-uses-gap, var(--ds-size-2));
+    margin: 0;
+  }
+  .uib-sources-uses-icon {
+    color: var(--genai-sources-uses-icon-color, var(--ds-color-text-subtle));
+  }
+  /* A number alone is a small target: each is at least 24 px both ways (WCAG 2.5.8). A literal,
+     since Designsystemet's size tokens shrink under the link's own data-size="sm": --ds-size-6
+     comes to 21 px there. */
+  .uib-sources-use {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--genai-sources-use-gap, var(--ds-size-1));
+    min-inline-size: var(--genai-sources-use-min-size, 24px);
+    min-block-size: var(--genai-sources-use-min-size, 24px);
+    white-space: nowrap;
+    hyphens: none;
   }
   .uib-sources-excerpt-toggle {
     --dsc-button-color: var(--genai-sources-toggle-color, var(--ds-color-accent-text-subtle));

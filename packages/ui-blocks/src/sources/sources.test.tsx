@@ -56,6 +56,16 @@ const toggleOf = (name: RegExp | string) =>
   within(rowOf(name)).getByRole('button', { name: /^(Åpne|Lukk|Open|Close) / });
 
 describe('the sources block', () => {
+  it('heads its documents with «Kilder» one level up, as kunnskapsassistenten’s outline does', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    expect(screen.getByRole('heading', { level: 2, name: 'Kilder' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: nkom.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 4, name: /^Utdrag 1/ })).toBeTruthy();
+    cleanup();
+    draw({ headingLevel: 4 });
+    expect(screen.getByRole('heading', { level: 3, name: 'Kilder' })).toBeTruthy();
+  });
+
   it('names each document by its title and never by a number', () => {
     draw({ citations: cite('kudos::2021-2') });
     const heading = screen.getByRole('heading', { level: 3, name: nkom.title });
@@ -65,8 +75,14 @@ describe('the sources block', () => {
 
   it('titles an excerpt by its section, with its number before it, as D1 draws it', () => {
     draw({ citations: cite('kudos::2021-1') });
-    const title = screen.getByRole('heading', { level: 4, name: /Ressursbruk og måloppnåelse/ });
-    expect(title.textContent).toBe('Utdrag 1: Ressursbruk og måloppnåelse');
+    const title = screen.getByRole('heading', {
+      level: 4,
+      name: 'Utdrag 1: Ressursbruk og måloppnåelse',
+    });
+    expect([...title.children].map((part) => part.textContent)).toEqual([
+      'Utdrag 1',
+      'Ressursbruk og måloppnåelse',
+    ]);
   });
 
   it('shows a closed excerpt’s first lines, and all of it once opened', () => {
@@ -112,30 +128,63 @@ describe('numbered excerpts, linked both ways', () => {
     expect(within(row).getByRole('heading').textContent).toBe('Utdrag');
     expect(row.dataset.uncited).toBe('true');
     expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
-    expect(within(row).queryByRole('button', { name: /Vis hvor svaret bruker/ })).toBeNull();
+    expect(within(row).queryByRole('link', { name: /^Til svaret/ })).toBeNull();
   });
 
   it('numbers nothing and links nothing back without the answer’s footnotes', () => {
     draw({ onShowUse: () => {} });
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
     expect(screen.queryByText('Ikke vist til i svaret')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Vis hvor svaret bruker/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^Til svaret/ })).toBeNull();
   });
 
-  it('steps from an excerpt through each place the answer uses it, and wraps', () => {
+  it('links an excerpt cited once back to its footnote as «Til svaret», saying which footnote', () => {
     const onShowUse = vi.fn();
     draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
-    const back = within(rowOf(/Utdrag 1/)).getByRole('button', {
-      name: 'Vis hvor svaret bruker utdrag 1 (1/2)',
+    const links = within(rowOf(/Utdrag 2/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute('aria-label')).toBe('Til svaret, fotnote 2 av 3');
+    expect(links[0]?.textContent).toBe('Til svaret');
+    fireEvent.click(links[0] as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, {
+      source: nkom,
+      excerpt: nkom.excerpts[1],
     });
-    expect(back.textContent).toBe('1/2');
-    fireEvent.click(back);
-    expect(back.getAttribute('aria-label')).toBe('Vis hvor svaret bruker utdrag 1 (1/2)');
-    fireEvent.click(back);
-    expect(back.getAttribute('aria-label')).toBe('Vis hvor svaret bruker utdrag 1 (2/2)');
-    fireEvent.click(back);
-    expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([0, 2, 0]);
-    expect(onShowUse.mock.calls[0]?.[1]?.excerpt?.chunkId).toBe('kudos::2021-1');
+  });
+
+  it('gives an excerpt cited several times one link per footnote, «↩ 1 2», in the answer’s order', () => {
+    const onShowUse = vi.fn();
+    draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
+    const links = within(rowOf(/Utdrag 1/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Til svaret, bruk 1, fotnote 1 av 3',
+      'Til svaret, bruk 2, fotnote 3 av 3',
+    ]);
+    // What is seen is in the name (WCAG 2.5.3).
+    expect(links.map((link) => link.textContent)).toEqual(['1', '2']);
+    fireEvent.click(links[1] as HTMLElement);
+    fireEvent.click(links[0] as HTMLElement);
+    expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([2, 0]);
+  });
+
+  it('makes each link back a real link to the footnote’s address, which the app passes', () => {
+    draw({
+      citations: cite('kudos::2021-1', 'kudos::2021-1'),
+      citationHref: (citation) => `#fotnote-${citation}`,
+    });
+    const links = within(rowOf(/Utdrag 1/)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['#fotnote-0', '#fotnote-1']);
+  });
+
+  it('says which answer a link leads to when the thread has several', () => {
+    draw({
+      citations: cite('kudos::2021-1'),
+      onShowUse: () => {},
+      answerIndex: 1,
+      answerCount: 3,
+      onAnswerChange: () => {},
+    });
+    expect(screen.getByRole('link', { name: 'Til svaret, fotnote 1 av 1 i svar 2' })).toBeTruthy();
   });
 
   it('pairs every footnote with a numbered excerpt shown, and every numbered excerpt with a footnote', () => {
@@ -148,9 +197,7 @@ describe('numbered excerpts, linked both ways', () => {
     );
     for (const label of screen.getAllByText(/^Utdrag \d+$/)) {
       const row = label.closest('.uib-sources-excerpt') as HTMLElement;
-      expect(
-        within(row).getByRole('button', { name: /^Vis hvor svaret bruker utdrag \d+/ }),
-      ).toBeTruthy();
+      expect(within(row).getAllByRole('link', { name: /^Til svaret/ }).length).toBeGreaterThan(0);
     }
     expect(pairing.unpaired).toEqual([]);
   });
@@ -159,15 +206,65 @@ describe('numbered excerpts, linked both ways', () => {
 describe('document mode', () => {
   const citations: SourceCitation[] = [{ index: 1 }, { index: 1 }];
 
-  it('numbers no excerpt, and links each cited document back to its uses', () => {
+  const cardOf = (title: string) =>
+    screen
+      .getByRole('heading', { name: new RegExp(`${title}$`) })
+      .closest('.uib-sources-document') as HTMLElement;
+
+  it('numbers each cited document as its footnotes do, «Kilde 1», in the order first cited, and no excerpt', () => {
+    const tildeling: SourceDocument = {
+      index: 4,
+      title: 'Tildelingsbrev Nkom 2022',
+      documentId: 'kudos::2022',
+      excerpts: [{ chunkId: 'kudos::2022-1', text: 'Nkom skal rapportere kvartalsvis.' }],
+    };
+    draw({
+      sources: [nkom, tildeling, memo],
+      citations: [{ index: 4 }, { index: 1 }, { index: 4 }],
+    });
+    expect(
+      screen.getByRole('heading', { level: 3, name: `Kilde 1: ${tildeling.title}` }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: `Kilde 2: ${nkom.title}` })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: memo.title })).toBeTruthy();
+    expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
+  });
+
+  it('links the cited document back to each footnote that cites it, from its head', () => {
     const onShowUse = vi.fn();
     draw({ citations, citationMode: 'document', onShowUse });
-    expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
-    const back = screen.getByRole('button', {
-      name: `Vis hvor svaret bruker ${nkom.title} (1/2)`,
-    });
-    fireEvent.click(back);
-    expect(onShowUse).toHaveBeenCalledWith(0, { source: nkom });
+    const head = cardOf(nkom.title).querySelector('.uib-sources-document-head') as HTMLElement;
+    const links = within(head).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Til svaret, bruk 1, fotnote 1 av 2',
+      'Til svaret, bruk 2, fotnote 2 av 2',
+    ]);
+    fireEvent.click(links[1] as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom });
+    for (const row of cardOf(nkom.title).querySelectorAll<HTMLElement>('.uib-sources-excerpt'))
+      expect(within(row).queryByRole('link', { name: /^Til svaret/ })).toBeNull();
+  });
+
+  it('keeps the passages, which nothing cites alone, unnumbered and closed behind one button', () => {
+    draw({ citations, citationMode: 'document' });
+    const card = cardOf(nkom.title);
+    const toggle = within(card).getByRole('button', { name: 'Vis utdrag fra dokumentet (3)' });
+    const passages = card.querySelector('.uib-sources-passages') as HTMLElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(passages.id);
+    expect(passages.hidden).toBe(true);
+    fireEvent.click(toggle);
+    expect(passages.hidden).toBe(false);
+    expect(toggle.textContent).toBe('Skjul utdrag fra dokumentet (3)');
+    expect(within(passages).queryByText(/^Utdrag \d/)).toBeNull();
+  });
+
+  it('shows the passages that hold a search hit', () => {
+    draw({ citations, citationMode: 'document' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'internkontroll' } });
+    expect((cardOf(nkom.title).querySelector('.uib-sources-passages') as HTMLElement).hidden).toBe(
+      false,
+    );
   });
 
   it('says which documents nothing cites', () => {
@@ -229,6 +326,25 @@ describe('following a footnote', () => {
     await frame();
     expect(document.activeElement?.textContent).toBe(nkom.title);
     expect(screen.getByRole('button', { name: /Tilbake til svaret/ })).toBeTruthy();
+  });
+
+  it('follows a target once, so new sources with the target still held move no focus', async () => {
+    const target = { documentId: 'kudos::2021' };
+    const { rerender } = render(<Sources sources={[nkom, memo]} target={target} />);
+    await frame();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    // Another answer's sources: every card remounts, with the same target object still passed.
+    const again = { ...nkom, excerpts: nkom.excerpts.slice(0, 1) };
+    rerender(<Sources sources={[again, memo]} target={target} />);
+    await frame();
+    expect(document.activeElement).toBe(outside);
+    // A new target object, as a new footnote press gives, is followed.
+    rerender(<Sources sources={[again, memo]} target={{ documentId: 'kudos::2021' }} />);
+    await frame();
+    expect(document.activeElement?.textContent).toBe(nkom.title);
+    outside.remove();
   });
 });
 
@@ -397,7 +513,10 @@ describe('a panel with no sources says why', () => {
   it('shows the loading state while the answer is still on its way', () => {
     draw({ sources: undefined, answerStatus: 'streaming' });
     expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
-    expect(screen.queryByRole('heading')).toBeNull();
+    // «Kilder» only: no empty state under it.
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'Kilder',
+    ]);
   });
 
   it('draws nothing when the app passes neither sources nor a status', () => {
@@ -414,9 +533,7 @@ describe('the catalogue', () => {
       </InLocale>,
     );
     expect(screen.getByRole('heading', { name: /Excerpt 1.*Ressursbruk/ })).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Show where the answer uses excerpt 1' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'To the answer, footnote 1 of 1' })).toBeTruthy();
   });
 
   it('has an English text for every Norwegian one', () => {
