@@ -45,6 +45,12 @@
     display: none;
   }
 
+  /* The documents before or after the fields take the panel's width, as the fields do. */
+  .uib-filter-above,
+  .uib-filter-below {
+    inline-size: 100%;
+  }
+
   /* Twice the field rhythm on each side: the gap plus an equal margin. */
   .uib-filter-divider {
     margin-block: var(--genai-filter-gap, var(--ds-size-7));

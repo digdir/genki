@@ -104,6 +104,35 @@ describe('the filter', () => {
     expect(line.nextElementSibling?.textContent).toBe('Dokumentene');
   });
 
+  it('draws the documents above the fields, in sight, and the reader’s own after them', () => {
+    const { container } = draw({
+      fields,
+      documents: <p>Fra Kudos</p>,
+      children: <p>Dine dokumenter</p>,
+    });
+    const documents = screen.getByText('Fra Kudos');
+    const firstField = screen.getByRole('combobox', { name: 'Dokumenttyper' });
+    const lastField = screen.getByRole('combobox', { name: 'År' });
+    const own = screen.getByText('Dine dokumenter');
+    // Designsystemet's line is hidden from the accessibility tree, so it is found as drawn.
+    const lines = [...container.querySelectorAll('hr')];
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(documents, firstField)).toBe(true);
+    expect(follows(lastField, own)).toBe(true);
+    // A line between the documents and the fields, and one between the fields and the rest.
+    expect(lines).toHaveLength(2);
+    expect(follows(documents, lines[0] as Node) && follows(lines[0] as Node, firstField)).toBe(
+      true,
+    );
+    expect(follows(lastField, lines[1] as Node) && follows(lines[1] as Node, own)).toBe(true);
+  });
+
+  it('draws no line above the fields without documents to put there', () => {
+    const { container } = draw({ fields });
+    expect(container.querySelector('hr')).toBeNull();
+  });
+
   it('draws a field of kind year as periods only when the host asks for them', () => {
     const { unmount } = draw({ fields });
     expect(screen.getByPlaceholderText('Søk i år')).toBeTruthy();
