@@ -80,6 +80,34 @@ describe('the question field', () => {
     expect(document.activeElement).toBe(field());
   });
 
+  it('puts the caret in the field when «Avbryt» goes with a finished answer, so focus does not fall to the page', () => {
+    const { rerender } = render(
+      <Composer value="" onChange={() => {}} onSubmit={() => {}} working onCancel={() => {}} />,
+    );
+    screen.getByRole('button', { name: 'Avbryt genereringen' }).focus();
+    rerender(<Composer value="" onChange={() => {}} onSubmit={() => {}} onCancel={() => {}} />);
+    expect(document.activeElement).toBe(field());
+  });
+
+  it('leaves the focus where the reader moved it while the answer came', () => {
+    const { rerender } = render(
+      <>
+        <button type="button">Et annet sted</button>
+        <Composer value="" onChange={() => {}} onSubmit={() => {}} working onCancel={() => {}} />
+      </>,
+    );
+    screen.getByRole('button', { name: 'Avbryt genereringen' }).focus();
+    const elsewhere = screen.getByRole('button', { name: 'Et annet sted' });
+    elsewhere.focus();
+    rerender(
+      <>
+        <button type="button">Et annet sted</button>
+        <Composer value="" onChange={() => {}} onSubmit={() => {}} onCancel={() => {}} />
+      </>,
+    );
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
   it('names the field and the disclaimer after the assistant, and says «assistenten» without a name', () => {
     const { rerender } = render(
       <Composer

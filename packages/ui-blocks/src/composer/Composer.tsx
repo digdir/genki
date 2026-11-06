@@ -156,6 +156,18 @@ export const Composer = ({
 
   const focusField = () => field.current?.focus();
 
+  // «Avbryt» turns back into a send button that is disabled until the next question, and the
+  // focus on it falls to the page. The field takes it instead, where the next question is written.
+  // Only focus that was on «Avbryt»: a reader who moved on is left where they are.
+  const cancelHeldFocus = useRef(false);
+  useEffect(() => {
+    if (working || !cancelHeldFocus.current) return;
+    cancelHeldFocus.current = false;
+    const active = document.activeElement;
+    const send = own.current?.querySelector('.uib-composer-send');
+    if (active === null || active === document.body || active === send) field.current?.focus();
+  }, [working, field]);
+
   const trySubmit = (question: string) => {
     if (working) return;
     if (uploading) {
@@ -316,9 +328,16 @@ export const Composer = ({
               aria-label={t('composer.cancelLabel')}
               className="uib-composer-send"
               data-color={actionColor}
+              onBlur={(event) => {
+                // Focus moved to something the reader chose. Disabled or gone, it moves to nothing.
+                if (event.relatedTarget) cancelHeldFocus.current = false;
+              }}
               onClick={() => {
                 onCancel();
                 focusField();
+              }}
+              onFocus={() => {
+                cancelHeldFocus.current = true;
               }}
               ref={sendRef}
               variant="secondary"
