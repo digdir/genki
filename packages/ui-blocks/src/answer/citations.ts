@@ -1,10 +1,5 @@
 import { renderBlocks } from '../markdown/Markdown.js';
-import {
-  pairCitations,
-  type CitationMode,
-  type Pairing,
-  type SourceCitation,
-} from '../sources/pairing.js';
+import { pairCitations, type Pairing, type SourceCitation } from '../sources/pairing.js';
 import type { SourceDocument } from '../sources/types.js';
 
 /**
@@ -70,13 +65,15 @@ const writtenMarkers = (text: string): Written[] => {
  * - a footnote that leads to nothing shown is not drawn, so no mark leads nowhere;
  * - a footnote right after one that leads to the same item is one footnote, not two.
  *
+ * Footnotes are numbered by excerpt, never by document: when the footnotes name only documents,
+ * the pairing numbers nothing, and the answer draws no footnote marks.
+ *
  * Without `sources` nothing is a footnote yet: they arrive with the end of the answer.
  */
 export const readFootnotes = (
   text: string,
   sources: readonly SourceDocument[] | undefined,
   markers?: readonly AnswerMarker[],
-  citationMode: CitationMode = 'excerpt',
 ): AnswerFootnotes => {
   const written = writtenMarkers(text);
   const byMarker = new Map(markers?.map((m) => [m.marker, m] as const));
@@ -92,7 +89,7 @@ export const readFootnotes = (
 
   const resolved = written.map((w) => ({ ...w, citation: resolve(w.n) }));
   const all = resolved.flatMap((r) => (r.citation ? [r.citation] : []));
-  const first = pairCitations(sources ?? [], all, citationMode);
+  const first = pairCitations(sources ?? [], all);
 
   const marks = new Map<string, FootnoteMark>();
   const citations: SourceCitation[] = [];
@@ -116,16 +113,18 @@ export const readFootnotes = (
   }
   return {
     citations,
-    pairing: pairCitations(sources ?? [], citations, citationMode),
+    pairing: pairCitations(sources ?? [], citations),
     marks,
     written: written.filter((w) => w.n < 1000).length,
   };
 };
 
-/** The answer's footnotes in order, for `Sources`' `citations`: exactly the ones the answer draws. */
+/**
+ * The answer's footnotes in order, for `Sources`' `citations`: the same list the answer pairs
+ * from, so both blocks number the same excerpts, or nothing.
+ */
 export const answerCitations = (
   text: string,
   sources: readonly SourceDocument[] | undefined,
   markers?: readonly AnswerMarker[],
-  citationMode: CitationMode = 'excerpt',
-): SourceCitation[] => readFootnotes(text, sources, markers, citationMode).citations;
+): SourceCitation[] => readFootnotes(text, sources, markers).citations;

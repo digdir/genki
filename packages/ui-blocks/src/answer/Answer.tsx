@@ -9,7 +9,7 @@ import {
   type MarkdownHighlight,
   type TableFacts,
 } from '../markdown/Markdown.js';
-import { documentKeys, type CitationMode } from '../sources/pairing.js';
+import { documentKeys } from '../sources/pairing.js';
 import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
@@ -54,11 +54,10 @@ export const failureRetryable = (kind: AnswerFailureKind) =>
 // what the button under it does would say it twice.
 const retryPrompt = /\s*(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*[.!…]*\s*$/iu;
 
-/** A footnote in the answer to show, by its index in the answer's footnotes. */
 /**
  * Where focus goes back to in the answer: a footnote, by its index in the answer's footnotes, or
- * a title in «Kilder brukt i svaret», by the document it names. Sources' `onReturn` leads back to
- * whichever the reader followed.
+ * a link in «Kilder brukt i svaret»: an excerpt's, by the excerpt it names (`chunkId`), or else
+ * a title, by the document. Sources' `onReturn` leads back to whichever the reader followed.
  */
 export type AnswerTarget = { citation: number } | { document: SourceTarget };
 
@@ -68,17 +67,20 @@ export interface AnswerProps {
   status?: AnswerStatus | undefined;
   /** The contract's `sources[]`. Without them, `[N]` stays text: they come with the answer's end. */
   sources?: readonly SourceDocument[] | undefined;
-  /** The contract's top-level `markers`, when the service cites excerpts. */
+  /**
+   * The contract's top-level `markers`, when the service cites excerpts. Footnotes are numbered
+   * by excerpt only: without markers, `[N]` names a document, and no footnote is drawn for it.
+   */
   markers?: readonly AnswerMarker[] | undefined;
-  /** The service's choice, or the reader's. Excerpt mode needs markers that name excerpts. */
-  citationMode?: CitationMode | undefined;
   /** The text is the service's notice that it found nothing (`no_answer`), not an answer. */
   noAnswer?: boolean | undefined;
   /** A footnote was followed: its index in the answer's footnotes, and the item it cites. */
   onOpenCitation?: ((citation: number, target: SourceTarget) => void) | undefined;
   /** A document in «Kilder brukt i svaret» was chosen. */
   onOpenDocument?: ((source: SourceDocument) => void) | undefined;
-  /** Where a footnote or a document leads, for a new tab and for copying. */
+  /** An excerpt in «Kilder brukt i svaret», «Utdrag 1», was chosen: the excerpt to show. */
+  onOpenExcerpt?: ((target: SourceTarget) => void) | undefined;
+  /** Where a footnote, a document or an excerpt leads, for a new tab and for copying. */
   href?: ((target: SourceTarget) => string | undefined) | undefined;
   /** An id for each footnote, so the app can find it. */
   citationId?: ((citation: number) => string) | undefined;
@@ -171,8 +173,8 @@ interface FootnoteProps {
   footnotes: Map<number, HTMLElement>;
 }
 
-// Always a number in a round mark, as kunnskapsassistenten draws it: the excerpt's, or the
-// document's while the service cites documents. A link named by what it cites and the document:
+// Always the excerpt's number in a round mark, as kunnskapsassistenten draws it, and never a
+// document's. A link named by what it cites and the document:
 // a bare «[3]» tells a screen reader user nothing. The brackets stay in the text, out of sight,
 // so a copied answer still reads «[1]». With nowhere to go, it is a mark and not a link, which
 // would jump to the top of the page.
@@ -226,18 +228,19 @@ export const AnswerSkeleton = () => (
 
 /**
  * One answer: its text with footnotes, and what a reader can do with it. Each footnote leads to
- * the one item it cites, and Sources leads back to it, from the same pairing. Only excerpts are
- * numbered, in the order the answer first cites them; a document is named by its title.
+ * the one excerpt it cites, and Sources leads back to it, from the same pairing. Only excerpts
+ * are numbered, in the order the answer first cites them; a document is named by its title, and
+ * an answer whose footnotes name only documents draws none.
  */
 export const Answer = ({
   text,
   status = 'complete',
   sources,
   markers,
-  citationMode = 'excerpt',
   noAnswer = false,
   onOpenCitation,
   onOpenDocument,
+  onOpenExcerpt,
   href,
   citationId,
   target,
@@ -278,15 +281,14 @@ export const Answer = ({
     return () => cancelAnimationFrame(frame);
   }, [failed, live]);
 
-  const read = useMemo(
-    () => readFootnotes(text, sources, markers, citationMode),
-    [text, sources, markers, citationMode],
-  );
+  const read = useMemo(() => readFootnotes(text, sources, markers), [text, sources, markers]);
   const { pairing } = read;
   const byExcerpt = pairing.mode === 'excerpt';
   const keys = useMemo(() => documentKeys(sources ?? []), [sources]);
-  // The titles in «Kilder brukt i svaret», by document key, for a way back to one of them.
+  // The titles in «Kilder brukt i svaret», by document key, and its excerpt links, by chunk id,
+  // for a way back to one of them.
   const usedLinks = useRef(new Map<string, HTMLElement>());
+  const excerptLinks = useRef(new Map<string, HTMLElement>());
   const keyOf = (goal: SourceTarget) => {
     const at = (sources ?? []).findIndex(
       (s) =>
@@ -303,11 +305,9 @@ export const Answer = ({
     [sources, t],
   );
 
-  // The document each shown item is in: an excerpt's chunk id, or a document's key.
-  const documentOf = (key: string) => {
-    const at = byExcerpt
-      ? (sources ?? []).findIndex((s) => s.excerpts.some((e) => e.chunkId === key))
-      : keys.indexOf(key);
+  // The document a numbered excerpt is in, by its chunk id.
+  const documentOf = (chunkId: string) => {
+    const at = (sources ?? []).findIndex((s) => s.excerpts.some((e) => e.chunkId === chunkId));
     return at < 0 ? undefined : at;
   };
 
@@ -317,7 +317,10 @@ export const Answer = ({
       const element =
         'citation' in target
           ? footnotes.current.get(target.citation)
-          : usedLinks.current.get(keyOf(target.document) ?? '');
+          : ((target.document.chunkId === undefined
+              ? undefined
+              : excerptLinks.current.get(target.document.chunkId)) ??
+            usedLinks.current.get(keyOf(target.document) ?? ''));
       // Centred, so the sentence the footnote ends is in view above it.
       element?.scrollIntoView?.({ behavior: stillMotion() ? 'auto' : 'smooth', block: 'center' });
       element?.focus({ preventScroll: true });
@@ -329,26 +332,24 @@ export const Answer = ({
     const mark = read.marks.get(key);
     if (mark?.kind === 'dropped') return false;
     if (mark?.kind === 'footnote') {
-      const item = pairing.targets[mark.citation];
+      // A footnote that names only a document has no number, and is not drawn.
+      const item = byExcerpt ? pairing.targets[mark.citation] : undefined;
+      const number = item === undefined ? undefined : pairing.numbers.get(item);
       const at = item === undefined ? undefined : documentOf(item);
       const source = at === undefined ? undefined : sources?.[at];
-      if (item === undefined || at === undefined || !source) return false;
+      if (item === undefined || number === undefined || at === undefined || !source) return false;
       const name = names[at] ?? source.title;
-      const number = pairing.numbers.get(item);
-      if (number === undefined) return false;
-      const goal: SourceTarget = byExcerpt
-        ? { chunkId: item, documentId: source.documentId, index: source.index }
-        : { documentId: source.documentId, index: source.index };
+      const goal: SourceTarget = {
+        chunkId: item,
+        documentId: source.documentId,
+        index: source.index,
+      };
       return (
         <Footnote
           key={key}
           citation={mark.citation}
           number={number}
-          label={
-            byExcerpt
-              ? t('answer.footnote', { n: number, title: name })
-              : t('answer.footnoteDocument', { n: number, title: name })
-          }
+          label={t('answer.footnote', { n: number, title: name })}
           href={href?.(goal)}
           id={citationId?.(mark.citation)}
           onOpen={
@@ -380,18 +381,21 @@ export const Answer = ({
     });
   };
 
+  // Every document the answer cites. Its numbered excerpts go under its title; a document cited
+  // only as a whole has none.
   const used: UsedDocument[] = (sources ?? []).flatMap((source, i) => {
     const key = keys[i] ?? `@${i}`;
-    const numbers = byExcerpt
-      ? source.excerpts.flatMap((e) => {
-          const n = pairing.numbers.get(e.chunkId);
-          return n === undefined ? [] : [n];
-        })
+    const excerpts = byExcerpt
+      ? source.excerpts
+          .flatMap((e) => {
+            const n = pairing.numbers.get(e.chunkId);
+            return n === undefined ? [] : [{ n, chunkId: e.chunkId }];
+          })
+          .toSorted((a, b) => a.n - b.n)
       : [];
-    const number = byExcerpt ? undefined : pairing.numbers.get(key);
-    const cited = byExcerpt ? numbers.length > 0 : number !== undefined;
+    const cited = byExcerpt ? excerpts.length > 0 : pairing.uses.has(key);
     return cited
-      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), numbers, number }]
+      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), excerpts }]
       : [];
   });
 
@@ -470,7 +474,9 @@ export const Answer = ({
             documents={used}
             href={href}
             onOpenDocument={onOpenDocument}
+            onOpenExcerpt={onOpenExcerpt}
             links={usedLinks.current}
+            excerptLinks={excerptLinks.current}
           />
         ) : null}
         {finished && closingQuestion ? (

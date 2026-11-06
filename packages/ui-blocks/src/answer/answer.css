@@ -218,10 +218,23 @@
       var(--ds-color-accent-text-default)
     );
   }
-  /* «Utdrag 1–2» under a title: what the footnotes in the text call them. */
+  /* «Utdrag 1, Utdrag 3» under a title: what the footnotes in the text call them, grey and small,
+     on a line that wraps. Each is a quiet link to the excerpt in Sources, as grey as the line. */
   .uib-answer-sources-used-excerpts {
     margin: 0;
     color: var(--genai-answer-sources-used-excerpts-color, var(--ds-color-text-subtle));
+  }
+  .uib-answer-sources-used-excerpt {
+    --dsc-link-color: var(--genai-answer-sources-used-excerpts-color, var(--ds-color-text-subtle));
+    --dsc-link-color--hover: var(
+      --genai-answer-sources-used-excerpts-hover-color,
+      var(--ds-color-text-default)
+    );
+    --dsc-link-color--active: var(
+      --genai-answer-sources-used-excerpts-hover-color,
+      var(--ds-color-text-default)
+    );
+    white-space: nowrap;
   }
 
   /* The row under the answer: «Generer på nytt», then the app's own row. The app's row fills
