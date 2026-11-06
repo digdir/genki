@@ -93,6 +93,15 @@
                 opens above it.
               </li>
             </ul>
+            <h2>Where it goes</h2>
+            <ul>
+              <li>
+                In the question field, in the composer's <code>actions</code> slot, at the end of
+                the row before the send button. Kunnskapsassistenten decided so on 6 October 2026:
+                the choice of who answers sits where the question is written, like the model choice
+                in claude.ai. Not in the conversation's head.
+              </li>
+            </ul>
           </div>
           <div>
             <h2>Props</h2>
@@ -107,7 +116,10 @@
               </li>
               <li>
                 <code>onChoose</code>: the id the person chose. The app sends it as
-                <code>model</code>.
+                <code>model</code>, and keeps it if it should last: kunnskapsassistenten stores it
+                in the browser only when it is not the default, forgets it at «Logg ut», and passes
+                it back as <code>chosen</code>. A kept id the service no longer offers shows as
+                «Standard».
               </li>
               <li>
                 <code>color</code>: Designsystemet's <code>data-color</code> for the button and the
@@ -256,10 +268,6 @@
               <li>
                 Should the platform give each variant a description of its own, so a person can tell
                 them apart?
-              </li>
-              <li>
-                Placing it is the question field's job: in Kunnskapsassistenten it sits at the end
-                of the row, before the send button.
               </li>
             </ul>
           </div>
