@@ -101,7 +101,7 @@ describe('attaching files to the question', () => {
     expect(screen.getByRole('list', { name: 'Vedlegg til spørsmålet' })).toBeTruthy();
   });
 
-  it('does not send with Enter while a file is on its way, and says why', () => {
+  it('does not send with Enter while a file is on its way, and says why in a live region that was already there', () => {
     const sent: string[] = [];
     render(
       <Controlled
@@ -110,9 +110,12 @@ describe('attaching files to the question', () => {
         sent={sent}
       />,
     );
+    const region = screen.getByRole('status');
+    expect(region.textContent).toBe('');
     fireEvent.keyDown(field(), { key: 'Enter' });
     expect(sent).toEqual([]);
-    expect(screen.getByText('Vent til vedlegget er lastet opp.')).toBeTruthy();
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('Vent til vedlegget er lastet opp.');
     expect(document.activeElement).toBe(field());
   });
 
@@ -292,12 +295,13 @@ describe('attaching where uploading is coming', () => {
     expect(screen.queryByRole('list', { name: 'Vedlegg til spørsmålet' })).toBeNull();
   });
 
-  it('refuses a file dropped on the field, and says why', () => {
+  it('refuses a file dropped on the field, and says why in a live region that was already there', () => {
     render(<Controlled attachments={soon()} />);
+    const region = screen.getByRole('status');
+    expect(region.textContent).toBe('');
     fireEvent.drop(frame(), { dataTransfer: { files: [file('rapport.pdf')], types: ['Files'] } });
-    expect(
-      screen.getByText('Opplasting er ikke tilgjengelig i denne tjenesten ennå.'),
-    ).toBeTruthy();
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region.textContent).toBe('Opplasting er ikke tilgjengelig i denne tjenesten ennå.');
   });
 
   it('does not promise an attachment while a file is dragged over the field', () => {

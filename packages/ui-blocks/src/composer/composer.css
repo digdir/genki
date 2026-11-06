@@ -198,6 +198,28 @@
     color: var(--genai-composer-refusal-color, var(--ds-color-text-subtle));
   }
 
+  /* Out of flow and sizeless when empty, so the gap is not reserved around nothing. Never
+     `display: none`, which drops the live region from the accessibility tree. */
+  .uib-composer-refusal:empty {
+    position: absolute;
+    block-size: 0;
+    inline-size: 0;
+    overflow: hidden;
+  }
+
+  /* What the docked field may not hide (WCAG 2.4.11): the rest of its column stops the field's
+     height above the foot when the browser scrolls to it. Not `scroll-padding` on the scroller,
+     which covers the field too, so every keystroke would walk the column down. The height is
+     measured by Composer.tsx, as kunnskapsassistenten measures its own. */
+  :has(> .uib-composer[data-sticky]) * {
+    scroll-margin-block-end: var(--uib-composer-block-size, 0);
+  }
+
+  .uib-composer[data-sticky],
+  .uib-composer[data-sticky] * {
+    scroll-margin-block-end: 0;
+  }
+
   .uib-composer-follow-ups {
     display: flex;
     flex-wrap: wrap;

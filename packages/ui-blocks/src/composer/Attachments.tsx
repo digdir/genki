@@ -87,6 +87,7 @@ export const AttachmentList = ({
           {item.status === 'failed' && item.error === 'failed' && onRetry ? (
             <Button
               aria-label={t('composer.retryLabel', { name: item.name })}
+              // Pinned to neutral, as kunnskapsassistenten draws it: beside a file, not the action.
               data-color="neutral"
               data-size="sm"
               onClick={() => onRetry(item.id)}

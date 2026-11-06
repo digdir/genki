@@ -7,7 +7,7 @@ const classes = (...names: (string | false | undefined)[]) => names.filter(Boole
 export interface WelcomeProps {
   /** The reader's first name. Without it the greeting is «Hei». */
   name?: string | undefined;
-  /** Designsystemet's `data-color` for the block, set only when given. */
+  /** Designsystemet's `data-color` for the block. Neutral unless given, as kunnskapsassistenten. */
   color?: string | undefined;
   className?: string | undefined;
 }
@@ -16,7 +16,7 @@ export interface WelcomeProps {
  * What a reader meets before the first question. Both lines are one heading, since a second
  * would be an outline entry with nothing under it.
  */
-export const Welcome = ({ name, color, className }: WelcomeProps) => {
+export const Welcome = ({ name, color = 'neutral', className }: WelcomeProps) => {
   const t = useT();
   return (
     <div className={classes('uib-welcome', className)} data-color={color}>
@@ -35,12 +35,18 @@ export interface SuggestionsProps {
   suggestions: readonly string[];
   /** The reader picked one. Fill the field with it and put the caret there; do not send it. */
   onPick: (question: string) => void;
+  /** Designsystemet's `data-color` for the block. Neutral unless given, as kunnskapsassistenten. */
   color?: string | undefined;
   className?: string | undefined;
 }
 
 /** Ready-made questions under the field, a row each because they are long. */
-export const Suggestions = ({ suggestions, onPick, color, className }: SuggestionsProps) => {
+export const Suggestions = ({
+  suggestions,
+  onPick,
+  color = 'neutral',
+  className,
+}: SuggestionsProps) => {
   const t = useT();
   if (suggestions.length === 0) return null;
   return (
@@ -53,6 +59,7 @@ export const Suggestions = ({ suggestions, onPick, color, className }: Suggestio
           <li key={question}>
             <Button
               className="uib-welcome-suggestion"
+              // Pinned to neutral, as kunnskapsassistenten draws it: a list to read, not buttons.
               data-color="neutral"
               onClick={() => onPick(question)}
               variant="tertiary"

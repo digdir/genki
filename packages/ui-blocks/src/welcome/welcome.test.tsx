@@ -31,11 +31,18 @@ describe('the welcome', () => {
     expect(screen.getByText('👋').getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('puts the host’s colour family on the block only when given one', () => {
+  it('is neutral unless the host gives it another colour family, as kunnskapsassistenten draws it', () => {
     const { container, rerender } = render(<Welcome />);
-    expect(container.firstElementChild?.hasAttribute('data-color')).toBe(false);
-    rerender(<Welcome color="neutral" />);
     expect(container.firstElementChild?.getAttribute('data-color')).toBe('neutral');
+    rerender(<Welcome color="brand1" />);
+    expect(container.firstElementChild?.getAttribute('data-color')).toBe('brand1');
+    cleanup();
+    const suggestions = render(<Suggestions suggestions={['Hva er Digdir?']} onPick={() => {}} />);
+    expect(suggestions.container.firstElementChild?.getAttribute('data-color')).toBe('neutral');
+    suggestions.rerender(
+      <Suggestions suggestions={['Hva er Digdir?']} onPick={() => {}} color="brand1" />,
+    );
+    expect(suggestions.container.firstElementChild?.getAttribute('data-color')).toBe('brand1');
   });
 });
 
