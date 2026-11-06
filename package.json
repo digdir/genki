@@ -32,7 +32,7 @@
     "atlas:test": "vitest run --root scripts"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=26.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
