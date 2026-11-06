@@ -263,15 +263,20 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     expect(row.textContent).toContain('594,2 mill. kroner');
   });
 
-  it('leads from an excerpt back to each footnote that cites it, in turn', async () => {
+  it('leads from an excerpt back to each footnote that cites it, by a link of its own', async () => {
     render(<Host />);
-    const back = within(excerptRow(1)).getByRole('button', {
-      name: 'Vis hvor svaret bruker utdrag 1 (1/2)',
-    });
-    fireEvent.click(back);
+    const back = within(excerptRow(1)).getAllByRole('link', { name: /^Til svaret/ });
+    expect(back.map((link) => link.textContent)).toEqual([
+      'Til svaret, bruk 1, fotnote 1 av 4',
+      'Til svaret, bruk 2, fotnote 4 av 4',
+    ]);
+    fireEvent.click(back[1] as HTMLElement);
+    await frame();
+    expect(document.activeElement).toBe(footnotes()[3]);
+    fireEvent.click(back[0] as HTMLElement);
     await frame();
     expect(document.activeElement).toBe(footnotes()[0]);
-    fireEvent.click(back);
+    fireEvent.click(back[1] as HTMLElement);
     await frame();
     expect(document.activeElement).toBe(footnotes()[3]);
     expect(document.activeElement?.getAttribute('aria-label')).toBe(
@@ -293,10 +298,13 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     fireEvent.click(footnotes()[1] as HTMLElement);
     await frame();
     expect(document.activeElement?.textContent).toBe(nkom.title);
-    const back = screen.getByRole('button', {
-      name: `Vis hvor svaret bruker ${nkom.title} (1/2)`,
-    });
-    fireEvent.click(back);
+    const card = screen
+      .getByRole('heading', { name: nkom.title })
+      .closest('.uib-sources-document') as HTMLElement;
+    const firstExcerpt = card.querySelector('.uib-sources-excerpt') as HTMLElement;
+    const back = within(firstExcerpt).getAllByRole('link', { name: /^Til svaret/ });
+    expect(back).toHaveLength(2);
+    fireEvent.click(back[0] as HTMLElement);
     await frame();
     expect(document.activeElement).toBe(footnotes()[1]);
     const memoCard = screen

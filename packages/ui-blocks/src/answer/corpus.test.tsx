@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { scan } from '../sources/fixtures/signatures.js';
+import { documentKeys } from '../sources/pairing.js';
 import { Sources } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
 import { Answer } from './Answer.js';
@@ -145,16 +146,26 @@ describe('the answer on real answers from genki-test', () => {
     expect(problems).toEqual([]);
   });
 
-  it('gives Sources the same footnotes, so each document the answer cites links back to its uses', () => {
+  it('gives Sources the same footnotes, so each excerpt of a cited document links back to every use', () => {
     let backLinks = 0;
     for (const { file, text, sources } of answers.filter((a) => a.sources.length)) {
       const { citations, pairing } = readFootnotes(text, sources);
-      render(
+      const keys = documentKeys(sources);
+      const { container } = render(
         <Sources sources={sources} citations={citations} onShowUse={() => {}} search={false} />,
       );
-      const buttons = screen.queryAllByRole('button', { name: /^Vis hvor svaret bruker / });
-      backLinks += buttons.length;
-      expect(buttons.length, file).toBe(pairing.uses.size);
+      const cards = [...container.querySelectorAll<HTMLElement>('.uib-sources-document')];
+      expect(cards.length, file).toBe(sources.length);
+      cards.forEach((card, i) => {
+        const uses = pairing.uses.get(keys[i] ?? '')?.length ?? 0;
+        const rows = [...card.querySelectorAll<HTMLElement>('.uib-sources-excerpt')];
+        // A document with no excerpt carries its links itself.
+        for (const holder of rows.length ? rows : [card]) {
+          const links = within(holder).queryAllByRole('link', { name: /^Til svaret/ });
+          expect(links.length, `${file} document ${i + 1}`).toBe(uses);
+          backLinks += links.length;
+        }
+      });
       cleanup();
     }
     expect(backLinks).toBeGreaterThan(0);
