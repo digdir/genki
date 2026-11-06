@@ -18,7 +18,10 @@ export interface VariantPickerProps {
   /** The id of the variant in use. Without it the button says «Standard». */
   chosen?: string | undefined;
   onChoose: (id: string) => void;
-  /** Designsystemet's `data-color` for the button and the list, set only when given. */
+  /**
+   * Designsystemet's `data-color` for the button and the list. Neutral unless given, as
+   * kunnskapsassistenten draws its picker in the question field.
+   */
   color?: string | undefined;
   /** On the button, for the block it sits in to place it. */
   className?: string | undefined;
@@ -34,7 +37,7 @@ export const VariantPicker = ({
   variants,
   chosen,
   onChoose,
-  color,
+  color = 'neutral',
   className,
 }: VariantPickerProps) => {
   const t = useT();

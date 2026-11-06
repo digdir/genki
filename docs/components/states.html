@@ -121,6 +121,7 @@
                 <code>ErrorState</code>: <code>title</code>, <code>message</code> and
                 <code>onRetry</code>. <code>focusAfterRetry</code> says where focus goes when a
                 retry clears the error; <code>retryRef</code> hands the app the retry button.
+                <code>headingLevel</code> places the heading in the page's outline, 3 by default.
               </li>
               <li>
                 <code>ErrorState</code> with a <code>kind</code>, for an answer that failed: one of
@@ -130,6 +131,12 @@
                 in the sentences that need a subject. <code>errorKindFromStatus</code> reads an HTTP
                 status for only what it establishes; the platform's own error codes are the app's to
                 map.
+              </li>
+              <li>
+                <code>useErrorText</code>: the one set of texts for the error kinds, for any block
+                that says why something failed, such as an answer's card. It returns a function that
+                takes a kind and <code>assistantName</code> and gives <code>title</code>,
+                <code>what</code> and <code>advice</code> in the reader's language.
               </li>
               <li>
                 <code>NotFoundState</code>: <code>homeHref</code>, and <code>onGoHome</code> for an

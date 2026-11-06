@@ -12,6 +12,31 @@ export {
   type ErrorKind,
 } from './errorKinds.js';
 
+/** An error kind's heading, what happened and what the reader can do, in the reader's language. */
+export interface ErrorText {
+  title: string;
+  what: string;
+  advice: string;
+}
+
+/**
+ * The one set of texts for the error kinds, for any block that says why something failed, such as
+ * an answer's card. The returned function takes the kind and what the assistant is called, which
+ * some kinds name («Assistenten» without it).
+ */
+export const useErrorText = () => {
+  const t = useT();
+  return (kind: ErrorKind, assistantName?: string): ErrorText => {
+    const key = errorTextKey[kind];
+    const name = assistantName ?? t('states.assistant');
+    return {
+      title: t(`states.${key}Title`),
+      what: t(`states.${key}What`, { name }),
+      advice: t(`states.${key}Advice`),
+    };
+  };
+};
+
 export interface EmptyStateProps {
   /** What is missing, said plainly. */
   title: string;
@@ -61,6 +86,8 @@ export interface ErrorStateProps {
   focusAfterRetry?: RefObject<HTMLElement | null> | undefined;
   /** The retry button, for an app whose own control went away with the error. */
   retryRef?: RefObject<HTMLButtonElement | null> | undefined;
+  /** The heading's level, 3 under a panel's or a view's heading by default. */
+  headingLevel?: 2 | 3 | 4 | 5 | 6 | undefined;
 }
 
 /**
@@ -75,18 +102,17 @@ export const ErrorState = ({
   onRetry,
   focusAfterRetry,
   retryRef,
+  headingLevel = 3,
 }: ErrorStateProps) => {
   const t = useT();
+  const errorText = useErrorText();
   const region = useRef<HTMLDivElement>(null);
   const retryHeldFocus = useRef(false);
 
   // kunnskapsassistenten's cases, one heading and two sentences each (`views/chat/errorText.ts`).
-  const key = kind ? errorTextKey[kind] : undefined;
-  const name = assistantName ?? t('states.assistant');
-  const shownTitle = title ?? (key ? t(`states.${key}Title`) : undefined);
-  const shownMessage = key
-    ? `${message ?? t(`states.${key}What`, { name })} ${t(`states.${key}Advice`)}`
-    : message;
+  const text = kind ? errorText(kind, assistantName) : undefined;
+  const shownTitle = title ?? text?.title;
+  const shownMessage = text ? `${message ?? text.what} ${text.advice}` : message;
   const canRetry = onRetry !== undefined && (kind === undefined || isRetryable(kind));
 
   useEffect(() => {
@@ -107,7 +133,7 @@ export const ErrorState = ({
       {shownMessage ? (
         <Alert data-color="danger">
           {shownTitle ? (
-            <Heading level={3} data-size="2xs">
+            <Heading level={headingLevel} data-size="2xs">
               {shownTitle}
             </Heading>
           ) : null}

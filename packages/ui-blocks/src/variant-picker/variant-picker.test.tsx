@@ -90,15 +90,15 @@ describe('the variant picker', () => {
     expect(list?.getAttribute('data-placement')).toBe('top-end');
   });
 
-  it('follows the host’s colour family unless the app gives one', () => {
+  it('is neutral unless the app gives it another colour family, as in kunnskapsassistenten’s field', () => {
     const { rerender } = render(<VariantPicker variants={variants} onChoose={() => {}} />);
     const list = () =>
       screen.getByRole('heading', { name: 'Velg variant', hidden: true }).parentElement;
-    expect(trigger().hasAttribute('data-color')).toBe(false);
-    expect(list()?.hasAttribute('data-color')).toBe(false);
-    rerender(<VariantPicker variants={variants} onChoose={() => {}} color="neutral" />);
     expect(trigger().getAttribute('data-color')).toBe('neutral');
     expect(list()?.getAttribute('data-color')).toBe('neutral');
+    rerender(<VariantPicker variants={variants} onChoose={() => {}} color="brand1" />);
+    expect(trigger().getAttribute('data-color')).toBe('brand1');
+    expect(list()?.getAttribute('data-color')).toBe('brand1');
   });
 
   it('speaks English when the person does', () => {
