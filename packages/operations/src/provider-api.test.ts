@@ -201,12 +201,10 @@ describe('data URLs from media (A3)', () => {
     ).toMatch(/a data URL carries media, so the field is declared media/);
     expect(
       refused(
-        yamlOf('describe-image@1')
-          .replace(
-            '    model: $deployment',
-            '    model: $deployment\n  query:\n    q: { $dataUrl: $input.picture }',
-          )
-          .replace('  body:\n    model', '  body:\n    model'),
+        yamlOf('describe-image@1').replace(
+          '    model: $deployment',
+          '    model: $deployment\n  query:\n    q: { $dataUrl: $input.picture }',
+        ),
       ),
     ).toMatch(/\$dataUrl belongs in a json request body only/);
   });
@@ -414,12 +412,10 @@ describe('answer links (C)', () => {
   it('a bound link may not be read by a mapping', () => {
     expect(
       refused(
-        yamlOf('export-link@1')
-          .replace(
-            '        query: $input.query\n    wire:\n      request:\n        object:\n          query: text\n      response:\n        object:\n          location: plain\n    bind:',
-            '        query: $input.query\n    wire:\n      request:\n        object:\n          query: text\n      response:\n        object:\n          location: plain\n    bind:',
-          )
-          .replace('result:\n  data: $response', 'result:\n  data: $steps.start.link'),
+        yamlOf('export-link@1').replace(
+          'result:\n  data: $response',
+          'result:\n  data: $steps.start.link',
+        ),
       ),
     ).toMatch(/result reads \$steps.start.link, which no step binds as a value/);
   });

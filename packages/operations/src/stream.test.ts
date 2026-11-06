@@ -309,18 +309,13 @@ describe('hostile stream declarations are refused at load (G)', () => {
   });
 
   it('a streamed step is the last step and is read once', () => {
-    const second = base().replace('    usage:\n      input-token', '    usage:\n      input-token');
+    const second = base();
     expect(
       refused(
-        second
-          .replace(
-            'result:',
-            '  - name: after\n    request:\n      method: GET\n      path: /x\n    wire:\n      response: text\nresult:',
-          )
-          .replace(
-            '    wire:\n      request:\n        object:\n          model: plain',
-            '    wire:\n      request:\n        object:\n          model: plain',
-          ),
+        second.replace(
+          'result:',
+          '  - name: after\n    request:\n      method: GET\n      path: /x\n    wire:\n      response: text\nresult:',
+        ),
       ),
     ).toMatch(/a streamed answer or a session is the last step/);
     expect(
