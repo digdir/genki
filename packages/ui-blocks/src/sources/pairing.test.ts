@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pairCitations, type SourceCitation } from './pairing.js';
+import { documentOrder, pairCitations, type SourceCitation } from './pairing.js';
 import type { SourceDocument } from './types.js';
 
 const sources: SourceDocument[] = [
@@ -61,24 +61,31 @@ describe('pairing footnotes with what is shown', () => {
     expect(counted).toBe(citations.length);
   });
 
-  it('pairs documents in document mode, by excerpt, id or index, and numbers them in the order first cited', () => {
-    const pairing = pairCitations(
-      sources,
-      [{ chunkId: 'a2' }, { documentId: 'kudos::b' }, { index: 1 }],
-      'document',
-    );
-    expect(pairing.mode).toBe('document');
-    expect([...pairing.numbers]).toEqual([
-      ['kudos::a', 1],
-      ['kudos::b', 2],
+  it('leads footnotes that name only documents to their documents, by id or index, and numbers nothing', () => {
+    const pairing = pairCitations(sources, [
+      { documentId: 'kudos::b' },
+      { index: 1 },
+      { index: 2 },
     ]);
-    expect(pairing.uses.get('kudos::a')).toEqual([0, 2]);
-    expect(pairing.uses.get('kudos::b')).toEqual([1]);
+    expect(pairing.mode).toBe('document');
+    expect(pairing.targets).toEqual(['kudos::b', 'kudos::a', 'kudos::b']);
+    expect(pairing.uses.get('kudos::a')).toEqual([1]);
+    expect(pairing.uses.get('kudos::b')).toEqual([0, 2]);
+    expect(pairing.numbers.size).toBe(0);
   });
 
-  it('falls back to document mode when a footnote names only its document, and numbers documents', () => {
-    const pairing = pairCitations(sources, [{ chunkId: 'a1' }, { index: 2 }], 'excerpt');
+  it('numbers no document and guesses no excerpt when any footnote names only its document', () => {
+    const pairing = pairCitations(sources, [{ chunkId: 'a1' }, { index: 2 }]);
     expect(pairing.mode).toBe('document');
-    expect([...pairing.numbers.keys()]).toEqual(['kudos::a', 'kudos::b']);
+    expect(pairing.numbers.size).toBe(0);
+    expect(pairing.uses.get('kudos::a')).toEqual([0]);
+  });
+
+  it('orders the documents by their lowest number, the rest after in the service’s order', () => {
+    const third: SourceDocument = { index: 3, title: 'Notat', excerpts: [] };
+    const all = [sources[0], sources[1], third] as SourceDocument[];
+    expect(documentOrder(all, pairCitations(all, cite('b1', 'a3')))).toEqual([1, 0, 2]);
+    expect(documentOrder(all, pairCitations(all, [{ index: 2 }, { index: 1 }]))).toEqual([0, 1, 2]);
+    expect(documentOrder(all, undefined)).toEqual([0, 1, 2]);
   });
 });
