@@ -9,7 +9,7 @@ import {
   type MarkdownHighlight,
   type TableFacts,
 } from '../markdown/Markdown.js';
-import { documentKeys } from '../sources/pairing.js';
+import { documentKeys, documentOrder } from '../sources/pairing.js';
 import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
@@ -381,9 +381,11 @@ export const Answer = ({
     });
   };
 
-  // Every document the answer cites. Its numbered excerpts go under its title; a document cited
-  // only as a whole has none.
-  const used: UsedDocument[] = (sources ?? []).flatMap((source, i) => {
+  // Every document the answer cites, in the order Sources shows them: by their numbers, 1, 2, 3.
+  // Its numbered excerpts go under its title; a document cited only as a whole has none.
+  const used: UsedDocument[] = documentOrder(sources ?? [], pairing).flatMap((i) => {
+    const source = sources?.[i];
+    if (!source) return [];
     const key = keys[i] ?? `@${i}`;
     const excerpts = byExcerpt
       ? source.excerpts

@@ -137,6 +137,22 @@ describe('numbered excerpts, linked both ways', () => {
     expect(within(row).queryByRole('link', { name: /til svaret/i })).toBeNull();
   });
 
+  it('runs the cards in the order of their numbers, 1, 2, 3, as the footnotes do', () => {
+    const third: SourceDocument = {
+      index: 3,
+      title: 'Tildelingsbrev Nkom 2022',
+      documentId: 'kudos::2022',
+      excerpts: [{ chunkId: 'kudos::2022-1', text: 'Nkom skal rapportere kvartalsvis.' }],
+    };
+    draw({
+      sources: [nkom, third, memo],
+      citations: cite('attached:abc:0', 'kudos::2021-2', 'attached:abc:0'),
+    });
+    const titles = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    // The memo has «Utdrag 1», the annual report «Utdrag 2», and nothing cites the letter.
+    expect(titles).toEqual([memo.title, nkom.title, third.title]);
+  });
+
   it('numbers nothing and links nothing back without the answer’s footnotes', () => {
     draw({ onShowUse: () => {} });
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();

@@ -26,7 +26,13 @@ import {
   type SearchHit,
 } from '../markdown/textSearch.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
-import { documentKeys, pairCitations, type Pairing, type SourceCitation } from './pairing.js';
+import {
+  documentKeys,
+  documentOrder,
+  pairCitations,
+  type Pairing,
+  type SourceCitation,
+} from './pairing.js';
 import { SourcesSearch } from './SourcesSearch.js';
 import type { SourceDocument, SourceExcerpt, SourceSelection, SourceTarget } from './types.js';
 
@@ -901,12 +907,18 @@ export const Sources = ({
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
+  // The cards in the order of their numbers, 1, 2, 3, as the footnotes run; the search steps
+  // through them in the same order.
+  const order = useMemo(() => documentOrder(sources ?? [], pairing), [sources, pairing]);
   const index = useMemo<SearchableItem[]>(
     () =>
-      prepared.flatMap((document) =>
-        document.rows.filter((row) => row.flat).map((row) => ({ id: row.key, text: row.flat })),
+      order.flatMap(
+        (i) =>
+          prepared[i]?.rows
+            .filter((row) => row.flat)
+            .map((row) => ({ id: row.key, text: row.flat })) ?? [],
       ),
-    [prepared],
+    [prepared, order],
   );
   const cardOfRow = useMemo(
     () =>
@@ -1077,37 +1089,41 @@ export const Sources = ({
         />
       ) : sources?.length ? (
         <ol key={listKey} className="uib-sources-documents" {...named}>
-          {prepared.map((document, i) => (
-            <li key={document.key}>
-              <SourceItem
-                document={document}
-                level={headingLevel}
-                pairing={pairing}
-                openRows={openRows}
-                onRowOpenChange={setRowOpen}
-                open={cardOpen(document.key)}
-                onOpenChange={(now) => setCardOpen(document.key, now)}
-                passagesOpen={openPassages.has(document.key)}
-                onPassagesOpenChange={(now) =>
-                  setOpenPassages((was) => {
-                    const next = new Set(was);
-                    if (now) next.add(document.key);
-                    else next.delete(document.key);
-                    return next;
-                  })
-                }
-                rowRefs={rowRefs.current}
-                applied={applied.current}
-                hits={hits}
-                currentHit={currentHit}
-                corpus={corpus}
-                headerColor={headerColor}
-                back={back}
-                {...item}
-                target={i === hit ? item.target : undefined}
-              />
-            </li>
-          ))}
+          {order.flatMap((i) => {
+            const document = prepared[i];
+            if (!document) return [];
+            return [
+              <li key={document.key}>
+                <SourceItem
+                  document={document}
+                  level={headingLevel}
+                  pairing={pairing}
+                  openRows={openRows}
+                  onRowOpenChange={setRowOpen}
+                  open={cardOpen(document.key)}
+                  onOpenChange={(now) => setCardOpen(document.key, now)}
+                  passagesOpen={openPassages.has(document.key)}
+                  onPassagesOpenChange={(now) =>
+                    setOpenPassages((was) => {
+                      const next = new Set(was);
+                      if (now) next.add(document.key);
+                      else next.delete(document.key);
+                      return next;
+                    })
+                  }
+                  rowRefs={rowRefs.current}
+                  applied={applied.current}
+                  hits={hits}
+                  currentHit={currentHit}
+                  corpus={corpus}
+                  headerColor={headerColor}
+                  back={back}
+                  {...item}
+                  target={i === hit ? item.target : undefined}
+                />
+              </li>,
+            ];
+          })}
         </ol>
       ) : null}
       {children}
