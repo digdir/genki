@@ -11,12 +11,13 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import { classes, plainClick } from '../dom.js';
 import { useT } from '../i18n.js';
 import { DeleteThreadDialog } from './DeleteThreadDialog.js';
 import { groupThreads, rowTime, type ThreadGroup } from './grouping.js';
 import { RenameThread } from './RenameThread.js';
 import { ThreadMenu } from './ThreadMenu.js';
-import { plainClick, ThreadRow } from './ThreadRow.js';
+import { ThreadRow } from './ThreadRow.js';
 import type { ThreadItem } from './types.js';
 
 export interface ThreadsProps {
@@ -56,7 +57,9 @@ export interface ThreadsProps {
   headingLevel?: 2 | 3 | 4 | 5 | undefined;
   /** Designsystemet's `data-color` for the block, set only when given. */
   color?: string | undefined;
-  /** After the list, such as who is signed in. */
+  /** After the list, such as who is signed in. `foot`, as the shell's panels name theirs. */
+  foot?: ReactNode;
+  /** @deprecated `foot`, the name the shell uses too; kept until hosts have moved. */
   footer?: ReactNode;
   className?: string | undefined;
 }
@@ -75,8 +78,6 @@ type Pending =
 /** Where focus goes when the row it was on has gone. */
 const newThreadTarget = '\u0000new-thread';
 
-const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
-
 /** «Tråder»: the person's conversations by period, with search, rename and delete. */
 export const Threads = ({
   threads,
@@ -93,6 +94,7 @@ export const Threads = ({
   focusShowFilters = false,
   headingLevel = 2,
   color,
+  foot,
   footer,
   className,
 }: ThreadsProps) => {
@@ -314,7 +316,7 @@ export const Threads = ({
         ref={headingRef}
         level={headingLevel}
         data-size="xs"
-        className="uib-visually-hidden"
+        className="ds-sr-only"
         tabIndex={-1}
       >
         {t('threads.earlier')}
@@ -352,9 +354,7 @@ export const Threads = ({
       />
 
       {/* The skeleton is hidden from screen readers, so this says it loads, and what a change did. */}
-      <output className="uib-visually-hidden">
-        {loading ? t('threads.loading') : announcement}
-      </output>
+      <output className="ds-sr-only">{loading ? t('threads.loading') : announcement}</output>
 
       {loading ? (
         <div className="uib-threads-loading">
@@ -438,7 +438,7 @@ export const Threads = ({
         </section>
       ))}
 
-      {footer}
+      {foot ?? footer}
 
       {onDelete ? (
         <DeleteThreadDialog

@@ -5,11 +5,11 @@ import {
   useId,
   useRef,
   useState,
-  type MouseEvent,
   type PointerEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
+import { plainClick } from '../dom.js';
 import type { RowTime } from './grouping.js';
 
 export interface ThreadRowProps {
@@ -28,9 +28,6 @@ interface Anchor {
   top: number;
   left: number;
 }
-
-export const plainClick = (event: MouseEvent) =>
-  event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /** One thread: a link named by its title alone, with a box showing what its one line cuts off. */
 export const ThreadRow = ({ title, href, current, time, dataset, onOpen }: ThreadRowProps) => {

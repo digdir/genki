@@ -58,7 +58,7 @@ describe('the thread list', () => {
       ['H3', 'Siste 7 dager'],
       ['H3', 'Juli'],
     ]);
-    expect(screen.getByText('Tidligere tråder').className).toContain('uib-visually-hidden');
+    expect(screen.getByText('Tidligere tråder').className).toContain('ds-sr-only');
   });
 
   it('puts the headings at the level the host asks for, and the groups one below', () => {
@@ -122,7 +122,7 @@ describe('the thread list', () => {
   it('keeps the loading region once the threads are there', () => {
     const { container } = draw();
     expect(container.querySelector('.uib-threads')?.getAttribute('aria-busy')).toBeNull();
-    expect(container.querySelector('.uib-threads > output.uib-visually-hidden')).not.toBeNull();
+    expect(container.querySelector('.uib-threads > output.ds-sr-only')).not.toBeNull();
   });
 
   it('says when the list could not be read, and reads it again on «Prøv igjen»', () => {
@@ -149,7 +149,7 @@ describe('the thread list', () => {
   });
 
   it('draws what the host puts after the list', () => {
-    draw({ footer: <p>Innlogget som Kari</p> });
+    draw({ foot: <p>Innlogget som Kari</p> });
     expect(screen.getByText('Innlogget som Kari')).toBeTruthy();
   });
 });

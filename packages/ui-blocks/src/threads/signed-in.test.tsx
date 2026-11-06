@@ -14,7 +14,7 @@ describe('who is signed in', () => {
   it('names the reader, says «Innlogget som» to a screen reader, and has the address on hover', () => {
     render(<SignedIn name="Kari Nordmann" email="kari@digdir.no" signOutHref="/auth/logout" />);
     const name = screen.getByText('Kari Nordmann');
-    expect(screen.getByText('Innlogget som').className).toContain('uib-visually-hidden');
+    expect(screen.getByText('Innlogget som').className).toContain('ds-sr-only');
     expect(name.closest('p')?.getAttribute('title')).toBe('kari@digdir.no');
   });
 
@@ -47,12 +47,12 @@ describe('who is signed in', () => {
     expect(container.textContent).toBe('');
   });
 
-  it('stands at the end of the thread list, after the last row, in its footer', () => {
+  it('stands at the end of the thread list, after the last row, in its foot', () => {
     render(
       <Threads
         threads={[{ id: 'a', title: 'Måloppnåelse i Nkom', updatedAt: Date.now() }]}
         threadHref={(thread) => `/threads/${thread.id}`}
-        footer={<SignedIn name="Kari Nordmann" signOutHref="/auth/logout" />}
+        foot={<SignedIn name="Kari Nordmann" signOutHref="/auth/logout" />}
       />,
     );
     const row = screen.getByRole('link', { name: 'Måloppnåelse i Nkom' });

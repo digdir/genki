@@ -144,10 +144,11 @@
               <li>
                 <code>failed</code> and <code>onRetry</code>, <code>currentId</code>,
                 <code>newThreadHref</code> and <code>onNewThread</code>, and a
-                <code>footer</code> slot for who is signed in.
+                <code>foot</code> slot for who is signed in, named as the shell's panels name theirs
+                (<code>footer</code> still works until hosts have moved).
               </li>
               <li>
-                <code>SignedIn</code>, for the <code>footer</code>: the reader's <code>name</code>,
+                <code>SignedIn</code>, for the <code>foot</code>: the reader's <code>name</code>,
                 with the <code>email</code> on hover, and «Logg ut», a plain link to
                 <code>signOutHref</code>. <code>onSignOut</code> comes before the browser leaves, a
                 middle click included, so the host can forget what this browser kept for the reader:
