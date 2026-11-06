@@ -443,6 +443,9 @@ type ItemProps = Pick<
   onRowOpenChange: (key: string, open: boolean) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Document mode: whether the document's passages, which nothing cites alone, are shown. */
+  passagesOpen: boolean;
+  onPassagesOpenChange: (open: boolean) => void;
   rowRefs: Map<string, HTMLElement>;
   hits: readonly SearchHit[];
   currentHit: SearchHit | undefined;
@@ -456,6 +459,8 @@ const SourceItem = ({
   onRowOpenChange,
   open,
   onOpenChange,
+  passagesOpen,
+  onPassagesOpenChange,
   rowRefs,
   hits,
   currentHit,
@@ -482,9 +487,14 @@ const SourceItem = ({
   const title = given || t('sources.untitled');
   const active = target?.chunkId && holds(source, target) ? target.chunkId : undefined;
   const byExcerpt = pairing?.mode === 'excerpt';
-  const documentUses = pairing && !byExcerpt ? (pairing.uses.get(documentKey) ?? []) : [];
-  const documentUncited = pairing !== undefined && !byExcerpt && documentUses.length === 0;
-  // In document mode a footnote cites the whole document, so each excerpt shown links to its uses.
+  // While the footnotes cite documents, the document is what they point at: it carries the
+  // footnote's number and the links back, and its passages, which nothing cites alone, stay
+  // unnumbered behind «Vis utdrag fra dokumentet».
+  const byDocument = pairing?.mode === 'document';
+  const documentNumber = byDocument ? pairing.numbers.get(documentKey) : undefined;
+  const documentUses = byDocument ? (pairing.uses.get(documentKey) ?? []) : [];
+  const documentUncited = byDocument && documentUses.length === 0;
+  const passagesId = useId();
   const backLinks = (uses: readonly number[], excerpt?: SourceExcerpt) =>
     back && uses.length ? (
       <BackLinks
@@ -500,7 +510,10 @@ const SourceItem = ({
 
   useEffect(() => {
     if (!target) return;
-    if (target.chunkId && holds(source, target)) onRowOpenChange(target.chunkId, true);
+    if (target.chunkId && holds(source, target)) {
+      onRowOpenChange(target.chunkId, true);
+      if (byDocument) onPassagesOpenChange(true);
+    }
     onOpenChange(true);
     setFocus(target);
   }, [target]);
@@ -533,6 +546,31 @@ const SourceItem = ({
           .filter(Boolean)
           .join(' · ');
   const actions = sourceActions?.(source);
+  // A document's passages, which nothing cites alone, behind one button in document mode.
+  const passages = (drawn: ReactNode[]) =>
+    byDocument && drawn.length ? (
+      <>
+        <Button
+          type="button"
+          variant="tertiary"
+          data-size="sm"
+          className="uib-sources-passages-toggle"
+          aria-expanded={passagesOpen}
+          aria-controls={passagesId}
+          onClick={() => onPassagesOpenChange(!passagesOpen)}
+        >
+          {passagesOpen
+            ? t('sources.hidePassages', { count: drawn.length })
+            : t('sources.showPassages', { count: drawn.length })}
+          <ChevronDownIcon aria-hidden className="uib-sources-caret" />
+        </Button>
+        <div id={passagesId} className="uib-sources-passages" hidden={!passagesOpen}>
+          {drawn}
+        </div>
+      </>
+    ) : (
+      drawn
+    );
   const landed = target !== undefined && target.chunkId === undefined && onReturn !== undefined;
   const leaveCard = landed
     ? (event: KeyboardEvent) => {
@@ -562,12 +600,24 @@ const SourceItem = ({
             aria-controls={bodyId}
             onClick={() => onOpenChange(!open)}
           >
-            <span>{title}</span>
+            {documentNumber === undefined ? (
+              <span>{title}</span>
+            ) : (
+              <span>
+                <span className="uib-sources-document-number">
+                  {t('sources.documentNumber', { n: documentNumber })}
+                </span>
+                {/* The space stays outside the hidden colon, or the name reads «Kilde 1:Tittel». */}
+                <span className="ds-sr-only">:</span> {title}
+              </span>
+            )}
             <ChevronDownIcon aria-hidden className="uib-sources-caret" />
           </button>
         </Heading>
-        {details || actions ? (
+        {details || actions || (back && documentUses.length) ? (
           <div className="uib-sources-controls">
+            {/* The document is the cited item, so it carries the links back, on a closed card too. */}
+            {backLinks(documentUses)}
             {details ? (
               <Button
                 variant="tertiary"
@@ -592,8 +642,6 @@ const SourceItem = ({
             {subtitle}
           </Paragraph>
         ) : null}
-        {/* A cited document with no excerpt to carry its links carries them itself. */}
-        {rows.length === 0 ? backLinks(documentUses) : null}
         {documentUncited ? (
           <Paragraph data-size="xs" className="uib-sources-uncited">
             {t('sources.uncited')}
@@ -634,160 +682,165 @@ const SourceItem = ({
             </dl>
           </div>
         ) : null}
-        {rows.map((row, i) => {
-          const { text, excerpt, key } = row;
-          const isOpen = openRows.has(key);
-          const rowHits = hitsFor(hits, key);
-          const here = excerpt !== undefined && excerpt.chunkId === active;
-          const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
-          const uses = byExcerpt
-            ? n !== undefined && excerpt
-              ? (pairing.uses.get(excerpt.chunkId) ?? [])
-              : []
-            : documentUses;
-          const uncited = byExcerpt && n === undefined;
-          const path = headingText(excerpt?.heading);
-          const section = sectionOf(path);
-          const name =
-            n === undefined
-              ? t('sources.excerptNameOfTotal', { n: i + 1, total: rows.length })
-              : t('sources.excerptName', { n });
-          const page = excerpt?.page;
-          const fetching = !excerpt?.textUnavailable && excerpt?.textLoading && !text;
-          const pageLink =
-            excerpt?.url && page !== undefined && reachesPage(excerpt.url, page)
-              ? excerpt.url
-              : undefined;
-          const quoteId = `${rowId}-${i}`;
-          const leave =
-            here && onReturn
-              ? (event: KeyboardEvent) => {
-                  if (event.key !== 'Escape') return;
-                  event.stopPropagation();
-                  onReturn();
-                }
-              : undefined;
-          return (
-            // Listens for Escape only, when a footnote sent the reader here.
-            <div
-              key={key}
-              id={excerpt ? excerptId?.(excerpt, source) : undefined}
-              className="uib-sources-excerpt ds-focus"
-              tabIndex={-1}
-              ref={(el) => {
-                if (el) rowRefs.set(key, el);
-                else rowRefs.delete(key);
-              }}
-              data-active={here || undefined}
-              data-uncited={uncited || undefined}
-              data-open={isOpen || undefined}
-              aria-busy={fetching || undefined}
-              onKeyDown={leave}
-            >
-              <div className="uib-sources-excerpt-head">
-                <Heading
-                  level={(level + 1) as Level}
-                  data-size="2xs"
-                  className="uib-sources-excerpt-title"
-                >
-                  {n === undefined ? null : (
-                    <span className="uib-sources-excerpt-number">
-                      {t('sources.excerptNumber', { n })}
-                    </span>
-                  )}
-                  {section && n !== undefined ? <span className="ds-sr-only">: </span> : null}
-                  {section ? <span>{section}</span> : null}
-                  {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
-                </Heading>
-                <div className="uib-sources-excerpt-controls">
-                  {/* Beside the title, so they work on a closed row too. */}
-                  {backLinks(uses, excerpt)}
-                  <Button
-                    type="button"
-                    variant="tertiary"
-                    data-size="sm"
-                    className="uib-sources-excerpt-toggle"
-                    aria-expanded={isOpen}
-                    aria-controls={quoteId}
-                    onClick={() => {
-                      onRowOpenChange(key, !isOpen);
-                      if (!isOpen && excerpt) onSelect?.({ source, excerpt });
-                    }}
+        {passages(
+          rows.map((row, i) => {
+            const { text, excerpt, key } = row;
+            const isOpen = openRows.has(key);
+            const rowHits = hitsFor(hits, key);
+            const here = excerpt !== undefined && excerpt.chunkId === active;
+            const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
+            const uses =
+              byExcerpt && n !== undefined && excerpt
+                ? (pairing.uses.get(excerpt.chunkId) ?? [])
+                : [];
+            const uncited = byExcerpt && n === undefined;
+            const path = headingText(excerpt?.heading);
+            const section = sectionOf(path);
+            const name =
+              n === undefined
+                ? t('sources.excerptNameOfTotal', { n: i + 1, total: rows.length })
+                : t('sources.excerptName', { n });
+            const page = excerpt?.page;
+            const fetching = !excerpt?.textUnavailable && excerpt?.textLoading && !text;
+            const pageLink =
+              excerpt?.url && page !== undefined && reachesPage(excerpt.url, page)
+                ? excerpt.url
+                : undefined;
+            const quoteId = `${rowId}-${i}`;
+            const leave =
+              here && onReturn
+                ? (event: KeyboardEvent) => {
+                    if (event.key !== 'Escape') return;
+                    event.stopPropagation();
+                    onReturn();
+                  }
+                : undefined;
+            return (
+              // Listens for Escape only, when a footnote sent the reader here.
+              <div
+                key={key}
+                id={excerpt ? excerptId?.(excerpt, source) : undefined}
+                className="uib-sources-excerpt ds-focus"
+                tabIndex={-1}
+                ref={(el) => {
+                  if (el) rowRefs.set(key, el);
+                  else rowRefs.delete(key);
+                }}
+                data-active={here || undefined}
+                data-uncited={uncited || undefined}
+                data-open={isOpen || undefined}
+                aria-busy={fetching || undefined}
+                onKeyDown={leave}
+              >
+                <div className="uib-sources-excerpt-head">
+                  <Heading
+                    level={(level + 1) as Level}
+                    data-size="2xs"
+                    className="uib-sources-excerpt-title"
                   >
-                    {isOpen ? t('sources.close') : t('sources.open')}{' '}
-                    <span className="ds-sr-only">{name}</span>
-                    <ChevronDownIcon aria-hidden className="uib-sources-caret" />
-                  </Button>
+                    {n === undefined ? null : (
+                      <span className="uib-sources-excerpt-number">
+                        {t('sources.excerptNumber', { n })}
+                      </span>
+                    )}
+                    {section && n !== undefined ? (
+                      <>
+                        <span className="ds-sr-only">:</span>{' '}
+                      </>
+                    ) : null}
+                    {section ? <span>{section}</span> : null}
+                    {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
+                  </Heading>
+                  <div className="uib-sources-excerpt-controls">
+                    {/* Beside the title, so they work on a closed row too. */}
+                    {backLinks(uses, excerpt)}
+                    <Button
+                      type="button"
+                      variant="tertiary"
+                      data-size="sm"
+                      className="uib-sources-excerpt-toggle"
+                      aria-expanded={isOpen}
+                      aria-controls={quoteId}
+                      onClick={() => {
+                        onRowOpenChange(key, !isOpen);
+                        if (!isOpen && excerpt) onSelect?.({ source, excerpt });
+                      }}
+                    >
+                      {isOpen ? t('sources.close') : t('sources.open')}{' '}
+                      <span className="ds-sr-only">{name}</span>
+                      <ChevronDownIcon aria-hidden className="uib-sources-caret" />
+                    </Button>
+                  </div>
+                </div>
+                {uncited ? (
+                  <Paragraph data-size="xs" className="uib-sources-uncited">
+                    {t('sources.uncited')}
+                  </Paragraph>
+                ) : null}
+                <div id={quoteId} className="uib-sources-excerpt-body">
+                  {isOpen && ((path && path !== section) || page !== undefined) ? (
+                    <Paragraph data-size="xs" className="uib-sources-section">
+                      {path && path !== section ? <strong>{path}</strong> : null}
+                      {path && path !== section && page !== undefined ? ' · ' : null}
+                      {page === undefined ? null : (
+                        <span className="uib-sources-page">{t('sources.page', { page })}</span>
+                      )}
+                    </Paragraph>
+                  ) : null}
+                  {fetching ? (
+                    <Paragraph data-size="sm" className="uib-sources-fetching">
+                      {t('sources.excerptLoading')}
+                    </Paragraph>
+                  ) : excerpt?.textUnavailable || !text ? (
+                    <Paragraph data-size="sm" className="uib-sources-unavailable">
+                      {t('sources.excerptUnavailable')}
+                    </Paragraph>
+                  ) : (
+                    <Markdown
+                      text={text}
+                      links={false}
+                      className={classes(
+                        'uib-markdown uib-sources-quote',
+                        !isOpen && 'uib-sources-preview',
+                      )}
+                      highlight={
+                        rowHits.length
+                          ? {
+                              hits: rowHits,
+                              offsets: row.offsets,
+                              current: currentHit,
+                              markClassName: 'uib-sources-mark',
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
+                  {isOpen && pageLink && page !== undefined ? (
+                    <Link
+                      href={pageLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-size="sm"
+                      className="uib-sources-link"
+                    >
+                      {corpus
+                        ? t('sources.readPageOn', { page, corpus })
+                        : t('sources.readPage', { page })}
+                      <span className="ds-sr-only">
+                        , {name}, {title} {t('sources.opensInNewTab')}
+                      </span>
+                      <ExternalLinkIcon aria-hidden />
+                    </Link>
+                  ) : null}
+                  {isOpen && excerpt && excerptActions ? (
+                    <div className="uib-sources-actions">{excerptActions({ source, excerpt })}</div>
+                  ) : null}
+                  {isOpen && here && onReturn ? <BackButton onClick={onReturn} /> : null}
                 </div>
               </div>
-              {uncited ? (
-                <Paragraph data-size="xs" className="uib-sources-uncited">
-                  {t('sources.uncited')}
-                </Paragraph>
-              ) : null}
-              <div id={quoteId} className="uib-sources-excerpt-body">
-                {isOpen && ((path && path !== section) || page !== undefined) ? (
-                  <Paragraph data-size="xs" className="uib-sources-section">
-                    {path && path !== section ? <strong>{path}</strong> : null}
-                    {path && path !== section && page !== undefined ? ' · ' : null}
-                    {page === undefined ? null : (
-                      <span className="uib-sources-page">{t('sources.page', { page })}</span>
-                    )}
-                  </Paragraph>
-                ) : null}
-                {fetching ? (
-                  <Paragraph data-size="sm" className="uib-sources-fetching">
-                    {t('sources.excerptLoading')}
-                  </Paragraph>
-                ) : excerpt?.textUnavailable || !text ? (
-                  <Paragraph data-size="sm" className="uib-sources-unavailable">
-                    {t('sources.excerptUnavailable')}
-                  </Paragraph>
-                ) : (
-                  <Markdown
-                    text={text}
-                    links={false}
-                    className={classes(
-                      'uib-markdown uib-sources-quote',
-                      !isOpen && 'uib-sources-preview',
-                    )}
-                    highlight={
-                      rowHits.length
-                        ? {
-                            hits: rowHits,
-                            offsets: row.offsets,
-                            current: currentHit,
-                            markClassName: 'uib-sources-mark',
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-                {isOpen && pageLink && page !== undefined ? (
-                  <Link
-                    href={pageLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-size="sm"
-                    className="uib-sources-link"
-                  >
-                    {corpus
-                      ? t('sources.readPageOn', { page, corpus })
-                      : t('sources.readPage', { page })}
-                    <span className="ds-sr-only">
-                      , {name}, {title} {t('sources.opensInNewTab')}
-                    </span>
-                    <ExternalLinkIcon aria-hidden />
-                  </Link>
-                ) : null}
-                {isOpen && excerpt && excerptActions ? (
-                  <div className="uib-sources-actions">{excerptActions({ source, excerpt })}</div>
-                ) : null}
-                {isOpen && here && onReturn ? <BackButton onClick={onReturn} /> : null}
-              </div>
-            </div>
-          );
-        })}
+            );
+          }),
+        )}
         {isOwn(source) ? (
           <Paragraph data-size="xs" className="uib-sources-no-link">
             {t('sources.ownDocumentNoLink')}
@@ -853,6 +906,7 @@ export const Sources = ({
   const madeId = useId();
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(new Set());
   const [openCards, setOpenCards] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const [openPassages, setOpenPassages] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState('');
   const [hitIndex, setHitIndex] = useState(0);
   const rowRefs = useRef(new Map<string, HTMLElement>());
@@ -899,15 +953,15 @@ export const Sources = ({
 
   const reveal = (keys: readonly string[]) => {
     if (keys.length === 0) return;
+    const cards = keys.flatMap((key) => cardOfRow.get(key) ?? []);
     setOpenRows((was) => new Set([...was, ...keys]));
     setOpenCards((was) => {
       const next = new Map(was);
-      for (const key of keys) {
-        const card = cardOfRow.get(key);
-        if (card !== undefined) next.set(card, true);
-      }
+      for (const card of cards) next.set(card, true);
       return next;
     });
+    // A hit in a document's passages shows them, or the counter would count what is hidden.
+    setOpenPassages((was) => new Set([...was, ...cards]));
   };
 
   const scrollToRow = (key: string | undefined) => {
@@ -1063,6 +1117,15 @@ export const Sources = ({
                 onRowOpenChange={setRowOpen}
                 open={cardOpen(document.key)}
                 onOpenChange={(now) => setCardOpen(document.key, now)}
+                passagesOpen={openPassages.has(document.key)}
+                onPassagesOpenChange={(now) =>
+                  setOpenPassages((was) => {
+                    const next = new Set(was);
+                    if (now) next.add(document.key);
+                    else next.delete(document.key);
+                    return next;
+                  })
+                }
                 rowRefs={rowRefs.current}
                 hits={hits}
                 currentHit={currentHit}

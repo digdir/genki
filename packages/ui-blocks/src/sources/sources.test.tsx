@@ -195,34 +195,65 @@ describe('numbered excerpts, linked both ways', () => {
 describe('document mode', () => {
   const citations: SourceCitation[] = [{ index: 1 }, { index: 1 }];
 
-  it('numbers no excerpt, and links each excerpt of a cited document back to the document’s uses', () => {
-    const onShowUse = vi.fn();
-    draw({ citations, citationMode: 'document', onShowUse });
+  const cardOf = (title: string) =>
+    screen
+      .getByRole('heading', { name: new RegExp(`${title}$`) })
+      .closest('.uib-sources-document') as HTMLElement;
+
+  it('numbers each cited document as its footnotes do, «Kilde 1», in the order first cited, and no excerpt', () => {
+    const tildeling: SourceDocument = {
+      index: 4,
+      title: 'Tildelingsbrev Nkom 2022',
+      documentId: 'kudos::2022',
+      excerpts: [{ chunkId: 'kudos::2022-1', text: 'Nkom skal rapportere kvartalsvis.' }],
+    };
+    draw({
+      sources: [nkom, tildeling, memo],
+      citations: [{ index: 4 }, { index: 1 }, { index: 4 }],
+    });
+    expect(
+      screen.getByRole('heading', { level: 3, name: `Kilde 1: ${tildeling.title}` }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: `Kilde 2: ${nkom.title}` })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: memo.title })).toBeTruthy();
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
-    const card = screen.getByRole('heading', { name: nkom.title }).closest('.uib-sources-document');
-    const head = card?.querySelector('.uib-sources-document-head') as HTMLElement;
-    expect(within(head).queryByRole('link')).toBeNull();
-    const rows = [...(card?.querySelectorAll('.uib-sources-excerpt') ?? [])] as HTMLElement[];
-    expect(rows).toHaveLength(3);
-    for (const row of rows)
-      expect(
-        within(row)
-          .getAllByRole('link', { name: /^Til svaret/ })
-          .map((link) => link.textContent),
-      ).toEqual(['Til svaret, bruk 1, fotnote 1 av 2', 'Til svaret, bruk 2, fotnote 2 av 2']);
-    fireEvent.click(within(rows[1] as HTMLElement).getAllByRole('link')[1] as HTMLElement);
-    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom, excerpt: nkom.excerpts[1] });
   });
 
-  it('puts the links on the card itself when a cited document has no excerpt to carry them', () => {
-    const bare: SourceDocument = { ...nkom, excerpts: [] };
-    draw({
-      sources: [bare],
-      citations: [{ index: 1 }],
-      citationMode: 'document',
-      onShowUse: () => {},
-    });
-    expect(screen.getByRole('link', { name: 'Til svaret, fotnote 1 av 1' })).toBeTruthy();
+  it('links the cited document back to each footnote that cites it, from its head', () => {
+    const onShowUse = vi.fn();
+    draw({ citations, citationMode: 'document', onShowUse });
+    const head = cardOf(nkom.title).querySelector('.uib-sources-document-head') as HTMLElement;
+    const links = within(head).getAllByRole('link', { name: /^Til svaret/ });
+    expect(links.map((link) => link.textContent)).toEqual([
+      'Til svaret, bruk 1, fotnote 1 av 2',
+      'Til svaret, bruk 2, fotnote 2 av 2',
+    ]);
+    fireEvent.click(links[1] as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom });
+    for (const row of cardOf(nkom.title).querySelectorAll<HTMLElement>('.uib-sources-excerpt'))
+      expect(within(row).queryByRole('link', { name: /^Til svaret/ })).toBeNull();
+  });
+
+  it('keeps the passages, which nothing cites alone, unnumbered and closed behind one button', () => {
+    draw({ citations, citationMode: 'document' });
+    const card = cardOf(nkom.title);
+    const toggle = within(card).getByRole('button', { name: 'Vis utdrag fra dokumentet (3)' });
+    const passages = card.querySelector('.uib-sources-passages') as HTMLElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(passages.id);
+    expect(passages.hidden).toBe(true);
+    fireEvent.click(toggle);
+    expect(passages.hidden).toBe(false);
+    expect(toggle.textContent).toBe('Skjul utdrag fra dokumentet (3)');
+    expect(within(passages).queryByText(/^Utdrag \d/)).toBeNull();
+  });
+
+  it('shows the passages that hold a search hit', () => {
+    draw({ citations, citationMode: 'document' });
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'internkontroll' } });
+    expect((cardOf(nkom.title).querySelector('.uib-sources-passages') as HTMLElement).hidden).toBe(
+      false,
+    );
   });
 
   it('says which documents nothing cites', () => {
