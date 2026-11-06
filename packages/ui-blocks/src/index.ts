@@ -15,3 +15,4 @@ export * from './documents/Documents.js';
 export * from './settings/index.js';
 export * from './answer-actions/index.js';
 export { nb as uiBlocksNb, en as uiBlocksEn } from './i18n.js';
+export * from './shell/index.js';

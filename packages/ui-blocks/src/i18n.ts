@@ -12,6 +12,7 @@ import { enFilter, nbFilter } from './filter/catalogue.js';
 import { enSettings, nbSettings } from './settings/i18n.js';
 import { enAnswerActions, nbAnswerActions } from './answer-actions/i18n.js';
 import { enConversation, nbConversation } from './conversation/i18n.js';
+import { enShell, nbShell } from './shell/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -175,6 +176,7 @@ export const nb = defineCatalogue({
   settings: nbSettings,
   answerActions: nbAnswerActions,
   conversation: nbConversation,
+  shell: nbShell,
 });
 export const en = {
   procedure: enProcedure,
@@ -191,6 +193,7 @@ export const en = {
   settings: enSettings,
   answerActions: enAnswerActions,
   conversation: enConversation,
+  shell: enShell,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
