@@ -45,8 +45,9 @@ import {
 } from '@genai/providers-postgres';
 import { stopPostgres } from '@genai/providers-postgres/testing';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { knowledgeWork } from './knowledge-handlers.js';
+import { runProgress, type RunProgress } from './run-progress.js';
 
 const ORG = '991825827';
 const signal = new AbortController().signal;
@@ -147,6 +148,9 @@ const scenario = async (
     platform?: boolean;
     /** What a copy run reads from the dataset's current engine. */
     copy?: Omit<CopyListingOptions, 'earlierIds'>;
+    /** Holds an embedding call until it resolves. */
+    embedWait?: (texts: string[]) => Promise<void>;
+    progress?: RunProgress;
   } = {},
 ) => {
   datasets += 1;
@@ -231,11 +235,13 @@ const scenario = async (
         info: () => ({ id: model, dimensions }),
         embed: async (texts: string[]) => {
           extra.embedded?.push(model);
+          await extra.embedWait?.(texts);
           return { vectors: texts.map(() => Array.from({ length: dimensions }, () => 0.5)) };
         },
       } as unknown as EmbeddingPort;
     },
     ...(extra.bound ? { bound: extra.bound } : {}),
+    ...(extra.progress ? { progress: extra.progress } : {}),
     ...(extra.copy
       ? {
           copyListingOf: async () =>
@@ -631,6 +637,54 @@ describe('knowledge.ingest and knowledge.index', () => {
     await runOnce(s);
     expect(embedded.length).toBeGreaterThan(0);
     expect(new Set(embedded)).toEqual(new Set(['fake/old']));
+  }, 60_000);
+
+  it('a run that writes documents logs its progress once a minute', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const lines: Record<string, unknown>[] = [];
+    const progress = runProgress((msg, fields) => lines.push({ msg, ...fields }));
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      const s = await scenario({}, undefined, {
+        builtWith: { model: 'fake/small', dimensions: 3 },
+        embedWait: (texts) => (texts.some((t) => t.includes('Holdt')) ? held : Promise.resolve()),
+        progress,
+      });
+      await s.file('a.md', '# A\n\nInnhold i a.');
+      await s.file('b.md', '# B\n\nHoldt tilbake.');
+      const { run, sent } = await ingestOnly(s);
+      const index = handler(s.work.knowledge, knowledgeIndexQueue.name);
+      const jobs = sent.map((data) => index(job(knowledgeIndexQueue.name, data)));
+      await vi.waitFor(async () => expect(await reportOf(run)).toMatchObject({ stored: 1 }));
+
+      vi.advanceTimersByTime(60_000);
+      expect(lines).toEqual([
+        {
+          msg: 'knowledge run progress',
+          run,
+          dataset: s.dataset.id,
+          stored: 1,
+          chunks: expect.any(Number),
+          active: 1,
+        },
+      ]);
+      expect(lines[0]?.chunks).toBeGreaterThan(0);
+
+      release();
+      await Promise.all(jobs);
+      vi.advanceTimersByTime(60_000);
+      expect(lines[1]).toMatchObject({ stored: 1, active: 0 });
+
+      vi.advanceTimersByTime(60_000);
+      expect(lines).toHaveLength(2);
+    } finally {
+      release();
+      progress.stop();
+      vi.useRealTimers();
+    }
   }, 60_000);
 
   it('an index job refuses a record of another dataset', async () => {
