@@ -223,12 +223,14 @@
     margin: 0;
     min-inline-size: 0;
   }
-  /* «Utdrag 1» on a line of its own over the section: a title, a step larger and bolder than the
-     links back beside it, so the two are told apart at a glance. */
+  /* «Utdrag 1» on a line of its own over the section: a title, at kunnskapsassistenten's heading
+     size (18 px, as its «Utdrag N» in heading-2xs) and a weight over it, two size steps and two
+     weight steps from the links back beside it (14 px, regular), so the two are told apart at a
+     glance. */
   .uib-sources-excerpt-number {
     display: block;
-    font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-sm-font-size));
-    font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-medium));
+    font-size: var(--genai-sources-excerpt-number-font-size, var(--ds-body-md-font-size));
+    font-weight: var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-semibold));
     color: var(--genai-sources-excerpt-number-color, var(--ds-color-text-subtle));
   }
   /* The title and, right beside it, one link back per footnote that cites the excerpt, as

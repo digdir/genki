@@ -16,7 +16,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { FootnoteMark } from '../footnote/FootnoteMark.js';
 import { useT } from '../i18n.js';
 import { Markdown, visibleText } from '../markdown/Markdown.js';
 import {
@@ -75,11 +74,6 @@ export interface SourcesProps {
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
   citationHref?: ((citation: number) => string | undefined) | undefined;
-  /**
-   * Temporary, while the two are compared: the links back as the answer's round footnote marks
-   * (`circle`), or as small links 1, 2, 3 (`link`, the default).
-   */
-  backlinkStyle?: BacklinkStyle | undefined;
   loading?: boolean | undefined;
   variant?: SourcesVariant | undefined;
   title?: ReactNode | false | undefined;
@@ -209,30 +203,22 @@ const prepare = (
 /** The section an excerpt is from: the last step of its heading path. */
 const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
-/**
- * How the links back to the answer look, while the two are compared: the answer's own round
- * footnote marks, or small links numbered 1, 2, 3 in the answer's order. Temporary: one goes.
- */
-export type BacklinkStyle = 'circle' | 'link';
-
 /** What the links back to the answer need beyond an item's uses. */
 interface BackTo {
   /** The answer's number, from 1, when the thread has several. */
   answer: number | undefined;
   href: ((citation: number) => string | undefined) | undefined;
   onShow: ((citation: number) => void) | undefined;
-  style: BacklinkStyle;
 }
 
 /**
  * «Utdrag N» over a cited excerpt, a title and not a link, and right beside it the way back to
- * the answer: one link per footnote that cites the excerpt, in the order they stand in the
- * answer, as Wikipedia's back-references. Each is a real link, so a reader can tab to, or open,
- * any one of them, and each says to a screen reader which footnote and which place it leads to:
- * «Fotnote 2, første sted i svaret». As round marks, each shows the footnote's number as the
- * text does, so an excerpt cited three times shows three marks with one number; as links, they
- * read 1, 2, 3. Decided 6 November 2026, in place of a control that cycled, a row on the card's
- * head, and a title that was itself the first link.
+ * the answer: one small link per footnote that cites the excerpt, 1, 2, 3 in the order they
+ * stand in the answer, as Wikipedia's back-references. Each is a real link, so a reader can tab
+ * to, or open, any one of them. Its name starts with the number seen (WCAG 2.5.3) and says which
+ * footnote and which place it leads to: «1: fotnote 2, første sted i svaret». Decided
+ * 6 November 2026, in place of a control that cycled, a row on the card's head, a title that was
+ * itself the first link, and round marks like the answer's.
  */
 const ExcerptNumber = ({
   n,
@@ -248,53 +234,44 @@ const ExcerptNumber = ({
   const t = useT();
   if (!back || uses.length === 0)
     return <span className="uib-sources-excerpt-number">{label}</span>;
-  const { answer, href, onShow, style } = back;
+  const { answer, href, onShow } = back;
   const ordinals = t('sources.ordinals').split('|');
   const name = (place: number) => {
+    const shown = place + 1;
     if (uses.length === 1)
       return answer === undefined
-        ? t('sources.useOnce', { n })
-        : t('sources.useOnceInAnswer', { n, answer });
-    const ordinal = ordinals[place] ?? `${place + 1}.`;
+        ? t('sources.useOnce', { shown, n })
+        : t('sources.useOnceInAnswer', { shown, n, answer });
+    const ordinal = ordinals[place] ?? `${shown}.`;
     return answer === undefined
-      ? t('sources.usePlace', { n, place: ordinal })
-      : t('sources.usePlaceInAnswer', { n, place: ordinal, answer });
+      ? t('sources.usePlace', { shown, n, place: ordinal })
+      : t('sources.usePlaceInAnswer', { shown, n, place: ordinal, answer });
   };
   return (
     <span className="uib-sources-excerpt-line">
       <span className="uib-sources-excerpt-number">{label}</span>
-      <span className="uib-sources-uses" data-style={style}>
-        {uses.map((citation, place) => {
-          const to = href?.(citation) ?? '#';
-          const onClick = onShow
-            ? (event: MouseEvent<HTMLAnchorElement>) => {
-                // The app moves to the footnote; following the address could reload its route.
-                event.preventDefault();
-                onShow(citation);
-              }
-            : undefined;
+      <span className="uib-sources-uses">
+        {uses.map((citation, place) => (
           // Named by `aria-label`: hidden spans inside a link are boxes of their own to a
-          // browser, which then reads «2 , fotnote 2».
-          return style === 'circle' ? (
-            <FootnoteMark
-              key={citation}
-              number={n}
-              label={name(place)}
-              href={to}
-              onClick={onClick}
-            />
-          ) : (
-            <Link
-              key={citation}
-              href={to}
-              className="uib-sources-use"
-              aria-label={name(place)}
-              onClick={onClick}
-            >
-              {place + 1}
-            </Link>
-          );
-        })}
+          // browser, which then reads «1 , fotnote 2».
+          <Link
+            key={citation}
+            href={href?.(citation) ?? '#'}
+            className="uib-sources-use"
+            aria-label={name(place)}
+            onClick={
+              onShow
+                ? (event: MouseEvent<HTMLAnchorElement>) => {
+                    // The app moves to the footnote; following the address could reload its route.
+                    event.preventDefault();
+                    onShow(citation);
+                  }
+                : undefined
+            }
+          >
+            {place + 1}
+          </Link>
+        ))}
       </span>
     </span>
   );
@@ -882,7 +859,6 @@ export const Sources = ({
   citations,
   onShowUse,
   citationHref,
-  backlinkStyle = 'link',
   loading = false,
   variant = 'panel',
   title,
@@ -1024,7 +1000,6 @@ export const Sources = ({
           answer: answerCount > 1 ? answerIndex + 1 : undefined,
           href: citationHref,
           show: onShowUse,
-          style: backlinkStyle,
         }
       : undefined;
   // One string for the visible count and the live region; empty keeps the region silent.
