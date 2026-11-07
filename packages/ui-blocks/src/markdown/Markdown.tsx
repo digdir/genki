@@ -1,4 +1,4 @@
-import { Table } from '@digdir/designsystemet-react';
+import { Heading, Table } from '@digdir/designsystemet-react';
 import { Fragment, type ReactNode } from 'react';
 import { runsIn, type SearchHit } from './textSearch.js';
 
@@ -22,14 +22,14 @@ export type Align = 'left' | 'center' | 'right' | undefined;
 
 export type Block =
   | { kind: 'paragraph'; lines: string[] }
-  | { kind: 'heading'; text: string }
+  | { kind: 'heading'; text: string; depth: number }
   | { kind: 'list'; ordered: boolean; start: number; items: string[] }
   | { kind: 'code'; text: string }
   | { kind: 'table'; head: string[]; align: Align[]; rows: string[][] };
 
 const bullet = /^\s*[-*+]\s+(.*)$/;
 const numbered = /^\s*(\d{1,9})[.)]\s+(.*)$/;
-const heading = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/;
+const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const fence = /^\s*```/;
 const delimiterCell = /^\s*:?-+:?\s*$/;
 
@@ -101,7 +101,7 @@ export const blocksOf = (text: string): Block[] => {
     const step = item ? undefined : numbered.exec(line);
     if (title) {
       close();
-      blocks.push({ kind: 'heading', text: title[1] ?? '' });
+      blocks.push({ kind: 'heading', text: title[2] ?? '', depth: title[1]?.length ?? 1 });
     } else if (item || step) {
       const ordered = Boolean(step);
       const content = (item ? item[1] : step?.[2]) ?? '';
@@ -162,6 +162,10 @@ export const decodeEntities = (text: string) =>
       : whole;
   });
 
+/**
+ * What to draw for `[n]`: `undefined` leaves it as text, an element draws a footnote (held on the
+ * line of the word before it), and `false` draws nothing, with the whitespace before it.
+ */
 export type CiteRenderer = (n: number, key: string) => ReactNode | undefined;
 
 const citation = (n: number, key: string, cite: CiteRenderer): ReactNode =>
@@ -223,6 +227,69 @@ const markup = (
   return <em key={k}>{inline(part.slice(1, -1), cite, k, links, leaf)}</em>;
 };
 
+const citesPart = /^\[\d+(?:\s*,\s*\d+)*\]$/;
+
+/** Punctuation that closes the clause a footnote ends, held on the line of its marks. */
+const closingPunctuation = /^[.,;:!?)\]»”’]+/u;
+
+/**
+ * A footnote the frontend draws as an element of its own stays on the line of the word before it:
+ * a mark alone at the start of a line reads as belonging to nothing. Its run holds the last
+ * character of that word, the marks and the punctuation after them. The whitespace the answer
+ * wrote before a mark is kept for copying but not drawn, so the mark sets its own distance. A
+ * footnote drawn as nothing (`false`) takes its whitespace with it. Only footnotes the caller drew
+ * are touched, and a search over quotations never draws any, so the leaves it counts are the same.
+ */
+const holdFootnotes = (nodes: ReactNode[], footnotes: ReadonlySet<number>, key: string) => {
+  if (footnotes.size === 0) return nodes;
+  const out = [...nodes];
+  const blank = (at: number) => typeof out[at] === 'string' && !(out[at] as string).trim();
+  for (let start = 1; start < out.length; start += 2) {
+    if (!footnotes.has(start)) continue;
+    let end = start;
+    while (footnotes.has(end + 2) && blank(end + 1)) end += 2;
+    const marks: ReactNode[] = [];
+    for (let at = start; at <= end; at += 2) {
+      const between = at > start ? (out[at - 1] as string) : '';
+      if (between && out[at] !== false)
+        marks.push(
+          <span key={`${key}-s${at}`} className="uib-markdown-cite-space">
+            {between}
+          </span>,
+        );
+      if (at > start) out[at - 1] = '';
+      if (out[at] !== false) marks.push(out[at]);
+      out[at] = '';
+    }
+    const before = out[start - 1];
+    const words = typeof before === 'string' ? before.trimEnd() : undefined;
+    if (marks.length === 0) {
+      if (words !== undefined) out[start - 1] = words;
+      start = end;
+      continue;
+    }
+    const tail = words === undefined ? '' : (Array.from(words).at(-1) ?? '');
+    const space =
+      typeof before === 'string' && words !== undefined ? before.slice(words.length) : '';
+    if (words !== undefined) out[start - 1] = words.slice(0, words.length - tail.length);
+    const after = out[end + 1];
+    const closing = typeof after === 'string' ? (closingPunctuation.exec(after)?.[0] ?? '') : '';
+    if (closing) out[end + 1] = (after as string).slice(closing.length);
+    out[start] = (
+      <span key={`${key}-run${start}`} className="uib-markdown-cite-run">
+        {tail}
+        {space ? <span className="uib-markdown-cite-space">{space}</span> : null}
+        <span className="uib-markdown-cite-marks">
+          {marks}
+          {closing}
+        </span>
+      </span>
+    );
+    start = end;
+  }
+  return out;
+};
+
 // With `links` false, a link is drawn as its words and an autolink as its address. Every piece
 // that comes out of this as a plain string goes through `leaf`, which is what lets the search mark
 // it; a piece the caller turned into an element of its own is the caller's to handle.
@@ -232,23 +299,58 @@ export const inline = (
   key = 'i',
   links = true,
   leaf: Leaf = plain,
-): ReactNode[] =>
-  text
-    .split(inlinePattern)
-    .map((part, i) => {
-      // One pass, in document order: `markup` can call `inline` again, so a second pass over the
-      // results would hand a nested leaf over before the plain text that comes in front of it.
-      if (i % 2 === 0) {
-        const value = decodeEntities(part);
-        return value === '' ? '' : leaf(value, `${key}-l${i}`);
-      }
-      const node = markup(part, cite, `${key}-${i}`, links, leaf);
-      if (typeof node !== 'string') return node;
-      return node === '' ? '' : leaf(node, `${key}-m${i}`);
-    })
-    .filter((part) => part !== '');
+): ReactNode[] => {
+  const footnotes = new Set<number>();
+  const nodes = text.split(inlinePattern).map((part, i) => {
+    // One pass, in document order: `markup` can call `inline` again, so a second pass over the
+    // results would hand a nested leaf over before the plain text that comes in front of it.
+    if (i % 2 === 0) {
+      const value = decodeEntities(part);
+      return value === '' ? '' : leaf(value, `${key}-l${i}`);
+    }
+    let drawn = false;
+    const watched: CiteRenderer = (n, k) => {
+      const node = cite(n, k);
+      if (node !== undefined) drawn = true;
+      return node;
+    };
+    const node = markup(part, citesPart.test(part) ? watched : cite, `${key}-${i}`, links, leaf);
+    if (drawn) footnotes.add(i);
+    if (typeof node !== 'string') return node;
+    return node === '' ? '' : leaf(node, `${key}-m${i}`);
+  });
+  return holdFootnotes(nodes, footnotes, key).filter((part) => part !== '' && part !== false);
+};
 
 const noCitation: CiteRenderer = () => undefined;
+
+/** What a table's scroll box is named by: its place among the text's tables, and its columns. */
+export interface TableFacts {
+  number: number;
+  count: number;
+  columns: string[];
+}
+
+/** Optional ways to draw a text that is an answer rather than a quotation. */
+export interface BlockOptions {
+  /** Draws `#` as a heading at this level, and deeper ones below it, instead of a bold line. */
+  headingLevel?: number | undefined;
+  /** Puts each table in a scroll box of its own that a keyboard can reach, named by this. */
+  tableName?: ((table: TableFacts) => string) | undefined;
+}
+
+// The size follows the depth, not the level: `###` in an answer is a small heading wherever the
+// answer sits.
+const headingSizes = ['md', 'sm', 'xs', '2xs', '2xs', '2xs'] as const;
+
+const wordsOf = (cell: string) => {
+  let words = '';
+  inline(cell, noCitation, 'c', false, (value) => {
+    words += value;
+    return value;
+  });
+  return words.trim();
+};
 
 /**
  * The blocks of one text as elements. Pulled out of the component so the search can walk the very
@@ -261,10 +363,24 @@ export const renderBlocks = (
   links: boolean,
   leaf: Leaf,
   gap?: Gap,
-): ReactNode[] =>
-  blocksOf(text).map((block, i) => {
+  options: BlockOptions = {},
+): ReactNode[] => {
+  const blocks = blocksOf(text);
+  const tables = blocks.filter((block) => block.kind === 'table');
+  return blocks.map((block, i) => {
     const k = `b${i}`;
     if (i > 0) gap?.();
+    if (block.kind === 'heading' && options.headingLevel !== undefined)
+      return (
+        <Heading
+          key={k}
+          level={Math.min(options.headingLevel + block.depth - 1, 6) as 1 | 2 | 3 | 4 | 5 | 6}
+          data-size={headingSizes[block.depth - 1] ?? '2xs'}
+          className="uib-markdown-heading"
+        >
+          {inline(block.text, cite, k, links, leaf)}
+        </Heading>
+      );
     if (block.kind === 'heading')
       return (
         <p key={k} className="uib-markdown-heading">
@@ -277,8 +393,8 @@ export const renderBlocks = (
           <code>{leaf(block.text, `${k}-c`)}</code>
         </pre>
       );
-    if (block.kind === 'table')
-      return (
+    if (block.kind === 'table') {
+      const table = (
         <Table key={k} data-size="sm" className="uib-markdown-table">
           <Table.Head>
             <Table.Row>
@@ -306,6 +422,26 @@ export const renderBlocks = (
           </Table.Body>
         </Table>
       );
+      if (!options.tableName) return table;
+      const name = options.tableName({
+        number: tables.indexOf(block) + 1,
+        count: tables.length,
+        columns: block.head.map(wordsOf).filter(Boolean),
+      });
+      return (
+        // A scroll box is reached by keyboard only when it can be focused (Safari, WCAG 2.1.1), and
+        // it is a named group rather than a region, so many tables are not many landmarks.
+        <div
+          key={k}
+          className="uib-markdown-table-scroll ds-focus"
+          role="group"
+          aria-label={name}
+          tabIndex={0}
+        >
+          {table}
+        </div>
+      );
+    }
     if (block.kind === 'list') {
       const items = block.items.map((item, j) => (
         <li key={j}>{inline(item, cite, `${k}-${j}`, links, leaf)}</li>
@@ -327,6 +463,7 @@ export const renderBlocks = (
       </p>
     );
   });
+};
 
 /** The words on screen, and where each drawn leaf starts in them. */
 export interface VisibleText {
@@ -377,6 +514,8 @@ export const Markdown = ({
   className = 'uib-markdown',
   links = true,
   highlight,
+  headingLevel,
+  tableName,
 }: {
   text: string;
   cite?: CiteRenderer;
@@ -385,7 +524,7 @@ export const Markdown = ({
   links?: boolean;
   /** Search hits to wrap in `<mark>`; without it the text is drawn as it always was. */
   highlight?: MarkdownHighlight | undefined;
-}) => {
+} & BlockOptions) => {
   // Counts the leaves of this one render, in the order `visibleLeaves` counted them.
   let at = 0;
   const leaf: Leaf =
@@ -415,5 +554,9 @@ export const Markdown = ({
           );
         };
 
-  return <div className={className}>{renderBlocks(text, cite, links, leaf)}</div>;
+  return (
+    <div className={className}>
+      {renderBlocks(text, cite, links, leaf, undefined, { headingLevel, tableName })}
+    </div>
+  );
 };

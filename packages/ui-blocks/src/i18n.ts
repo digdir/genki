@@ -1,5 +1,6 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
+import { enAnswer, nbAnswer } from './answer/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -198,7 +199,11 @@ const enSources = {
   nextHit: 'Next match',
 } satisfies Translation<typeof nbSources>;
 
-export const nb = defineCatalogue({ procedure: nbProcedure, sources: nbSources });
-export const en = { procedure: enProcedure, sources: enSources } satisfies Translation<typeof nb>;
+export const nb = defineCatalogue({ procedure: nbProcedure, sources: nbSources, answer: nbAnswer });
+export const en = {
+  procedure: enProcedure,
+  sources: enSources,
+  answer: enAnswer,
+} satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
