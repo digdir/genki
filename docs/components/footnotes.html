@@ -192,12 +192,11 @@
               A brand is a Designsystemet theme. The block sits in
               <code>@layer genai.components</code>, follows <code>data-color</code>,
               <code>data-color-scheme</code> and <code>data-size</code>, and reads every token
-              through its own variable, with the token as the fallback. Three are pinned to a colour
-              family on purpose: accent for the links to the documents, which can be pressed in a
-              card that is often neutral, and info for the icon over an answer with no sources. The
-              footnote mark is the shared one Sources also draws beside an excerpt, with its own
-              <code>--genai-footnote-*</code> variables, and the answer's text uses the shared
-              Markdown renderer, both listed on <a href="sources.html">Sources</a>.
+              through its own variable, with the token as the fallback. Seven are pinned to a colour
+              family on purpose: accent for the footnote mark and the links to the documents, which
+              can be pressed in a card that is often neutral, and info for the icon over an answer
+              with no sources. The answer's text uses the shared Markdown renderer, listed on
+              <a href="sources.html">Sources</a>.
             </p>
             <table>
               <thead>
@@ -252,6 +251,71 @@
                   <td><code>--genai-answer-font-family</code></td>
                   <td><code>--ds-font-family</code></td>
                   <td>font family</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>footnote background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>footnote border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>footnote border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-border-color</code></td>
+                  <td><code>--ds-color-accent-border-strong</code></td>
+                  <td>the ring that sets the footnote's circle apart from the card</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>footnote color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-font-size</code></td>
+                  <td>0.75rem</td>
+                  <td>footnote font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>footnote font weight</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-gap</code></td>
+                  <td>0.25rem</td>
+                  <td>footnote gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-hover-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>footnote hover background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-hover-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>footnote hover color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-padding</code></td>
+                  <td>0.25rem</td>
+                  <td>footnote padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-raise</code></td>
+                  <td>0.25rem</td>
+                  <td>footnote raise</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-answer-footnote-size</code></td>
+                  <td>1.25rem</td>
+                  <td>footnote size</td>
                 </tr>
                 <tr>
                   <td><code>--genai-answer-heading-spacing</code></td>
