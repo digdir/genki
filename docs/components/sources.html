@@ -131,18 +131,11 @@
               <li>
                 <code>onShowUse</code> and <code>citationHref</code>: the links back to the answer
                 sit where the excerpt is, right beside its title, «Utdrag 1», which is a title and
-                not a link. One link per footnote that cites the excerpt, in the order they stand in
-                the answer, as Wikipedia's back-references. Each is a real link, so a reader can tab
-                to or open any one, and each says to a screen reader which footnote and which place
-                it leads to: «Fotnote 2, første sted i svaret». Nothing on a document's head or over
-                the list links back (decided 6 November 2026).
-              </li>
-              <li>
-                <code>backlinkStyle</code>, temporary while the two are compared:
-                <code>circle</code> draws each link as the answer's own round footnote mark, with
-                the footnote's number as the text shows it, so an excerpt cited three times shows
-                three marks with one number; <code>link</code> (the default) draws small links
-                numbered 1, 2, 3 in the answer's order. One of them goes.
+                not a link. One small link per footnote that cites the excerpt, 1, 2, 3 in the order
+                they stand in the answer, as Wikipedia's back-references. Each is a real link, so a
+                reader can tab to or open any one. Its name starts with the number seen and says
+                which footnote and which place it leads to: «1: fotnote 2, første sted i svaret».
+                Nothing on a document's head or over the list links back (decided 6 November 2026).
               </li>
               <li>
                 <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:
@@ -212,8 +205,7 @@
               purpose: accent for what can be pressed and the excerpt a footnote points at, warning
               for search hits, and neutral for the disclaimer, as kunnskapsassistenten draws it.
               «Kilder» is a heading one level over the documents', so the cards sit under it in the
-              outline. The round footnote mark is shared with the answer, with its own
-              <code>--genai-footnote-*</code> variables and five accent pins, listed here.
+              outline.
             </p>
             <table>
               <thead>
@@ -224,71 +216,6 @@
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td><code>--genai-footnote-background</code></td>
-                  <td><code>--ds-color-accent-surface-tinted</code></td>
-                  <td>the shared footnote mark's fill, pinned to accent</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-border-color</code></td>
-                  <td><code>--ds-color-accent-border-strong</code></td>
-                  <td>the mark's ring, pinned to accent</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-border-radius</code></td>
-                  <td><code>--ds-border-radius-full</code></td>
-                  <td>the mark's corners</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-border-width</code></td>
-                  <td><code>--ds-border-width-default</code></td>
-                  <td>the mark's ring</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-color</code></td>
-                  <td><code>--ds-color-accent-text-default</code></td>
-                  <td>the mark's number, pinned to accent</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-font-size</code></td>
-                  <td>0.75rem</td>
-                  <td>the mark's number</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-font-weight</code></td>
-                  <td><code>--ds-font-weight-semibold</code></td>
-                  <td>the mark's number</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-gap</code></td>
-                  <td>0.25rem</td>
-                  <td>space before a mark raised beside a word</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-hover-background</code></td>
-                  <td><code>--ds-color-accent-base-default</code></td>
-                  <td>the mark's fill under the pointer, pinned to accent</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-hover-color</code></td>
-                  <td><code>--ds-color-accent-base-contrast-default</code></td>
-                  <td>the number under the pointer, pinned to accent</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-padding</code></td>
-                  <td>0.25rem</td>
-                  <td>the mark's inner space</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-raise</code></td>
-                  <td>0.25rem</td>
-                  <td>how far a mark beside a word is raised</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-footnote-size</code></td>
-                  <td>1.25rem</td>
-                  <td>the mark's height and least width</td>
-                </tr>
                 <tr>
                   <td><code>--genai-markdown-block-spacing</code></td>
                   <td><code>--ds-size-2</code></td>
