@@ -1,4 +1,5 @@
 export * from './answer/index.js';
+export * from './conversation/index.js';
 export * from './procedure/Procedure.js';
 export * from './sources/pairing.js';
 export * from './sources/Sources.js';
