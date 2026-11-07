@@ -6,7 +6,7 @@
     <title>Sources · Components</title>
     <meta
       name="description"
-      content="Shows the documents and excerpts behind an answer, with how relevant each source is."
+      content="Shows the documents and excerpts behind an answer, each excerpt linked both ways with the footnotes that cite it."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -22,7 +22,7 @@
         class="component"
         id="sources"
         data-component="sources"
-        data-phase="draft"
+        data-phase="building"
         data-optional="true"
         aria-labelledby="sources-title"
       >
@@ -30,17 +30,20 @@
           <div>
             <h1 id="sources-title">Sources</h1>
             <div class="badges">
-              <span class="badge phase">Draft</span><span class="badge">Optional</span
+              <span class="badge phase">Building</span><span class="badge">Optional</span
               ><span class="badge">Tools</span>
             </div>
             <p class="summary">
-              Shows the documents and excerpts behind an answer, with how relevant each source is.
+              Shows the documents and excerpts behind an answer, each excerpt linked both ways with
+              the footnotes that cite it.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
               <dd>«Kilder»</dd>
               <dt>Sits in</dt>
               <dd>The tools panel, and as a section after the answer</dd>
+              <dt>Code</dt>
+              <dd><code>Sources</code> in <code>@genai/ui-blocks</code></dd>
               <dt>Issue</dt>
               <dd>
                 <a href="https://github.com/digdir/kunnskapsassistenten/issues/177"
@@ -48,7 +51,7 @@
                 >
               </dd>
               <dt>Canvas</dt>
-              <dd>00-Kilder (KI-A1 to KI-C1)</dd>
+              <dd>00-Kilder (KI-A1 to KI-C1), and D1 «Ny retning», 3 November 2026</dd>
             </dl>
           </div>
           <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
@@ -83,24 +86,106 @@
             <h2>Use it when</h2>
             <ul>
               <li>Users should be able to see and judge what the answer is based on.</li>
+              <li>
+                Each footnote should lead to what it cites, and each excerpt back to where the
+                answer uses it.
+              </li>
             </ul>
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>A, three panels:</strong> sources in the tools panel next to the answer.
+                <strong>Footnotes that name excerpts</strong>: only cited excerpts get a number,
+                «Utdrag 1», «Utdrag 2», in the order the answer first cites them. Documents are
+                named by title.
               </li>
               <li>
-                <strong>B, order and source colour:</strong> the order of the sources, and a colour
-                per source.
+                <strong>Footnotes that name only documents</strong>, as long as a service cites
+                documents: nothing is numbered, since footnotes are numbered by excerpt and never by
+                document. A document's passages, which nothing cites alone, are closed behind «Vis
+                utdrag fra dokumentet (n)». A document no footnote names says so.
               </li>
-              <li><strong>C, own sources</strong> (KI-C1): sources the user has kept.</li>
               <li>
-                <strong>Sources used in the answer:</strong> a section after the answer, a neutral
-                surface with white cards.
+                <strong>Panel</strong>, with a search over the excerpts, and
+                <strong>compact</strong>, as a section after the answer.
               </li>
             </ul>
+            <p>
+              Which of the two is read from <code>citations</code>, never chosen. An excerpt is
+              titled by its section, with its number before it. A closed excerpt shows its first two
+              lines.
+            </p>
           </div>
           <div>
+            <h2>Props</h2>
+            <ul>
+              <li><code>sources</code>: the contract's <code>sources[]</code>.</li>
+              <li>
+                <code>citations</code>: the answer's footnotes in order, each naming the excerpt
+                (<code>chunkId</code>) or document it cites. Excerpts are numbered only when every
+                footnote names its excerpt. Without footnotes nothing is numbered.
+              </li>
+              <li>
+                <code>target</code> and <code>onReturn</code>: from a footnote to its excerpt and
+                back. <code>onTargetMissing</code> reports a footnote whose excerpt is not shown.
+              </li>
+              <li>
+                <code>onShowUse</code> and <code>citationHref</code>: the links back to the answer
+                sit where the excerpt is, right beside its title, «Utdrag 1», which is a title and
+                not a link. One small link per footnote that cites the excerpt, 1, 2, 3 in the order
+                they stand in the answer, as Wikipedia's back-references. Each is a real link, so a
+                reader can tab to or open any one. Its name starts with the number seen and says
+                which footnote and which place it leads to: «1: fotnote 2, første sted i svaret».
+                Nothing on a document's head or over the list links back (decided 6 November 2026).
+              </li>
+              <li>
+                <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:
+                one answer's sources at a time, «Kilder til svar 2 av 3» with «Forrige» and «Neste»,
+                since every answer numbers its excerpts from 1. The app holds which answer is shown
+                and passes its sources.
+              </li>
+              <li>
+                <code>answerStatus</code> and <code>sourcesNotStored</code>: an empty panel says
+                why. Nothing asked yet, stopped before the sources came, failed, waiting on a
+                question back, or sources the store did not keep. <code>streaming</code> shows the
+                loading state. <code>loading</code> shows it too, before anything is known.
+                <code>assistantName</code> names who asked back, «KI-assistenten» without it.
+              </li>
+              <li>
+                <code>variant</code>: <code>panel</code> (the default) or <code>compact</code>.
+                <code>search</code> draws the search over the excerpts, on in the panel.
+                <code>title</code> is the heading, «Kilder», or <code>false</code> for none.
+                <code>headingLevel</code> is each document's heading level, 2 to 5, 3 by default.
+                <code>documentsClosed</code> starts every card closed.
+              </li>
+              <li>
+                <code>corpus</code> names the collection in the disclaimer and the links, «Les
+                dokumentet på Kudos». <code>disclaimer</code> (on by default) says the text is
+                quoted, not generated; <code>disclaimerId</code> is that sentence's id, which the
+                search field is described by, when the app needs to know it.
+                <code>hasOwnDocuments</code> says the reader's own documents are among the sources,
+                when the ids don't tell.
+              </li>
+              <li>
+                <code>details</code> shows each document's and chunk's ids behind an info control.
+                <code>itemId</code> and <code>excerptId</code> give each card and excerpt an id the
+                app can link to.
+              </li>
+              <li>
+                <code>onSelect</code>: the reader opened an excerpt or followed a document's link.
+                <code>excerptActions</code> and <code>sourceActions</code> are slots for the app's
+                own buttons, on an open excerpt and on a card's head.
+              </li>
+              <li>
+                <code>color</code> and <code>headerColor</code> set Designsystemet's
+                <code>data-color</code> on the block and on the cards' heads, each only when given.
+                <code>className</code> is added to the block's own; <code>children</code> come after
+                the cards.
+              </li>
+            </ul>
+            <p>
+              <code>pairCitations</code> is exported, so the answer numbers its footnotes the same
+              way.
+            </p>
             <h2>Related</h2>
             <ul>
               <li><a href="footnotes.html">Footnotes</a>: a footnote opens the matching source</li>
@@ -110,10 +195,383 @@
             </ul>
           </div>
           <div class="wide">
-            <h2>What we have learned</h2>
-            <p class="placeholder">
-              Nothing here yet. Add what we learn as we build and test Sources.
+            <h2>Branding</h2>
+            <p>
+              A brand is a Designsystemet theme. The block sits in
+              <code>@layer genai.components</code>, after Designsystemet's layers, follows
+              <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
+              and reads every token through its own variable, with the token as the fallback. Set
+              one on any ancestor to change that detail only. Eight are pinned to a colour family on
+              purpose: accent for what can be pressed and the excerpt a footnote points at, warning
+              for search hits, and neutral for the disclaimer, as kunnskapsassistenten draws it.
+              «Kilder» is a heading one level over the documents', so the cards sit under it in the
+              outline.
             </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-markdown-block-spacing</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>block spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-markdown-list-indent</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>list indent</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-actions-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>actions gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-count-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«Kilder til svar n av m»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>answer switcher gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-answers-steps-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between «Forrige» and «Neste»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-body-background</code></td>
+                  <td><code>--ds-color-background-tinted</code></td>
+                  <td>body background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-body-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>body border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-body-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>body border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-body-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>body gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-body-padding</code></td>
+                  <td>grows from 410 px</td>
+                  <td>body padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-border-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-compact-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>compact gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-controls-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>controls gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-disclaimer-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the disclaimer, grey in every family as in kunnskapsassistenten</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-documents-gap</code></td>
+                  <td><code>--ds-size-6</code>, <code>--ds-size-3</code></td>
+                  <td>documents gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-empty-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>empty state text</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-empty-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>empty state gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-active-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>excerpt active background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-active-marker-color</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>excerpt active marker color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-active-marker-width</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>excerpt active marker width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-background</code></td>
+                  <td><code>--ds-color-surface-default</code></td>
+                  <td>excerpt background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-body-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>excerpt body gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-border-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>excerpt border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>excerpt gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-head-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>excerpt head gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-number-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>excerpt number color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-number-font-size</code></td>
+                  <td><code>--ds-body-md-font-size</code></td>
+                  <td>«Utdrag 1», the excerpt's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-number-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>«Utdrag 1», the excerpt's title</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-excerpt-padding</code></td>
+                  <td>grows from 410 px</td>
+                  <td>excerpt padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-font-family</code></td>
+                  <td><code>--ds-font-family</code></td>
+                  <td>font family</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-gap</code></td>
+                  <td><code>--ds-size-12</code></td>
+                  <td>gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-background</code></td>
+                  <td><code>--ds-color-surface-tinted</code></td>
+                  <td>head background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-border-color</code></td>
+                  <td><code>--ds-color-border-subtle</code></td>
+                  <td>head border color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>head border width</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>head color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>head gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-padding</code></td>
+                  <td>grows from 410 px</td>
+                  <td>head padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-head-toggle-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>head toggle gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-info-column-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>info column gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-info-row-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>info row gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-mark-background</code></td>
+                  <td><code>--ds-color-warning-surface-tinted</code></td>
+                  <td>mark background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-mark-border-radius</code></td>
+                  <td><code>--ds-border-radius-sm</code></td>
+                  <td>mark border radius</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-mark-color</code></td>
+                  <td><code>--ds-color-warning-text-default</code></td>
+                  <td>mark color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-mark-current-background</code></td>
+                  <td><code>--ds-color-warning-base-default</code></td>
+                  <td>mark current background</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-mark-current-color</code></td>
+                  <td><code>--ds-color-warning-base-contrast-default</code></td>
+                  <td>mark current color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-page-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>page color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-preview-lines</code></td>
+                  <td><code>2</code></td>
+                  <td>preview lines</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-quote-font-size</code></td>
+                  <td><code>--ds-body-sm-font-size</code></td>
+                  <td>quote font size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-quote-letter-spacing</code></td>
+                  <td><code>--ds-body-sm-letter-spacing</code></td>
+                  <td>quote letter spacing</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-quote-line-height</code></td>
+                  <td><code>--ds-line-height-lg</code></td>
+                  <td>quote line height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-quote-paragraph-gap</code></td>
+                  <td><code>1lh</code></td>
+                  <td>quote paragraph gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-search-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>search gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-search-results-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>search results gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-search-results-min-block-size</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>search results min block size</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-search-status-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>search status color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-search-steps-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>search steps gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-section-color</code></td>
+                  <td><code>--ds-color-text-default</code></td>
+                  <td>section color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-subtitle-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>subtitle color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-title-gap</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>title gap</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-toggle-color</code></td>
+                  <td><code>--ds-color-accent-text-subtle</code></td>
+                  <td>toggle color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-unavailable-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>unavailable color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uncited-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>uncited color</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-use-min-size</code></td>
+                  <td>24px</td>
+                  <td>each link back's smallest width and height, as links</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uses-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>the links back beside «Utdrag 1»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uses-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the links back beside «Utdrag 1»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uses-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Utdrag 1» and the links back beside it</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                A number on an excerpt with no visible use reads as made up. Only what a footnote
+                cites gets a number, and the pairing comes from the answer's footnotes, never a
+                guess.
+              </li>
+              <li>
+                Kudos excerpts are Marker's Markdown from PDFs. The block drops page markers, rules
+                and running heads, and draws tables, links and tags as text; a scan checks what a
+                reader sees for leftovers.
+              </li>
+              <li>
+                Compact rows and the info control with document and chunk ids come from the
+                playground's sources list, digdir/genki#112.
+              </li>
+            </ul>
           </div>
           <div class="wide open-questions">
             <h2>Open questions</h2>
