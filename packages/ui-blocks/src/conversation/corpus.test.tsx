@@ -50,7 +50,7 @@ const turns: ConversationTurn[] = exchanges.flatMap(({ id, question, answer }) =
 ]);
 
 const BLOCKS = new Set(['P', 'DIV', 'LI', 'UL', 'OL', 'PRE', 'TABLE', 'TR', 'H2', 'H3', 'H4']);
-const HIDDEN = '.uib-footnote-copy, .uib-markdown-cite-space, .ds-sr-only, [aria-hidden="true"]';
+const HIDDEN = '.uib-answer-copy, .uib-markdown-cite-space, .ds-sr-only, [aria-hidden="true"]';
 
 // What a reader sees, as the answer's own corpus test reads it: text that is drawn, a line
 // between blocks, and a tab between the cells of a table row.
@@ -95,7 +95,7 @@ describe('the conversation on real answers from genki-test', () => {
       expect(read.pairing.numbers.size, answer.id).toBe(0);
       cited += read.citations.length;
     }
-    expect(container.querySelectorAll('.uib-footnote-mark')).toHaveLength(0);
+    expect(container.querySelectorAll('.uib-answer-mark')).toHaveLength(0);
     console.info(`${exchanges.length} exchanges, ${cited} footnotes naming documents, 0 drawn`);
     expect(cited).toBeGreaterThan(100);
   });
