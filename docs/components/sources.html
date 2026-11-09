@@ -94,15 +94,19 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>Footnotes that name excerpts</strong>: only cited excerpts get a number,
-                «Utdrag 1», «Utdrag 2», in the order the answer first cites them. Documents are
-                named by title.
+                <strong>Footnotes that name excerpts</strong>: cited excerpts are numbered «Utdrag
+                1», «Utdrag 2», in the order the answer first cites them, and read in that order
+                from the top: the documents by their lowest number, and in each, its cited excerpts
+                by number. An excerpt nothing cites comes after them in its document, takes the
+                numbers after the cited ones, in reading order, and says «Ikke vist til i svaret»,
+                with no link back. Documents are named by title.
               </li>
               <li>
                 <strong>Footnotes that name only documents</strong>, as long as a service cites
                 documents: nothing is numbered, since footnotes are numbered by excerpt and never by
                 document. A document's passages, which nothing cites alone, are closed behind «Vis
-                utdrag fra dokumentet (n)». A document no footnote names says so.
+                utdrag fra dokumentet (n)». A document no footnote names says so. The documents and
+                their passages keep the service's order.
               </li>
               <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
@@ -130,12 +134,12 @@
               </li>
               <li>
                 <code>onShowUse</code> and <code>citationHref</code>: the links back to the answer
-                sit where the excerpt is. Its title, «Utdrag 1», links to the first footnote that
-                cites it. Cited several times, small links right beside the title lead to the
-                others, in the order they stand in the answer, as Wikipedia's back-references:
-                «Utdrag 1 ↩ 2 3». Each is a real link, so a reader can tab to or open any one, and
-                each says to a screen reader which footnote it leads to. Nothing on a document's
-                head or over the list links back (decided 6 November 2026).
+                sit where the excerpt is, right beside its title, «Utdrag 1», which is a title and
+                not a link. One small link per footnote that cites the excerpt, 1, 2, 3 in the order
+                they stand in the answer, as Wikipedia's back-references. Each is a real link, so a
+                reader can tab to or open any one. Its name starts with the number seen and says
+                which footnote and which place it leads to: «1: fotnote 2, første sted i svaret».
+                Nothing on a document's head or over the list links back (decided 6 November 2026).
               </li>
               <li>
                 <code>answerIndex</code>, <code>answerCount</code> and <code>onAnswerChange</code>:
@@ -184,7 +188,8 @@
             </ul>
             <p>
               <code>pairCitations</code> is exported, so the answer numbers its footnotes the same
-              way.
+              way, and so is <code>readingOrder</code>, so «Kilder brukt i svaret» lists the
+              documents in the order Sources shows them.
             </p>
             <h2>Related</h2>
             <ul>
@@ -353,13 +358,13 @@
                 </tr>
                 <tr>
                   <td><code>--genai-sources-excerpt-number-font-size</code></td>
-                  <td><code>--ds-body-xs-font-size</code></td>
-                  <td>excerpt number font size</td>
+                  <td><code>--ds-body-md-font-size</code></td>
+                  <td>«Utdrag 1», the excerpt's title</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-excerpt-number-font-weight</code></td>
-                  <td><code>--ds-font-weight-regular</code></td>
-                  <td>excerpt number font weight</td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>«Utdrag 1», the excerpt's title</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-excerpt-padding</code></td>
@@ -534,17 +539,22 @@
                 <tr>
                   <td><code>--genai-sources-use-min-size</code></td>
                   <td>24px</td>
-                  <td>each link back's smallest width and height, «Utdrag 1» among them</td>
+                  <td>each link back's smallest width and height, as links</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uses-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>the links back beside «Utdrag 1»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-sources-uses-font-weight</code></td>
+                  <td><code>--ds-font-weight-regular</code></td>
+                  <td>the links back beside «Utdrag 1»</td>
                 </tr>
                 <tr>
                   <td><code>--genai-sources-uses-gap</code></td>
                   <td><code>--ds-size-2</code></td>
-                  <td>gap between «Utdrag 1» and the links back beside it, «↩ 2 3»</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-sources-uses-icon-color</code></td>
-                  <td><code>--ds-color-text-subtle</code></td>
-                  <td>the ↩ before several links back</td>
+                  <td>gap between «Utdrag 1» and the links back beside it</td>
                 </tr>
               </tbody>
             </table>
@@ -553,9 +563,14 @@
             <h2>What we have learned</h2>
             <ul>
               <li>
-                A number on an excerpt with no visible use reads as made up. Only what a footnote
-                cites gets a number, and the pairing comes from the answer's footnotes, never a
-                guess.
+                A number on an excerpt with no visible use reads as made up. Only a cited excerpt
+                has a number a footnote leads to and links back; one nothing cites is numbered after
+                them and says so. The pairing comes from the answer's footnotes, never a guess.
+              </li>
+              <li>
+                Designsystemet's <code>Card</code> makes a click anywhere on a card click the first
+                link in a heading. Here that was an excerpt's link back, so a document card is a
+                plain <code>ds-card</code>, and only a cited excerpt's links lead to the answer.
               </li>
               <li>
                 Kudos excerpts are Marker's Markdown from PDFs. The block drops page markers, rules

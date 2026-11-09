@@ -1,4 +1,4 @@
-import type { SourceDocument } from './types.js';
+import type { SourceDocument, SourceExcerpt } from './types.js';
 
 /**
  * What the answer's footnotes name, read from the data: `excerpt` when every footnote names its
@@ -43,22 +43,59 @@ export const documentKeys = (sources: readonly SourceDocument[]): string[] => {
   });
 };
 
+/** A document's excerpts in the document's own order, by position, when every one has one. */
+export const orderedExcerpts = (source: SourceDocument): readonly SourceExcerpt[] =>
+  source.excerpts.every((e) => e.position !== undefined)
+    ? source.excerpts.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    : source.excerpts;
+
+/** The order Sources shows the documents and their excerpts in, and each excerpt's number. */
+export interface ReadingOrder {
+  /** The documents, as indexes into `sources`, from the top. */
+  documents: readonly number[];
+  /** Per document, by its index into `sources`, its excerpts from the top. */
+  excerpts: readonly (readonly SourceExcerpt[])[];
+  /**
+   * Each shown excerpt's number, by chunk id, when the answer cites excerpts: the cited ones as
+   * the footnotes number them, 1 to n, and the rest n + 1 on, in reading order. Empty when
+   * nothing is cited by excerpt, so nothing is numbered.
+   */
+  numbers: ReadonlyMap<string, number>;
+}
+
+const ascending = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
+
 /**
- * The order to show the documents in, as indexes into `sources`: those with a numbered excerpt
- * by their lowest number, so the cards run 1, 2, 3 as the footnotes do, and the rest after them,
- * in the service's order. Without numbers, the service's order.
+ * The order to show the documents and their excerpts in, from the pairing alone. When excerpts
+ * are numbered, the documents run by their lowest number and, inside each, the cited excerpts by
+ * number, so the panel reads «Utdrag 1», 2, 3 from the top as the footnotes do. What nothing cites
+ * comes after, in the service's order of documents and the document's order of excerpts, and
+ * takes the numbers after the cited ones. When nothing is numbered, the order is the service's
+ * and the document's, unchanged.
  */
-export const documentOrder = (
+export const readingOrder = (
   sources: readonly SourceDocument[],
   pairing: Pairing | undefined,
-): number[] => {
-  const first = sources.map((source) =>
-    Math.min(...source.excerpts.map((e) => pairing?.numbers.get(e.chunkId) ?? Infinity)),
+): ReadingOrder => {
+  const cited: ReadonlyMap<string, number> =
+    pairing?.mode === 'excerpt' ? pairing.numbers : new Map();
+  const rank = (excerpt: SourceExcerpt | undefined) =>
+    (excerpt && cited.get(excerpt.chunkId)) ?? Infinity;
+  // Sorting is stable, so what nothing cites keeps its order.
+  const excerpts = sources.map((source) =>
+    cited.size === 0
+      ? orderedExcerpts(source)
+      : orderedExcerpts(source).toSorted((a, b) => ascending(rank(a), rank(b))),
   );
-  // Infinity less Infinity is NaN, which falls through to the service's order.
-  return sources
+  const documents = sources
     .map((_, i) => i)
-    .toSorted((a, b) => (first[a] ?? Infinity) - (first[b] ?? Infinity) || a - b);
+    .toSorted((a, b) => ascending(rank(excerpts[a]?.[0]), rank(excerpts[b]?.[0])));
+  const numbers = new Map(cited);
+  if (cited.size > 0)
+    for (const i of documents)
+      for (const excerpt of excerpts[i] ?? [])
+        if (!numbers.has(excerpt.chunkId)) numbers.set(excerpt.chunkId, numbers.size + 1);
+  return { documents, excerpts, numbers };
 };
 
 export const citesExcerpts = (citations: readonly SourceCitation[]) =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentOrder, pairCitations, type SourceCitation } from './pairing.js';
+import { pairCitations, readingOrder, type SourceCitation } from './pairing.js';
 import type { SourceDocument } from './types.js';
 
 const sources: SourceDocument[] = [
@@ -80,12 +80,79 @@ describe('pairing footnotes with what is shown', () => {
     expect(pairing.numbers.size).toBe(0);
     expect(pairing.uses.get('kudos::a')).toEqual([0]);
   });
+});
 
-  it('orders the documents by their lowest number, the rest after in the service’s order', () => {
-    const third: SourceDocument = { index: 3, title: 'Notat', excerpts: [] };
-    const all = [sources[0], sources[1], third] as SourceDocument[];
-    expect(documentOrder(all, pairCitations(all, cite('b1', 'a3')))).toEqual([1, 0, 2]);
-    expect(documentOrder(all, pairCitations(all, [{ index: 2 }, { index: 1 }]))).toEqual([0, 1, 2]);
-    expect(documentOrder(all, undefined)).toEqual([0, 1, 2]);
+describe('the order Sources reads in', () => {
+  // The shape of a Digdir annual report on a local #283 answer: the uncited excerpt at part 34
+  // came before «Utdrag 1» at part 92, since a card ran by part alone.
+  const report: SourceDocument = {
+    index: 6,
+    title: 'Årsrapport Digitaliseringsdirektoratet 2023',
+    documentId: 'kudos::88642',
+    excerpts: [
+      { chunkId: '42d7142b2765', text: 'Modernisering av Altinn', position: 92 },
+      { chunkId: '97fc11a8044f', text: 'Eit av dei strategiske måla', position: 34 },
+    ],
+  };
+  const note: SourceDocument = { index: 3, title: 'Notat', excerpts: [] };
+  const all = [sources[0], report, sources[1], note] as SourceDocument[];
+  const order = (citations: SourceCitation[] | undefined) =>
+    readingOrder(all, citations && pairCitations(all, citations));
+  const chunks = (read: ReturnType<typeof order>) =>
+    read.documents.map((i) => read.excerpts[i]?.map((e) => e.chunkId));
+
+  it('runs the documents by their lowest number, and those nothing cites after, in the service’s order', () => {
+    expect(order(cite('b1', 'a3', '42d7142b2765')).documents).toEqual([2, 0, 1, 3]);
+    expect(order(cite('42d7142b2765', 'b1')).documents).toEqual([1, 2, 0, 3]);
+  });
+
+  it('reads a document’s cited excerpts by number, before those nothing cites, in the document’s order', () => {
+    expect(chunks(order(cite('42d7142b2765', 'a3', 'a1')))).toEqual([
+      ['42d7142b2765', '97fc11a8044f'],
+      ['a3', 'a1', 'a2'],
+      ['b1'],
+      [],
+    ]);
+  });
+
+  it('reads the cited excerpts «Utdrag 1», 2, 3 from the top, across the documents and inside each', () => {
+    const read = order(cite('42d7142b2765', 'b1', 'a2', 'b1'));
+    const seen = chunks(read)
+      .flat()
+      .map((chunk) => read.numbers.get(chunk ?? ''));
+    // The report: 1, and its uncited part 4. The 2022 report: 2. The 2021 report: 3, then 5, 6.
+    expect(seen).toEqual([1, 4, 2, 3, 5, 6]);
+    expect(seen.filter((n) => n !== undefined && n <= 3)).toEqual([1, 2, 3]);
+  });
+
+  it('numbers what nothing cites after the cited ones, n + 1 on in reading order, and keeps the footnotes 1 to n', () => {
+    const citations = cite('a3', '42d7142b2765', 'a3');
+    const pairing = pairCitations(all, citations);
+    const read = readingOrder(all, pairing);
+    expect([...read.numbers]).toEqual([
+      ['a3', 1],
+      ['42d7142b2765', 2],
+      ['a1', 3],
+      ['a2', 4],
+      ['97fc11a8044f', 5],
+      ['b1', 6],
+    ]);
+    // The footnotes still number only what they cite, and every one leads to its excerpt.
+    expect([...pairing.numbers]).toEqual([
+      ['a3', 1],
+      ['42d7142b2765', 2],
+    ]);
+    pairing.targets.forEach((key, i) => expect(pairing.uses.get(key ?? '')).toContain(i));
+    expect(pairing.unpaired).toEqual([]);
+  });
+
+  it('keeps the service’s order and the document’s, and numbers nothing, when no footnote names an excerpt', () => {
+    const unchanged = [['a1', 'a2', 'a3'], ['97fc11a8044f', '42d7142b2765'], ['b1'], []];
+    for (const citations of [undefined, [{ index: 2 }, { index: 1 }], [], cite('gone')]) {
+      const read = order(citations);
+      expect(read.documents).toEqual([0, 1, 2, 3]);
+      expect(chunks(read)).toEqual(unchanged);
+      expect(read.numbers.size).toBe(0);
+    }
   });
 });

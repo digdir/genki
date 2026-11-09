@@ -83,7 +83,7 @@ describe('the sources block', () => {
       'Utdrag 1',
       'Ressursbruk og måloppnåelse',
     ]);
-    // The heading keeps its name when its number is a link back.
+    // The heading keeps its name with the links back beside the number.
     cleanup();
     draw({ citations: cite('kudos::2021-1'), onShowUse: () => {} });
     expect(
@@ -119,22 +119,94 @@ describe('the sources block', () => {
 });
 
 describe('numbered excerpts, linked both ways', () => {
-  it('numbers only cited excerpts, 1, 2, 3 in the order the answer first cites them', () => {
+  it('numbers cited excerpts 1, 2, 3 in the order the answer first cites them', () => {
     draw({ citations: cite('kudos::2021-2', 'kudos::2021-1', 'kudos::2021-2') });
     expect(screen.getByRole('heading', { name: /Utdrag 1.*Internkontroll/ })).toBeTruthy();
     expect(screen.getByRole('heading', { name: /Utdrag 2.*Ressursbruk/ })).toBeTruthy();
-    expect(screen.queryByText('Utdrag 3')).toBeNull();
+    expect(rowOf(/Utdrag 1/).dataset.uncited).toBeUndefined();
+    expect(rowOf(/Utdrag 2/).dataset.uncited).toBeUndefined();
   });
 
-  it('shows an excerpt nothing cites without a number, and says it is not cited', () => {
+  it('numbers an excerpt nothing cites after the cited ones, and says it is not cited', () => {
     draw({ citations: cite('kudos::2021-1') });
     const row = screen
       .getByText('Ledelsen vurderer måloppnåelsen som god.')
       .closest('.uib-sources-excerpt') as HTMLElement;
-    expect(within(row).getByRole('heading').textContent).toBe('Utdrag');
+    // «Utdrag 1» is cited; the report’s two others are 2 and 3, and the memo’s excerpt 4.
+    expect(within(row).getByRole('heading').textContent).toBe('Utdrag 3');
     expect(row.dataset.uncited).toBe('true');
     expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
-    expect(within(row).queryByRole('link', { name: /til svaret/i })).toBeNull();
+    const numbered = screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent);
+    expect(numbered).toEqual(['Utdrag 1', 'Utdrag 2', 'Utdrag 3', 'Utdrag 4']);
+  });
+
+  it('an uncited excerpt has no way back to the answer', () => {
+    const onShowUse = vi.fn();
+    draw({
+      citations: cite('kudos::2021-2'),
+      onShowUse,
+      citationHref: (citation) => `#fotnote-${citation}`,
+    });
+    for (const name of [/Utdrag 2/, /Utdrag 3/, /Utdrag 4/]) {
+      const row = rowOf(name);
+      expect(row.dataset.uncited).toBe('true');
+      expect(within(row).queryAllByRole('link')).toEqual([]);
+      expect(row.querySelector('[href^="#"]')).toBeNull();
+      // Neither the mouse nor the keyboard leads to the answer from it.
+      fireEvent.click(within(row).getByRole('heading'));
+      fireEvent.click(row.querySelector('.uib-sources-quote') as HTMLElement);
+      fireEvent.click(row);
+      fireEvent.click(toggleOf(name));
+      fireEvent.keyDown(row, { key: 'Enter' });
+      fireEvent.keyDown(row, { key: 'Escape' });
+      // Open, its one link is to its page in the document, in a new tab.
+      for (const link of within(row).queryAllByRole('link'))
+        expect(link.getAttribute('target')).toBe('_blank');
+    }
+    expect(onShowUse).not.toHaveBeenCalled();
+    // Designsystemet's `Card` clicks the first link in a heading on a click anywhere on it.
+    for (const card of document.querySelectorAll('.uib-sources-document'))
+      expect(card.hasAttribute('data-clickdelegatefor')).toBe(false);
+    // The cited excerpt's own link still leads back.
+    fireEvent.click(within(rowOf(/Utdrag 1/)).getByRole('link', { name: '1: fotnote 1 i svaret' }));
+    expect(onShowUse).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads «Utdrag 1», 2, 3 from the top: the cards by their lowest number, and the cited excerpts in each by number before the rest', () => {
+    // The report cites its third part before its first, and the memo comes first of all.
+    draw({ citations: cite('attached:abc:0', 'kudos::2021-3', 'kudos::2021-1') });
+    const titles = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(titles).toEqual([memo.title, nkom.title]);
+    const read = [...document.querySelectorAll('.uib-sources-excerpt')].map((row) => [
+      row.querySelector('.uib-sources-excerpt-number')?.textContent,
+      row.querySelector('.uib-sources-quote')?.textContent,
+    ]);
+    expect(read).toEqual([
+      ['Utdrag 1', 'Notatet beskriver rutinen.'],
+      ['Utdrag 2', 'Ledelsen vurderer måloppnåelsen som god.'],
+      ['Utdrag 3', 'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.'],
+      ['Utdrag 4', 'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.'],
+    ]);
+  });
+
+  it('keeps each document’s own order of excerpts when nothing is numbered', () => {
+    for (const citations of [undefined, [{ index: 2 }, { index: 1 }]]) {
+      draw({ citations });
+      expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+        nkom.title,
+        memo.title,
+      ]);
+      expect(
+        [...document.querySelectorAll('.uib-sources-quote')].map((quote) => quote.textContent),
+      ).toEqual([
+        'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.',
+        'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.',
+        'Ledelsen vurderer måloppnåelsen som god.',
+        'Notatet beskriver rutinen.',
+      ]);
+      expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
+      cleanup();
+    }
   });
 
   it('runs the cards in the order of their numbers, 1, 2, 3, as the footnotes do', () => {
@@ -157,46 +229,66 @@ describe('numbered excerpts, linked both ways', () => {
     draw({ onShowUse: () => {} });
     expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
     expect(screen.queryByText('Ikke vist til i svaret')).toBeNull();
-    expect(screen.queryByRole('link', { name: /til svaret/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^\d+: fotnote \d/ })).toBeNull();
   });
 });
 
-describe('the way back to the answer, where the excerpt is', () => {
-  const links = (row: HTMLElement) => within(row).getAllByRole('link', { name: /til svaret/i });
+describe('the way back to the answer, beside the excerpt’s title', () => {
+  const links = (row: HTMLElement) =>
+    within(row).getAllByRole('link', { name: /^\d+: fotnote \d/ });
+  // «Utdrag 1» is cited by footnotes 0, 2 and 3 of four; «Utdrag 2» by footnote 1 alone.
+  const thrice = cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1', 'kudos::2021-1');
 
-  it('makes the title of an excerpt cited once the link to its footnote, saying which footnote', () => {
-    const onShowUse = vi.fn();
-    draw({ citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1'), onShowUse });
-    const row = rowOf(/Utdrag 2/);
-    const [title, ...more] = links(row);
-    expect(more).toEqual([]);
-    expect(title?.closest('h4')).toBe(row.querySelector('h4'));
-    // What is seen starts the name (WCAG 2.5.3).
-    expect(title?.textContent).toBe('Utdrag 2');
-    expect(title?.getAttribute('aria-label')).toBe('Utdrag 2, til svaret, fotnote 2 av 3');
-    fireEvent.click(title as HTMLElement);
-    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom, excerpt: nkom.excerpts[1] });
+  it('keeps «Utdrag N» a title and not a link, with every link back beside it', () => {
+    draw({ citations: thrice, onShowUse: () => {} });
+    const row = rowOf(/Utdrag 1/);
+    const title = row.querySelector('.uib-sources-excerpt-number') as HTMLElement;
+    expect(title.textContent).toBe('Utdrag 1');
+    expect(title.closest('a')).toBeNull();
+    expect(within(title).queryByRole('link')).toBeNull();
+    const line = row.querySelector('.uib-sources-excerpt-line') as HTMLElement;
+    for (const link of links(row)) expect(line.contains(link)).toBe(true);
+    // No arrow, nor any other icon, before the links.
+    expect(line.querySelector('svg')).toBeNull();
   });
 
-  it('leads the title of an excerpt cited three times to the first use, and «↩ 2 3» beside it to the others', () => {
+  it('gives an excerpt cited three times three links, 1, 2, 3 in the answer’s order, each named apart', () => {
     const onShowUse = vi.fn();
-    draw({
-      citations: cite('kudos::2021-1', 'kudos::2021-2', 'kudos::2021-1', 'kudos::2021-1'),
-      onShowUse,
-    });
-    const row = rowOf(/Utdrag 1/);
-    const all = links(row);
-    expect(all.map((link) => link.textContent)).toEqual(['Utdrag 1', '2', '3']);
+    draw({ citations: thrice, onShowUse });
+    const all = links(rowOf(/Utdrag 1/));
+    expect(all.map((link) => link.textContent)).toEqual(['1', '2', '3']);
     expect(all.map((link) => link.getAttribute('aria-label'))).toEqual([
-      'Utdrag 1, til svaret, bruk 1, fotnote 1 av 4',
-      'Til svaret, bruk 2, fotnote 3 av 4',
-      'Til svaret, bruk 3, fotnote 4 av 4',
+      '1: fotnote 1, første sted i svaret',
+      '2: fotnote 1, andre sted i svaret',
+      '3: fotnote 1, tredje sted i svaret',
     ]);
-    // All three in the title's line, in the answer's order.
-    const line = row.querySelector('.uib-sources-excerpt-number') as HTMLElement;
-    for (const link of all) expect(line.contains(link)).toBe(true);
     for (const link of [all[2], all[0], all[1]]) fireEvent.click(link as HTMLElement);
     expect(onShowUse.mock.calls.map(([citation]) => citation)).toEqual([3, 0, 2]);
+  });
+
+  it('starts each link’s name with the number seen (WCAG 2.5.3)', () => {
+    draw({ citations: thrice, onShowUse: () => {} });
+    for (const link of screen.getAllByRole('link', { name: /fotnote \d/ }))
+      expect(link.getAttribute('aria-label')?.startsWith(`${link.textContent}:`)).toBe(true);
+  });
+
+  it('keeps each link back at least 24 px both ways, by its class, and draws them as links only', () => {
+    draw({ citations: thrice, onShowUse: () => {} });
+    for (const link of links(rowOf(/Utdrag 1/))) {
+      expect(link.classList.contains('uib-sources-use')).toBe(true);
+      expect(link.querySelector('svg, [class*="mark"]')).toBeNull();
+    }
+  });
+
+  it('names the one link of an excerpt cited once by its footnote alone', () => {
+    const onShowUse = vi.fn();
+    draw({ citations: thrice, onShowUse });
+    const [only, ...more] = links(rowOf(/Utdrag 2/));
+    expect(more).toEqual([]);
+    expect(only?.getAttribute('aria-label')).toBe('1: fotnote 2 i svaret');
+    expect(only?.textContent).toBe('1');
+    fireEvent.click(only as HTMLElement);
+    expect(onShowUse).toHaveBeenCalledWith(1, { source: nkom, excerpt: nkom.excerpts[1] });
   });
 
   it('draws no control for the way back at the top: not on a document’s head, nor over the list', () => {
@@ -208,9 +300,9 @@ describe('the way back to the answer, where the excerpt is', () => {
       '.uib-sources-head, .uib-sources-document-head',
     ))
       expect(within(head).queryByRole('link')).toBeNull();
-    // Every link back is in an excerpt's title.
-    for (const link of screen.getAllByRole('link', { name: /til svaret/i }))
-      expect(link.closest('.uib-sources-excerpt-title')).toBeTruthy();
+    // Every link back is in an excerpt's title line.
+    for (const link of screen.getAllByRole('link', { name: /^\d+: fotnote \d/ }))
+      expect(link.closest('.uib-sources-excerpt-line')).toBeTruthy();
   });
 
   it('makes each link back a real link to the footnote’s address, which the app passes', () => {
@@ -224,34 +316,38 @@ describe('the way back to the answer, where the excerpt is', () => {
     ]);
   });
 
-  it('keeps each link back at least 24 px both ways, by its class', () => {
-    draw({ citations: cite('kudos::2021-1', 'kudos::2021-1'), onShowUse: () => {} });
-    for (const link of links(rowOf(/Utdrag 1/)))
-      expect(link.classList.contains('uib-sources-use')).toBe(true);
-  });
-
   it('says which answer a link leads to when the thread has several', () => {
     draw({
-      citations: cite('kudos::2021-1'),
+      citations: cite('kudos::2021-1', 'kudos::2021-1'),
       onShowUse: () => {},
       answerIndex: 1,
       answerCount: 3,
       onAnswerChange: () => {},
     });
-    expect(
-      screen.getByRole('link', { name: 'Utdrag 1, til svaret, fotnote 1 av 1 i svar 2' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: '2: fotnote 1, andre sted i svar 2' })).toBeTruthy();
   });
 
   it('pairs every footnote with a numbered excerpt shown, and every numbered excerpt with a footnote', () => {
     const citations = cite('kudos::2021-3', 'kudos::2021-1', 'kudos::2021-3', 'attached:abc:0');
     draw({ citations, onShowUse: () => {} });
     const pairing = pairCitations([nkom, memo], citations);
-    const numbered = screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent);
-    expect(numbered.sort()).toEqual(
+    const cited = screen
+      .getAllByText(/^Utdrag \d+$/)
+      .filter((label) => !label.closest<HTMLElement>('.uib-sources-excerpt')?.dataset.uncited);
+    expect(cited.map((label) => label.textContent).sort()).toEqual(
       [...new Set(pairing.numbers.values())].map((n) => `Utdrag ${n}`).sort(),
     );
-    for (const label of screen.getAllByText(/^Utdrag \d+$/)) expect(label.matches('a')).toBe(true);
+    for (const label of cited) {
+      const row = label.closest('.uib-sources-excerpt') as HTMLElement;
+      expect(links(row).length).toBeGreaterThan(0);
+    }
+    // Every footnote leads to a cited excerpt shown with its number, and to no uncited one.
+    pairing.targets.forEach((chunk, i) => {
+      const n = pairing.numbers.get(chunk ?? '');
+      const row = rowOf(new RegExp(`^Utdrag ${n}(:|$)`));
+      expect(row.dataset.uncited).toBeUndefined();
+      expect(pairing.uses.get(chunk ?? '')).toContain(i);
+    });
     expect(pairing.unpaired).toEqual([]);
   });
 });
@@ -279,7 +375,7 @@ describe('footnotes that name only documents', () => {
     expect(screen.getByRole('heading', { level: 3, name: tildeling.title })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 3, name: nkom.title })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Kilde \d|Utdrag \d/);
-    expect(screen.queryByRole('link', { name: /til svaret/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^\d+: fotnote \d/ })).toBeNull();
   });
 
   it('number nothing even when some footnotes name excerpts', () => {
@@ -560,9 +656,7 @@ describe('the catalogue', () => {
       </InLocale>,
     );
     expect(screen.getByRole('heading', { name: /Excerpt 1.*Ressursbruk/ })).toBeTruthy();
-    expect(
-      screen.getByRole('link', { name: 'Excerpt 1, to the answer, footnote 1 of 1' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: '1: footnote 1 in the answer' })).toBeTruthy();
   });
 
   it('has an English text for every Norwegian one', () => {

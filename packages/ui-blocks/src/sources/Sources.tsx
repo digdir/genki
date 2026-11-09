@@ -2,7 +2,6 @@ import { Button, Card, Heading, Link, Paragraph, Skeleton } from '@digdir/design
 import { useFormat } from '@genai/i18n/react';
 import {
   ArrowLeftIcon,
-  ArrowUndoIcon,
   ChevronDownIcon,
   ExternalLinkIcon,
   InformationSquareIcon,
@@ -14,6 +13,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
 import { useT } from '../i18n.js';
@@ -28,9 +28,10 @@ import {
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
 import {
   documentKeys,
-  documentOrder,
   pairCitations,
+  readingOrder,
   type Pairing,
+  type ReadingOrder,
   type SourceCitation,
 } from './pairing.js';
 import { SourcesSearch } from './SourcesSearch.js';
@@ -67,9 +68,9 @@ export interface SourcesProps {
    */
   citations?: readonly SourceCitation[] | undefined;
   /**
-   * A link back to the answer was followed: that footnote's index in `citations`. A cited
-   * excerpt's title, «Utdrag N», links to the first footnote that cites it, and small links
-   * beside it to the others, drawn when this or `citationHref` is given.
+   * A link back to the answer was followed: that footnote's index in `citations`. Beside a cited
+   * excerpt's title, «Utdrag N», stands one link per footnote that cites it, drawn when this or
+   * `citationHref` is given.
    */
   onShowUse?: ((citation: number, selection: SourceSelection) => void) | undefined;
   /** Where a link back to footnote `citation` leads, such as `#` and the answer's `citationId`. */
@@ -124,11 +125,6 @@ type Level = 2 | 3 | 4 | 5 | 6;
 
 const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
-export const orderedExcerpts = (source: SourceDocument): readonly SourceExcerpt[] =>
-  source.excerpts.every((e) => e.position !== undefined)
-    ? source.excerpts.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    : source.excerpts;
-
 const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
 
 const qualifier = (id: string | undefined) => (id?.includes('::') ? id.split('::')[0] : undefined);
@@ -176,6 +172,7 @@ export const distinctNames = (
 
 const prepare = (
   sources: readonly SourceDocument[],
+  order: ReadingOrder,
   name: (title: string, id: string) => string,
   itemId: SourcesProps['itemId'],
 ): Prepared[] => {
@@ -184,7 +181,10 @@ const prepare = (
   return sources.map((source, i) => {
     const key = keys[i] ?? `@${i}`;
     const passages: { text: string; excerpt?: SourceExcerpt }[] = source.excerpts.length
-      ? orderedExcerpts(source).map((excerpt) => ({ text: excerptMarkdown(excerpt.text), excerpt }))
+      ? (order.excerpts[i] ?? source.excerpts).map((excerpt) => ({
+          text: excerptMarkdown(excerpt.text),
+          excerpt,
+        }))
       : [{ text: excerptMarkdown(source.excerpt ?? '') }].filter((p) => p.text);
     const rows = passages.map((passage, j): Row => {
       const quote = passage.excerpt?.textUnavailable ? '' : passage.text;
@@ -205,8 +205,6 @@ const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
 /** What the links back to the answer need beyond an item's uses. */
 interface BackTo {
-  /** How many footnotes the answer has, so each link says which of them it leads to. */
-  total: number;
   /** The answer's number, from 1, when the thread has several. */
   answer: number | undefined;
   href: ((citation: number) => string | undefined) | undefined;
@@ -214,76 +212,67 @@ interface BackTo {
 }
 
 /**
- * «Utdrag N» over a cited excerpt, and its way back to the answer, where the excerpt is. The
- * title is a link to the first footnote that cites it. When the answer cites it again, small
- * links right beside the title lead to the others, in the order they stand in the answer, as
- * Wikipedia's back-references: «Utdrag 1 ↩ 2 3». Each is a real link, so a reader can tab to,
- * or open, any one of them, and each says to a screen reader which footnote it leads to. Decided
- * 6 November 2026, in place of a control that cycled and of a row of links on the card's head.
+ * «Utdrag N» over a cited excerpt, a title and not a link, and right beside it the way back to
+ * the answer: one small link per footnote that cites the excerpt, 1, 2, 3 in the order they
+ * stand in the answer, as Wikipedia's back-references. Each is a real link, so a reader can tab
+ * to, or open, any one of them. Its name starts with the number seen (WCAG 2.5.3) and says which
+ * footnote and which place it leads to: «1: fotnote 2, første sted i svaret». Decided
+ * 6 November 2026, in place of a control that cycled, a row on the card's head, a title that was
+ * itself the first link, and round marks like the answer's.
  */
 const ExcerptNumber = ({
+  n,
   label,
   uses,
   back,
 }: {
+  n: number;
   label: string;
   uses: readonly number[];
   back: BackTo | undefined;
 }) => {
   const t = useT();
-  const [first, ...more] = uses;
-  if (!back || first === undefined)
+  if (!back || uses.length === 0)
     return <span className="uib-sources-excerpt-number">{label}</span>;
-  const { total, answer, href, onShow } = back;
-  const where = (citation: number) =>
-    answer === undefined
-      ? t('sources.useWhere', { n: citation + 1, total })
-      : t('sources.useWhereInAnswer', { n: citation + 1, total, answer });
-  // Named by `aria-label`, which starts with what is seen (WCAG 2.5.3): hidden spans inside a
-  // link are boxes of their own to a browser, which then reads «Utdrag 1 , fotnote 2».
-  const link = (citation: number, name: string, text: ReactNode, className: string) => (
-    <Link
-      key={citation}
-      href={href?.(citation) ?? '#'}
-      className={className}
-      aria-label={name}
-      onClick={
-        onShow
-          ? (event) => {
-              // The app moves to the footnote; following the address could reload its route.
-              event.preventDefault();
-              onShow(citation);
-            }
-          : undefined
-      }
-    >
-      {text}
-    </Link>
-  );
-  const toAnswer = t('sources.toAnswerFrom', { label });
+  const { answer, href, onShow } = back;
+  const ordinals = t('sources.ordinals').split('|');
+  const name = (place: number) => {
+    const shown = place + 1;
+    if (uses.length === 1)
+      return answer === undefined
+        ? t('sources.useOnce', { shown, n })
+        : t('sources.useOnceInAnswer', { shown, n, answer });
+    const ordinal = ordinals[place] ?? `${shown}.`;
+    return answer === undefined
+      ? t('sources.usePlace', { shown, n, place: ordinal })
+      : t('sources.usePlaceInAnswer', { shown, n, place: ordinal, answer });
+  };
   return (
-    <span className="uib-sources-excerpt-number">
-      {link(
-        first,
-        more.length
-          ? `${toAnswer}, ${t('sources.use')} 1, ${where(first)}`
-          : `${toAnswer}, ${where(first)}`,
-        label,
-        'uib-sources-use uib-sources-title-link',
-      )}
-      {more.length ? (
-        <span className="uib-sources-uses">
-          <ArrowUndoIcon aria-hidden className="uib-sources-uses-icon" />
-          {more.map((citation, i) =>
-            link(
-              citation,
-              `${t('sources.toAnswer')}, ${t('sources.use')} ${i + 2}, ${where(citation)}`,
-              i + 2,
-              'uib-sources-use',
-            ),
-          )}
-        </span>
-      ) : null}
+    <span className="uib-sources-excerpt-line">
+      <span className="uib-sources-excerpt-number">{label}</span>
+      <span className="uib-sources-uses">
+        {uses.map((citation, place) => (
+          // Named by `aria-label`: hidden spans inside a link are boxes of their own to a
+          // browser, which then reads «1 , fotnote 2».
+          <Link
+            key={citation}
+            href={href?.(citation) ?? '#'}
+            className="uib-sources-use"
+            aria-label={name(place)}
+            onClick={
+              onShow
+                ? (event: MouseEvent<HTMLAnchorElement>) => {
+                    // The app moves to the footnote; following the address could reload its route.
+                    event.preventDefault();
+                    onShow(citation);
+                  }
+                : undefined
+            }
+          >
+            {place + 1}
+          </Link>
+        ))}
+      </span>
     </span>
   );
 };
@@ -430,6 +419,8 @@ type ItemProps = Pick<
   document: Prepared;
   level: number;
   pairing: Pairing | undefined;
+  /** Every shown excerpt's number: the cited ones first, then the rest in reading order. */
+  numbers: ReadonlyMap<string, number>;
   /** The links back to the answer, when the app takes them. */
   back:
     | (Omit<BackTo, 'onShow'> & {
@@ -454,6 +445,7 @@ const SourceItem = ({
   document: { source, key: documentKey, name: given, id, rows },
   level,
   pairing,
+  numbers,
   openRows,
   onRowOpenChange,
   open,
@@ -575,10 +567,13 @@ const SourceItem = ({
     : undefined;
 
   return (
+    // Designsystemet's card, but not its `Card`: that one makes a click anywhere on the card
+    // click the first link in a heading, here an excerpt's first link back, so a click on an
+    // excerpt nothing cites went to that footnote. Only a cited excerpt's links lead back.
     // Listens for Escape only, when a footnote sent the reader here.
-    <Card
+    <div
       ref={card}
-      className="uib-sources-document ds-focus"
+      className="ds-card uib-sources-document ds-focus"
       id={id}
       tabIndex={-1}
       onKeyDown={leaveCard}
@@ -670,12 +665,13 @@ const SourceItem = ({
             const isOpen = openRows.has(key);
             const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
-            const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
+            // Only a cited excerpt has uses, and only its links lead back to the answer. One that
+            // nothing cites is numbered after the cited ones, and says it is not cited.
+            const cited = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
+            const n = excerpt ? numbers.get(excerpt.chunkId) : undefined;
             const uses =
-              byExcerpt && n !== undefined && excerpt
-                ? (pairing.uses.get(excerpt.chunkId) ?? [])
-                : [];
-            const uncited = byExcerpt && n === undefined;
+              cited !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
+            const uncited = byExcerpt && cited === undefined;
             const path = headingText(excerpt?.heading);
             const section = sectionOf(path);
             const name =
@@ -733,9 +729,10 @@ const SourceItem = ({
                     {n === undefined || !excerpt ? null : (
                       // In the title, so it works on a closed row too.
                       <ExcerptNumber
+                        n={n}
                         label={t('sources.excerptNumber', { n })}
                         uses={uses}
-                        back={backFor(excerpt)}
+                        back={cited === undefined ? undefined : backFor(excerpt)}
                       />
                     )}
                     {section ? <span>{section}</span> : null}
@@ -854,7 +851,7 @@ const SourceItem = ({
           </Paragraph>
         )}
       </Card.Block>
-    </Card>
+    </div>
   );
 };
 
@@ -899,20 +896,26 @@ export const Sources = ({
   const applied = useRef(new WeakSet<SourceTarget>());
   const frame = useRef(0);
 
-  const prepared = useMemo(
-    () => prepare(sources ?? [], (name, id) => t('sources.sameTitle', { title: name, id }), itemId),
-    [sources, t, itemId],
-  );
   const pairing = useMemo(
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
-  // The cards in the order of their numbers, 1, 2, 3, as the footnotes run; the search steps
-  // through them in the same order.
-  const order = useMemo(() => documentOrder(sources ?? [], pairing), [sources, pairing]);
+  // The cards, and the excerpts in each, in the order of their numbers, 1, 2, 3, as the footnotes
+  // run; the search steps through them in the same order.
+  const order = useMemo(() => readingOrder(sources ?? [], pairing), [sources, pairing]);
+  const prepared = useMemo(
+    () =>
+      prepare(
+        sources ?? [],
+        order,
+        (name, id) => t('sources.sameTitle', { title: name, id }),
+        itemId,
+      ),
+    [sources, order, t, itemId],
+  );
   const index = useMemo<SearchableItem[]>(
     () =>
-      order.flatMap(
+      order.documents.flatMap(
         (i) =>
           prepared[i]?.rows
             .filter((row) => row.flat)
@@ -1007,7 +1010,6 @@ export const Sources = ({
   const back: ItemProps['back'] =
     onShowUse || citationHref
       ? {
-          total: citations?.length ?? 0,
           answer: answerCount > 1 ? answerIndex + 1 : undefined,
           href: citationHref,
           show: onShowUse,
@@ -1089,7 +1091,7 @@ export const Sources = ({
         />
       ) : sources?.length ? (
         <ol key={listKey} className="uib-sources-documents" {...named}>
-          {order.flatMap((i) => {
+          {order.documents.flatMap((i) => {
             const document = prepared[i];
             if (!document) return [];
             return [
@@ -1098,6 +1100,7 @@ export const Sources = ({
                   document={document}
                   level={headingLevel}
                   pairing={pairing}
+                  numbers={order.numbers}
                   openRows={openRows}
                   onRowOpenChange={setRowOpen}
                   open={cardOpen(document.key)}
