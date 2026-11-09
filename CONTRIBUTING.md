@@ -50,6 +50,20 @@ Docker must be running: the Postgres, pgvector and Typesense-writer suites start
 - Fill in the pull request template: what changes, why, how you tested it, and which ADRs, docs or i18n catalogues you touched.
 - `npm run check` must pass before review.
 
+### Risk and undo
+
+The pull request says how risky it is and how to undo it.
+
+- **Low:** everything that does not touch the parts below. Merge when the checks pass and every review thread is answered.
+- **Sensitive:** auth, identity, tenancy, the model gate, personal data handling, migrations, `infra/`, `.github/` or the `Dockerfile`. These also get the security review in [.github/review-security.md](.github/review-security.md), and the maintainers are told in the lab's Slack channel for sensitive changes before the merge. No approval is required.
+- **Undo** says whether a revert is enough, or which data or infra step it needs.
+
+### Automated review
+
+Every pull request from this repository gets a review by a model, following [REVIEW.md](REVIEW.md). It comments and never approves, blocks or merges. Its findings are Important, Nit or Pre-existing.
+
+Answer every thread before you merge: fix it and say so, or say why not ("not fixing, because ..."). A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To run it again after a change, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
+
 ## Who maintains genki
 
 genki is maintained by [Digdir R&D Lab](https://baksia.digdir.no/teams/lab/), the team exploring generative AI in Digdir's products, services and shared solutions. Write access is given through the GitHub team [@digdir/team-ai-lab](https://github.com/orgs/digdir/teams/team-ai-lab), whose members can merge pull requests. Who is in the team is managed there, not in this file.
