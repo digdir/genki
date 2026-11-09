@@ -202,7 +202,7 @@ const prepare = (
 const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
 /** What the links back to the answer need beyond an item's uses. */
-interface BackTo {
+export interface BackTo {
   /** The answer's number, from 1, when the thread has several. */
   answer: number | undefined;
   href: ((citation: number) => string | undefined) | undefined;
@@ -216,9 +216,9 @@ interface BackTo {
  * to, or open, any one of them. Its name starts with the number seen (WCAG 2.5.3) and says which
  * footnote and which place it leads to: «1: fotnote 2, første sted i svaret». Decided
  * 6 November 2026, in place of a control that cycled, a row on the card's head, a title that was
- * itself the first link, and round marks like the answer's.
+ * itself the first link, and round marks like the answer's. The document view draws the same.
  */
-const ExcerptNumber = ({
+export const ExcerptNumber = ({
   n,
   label,
   uses,
@@ -392,6 +392,72 @@ const EmptyState = ({
   );
 };
 
+/**
+ * The line under a document's title: the host's own, or the reader's own document, or the
+ * collection, the publication date and the version. Sources and the document view draw the same.
+ */
+export const useSourceSubtitle = (source: SourceDocument): string => {
+  const t = useT();
+  const f = useFormat();
+  const published = source.publishedAt ? new Date(source.publishedAt) : undefined;
+  const meta = source.meta?.filter(Boolean) ?? [];
+  if (meta.length) return meta.join(' · ');
+  if (isOwn(source)) return t('sources.ownDocument');
+  return [
+    sourceDataset(source),
+    published && !Number.isNaN(published.getTime())
+      ? t('sources.published', { date: f.date(published, 'long') })
+      : undefined,
+    source.version ? t('sources.version', { version: source.version }) : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+/**
+ * «Les dokumentet på Kudos», named apart by the title and opening in a new tab; or why there is no
+ * link: the reader's own document, or none the platform can share.
+ */
+export const DocumentLink = ({
+  source,
+  title,
+  corpus,
+  onFollow,
+  linkClassName,
+  noLinkClassName,
+}: {
+  source: SourceDocument;
+  title: string;
+  corpus: string | undefined;
+  onFollow?: (() => void) | undefined;
+  linkClassName: string;
+  noLinkClassName: string;
+}) => {
+  const t = useT();
+  if (isOwn(source) || !source.url)
+    return (
+      <Paragraph data-size="xs" className={noLinkClassName}>
+        {isOwn(source) ? t('sources.ownDocumentNoLink') : t('sources.noPublicLink')}
+      </Paragraph>
+    );
+  return (
+    <Link
+      href={source.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-size="sm"
+      className={linkClassName}
+      onClick={onFollow}
+    >
+      {corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument')}
+      <span className="ds-sr-only">
+        , {title} {t('sources.opensInNewTab')}
+      </span>
+      <ExternalLinkIcon aria-hidden />
+    </Link>
+  );
+};
+
 const BackButton = ({ onClick }: { onClick: () => void }) => {
   const t = useT();
   return (
@@ -463,7 +529,6 @@ const SourceItem = ({
   back,
 }: ItemProps) => {
   const t = useT();
-  const f = useFormat();
   const detailsId = useId();
   const bodyId = useId();
   const rowId = useId();
@@ -511,21 +576,7 @@ const SourceItem = ({
     return () => cancelAnimationFrame(frame);
   }, [focus]);
 
-  const published = source.publishedAt ? new Date(source.publishedAt) : undefined;
-  const meta = source.meta?.filter(Boolean) ?? [];
-  const subtitle = meta.length
-    ? meta.join(' · ')
-    : isOwn(source)
-      ? t('sources.ownDocument')
-      : [
-          sourceDataset(source),
-          published && !Number.isNaN(published.getTime())
-            ? t('sources.published', { date: f.date(published, 'long') })
-            : undefined,
-          source.version ? t('sources.version', { version: source.version }) : undefined,
-        ]
-          .filter(Boolean)
-          .join(' · ');
+  const subtitle = useSourceSubtitle(source);
   const actions = sourceActions?.(source);
   // A document's passages, which nothing cites alone, behind one button in document mode.
   const passages = (drawn: ReactNode[]) =>
@@ -820,30 +871,14 @@ const SourceItem = ({
             );
           }),
         )}
-        {isOwn(source) ? (
-          <Paragraph data-size="xs" className="uib-sources-no-link">
-            {t('sources.ownDocumentNoLink')}
-          </Paragraph>
-        ) : source.url ? (
-          <Link
-            href={source.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-size="sm"
-            className="uib-sources-link"
-            onClick={onSelect ? () => onSelect({ source }) : undefined}
-          >
-            {corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument')}
-            <span className="ds-sr-only">
-              , {title} {t('sources.opensInNewTab')}
-            </span>
-            <ExternalLinkIcon aria-hidden />
-          </Link>
-        ) : (
-          <Paragraph data-size="xs" className="uib-sources-no-link">
-            {t('sources.noPublicLink')}
-          </Paragraph>
-        )}
+        <DocumentLink
+          source={source}
+          title={title}
+          corpus={corpus}
+          onFollow={onSelect ? () => onSelect({ source }) : undefined}
+          linkClassName="uib-sources-link"
+          noLinkClassName="uib-sources-no-link"
+        />
       </Card.Block>
     </div>
   );
