@@ -21,6 +21,7 @@ import { inferQueryIntent } from './intent.js';
 import {
   activeFiltersInstruction,
   agentTools,
+  answerInstructionsLead,
   defaultSystemPrompt,
   type ActiveFilter,
   exhaustionDefault,
@@ -135,6 +136,7 @@ export const agentLoopConfig = z.strictObject({
   evaluatorTemperature: z.number().min(0).max(2).optional(),
   noToolCallRetry: z.boolean().optional(),
   noAnswerText: z.string().min(1).max(500).optional(),
+  instructionsInAnswer: z.boolean().optional(),
   search: z
     .strictObject({
       titleOverlapWeight: z.number().min(0).max(20).optional(),
@@ -469,12 +471,14 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       query,
       history,
       signal: ctx.signal,
-      // The answer is written in a call of its own; the service's instructions on sources,
-      // form and what not to fill in must reach it too, not only the agent. The note on
-      // untrusted data comes last, as in the agent's own prompt.
+      // The answer is written in a call of its own, without tools. A service can give it its
+      // instructions on sources, form and what not to fill in too, not only the agent. The note
+      // on untrusted data comes last, as in the agent's own prompt.
       systemPrompt:
         systemPromptWithDate((options.now ?? (() => new Date()))()) +
-        (settings.instructions ? `\n\n${baseInstructions(settings.instructions)}` : '') +
+        (settings.instructionsInAnswer && settings.instructions
+          ? `\n\n${answerInstructionsLead}\n\n${baseInstructions(settings.instructions)}`
+          : '') +
         `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
@@ -503,7 +507,6 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     let finalized = false;
     let iteration = 0;
     let lastIteration = 0;
-    let usedTools = false;
     const reactStarted = Date.now();
 
     for (; iteration < maxIterations && !finalized; iteration += 1) {
@@ -533,17 +536,19 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
       ) {
-        // An answer from a run that used no tool comes from the model's own knowledge. With the
-        // guard on, only small talk passes on a first question; a follow-up may rest on earlier
-        // answers, so it passes after the re-prompts. A turn cut off while calling tools did try.
+        // An answer from a run that has not searched comes from the model's own knowledge. With
+        // the guard on, only small talk passes on a first question; a follow-up may rest on
+        // earlier answers, so it passes after the re-prompts. A turn cut off while calling tools
+        // was trying to search, so it is asked again as it was, without the nudge.
+        const cutOff = turn.toolCalls.length > 0;
         const guard =
           Boolean(settings.noToolCallRetry) &&
-          !usedTools &&
-          turn.toolCalls.length === 0 &&
-          !(await isSmallTalk(query));
+          workspace.searches.length === 0 &&
+          (cutOff || !(await isSmallTalk(query)));
         if (guard && workspace.noToolCallRetries < 2) {
           workspace.noToolCallRetries += 1;
-          messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
+          if (!cutOff)
+            messages = [...messages, assistant, { role: 'system', content: noToolCallNudge }];
           continue;
         }
         answer =
@@ -595,7 +600,6 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
             ),
           );
           content = outcome.content;
-          usedTools = true;
           if (outcome.planned)
             yield { type: 'kernel.notice', data: { kind: 'plan', ...outcome.planned } };
           if (outcome.retrieved)
@@ -608,14 +612,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           if (call.name === 'generate_response') generated = true;
         } else if (skills.length && call.name === useSkillTool.name) {
           content = useSkill(skills, args.value, workspace.loadedSkills);
-          usedTools = true;
         } else {
           const tool = extra.find((t) => t.spec.name === call.name);
           if (!tool)
             content = `Unknown tool: ${call.name}. Available tools: ${toolSpecs.map((t) => t.name).join(', ')}`;
           else {
             const result = await tool.port.call(args.value);
-            usedTools = true;
             content = result.parts.some((part) => part.meta?.untrusted === true)
               ? untrustedData(`tool:${call.name}`, textOf(result))
               : textOf(result);
@@ -901,10 +903,18 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
     }
 
     const foundNothing =
-      !clarification && workspace.citations.length === 0 && soundsLikeRefusal(answer ?? '');
+      !clarification &&
+      workspace.citations.length === 0 &&
+      (soundsLikeRefusal(answer ?? '') ||
+        (settings.noAnswerText !== undefined && answer === settings.noAnswerText));
     // A service can say in its own words that its sources do not cover a question, instead of
-    // however the model put it.
-    if (foundNothing && settings.noAnswerText && answer !== settings.noAnswerText) {
+    // however the model put it. Only after a search: small talk is not a miss in the sources.
+    if (
+      foundNothing &&
+      settings.noAnswerText &&
+      answer !== settings.noAnswerText &&
+      workspace.searches.length > 0
+    ) {
       yield { type: 'kernel.notice', data: { stage: 'answer-discarded', reason: 'no-answer' } };
       yield { type: 'kernel.part.delta', data: { text: settings.noAnswerText } };
       answer = settings.noAnswerText;

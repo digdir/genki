@@ -192,6 +192,9 @@ export const exhaustionDefault = 'Could not determine an answer within the itera
 export const noToolCallNudge =
   'You produced a response WITHOUT searching the knowledge base. You must answer ONLY from retrieved documents, never from prior knowledge — so you MUST search FIRST. Emit an actual search tool call now; do not answer from memory and do not write the query as prose, pseudo-code, a `[SEARCH]` block, or `<tool_code>`.';
 
+export const answerInstructionsLead =
+  'The service gave these instructions to the agent that searched. Follow what they say about the content, the sources and the form of the answer. You have no tools, so leave out what they say about searching or calling tools.';
+
 export const smallTalkCheck =
   'Classify the user message. Reply SMALL_TALK if it only greets, thanks, makes small talk or asks what the assistant is or can help with. Reply QUESTION if it asks for any facts, information or advice, also when it greets as well. Reply with the one word only.';
 

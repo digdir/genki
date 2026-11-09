@@ -3,9 +3,14 @@ import type { ServiceRunSuccess } from './draft-runner.js';
 
 const shortRefusalLength = 80;
 
-// A run found nothing when its answer is empty, when the strategy marked a worded "found
-// nothing", or when a short answer reads as one. Batch runs and test runs judge alike.
-export const notFoundOf = (outcome: Pick<ServiceRunSuccess, 'noAnswer' | 'answer' | 'parts'>) =>
-  outcome.noAnswer ||
-  outcome.parts.some((p) => p.meta?.noAnswer === true) ||
+type Answered = Pick<ServiceRunSuccess, 'noAnswer' | 'answer' | 'parts'>;
+
+// The run or its strategy said it found nothing, as a test run grades a refusal. A blank or short
+// answer is not taken for one there, so a broken answer does not pass a case that expects one.
+export const markedNotFound = (outcome: Answered) =>
+  outcome.noAnswer || outcome.parts.some((p) => p.meta?.noAnswer === true);
+
+// A batch run also counts a short answer that reads as "found nothing", and an empty one.
+export const notFoundOf = (outcome: Answered) =>
+  markedNotFound(outcome) ||
   (outcome.answer.trim().length <= shortRefusalLength && soundsLikeRefusal(outcome.answer));

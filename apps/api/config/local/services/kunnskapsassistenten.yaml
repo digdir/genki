@@ -29,6 +29,7 @@ spec:
       temperature: 0.3
       noToolCallRetry: true
       noAnswerText: Kildene i Kudos dekker ikke dette.
+      instructionsInAnswer: true
   knowledge:
     datasets:
       - dataset: digdir/kudos

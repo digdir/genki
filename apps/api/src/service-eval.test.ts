@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Event, Part } from '@genai/contracts';
 import { gradeAnswer, parseTestSet } from '@genai/eval';
 import { usageByModel } from './draft-runner.js';
-import { notFoundOf } from './not-found.js';
+import { markedNotFound, notFoundOf } from './not-found.js';
 import { answeringModel, judgedModels, writerOf, writersOf } from './service-eval.js';
 
 const usage = (model: { id: string; kind: string }, inputTokens: number): Event =>
@@ -78,6 +78,8 @@ describe('an answer that found nothing', () => {
     expect(notFoundOf(unmarked)).toBe(false);
     expect(notFoundOf({ noAnswer: true, answer: '', parts: [] })).toBe(true);
     expect(notFoundOf({ noAnswer: false, answer: 'Fant ikke noe.', parts: [] })).toBe(true);
+    expect(markedNotFound(marked)).toBe(true);
+    expect(markedNotFound(unmarked)).toBe(false);
     expect(
       await gradeAnswer(reject, { text: worded, noAnswer: notFoundOf(marked) }, { context }),
     ).toEqual({ pass: true, score: 1 });
@@ -95,6 +97,22 @@ describe('the model a test run records', () => {
       variants: [{ id: 'default' }, { id: 'sonnet', model: 'foundry-claude/claude-sonnet-5-5' }],
     },
   };
+
+  it('is the own model of the first variant when none is chosen, as the draft runner runs it', () => {
+    const first = {
+      spec: {
+        model: { primary: 'foundry-openai/gpt-4o-2m-tps' },
+        variants: [{ id: 'sonnet', model: 'foundry-claude/claude-sonnet-5-5' }, 'default'],
+      },
+    };
+
+    expect(answeringModel({ definition: first, files: {}, version: 'draft' })).toBe(
+      'foundry-claude/claude-sonnet-5-5',
+    );
+    expect(
+      answeringModel({ definition: first, files: {}, version: 'draft', variant: 'default' }),
+    ).toBe('foundry-openai/gpt-4o-2m-tps');
+  });
 
   it('is the own model of the variant, else the primary model', () => {
     const run = (variant?: string) =>
@@ -136,5 +154,15 @@ describe('the model that wrote the answers', () => {
       ]),
     ).toEqual(['foundry-openai/gpt-4.1-mini', 'foundry-openai/gpt-4o-2m-tps']);
     expect(writersOf(['foundry-openai/gpt-4o-2m-tps'])).toEqual(['foundry-openai/gpt-4o-2m-tps']);
+  });
+});
+
+describe('a test run that grades a refusal', () => {
+  it('does not take a blank or short answer for one, unless the run or its strategy marked it', () => {
+    expect(markedNotFound({ noAnswer: false, answer: '', parts: [] })).toBe(false);
+    expect(markedNotFound({ noAnswer: false, answer: 'Det er ikke nevnt her.', parts: [] })).toBe(
+      false,
+    );
+    expect(markedNotFound({ noAnswer: true, answer: '', parts: [] })).toBe(true);
   });
 });

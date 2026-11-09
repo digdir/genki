@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { variantId, variantModelOf, type Variant } from '@genai/definitions';
 import type { Principal } from '@genai/contracts';
 import {
   caseTypeOf,
@@ -21,7 +22,7 @@ import {
 import { appendVersion, type ConfigEntry } from './config-store.js';
 import type { DraftModelUsage } from './draft-runner.js';
 import { modelChoice, type Meter } from './model-choice.js';
-import { notFoundOf } from './not-found.js';
+import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
@@ -143,14 +144,12 @@ const modelsOf = (definition: Record<string, unknown>) => {
 };
 
 // The model that writes the answers: the variant's own model, else the primary model.
+// Without a chosen variant a run uses the first one, as the draft runner does.
 export const answeringModel = ({ definition, variant }: Subject) => {
   const variants = isRecord(definition.spec) ? definition.spec.variants : undefined;
-  const chosen = Array.isArray(variants)
-    ? variants.find((v) => isRecord(v) && v.id === variant)
-    : undefined;
-  return isRecord(chosen) && typeof chosen.model === 'string'
-    ? chosen.model
-    : modelsOf(definition)[0];
+  const list = Array.isArray(variants) ? (variants as Variant[]) : [];
+  const chosen = variant === undefined ? list[0] : list.find((v) => variantId(v) === variant);
+  return (chosen && variantModelOf(chosen)) ?? modelsOf(definition)[0];
 };
 
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
@@ -264,7 +263,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
-        { text: outcome.answer, noAnswer: notFoundOf(outcome) },
+        { text: outcome.answer, noAnswer: markedNotFound(outcome) },
         {
           ...(judge ? { judge } : {}),
           context: {

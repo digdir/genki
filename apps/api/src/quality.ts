@@ -19,6 +19,7 @@ import { improvements, improvementView } from './improvements.js';
 import type { MountDeps, PlatformModuleFactory } from './platform-modules.js';
 import { rightsOf, seesUsage, type Right } from './rights.js';
 import {
+  casesIn,
   runSummary,
   runView,
   serviceEval,
@@ -479,10 +480,7 @@ export const createQualityModule =
             ]);
           const subject = variant ? { ...found, variant } : found;
           const split = isCaseSplit(data.split) ? data.split : undefined;
-          const cases = set.spec.cases.filter(
-            (x) => (!split || caseView(x).split === split) && (!only || only.includes(x.id)),
-          );
-          if (cases.length === 0)
+          if (casesIn(set, split, only).length === 0)
             return problem(c, 409, 'Testsettet har ingen testtilfeller', [
               { path: 'testSet', message: 'no cases to run' },
             ]);

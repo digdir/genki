@@ -26,6 +26,7 @@ import { untrustedDataNotes } from '@genai/port-model';
 import {
   agentLoopConfig,
   agentLoopRuntimeConfig,
+  answerInstructionsLead,
   createAgentLoop,
   evaluatorSystemPrompt,
   exhaustionNudge,
@@ -391,6 +392,39 @@ describe('agent-loop strategy', () => {
     expect(own.meta).toMatchObject({ noAnswer: true });
   });
 
+  it('marks the words the service chose as found nothing, also when they do not read as a refusal', async () => {
+    const out = await run({
+      question: 'Hva er oppskriften på tradisjonell brunost?',
+      config: guarded({ noAnswerText: 'Spør gjerne om noe annet fra Kudos.' }),
+      scripts: { primary: memory },
+    });
+
+    expect(out.text).toBe('Spør gjerne om noe annet fra Kudos.');
+    expect(out.meta).toMatchObject({ noAnswer: true });
+  });
+
+  it('keeps small talk that mentions what it cannot do, instead of the words for found nothing', async () => {
+    const out = await run({
+      question: 'Hei, hva kan du hjelpe med?',
+      config: guarded({ noAnswerText: 'Kildene i Kudos dekker ikke dette.' }),
+      scripts: {
+        primary: {
+          loop: [
+            () =>
+              result(
+                'Jeg har ikke tilgang til personopplysninger, men kan svare på spørsmål om Kudos.',
+              ),
+          ],
+          smallTalk: () => 'SMALL_TALK',
+        },
+      },
+    });
+
+    expect(out.text).toBe(
+      'Jeg har ikke tilgang til personopplysninger, men kan svare på spørsmål om Kudos.',
+    );
+  });
+
   it('answers small talk without a search, also when a search is required', async () => {
     const out = await run({
       question: 'Hei, hvordan går det, og hva kan du hjelpe meg med?',
@@ -408,24 +442,39 @@ describe('agent-loop strategy', () => {
     expect(out.meta?.noAnswer).toBeUndefined();
   });
 
-  it('does not take a turn cut off while calling a tool for an answer from memory', async () => {
+  it('asks a turn cut off while calling a tool again, without the nudge, and does not answer with it', async () => {
+    const cut = () => ({
+      ...result('Jeg søker etter', [call('search', { queries: ['brunost'] })]),
+      finishReason: 'length' as const,
+    });
+    const out = await run({
+      config: guarded(),
+      scripts: { primary: { loop: [cut, cut, cut] } },
+    });
+
+    expect(out.loops).toHaveLength(3);
+    expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(0);
+    expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
+    expect(out.text).toBe(noToolCallHonestMiss);
+  });
+
+  it('only counts a search as looking in the sources, not another tool', async () => {
     const out = await run({
       config: guarded(),
       scripts: {
         primary: {
           loop: [
-            () => ({
-              ...result('', [call('search', { queries: ['brunost'] })]),
-              finishReason: 'length',
-            }),
+            () => result('', [call('inspect_filters', {})]),
+            () => result('Brunost lages av myse.'),
+            () => result('Brunost kokes lenge.'),
+            () => result('Brunost er brun.'),
           ],
         },
       },
     });
 
-    expect(out.loops).toHaveLength(1);
-    expect(systemMessages(out.loops[0]).filter((m) => m === noToolCallNudge)).toHaveLength(0);
-    expect(out.seen.filter((s) => s.kind === 'small-talk')).toHaveLength(0);
+    expect(systemMessages(out.loops.at(-1)).filter((m) => m === noToolCallNudge)).toHaveLength(2);
+    expect(out.text).toBe(noToolCallHonestMiss);
   });
 
   it('keeps the guard after a call to a tool that does not exist', async () => {
@@ -516,12 +565,17 @@ describe('agent-loop strategy', () => {
     expect(pretend.text).toBe(noToolCallHonestMiss);
   });
 
-  it('gives the call that writes the answer the service instructions too', async () => {
-    const out = await run({
-      config: {
-        ...baseConfig,
-        strategy: { ...baseConfig.strategy, instructions: 'Ikke fyll ut med egen kunnskap.' },
+  it('gives the call that writes the answer the service instructions too, when the service asks', async () => {
+    const instructed = (instructionsInAnswer?: boolean) => ({
+      ...baseConfig,
+      strategy: {
+        ...baseConfig.strategy,
+        instructions: 'Ikke fyll ut med egen kunnskap.',
+        ...(instructionsInAnswer ? { instructionsInAnswer } : {}),
       },
+    });
+    const out = await run({
+      config: instructed(true),
       scripts: {
         primary: {
           loop: [
@@ -533,6 +587,7 @@ describe('agent-loop strategy', () => {
       },
     });
     const plain = await run({
+      config: instructed(),
       scripts: {
         primary: {
           loop: [
@@ -547,7 +602,7 @@ describe('agent-loop strategy', () => {
     const system = (o: typeof out) =>
       o.seen.find((s) => s.kind === 'synth')?.request.messages[0]?.content;
     expect(system(out)).toBe(
-      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
+      `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${answerInstructionsLead}\n\nIkke fyll ut med egen kunnskap.\n\n${untrustedDataNotes.nb}`,
     );
     expect(system(plain)).toBe(
       `You are a helpful assistant. The date this conversation was created at is 6. oktober 2026 (Norwegian time).\n\n${untrustedDataNotes.nb}`,
