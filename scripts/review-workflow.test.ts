@@ -9,6 +9,10 @@ const workflow = parse(text) as {
   concurrency?: unknown;
   permissions: Record<string, string>;
   jobs: {
+    resolve: {
+      permissions: Record<string, string>;
+      steps: { uses?: string; with?: Record<string, string> }[];
+    };
     'follow-up': {
       if: string;
       permissions: Record<string, string>;
@@ -127,6 +131,27 @@ describe('after a push', () => {
     expect(
       tools.every((t) => /^(Read|Grep|Glob|Bash\(git (diff|log|show|grep|ls-files):\*\))$/.test(t)),
     ).toBe(true);
+  });
+
+  it('runs the model with a token that can only read', () => {
+    expect(followUp.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      'id-token': 'write',
+    });
+  });
+
+  it('resolves threads in a job that runs no model', () => {
+    const resolve = workflow.jobs.resolve;
+    expect(resolve.steps.some((s) => s.uses?.startsWith('anthropics/claude-code-action@'))).toBe(
+      false,
+    );
+    expect(resolve.permissions).not.toHaveProperty('id-token');
+  });
+
+  it('starts review again from the last full review, not from a follow-up reply', () => {
+    const last = review.steps.find((s) => s.id === 'last')?.run ?? '';
+    expect(last).toContain('test("^[0-9]+ findings")');
   });
 
   it('looks for fixes and never for new findings', () => {

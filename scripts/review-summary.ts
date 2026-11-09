@@ -55,11 +55,12 @@ export function parseFinding(thread: Thread): Finding | null {
     (r) => r.author.startsWith(BOT) && /^Fixed in `?([0-9a-f]{7,40})/.test(r.body),
   );
   const human = thread.replies.filter((r) => !r.author.startsWith(BOT));
-  const status: Status = thread.isResolved
-    ? 'fixed'
-    : human.some((r) => DISMISSED.test(r.body))
-      ? 'dismissed'
-      : 'open';
+  const status: Status =
+    thread.isResolved || botFix
+      ? 'fixed'
+      : human.some((r) => DISMISSED.test(r.body))
+        ? 'dismissed'
+        : 'open';
   return {
     threadId: thread.id,
     severity: head[1] as Severity,
@@ -253,18 +254,22 @@ async function main() {
         `,
         { t: f.thread_id, b: `Fixed in \`${process.env.HEAD}\`: ${f.note}` },
       );
-      await graphql(
-        `
-          mutation ($t: ID!) {
-            resolveReviewThread(input: { threadId: $t }) {
-              thread {
-                id
+      try {
+        await graphql(
+          `
+            mutation ($t: ID!) {
+              resolveReviewThread(input: { threadId: $t }) {
+                thread {
+                  id
+                }
               }
             }
-          }
-        `,
-        { t: f.thread_id },
-      );
+          `,
+          { t: f.thread_id },
+        );
+      } catch (error) {
+        console.log(`::warning::Could not resolve ${f.thread_id}: ${String(error)}`);
+      }
     }
   }
 

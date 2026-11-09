@@ -39,7 +39,7 @@ jobs:
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: last
         run: |
-          sha=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | .commit_id' | tail -n 1)
+          sha=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | test("^[0-9]+ findings"))) | .commit_id' | tail -n 1)
           if [ -n "$sha" ] && ! git merge-base --is-ancestor "$sha" HEAD; then sha=""; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -112,13 +112,16 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       id-token: write
+    outputs:
+      count: ${{ steps.open.outputs.count }}
+      open: ${{ steps.open.outputs.open }}
+      fixed: ${{ steps.claude.outputs.structured_output }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
-      HEAD: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,7 +129,9 @@ jobs:
           fetch-depth: 0
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - id: open
-        run: node scripts/review-summary.ts open >> "$GITHUB_OUTPUT"
+        run: |
+          node scripts/review-summary.ts open >> "$GITHUB_OUTPUT"
+          echo "open=$(jq -c . open-findings.json)" >> "$GITHUB_OUTPUT"
       - if: steps.open.outputs.count != '0'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
@@ -152,8 +157,30 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*)"
             --json-schema '{"type":"object","required":["fixed"],"properties":{"fixed":{"type":"array","items":{"type":"object","required":["thread_id","note"],"properties":{"thread_id":{"type":"string"},"note":{"type":"string"}}}}}}'
-      - if: steps.open.outputs.count != '0'
-        name: Resolve fixed findings and update the summary
+
+  resolve:
+    needs: follow-up
+    if: needs.follow-up.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - name: Resolve fixed findings and update the summary
         env:
-          OUT: ${{ steps.claude.outputs.structured_output }}
-        run: node scripts/review-summary.ts resolve
+          OPEN: ${{ needs.follow-up.outputs.open }}
+          OUT: ${{ needs.follow-up.outputs.fixed }}
+        run: |
+          printf '%s' "$OPEN" > open-findings.json
+          node scripts/review-summary.ts resolve

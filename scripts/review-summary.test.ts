@@ -63,6 +63,16 @@ describe('reading a review thread', () => {
     expect(f).toMatchObject({ status: 'fixed', fixedIn: 'abcdef1' });
   });
 
+  it('counts a finding as fixed when the follow-up replied, even if the thread could not be resolved', () => {
+    expect(
+      parseFinding(
+        thread({
+          replies: [{ author: 'github-actions[bot]', body: 'Fixed in `abcdef1234567`: done.' }],
+        }),
+      )?.status,
+    ).toBe('fixed');
+  });
+
   it('counts a finding as dismissed when the author says it will not be fixed', () => {
     expect(
       parseFinding(
