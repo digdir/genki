@@ -1,6 +1,5 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
-import { enShell, nbShell } from './shell/i18n.js';
 import { enBuilder, nbBuilder } from './builder/i18n.js';
 
 const nbProcedure = defineNamespace({
@@ -43,12 +42,10 @@ const enProcedure = {
 
 export const nb = defineCatalogue({
   procedure: nbProcedure,
-  shell: nbShell,
   builder: nbBuilder,
 });
 export const en = {
   procedure: enProcedure,
-  shell: enShell,
   builder: enBuilder,
 } satisfies Translation<typeof nb>;
 

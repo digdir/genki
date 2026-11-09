@@ -2,7 +2,7 @@ import { Field, Heading, Label, Select } from '@digdir/designsystemet-react';
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import { toolMode } from './toolMode.js';
 
 export interface ShellTool {

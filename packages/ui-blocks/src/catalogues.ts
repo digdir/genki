@@ -9,6 +9,7 @@ import * as documents from './documents/i18n.js';
 import * as filter from './filter/i18n.js';
 import * as shared from './i18n.js';
 import * as settings from './settings/i18n.js';
+import * as shell from './shell/i18n.js';
 import * as sources from './sources/i18n.js';
 import * as states from './states/i18n.js';
 import * as threads from './threads/i18n.js';
@@ -36,6 +37,7 @@ export const nb = defineCatalogue({
   ...documents.nb,
   ...settings.nb,
   ...answerActions.nb,
+  ...shell.nb,
 });
 export const en = {
   ...shared.en,
@@ -53,4 +55,5 @@ export const en = {
   ...documents.en,
   ...settings.en,
   ...answerActions.en,
+  ...shell.en,
 } satisfies Translation<typeof nb>;
