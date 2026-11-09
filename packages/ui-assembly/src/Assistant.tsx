@@ -39,7 +39,7 @@ import {
   type SourceTarget,
 } from '@genai/ui-blocks';
 import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
@@ -210,6 +210,15 @@ export const AssistantView = ({
   const [filterPin, setFilterPin] = useState<HTMLDivElement | null>(null);
   // The secondary panel's pinned region, where its tools' switcher stays while a tool scrolls.
   const [toolsPin, setToolsPin] = useState<HTMLDivElement | null>(null);
+  // Dokumentvisning's steps stay at the top while the document scrolls: under the switcher pinned
+  // there, not behind it.
+  const [toolsPinHeight, setToolsPinHeight] = useState(0);
+  useEffect(() => {
+    if (!toolsPin || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setToolsPinHeight(Math.round(toolsPin.offsetHeight)));
+    observer.observe(toolsPin);
+    return () => observer.disconnect();
+  }, [toolsPin]);
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (switchedView && primaryView === 'filters') back.current?.focus();
@@ -591,7 +600,7 @@ export const AssistantView = ({
               >
                 <FileTextIcon aria-hidden />
                 Vis i dokumentet
-                <span className="ds-sr-only">: {source.title}</span>
+                <span className="ds-sr-only">, {source.title}</span>
               </Button>
             ),
           }
@@ -630,7 +639,23 @@ export const AssistantView = ({
     ...(chatZone === 'secondary' ? [{ id: 'chat', label: names.chat, content: chat(true) }] : []),
     ...(sourcesOn ? [{ id: 'sources', label: names.sources, content: sourcesView(false) }] : []),
     ...(a.documentZone === 'secondary'
-      ? [{ id: 'document-view', label: names.documentView, content: documentView(false) }]
+      ? [
+          {
+            id: 'document-view',
+            label: names.documentView,
+            content: (
+              <div
+                style={
+                  {
+                    '--genai-document-view-steps-inset': `${toolsPinHeight}px`,
+                  } as CSSProperties
+                }
+              >
+                {documentView(false)}
+              </div>
+            ),
+          },
+        ]
       : []),
   ];
   // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the

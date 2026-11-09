@@ -587,6 +587,37 @@ describe('Dokumentvisning in the assistant', () => {
     expect(options).toEqual(['Fremgangsmåte', 'Kilder', 'Dokumentvisning']);
   });
 
+  it('stops its steps under the secondary panel’s pinned switcher, not behind it', async () => {
+    // A ResizeObserver that reports at once, and every element 52 px tall.
+    const Real = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        this.callback([], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(52);
+    try {
+      draw(withView().layout, fakeApi().api);
+      await waitFor(() => expect(tools()?.dataset.mode).toBe('tabs'));
+      await waitFor(() =>
+        expect(
+          document
+            .querySelector<HTMLElement>('.uib-document-view')
+            ?.parentElement?.style.getPropertyValue('--genai-document-view-steps-inset'),
+        ).toBe('52px'),
+      );
+    } finally {
+      height.mockRestore();
+      globalThis.ResizeObserver = Real;
+    }
+  });
+
   it('stands in «Innhold» in the conversation’s place while a document is open, and gives it back', async () => {
     const inMain = placeIn(withoutSources(), 'document-view', 'main');
     const footnote = await stored(inMain.layout);
