@@ -618,6 +618,22 @@ describe('Dokumentvisning in the assistant', () => {
     }
   });
 
+  it('gives a folded panel its scroll padding as a document opens, so the excerpt clears the steps', async () => {
+    // The ResizeObserver stub never reports, as the shell's comes a frame too late.
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(52);
+    try {
+      const footnote = await stored(withoutSources().layout);
+      fireEvent.click(footnote);
+      await documentTitle();
+      const region = document
+        .querySelector('.uib-document-view')
+        ?.closest<HTMLElement>('.uib-shell-content');
+      expect(region?.style.scrollPaddingBlockStart).toBe('52px');
+    } finally {
+      height.mockRestore();
+    }
+  });
+
   it('stands in «Innhold» in the conversation’s place while a document is open, and gives it back', async () => {
     const inMain = placeIn(withoutSources(), 'document-view', 'main');
     const footnote = await stored(inMain.layout);
