@@ -257,12 +257,9 @@ describe('the pairing, both ways, between the answer and Sources', () => {
     const inAnswer = new Set(
       footnotes().map((link) => /^Utdrag (\d+)/.exec(link.getAttribute('aria-label') ?? '')?.[1]),
     );
-    // The cited excerpts: those nothing cites take the numbers after them, and say so.
     const inSources = new Set(
       screen
-        .getAllByText(/^Utdrag \d+$/, {
-          selector: `.uib-sources-excerpt:not([data-uncited]) ${numberSelector}`,
-        })
+        .getAllByText(/^Utdrag \d+$/, { selector: `.uib-sources-excerpt ${numberSelector}` })
         .map((label) => label.textContent?.slice('Utdrag '.length)),
     );
     expect([...inAnswer].sort()).toEqual(['1', '2', '3']);
@@ -276,14 +273,12 @@ describe('the pairing, both ways, between the answer and Sources', () => {
         document.activeElement?.querySelector('.uib-sources-excerpt-number')?.textContent,
       ).toBe(`Utdrag ${n}`);
     }
-    // The excerpts nothing cites are numbered after the cited ones, and say so; no footnote
-    // leads to them.
+    // The excerpt nothing cites is shown without a number, and says so.
     const uncited = screen
       .getByText('Ledelsen vurderer måloppnåelsen som god.')
       .closest('.uib-sources-excerpt') as HTMLElement;
     expect(uncited.dataset.uncited).toBe('true');
-    expect(uncited.querySelector(numberSelector)?.textContent).toBe('Utdrag 4');
-    expect(inAnswer.has('4')).toBe(false);
+    expect(uncited.querySelector(numberSelector)).toBeNull();
   });
 
   it('leads from a footnote to its excerpt, opened, marked and focused', async () => {

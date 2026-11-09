@@ -98,7 +98,7 @@ describe('the order Sources reads in', () => {
   const all = [sources[0], report, sources[1], note] as SourceDocument[];
   const order = (citations: SourceCitation[] | undefined) =>
     readingOrder(all, citations && pairCitations(all, citations));
-  const chunks = (read: ReturnType<typeof order>) =>
+  const chunks = (read: ReturnType<typeof readingOrder>) =>
     read.documents.map((i) => read.excerpts[i]?.map((e) => e.chunkId));
 
   it('runs the documents by their lowest number, and those nothing cites after, in the service’s order', () => {
@@ -116,28 +116,30 @@ describe('the order Sources reads in', () => {
   });
 
   it('reads the cited excerpts «Utdrag 1», 2, 3 from the top, across the documents and inside each', () => {
-    const read = order(cite('42d7142b2765', 'b1', 'a2', 'b1'));
-    const seen = chunks(read)
+    const pairing = pairCitations(all, cite('42d7142b2765', 'b1', 'a2', 'b1'));
+    const seen = chunks(readingOrder(all, pairing))
       .flat()
-      .map((chunk) => read.numbers.get(chunk ?? ''));
-    // The report: 1, and its uncited part 4. The 2022 report: 2. The 2021 report: 3, then 5, 6.
-    expect(seen).toEqual([1, 4, 2, 3, 5, 6]);
-    expect(seen.filter((n) => n !== undefined && n <= 3)).toEqual([1, 2, 3]);
+      .map((chunk) => pairing.numbers.get(chunk ?? ''));
+    // The report: 1, then its uncited part. The 2022 report: 2. The 2021 report: 3, then the rest.
+    expect(seen).toEqual([1, undefined, 2, 3, undefined, undefined]);
   });
 
-  it('numbers what nothing cites after the cited ones, n + 1 on in reading order, and keeps the footnotes 1 to n', () => {
+  it('uncited excerpts are unnumbered and come last in their card', () => {
     const citations = cite('a3', '42d7142b2765', 'a3');
     const pairing = pairCitations(all, citations);
     const read = readingOrder(all, pairing);
-    expect([...read.numbers]).toEqual([
-      ['a3', 1],
-      ['42d7142b2765', 2],
-      ['a1', 3],
-      ['a2', 4],
-      ['97fc11a8044f', 5],
-      ['b1', 6],
+    for (const card of chunks(read)) {
+      const cited = (card ?? []).map((chunk) => pairing.numbers.has(chunk));
+      // Once an uncited excerpt is reached, nothing cited follows it in the card.
+      expect(cited).toEqual(cited.toSorted((a, b) => Number(b) - Number(a)));
+    }
+    expect(chunks(read)).toEqual([
+      ['a3', 'a1', 'a2'],
+      ['42d7142b2765', '97fc11a8044f'],
+      ['b1'],
+      [],
     ]);
-    // The footnotes still number only what they cite, and every one leads to its excerpt.
+    // Only what the footnotes cite is numbered, 1 to n, and every footnote leads to its excerpt.
     expect([...pairing.numbers]).toEqual([
       ['a3', 1],
       ['42d7142b2765', 2],
@@ -146,13 +148,12 @@ describe('the order Sources reads in', () => {
     expect(pairing.unpaired).toEqual([]);
   });
 
-  it('keeps the service’s order and the document’s, and numbers nothing, when no footnote names an excerpt', () => {
+  it('keeps the service’s order and the document’s when no footnote names an excerpt', () => {
     const unchanged = [['a1', 'a2', 'a3'], ['97fc11a8044f', '42d7142b2765'], ['b1'], []];
     for (const citations of [undefined, [{ index: 2 }, { index: 1 }], [], cite('gone')]) {
       const read = order(citations);
       expect(read.documents).toEqual([0, 1, 2, 3]);
       expect(chunks(read)).toEqual(unchanged);
-      expect(read.numbers.size).toBe(0);
     }
   });
 });
