@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import {
+  answerCopy,
   fromTemplate,
   placeIn,
   turnOff,
@@ -10,11 +19,13 @@ import {
   type ModelRow,
 } from '@genai/ui-blocks';
 import type { StreamEvent } from '@genai/client';
+import { InLocale } from '@genai/i18n/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AskParams, AssistantApi } from './api.js';
+import { HttpError, type AskParams, type AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
 import { browserStorage, type AssistantStorage } from './storage.js';
+import { useAssistant } from './useAssistant.js';
 
 // A fake genki: two variants of nothing, one service with a collection that has filter fields,
 // one stored thread, and an answer that cites one excerpt and reports two steps.
@@ -170,7 +181,13 @@ describe('the assistant a layout describes', () => {
     await ask();
     expect(asked[0]?.steps).toBe(true);
     expect(asked[0]?.dataset).toEqual({ tenant: 'digdir', key: 'kudos' });
-    expect(document.querySelector('.uib-procedure-card')).not.toBeNull();
+    const card = document.querySelector('.uib-procedure-card');
+    const drawn = document.querySelector('.uib-answer');
+    if (!card || !drawn) throw new Error('no card or no answer');
+    expect(card.compareDocumentPosition(drawn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.textContent).toContain('Lette etter steder som handler om spørsmålet');
+    expect(card.textContent).toContain('Skrev svaret');
+    expect(drawn.textContent).toContain('Rapporteringen er fast');
   });
 
   it('asks for no steps without Fremgangsmåte, and draws none', async () => {
@@ -292,9 +309,15 @@ describe('the assistant a layout describes', () => {
 
   it('lists the threads only with Tråder, and only the service’s own', async () => {
     const { api } = fakeApi();
-    draw(state('without-filter').layout, api);
+    const { unmount } = draw(state('without-filter').layout, api);
     expect(await screen.findByRole('link', { name: /En gammel tråd/ })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /En annen tjenestes tråd/ })).toBeNull();
+    unmount();
+    const without = fakeApi().api;
+    draw(state('chat-only').layout, without);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(screen.queryByRole('link', { name: /En gammel tråd/ })).toBeNull();
+    expect(without.loadThreads).not.toHaveBeenCalled();
   });
 
   it('lists every thread the key can read with `allThreads`, of any service', async () => {
@@ -334,10 +357,10 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       { id: 'filters-right-panel', title: 'Filtreringen i høyre panel' },
     ],
   };
-  const drawKa = (storage: AssistantStorage, layout = kaLayout) =>
+  const drawKa = (storage: AssistantStorage, layout = kaLayout, api = fakeApi().api) =>
     render(
       <Assistant
-        api={fakeApi().api}
+        api={api}
         layout={layout}
         service="ka"
         tenant="digdir"
@@ -381,7 +404,16 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     storage.write('filter', { type: ['Årsrapport'], bad: [1] });
     storage.write('flags', ['year-ranges']);
     storage.write('corpus', 'kudos');
-    drawKa(storage);
+    const { api } = fakeApi();
+    drawKa(storage, kaLayout, api);
+    // Kept: the facets are asked for the stored filter, without the field that is not all strings.
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: ['Årsrapport'] },
+        'kudos',
+        expect.anything(),
+      ),
+    );
     fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
     const signOut = await screen.findByRole('link', { name: 'Logg ut' });
     signOut.addEventListener('click', (event) => event.preventDefault());
@@ -548,7 +580,7 @@ describe('Dokumentvisning in the assistant', () => {
     );
   });
 
-  it('keeps Escape in the document from closing a drawer, but not in its question field', async () => {
+  it('prevents Escape’s default in the document, which would also close a drawer around it, but not in its question field', async () => {
     const footnote = await stored(withView().layout);
     fireEvent.click(footnote);
     fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/ }));
@@ -560,19 +592,94 @@ describe('Dokumentvisning in the assistant', () => {
     await waitFor(() => expect(tab('Kilder').getAttribute('aria-selected')).toBe('true'));
   });
 
-  it('asks a question from the document in the thread, as any question', async () => {
-    const { api, asked } = fakeApi();
-    const footnote = await stored(withoutSources().layout, api);
-    fireEvent.click(footnote);
+  const askInDocument = async (question = 'Hvor ofte rapporteres det?') => {
     const field = await screen.findByRole('textbox', { name: 'Spør om dette dokumentet' });
-    fireEvent.change(field, { target: { value: 'Hvor ofte rapporteres det?' } });
+    fireEvent.change(field, { target: { value: question } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Spør' }));
     });
+  };
+
+  it('asks a question from the document in the thread, naming the document', async () => {
+    const { api, asked } = fakeApi();
+    const footnote = await stored(withoutSources().layout, api);
+    fireEvent.click(footnote);
+    await askInDocument();
     await waitFor(() => expect(asked).toHaveLength(1));
-    expect(asked[0]?.question).toBe('Hvor ofte rapporteres det?');
+    const named = 'Om «Tildelingsbrev 2022»: Hvor ofte rapporteres det?';
+    expect(asked[0]?.question).toBe(named);
     expect(asked[0]?.conversationId).toBe('t-old');
-    expect(await screen.findByText('Hvor ofte rapporteres det?')).toBeTruthy();
+    expect(await screen.findByText(named)).toBeTruthy();
+  });
+
+  it('searches only the document a question is asked in, where the collection declares its number as a filter', async () => {
+    const { api, asked } = fakeApi();
+    const declared: ModelRow = {
+      ...(rows[0] as ModelRow),
+      _datasets: [
+        {
+          tenant: 'digdir',
+          'dataset-config-key': 'kudos',
+          filters: [
+            { field: 'type', kinds: ['multiselect'], 'value-type': 'string' },
+            { field: 'doc_num', kinds: ['multiselect'], 'value-type': 'string' },
+          ],
+        },
+      ],
+    };
+    api.loadModels = vi.fn(async () => [declared]);
+    history.replaceState(null, '', '/?t=t-old');
+    render(
+      <Assistant
+        api={api}
+        layout={withoutSources().layout}
+        service="ka"
+        tenant="digdir"
+        profile={{
+          assistantName: 'KA',
+          corpora: { kudos: { about: { idField: 'doc_num', fields: ['type'] } } },
+        }}
+        threadInUrl
+      />,
+    );
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    fireEvent.click(footnotes()[0] as HTMLElement);
+    await askInDocument();
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(asked[0]?.filters).toEqual({
+      fields: [
+        {
+          field: 'doc_num',
+          type: 'multiselect',
+          'value-type': 'string',
+          'selected-options': ['42'],
+        },
+      ],
+    });
+    expect(await screen.findByText(/Avgrenset til: Tildelingsbrev 2022/)).toBeTruthy();
+  });
+
+  it('narrows nothing by the document where the collection does not declare its number as a filter', async () => {
+    const { api, asked } = fakeApi();
+    history.replaceState(null, '', '/?t=t-old');
+    render(
+      <Assistant
+        api={api}
+        layout={withoutSources().layout}
+        service="ka"
+        tenant="digdir"
+        profile={{
+          assistantName: 'KA',
+          corpora: { kudos: { about: { idField: 'doc_num', fields: ['type'] } } },
+        }}
+        threadInUrl
+      />,
+    );
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    fireEvent.click(footnotes()[0] as HTMLElement);
+    await askInDocument();
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(JSON.stringify(asked[0]?.filters ?? {})).not.toContain('doc_num');
   });
 
   // The secondary panel starts folded, as in kunnskapsassistenten, so its tools are hidden.
@@ -666,5 +773,579 @@ describe('Dokumentvisning in the assistant', () => {
     await waitFor(() => expect(screen.getByRole('complementary', { name: 'Kilder' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: /Vis i dokumentet/ })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Dokumentvisning', hidden: true })).toBeNull();
+  });
+});
+
+// A stored thread opened from the address, with its one footnote.
+const openStored = async (layout: AssistantLayout, api = fakeApi().api) => {
+  history.replaceState(null, '', '/?t=t-old');
+  draw(layout, api, true);
+  await waitFor(() => expect(footnotes()).toHaveLength(1));
+  return footnotes()[0] as HTMLElement;
+};
+const focusIsOn = (footnote: HTMLElement) =>
+  waitFor(() =>
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(
+      footnote.getAttribute('aria-label'),
+    ),
+  );
+const typeInField = async (text: string) => {
+  const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+  fireEvent.change(field, { target: { value: text } });
+  return field as HTMLTextAreaElement;
+};
+const pressSend = () =>
+  act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Send spørsmålet' }));
+  });
+
+describe('asking, whatever genki has said of the service', () => {
+  it('sends a question asked before genki has said what the service backs, once it has', async () => {
+    const { api, asked } = fakeApi();
+    let answerModels: (found: ModelRow[]) => void = () => {};
+    api.loadModels = vi.fn(
+      () =>
+        new Promise<ModelRow[]>((resolve) => {
+          answerModels = resolve;
+        }),
+    );
+    draw(state('sources-only').layout, api);
+    await typeInField('Hva er fast?');
+    await pressSend();
+    expect(asked).toHaveLength(0);
+    await act(async () => answerModels(rows));
+    await screen.findByText(/Rapporteringen er fast/);
+    expect(asked[0]?.dataset).toEqual({ tenant: 'digdir', key: 'kudos' });
+  });
+
+  it('asks a service that answers in a chat of its own with no collection', async () => {
+    const { api, asked } = fakeApi();
+    api.loadModels = vi.fn(async () => [
+      { id: 'chat__default', _service: 'chat', _pickable: true, _chat: true },
+    ]);
+    render(
+      <Assistant
+        api={api}
+        layout={state('chat-only').layout}
+        service="chat"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+      />,
+    );
+    await ask();
+    expect(asked[0]?.dataset).toBeUndefined();
+  });
+
+  it('says so when genki cannot say what the service backs, and tries again when a question is sent', async () => {
+    const { api, asked } = fakeApi();
+    api.loadModels = vi
+      .fn<() => Promise<ModelRow[]>>()
+      .mockRejectedValueOnce(new Error('502 Bad Gateway'))
+      .mockResolvedValue(rows);
+    draw(state('sources-only').layout, api);
+    expect(
+      await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/502 Bad Gateway/)).toBeTruthy();
+    await typeInField('Hva er fast?');
+    await pressSend();
+    await screen.findByText(/Rapporteringen er fast/);
+    expect(api.loadModels).toHaveBeenCalledTimes(2);
+    expect(asked).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' })).toBeNull();
+  });
+
+  it('keeps the question in the field when genki still cannot be reached', async () => {
+    const { api, asked } = fakeApi();
+    api.loadModels = vi.fn(async () => {
+      throw new Error('502 Bad Gateway');
+    });
+    draw(state('sources-only').layout, api);
+    await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' });
+    const field = await typeInField('Hva er fast?');
+    await pressSend();
+    await waitFor(() => expect(api.loadModels).toHaveBeenCalledTimes(2));
+    await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' });
+    expect(asked).toHaveLength(0);
+    expect(field.value).toBe('Hva er fast?');
+  });
+
+  it('leaves the field’s text alone when an answer is asked again, and empties it for the question sent from it', async () => {
+    const { api, asked } = fakeApi();
+    // The first question fails, so its answer offers «Prøv igjen».
+    const answers = api.ask;
+    api.ask = (params) =>
+      asked.length === 0
+        ? (async function* (): AsyncGenerator<StreamEvent, void> {
+            asked.push(params);
+            yield { type: 'conversation', conversationId: 't-new' };
+            throw new HttpError(503, '503 Service Unavailable');
+          })()
+        : answers(params);
+    draw(state('sources-only').layout, api);
+    await typeInField('Hva er fast?');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy(),
+    );
+    await pressSend();
+    const again = await screen.findByRole('button', { name: 'Prøv igjen' });
+    const field = await typeInField('Et halvt spørs');
+    await act(async () => {
+      fireEvent.click(again);
+    });
+    await screen.findByText(/Rapporteringen er fast/);
+    expect(asked.map((one) => one.question)).toEqual(['Hva er fast?', 'Hva er fast?']);
+    expect(field.value).toBe('Et halvt spørs');
+    await pressSend();
+    await waitFor(() => expect(asked).toHaveLength(3));
+    expect(field.value).toBe('');
+  });
+
+  it('stops its answer when it goes, and reports nothing after', async () => {
+    const { api } = fakeApi();
+    const signals: AbortSignal[] = [];
+    api.ask = async function* (params): AsyncGenerator<StreamEvent, void> {
+      signals.push(params.signal);
+      yield { type: 'step', step: { tool: 'search' } };
+      await new Promise((_, reject) =>
+        params.signal.addEventListener('abort', () => reject(new Error('aborted'))),
+      );
+    };
+    const reported = vi.fn();
+    const { unmount } = render(
+      <Assistant
+        api={api}
+        layout={state('knowledge-assistant').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA' }}
+        onStepsReported={reported}
+      />,
+    );
+    await typeInField('Hva er fast?');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send spørsmålet' })).toBeTruthy(),
+    );
+    await pressSend();
+    await waitFor(() => expect(signals).toHaveLength(1));
+    unmount();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(reported).not.toHaveBeenCalled();
+  });
+});
+
+describe('the way back to the answer', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name, hidden: true });
+  const chatBesideSources = () => placeIn(state('sources-only'), 'chat', 'secondary');
+
+  it('shows Chat’s own tool again, with the footnote focused, on «Tilbake til svaret» from Kilder in the same panel', async () => {
+    const footnote = await openStored(chatBesideSources().layout);
+    footnote.focus();
+    fireEvent.click(footnote);
+    await waitFor(() => expect(tab('Kilder').getAttribute('aria-selected')).toBe('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Tilbake til svaret', hidden: true }));
+    await waitFor(() => expect(tab('Chat').getAttribute('aria-selected')).toBe('true'));
+    await focusIsOn(footnote);
+  });
+
+  it('shows Chat’s own tool when a question is asked from Dokumentvisning in the same panel', async () => {
+    const { api, asked } = fakeApi();
+    const footnote = await openStored(turnOn(chatBesideSources(), 'document-view').layout, api);
+    fireEvent.click(footnote);
+    fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/, hidden: true }));
+    const choice = () =>
+      document.querySelector<HTMLSelectElement>('.uib-shell-tools-choice select')?.value;
+    await waitFor(() => expect(choice()).toBe('document-view'));
+    const field = await screen.findByRole('textbox', {
+      name: 'Spør om dette dokumentet',
+      hidden: true,
+    });
+    fireEvent.change(field, { target: { value: 'Hvor ofte?' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Spør', hidden: true }));
+    });
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(choice()).toBe('chat');
+  });
+
+  it('closes a document standing in the conversation’s place on Kilder’s way back, with the footnote focused', async () => {
+    const layout = placeIn(turnOn(state('sources-only'), 'document-view'), 'document-view', 'main');
+    const footnote = await openStored(layout.layout);
+    footnote.focus();
+    fireEvent.click(footnote);
+    fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/ }));
+    const chat = () => document.querySelector<HTMLElement>('.uia-main-chat');
+    await waitFor(() => expect(chat()?.hidden).toBe(true));
+    // The document came from Kilder, so its own way back is «Tilbake til kildene»: this is Kilder's.
+    fireEvent.click(screen.getByRole('button', { name: 'Tilbake til svaret', hidden: true }));
+    await waitFor(() => expect(chat()?.hidden).toBe(false));
+    await focusIsOn(footnote);
+  });
+});
+
+describe('copying from an answer', () => {
+  let clipboard: string[] = [];
+  beforeEach(() => {
+    clipboard = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void clipboard.push(text) },
+    });
+  });
+
+  it('copies what the screen says: the footnotes numbered as drawn, and a line per numbered excerpt', async () => {
+    await openStored(state('sources-only').layout);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Kopier svaret' }));
+    });
+    const markers = [{ marker: '1', chunkId: 'c1', documentId: '42' }];
+    expect(clipboard).toEqual([answerCopy(answer, { sources: [source], markers }).text]);
+    expect(clipboard[0]).toBe('Rapporteringen er fast [1].\n\nKilder\n[1] Tildelingsbrev 2022.');
+  });
+
+  it('copies an answer whose footnotes name only documents without them, with a line per document', async () => {
+    draw(state('sources-only').layout, fakeApi().api);
+    await ask();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Kopier svaret' }));
+    });
+    expect(clipboard).toEqual(['Rapporteringen er fast.\n\nKilder\nTildelingsbrev 2022.']);
+  });
+
+  it('offers «Kopier lenke til tråden» only where the thread is in the address, and copies a link that opens it', async () => {
+    const { unmount } = draw(state('knowledge-assistant').layout, fakeApi().api);
+    await ask();
+    expect(screen.queryByRole('button', { name: 'Kopier lenke til tråden' })).toBeNull();
+    unmount();
+    history.replaceState(null, '', '/?t=t-old');
+    draw(state('knowledge-assistant').layout, fakeApi().api, true);
+    const copyLink = await screen.findByRole('button', { name: 'Kopier lenke til tråden' });
+    await act(async () => {
+      fireEvent.click(copyLink);
+    });
+    expect(clipboard).toEqual([new URL('/?t=t-old', location.href).href]);
+  });
+});
+
+describe('the page around the blocks', () => {
+  it('is the chat everywhere without Innstillinger, even at its address', async () => {
+    history.replaceState(null, '', '/#innstillinger');
+    draw(turnOff(state('knowledge-assistant'), 'settings').layout, fakeApi().api, true);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(document.title).toBe('Ny tråd – KA');
+    expect(screen.getByRole('link', { name: /Hopp til skrivefeltet/ })).toBeTruthy();
+  });
+
+  it('keeps no thread in the address without Tråder', async () => {
+    history.replaceState(null, '', '/?t=t-old&layout=abc');
+    draw(state('chat-only').layout, fakeApi().api, true);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    await waitFor(() => expect(location.search).toBe('?layout=abc'));
+  });
+
+  // The main column's headings, and the page's h1s that a reader can reach.
+  const outline = () => {
+    const main = document.querySelector('main');
+    const shown = (element: Element) => element.closest('[hidden]') === null;
+    return {
+      h1s: [...document.querySelectorAll('h1')].filter(shown),
+      first: [...(main?.querySelectorAll('h1, h2, h3, h4, h5, h6') ?? [])].find(shown),
+    };
+  };
+
+  it('has one h1 with Chat in the right panel, first in the main column', async () => {
+    draw(placeIn(state('sources-only'), 'chat', 'secondary').layout, fakeApi().api);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/, hidden: true });
+    expect(outline().h1s.map((h) => h.textContent)).toEqual(['KA']);
+    expect(outline().first?.tagName).toBe('H1');
+  });
+
+  it('puts the h1 before the filter strip opened over Chat, and before Fremgangsmåte over it', async () => {
+    const strip = placeIn(state('knowledge-assistant'), 'filter', 'main');
+    const { unmount } = draw(strip.layout, fakeApi().api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre' }));
+    await screen.findByRole('heading', { name: 'Filtrering' });
+    expect(outline().h1s).toHaveLength(1);
+    expect(outline().first?.tagName).toBe('H1');
+    unmount();
+    draw(placeIn(state('knowledge-assistant'), 'chat', 'secondary').layout, fakeApi().api);
+    await screen.findByText('Fremgangsmåten vises her når du stiller et spørsmål.');
+    expect(outline().h1s).toHaveLength(1);
+    expect(outline().first?.tagName).toBe('H1');
+  });
+
+  it('keeps the h1 while a document stands in the conversation’s place', async () => {
+    const inMain = placeIn(
+      turnOff(turnOn(state('sources-only'), 'document-view'), 'sources'),
+      'document-view',
+      'main',
+    );
+    const footnote = await openStored(inMain.layout);
+    fireEvent.click(footnote);
+    await screen.findByRole('heading', { level: 2, name: 'Dokumentvisning' });
+    expect(outline().h1s).toHaveLength(1);
+    expect(outline().first?.tagName).toBe('H1');
+  });
+
+  it('opens the panel Chat stands in from the start, as a drawer on a phone, so there is a field to ask in', async () => {
+    window.matchMedia = ((media: string) => {
+      const below = /\(width < (\d+(?:\.\d+)?)px\)/.exec(media);
+      return {
+        media,
+        matches: below ? 390 < Number(below[1]) : false,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
+    }) as unknown as typeof window.matchMedia;
+    Object.defineProperty(document.documentElement, 'clientWidth', {
+      configurable: true,
+      get: () => 390,
+    });
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    draw(placeIn(state('sources-only'), 'chat', 'secondary').layout, fakeApi().api);
+    const field = await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(field.closest('dialog')?.hasAttribute('open')).toBe(true);
+  });
+
+  it('names a panel of three tools as one phrase', async () => {
+    const three = placeIn(turnOn(state('sources-only'), 'document-view'), 'approach', 'secondary');
+    draw(three.layout, fakeApi().api);
+    expect(
+      await screen.findByRole('complementary', {
+        name: 'Fremgangsmåte, kilder og dokumentvisning',
+        hidden: true,
+      }),
+    ).toBeTruthy();
+  });
+
+  it('says in Fremgangsmåte’s panel that stored answers keep no steps, on a thread that has answers', async () => {
+    await openStored(turnOn(state('approach-only'), 'sources').layout);
+    expect(
+      screen.getByText(
+        'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('draws the collection’s line once when the strip’s filter is open', async () => {
+    draw(placeIn(state('knowledge-assistant'), 'filter', 'main').layout, fakeApi().api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Endre' }));
+    await screen.findByRole('heading', { name: 'Filtrering' });
+    const strip = screen.getByRole('region', { name: 'Filter' });
+    await waitFor(() =>
+      expect(strip.querySelectorAll('.uib-corpus-line, [class*="corpus-line"]').length).toBe(1),
+    );
+  });
+
+  it('starts at the standard level when a stored layout holds a level that does not exist', async () => {
+    const layout = state('knowledge-assistant').layout;
+    const zones = Object.fromEntries(
+      Object.entries(layout.zones).map(([zone, placed]) => [
+        zone,
+        placed.map((block) =>
+          block.block === 'approach' ? { ...block, settings: { level: 'x' } } : block,
+        ),
+      ]),
+    ) as AssistantLayout['zones'];
+    // Made once: the hook reads a new api or layout as a new setup.
+    const options = {
+      api: fakeApi().api,
+      layout: { ...layout, zones },
+      service: 'ka',
+      tenant: 'digdir',
+    };
+    const { result } = renderHook(() => useAssistant(options));
+    await waitFor(() => expect(result.current.facts).toBeDefined());
+    expect(result.current.level).toBe('standard');
+  });
+
+  it('offers in the picker the variants the facts count, one rule for both', async () => {
+    const { api } = fakeApi();
+    const kudos = rows[0]?._datasets;
+    api.loadModels = vi.fn(async (): Promise<ModelRow[]> => [
+      {
+        id: 'ka__default',
+        _service: 'ka',
+        _variant_title: 'KA standard',
+        _pickable: true,
+        _chat: true,
+        _datasets: kudos,
+      },
+      {
+        id: 'ka__fast',
+        _service: 'ka',
+        _variant_title: 'KA rask',
+        _pickable: true,
+        _chat: true,
+        _datasets: kudos,
+      },
+      {
+        id: 'other__a',
+        _service: 'other',
+        _variant_title: 'Annen A',
+        _pickable: true,
+        _chat: true,
+      },
+      {
+        id: 'other__b',
+        _service: 'other',
+        _variant_title: 'Annen B',
+        _pickable: true,
+        _chat: true,
+      },
+    ]);
+    render(
+      <Assistant
+        api={api}
+        layout={state('knowledge-assistant').layout}
+        service="ka"
+        tenant="digdir"
+        profile={{ assistantName: 'KA', family: (other) => other === 'other' }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('Annen A', { exact: false })).toBeTruthy());
+    expect(screen.getByText('Annen B', { exact: false })).toBeTruthy();
+    expect(screen.queryByText('KA rask', { exact: false })).toBeNull();
+  });
+
+  it('keeps its observer on the docked field while an answer streams, rather than one per render', async () => {
+    const Real = globalThis.ResizeObserver;
+    const observed: Element[] = [];
+    globalThis.ResizeObserver = class {
+      observe(element: Element) {
+        observed.push(element);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const docks = () => observed.filter((element) => element.classList.contains('uia-composer'));
+    try {
+      draw(state('knowledge-assistant').layout, fakeApi().api);
+      await ask();
+      const before = docks().length;
+      expect(before).toBeGreaterThan(0);
+      await typeInField('Hva mer er fast?');
+      await pressSend();
+      await waitFor(() => expect(document.querySelectorAll('.uib-answer')).toHaveLength(2));
+      expect(docks()).toHaveLength(before);
+    } finally {
+      globalThis.ResizeObserver = Real;
+    }
+  });
+});
+
+// The same assistant on an English page, with English data, so any Norwegian is the assembly's.
+describe('the assistant in English', () => {
+  const english = () => {
+    const { api } = fakeApi();
+    const sourceEn = {
+      index: 1,
+      title: 'Allocation letter 2022',
+      documentId: '42',
+      excerpts: [{ chunkId: 'c1', text: 'Reporting happens every year.' }],
+    };
+    api.loadThreads = vi.fn(async () => [
+      { id: 't-old', title: 'An old thread', updatedAt: Date.now(), service: 'ka' },
+    ]);
+    api.loadThread = vi.fn(async () => ({
+      title: 'An old thread',
+      turns: [
+        {
+          id: 'm1',
+          question: 'What is fixed?',
+          askedAt: 1,
+          answer: {
+            text: 'Reporting is fixed [1].',
+            status: 'complete' as const,
+            sources: [sourceEn],
+            markers: [{ marker: '1', chunkId: 'c1', documentId: '42' }],
+            created: 2,
+          },
+        },
+      ],
+    }));
+    api.loadFields = vi.fn(async () => [{ id: 'type', label: 'Document types' }]);
+    api.loadFacets = vi.fn(async () => [
+      { id: 'type', label: 'Document types', options: [{ value: 'Annual report', count: 3 }] },
+    ]);
+    api.loadCorpora = vi.fn(async () => [{ key: 'kudos', label: 'Kudos' }]);
+    return api;
+  };
+  const norwegian =
+    /[æøåÆØÅ]|\b(?:Kilder|Endre|Lukk|Innstillinger|Hopp|Tekniske|Ingen|Legg|Uten|Fant|Kunne|Venter|Byttet|Avgrenset|Dokumentvisning|Spørsmål|Tråd)/;
+  const words = () => [
+    document.body.textContent ?? '',
+    document.title,
+    ...[...document.querySelectorAll('[aria-label]')].map(
+      (e) => e.getAttribute('aria-label') ?? '',
+    ),
+  ];
+  const drawEnglish = (layout: AssistantLayout) =>
+    render(
+      <InLocale locale="en">
+        <Assistant
+          api={english()}
+          layout={layout}
+          service="ka"
+          tenant="digdir"
+          profile={{ assistantName: 'KA' }}
+          threadInUrl
+        />
+      </InLocale>,
+    );
+
+  it('draws every word of kunnskapsassistenten’s template in the reader’s language', async () => {
+    history.replaceState(null, '', '/?t=t-old');
+    drawEnglish(state('knowledge-assistant').layout);
+    await waitFor(() =>
+      expect(document.querySelector('.uib-answer')?.textContent).toContain('Reporting is fixed'),
+    );
+    expect(screen.getByRole('navigation', { name: 'Threads and filter' })).toBeTruthy();
+    expect(document.title).toBe('An old thread – KA');
+    expect(words().filter((text) => norwegian.test(text))).toEqual([]);
+  });
+
+  it('draws every word of the builder’s own arrangements in the reader’s language', async () => {
+    const layout = placeIn(
+      placeIn(turnOn(state('knowledge-assistant'), 'document-view'), 'filter', 'main'),
+      'approach',
+      'secondary',
+    ).layout;
+    drawEnglish(layout);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change' }));
+    expect(
+      screen.getByRole('complementary', {
+        name: 'Approach, sources and document view',
+        hidden: true,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText('The approach shows here when you ask a question.')).toBeTruthy();
+    expect(words().filter((text) => norwegian.test(text))).toEqual([]);
+  });
+
+  it('says a missing thread is missing in the reader’s language', async () => {
+    history.replaceState(null, '', '/?t=t-gone');
+    const api = english();
+    api.loadThread = vi.fn(async () => {
+      throw new HttpError(404, '404 Not Found');
+    });
+    render(
+      <InLocale locale="en">
+        <Assistant
+          api={api}
+          layout={state('knowledge-assistant').layout}
+          service="ka"
+          tenant="digdir"
+          threadInUrl
+        />
+      </InLocale>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Thread not found' })).toBeTruthy();
+    expect(document.title).toMatch(/^Thread not found – /);
   });
 });

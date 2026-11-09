@@ -80,7 +80,7 @@ describe('the secondary panel’s tools', () => {
           <button type="button" onClick={() => setActive('sources')}>
             Fotnote 1
           </button>
-          <ShellTools tools={[approach, sources]} active={active} onChange={setActive} />
+          <ShellTools tools={[approach, sources]} value={active} onChange={setActive} />
         </>
       );
     };
@@ -98,7 +98,7 @@ describe('the secondary panel’s tools', () => {
   });
 
   it('falls back to the first tool when the chosen one is gone', () => {
-    render(<ShellTools tools={[approach, sources]} active="notes" />);
+    render(<ShellTools tools={[approach, sources]} value="notes" />);
     expect(screen.getByRole('tab', { name: 'Fremgangsmåte' }).getAttribute('aria-selected')).toBe(
       'true',
     );

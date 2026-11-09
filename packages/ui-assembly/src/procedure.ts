@@ -1,8 +1,10 @@
 // «Fremgangsmåte» from genki's step frames, as genki's workspace builds it
-// (apps/workspace/src/procedure.ts in #234), with its Norwegian titles, lifted from the UI blocks
-// preview. Only what genki sends: a step's label or its tool's title, in progress until the next
-// one starts.
+// (apps/workspace/src/procedure.ts in #234), with its titles in the assembly's catalogue, lifted
+// from the UI blocks preview. Only what genki sends: a step's label or its tool's title, in
+// progress until the next one starts.
+import type { Locale } from '@genai/i18n';
 import type { ProcedureStep } from '@genai/ui-blocks';
+import { translator, type AssemblyTranslator } from './i18n.js';
 
 export type StepFrame = {
   event?: string;
@@ -18,19 +20,22 @@ export interface Approach {
   finishedAt?: number | undefined;
 }
 
-const toolTitles: Record<string, string> = {
-  plan_queries: 'Forsto spørsmålet',
-  inspect_filters: 'Så på hvilke kilder tråden leser fra',
-  search: 'Lette etter steder som handler om spørsmålet',
-  read_chunks: 'Leste de relevante delene nøye',
-  rerank_results: 'Valgte ut det som svarer på spørsmålet',
-  report_gaps: 'Det jeg ikke fant',
-  generate_response: 'Skrev svaret',
-};
+const toolTitles = {
+  plan_queries: 'assembly.stepPlanQueries',
+  inspect_filters: 'assembly.stepInspectFilters',
+  search: 'assembly.stepSearch',
+  read_chunks: 'assembly.stepReadChunks',
+  rerank_results: 'assembly.stepRerankResults',
+  report_gaps: 'assembly.stepReportGaps',
+  generate_response: 'assembly.stepGenerateResponse',
+} as const;
 
-const titleOf = (frame: StepFrame) =>
+const isKnownTool = (tool: string): tool is keyof typeof toolTitles =>
+  Object.hasOwn(toolTitles, tool);
+
+const titleOf = (frame: StepFrame, t: AssemblyTranslator) =>
   (typeof frame.label === 'string' && frame.label.trim()) ||
-  (frame.tool ? toolTitles[frame.tool] : undefined);
+  (frame.tool && isKnownTool(frame.tool) ? t(toolTitles[frame.tool]) : undefined);
 
 /** The passages a finished turn says it read: the `chunk_ids` of its `read_chunks` calls. */
 const passagesRead = (frame: StepFrame) => {
@@ -51,7 +56,12 @@ const passagesRead = (frame: StepFrame) => {
  * step again after another one stays its own: searching again after reading is worth seeing.
  * Done here, not in Approach (#234), until its maintainer agrees to the same in the block.
  */
-export const stepsOf = (approach: Approach, working: boolean): ProcedureStep[] => {
+export const stepsOf = (
+  approach: Approach,
+  working: boolean,
+  locale: Locale = 'nb',
+): ProcedureStep[] => {
+  const t = translator(locale);
   const runs: { id: string; title: string; tool?: string; count: number; passages: number }[] = [];
   for (const frame of approach.frames) {
     const read = passagesRead(frame);
@@ -59,7 +69,7 @@ export const stepsOf = (approach: Approach, working: boolean): ProcedureStep[] =
       const reading = runs.findLast((run) => run.tool === 'read_chunks');
       if (reading) reading.passages += read;
     }
-    const title = titleOf(frame);
+    const title = titleOf(frame, t);
     if (!title) continue;
     const last = runs.at(-1);
     if (last && last.title === title) {
@@ -79,9 +89,9 @@ export const stepsOf = (approach: Approach, working: boolean): ProcedureStep[] =
     id: run.id,
     title:
       run.tool === 'read_chunks' && run.passages > 0
-        ? `Leste ${run.passages} utdrag nøye`
+        ? t('assembly.stepPassages', { count: run.passages })
         : run.count > 1
-          ? `${run.title} (${run.count} ganger)`
+          ? t('assembly.stepRepeated', { title: run.title, count: run.count })
           : run.title,
     status: working && at === runs.length - 1 ? 'active' : 'done',
   }));

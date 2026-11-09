@@ -36,8 +36,11 @@ export interface Turn {
   /** The step frames of a question asked here, for «Fremgangsmåte». */
   approach?:
     { frames: StepFrame[]; startedAt: number; finishedAt?: number | undefined } | undefined;
-  /** What the question was narrowed to, and the collection asked: genki keeps no filter with a turn. */
-  scope?: { narrowedTo: readonly string[]; corpus: string } | undefined;
+  /**
+   * What the question was narrowed to, and the collection asked, if any: genki keeps no filter with
+   * a turn.
+   */
+  scope?: { narrowedTo: readonly string[]; corpus?: string | undefined } | undefined;
 }
 
 /** A thread in the list, with the service it was made for. */
@@ -49,7 +52,8 @@ export interface AskParams {
   model: string;
   conversationId?: string | undefined;
   filters?: FilterSet | undefined;
-  dataset: { tenant: string; key: string };
+  /** The collection asked. Without it, a service that answers in a chat of its own. */
+  dataset?: { tenant: string; key: string } | undefined;
   /** Ask for the step frames, for «Fremgangsmåte». */
   steps: boolean;
   signal: AbortSignal;
@@ -164,20 +168,28 @@ interface ApiMessage {
 const corpusOf = (tags: readonly string[]) =>
   tags.find((tag) => tag.startsWith('corpus:'))?.slice('corpus:'.length) || undefined;
 
-export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile): SourceDocument => {
+/**
+ * One source as the blocks take it. A title it lacks stays empty, for the blocks to name in the
+ * reader's language. An excerpt without an id gets one of its own, the same on every read, since
+ * the blocks key, scroll to and number excerpts by it (V2-0010: «an id can be minted per
+ * conversation»). `at` is the source's place in the answer's list, which keeps two sources without
+ * a document id apart.
+ */
+export const sourceFromWire = (raw: WireSource, corpus?: CorpusProfile, at = 0): SourceDocument => {
   const documentId = raw.documentId ?? raw.document_id;
   const url = raw.url ?? (documentId ? corpus?.documentUrl?.(documentId) : undefined);
+  const minted = (excerpt: number) => `minted:${documentId ?? `source-${at}`}:${excerpt}`;
   return {
     ...(raw.index !== undefined ? { index: raw.index } : {}),
-    title: raw.title?.trim() || 'Uten tittel',
+    title: raw.title?.trim() ?? '',
     ...(url ? { url } : {}),
     ...(documentId ? { documentId } : {}),
     ...(raw.version ? { version: raw.version } : {}),
     ...(raw.publishedAt ? { publishedAt: raw.publishedAt } : {}),
-    excerpts: (raw.excerpts ?? []).map((e) => {
+    excerpts: (raw.excerpts ?? []).map((e, i) => {
       const text = e.text ?? '';
       return {
-        chunkId: e.chunkId ?? e.chunk_id ?? '',
+        chunkId: e.chunkId || e.chunk_id || minted(i),
         text,
         ...(e.position !== undefined ? { position: e.position } : {}),
         ...(text ? {} : { textUnavailable: true }),
@@ -200,7 +212,7 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
     if (!document) {
       const url = chunk.docNum ? corpus?.documentUrl?.(chunk.docNum) : undefined;
       document = {
-        title: chunk.docTitle?.trim() || 'Uten tittel',
+        title: chunk.docTitle?.trim() ?? '',
         documentId,
         ...(url ? { url } : {}),
         excerpts: [],
@@ -218,7 +230,7 @@ const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerD
     return {
       text: message.text,
       status: 'complete',
-      sources: message.sources.map((s) => sourceFromWire(s, corpus)),
+      sources: message.sources.map((s, at) => sourceFromWire(s, corpus, at)),
       created: message.created,
     };
   if (message.chunks.length > 0) {
@@ -443,7 +455,7 @@ export const createGenkiApi = ({
           body: JSON.stringify({
             title: params.question.trim().replace(/\s+/g, ' '),
             'agent-id': params.model.split('__')[0],
-            tags: [`corpus:${params.dataset.key}`],
+            tags: params.dataset ? [`corpus:${params.dataset.key}`] : [],
           }),
           signal: params.signal,
         });
@@ -459,7 +471,7 @@ export const createGenkiApi = ({
           question: params.question,
           ...(conversationId ? { conversationId } : {}),
           ...(params.filters ? { filters: params.filters } : {}),
-          dataset: params.dataset,
+          ...(params.dataset ? { dataset: params.dataset } : {}),
         },
         { signal: params.signal, live: true, steps: params.steps },
       );
