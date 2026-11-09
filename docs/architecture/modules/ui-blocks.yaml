@@ -26,6 +26,7 @@ files:
   - packages/ui-blocks/src/filter/Filter.tsx
   - packages/ui-blocks/src/corpus/Corpus.tsx
   - packages/ui-blocks/src/documents/Documents.tsx
+  - packages/ui-blocks/src/document-view/DocumentView.tsx
   - packages/ui-blocks/src/i18n.ts
 input: Steps, sources, footnotes, counts, facets, documents and state as props
 output: Rendered components and callbacks
@@ -38,4 +39,4 @@ edges:
     witness:
       file: packages/ui-blocks/src/i18n.ts
       imports: '@genai/i18n'
-keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes filter utvalg corpus documents dokumenter facets designsystemet react
+keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes filter utvalg corpus documents dokumenter facets document view dokumentvisning designsystemet react
