@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { parseNameStatus, scopeOf, type Change } from './ci-scope.ts';
 
 const m = (path: string): Change => ({ status: 'M', path });
@@ -82,5 +85,25 @@ describe('the CI scope of a pull request', () => {
       { status: 'R', path: 'b.ts' },
       { status: 'R', path: 'c.ts' },
     ]);
+  });
+});
+
+describe('the CI workflow in the merge queue', () => {
+  const workflow = parse(
+    readFileSync(join(import.meta.dirname, '../.github/workflows/ci.yml'), 'utf8'),
+  ) as {
+    on: Record<string, unknown>;
+    jobs: Record<string, { steps: { env?: Record<string, string> }[] }>;
+  };
+  const env = (job: string, name: string) =>
+    workflow.jobs[job]?.steps.map((s) => s.env?.[name]).find(Boolean) ?? '';
+
+  it('runs for a merge group, so two pull requests that pass alone are checked together', () => {
+    expect(workflow.on).toHaveProperty('merge_group');
+  });
+
+  it('scopes a merge group from the commit it lands on, as it scopes a pull request from its base', () => {
+    expect(env('scope', 'BASE')).toContain('github.event.merge_group.base_sha');
+    expect(env('test', 'CHANGED')).toContain('github.event.merge_group.base_sha');
   });
 });
