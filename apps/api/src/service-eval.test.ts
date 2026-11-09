@@ -32,11 +32,12 @@ describe('the models a judge is checked against', () => {
     ]);
   });
 
-  it('leaves out the embedders a run used, since they write no answer to be judged', () => {
+  it('leaves out the embedders and rerankers a run used, since they write no answer to be judged', () => {
     const byModel = usageByModel(
       [
         usage({ kind: 'model', id: 'foundry-openai/gpt-4o' }, 10),
         usage({ kind: 'embedder', id: 'foundry/text-embedding-3-small' }, 4),
+        usage({ kind: 'reranker', id: 'colbert' }, 7),
       ],
       {},
     );
@@ -137,6 +138,7 @@ describe('the model that wrote the answers', () => {
     expect(
       writerOf([
         used('foundry/text-embedding-3-small', 900, 'embedder'),
+        used('colbert', 2000, 'reranker'),
         used('foundry-openai/gpt-4.1-mini', 40),
         used('foundry-openai/gpt-4o-2m-tps', 500),
       ]),

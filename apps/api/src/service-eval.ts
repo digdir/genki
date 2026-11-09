@@ -26,19 +26,21 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
+// Only language models write answers. Embedders and rerankers such as ColBERT are metered too, but
+// they have no model family, so a judge cannot be checked against them.
+const languageModels = (byModel: DraftModelUsage[]) => byModel.filter((m) => m.kind === 'model');
+
 export const judgedModels = (byModel: DraftModelUsage[]) =>
-  byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
+  languageModels(byModel).map((m) => m.model);
 
 // The model that wrote an answer: the one that used the most tokens. A check on the side, such
 // as for small talk, uses far fewer. A fallback model shows up here when the primary failed.
 export const writerOf = (byModel: DraftModelUsage[]) =>
-  byModel
-    .filter((m) => m.kind !== 'embedder')
-    .reduce<DraftModelUsage | undefined>(
-      (top, m) =>
-        !top || m.inputTokens + m.outputTokens > top.inputTokens + top.outputTokens ? m : top,
-      undefined,
-    )?.model;
+  languageModels(byModel).reduce<DraftModelUsage | undefined>(
+    (top, m) =>
+      !top || m.inputTokens + m.outputTokens > top.inputTokens + top.outputTokens ? m : top,
+    undefined,
+  )?.model;
 
 // The models that wrote the answers in a run, the one that wrote the most first.
 export const writersOf = (writers: (string | undefined)[]) => {
