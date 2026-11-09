@@ -424,12 +424,13 @@
     flex: 1 1 0;
     min-inline-size: 0;
     min-block-size: var(--genai-shell-tools-tab-min-height, var(--ds-size-9));
-    padding-inline: var(--genai-shell-tools-tab-padding-inline, var(--ds-size-3));
+    padding-inline: var(--genai-shell-tools-tab-padding-inline, var(--ds-size-2));
     border: 0;
     border-radius: var(--genai-shell-tools-tab-radius, var(--ds-border-radius-md));
     background: none;
     color: var(--genai-shell-tools-tab-color, var(--ds-color-neutral-text-default));
     font: inherit;
+    font-size: var(--genai-shell-tools-tab-font-size, var(--ds-font-size-2));
     font-weight: var(--genai-shell-tools-tab-font-weight, var(--ds-font-weight-regular));
     cursor: pointer;
     overflow: hidden;

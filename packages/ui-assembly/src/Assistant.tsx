@@ -188,6 +188,8 @@ export const AssistantView = ({
   const [primaryView, setPrimaryView] = useState<'threads' | 'filters'>('filters');
   const [switchedView, setSwitchedView] = useState(false);
   const [filterPin, setFilterPin] = useState<HTMLDivElement | null>(null);
+  // The secondary panel's pinned region, where its tools' switcher stays while a tool scrolls.
+  const [toolsPin, setToolsPin] = useState<HTMLDivElement | null>(null);
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (switchedView && primaryView === 'filters') back.current?.focus();
@@ -527,7 +529,13 @@ export const AssistantView = ({
     tools.length > 0
       ? {
           label: tools.map((t) => t.label).join(' og '),
-          children: <ShellTools tools={tools} active={a.tool} onChange={a.setTool} />,
+          pinnedRef: setToolsPin,
+          children: (
+            <ShellTools tools={tools} active={a.tool} onChange={a.setTool} pinIn={toolsPin} />
+          ),
+          // Folded until it has something to show, as kunnskapsassistenten's Kilder; open from the
+          // start when Chat stands here, or there would be nothing to ask in.
+          ...(chatZone === 'secondary' ? { defaultCollapsed: false } : {}),
         }
       : undefined;
 

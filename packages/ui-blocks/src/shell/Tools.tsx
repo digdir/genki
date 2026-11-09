@@ -1,5 +1,6 @@
 import { Field, Heading, Label, Select } from '@digdir/designsystemet-react';
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { toolMode } from '../builder/layout.js';
 import { classes } from '../dom.js';
 import { useT } from '../i18n.js';
@@ -21,6 +22,12 @@ export interface ShellToolsProps {
   onChange?: ((id: string) => void) | undefined;
   /** The heading's level when there is one tool, 2 by default. */
   headingLevel?: 2 | 3 | 4 | undefined;
+  /**
+   * The panel's pinned region (`ShellPanel.pinnedRef`), to draw the heading, tabs or dropdown in,
+   * so they stay while the tool scrolls. `null` until the region is there: nothing is drawn.
+   * Without it, the switcher stands over the tool.
+   */
+  pinIn?: Element | null | undefined;
   className?: string | undefined;
 }
 
@@ -35,6 +42,7 @@ export const ShellTools = ({
   active,
   onChange,
   headingLevel = 2,
+  pinIn,
   className,
 }: ShellToolsProps) => {
   const t = useT();
@@ -91,49 +99,52 @@ export const ShellTools = ({
     </div>
   ));
 
+  const switcher =
+    mode === 'heading' ? (
+      <Heading className="uib-shell-tools-heading" data-size="xs" level={headingLevel}>
+        {current.label}
+      </Heading>
+    ) : mode === 'tabs' ? (
+      <div aria-label={t('shell.tools')} className="uib-shell-tools-tabs" role="tablist">
+        {tools.map((tool) => {
+          const selected = tool.id === current.id;
+          return (
+            <button
+              aria-controls={panelId(tool)}
+              aria-selected={selected}
+              className="uib-shell-tools-tab ds-focus"
+              id={tabId(tool)}
+              key={tool.id}
+              onClick={() => choose(tool.id)}
+              onKeyDown={onTabKey}
+              ref={(element) => {
+                tabs.current.set(tool.id, element);
+              }}
+              role="tab"
+              tabIndex={selected ? 0 : -1}
+              type="button"
+            >
+              {tool.label}
+            </button>
+          );
+        })}
+      </div>
+    ) : (
+      <Field className="uib-shell-tools-choice">
+        <Label className="ds-sr-only">{t('shell.tools')}</Label>
+        <Select value={current.id} onChange={(event) => choose(event.currentTarget.value)}>
+          {tools.map((tool) => (
+            <Select.Option key={tool.id} value={tool.id}>
+              {tool.label}
+            </Select.Option>
+          ))}
+        </Select>
+      </Field>
+    );
+
   return (
     <div className={classes('uib-shell-tools', className)} data-mode={mode}>
-      {mode === 'heading' ? (
-        <Heading className="uib-shell-tools-heading" data-size="xs" level={headingLevel}>
-          {current.label}
-        </Heading>
-      ) : mode === 'tabs' ? (
-        <div aria-label={t('shell.tools')} className="uib-shell-tools-tabs" role="tablist">
-          {tools.map((tool) => {
-            const selected = tool.id === current.id;
-            return (
-              <button
-                aria-controls={panelId(tool)}
-                aria-selected={selected}
-                className="uib-shell-tools-tab ds-focus"
-                id={tabId(tool)}
-                key={tool.id}
-                onClick={() => choose(tool.id)}
-                onKeyDown={onTabKey}
-                ref={(element) => {
-                  tabs.current.set(tool.id, element);
-                }}
-                role="tab"
-                tabIndex={selected ? 0 : -1}
-                type="button"
-              >
-                {tool.label}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <Field className="uib-shell-tools-choice">
-          <Label className="ds-sr-only">{t('shell.tools')}</Label>
-          <Select value={current.id} onChange={(event) => choose(event.currentTarget.value)}>
-            {tools.map((tool) => (
-              <Select.Option key={tool.id} value={tool.id}>
-                {tool.label}
-              </Select.Option>
-            ))}
-          </Select>
-        </Field>
-      )}
+      {pinIn === undefined ? switcher : pinIn && createPortal(switcher, pinIn)}
       {panels}
     </div>
   );

@@ -149,11 +149,13 @@
               <li>
                 <code>ShellTools</code>, for the secondary panel's <code>children</code>: its
                 <code>tools</code> (<code>id</code>, <code>label</code>, <code>content</code>),
-                <code>active</code> and <code>onChange</code>, and <code>headingLevel</code>. One
-                tool gets a heading, two get tabs and three or more a dropdown, the design's tool
-                rule (board 3, kunnskapsassistenten#168). The tabs follow the tabs pattern: one tab
-                stop, the arrows choose, Home and End go to the ends. The dropdown is
-                Designsystemet's <code>Select</code>. Every tool stays mounted while hidden.
+                <code>active</code> and <code>onChange</code>, <code>headingLevel</code>, and
+                <code>pinIn</code>, the panel's pinned region to draw the switcher in, so it stays
+                while the tool scrolls. One tool gets a heading, two get tabs and three or more a
+                dropdown, the design's tool rule (board 3, kunnskapsassistenten#168). The tabs
+                follow the tabs pattern: one tab stop, the arrows choose, Home and End go to the
+                ends. The dropdown is Designsystemet's <code>Select</code>. Every tool stays mounted
+                while hidden.
               </li>
             </ul>
             <h2>Related</h2>
@@ -446,8 +448,13 @@
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tab-padding-inline</code></td>
-                    <td><code>--ds-size-3</code></td>
+                    <td><code>--ds-size-2</code></td>
                     <td>a tab</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-font-size</code></td>
+                    <td><code>--ds-font-size-2</code></td>
+                    <td>a tab's text, small enough for «Fremgangsmåte» in the panel's floor</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-tools-tab-radius</code></td>

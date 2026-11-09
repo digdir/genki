@@ -104,3 +104,20 @@ describe('the secondary panel’s tools', () => {
     );
   });
 });
+
+describe('the switcher pinned in the panel', () => {
+  it('draws the tabs in the region it is given, and the tools where they stand', () => {
+    const region = document.createElement('div');
+    document.body.append(region);
+    render(<ShellTools tools={[approach, sources]} pinIn={region} />);
+    expect(region.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(region.textContent).not.toContain('Innholdet i');
+    region.remove();
+  });
+
+  it('draws no switcher while the region is not there yet', () => {
+    render(<ShellTools tools={[approach, sources]} pinIn={null} />);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByText('Innholdet i Fremgangsmåte')).toBeTruthy();
+  });
+});
