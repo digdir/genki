@@ -119,25 +119,35 @@ describe('the sources block', () => {
 });
 
 describe('numbered excerpts, linked both ways', () => {
-  it('numbers cited excerpts 1, 2, 3 in the order the answer first cites them', () => {
+  it('numbers only cited excerpts, 1, 2, 3 in the order the answer first cites them', () => {
     draw({ citations: cite('kudos::2021-2', 'kudos::2021-1', 'kudos::2021-2') });
     expect(screen.getByRole('heading', { name: /Utdrag 1.*Internkontroll/ })).toBeTruthy();
     expect(screen.getByRole('heading', { name: /Utdrag 2.*Ressursbruk/ })).toBeTruthy();
-    expect(rowOf(/Utdrag 1/).dataset.uncited).toBeUndefined();
-    expect(rowOf(/Utdrag 2/).dataset.uncited).toBeUndefined();
+    expect(screen.queryByText('Utdrag 3')).toBeNull();
   });
 
-  it('numbers an excerpt nothing cites after the cited ones, and says it is not cited', () => {
-    draw({ citations: cite('kudos::2021-1') });
-    const row = screen
-      .getByText('Ledelsen vurderer måloppnåelsen som god.')
-      .closest('.uib-sources-excerpt') as HTMLElement;
-    // «Utdrag 1» is cited; the report’s two others are 2 and 3, and the memo’s excerpt 4.
-    expect(within(row).getByRole('heading').textContent).toBe('Utdrag 3');
-    expect(row.dataset.uncited).toBe('true');
-    expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
-    const numbered = screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent);
-    expect(numbered).toEqual(['Utdrag 1', 'Utdrag 2', 'Utdrag 3', 'Utdrag 4']);
+  it('uncited excerpts are unnumbered and come last in their card', () => {
+    // The report cites only its last part, and nothing cites the memo.
+    draw({ citations: cite('kudos::2021-3') });
+    const read = [...document.querySelectorAll<HTMLElement>('.uib-sources-excerpt')].map((row) => [
+      within(row).getByRole('heading').textContent,
+      row.dataset.uncited ?? 'cited',
+    ]);
+    expect(read).toEqual([
+      ['Utdrag 1', 'cited'],
+      ['Ressursbruk og måloppnåelse', 'true'],
+      ['Internkontroll og risikovurdering', 'true'],
+      ['Utdrag', 'true'],
+    ]);
+    for (const row of document.querySelectorAll<HTMLElement>(
+      '.uib-sources-excerpt[data-uncited]',
+    )) {
+      expect(row.querySelector('.uib-sources-excerpt-number')).toBeNull();
+      expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
+    }
+    expect(screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent)).toEqual([
+      'Utdrag 1',
+    ]);
   });
 
   it('an uncited excerpt has no way back to the answer', () => {
@@ -147,16 +157,18 @@ describe('numbered excerpts, linked both ways', () => {
       onShowUse,
       citationHref: (citation) => `#fotnote-${citation}`,
     });
-    for (const name of [/Utdrag 2/, /Utdrag 3/, /Utdrag 4/]) {
-      const row = rowOf(name);
-      expect(row.dataset.uncited).toBe('true');
+    const uncited = [
+      ...document.querySelectorAll<HTMLElement>('.uib-sources-excerpt[data-uncited]'),
+    ];
+    expect(uncited).toHaveLength(3);
+    for (const row of uncited) {
       expect(within(row).queryAllByRole('link')).toEqual([]);
       expect(row.querySelector('[href^="#"]')).toBeNull();
       // Neither the mouse nor the keyboard leads to the answer from it.
       fireEvent.click(within(row).getByRole('heading'));
       fireEvent.click(row.querySelector('.uib-sources-quote') as HTMLElement);
       fireEvent.click(row);
-      fireEvent.click(toggleOf(name));
+      fireEvent.click(within(row).getByRole('button', { name: /^Åpne / }));
       fireEvent.keyDown(row, { key: 'Enter' });
       fireEvent.keyDown(row, { key: 'Escape' });
       // Open, its one link is to its page in the document, in a new tab.
@@ -185,7 +197,7 @@ describe('numbered excerpts, linked both ways', () => {
       ['Utdrag 1', 'Notatet beskriver rutinen.'],
       ['Utdrag 2', 'Ledelsen vurderer måloppnåelsen som god.'],
       ['Utdrag 3', 'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.'],
-      ['Utdrag 4', 'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.'],
+      [undefined, 'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.'],
     ]);
   });
 
