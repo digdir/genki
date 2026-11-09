@@ -444,25 +444,37 @@ export const DocumentView = ({
                 {t('documentView.jumps')}
               </span>
               <ul className="uib-document-view-jump-list">
-                {jumps.map((item) => {
+                {jumps.map((item, i) => {
                   const { n, excerpt } = item;
                   const elsewhere = item.source !== source;
                   const page = excerpt.page;
+                  const title = item.source.title.trim() || t('sources.untitled');
+                  // A run of chips into another document is led by its name, in sight, so a reader
+                  // sees where a chip goes before the document changes under it; so is a run back
+                  // into this one after such a run. The chips' names say it already, so it is not
+                  // read twice.
+                  const runStarts = i === 0 ? elsewhere : jumps[i - 1]?.source !== item.source;
+                  const lead = runStarts
+                    ? elsewhere
+                      ? t('documentView.jumpsIn', { title })
+                      : t('documentView.jumpsHere')
+                    : undefined;
                   // The name starts with what the chip shows, and says the page and, for another
                   // document, which one, as the canvas's title on the chip does.
                   const name = [
                     t('sources.excerptNumber', { n }),
                     page === undefined ? undefined : t('sources.page', { page }),
-                    elsewhere
-                      ? t('documentView.jumpIn', {
-                          title: item.source.title.trim() || t('sources.untitled'),
-                        })
-                      : undefined,
+                    elsewhere ? t('documentView.jumpIn', { title }) : undefined,
                   ]
                     .filter(Boolean)
                     .join(', ');
                   return (
-                    <li key={excerpt.chunkId}>
+                    <li key={excerpt.chunkId} className="uib-document-view-jump-item">
+                      {lead ? (
+                        <span className="uib-document-view-jump-doc" aria-hidden="true">
+                          {lead}
+                        </span>
+                      ) : null}
                       <Chip.Button
                         type="button"
                         className="uib-document-view-jump"

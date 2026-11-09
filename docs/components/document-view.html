@@ -104,10 +104,12 @@
                 <strong>«Utdrag i svaret»</strong>, with footnotes that name excerpts: one chip per
                 cited excerpt, by its «Utdrag N» number, with «s. N» when the excerpt has a page.
                 Each jumps straight to its excerpt, in this document or another of the answer's,
-                marks it and lands focus on it, named by its title. The row stays at the top while
-                the document scrolls. What nothing cites has no chip and is reached by scrolling.
-                With footnotes that name only documents there is no row, and no stepper or count
-                takes its place.
+                marks it and lands focus on it, named by its title. A run of chips into another
+                document is led by its name, «i Årsrapport 2024:», and a run back into this one by
+                «i dette dokumentet:», so the reader sees where a chip goes. The row stays at the
+                top while the document scrolls. What nothing cites has no chip and is reached by
+                scrolling. With footnotes that name only documents there is no row, and no stepper
+                or count takes its place.
               </li>
             </ul>
             <p>
@@ -344,7 +346,7 @@
                 <tr>
                   <td><code>--genai-document-view-jump-list-gap</code></td>
                   <td><code>--ds-size-2</code></td>
-                  <td>gap between the chips</td>
+                  <td>gap between the chips, and before a chip after its document's name</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-jump-number-background</code></td>
@@ -404,12 +406,12 @@
                 <tr>
                   <td><code>--genai-document-view-jumps-label-color</code></td>
                   <td><code>--ds-color-text-subtle</code></td>
-                  <td>«Utdrag i svaret:»</td>
+                  <td>«Utdrag i svaret:» and the name of the document a run of chips goes into</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-jumps-label-font-size</code></td>
                   <td><code>--ds-body-sm-font-size</code></td>
-                  <td>«Utdrag i svaret:»</td>
+                  <td>«Utdrag i svaret:» and the name of the document a run of chips goes into</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-jumps-padding</code></td>

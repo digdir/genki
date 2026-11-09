@@ -280,6 +280,27 @@ describe('«Utdrag i svaret»: jumping straight to a cited excerpt', () => {
     );
   });
 
+  it('leads a run of chips into another document with its name in sight, and a run back into this one too, without reading either twice', () => {
+    draw({
+      target: { chunkId: 'kudos::2021-2' },
+      citations: cite('attached:abc:0', 'kudos::2021-2'),
+    });
+    const row = jumps() as HTMLElement;
+    expect(row.textContent).toBe('Utdrag i svaret:i Internt notat:1i dette dokumentet:2s. 12');
+    for (const lead of row.querySelectorAll('.uib-document-view-jump-doc'))
+      expect(lead.getAttribute('aria-hidden')).toBe('true');
+    // The names say where each chip goes, and the one into another document has it on hover too.
+    expect(chips()).toEqual(['Utdrag 1, i Internt notat', 'Utdrag 2, side 12']);
+    expect(within(row).getByRole('button', { name: /^Utdrag 1/ }).title).toBe(
+      'Utdrag 1, i Internt notat',
+    );
+  });
+
+  it('leads no chip when every cited excerpt is in the document open', () => {
+    draw({ citations: cite('kudos::2021-3', 'kudos::2021-2') });
+    expect((jumps() as HTMLElement).querySelector('.uib-document-view-jump-doc')).toBeNull();
+  });
+
   it('lets a new target from the host win over an excerpt the reader jumped to', async () => {
     const citations = cite('attached:abc:0', 'kudos::2021-2');
     const { rerender } = render(
