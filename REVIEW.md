@@ -1,6 +1,6 @@
 # Review instructions
 
-genki is a shared platform for many AI services. Review against that: what holds for one service must hold for all of them. The repository rules are in [CONTRIBUTING.md](CONTRIBUTING.md) and the recurring mistakes in [CLAUDE.md](CLAUDE.md).
+genki is a shared platform for many AI services. Review against that: what holds for one service must hold for all of them. The repository rules are in [CONTRIBUTING.md](CONTRIBUTING.md) and the testing and security rules and the recurring mistakes in [AGENTS.md](AGENTS.md).
 
 ## What Important means here
 
