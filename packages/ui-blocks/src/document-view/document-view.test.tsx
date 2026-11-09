@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { en, nb } from './i18n.js';
 import { propsMissingFromPage } from '../sources/fixtures/docsProps.js';
 import type { SourceCitation } from '../sources/pairing.js';
+import { Sources } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
 import { DocumentView, type DocumentViewProps } from './DocumentView.js';
 
@@ -451,6 +452,42 @@ describe('asking about the document', () => {
   });
 });
 
+describe('shared with Sources', () => {
+  it('titles and links an excerpt exactly as Sources does, from the same parts', async () => {
+    const citations = cite('kudos::2021-2');
+    const named = (root: HTMLElement) => ({
+      titles: within(root)
+        .getAllByRole('heading', { level: 4 })
+        .map((h) => h.getAttribute('aria-label') ?? h.textContent),
+      pageLink: within(root)
+        .getByRole('link', { name: /^Les side 12/ })
+        .getAttribute('aria-label'),
+    });
+    const inSources = render(
+      <Sources
+        sources={[report]}
+        citations={citations}
+        corpus="Kudos"
+        target={{ chunkId: 'kudos::2021-2' }}
+      />,
+    );
+    await frame();
+    const fromSources = named(inSources.container);
+    cleanup();
+    const inView = render(
+      <DocumentView
+        sources={[report]}
+        citations={citations}
+        corpus="Kudos"
+        target={{ chunkId: 'kudos::2021-2' }}
+      />,
+    );
+    const fromView = named(inView.container);
+    expect(fromView.pageLink).toBe(fromSources.pageLink);
+    expect(fromView.titles.toSorted()).toEqual(fromSources.titles.toSorted());
+  });
+});
+
 describe('the link to the original', () => {
   it('reads «Les dokumentet på Kudos», named apart by the title, in a new tab', () => {
     draw();
@@ -480,7 +517,7 @@ describe('the link to the original', () => {
     draw();
     const link = within(passageOf(/594,2/)).getByRole('link', { name: /^Les side 12/ });
     expect(link.getAttribute('aria-label')).toBe(
-      `Les side 12 på Kudos, Ressursbruk, ${report.title} (åpnes i ny fane)`,
+      `Les side 12 på Kudos, utdrag fra Ressursbruk, ${report.title} (åpnes i ny fane)`,
     );
     expect(link.querySelector('.ds-sr-only')).toBeNull();
   });

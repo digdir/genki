@@ -1,13 +1,5 @@
-import {
-  Button,
-  Card,
-  Chip,
-  Heading,
-  Link,
-  Paragraph,
-  Textfield,
-} from '@digdir/designsystemet-react';
-import { ArrowLeftIcon, ExternalLinkIcon } from '@navikt/aksel-icons';
+import { Button, Card, Chip, Heading, Paragraph, Textfield } from '@digdir/designsystemet-react';
+import { ArrowLeftIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -29,8 +21,13 @@ import {
 } from '../sources/pairing.js';
 import {
   DocumentLink,
-  ExcerptNumber,
+  ExcerptTitle,
+  PageLink,
+  prefersStill,
+  reachesPage,
+  sectionOf,
   targetPosition,
+  useExcerptName,
   useSourceSubtitle,
   type BackTo,
 } from '../sources/Sources.js';
@@ -120,13 +117,6 @@ export interface DocumentViewProps {
 
 type Level = 2 | 3 | 4 | 5 | 6;
 
-const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
-
-/** The section an excerpt is from: the last step of its heading path. */
-const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
-
-const still = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
 /**
  * Whether text the view does not have lies before an excerpt: when the parts' positions say the
  * document goes on between them, or that the first is not the document's start. Without positions
@@ -209,6 +199,7 @@ export const DocumentView = ({
   className,
 }: DocumentViewProps) => {
   const t = useT();
+  const excerptName = useExcerptName();
   const titleId = useId();
   const documentTitleId = useId();
   const jumpsId = useId();
@@ -294,7 +285,7 @@ export const DocumentView = ({
       const passage = landing.chunkId ? passageRefs.current.get(landing.chunkId) : undefined;
       // On the title, the block's top is shown too, so the way back stays in sight.
       (passage ?? rootRef.current)?.scrollIntoView?.({
-        behavior: still() ? 'auto' : 'smooth',
+        behavior: prefersStill() ? 'auto' : 'smooth',
         block: 'start',
       });
       (passage ?? headRef.current)?.focus({ preventScroll: true });
@@ -368,15 +359,6 @@ export const DocumentView = ({
         onReturn();
       }
     : undefined;
-
-  const nameOf = (excerpt: SourceExcerpt) => {
-    const n = pairing?.mode === 'excerpt' ? pairing.numbers.get(excerpt.chunkId) : undefined;
-    const section = sectionOf(headingText(excerpt.heading));
-    if (n === undefined) return section ?? t('sources.excerptUnnumbered');
-    return section
-      ? `${t('sources.excerptNumber', { n })}: ${section}`
-      : t('sources.excerptNumber', { n });
-  };
 
   // Straight to a cited excerpt, in this document or another of the answer's. Focus lands on it
   // and says its name; a document of its own is said in the live region too.
@@ -519,12 +501,6 @@ export const DocumentView = ({
                 excerpt.url && page !== undefined && reachesPage(excerpt.url, page)
                   ? excerpt.url
                   : undefined;
-              const readPage =
-                page === undefined
-                  ? ''
-                  : corpus
-                    ? t('sources.readPageOn', { page, corpus })
-                    : t('sources.readPage', { page });
               const here = excerpt.chunkId === marked;
               const titleOf = `${passageId}-${i}`;
               return (
@@ -549,33 +525,21 @@ export const DocumentView = ({
                     data-uncited={uncited || undefined}
                     aria-busy={fetching || undefined}
                   >
-                    <Heading
+                    <ExcerptTitle
                       id={titleOf}
-                      level={(headingLevel + 1) as Level}
-                      data-size="2xs"
+                      level={headingLevel + 1}
                       className="uib-document-view-passage-title"
-                      // Named by what it says, as in Sources: the number stands on a line of its
-                      // own, which a browser reads without the colon.
-                      aria-label={n === undefined ? undefined : nameOf(excerpt)}
-                    >
-                      {n === undefined ? null : (
-                        <ExcerptNumber
-                          n={n}
-                          label={t('sources.excerptNumber', { n })}
-                          uses={uses}
-                          back={
-                            backTo && {
-                              ...backTo,
-                              onShow:
-                                onShowUse &&
-                                ((citation) => onShowUse(citation, { source, excerpt })),
-                            }
-                          }
-                        />
-                      )}
-                      {section ? <span>{section}</span> : null}
-                      {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
-                    </Heading>
+                      n={n}
+                      section={section}
+                      uses={uses}
+                      back={
+                        backTo && {
+                          ...backTo,
+                          onShow:
+                            onShowUse && ((citation) => onShowUse(citation, { source, excerpt })),
+                        }
+                      }
+                    />
                     {uncited ? (
                       <Paragraph data-size="xs" className="uib-document-view-uncited">
                         {t('sources.uncited')}
@@ -607,20 +571,15 @@ export const DocumentView = ({
                         {t('sources.excerptUnavailable')}
                       </Paragraph>
                     )}
-                    {pageLink ? (
-                      <Link
+                    {pageLink && page !== undefined ? (
+                      <PageLink
                         href={pageLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-size="sm"
+                        page={page}
+                        name={excerptName(n, section)}
+                        title={documentTitle}
+                        corpus={corpus}
                         className="uib-document-view-link"
-                        // Named in one piece: a hidden span is a box of its own to a browser,
-                        // which then reads a space before the comma, «Kudos , Utdrag 2».
-                        aria-label={`${readPage}, ${nameOf(excerpt)}, ${documentTitle} ${t('sources.opensInNewTab')}`}
-                      >
-                        {readPage}
-                        <ExternalLinkIcon aria-hidden />
-                      </Link>
+                      />
                     ) : null}
                   </div>
                 </li>

@@ -125,7 +125,12 @@ type Level = 2 | 3 | 4 | 5 | 6;
 
 const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
-const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
+/** A «Les side N» link is drawn only where the address opens that page. */
+export const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
+
+/** Whether the reader asks for less motion, so a scroll jumps rather than glides. */
+export const prefersStill = () =>
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 const qualifier = (id: string | undefined) => (id?.includes('::') ? id.split('::')[0] : undefined);
 
@@ -199,7 +204,7 @@ const prepare = (
 };
 
 /** The section an excerpt is from: the last step of its heading path. */
-const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
+export const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
 /** What the links back to the answer need beyond an item's uses. */
 export interface BackTo {
@@ -272,6 +277,98 @@ export const ExcerptNumber = ({
         ))}
       </span>
     </span>
+  );
+};
+
+/**
+ * An excerpt's title: «Utdrag N» with its links back and its section when the answer cites it, or
+ * else its section or a plain «Utdrag», with no number from its place. Named as a heading by what
+ * it says: the number stands on a line of its own, which a browser reads without the colon, and
+ * the links in it have names of their own. Sources and the document view draw the same.
+ */
+export const ExcerptTitle = ({
+  id,
+  level,
+  className,
+  n,
+  section,
+  uses,
+  back,
+}: {
+  id?: string | undefined;
+  level: number;
+  className: string;
+  /** Its «Utdrag N» number, when the answer cites it. */
+  n: number | undefined;
+  section: string | undefined;
+  uses: readonly number[];
+  back: BackTo | undefined;
+}) => {
+  const t = useT();
+  const number = n === undefined ? undefined : t('sources.excerptNumber', { n });
+  return (
+    <Heading
+      id={id}
+      level={level as Level}
+      data-size="2xs"
+      className={className}
+      aria-label={number && (section ? `${number}: ${section}` : number)}
+    >
+      {n === undefined || !number ? null : (
+        <ExcerptNumber n={n} label={number} uses={uses} back={back} />
+      )}
+      {section ? <span>{section}</span> : null}
+      {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
+    </Heading>
+  );
+};
+
+/** What a link or a button names an excerpt: «utdrag 2», «utdrag fra Ressursbruk» or «utdrag». */
+export const useExcerptName = () => {
+  const t = useT();
+  return (n: number | undefined, section: string | undefined) =>
+    n !== undefined
+      ? t('sources.excerptName', { n })
+      : section
+        ? t('sources.excerptNameSection', { section })
+        : t('sources.excerptNameUnnumbered');
+};
+
+/**
+ * «Les side N på Kudos», to the excerpt's page, named in one piece with which excerpt and which
+ * document: a hidden box after the words would make a browser read a space before the comma.
+ */
+export const PageLink = ({
+  href,
+  page,
+  name,
+  title,
+  corpus,
+  className,
+}: {
+  href: string;
+  page: number;
+  /** The excerpt, as `useExcerptName` calls it. */
+  name: string;
+  /** The document's title. */
+  title: string;
+  corpus: string | undefined;
+  className: string;
+}) => {
+  const t = useT();
+  const read = corpus ? t('sources.readPageOn', { page, corpus }) : t('sources.readPage', { page });
+  return (
+    <Link
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-size="sm"
+      className={className}
+      aria-label={`${read}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
+    >
+      {read}
+      <ExternalLinkIcon aria-hidden />
+    </Link>
   );
 };
 
@@ -570,8 +667,7 @@ const SourceItem = ({
     const frame = requestAnimationFrame(() => {
       const chunk = focus.chunkId ? rowRefs.get(focus.chunkId) : undefined;
       const element = chunk ?? card.current;
-      const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      element?.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+      element?.scrollIntoView?.({ behavior: prefersStill() ? 'auto' : 'smooth', block: 'start' });
       (chunk ?? head.current ?? card.current)?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
@@ -579,10 +675,7 @@ const SourceItem = ({
 
   const subtitle = useSourceSubtitle(source);
   const actions = sourceActions?.(source);
-  // A page link is named in one piece, its words and then which excerpt and document: a hidden
-  // box after the words would make a browser read a space before the comma.
-  const readPage = (page: number) =>
-    corpus ? t('sources.readPageOn', { page, corpus }) : t('sources.readPage', { page });
+  const excerptName = useExcerptName();
   // A document's passages, which nothing cites alone, behind one button in document mode.
   const passages = (drawn: ReactNode[]) =>
     byDocument && drawn.length ? (
@@ -725,12 +818,7 @@ const SourceItem = ({
             const path = headingText(excerpt?.heading);
             const section = sectionOf(path);
             // Named as it is titled: an unnumbered excerpt gets no number from its place either.
-            const name =
-              n !== undefined
-                ? t('sources.excerptName', { n })
-                : section
-                  ? t('sources.excerptNameSection', { section })
-                  : t('sources.excerptNameUnnumbered');
+            const name = excerptName(n, section);
             const page = excerpt?.page;
             const fetching = !excerpt?.textUnavailable && excerpt?.textLoading && !text;
             const pageLink =
@@ -764,33 +852,15 @@ const SourceItem = ({
                 onKeyDown={leave}
               >
                 <div className="uib-sources-excerpt-head">
-                  <Heading
-                    level={(level + 1) as Level}
-                    data-size="2xs"
+                  {/* The links back are in the title, so they work on a closed row too. */}
+                  <ExcerptTitle
+                    level={level + 1}
                     className="uib-sources-excerpt-title"
-                    // Named as a heading by what it says: the number stands on a line of its own,
-                    // which a browser reads without the colon, and the links in it have names of
-                    // their own.
-                    aria-label={
-                      n === undefined
-                        ? undefined
-                        : section
-                          ? `${t('sources.excerptNumber', { n })}: ${section}`
-                          : t('sources.excerptNumber', { n })
-                    }
-                  >
-                    {n === undefined || !excerpt ? null : (
-                      // In the title, so it works on a closed row too.
-                      <ExcerptNumber
-                        n={n}
-                        label={t('sources.excerptNumber', { n })}
-                        uses={uses}
-                        back={backFor(excerpt)}
-                      />
-                    )}
-                    {section ? <span>{section}</span> : null}
-                    {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
-                  </Heading>
+                    n={excerpt ? n : undefined}
+                    section={section}
+                    uses={uses}
+                    back={excerpt ? backFor(excerpt) : undefined}
+                  />
                   <div className="uib-sources-excerpt-controls">
                     <Button
                       type="button"
@@ -854,17 +924,14 @@ const SourceItem = ({
                     />
                   )}
                   {isOpen && pageLink && page !== undefined ? (
-                    <Link
+                    <PageLink
                       href={pageLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-size="sm"
+                      page={page}
+                      name={name}
+                      title={title}
+                      corpus={corpus}
                       className="uib-sources-link"
-                      aria-label={`${readPage(page)}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
-                    >
-                      {readPage(page)}
-                      <ExternalLinkIcon aria-hidden />
-                    </Link>
+                    />
                   ) : null}
                   {isOpen && excerpt && excerptActions ? (
                     <div className="uib-sources-actions">{excerptActions({ source, excerpt })}</div>
@@ -997,10 +1064,9 @@ export const Sources = ({
     if (key === undefined) return;
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
-      const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       rowRefs.current
         .get(key)
-        ?.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+        ?.scrollIntoView?.({ behavior: prefersStill() ? 'auto' : 'smooth', block: 'start' });
     });
   };
 
