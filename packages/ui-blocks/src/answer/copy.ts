@@ -1,7 +1,8 @@
 import type { Locale } from '@genai/i18n';
 import { cellsOf, inlineText } from '../markdown/Markdown.js';
+import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { documentKeys } from '../sources/pairing.js';
-import { distinctNames } from '../sources/Sources.js';
+import { distinctNames, sectionOf } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
 import { translator } from './i18n.js';
@@ -65,19 +66,23 @@ const plain = (markdown: string, label: (n: number) => Label) => {
     .trim();
 };
 
+/** How many of an excerpt's first words tell it apart in a reference line. */
+const OPENING_WORDS = 8;
+
+/** An excerpt's first words as drawn, with «…» where it goes on and no full stop where it ends. */
+const openingWords = (text: string) => {
+  const all = plain(excerptMarkdown(text), () => null)
+    .split(/\s+/)
+    .filter(Boolean);
+  const shown = all.slice(0, OPENING_WORDS).join(' ');
+  return all.length > OPENING_WORDS ? `${shown} …` : shown.replace(/[.,;:!?]+$/u, '');
+};
+
 const yearOf = (date: string | undefined) => {
   const year = date ? new Date(date).getUTCFullYear() : Number.NaN;
   return Number.isNaN(year) ? undefined : year;
 };
 
-/**
- * What «Kopier svaret» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
- * its footnotes, and a reference list under it, since an answer must not leave the app without
- * where it came from. One line per numbered excerpt, since two excerpts from one report are on
- * different pages. An answer whose footnotes name only documents is drawn without footnotes, so it
- * is copied without them, with one unnumbered line per cited document. Each part is left out when
- * the source lacks it. With no sources, the clean text alone.
- */
 /**
  * How much of an answer on its way is finished, as plain text without footnotes, for a live
  * region: everything up to the last blank line, since the tail is still being written. Empty
@@ -88,6 +93,14 @@ export const finishedText = (markdown: string) => {
   return lastBreak < 0 ? '' : plain(markdown.slice(0, lastBreak), () => null);
 };
 
+/**
+ * What «Kopier svaret» puts on the clipboard, as kunnskapsassistenten copies it: the answer with
+ * its footnotes, and a reference list under it, since an answer must not leave the app without
+ * where it came from. One line per numbered excerpt, and two from one report told apart by their
+ * page, section or first words. An answer whose footnotes name only documents is drawn without
+ * footnotes, so it is copied without them, with one unnumbered line per cited document. Each part
+ * is left out when the source lacks it. With no sources, the clean text alone.
+ */
 export const answerCopy = (text: string, options: AnswerCopyOptions = {}): AnswerCopy => {
   const { sources = [], markers, locale = 'nb' } = options;
   const t = translator(locale);
@@ -99,37 +112,56 @@ export const answerCopy = (text: string, options: AnswerCopyOptions = {}): Answe
   );
   const byMarker = new Map(markers?.map((m) => [m.marker, m] as const));
 
-  const where = (title: string, page: number | undefined) =>
-    page === undefined ? title : t('answer.copyPage', { title, page });
+  const where = (title: string, page: number | undefined, part?: string) => {
+    const named = part === undefined ? title : t('answer.copyPart', { title, part });
+    return page === undefined ? named : t('answer.copyPage', { title: named, page });
+  };
   const line = (
     n: number | undefined,
     title: string,
     page: number | undefined,
     at: SourceDocument,
+    part?: string,
   ) => {
     const year = yearOf(at.publishedAt);
     const url = at.url;
     return [
       n === undefined ? undefined : `[${n}]`,
-      `${where(title, page)}${year === undefined ? '' : ` (${year})`}.`,
+      `${where(title, page, part)}${year === undefined ? '' : ` (${year})`}.`,
       url,
     ]
       .filter(Boolean)
       .join(' ');
   };
 
-  const references = byExcerpt
+  const cited = byExcerpt
     ? sources
         .flatMap((source, i) =>
           source.excerpts.flatMap((excerpt) => {
             const n = pairing.numbers.get(excerpt.chunkId);
-            return n === undefined
-              ? []
-              : [{ n, text: line(n, names[i] ?? '', excerpt.page, source) }];
+            return n === undefined ? [] : [{ n, source, title: names[i] ?? '', excerpt }];
           }),
         )
         .toSorted((a, b) => a.n - b.n)
-        .map((r) => r.text)
+    : [];
+  // Two excerpts of one document are told apart as the screen tells them apart: by their page,
+  // else by their section («Utdrag 2: Ressursbruk»), else by their first words, since the screen
+  // shows each one's text. A line that is the only one of its kind keeps kunnskapsassistenten's.
+  type Cited = (typeof cited)[number];
+  const sectionIn = (c: Cited) => sectionOf(headingText(c.excerpt.heading));
+  const partOf = (c: Cited) => {
+    const alike = cited.filter(
+      (other) => other.source === c.source && other.excerpt.page === c.excerpt.page,
+    );
+    if (alike.length < 2) return undefined;
+    const section = sectionIn(c);
+    if (section && alike.every((other) => other === c || sectionIn(other) !== section))
+      return section;
+    return openingWords(c.excerpt.text);
+  };
+
+  const references = byExcerpt
+    ? cited.map((c) => line(c.n, c.title, c.excerpt.page, c.source, partOf(c)))
     : sources.flatMap((source, i) =>
         pairing.uses.has(keys[i] ?? '') ? [line(undefined, names[i] ?? '', undefined, source)] : [],
       );

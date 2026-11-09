@@ -201,7 +201,7 @@ const prepare = (
 };
 
 /** The section an excerpt is from: the last step of its heading path. */
-const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
+export const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
 
 /** What the links back to the answer need beyond an item's uses. */
 interface BackTo {
