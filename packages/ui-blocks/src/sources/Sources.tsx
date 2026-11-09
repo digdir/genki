@@ -368,7 +368,9 @@ export const PageLink = ({
       className={className}
       aria-label={`${read}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {read}
+      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
+          icon off from the words, as kunnskapsassistenten draws it. */}
+      <span>{read}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
   );
@@ -552,7 +554,9 @@ export const DocumentLink = ({
       onClick={onFollow}
       aria-label={`${readDocument}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {readDocument}
+      {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets the
+          icon off from the words, as kunnskapsassistenten draws it. */}
+      <span>{readDocument}</span>
       <ExternalLinkIcon aria-hidden />
     </Link>
   );
