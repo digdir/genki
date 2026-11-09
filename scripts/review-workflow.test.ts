@@ -11,7 +11,7 @@ const workflow = parse(text) as {
   jobs: {
     resolve: {
       permissions: Record<string, string>;
-      steps: { uses?: string; with?: Record<string, string> }[];
+      steps: { name?: string; uses?: string; run?: string; with?: Record<string, string> }[];
     };
     'follow-up': {
       if: string;
@@ -237,5 +237,21 @@ describe('one round per pull request', () => {
   it('never caps findings to hold some back for a later round', () => {
     expect(rules).not.toMatch(/at most (three|\d) Nits/);
     expect(rules).toContain('Report every finding in one review');
+  });
+});
+
+describe('the review scripts', () => {
+  const jobs = [workflow.jobs.review, workflow.jobs['follow-up'], workflow.jobs.resolve];
+
+  it('run from the base branch, never from the pull request', () => {
+    for (const job of jobs) {
+      const take = job.steps.findIndex((s) => s.name === 'Take the review scripts from the base branch');
+      expect(take).toBeGreaterThan(-1);
+      expect(job.steps[take].run).toContain('git show "$BASE:scripts/$f.ts"');
+      const runs = job.steps.slice(take + 1).map((s) => s.run ?? '').join('\n');
+      expect(runs).toContain('$RUNNER_TEMP/review/');
+      for (const step of job.steps.slice(0, take)) expect(step.run ?? '').not.toContain('review-');
+    }
+    expect(text).not.toMatch(/node scripts\//);
   });
 });
