@@ -1235,7 +1235,7 @@ describe('the page around the blocks', () => {
     expect(screen.queryByText('KA rask', { exact: false })).toBeNull();
   });
 
-  it('keeps its observer on the docked field while an answer streams, rather than one per render', async () => {
+  it('keeps one observer on the docked field while an answer streams, rather than one per render', async () => {
     const Real = globalThis.ResizeObserver;
     const observed: Element[] = [];
     globalThis.ResizeObserver = class {
@@ -1256,6 +1256,55 @@ describe('the page around the blocks', () => {
       await waitFor(() => expect(document.querySelectorAll('.uib-answer')).toHaveLength(2));
       expect(docks()).toHaveLength(before);
     } finally {
+      globalThis.ResizeObserver = Real;
+    }
+  });
+
+  it('leaves the docked field’s room to the field’s own scroll margin, and pads the main column with nothing', async () => {
+    // A ResizeObserver that reports at once, and every element 52 px tall.
+    const Real = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        this.callback([], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(52);
+    // jsdom loads no stylesheet: the docked field reads as sticky, as the browser draws it.
+    const real = window.getComputedStyle.bind(window);
+    const styles = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = real(element, pseudo);
+      if (!element.classList.contains('uia-composer')) return style;
+      return new Proxy(style, {
+        get: (target, key) => {
+          if (key === 'position') return 'sticky';
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+        },
+      });
+    });
+    try {
+      draw(state('knowledge-assistant').layout, fakeApi().api);
+      await ask();
+      const field = document.querySelector<HTMLElement>('.uia-composer[data-sticky]');
+      await waitFor(() =>
+        expect(field?.parentElement?.style.getPropertyValue('--uib-composer-block-size')).toBe(
+          '52px',
+        ),
+      );
+      // Scroll padding would cover the field too, and in Chrome it also pulls a footnote that is
+      // centred on the way back from Kilder up under the top of the column.
+      const main = document.querySelector<HTMLElement>('main');
+      expect(main).not.toBeNull();
+      expect(main?.style.scrollPaddingBlockEnd).toBe('');
+    } finally {
+      styles.mockRestore();
+      height.mockRestore();
       globalThis.ResizeObserver = Real;
     }
   });

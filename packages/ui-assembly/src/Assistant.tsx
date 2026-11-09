@@ -246,22 +246,6 @@ export const AssistantView = ({
     if (field && !field.id) field.id = 'composer-field';
     setFieldId(field?.id || undefined);
   }, [a.fieldRef, fieldShown, chatZone]);
-  // No focus hides under the docked field: scroll padding as tall as the dock (WCAG 2.4.11). One
-  // observer per docked field, which reports as the field docks and grows.
-  const [dock, setDock] = useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const main = document.getElementById(mainId);
-    if (!main || !dock || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      main.style.scrollPaddingBlockEnd =
-        getComputedStyle(dock).position === 'sticky' ? `${Math.round(dock.offsetHeight)}px` : '';
-    });
-    observer.observe(dock);
-    return () => {
-      observer.disconnect();
-      main.style.scrollPaddingBlockEnd = '';
-    };
-  }, [mainId, dock]);
   // When the answer is done, «Avbryt genereringen» turns back into a disabled send button; focus
   // that was on it goes to the field, not to the page. Focus the reader moved elsewhere stays.
   const wasWorking = useRef(false);
@@ -406,9 +390,10 @@ export const AssistantView = ({
                 <VariantPicker variants={a.variants} value={a.model} onChange={a.setModel} />
               ) : undefined
             }
+            // Docked, the field keeps the rest of the column clear of itself (WCAG 2.4.11) with a
+            // scroll margin as tall as it, as kunnskapsassistenten does.
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
-            {...(inPanel ? {} : { ref: setDock })}
           />
         )}
         {start ? (
