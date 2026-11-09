@@ -1797,6 +1797,7 @@
               'packages/ui-assembly/src/useAssistant.ts',
               'packages/ui-assembly/src/Assistant.tsx',
               'packages/ui-assembly/src/api.ts',
+              'packages/ui-assembly/src/i18n.ts',
             ],
             input: 'A layout, a service and a way to reach genki',
             output: 'A rendered assistant',
@@ -1811,6 +1812,13 @@
                   file: 'packages/ui-assembly/src/useAssistant.ts',
                   imports: '@genai/ui-blocks',
                 },
+              },
+              {
+                to: 'i18n',
+                label: "Its own words beside the blocks', in the reader's language",
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/ui-assembly/src/i18n.ts', imports: '@genai/i18n' },
               },
               {
                 to: 'client',

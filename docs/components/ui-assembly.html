@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UI assembly · Components</title>
+    <meta
+      name="description"
+      content="Puts the blocks together from a layout and wires them to a genki service: the assistant the app builder's layout describes."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">UI assembly</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="ui-assembly"
+        data-component="ui-assembly"
+        data-phase="building"
+        data-optional="false"
+        aria-labelledby="ui-assembly-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="ui-assembly-title">UI assembly</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Not a block</span>
+            </div>
+            <p class="summary">
+              Puts the blocks together from a layout and wires them to a genki service. The blocks
+              stay data in, events out; the assembly holds the state they share, links their events
+              and makes the calls.
+            </p>
+            <dl class="facts">
+              <dt>Code</dt>
+              <dd>
+                <code>Assistant</code>, <code>useAssistant</code> and <code>AssistantView</code> in
+                <code>packages/ui-assembly</code>
+              </dd>
+              <dt>Drawn by</dt>
+              <dd>
+                The app builder's «Prøv assistenten», and the UI blocks preview, which is
+                kunnskapsassistenten built from blocks
+              </dd>
+              <dt>Made from</dt>
+              <dd>The UI blocks preview's own wiring, and kunnskapsassistenten's views</dd>
+            </dl>
+          </div>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>
+                An app is an assistant a layout describes: the zones and options the builder's
+                catalogue allows, live against one genki service.
+              </li>
+            </ul>
+            <h2>Don't use it when</h2>
+            <ul>
+              <li>
+                An app draws its own arrangement. The blocks are the parts; take them from
+                <code>@genai/ui-blocks</code> and wire them yourself.
+              </li>
+            </ul>
+            <h2>What happens when a partner is off</h2>
+            <ul>
+              <li>Without Tråder: one thread per visit, and no thread in the address.</li>
+              <li>
+                Without Filter: the question goes to the service's collection, narrowed by nothing.
+                Without the corpus choice: the service's own collection. A service with no
+                collection, a plain chat, is asked with none.
+              </li>
+              <li>
+                Without Kilder: a footnote opens Dokumentvisning. Without both: no footnotes, since
+                every footnote is paired with an excerpt.
+              </li>
+              <li>Without Fremgangsmåte: no steps are asked for.</li>
+              <li>
+                Without Innstillinger: the setup's display level, and the page is the chat
+                everywhere.
+              </li>
+              <li>With one variant: no picker.</li>
+            </ul>
+            <h2>Where the blocks go</h2>
+            <ul>
+              <li>
+                The primary panel holds Tråder and Filter as two views, and Innstillinger in its
+                foot. The main column holds Chat, or the filter strip with «Endre» and Fremgangsmåte
+                over it. The secondary panel's tools are offered by how many there are: a heading,
+                tabs or a dropdown.
+              </li>
+              <li>
+                Dokumentvisning is a tool in the secondary panel, or takes the conversation's place
+                in the main column while a document is open.
+              </li>
+              <li>
+                Chat in the secondary panel opens it from the start, as a drawer on a phone. Every
+                way back to the answer shows Chat's tool again.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Props</h2>
+            <ul>
+              <li>
+                <code>api</code>: the calls, from
+                <code>createGenkiApi({ baseUrl, tenant, profile, language })</code> through a proxy
+                that adds the key, or a fake in tests.
+              </li>
+              <li><code>layout</code>: the builder's layout, zones and options.</li>
+              <li>
+                <code>service</code> and <code>tenant</code>; <code>model</code>, the variant to
+                start from.
+              </li>
+              <li>
+                <code>profile</code>: what genki does not say. The assistant's name, suggestions,
+                follow-ups, the collections' words and fields, the family of services, the trials
+                and who is signed in.
+              </li>
+              <li>
+                <code>threadInUrl</code>: the thread as <code>?t=</code>, «Innstillinger» as
+                <code>#innstillinger</code>, and the tab's title. With <code>paths</code>, a path
+                per page. <code>allThreads</code> lists every thread under the key.
+              </li>
+              <li>
+                <code>storage</code>: where the reader's choices are kept, such as
+                <code>browserStorage('preview.')</code>.
+              </li>
+              <li>
+                <code>onFeedback</code>, <code>onRename</code> and <code>onDelete</code>: without
+                them, none is offered. <code>onNotice</code>, <code>onThreadChange</code> and
+                <code>onStepsReported</code> tell the host what happened.
+              </li>
+              <li>
+                <code>colorScheme</code> and <code>onColorSchemeChange</code>: the host keeps the
+                scheme. <code>mainId</code>: the target of «Hopp til hovedinnhold».
+              </li>
+            </ul>
+            <h2>Related</h2>
+            <ul>
+              <li><a href="shell.html">Shell</a>: the zones it places the blocks in</li>
+              <li><a href="branding.html">Branding</a>: how a service brands every block</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>Branding</h2>
+            <p>
+              The assembly's own sheet, <code>@genai/ui-assembly/styles.css</code>, arranges the
+              blocks and styles only its own classes. It sits in
+              <code>@layer genai.components</code> and reads every token through its own variable,
+              with the token as the fallback. The reading width is the one value that is not a
+              token: kunnskapsassistenten's 728 px. The docked field reads the shell's end padding
+              through the shell's variable.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Default</th>
+                  <th scope="col">Styles</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--genai-assembly-chat-max-width</code></td>
+                  <td><code>728px</code></td>
+                  <td>the reading width of the conversation, a document and the filter strip</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-main-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>between the blocks in the main column</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-chat-gap</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>between the conversation and the question field</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-panel-chat-gap</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the same, with Chat in the secondary panel</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-greeting-gap</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>between the greeting and an empty thread's note</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-room-inset</code></td>
+                  <td><code>--ds-size-3</code></td>
+                  <td>above the greeting and under the suggestions on the front page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-disclaimer-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the disclaimer at the foot of the front page</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-stacked-gap</code></td>
+                  <td><code>--ds-size-12</code></td>
+                  <td>between the filter and the tools, with the trial «filters-right-panel»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-frames-indent</code></td>
+                  <td><code>--ds-size-5</code></td>
+                  <td>the step frames under «Tekniske detaljer»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-frames-font-size</code></td>
+                  <td><code>--ds-font-size-2</code></td>
+                  <td>the step frames under «Tekniske detaljer»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-quiet-color</code></td>
+                  <td><code>--ds-color-neutral-text-subtle</code></td>
+                  <td>the quiet notes, such as Fremgangsmåte's empty panel and «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-gap</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td>inside the filter strip, and between its text and «Endre»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-text-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>between the strip's collection line and «Avgrenset til»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-padding</code></td>
+                  <td><code>--ds-size-3</code> <code>--ds-size-4</code></td>
+                  <td>the strip's padding</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-border-width</code></td>
+                  <td><code>--ds-border-width-default</code></td>
+                  <td>the strip's border</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-border-color</code></td>
+                  <td><code>--ds-color-neutral-border-subtle</code></td>
+                  <td>the strip's border</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-radius</code></td>
+                  <td><code>--ds-border-radius-lg</code></td>
+                  <td>the strip's corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-strip-background</code></td>
+                  <td><code>--ds-color-neutral-surface-default</code></td>
+                  <td>the strip's ground</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-shell-main-padding-block-end</code></td>
+                  <td><code>--ds-size-8</code></td>
+                  <td>
+                    the shell's, read: how far the docked field reaches into the main column's end
+                    padding, see <a href="shell.html">Shell</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                Every word the reader sees is in a catalogue, bokmål with English held to it. The
+                blocks' words are read from theirs: the blocks' names, «Ny tråd», «Avgrenset til».
+              </li>
+              <li>
+                A question asked before genki has said what the service backs is sent once it has. A
+                failed <code>/v1/models</code> is shown, and tried again when a question is sent.
+              </li>
+              <li>
+                A question asked in Dokumentvisning names the document, and searches only that
+                document where the collection declares its number as a filter field.
+              </li>
+              <li>
+                «Kopier svaret» copies what the screen says, through the answer block's
+                <code>answerCopy</code>. «Kopier lenke til tråden» is offered only where the thread
+                is in the address.
+              </li>
+              <li>
+                The page has one <code>h1</code>, the assistant's name, before the rest of the main
+                column, wherever Chat stands.
+              </li>
+              <li>An assistant that goes stops its answer, and reports nothing after.</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                A footnote that leads into a hidden tool goes nowhere: with Chat and Kilder in one
+                panel, the way back has to show Chat's tool before the focus can land.
+              </li>
+              <li>
+                genki's stored answers keep no steps, so Fremgangsmåte has nothing to show for a
+                thread opened later, and says so.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>
+                Should a question asked in a document be marked in the thread as one, as the
+                canvas's «Spørsmål til én kilde» does?
+              </li>
+              <li>
+                The secondary panel's switcher and a folded panel's scroll padding are measured here
+                until the shell offers them itself.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="branding.html" rel="prev"><small>Previous</small>Branding</a>
+      </nav>
+    </main>
+  </body>
+</html>

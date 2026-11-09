@@ -4,7 +4,8 @@
 // - without Tråder, one thread per visit, and a new one from the greeting;
 // - without Filter, the question goes to the collection from the setup, narrowed by nothing, and
 //   there is no «Endre»;
-// - without the corpus choice, the collection is the service's own, with no choice shown;
+// - without the corpus choice, the collection is the service's own, with no choice shown; a
+//   service with no collection, a plain chat, is asked with none;
 // - without Kilder, a footnote opens the document in Dokumentvisning; without both, no footnotes
 //   (V2-0010 pairs every footnote with an excerpt);
 // - without Fremgangsmåte, no steps are asked for;
@@ -33,6 +34,7 @@ import {
   type CorpusOption,
   type DisplayLevel,
   type DocumentItem,
+  type DocumentQuestion,
   type DocumentViewReturn,
   type FilterField,
   type FilterSelection,
@@ -54,6 +56,7 @@ import {
   type ThreadRow,
   type Turn,
 } from './api.js';
+import { useT } from './i18n.js';
 import type { StepFrame } from './procedure.js';
 import type { AssistantProfile, FieldSpec } from './profile.js';
 import { useStoredValue, type AssistantStorage } from './storage.js';
@@ -125,6 +128,17 @@ export interface OpenDocument {
   toolBefore: string | undefined;
 }
 
+/** A question on its way: from the field, again in an answer's place, or about a document. */
+interface Asking {
+  question: string;
+  /** «Generer på nytt» or «Prøv igjen»: the turn it is asked again in place of. */
+  replaces?: string | undefined;
+  /** Typed in the field, which then empties. A question from elsewhere leaves the field alone. */
+  fromField?: boolean | undefined;
+  /** Asked in Dokumentvisning, about this document, as the block hands it over. */
+  about?: DocumentQuestion | undefined;
+}
+
 // kunnskapsassistenten's threadHeading.ts: the first sentence, cut on a word at 80.
 export const shortTitle = (text: string) => {
   const flat = text.trim().replace(/\s+/g, ' ');
@@ -183,8 +197,10 @@ export const useAssistant = ({
   onStepsReported,
 }: AssistantOptions) => {
   // ── What the service can back, and what the layout holds ──
+  const t = useT();
   const [models, setModels] = useState<ModelRow[]>();
   const [modelsFailed, setModelsFailed] = useState<string>();
+  const [modelsAttempt, setModelsAttempt] = useState(0);
   useEffect(() => {
     let gone = false;
     api.loadModels().then(
@@ -194,7 +210,11 @@ export const useAssistant = ({
     return () => {
       gone = true;
     };
-  }, [api]);
+  }, [api, modelsAttempt]);
+  const retryModels = useCallback(() => {
+    setModelsFailed(undefined);
+    setModelsAttempt((n) => n + 1);
+  }, []);
   const channelKey = channels.join(',');
   const facts = useMemo(
     () =>
@@ -206,6 +226,9 @@ export const useAssistant = ({
         : undefined,
     [models, service, channelKey, profile],
   );
+  // Until genki has said what the service backs, the layout is taken at its word: it comes from a
+  // builder that checks the needs, and drawing nothing until `/v1/models` answers would move every
+  // panel on every load.
   const met = useCallback((need: Need) => (facts ? needMet(facts, need) : true), [facts]);
   /** A block the layout places, that is built, and whose needs the service meets. */
   const has = useCallback(
@@ -223,6 +246,7 @@ export const useAssistant = ({
   const sourcesOn = has('sources');
   const documentOn = has('document-view');
   const chatOn = has('chat');
+  const chatZone = chatOn ? zoneOf(layout, 'chat') : undefined;
   const approachOn = has('approach');
   const settingsOn = has('settings');
   // A footnote goes to Kilder, or without it to Dokumentvisning; with neither, there are none.
@@ -231,25 +255,25 @@ export const useAssistant = ({
 
   const assistantName = profile?.assistantName ?? facts?.title ?? service;
 
-  // ── Variants: the pickable rows of this service, or of its family ──
+  // The threads of this service and of its family are listed.
   const inFamily = useCallback(
     (other: string) => other === service || (profile?.family?.(other) ?? false),
     [service, profile],
   );
-  const variants = useMemo<VariantOption[]>(
-    () =>
-      (models ?? [])
-        .filter((row) => !row._alias_of && inFamily(serviceOf(row)) && row._pickable)
-        .map((row) => {
-          const description = firstSentence(row.description);
-          return {
-            id: row.id,
-            title: row._variant_title ?? row.title ?? row.id,
-            ...(description ? { description } : {}),
-          };
-        }),
-    [models, inFamily],
-  );
+  // ── Variants: the rows the facts count, so the picker and `service:variants` are one rule ──
+  const variants = useMemo<VariantOption[]>(() => {
+    const counted = new Set(facts?.variants ?? []);
+    return (models ?? [])
+      .filter((row) => counted.has(row.id))
+      .map((row) => {
+        const description = firstSentence(row.description);
+        return {
+          id: row.id,
+          title: row._variant_title ?? row.title ?? row.id,
+          ...(description ? { description } : {}),
+        };
+      });
+  }, [models, facts]);
   const defaultModel = useMemo(() => {
     const own = (models ?? []).filter((row) => !row._alias_of && serviceOf(row) === service);
     return (
@@ -292,6 +316,23 @@ export const useAssistant = ({
       })
     : undefined;
   const corpusProfile = corpusKey ? profile?.corpora?.[corpusKey] : undefined;
+  // The field that holds a document's number, where the collection declares it as a filter on a
+  // question (Kudos's `doc_num`): a question asked in Dokumentvisning searches that document only.
+  const documentField = useMemo<FieldSpec | undefined>(() => {
+    const idField = corpusProfile?.about?.idField;
+    if (!idField || !corpusKey) return undefined;
+    const declared = (models ?? [])
+      .filter((row) => !row._alias_of && serviceOf(row) === service)
+      .flatMap((row) => row._datasets ?? [])
+      .find((dataset) => (dataset['dataset-config-key'] ?? dataset.id) === corpusKey)
+      ?.filters?.find((field) => field.field === idField && field.kinds?.includes('multiselect'));
+    if (!declared) return undefined;
+    return {
+      id: idField,
+      label: idField,
+      ...(declared['value-type'] === 'integer' ? { integer: true } : {}),
+    };
+  }, [models, service, corpusKey, corpusProfile]);
 
   // ── Threads ──
   const [loadedThreads, setThreads] = useState<ThreadRow[]>();
@@ -342,9 +383,12 @@ export const useAssistant = ({
   );
 
   // ── The thread on screen ──
-  const [page, setPage] = useState<Page>(() =>
+  const [pageShown, setPage] = useState<Page>(() =>
     threadInUrl && onSettingsAddress() ? 'settings' : 'chat',
   );
+  // Without Innstillinger, the page is the chat everywhere: in the main column, the tab's title,
+  // the thread list's current thread and the skip link.
+  const page: Page = settingsOn ? pageShown : 'chat';
   const [currentId, setCurrentId] = useState<string | undefined>(() =>
     urlThreads ? threadInAddress() : undefined,
   );
@@ -357,6 +401,23 @@ export const useAssistant = ({
   const abort = useRef<AbortController>(undefined);
   const [working, setWorking] = useState(false);
   const [request, setRequest] = useState<ShellRequest>();
+  // An assistant that goes stops its answer, and reports nothing after: a host that draws another
+  // in its place, as the app builder does for each service, hears only from that one.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      abort.current?.abort();
+    };
+  }, []);
+  // Without Tråder, no thread is kept in the address, so a `?t=` there is taken away.
+  useEffect(() => {
+    if (!threadInUrl || urlThreads || !new URLSearchParams(location.search).has('t')) return;
+    const url = new URL(location.href);
+    url.searchParams.delete('t');
+    history.replaceState(history.state, '', url);
+  }, [threadInUrl, urlThreads]);
 
   const go = useCallback(
     (id: string | undefined, replace = false) => {
@@ -519,7 +580,7 @@ export const useAssistant = ({
     setSelection({});
     setBaseFacets(undefined);
     leave(undefined);
-    onNotice?.(`Byttet til ${corpusLabel(key)}. Du har fått en ny tråd, og filteret er tømt.`);
+    onNotice?.(t('assembly.corpusChanged', { corpus: corpusLabel(key) }));
   };
 
   // ── The answer shown in Sources and Fremgangsmåte ──
@@ -565,15 +626,20 @@ export const useAssistant = ({
       gone = true;
     };
   }, [api, sourceKey, corpusKey]);
-  const documents: DocumentItem[] | undefined = activeAnswer?.sources?.map((s, i) => {
-    const line = s.documentId ? about[s.documentId] : undefined;
-    return {
-      id: s.documentId ?? `${i}-${s.title}`,
-      title: s.title,
-      ...(s.url ? { url: s.url } : {}),
-      ...(line ? { about: line } : {}),
-    };
-  });
+  const documents = useMemo<DocumentItem[] | undefined>(
+    () =>
+      activeAnswer?.sources?.map((s, i) => {
+        const line = s.documentId ? about[s.documentId] : undefined;
+        return {
+          id: s.documentId ?? `${i}-${s.title}`,
+          // Documents names no untitled source itself; Sources' word for one.
+          title: s.title || t('sources.untitled'),
+          ...(s.url ? { url: s.url } : {}),
+          ...(line ? { about: line } : {}),
+        };
+      }),
+    [activeAnswer, about, t],
+  );
 
   // ── Asking ──
   const [draft, setDraft] = useState('');
@@ -587,15 +653,55 @@ export const useAssistant = ({
     stepsReported.current = onStepsReported;
   });
 
-  // `replaces`: «Generer på nytt» or «Prøv igjen» asks the turn again in its place.
-  const send = async (question: string, replaces?: string) => {
-    if (working || !corpusKey) return;
+  /**
+   * Asks now, or as soon as it can: once genki has said what the service backs, which decides the
+   * collection, and once an answer still coming has ended. A failed `/v1/models` is tried again,
+   * and if it fails again the question waits in the field, under the failure.
+   */
+  const [waiting, setWaiting] = useState<Asking>();
+  const send = (question: string, options: Omit<Asking, 'question'> = {}) => {
+    const asking = { question, ...options };
+    if (!working && models) {
+      void start(asking);
+      return;
+    }
+    if (modelsFailed) retryModels();
+    setWaiting(asking);
+  };
+  useEffect(() => {
+    if (!waiting) return;
+    if (modelsFailed) setWaiting(undefined);
+    else if (models && !working) {
+      setWaiting(undefined);
+      void start(waiting);
+    }
+    // `start` is new on every render; what it waits for is what starts it.
+  }, [waiting, models, modelsFailed, working]);
+
+  const start = async ({ question: typed, replaces, fromField, about }: Asking) => {
     const controller = new AbortController();
     abort.current = controller;
     const startedIn = currentId;
     const id = `local-${Date.now()}`;
     setSourceTarget(undefined);
-    const narrowedTo = (facets ?? []).flatMap((field) => [...(selection[field.id] ?? [])]);
+    // A question about a document names it, in the thread and to the model, and searches only that
+    // document where the collection lets a question be narrowed by its number.
+    const documentId = about?.source.documentId;
+    const toDocument = about && documentField && documentId ? documentField : undefined;
+    const aboutTitle = about ? about.source.title.trim() || t('sources.untitled') : undefined;
+    const question = aboutTitle
+      ? t('assembly.aboutDocument', { title: aboutTitle, question: typed })
+      : typed;
+    const narrowedTo =
+      toDocument && aboutTitle
+        ? [aboutTitle]
+        : (facets ?? []).flatMap((field) => [...(selection[field.id] ?? [])]);
+    const filters =
+      toDocument && documentId
+        ? filterSet({ [toDocument.id]: [documentId] }, [toDocument])
+        : filterOn
+          ? filterSet(narrowing(selection, facets), fields ?? [])
+          : undefined;
     const change = (update: (turn: Turn) => Turn) =>
       setTurns((all) => all.map((t) => (t.id === id ? update(t) : t)));
     const update = (patch: (answer: AnswerData) => AnswerData) =>
@@ -606,7 +712,8 @@ export const useAssistant = ({
       );
     let frames = 0;
     setWorking(true);
-    setDraft('');
+    // Only a question sent from the field empties it, and only of what was sent.
+    if (fromField) setDraft((draft) => (draft.trim() === typed.trim() ? '' : draft));
     setView('ready');
     setActiveId(id);
     const asked: Turn = {
@@ -615,25 +722,26 @@ export const useAssistant = ({
       askedAt: Date.now(),
       answer: { text: '', status: 'streaming', created: Date.now() },
       ...(approachOn ? { approach: { frames: [], startedAt: Date.now() } } : {}),
-      scope: { narrowedTo, corpus: corpusKey },
+      scope: { narrowedTo, ...(corpusKey ? { corpus: corpusKey } : {}) },
     };
     setTurns((all) =>
       replaces && all.some((t) => t.id === replaces)
         ? all.map((t) => (t.id === replaces ? asked : t))
         : [...all, asked],
     );
-    const fromWire = (raw: Parameters<typeof sourceFromWire>[0]) =>
-      sourceFromWire(raw, corpusProfile);
+    const fromWire = (raw: Parameters<typeof sourceFromWire>[0], at: number) =>
+      sourceFromWire(raw, corpusProfile, at);
     try {
       for await (const event of api.ask({
         question,
         model,
         conversationId: startedIn,
-        filters: filterOn ? filterSet(narrowing(selection, facets), fields ?? []) : undefined,
-        dataset: { tenant: ownDataset?.tenant || tenant, key: corpusKey },
+        filters,
+        dataset: corpusKey ? { tenant: ownDataset?.tenant || tenant, key: corpusKey } : undefined,
         steps: approachOn,
         signal: controller.signal,
       })) {
+        if (!alive.current) break;
         if (event.type === 'conversation' && !startedIn) {
           ownThread.current = event.conversationId;
           go(event.conversationId, true);
@@ -728,13 +836,15 @@ export const useAssistant = ({
   const repeatsQuestion = !named || named === firstQuestion.trim().replace(/\s+/g, ' ');
   // Each thread gives the tab its own title (WCAG 2.4.2), as kunnskapsassistenten's PageTitle.
   const heading =
-    view === 'notfound' ? 'Fant ikke tråden' : named || shortTitle(firstQuestion) || 'Ny tråd';
+    view === 'notfound'
+      ? t('assembly.threadNotFoundTitle')
+      : named || shortTitle(firstQuestion) || t('threads.newThread');
   useEffect(() => {
     if (!threadInUrl) return;
     const name =
-      page === 'settings' ? 'Innstillinger' : repeatsQuestion ? shortTitle(heading) : heading;
-    document.title = `${name} – ${assistantName}`;
-  }, [threadInUrl, page, heading, repeatsQuestion, assistantName]);
+      page === 'settings' ? t('settings.title') : repeatsQuestion ? shortTitle(heading) : heading;
+    document.title = t('assembly.tabTitle', { page: name, assistant: assistantName });
+  }, [threadInUrl, page, heading, repeatsQuestion, assistantName, t]);
 
   // Each row names its collection only when the list mixes several, by the collection's name.
   const threadRows = useMemo(() => {
@@ -748,6 +858,25 @@ export const useAssistant = ({
 
   // The panels as the reader left them.
   const [shellLayout] = useState(() => storage?.read('layout') as ShellLayout | undefined);
+
+  /**
+   * The answer in sight again, for a way back to it: a document standing in the conversation's
+   * place closes, and Chat's own tool is shown where it shares the secondary panel, whose drawer
+   * then opens on a phone. With Chat in the main column, a drawer over it shuts.
+   */
+  const showChat = () => {
+    if (documentOverChat) setOpenDoc(undefined);
+    if (chatZone === 'secondary') {
+      setTool('chat');
+      setRequest({ action: 'open', side: 'secondary' });
+    } else setRequest({ action: 'close-drawers' });
+  };
+
+  // Chat in the secondary panel: the panel opens from the start, as a drawer on a phone, or there
+  // would be nowhere to ask.
+  useEffect(() => {
+    if (chatZone === 'secondary') setRequest({ action: 'open', side: 'secondary' });
+  }, [chatZone]);
 
   /** A footnote or a document asks for Kilder: the panel opens, on the Kilder tool. */
   const showSources = (turnId: string, target: SourceTarget) => {
@@ -804,33 +933,24 @@ export const useAssistant = ({
       }
     } else {
       if (lastFollowed.current) setAnswerTarget({ ...lastFollowed.current });
-      setRequest({ action: 'close-drawers' });
+      showChat();
     }
   };
 
-  // A question asked from the document while an answer is still coming waits for it to end.
-  const [queued, setQueued] = useState<string>();
-  /** A question about the document goes into the thread as any question does. */
-  const askAboutDocument = (question: string) => {
-    if (documentOverChat) {
-      setOpenDoc(undefined);
-      setFocusField((n) => n + 1);
-    }
-    // In a drawer the answer would be hidden.
-    setRequest({ action: 'close-drawers' });
-    setQueued(question);
+  /**
+   * A question about the document goes into the thread, with the document as the block hands it
+   * over, and the answer is put in sight. One asked while an answer is still coming waits for it.
+   */
+  const askAboutDocument = (ask: DocumentQuestion) => {
+    if (documentOverChat) setFocusField((n) => n + 1);
+    showChat();
+    send(ask.question, { about: ask });
   };
-  useEffect(() => {
-    if (!queued || working) return;
-    setQueued(undefined);
-    void send(queued);
-    // `send` is new on every render; the question and the end of an answer are what start it.
-  }, [queued, working]);
 
   // ── Settings ──
-  const defaultLevel = (
-    approachOn ? settingsOf(layout, 'approach').level : 'standard'
-  ) as DisplayLevel;
+  // The setup's level, checked as the reader's is: a layout is stored and read back.
+  const setupLevel = approachOn ? settingsOf(layout, 'approach').level : undefined;
+  const defaultLevel: DisplayLevel = isDisplayLevel(setupLevel) ? setupLevel : 'standard';
   const [chosenLevel, setLevel] = useStoredValue<DisplayLevel | undefined>(
     storage,
     'displayLevel',
@@ -854,6 +974,10 @@ export const useAssistant = ({
     layout,
     facts,
     modelsFailed,
+    // From a failed `/v1/models` until the rows come: the failure's region stays drawn while it is
+    // tried again, so a second failure is announced.
+    serviceTrouble: !models && (modelsFailed !== undefined || modelsAttempt > 0),
+    retryModels,
     has,
     where,
     option,
@@ -907,6 +1031,7 @@ export const useAssistant = ({
     named,
     repeatsQuestion,
     leave,
+    urlThreads,
     newThread: () => {
       setSelection({});
       leave(undefined);
@@ -933,8 +1058,12 @@ export const useAssistant = ({
     retryThread: () => setReload((n) => n + 1),
     turns,
     conversation,
-    working,
-    cancel: () => abort.current?.abort(),
+    // A question waiting to go counts as work: the field offers to stop it.
+    working: working || waiting !== undefined,
+    cancel: () => {
+      setWaiting(undefined);
+      abort.current?.abort();
+    },
     send,
     draft,
     setDraft,
@@ -958,11 +1087,11 @@ export const useAssistant = ({
     goToUse: (citation: number) => {
       if (!active) return;
       setAnswerTarget({ turnId: active.id, citation });
-      setRequest({ action: 'close-drawers' });
+      showChat();
     },
     returnToAnswer: () => {
       if (lastFollowed.current) setAnswerTarget({ ...lastFollowed.current });
-      setRequest({ action: 'close-drawers' });
+      showChat();
     },
     // the document view
     documentZone,
@@ -981,8 +1110,7 @@ export const useAssistant = ({
     showDocumentUse: (citation: number) => {
       if (!openDoc) return;
       setAnswerTarget({ turnId: openDoc.turnId, citation });
-      if (documentOverChat) setOpenDoc(undefined);
-      setRequest({ action: 'close-drawers' });
+      showChat();
     },
     // the shell
     request,
