@@ -39,14 +39,7 @@ import {
   type SourceTarget,
 } from '@genai/ui-blocks';
 import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
@@ -228,8 +221,9 @@ export const AssistantView = ({
   }, [toolsPin]);
   // A folded panel that opens on a document gets its scroll padding from the shell a frame after
   // the block has scrolled to the excerpt, which then opens under the steps. The same padding,
-  // the pinned switcher's height, is set here as the document opens.
-  useLayoutEffect(() => {
+  // the pinned switcher's height, is set here as the document opens: after the shell's own effects,
+  // which open a drawer, and before the block's next frame.
+  useEffect(() => {
     const region = toolsPin?.parentElement;
     if (!a.openDoc || !toolsPin || !region) return;
     region.style.scrollPaddingBlockStart = `${Math.round(toolsPin.offsetHeight)}px`;
