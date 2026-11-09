@@ -1,6 +1,6 @@
 import { Button, Details, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface CrashBoundaryProps {
   children: ReactNode;
