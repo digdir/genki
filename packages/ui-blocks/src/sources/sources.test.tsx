@@ -3,7 +3,8 @@ import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
+import { en, nb } from './i18n.js';
 import { pairCitations, type SourceCitation } from './pairing.js';
 import { Sources, type SourcesProps } from './Sources.js';
 import type { SourceDocument } from './types.js';
@@ -709,5 +710,10 @@ describe('the catalogue', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('keeps its words to itself, out of the shared catalogue that Approach loads', () => {
+    expect(Object.keys(nb)).toEqual(['sources']);
+    expect(sharedNb).not.toHaveProperty('sources');
   });
 });

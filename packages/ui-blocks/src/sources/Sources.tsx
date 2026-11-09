@@ -16,7 +16,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { useT } from '../i18n.js';
 import { Markdown, visibleText } from '../markdown/Markdown.js';
 import {
   findHits,
@@ -26,6 +25,7 @@ import {
   type SearchHit,
 } from '../markdown/textSearch.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
+import { useT } from './i18n.js';
 import {
   documentKeys,
   pairCitations,
