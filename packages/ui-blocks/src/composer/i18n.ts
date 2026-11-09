@@ -1,4 +1,5 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
 
 export const nbComposer = defineNamespace({
   field: 'Spørsmål til {name}',
@@ -67,3 +68,13 @@ export const enComposer = {
   uploaded: '{name} is uploaded and attached.',
   notAttached: '{name} was not attached. {reason}',
 } satisfies Translation<typeof nbComposer>;
+
+/**
+ * The question field's own catalogue. It stays out of the package's shared one, so a host that
+ * imports another block, such as Approach, does not load these words. A block that borrows them
+ * puts this namespace in its own catalogue.
+ */
+export const nb = defineCatalogue({ composer: nbComposer });
+export const en = { composer: enComposer } satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

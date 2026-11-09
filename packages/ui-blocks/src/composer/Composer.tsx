@@ -12,8 +12,8 @@ import {
   type RefObject,
 } from 'react';
 import { classes, hasFiles } from '../dom.js';
-import { useT } from '../i18n.js';
 import { AttachmentList, useAttachmentText, useUploadAnnouncement } from './Attachments.js';
+import { useT } from './i18n.js';
 import { shortcutModifier, useComposerShortcut } from './shortcut.js';
 import type { ComposerAttachments } from './types.js';
 
