@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useMemo, useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { nb as sharedNb } from '../i18n.js';
+import { nb as sourcesNb } from '../sources/i18n.js';
 import { Sources } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { Answer, type AnswerProps, type AnswerTarget } from './Answer.js';
@@ -805,6 +806,6 @@ describe('the catalogue', () => {
     expect(Object.keys(nb)).toEqual(['answer', 'sources']);
     expect(sharedNb).not.toHaveProperty('answer');
     // The words it shares with Sources are Sources' own, not a copy.
-    expect(nb.sources).toBe(sharedNb.sources);
+    expect(nb.sources).toBe(sourcesNb.sources);
   });
 });

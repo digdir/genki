@@ -1,6 +1,6 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
-import { en as shared, nb as sharedNb } from '../i18n.js';
+import { enSources, nbSources } from '../sources/i18n.js';
 
 export const nbAnswer = defineNamespace({
   said: '{name} svarte:',
@@ -116,7 +116,7 @@ export const enAnswer = {
  * The answer's own catalogue, with the words it shares with Sources. It stays out of the package's
  * shared one, so a host that imports another block, such as Approach, does not load these words.
  */
-export const nb = defineCatalogue({ answer: nbAnswer, sources: sharedNb.sources });
-export const en = { answer: enAnswer, sources: shared.sources } satisfies Translation<typeof nb>;
+export const nb = defineCatalogue({ answer: nbAnswer, sources: nbSources });
+export const en = { answer: enAnswer, sources: enSources } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
