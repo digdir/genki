@@ -42,6 +42,11 @@ jobs:
           sha=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | test("^[0-9]+ findings"))) | .commit_id' | tail -n 1)
           if [ -n "$sha" ] && ! git merge-base --is-ancestor "$sha" HEAD; then sha=""; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - id: arm
+        env:
+          PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
+          ACTION: ${{ github.event.action }}
+        run: node scripts/review-run.ts arm >> "$GITHUB_OUTPUT"
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_REVIEW_CLIENT_ID }}
@@ -71,6 +76,7 @@ jobs:
             --allowedTools "Agent,Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*)"
             --json-schema '{"type":"object","required":["summary","changes","findings"],"properties":{"summary":{"type":"string"},"changes":{"type":"array","items":{"type":"object","required":["area","summary"],"properties":{"area":{"type":"string"},"summary":{"type":"string"}}}},"findings":{"type":"array","items":{"type":"object","required":["severity","title","path","line","problem","evidence","fix"],"properties":{"severity":{"enum":["Important","Nit","Pre-existing"]},"title":{"type":"string"},"path":{"type":"string"},"line":{"type":"integer"},"start_line":{"type":"integer"},"problem":{"type":"string"},"evidence":{"type":"string"},"fix":{"type":"string"},"suggestion":{"type":"string"}}}}}}'
       - name: Post all findings as one review
+        if: steps.arm.outputs.arm == 'treated'
         env:
           OUT: ${{ steps.claude.outputs.structured_output }}
         run: |
@@ -90,12 +96,35 @@ jobs:
               | gh api "repos/$REPO/pulls/$PR/reviews" --input -
           fi
       - name: Update the summary comment
+        if: steps.arm.outputs.arm == 'treated'
         env:
           OUT: ${{ steps.claude.outputs.structured_output }}
           EXECUTION: ${{ steps.claude.outputs.execution_file }}
         run: |
           MINUTES=$(jq -r '[.[] | select(.type == "result")][0].duration_ms // empty | . / 60000' "$EXECUTION" 2>/dev/null || true)
           MINUTES="$MINUTES" node scripts/review-summary.ts post
+      - name: Record the run for the dashboard
+        if: always() && steps.arm.outcome == 'success'
+        env:
+          OUT: ${{ steps.claude.outputs.structured_output }}
+          EXECUTION: ${{ steps.claude.outputs.execution_file }}
+          ARM: ${{ steps.arm.outputs.arm }}
+          STARTED_AT: ${{ steps.arm.outputs.started_at }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          REVIEW_AGAIN: ${{ steps.last.outputs.sha }}
+          USER_TYPE: ${{ github.event.pull_request.user.type }}
+          USER_LOGIN: ${{ github.event.pull_request.user.login }}
+          FILES_CHANGED: ${{ github.event.pull_request.changed_files }}
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+        run: node scripts/review-run.ts
+      - if: always() && steps.arm.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-run-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: review-run.json
+          retention-days: 90
+          if-no-files-found: ignore
       - if: always() && github.event.action == 'labeled'
         run: gh pr edit "$PR" --remove-label 'review again'
 
@@ -116,6 +145,7 @@ jobs:
       id-token: write
     outputs:
       count: ${{ steps.open.outputs.count }}
+      unresolved: ${{ steps.open.outputs.unresolved }}
       open: ${{ steps.open.outputs.open }}
       fixed: ${{ steps.claude.outputs.structured_output }}
     env:
@@ -160,7 +190,7 @@ jobs:
 
   resolve:
     needs: follow-up
-    if: needs.follow-up.outputs.count != '0'
+    if: needs.follow-up.outputs.count != '0' || needs.follow-up.outputs.unresolved != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

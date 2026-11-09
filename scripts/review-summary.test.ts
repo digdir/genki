@@ -3,6 +3,7 @@ import {
   MARKER,
   parseFinding,
   renderSummary,
+  unresolvedFixes,
   type Finding,
   type Thread,
 } from './review-summary.ts';
@@ -71,6 +72,24 @@ describe('reading a review thread', () => {
         }),
       )?.status,
     ).toBe('fixed');
+  });
+
+  it('finds threads the follow-up fixed but could not resolve, so a later run resolves them', () => {
+    const replied = parseFinding(
+      thread({
+        replies: [{ author: 'github-actions[bot]', body: 'Fixed in `abcdef1234567`: done.' }],
+      }),
+    );
+    const resolved = parseFinding(
+      thread({
+        isResolved: true,
+        replies: [{ author: 'github-actions[bot]', body: 'Fixed in `abcdef1234567`: done.' }],
+      }),
+    );
+    const byPerson = parseFinding(thread({ isResolved: true }));
+    expect(
+      unresolvedFixes([replied, resolved, byPerson].filter((f): f is Finding => f !== null)),
+    ).toHaveLength(1);
   });
 
   it('counts a finding as dismissed when the author says it will not be fixed', () => {

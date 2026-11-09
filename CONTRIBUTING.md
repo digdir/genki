@@ -70,6 +70,8 @@ Run the same review before you open the pull request, so the one in CI finds not
 
 Answer every open thread before you merge: fix it, or say why not ("not fixing, because ..."), which marks it dismissed. A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have new commits reviewed, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
 
+Each review run also uploads `review-run.json` as a workflow artifact: cost, duration, model, the kind of author and the findings, with no names. The review dashboard reads these. The repository variable `REVIEW_SHADOW_PERCENT` puts that share of pull requests, chosen by number, in a silent group: the review runs and is recorded but posts nothing, so the dashboard can compare. It is 0 unless set.
+
 ## Who maintains genki
 
 genki is maintained by [Digdir R&D Lab](https://baksia.digdir.no/teams/lab/), the team exploring generative AI in Digdir's products, services and shared solutions. Write access is given through the GitHub team [@digdir/team-ai-lab](https://github.com/orgs/digdir/teams/team-ai-lab), whose members can merge pull requests. Who is in the team is managed there, not in this file.

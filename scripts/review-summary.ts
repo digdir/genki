@@ -29,6 +29,7 @@ export interface Finding {
   url: string;
   status: Status;
   fixedIn?: string;
+  resolved: boolean;
 }
 
 export interface Walkthrough {
@@ -70,9 +71,13 @@ export function parseFinding(thread: Thread): Finding | null {
     line: thread.line,
     url: thread.url,
     status,
+    resolved: thread.isResolved,
     fixedIn: botFix ? /([0-9a-f]{7,40})/.exec(botFix.body)?.[1]?.slice(0, 7) : undefined,
   };
 }
+
+export const unresolvedFixes = (findings: Finding[]) =>
+  findings.filter((f) => f.status === 'fixed' && f.fixedIn && !f.resolved);
 
 const cell = (s: string) => s.replaceAll('|', '\\|').replaceAll('\n', ' ');
 const order: Record<Severity, number> = { Important: 0, Nit: 1, 'Pre-existing': 2 };
@@ -228,9 +233,10 @@ async function main() {
     );
 
   if (mode === 'open') {
-    const open = (await findings()).filter((f) => f.status === 'open');
+    const all = await findings();
+    const open = all.filter((f) => f.status === 'open');
     writeFileSync('open-findings.json', JSON.stringify(open, null, 2));
-    console.log(`count=${open.length}`);
+    console.log(`count=${open.length}\nunresolved=${unresolvedFixes(all).length}`);
     return;
   }
 
@@ -241,7 +247,8 @@ async function main() {
     const open = new Set(
       JSON.parse(readFileSync('open-findings.json', 'utf8')).map((f: Finding) => f.threadId),
     );
-    for (const f of out.fixed.filter((x) => open.has(x.thread_id))) {
+    const fixed = out.fixed.filter((x) => open.has(x.thread_id));
+    for (const f of fixed) {
       await graphql(
         `
           mutation ($t: ID!, $b: String!) {
@@ -254,6 +261,12 @@ async function main() {
         `,
         { t: f.thread_id, b: `Fixed in \`${process.env.HEAD}\`: ${f.note}` },
       );
+    }
+    const toResolve = [
+      ...fixed.map((f) => f.thread_id),
+      ...unresolvedFixes(await findings()).map((f) => f.threadId),
+    ];
+    for (const t of new Set(toResolve)) {
       try {
         await graphql(
           `
@@ -265,10 +278,10 @@ async function main() {
               }
             }
           `,
-          { t: f.thread_id },
+          { t },
         );
       } catch (error) {
-        console.log(`::warning::Could not resolve ${f.thread_id}: ${String(error)}`);
+        console.log(`::warning::Could not resolve ${t}: ${String(error)}`);
       }
     }
   }

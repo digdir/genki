@@ -167,6 +167,27 @@ describe('after a push', () => {
   });
 });
 
+describe('the silent group and the run record', () => {
+  const step = (name: string) => review.steps.find((s) => s.name === name);
+
+  it('posts nothing for a pull request in the silent group', () => {
+    expect(step('Post all findings as one review')?.if).toBe("steps.arm.outputs.arm == 'treated'");
+    expect(step('Update the summary comment')?.if).toBe("steps.arm.outputs.arm == 'treated'");
+  });
+
+  it('keeps the silent group off until the repository variable sets a share', () => {
+    expect(text).toContain("PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}");
+  });
+
+  it('records every run, also a silent or failed one, as an artifact', () => {
+    expect(step('Record the run for the dashboard')?.if).toBe(
+      "always() && steps.arm.outcome == 'success'",
+    );
+    const upload = review.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'));
+    expect(upload?.with?.path).toBe('review-run.json');
+  });
+});
+
 describe('one round per pull request', () => {
   it('follows the review procedure and rules from the base branch, with the security checklist every time', () => {
     const prompt = action()?.with?.prompt ?? '';
