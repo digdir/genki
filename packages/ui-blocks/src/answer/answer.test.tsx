@@ -716,6 +716,50 @@ describe('the answer as copied', () => {
     );
   });
 
+  it('tells two excerpts of one report apart in the reference list, as the screen does: by page, else section, else their first words', () => {
+    const answered = 'Bevilgningen var 594,2 mill. kroner [2], og internkontrollen følger DFØ [3].';
+    const both = (report: SourceDocument) =>
+      answerCopy(answered, { sources: [report, tildeling], markers })
+        .text.split('Kilder\n')[1]
+        ?.split('\n');
+    // No page and no section, as genki-test's excerpts today: their first words.
+    expect(both(nkom)).toEqual([
+      '[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, «Arbeidet med internkontroll tar utgangspunkt i DFØ». https://kudos.dfo.no/dokument/2021',
+      '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, «Nkoms totale utgiftsbevilgning var 594,2 mill. kroner». https://kudos.dfo.no/dokument/2021',
+    ]);
+    // Each in a section of its own: the section, as the excerpt is titled on the screen.
+    const sectioned = {
+      ...nkom,
+      excerpts: nkom.excerpts.map((e, i) => ({
+        ...e,
+        heading: ['Del III › Ressursbruk', 'Del IV › Internkontroll', 'Del I'][i],
+      })),
+    };
+    expect(both(sectioned)).toEqual([
+      '[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, «Internkontroll». https://kudos.dfo.no/dokument/2021',
+      '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, «Ressursbruk». https://kudos.dfo.no/dokument/2021',
+    ]);
+    // On pages of their own: the page alone, as kunnskapsassistenten copies them.
+    const paged = {
+      ...nkom,
+      excerpts: nkom.excerpts.map((e, i) => ({ ...e, page: [12, 30, 2][i] })),
+    };
+    expect(both(paged)).toEqual([
+      '[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 30. https://kudos.dfo.no/dokument/2021',
+      '[2] Årsrapport Nasjonal kommunikasjonsmyndighet 2021, s. 12. https://kudos.dfo.no/dokument/2021',
+    ]);
+    // A long excerpt is cut after its first words.
+    const long = {
+      ...nkom,
+      excerpts: nkom.excerpts.map((e, i) =>
+        i === 0 ? { ...e, text: `**Nkoms** totale ${'utgiftsbevilgning '.repeat(12)}` } : e,
+      ),
+    };
+    expect(both(long)?.[1]).toContain(
+      '2021, «Nkoms totale utgiftsbevilgning utgiftsbevilgning utgiftsbevilgning utgiftsbevilgning utgiftsbevilgning utgiftsbevilgning …».',
+    );
+  });
+
   it('copies an answer that cites only documents as drawn, without footnotes, one unnumbered line per document', () => {
     const copied = answerCopy(text, { sources });
     // Without markers, [N] is the source with index N: all three documents.
