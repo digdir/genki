@@ -669,7 +669,7 @@ describe('the head, the pinned head and the foot', () => {
     expect(given).toEqual([region, null]);
   });
 
-  it('pads a panel’s region as tall as its pinned head as soon as it opens, not a frame later', () => {
+  it('pads a panel’s region as tall as its pinned head as soon as it opens, and hands its tools that height', () => {
     // jsdom does no layout: the pinned head is 48 pixels while it is shown.
     const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
@@ -691,6 +691,8 @@ describe('the head, the pinned head and the foot', () => {
       // No observer has reported, and no frame has passed.
       fireEvent.click(button('Vis kilder'));
       expect(region()?.style.scrollPaddingBlockStart).toBe('48px');
+      // A tool that pins its own head under the shell's reads the same height, measured by none.
+      expect(region()?.style.getPropertyValue('--uib-shell-pinned-block-size')).toBe('48px');
       fireEvent.click(button('Skjul kilder'));
       expect(region()?.style.scrollPaddingBlockStart).toBe('0px');
       // A drawer is measured once its dialog is open.
