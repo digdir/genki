@@ -36,6 +36,17 @@ export interface AssistantLayout {
 export interface BuilderState {
   layout: AssistantLayout;
   chosen: Partial<Record<BlockId, Zone>>;
+  /**
+   * The blocks a change of service turned off, each with its zone and options, so a service that
+   * can back them again puts them back (`fitService`). Screen state too; a template forgets them.
+   */
+  held?: readonly HeldBlock[] | undefined;
+}
+
+/** A block a service could not back, where it stood and as it was set. */
+export interface HeldBlock {
+  zone: Zone;
+  placed: PlacedBlock;
 }
 
 export const emptyLayout: AssistantLayout = {
@@ -87,6 +98,7 @@ export const turnOff = (state: BuilderState, id: BlockId): BuilderState => {
   const at = zoneOf(state.layout, id);
   if (!at) return state;
   return {
+    ...state,
     layout: { ...state.layout, zones: without(state.layout, id) },
     chosen: blockSpec(id).zones.length > 1 ? { ...state.chosen, [id]: at } : state.chosen,
   };
@@ -99,8 +111,51 @@ export const turnOff = (state: BuilderState, id: BlockId): BuilderState => {
 export const moveTo = (state: BuilderState, id: BlockId, zone: Zone): BuilderState => {
   if (!blockSpec(id).zones.includes(zone)) return state;
   return {
+    ...state,
     layout: isOn(state.layout, id) ? put(state.layout, id, zone) : state.layout,
     chosen: { ...state.chosen, [id]: zone },
+  };
+};
+
+/**
+ * The layout fitted to another service: the blocks it cannot back are turned off and held, and the
+ * blocks an earlier service turned off come back where they stood, with their options, once a
+ * service can back them. A block the reader turned off by hand is not held, and stays off.
+ */
+export const fitService = (
+  state: BuilderState,
+  offered: (id: BlockId) => boolean,
+): { state: BuilderState; dropped: BlockId[]; restored: BlockId[] } => {
+  const dropped: BlockId[] = [];
+  const held: HeldBlock[] = [...(state.held ?? [])];
+  let layout = state.layout;
+  for (const zone of zones) {
+    for (const placed of state.layout.zones[zone]) {
+      if (offered(placed.block)) continue;
+      dropped.push(placed.block);
+      held.push({ zone, placed });
+      layout = { ...layout, zones: without(layout, placed.block) };
+    }
+  }
+  const restored: BlockId[] = [];
+  const kept: HeldBlock[] = [];
+  for (const entry of held) {
+    const id = entry.placed.block;
+    if (dropped.includes(id) || !offered(id) || isOn(layout, id)) {
+      if (!isOn(layout, id)) kept.push(entry);
+      continue;
+    }
+    const rest = without(layout, id);
+    layout = {
+      ...layout,
+      zones: { ...rest, [entry.zone]: sorted(entry.zone, [...rest[entry.zone], entry.placed]) },
+    };
+    restored.push(id);
+  }
+  return {
+    state: { ...state, layout, ...(kept.length > 0 ? { held: kept } : { held: undefined }) },
+    dropped,
+    restored,
   };
 };
 
@@ -140,11 +195,8 @@ export const withSetting = (
   };
 };
 
-/** How the secondary panel offers its tools: a heading for one, tabs for two, a dropdown after. */
-export type ToolMode = 'none' | 'heading' | 'tabs' | 'dropdown';
-
-export const toolMode = (count: number): ToolMode =>
-  count <= 0 ? 'none' : count === 1 ? 'heading' : count === 2 ? 'tabs' : 'dropdown';
+// The secondary panel's rule is the shell's: the builder reads the blocks, never the other way.
+export { toolMode, type ToolMode } from '../shell/toolMode.js';
 
 // ── Checks, from V2-0006 ──
 

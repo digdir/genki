@@ -30,10 +30,8 @@ export const needWords = [
   'channel:conversations',
   'channel:facets',
   'channel:feedback',
-  'component:sources',
   'component:sources|document-view',
   'genki:projects',
-  'genki:document-text',
 ] as const;
 export type Need = (typeof needWords)[number];
 

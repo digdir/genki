@@ -4,6 +4,7 @@ import {
   blocksIn,
   defaultLayout,
   emptyLayout,
+  fitService,
   isOn,
   layoutProblems,
   moveTo,
@@ -16,6 +17,7 @@ import {
   turnOff,
   turnOn,
   withSetting,
+  zoneOf,
   type AssistantLayout,
   type BuilderState,
 } from './layout.js';
@@ -245,5 +247,52 @@ describe('the checks on a layout (V2-0006)', () => {
       layout({ main: [{ block: 'chat' }, { block: 'map' as BlockId }, { block: 'approach' }] }),
     );
     expect(sorted.zones.main).toEqual([{ block: 'approach' }, { block: 'chat' }]);
+  });
+});
+
+describe('a change of service', () => {
+  const start: BuilderState = { layout: defaultLayout, chosen: {} };
+  const chatless = (id: BlockId) => !['chat', 'filter', 'sources', 'document-view'].includes(id);
+  const everything = () => true;
+
+  it('turns off the blocks the service cannot back, and says which', () => {
+    const { state, dropped, restored } = fitService(start, chatless);
+    expect(dropped).toEqual(['filter', 'chat', 'sources', 'document-view']);
+    expect(restored).toEqual([]);
+    for (const id of dropped) expect(isOn(state.layout, id), id).toBe(false);
+    expect(isOn(state.layout, 'threads')).toBe(true);
+  });
+
+  it('puts them back where they stood, with their options, when a later service can back them', () => {
+    const set = withSetting(moveTo(start, 'chat', 'secondary'), 'chat', 'copy', false);
+    const away = fitService(set, chatless).state;
+    const { state, dropped, restored } = fitService(away, everything);
+    expect(dropped).toEqual([]);
+    expect(restored).toEqual(['filter', 'chat', 'sources', 'document-view']);
+    expect(zoneOf(state.layout, 'chat')).toBe('secondary');
+    expect(settingsOf(state.layout, 'chat').copy).toBe(false);
+    expect(state.layout).toEqual(set.layout);
+    expect(state.held).toBeUndefined();
+  });
+
+  it('holds a block through a service that cannot back it either, until one can', () => {
+    const noSources = (id: BlockId) => id !== 'sources';
+    const away = fitService(start, chatless).state;
+    const still = fitService(away, noSources);
+    expect(still.restored).toEqual(['filter', 'chat', 'document-view']);
+    expect(isOn(still.state.layout, 'sources')).toBe(false);
+    expect(fitService(still.state, everything).restored).toEqual(['sources']);
+  });
+
+  it('leaves off a block the reader turned off by hand', () => {
+    const byHand = turnOff(start, 'approach');
+    const back = fitService(fitService(byHand, chatless).state, everything).state;
+    expect(isOn(back.layout, 'approach')).toBe(false);
+  });
+
+  it('keeps what it holds while the reader turns other blocks on and off', () => {
+    const away = fitService(start, chatless).state;
+    const changed = turnOn(turnOff(away, 'approach'), 'approach');
+    expect(changed.held).toEqual(away.held);
   });
 });
