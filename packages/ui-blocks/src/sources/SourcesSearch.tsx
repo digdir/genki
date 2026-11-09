@@ -1,7 +1,7 @@
 import { Label, Paragraph, Search } from '@digdir/designsystemet-react';
 import { useId } from 'react';
-import { useT } from '../i18n.js';
 import { searchStatus, SearchSteps } from '../markdown/SearchSteps.js';
+import { useT } from './i18n.js';
 
 export interface SourcesSearchProps {
   query: string;
