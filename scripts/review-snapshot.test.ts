@@ -11,7 +11,7 @@ const workflow = parse(
   jobs: {
     snapshot: {
       permissions: Record<string, string>;
-      steps: { uses?: string; run?: string; env?: Record<string, string> }[];
+      steps: { uses?: string; run?: string; shell?: string; env?: Record<string, string> }[];
     };
   };
 };
@@ -34,6 +34,10 @@ describe('review snapshot workflow', () => {
   it('pins every action to a full commit', () => {
     for (const s of job.steps.filter((s) => s.uses))
       expect(s.uses).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
+  });
+
+  it('fails the job when a command in a pipe fails', () => {
+    for (const s of job.steps.filter((s) => s.run)) expect(s.shell).toBe('bash');
   });
 
   it('passes repository values through the environment, not into the script', () => {

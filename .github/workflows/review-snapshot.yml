@@ -19,6 +19,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHADOW_PERCENT: ${{ vars.REVIEW_SHADOW_PERCENT || '0' }}
+        shell: bash
         run: |
           gh api "repos/$REPO/code-scanning/alerts?per_page=100" --paginate \
             --jq '.[] | select(.tool.name == "CodeQL") | {created: .created_at, fixed: .fixed_at, dismissed: .dismissed_at, state, severity: (.rule.security_severity_level // .rule.severity)}' \
