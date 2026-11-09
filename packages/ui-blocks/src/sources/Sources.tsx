@@ -813,7 +813,9 @@ const SourceItem = ({
                       className="uib-sources-link"
                       aria-label={`${readPage(page)}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
                     >
-                      {readPage(page)}
+                      {/* The words in a span, as Designsystemet marks up a link with an icon: it
+                          then sets the icon off from the words, as kunnskapsassistenten draws it. */}
+                      <span>{readPage(page)}</span>
                       <ExternalLinkIcon aria-hidden />
                     </Link>
                   ) : null}
@@ -840,7 +842,9 @@ const SourceItem = ({
             onClick={onSelect ? () => onSelect({ source }) : undefined}
             aria-label={`${readDocument}, ${title} ${t('sources.opensInNewTab')}`}
           >
-            {readDocument}
+            {/* The words in a span, as Designsystemet marks up a link with an icon: it then sets
+                the icon off from the words, as kunnskapsassistenten draws it. */}
+            <span>{readDocument}</span>
             <ExternalLinkIcon aria-hidden />
           </Link>
         ) : (

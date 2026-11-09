@@ -187,6 +187,31 @@ describe('numbered excerpts, linked both ways', () => {
     }
   });
 
+  it('keeps «Les dokumentet»’s and «Les side N»’s words in a span before the icon, so the icon stands off as in kunnskapsassistenten', () => {
+    // Designsystemet sets a link's icon off from its words only when the words are in a span
+    // (`.ds-link:has(> span) > svg:last-child`). A link named in one piece still needs the span.
+    draw({ citations: cite('kudos::2021-1') });
+    fireEvent.click(toggleOf(/Ressursbruk/));
+    const page = screen.getByRole('link', { name: /^Les side 12 på Kudos/ });
+    const whole = screen.getAllByRole('link', { name: /^Les dokumentet på Kudos/ })[0];
+    const wordsThenIcon = (link?: HTMLElement) => {
+      const [words, icon, ...rest] = [...(link?.children ?? [])];
+      return { words: words?.tagName, text: words?.textContent, icon: icon?.tagName, rest };
+    };
+    expect(wordsThenIcon(page)).toEqual({
+      words: 'SPAN',
+      text: 'Les side 12 på Kudos',
+      icon: 'svg',
+      rest: [],
+    });
+    expect(wordsThenIcon(whole)).toEqual({
+      words: 'SPAN',
+      text: 'Les dokumentet på Kudos',
+      icon: 'svg',
+      rest: [],
+    });
+  });
+
   it('an uncited excerpt has no way back to the answer', () => {
     const onShowUse = vi.fn();
     draw({
