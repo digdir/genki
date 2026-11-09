@@ -1,8 +1,33 @@
 # Security
 
-What genki protects, what it does not, and what an operator must set up so it holds. The argument for why it holds, with the threat model and trust boundaries, is in the [assurance case](assurance-case.md). To report a vulnerability, see [SECURITY.md](../../SECURITY.md).
+What genki protects, what it does not, and what an operator must set up so it holds. The argument for why it holds, with the threat model and trust boundaries, is in the [assurance case](assurance-case.md). To report a vulnerability, see [below](#reporting-a-vulnerability).
 
-genki is under development and not in production. Only `main` is supported.
+genki is under development and not in production. Only the latest commit on `main` is supported; there are no releases or backports.
+
+## Reporting a vulnerability
+
+Never report a vulnerability in a public issue, pull request or discussion. Report it privately on this repository's **Security** tab with **Report a vulnerability**, or through the channels in Digdir's [security.txt](https://www.digdir.no/.well-known/security.txt). Digdir's [security policy](https://github.com/digdir/genki/security/policy) and [responsible disclosure policy](https://www.digdir.no/digdir/responsible-disclosure-policy/6386) apply.
+
+Say which configuration reproduces it: dev mode on or off, Postgres or memory, and which identity provider.
+
+In scope:
+
+- the code in this repository: the API, worker, portal, console and workspace apps, and the packages they use
+- authentication and authorisation: Ansattporten, Maskinporten and API key handling, Altinn rights, operator access and tenant isolation (row-level security in Postgres)
+- leaks between tenants or users: conversations, documents, datasets, API keys, secrets and logs
+- prompt injection or tool misuse that crosses a tenant boundary, reaches a secret, or calls a tool or network address the service was not granted
+- the container image built from the `Dockerfile` and the CI workflow
+
+Out of scope:
+
+- dev mode (`GENAI_DEV_MODE=true`): the mock Ansattporten, mock Altinn, dev login and in-memory storage are for local development and are insecure by design. A way to turn dev mode on, or reach the mock login, without setting that flag is in scope.
+- the test persons, generated keys and example data in `apps/api/config/local` and in tests
+- the Azure setup in `infra/`, deployed to the test environment only
+- the services the platform calls (Azure AI Foundry, Typesense, Altinn, Ansattporten, Maskinporten, Langfuse) and other Digdir systems such as digdir-headless-rag: report those to their owners
+- model answers that are wrong or unwanted but cross no security boundary, and denial of service by volume
+- findings from automated scanners without a demonstrated impact
+
+Never commit a secret. If you find one in this repository or its history, report it as a vulnerability.
 
 ## What genki protects
 
