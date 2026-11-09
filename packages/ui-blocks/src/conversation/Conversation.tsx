@@ -3,7 +3,6 @@ import { MagnifyingGlassIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Answer, type AnswerTarget } from '../answer/Answer.js';
 import { finishedText } from '../answer/copy.js';
-import { useT } from '../i18n.js';
 import type { MarkdownHighlight } from '../markdown/Markdown.js';
 import { findHits, stepHit } from '../markdown/textSearch.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
@@ -11,6 +10,7 @@ import { AnswerSearch } from './AnswerSearch.js';
 import { AnswerTime } from './AnswerTime.js';
 import { Clarification } from './Clarification.js';
 import { useFollowAnswer } from './follow.js';
+import { useT } from './i18n.js';
 import { answerVisibleText } from './search.js';
 import { ThreadLoading } from './ThreadLoading.js';
 import type {

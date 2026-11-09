@@ -1,8 +1,8 @@
 import { Button, Label, Search } from '@digdir/designsystemet-react';
 import { XMarkIcon } from '@navikt/aksel-icons';
 import { useId, type RefObject } from 'react';
-import { useT } from '../i18n.js';
 import { searchStatus, SearchSteps } from '../markdown/SearchSteps.js';
+import { useT } from './i18n.js';
 
 export interface AnswerSearchProps {
   query: string;

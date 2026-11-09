@@ -1,8 +1,8 @@
 import { Card, Details, Link, List, Paragraph } from '@digdir/designsystemet-react';
 import { FileTextIcon } from '@navikt/aksel-icons';
 import { Fragment } from 'react';
-import { useT } from '../i18n.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
+import { useT } from './i18n.js';
 
 /** One document the answer used: its name, and the numbered excerpts its footnotes cite. */
 export interface UsedDocument {
@@ -60,12 +60,11 @@ export const SourcesUsed = ({
           <List.Unordered className="uib-answer-sources-used-list" data-size="sm">
             {documents.map(({ key, source, name, own, excerpts }) => {
               // A file name can look exactly like a corpus title, and a list is read out of
-              // context, so the name says whose it is.
-              const whose = own ? (
-                <span className="ds-sr-only">
-                  , {t('sources.ownDocument').toLocaleLowerCase(t.locale)}
-                </span>
-              ) : null;
+              // context, so the name says whose it is. A link carries it in one piece: a hidden
+              // box after its words would make a browser read a space before the comma.
+              const ownName = own
+                ? `${name}, ${t('sources.ownDocument').toLocaleLowerCase(t.locale)}`
+                : undefined;
               const target = { documentId: source.documentId, index: source.index };
               const address = href?.(target);
               return (
@@ -84,14 +83,18 @@ export const SourcesUsed = ({
                             }
                           : undefined
                       }
+                      aria-label={ownName}
                     >
                       {name}
-                      {whose}
                     </Link>
                   ) : (
                     <>
                       {name}
-                      {whose}
+                      {own ? (
+                        <span className="ds-sr-only">
+                          , {t('sources.ownDocument').toLocaleLowerCase(t.locale)}
+                        </span>
+                      ) : null}
                     </>
                   )}
                   {excerpts.length ? (

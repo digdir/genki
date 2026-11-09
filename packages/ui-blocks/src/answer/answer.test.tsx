@@ -4,12 +4,14 @@ import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useMemo, useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
+import { nb as sourcesNb } from '../sources/i18n.js';
 import { Sources } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { Answer, type AnswerProps, type AnswerTarget } from './Answer.js';
 import { answerCitations, type AnswerMarker } from './citations.js';
 import { answerCopy, finishedText } from './copy.js';
+import { en, nb } from './i18n.js';
 
 document.getAnimations ??= () => [];
 beforeAll(() => {
@@ -461,7 +463,10 @@ describe('«Kilder brukt i svaret»', () => {
       />,
     );
     const link = screen.getByRole('link', { name: 'Internt notat, ditt dokument' });
-    expect(link.querySelector('.ds-sr-only')?.textContent).toBe(', ditt dokument');
+    expect(link.textContent).toBe('Internt notat');
+    // Named in one piece, so no browser reads a space before the comma.
+    expect(link.getAttribute('aria-label')).toBe('Internt notat, ditt dokument');
+    expect(link.querySelector('.ds-sr-only')).toBeNull();
   });
 
   it('tells two documents with one title apart', () => {
@@ -735,6 +740,40 @@ describe('the answer as copied', () => {
     );
   });
 
+  it('announces and copies the words drawn, with no inline Markdown: emphasis, code and links', () => {
+    const markdown = [
+      'Digdirs årsrapport sier at **Altinn 3 utgjorde 14 prosent** av trafikken [1].',
+      '',
+      '- Se _veilederen_ og [rapporten](https://kudos.dfo.no/dokument/2021), kjør `npm ci`, ikke ~~før~~.',
+      '',
+      '| **År** | Andel |',
+      '| --- | --- |',
+      '| 2024 | *14* % |',
+      '',
+      'Neste avsnitt skrives',
+    ].join('\n');
+    const said = finishedText(markdown);
+    expect(said).toBe(
+      [
+        'Digdirs årsrapport sier at Altinn 3 utgjorde 14 prosent av trafikken.',
+        '',
+        'Se veilederen og rapporten, kjør npm ci, ikke før.',
+        '',
+        'År\tAndel',
+        '2024\t14 %',
+      ].join('\n'),
+    );
+    expect(said).not.toMatch(/[*_`~[\]]/);
+    // The clipboard gets the same words, its footnotes numbered as drawn.
+    expect(answerCopy(markdown, { sources }).text).toContain(
+      'Digdirs årsrapport sier at Altinn 3 utgjorde 14 prosent av trafikken.',
+    );
+    // A code block's lines stay as written, without the fences; a `*` between spaces is prose.
+    expect(finishedText('```\nconst a = **b**;\n```\n\n2 * 3 * 4 er 24\n\nslutt')).toBe(
+      'const a = **b**;\n\n2 * 3 * 4 er 24',
+    );
+  });
+
   it('writes the reference list in the reader’s language', () => {
     expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
       'Sources\n[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022).',
@@ -761,5 +800,12 @@ describe('the catalogue', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('keeps its words to itself, out of the shared catalogue that Approach loads', () => {
+    expect(Object.keys(nb)).toEqual(['answer', 'sources']);
+    expect(sharedNb).not.toHaveProperty('answer');
+    // The words it shares with Sources are Sources' own, not a copy.
+    expect(nb.sources).toBe(sourcesNb.sources);
   });
 });

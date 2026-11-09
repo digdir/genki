@@ -2,7 +2,6 @@ import { Button, Card, Link, Paragraph, Skeleton, Spinner } from '@digdir/design
 import { useFormat } from '@genai/i18n/react';
 import { ArrowsCirclepathIcon, InformationSquareIcon } from '@navikt/aksel-icons';
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { useT } from '../i18n.js';
 import {
   Markdown,
   type CiteRenderer,
@@ -13,6 +12,7 @@ import { documentKeys, readingOrder } from '../sources/pairing.js';
 import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
+import { useT } from './i18n.js';
 import { SourcesUsed, type UsedDocument } from './SourcesUsed.js';
 
 export type AnswerStatus = 'streaming' | 'complete' | 'aborted' | 'failed';
@@ -383,23 +383,26 @@ export const Answer = ({
 
   // Every document the answer cites, in the order Sources shows them, from the same reading order:
   // by their numbers, 1, 2, 3. Its cited excerpts go under its title, by number; a document cited
-  // only as a whole has none.
-  const order = readingOrder(sources ?? [], pairing);
-  const used: UsedDocument[] = order.documents.flatMap((i) => {
-    const source = sources?.[i];
-    if (!source) return [];
-    const key = keys[i] ?? `@${i}`;
-    const excerpts = byExcerpt
-      ? (order.excerpts[i] ?? []).flatMap((e) => {
-          const n = pairing.numbers.get(e.chunkId);
-          return n === undefined ? [] : [{ n, chunkId: e.chunkId }];
-        })
-      : [];
-    const cited = byExcerpt ? excerpts.length > 0 : pairing.uses.has(key);
-    return cited
-      ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), excerpts }]
-      : [];
-  });
+  // only as a whole has none. Read again only when they change: a streaming answer renders many
+  // times a second.
+  const used = useMemo((): UsedDocument[] => {
+    const order = readingOrder(sources ?? [], pairing);
+    return order.documents.flatMap((i) => {
+      const source = sources?.[i];
+      if (!source) return [];
+      const key = keys[i] ?? `@${i}`;
+      const excerpts = byExcerpt
+        ? (order.excerpts[i] ?? []).flatMap((e) => {
+            const n = pairing.numbers.get(e.chunkId);
+            return n === undefined ? [] : [{ n, chunkId: e.chunkId }];
+          })
+        : [];
+      const cited = byExcerpt ? excerpts.length > 0 : pairing.uses.has(key);
+      return cited
+        ? [{ key, source, name: names[i] ?? source.title, own: isOwn(source), excerpts }]
+        : [];
+    });
+  }, [sources, pairing, byExcerpt, keys, names]);
 
   const told =
     failed && failure ? failureText(t, failure, assistantName ?? t('answer.assistant')) : undefined;

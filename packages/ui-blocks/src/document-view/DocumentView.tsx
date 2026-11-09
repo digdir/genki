@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import { Markdown } from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { orderedExcerpts, pairCitations, type SourceCitation } from '../sources/pairing.js';

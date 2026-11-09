@@ -1,9 +1,10 @@
 import type { Locale } from '@genai/i18n';
-import { translator } from '../i18n.js';
+import { cellsOf, inlineText } from '../markdown/Markdown.js';
 import { documentKeys } from '../sources/pairing.js';
 import { distinctNames } from '../sources/Sources.js';
 import type { SourceDocument } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
+import { translator } from './i18n.js';
 
 export interface AnswerCopyOptions {
   /** The contract's `sources[]`. */
@@ -29,21 +30,31 @@ const blockSyntax = /^(#{1,6}\s+|[-*]\s+|\d+\.\s+|>\s?)/;
 /** What a `[N]` becomes: a new number, nothing (it leads nowhere), or itself (it is prose). */
 type Label = number | null | undefined;
 
-/** Markdown stripped to what a reader pastes into a document. Tables go tab separated. */
-const plain = (markdown: string, label: (n: number) => Label) =>
-  markdown
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => !/^\|[\s:|-]+\|$/.test(line))
-    .map((line) =>
-      line.startsWith('|')
-        ? line
-            .replace(/^\||\|$/g, '')
-            .split('|')
-            .map((cell) => cell.trim())
-            .join('\t')
-        : line.replace(blockSyntax, ''),
-    )
+const fence = /^\s*```/;
+const tableRule = /^\|[\s:|-]+\|$/;
+
+/** One line of prose or of a table as the words drawn, with no Markdown left in it. */
+const words = (line: string) =>
+  line.startsWith('|')
+    ? cellsOf(line)
+        .map((cell) => inlineText(cell).trim())
+        .join('\t')
+    : inlineText(line.replace(blockSyntax, ''));
+
+/**
+ * Markdown stripped to the words a reader sees, for the clipboard and for a live region: no block
+ * syntax and no inline syntax, so `**viktig**` is «viktig» and a link is its words, as drawn. Tables
+ * go tab separated, and a code block's lines stay as written, without the fences.
+ */
+const plain = (markdown: string, label: (n: number) => Label) => {
+  const lines: string[] = [];
+  let code = false;
+  for (const raw of markdown.split('\n')) {
+    if (fence.test(raw)) code = !code;
+    else if (code) lines.push(raw);
+    else if (!tableRule.test(raw.trim())) lines.push(words(raw.trim()));
+  }
+  return lines
     .join('\n')
     .replace(footnote, (whole, space: string, n: string) => {
       const shown = label(Number(n));
@@ -52,6 +63,7 @@ const plain = (markdown: string, label: (n: number) => Label) =>
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+};
 
 const yearOf = (date: string | undefined) => {
   const year = date ? new Date(date).getUTCFullYear() : Number.NaN;

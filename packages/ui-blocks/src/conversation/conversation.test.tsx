@@ -4,9 +4,10 @@ import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
 import type { SourceDocument } from '../sources/types.js';
 import { Conversation, type ConversationProps } from './Conversation.js';
+import { en, nb } from './i18n.js';
 import type {
   ConversationAnswer,
   ConversationClarification,
@@ -133,6 +134,11 @@ describe('the conversation', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('keeps its words to itself, out of the shared catalogue that Approach loads', () => {
+    expect(Object.keys(nb)).toEqual(['conversation', 'answer']);
+    expect(sharedNb).not.toHaveProperty('conversation');
   });
 });
 
@@ -403,6 +409,16 @@ describe('what a screen reader hears of an answer on its way', () => {
     expect(region()).toBe('Nkom rapporterer.');
     rerender(<Conversation turns={[question, { ...first, status: 'complete' }]} />);
     expect(region()).toBe('Svaret er ferdig.');
+  });
+
+  it('reads a finished block as its words, with no bold, italics, code marks or link addresses', () => {
+    const { rerender } = render(<Conversation turns={[question, coming]} />);
+    const text =
+      'Årsrapporten sier at **Altinn 3 utgjorde 14 prosent** av trafikken, se _[rapporten](https://kudos.dfo.no/dokument/2024)_ og `skjema` [1].\n\nNeste';
+    rerender(<Conversation turns={[question, { ...coming, text }]} />);
+    expect(region()).toBe(
+      'Årsrapporten sier at Altinn 3 utgjorde 14 prosent av trafikken, se rapporten og skjema.',
+    );
   });
 
   it('says a stopped answer stopped, one that found nothing, and the warning on one with no sources', () => {

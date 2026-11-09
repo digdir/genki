@@ -16,7 +16,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { useT } from '../i18n.js';
 import { Markdown, visibleText } from '../markdown/Markdown.js';
 import {
   findHits,
@@ -26,6 +25,7 @@ import {
   type SearchHit,
 } from '../markdown/textSearch.js';
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
+import { useT } from './i18n.js';
 import {
   documentKeys,
   pairCitations,
@@ -442,6 +442,9 @@ export const DocumentLink = ({
         {isOwn(source) ? t('sources.ownDocumentNoLink') : t('sources.noPublicLink')}
       </Paragraph>
     );
+  // Named in one piece, its words and then which document: a hidden box after the words would make
+  // a browser read a space before the comma.
+  const words = corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument');
   return (
     <Link
       href={source.url}
@@ -450,11 +453,9 @@ export const DocumentLink = ({
       data-size="sm"
       className={linkClassName}
       onClick={onFollow}
+      aria-label={`${words}, ${title} ${t('sources.opensInNewTab')}`}
     >
-      {corpus ? t('sources.readDocumentOn', { corpus }) : t('sources.readDocument')}
-      <span className="ds-sr-only">
-        , {title} {t('sources.opensInNewTab')}
-      </span>
+      {words}
       <ExternalLinkIcon aria-hidden />
     </Link>
   );
@@ -580,6 +581,10 @@ const SourceItem = ({
 
   const subtitle = useSourceSubtitle(source);
   const actions = sourceActions?.(source);
+  // A link is named in one piece, its words and then which document: a hidden box after the
+  // words would make a browser read a space before the comma.
+  const readPage = (page: number) =>
+    corpus ? t('sources.readPageOn', { page, corpus }) : t('sources.readPage', { page });
   // A document's passages, which nothing cites alone, behind one button in document mode.
   const passages = (drawn: ReactNode[]) =>
     byDocument && drawn.length ? (
@@ -721,10 +726,13 @@ const SourceItem = ({
             const uncited = byExcerpt && n === undefined;
             const path = headingText(excerpt?.heading);
             const section = sectionOf(path);
+            // Named as it is titled: an unnumbered excerpt gets no number from its place either.
             const name =
-              n === undefined
-                ? t('sources.excerptNameOfTotal', { n: i + 1, total: rows.length })
-                : t('sources.excerptName', { n });
+              n !== undefined
+                ? t('sources.excerptName', { n })
+                : section
+                  ? t('sources.excerptNameSection', { section })
+                  : t('sources.excerptNameUnnumbered');
             const page = excerpt?.page;
             const fetching = !excerpt?.textUnavailable && excerpt?.textLoading && !text;
             const pageLink =
@@ -854,13 +862,9 @@ const SourceItem = ({
                       rel="noopener noreferrer"
                       data-size="sm"
                       className="uib-sources-link"
+                      aria-label={`${readPage(page)}, ${name}, ${title} ${t('sources.opensInNewTab')}`}
                     >
-                      {corpus
-                        ? t('sources.readPageOn', { page, corpus })
-                        : t('sources.readPage', { page })}
-                      <span className="ds-sr-only">
-                        , {name}, {title} {t('sources.opensInNewTab')}
-                      </span>
+                      {readPage(page)}
                       <ExternalLinkIcon aria-hidden />
                     </Link>
                   ) : null}

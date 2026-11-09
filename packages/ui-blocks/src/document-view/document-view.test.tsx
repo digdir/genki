@@ -4,7 +4,7 @@ import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { en, nb } from './i18n.js';
 import { propsMissingFromPage } from '../sources/fixtures/docsProps.js';
 import type { SourceCitation } from '../sources/pairing.js';
 import type { SourceDocument } from '../sources/types.js';
