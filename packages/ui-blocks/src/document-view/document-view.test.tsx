@@ -635,6 +635,16 @@ describe('the document view styles', () => {
       /scroll-margin-block-start: var\(\s?--genai-document-view-passage-scroll-margin,\s?var\(--_scroll-room\)\s?\)/,
     );
   });
+
+  it('flow «Utdrag i svaret» as one line of text that wraps, so a document’s long name shares its line with its chips', () => {
+    const rule = (selector: string) =>
+      css.match(new RegExp(`${selector.replace(/\./g, '\\.')} \\{([^}]*)\\}`))?.[1] ?? '';
+    // No flex box on the way: each would put a name that wraps on a line of its own.
+    expect(rule('.uib-document-view-jumps')).not.toContain('display');
+    expect(rule('.uib-document-view-jump-list')).toContain('display: inline;');
+    expect(rule('.uib-document-view-jump-item')).toContain('display: inline;');
+    expect(rule('.uib-document-view-jump')).toContain('display: inline-flex;');
+  });
 });
 
 describe('the Document view page', () => {

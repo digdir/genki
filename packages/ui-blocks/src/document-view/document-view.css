@@ -89,41 +89,29 @@
 
   /* «Utdrag i svaret»: one chip per cited excerpt, as the canvas's KS-2d draws it. It stays in
      reach while the reader scrolls the document, on the body's own surface so the text scrolls
-     under it. */
+     under it. The label, the chips and the name of a document they go into flow as one line of
+     text that wraps, so a long name shares its line with its chips. */
   .uib-document-view-jumps {
     position: sticky;
     inset-block-start: var(--genai-document-view-jumps-inset, 0);
     z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--genai-document-view-jumps-gap, var(--ds-size-2));
     padding-block: var(--genai-document-view-jumps-padding, var(--ds-size-1));
     background: var(--genai-document-view-jumps-background, var(--ds-color-background-tinted));
   }
-  .uib-document-view-jumps-label {
+  .uib-document-view-jumps-label,
+  .uib-document-view-jump-doc {
+    margin-inline-end: var(--genai-document-view-jumps-gap, var(--ds-size-2));
     font-size: var(--genai-document-view-jumps-label-font-size, var(--ds-body-sm-font-size));
     color: var(--genai-document-view-jumps-label-color, var(--ds-color-text-subtle));
   }
   .uib-document-view-jump-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--genai-document-view-jump-list-gap, var(--ds-size-2));
+    display: inline;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  /* A chip, led by the name of the document it goes into where a run of them starts, in the
-     row label's own quiet words. */
   .uib-document-view-jump-item {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--genai-document-view-jump-list-gap, var(--ds-size-2));
-  }
-  .uib-document-view-jump-doc {
-    font-size: var(--genai-document-view-jumps-label-font-size, var(--ds-body-sm-font-size));
-    color: var(--genai-document-view-jumps-label-color, var(--ds-color-text-subtle));
+    display: inline;
   }
   /* Designsystemet's chip, its number round as the answer's footnote marks. The one the reader is
      on is pinned to accent, as the excerpt's own mark, or the two would part in a neutral host. */
@@ -132,6 +120,9 @@
     display: inline-flex;
     align-items: center;
     gap: var(--genai-document-view-jump-gap, var(--ds-size-1));
+    margin-block: var(--genai-document-view-jump-margin-block, var(--ds-size-1));
+    margin-inline-end: var(--genai-document-view-jump-list-gap, var(--ds-size-2));
+    vertical-align: middle;
   }
   .uib-document-view-jump[aria-current='true'] {
     --dsc-chip-background: var(
