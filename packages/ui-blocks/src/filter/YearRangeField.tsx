@@ -6,7 +6,6 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useImperativeHandle, useRef, useState } from 'react';
-import { useT } from '../i18n.js';
 import {
   changedChips,
   chipValues,
@@ -17,6 +16,7 @@ import {
   type DrawnChip,
 } from './drawnChips.js';
 import { useComboboxTexts, useInSentence, type FieldProps } from './FacetField.js';
+import { useT } from './i18n.js';
 import { chosenFirst, useChosenFirst, useListFollowsField } from './listBehaviour.js';
 import {
   documentsIn,

@@ -14,7 +14,7 @@ import { CloudUpIcon, TrashIcon } from '@navikt/aksel-icons';
 import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { corpusName, type CorpusOption } from '../corpus/Corpus.js';
 import { hasFiles } from '../dom.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import { fileSize, limitText } from './uploadText.js';
 
 /** A document behind the answer on screen, from the answer's `sources[]`. */

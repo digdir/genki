@@ -3,7 +3,7 @@ import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
 import { freshText, useFilterAnnouncer } from '../filter/announce.js';
 import type { FilterField } from '../filter/types.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 /** One document collection a reader can search: a dataset the service may use. */
 export interface CorpusOption {

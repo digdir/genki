@@ -11,7 +11,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { useEffect, useId, useLayoutEffect, useRef, type MouseEvent } from 'react';
 import { plainClick } from '../dom.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import type { FilterSelection } from './types.js';
 
 /** One chosen value, and the field it narrows. */

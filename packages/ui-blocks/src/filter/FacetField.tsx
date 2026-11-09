@@ -6,8 +6,8 @@ import {
   ValidationMessage,
 } from '@digdir/designsystemet-react';
 import { useImperativeHandle, useRef, type Ref } from 'react';
-import { useT } from '../i18n.js';
 import { renderChip, removedDrawnChip, valuesAfter, withDrawnChips } from './drawnChips.js';
+import { useT } from './i18n.js';
 import { chosenFirst, useChosenFirst, useListFollowsField } from './listBehaviour.js';
 import type { FilterField } from './types.js';
 

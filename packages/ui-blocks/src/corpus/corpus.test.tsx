@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FilterField } from '../filter/types.js';
+import { nb as sharedNb } from '../i18n.js';
 import {
   CorpusChoice,
   CorpusLine,
@@ -12,6 +14,7 @@ import {
   type CorpusLineProps,
   type CorpusOption,
 } from './Corpus.js';
+import { en, nb } from './i18n.js';
 
 // Ported from KA's corpusText, CorpusLine and FiltersView.corpus tests.
 
@@ -266,5 +269,16 @@ describe('the corpus choice', () => {
       <CorpusChoice options={[kudos]} value="kudos" onChange={() => {}} />,
     );
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('the catalogue', () => {
+  it('has an English text for every Norwegian one', () => {
+    expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the collection's words in its own catalogue, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['corpus']);
+    expect(sharedNb).not.toHaveProperty('corpus');
   });
 });
