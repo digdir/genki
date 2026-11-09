@@ -116,6 +116,20 @@ export class IndexWriterRouter {
     return this.options.adapters.map((a) => a.engine);
   }
 
+  /** The ids of the catalog's datasets whose endpoint matches, such as those on the knowledge server. */
+  datasetIds(
+    endpoint: (e: { engine?: string; options?: Record<string, unknown> }) => boolean = () => true,
+  ): string[] {
+    return this.#catalog.datasets
+      .filter((d) => {
+        const e = this.#catalog.endpoints[d.endpoint];
+        return (
+          e !== undefined && endpoint(e as { engine?: string; options?: Record<string, unknown> })
+        );
+      })
+      .map((d) => d.id);
+  }
+
   #dataset(idOrAlias: string): CatalogDataset | undefined {
     const id = this.#aliases.get(idOrAlias) ?? idOrAlias;
     return this.#catalog.datasets.find((d) => d.id === id);

@@ -120,8 +120,6 @@ export const sharedServices = {
   notPriced: 'Not calculated',
   input: 'In',
   output: 'Out',
-  model: 'Model',
-  quality: 'Quality',
   scoreOf: '{score} out of 100',
   notMeasured: 'Not measured',
   per1000: 'Per 1,000 runs',

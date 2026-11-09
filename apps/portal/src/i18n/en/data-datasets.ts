@@ -466,6 +466,11 @@ export const searchEngine = {
   swFirstNow: 'First match now:',
   swFirstWith: 'First match with {engine}:',
   swNotFound: 'Not found among the first 5',
+  swFailedDocuments:
+    '{count} documents could not be read in. They are read in again before the switch is adopted.',
+  swRefreshing:
+    'Reading in what changed in the source since the transfer. Then {engine} is adopted.',
+  swRefreshFailed: 'The ingestion before the switch stopped: {message}. Try adopting it again.',
   swAdoptHeading: 'Adopt {engine}',
   swRetained:
     '{engine} is kept for {days} days <undecided/>, so you can go back without ingesting again.',

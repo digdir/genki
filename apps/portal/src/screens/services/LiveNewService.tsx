@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -144,7 +145,7 @@ export const LiveNewService = ({ api, tenant }: { api: ApiClient; tenant: string
     <div className="new-service">
       <div className="stack-sm">
         <a href="#/services" className="back-link">
-          <Icon d="M15 6l-6 6 6 6" size={18} />
+          <Icon icon={ChevronLeftIcon} size={18} />
           {t('services.back')}
         </a>
         <Heading level={1} data-size="lg">

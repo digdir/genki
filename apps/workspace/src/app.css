@@ -1140,3 +1140,29 @@ ul.plain {
 .lockdown-banner {
   margin-block-end: var(--ds-size-4);
 }
+
+.media-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-size-3);
+}
+
+.media-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-size-2);
+  max-width: 20rem;
+  padding: var(--ds-size-3);
+  border: 1px solid var(--ds-color-neutral-border-subtle);
+  border-radius: var(--ds-border-radius-md);
+}
+
+.media-card img {
+  max-width: 100%;
+  height: auto;
+}
+
+.media-card audio {
+  width: 100%;
+}

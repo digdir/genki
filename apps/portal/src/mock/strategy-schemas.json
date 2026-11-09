@@ -67,6 +67,20 @@
           "href": "/schemas/Strategy.step-flow%401"
         },
         {
+          "kind": "Strategy.live-session",
+          "version": "1",
+          "at": "spec.strategy.config",
+          "when": {
+            "field": "spec.strategy.id",
+            "equals": "live-session"
+          },
+          "title": {
+            "nb": "Direkte økt",
+            "en": "Live session"
+          },
+          "href": "/schemas/Strategy.live-session%401"
+        },
+        {
           "kind": "Strategy.remote-agent",
           "version": "1",
           "at": "spec.strategy.config",
@@ -849,6 +863,44 @@
       "x-label": {
         "nb": "Fast stegflyt",
         "en": "Fixed step flow"
+      }
+    },
+    "/schemas/Strategy.live-session%401": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "descriptor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*\\/[a-z0-9][a-z0-9-]*@[1-9]\\d*$",
+          "x-label": {
+            "nb": "Beskrivelse av direkteøkten",
+            "en": "Live session descriptor"
+          },
+          "x-help": {
+            "nb": "Id-en til en gjennomgått operasjonsbeskrivelse, for eksempel openai/realtime-transcription@1.",
+            "en": "The id of a reviewed operation descriptor, for example openai/realtime-transcription@1."
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "x-label": {
+            "nb": "Modell",
+            "en": "Model"
+          },
+          "x-widget": "text",
+          "x-right": "manage-services"
+        }
+      },
+      "required": ["descriptor"],
+      "additionalProperties": false,
+      "x-right": "manage-services",
+      "$id": "/schemas/Strategy.live-session@1",
+      "x-label": {
+        "nb": "Direkte økt",
+        "en": "Live session"
       }
     },
     "/schemas/Strategy.remote-agent%401": {

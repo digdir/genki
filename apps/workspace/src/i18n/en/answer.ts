@@ -17,4 +17,10 @@ export const answer = {
   sources: 'Sources',
   cite: 'Source {n}: {title}',
   untitledSource: 'Untitled source',
+  media: 'Attachments',
+  mediaLoading: 'Fetching the attachment …',
+  mediaFailed: 'The attachment cannot be shown.',
+  mediaImage: 'Image in the answer',
+  mediaMeta: '{mediaType} · {size} kB',
+  mediaDownload: 'Download',
 } satisfies Translation<typeof source>;

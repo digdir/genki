@@ -1,0 +1,35 @@
+id: port-usage
+plane: ports
+name: Usage port
+note: Usage sources · counting rule
+icon: source
+color: '#74a7ff'
+status: Port
+packages:
+  - '@genai/port-usage'
+summary: Reads usage from sources outside genki, such as an AI gateway, and counts each call once.
+description: Holds the gateway usage contract, a fake that keeps its rules, the usage@1 contract
+  suite, the hourly poll and the rule that counts a call once whether genki or the gateway
+  measured it.
+responsibilities:
+  - Usage source interface and gateway usage contract
+  - Fake gateway and contract suite
+  - Hourly poll with closed buckets
+  - Counting rule and currency rates
+files:
+  - packages/port-usage/src/usage.ts
+  - packages/port-usage/src/memory.ts
+  - packages/port-usage/src/combine.ts
+  - packages/port-usage/src/poll.ts
+input: Usage rows per hour
+output: Stored and counted usage
+replaces: []
+edges:
+  - to: plugins
+    label: Usage contract suite
+    kind: call
+    target: call
+    witness:
+      file: packages/port-usage/src/contract.ts
+      imports: '@genai/plugins'
+keywords: usage gateway cost tokens currency

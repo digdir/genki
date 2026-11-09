@@ -108,14 +108,14 @@ describe('the GenKI docs', () => {
     };
     const docs = catalog.datasets.find((d) => d.id === 'digdir/genki-docs');
     const models = (
-      loadCatalog(local, 'embeddings.yaml', 'models', env).catalog as {
-        models: { id: string; dimensions: number }[];
+      loadCatalog(local, 'models.yaml', 'models', env).catalog as {
+        models: { id: string; embed?: { dimensions: number } }[];
       }
     ).models;
 
     expect(docs).toMatchObject({ name: 'GenKI-dokumentasjon', endpoint: 'platform-pg' });
     expect(catalog.endpoints[docs?.endpoint ?? '']?.engine).toBe('pgvector');
-    expect(models.find((m) => m.id === docs?.embedding?.model)?.dimensions).toBe(
+    expect(models.find((m) => m.id === docs?.embedding?.model)?.embed?.dimensions).toBe(
       docs?.embedding?.dimensions,
     );
   });

@@ -16,4 +16,10 @@ export const answer = defineNamespace({
   sources: 'Kilder',
   cite: 'Kilde {n}: {title}',
   untitledSource: 'Kilde uten tittel',
+  media: 'Vedlegg',
+  mediaLoading: 'Henter vedlegget …',
+  mediaFailed: 'Vedlegget kan ikke vises.',
+  mediaImage: 'Bilde i svaret',
+  mediaMeta: '{mediaType} · {size} kB',
+  mediaDownload: 'Last ned',
 });

@@ -1,0 +1,93 @@
+id: openai/chat-stream@1
+operation: stream-chat
+status: described
+summary: A Chat Completions answer streamed as server-sent events, text deltas as they come and the token usage from the last chunk.
+api:
+  family: openai
+  version: v1
+auth:
+  keyHeader: authorization
+input:
+  object:
+    instructions: text
+    prompt: text
+output:
+  object:
+    content: text
+steps:
+  - name: stream
+    request:
+      method: POST
+      path: /chat/completions
+      body:
+        model: $deployment
+        stream: true
+        stream_options:
+          include_usage: true
+        messages:
+          - role: system
+            content: $input.instructions
+          - role: user
+            content: $input.prompt
+    wire:
+      request:
+        object:
+          model: plain
+          stream: boolean
+          stream_options:
+            object:
+              include_usage: boolean
+          messages:
+            array:
+              variant: role
+              options:
+                system:
+                  content: text
+                user:
+                  content: text
+    response:
+      stream:
+        framing: sse
+        end: '[DONE]'
+        events:
+          message:
+            delta: $event.choices.0.delta.content
+            shape:
+              object:
+                id?: plain
+                object?: plain
+                created?: { number: { integer: true } }
+                model?: plain
+                system_fingerprint?: { either: [plain, 'null'] }
+                service_tier?: { either: [plain, 'null'] }
+                choices:
+                  array:
+                    object:
+                      index: { number: { integer: true, min: 0 } }
+                      delta:
+                        object:
+                          role?: plain
+                          content?: { either: [text, 'null'] }
+                          refusal?: { either: [text, 'null'] }
+                      logprobs?: json
+                      finish_reason?:
+                        either:
+                          - { enum: [stop, length, content_filter, tool_calls, function_call] }
+                          - 'null'
+                usage?:
+                  either:
+                    - object:
+                        prompt_tokens: { number: { integer: true, min: 0 } }
+                        completion_tokens: { number: { integer: true, min: 0 } }
+                        total_tokens: { number: { integer: true, min: 0 } }
+                    - 'null'
+    usage:
+      input-token: $response.usage.prompt_tokens
+      output-token: $response.usage.completion_tokens
+      request: 1
+    errors:
+      - { status: 429, kind: rate-limited }
+      - { status: 400, kind: invalid }
+      - { status: 5xx, kind: unavailable }
+result:
+  content: $response.text

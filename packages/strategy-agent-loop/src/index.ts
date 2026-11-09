@@ -11,6 +11,8 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  untrustedData,
+  untrustedDataNote,
 } from '@genai/port-model';
 import { textOf, toolRef, type ToolPort } from '@genai/port-tools';
 import { z } from 'zod';
@@ -28,8 +30,6 @@ import {
   searchScaffold,
   smallTalkCheck,
   systemPromptWithDate,
-  untrustedData,
-  untrustedDataNote,
 } from './prompts.js';
 import { executionMetadata, judgedInsufficient } from './execution.js';
 import { evaluateRead } from './read-signals.js';
@@ -438,7 +438,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
           skillCatalog(skills) +
           (activeFilters.length ? `\n\n${activeFiltersInstruction(activeFilters)}` : '') +
           attachedNote(workspace.attached) +
-          untrustedDataNote,
+          `\n\n${untrustedDataNote(config.languages)}`,
       },
       ...history.map((h) => ({ role: h.role, content: h.text })),
       { role: 'user', content: query },
@@ -470,10 +470,12 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       history,
       signal: ctx.signal,
       // The answer is written in a call of its own; the service's instructions on sources,
-      // form and what not to fill in must reach it too, not only the agent.
+      // form and what not to fill in must reach it too, not only the agent. The note on
+      // untrusted data comes last, as in the agent's own prompt.
       systemPrompt:
         systemPromptWithDate((options.now ?? (() => new Date()))()) +
-        (settings.instructions ? `\n\n${baseInstructions(settings.instructions)}` : ''),
+        (settings.instructions ? `\n\n${baseInstructions(settings.instructions)}` : '') +
+        `\n\n${untrustedDataNote(config.languages)}`,
       search: searchSettings,
       synthesize: (system, user) =>
         synthesisSession.text(

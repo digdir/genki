@@ -1,5 +1,7 @@
 import type { Ref, Usage } from '@genai/contracts';
-import type { PortContext } from '@genai/kernel';
+import type { PortContext, UseOptions } from '@genai/kernel';
+import { gatedModel } from './gate.js';
+import type { ModelPort } from './port.js';
 
 export { fakeHttp, type FakeReply, type FakeServer, type SeenRequest } from '@genai/plugins';
 
@@ -21,3 +23,6 @@ export const testContext = (signal: AbortSignal = new AbortController().signal):
   };
   return { ctx, metered };
 };
+
+export const gatedFake = (port: ModelPort, options: UseOptions = {}): ModelPort =>
+  gatedModel(port, { ...testContext().ctx, ...options });

@@ -10,6 +10,7 @@ import {
   type TestCase,
   type TestSet,
 } from '@genai/eval';
+import { publishedSubject } from './definition-subject.js';
 import { actorOf } from './admin.js';
 import {
   backgroundLeases,
@@ -69,6 +70,7 @@ export interface ServiceRun extends Leased {
   testSet: string;
   testSetVersion: number;
   version: RunVersion;
+  subject?: string;
   variant?: string;
   // Set when the run is queued to the model it is meant to use, then to the model that wrote the
   // most answers. models lists every model that wrote one, when there was more than one.
@@ -353,6 +355,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       testSet: set.metadata.id,
       testSetVersion: set.metadata.version,
       version: subject.version,
+      subject: publishedSubject(subject.definition, deps.plugins),
       ...(subject.variant ? { variant: subject.variant } : {}),
       ...(model ? { model } : {}),
       ...(split ? { split } : {}),

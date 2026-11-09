@@ -1,0 +1,43 @@
+id: example/edit-image@1
+operation: edit-image
+status: described
+summary: A made-up image edit API that takes a picture in a multipart form and answers with the edited picture as bytes.
+api:
+  family: example
+  version: v1
+auth:
+  header: x-key
+input:
+  object:
+    picture: { media: image/png }
+    prompt: text
+    size?: { enum: [small, large] }
+output:
+  object:
+    picture: { media: image/png }
+request:
+  method: POST
+  path: /edits
+  encoding: multipart
+  parts:
+    picture: $input.picture
+    prompt: $input.prompt
+    size: { $from: $input.size, $default: small }
+response:
+  encoding: binary
+wire:
+  request:
+    object:
+      picture: { media: image/png }
+      prompt: text
+      size: { enum: [small, large] }
+  response: { media: image/png }
+errors:
+  - { status: 400, kind: refused, message: $response.error.reason }
+  - { status: 429, kind: rate-limited }
+  - { status: 5xx, kind: unavailable }
+usage:
+  image: 1
+result:
+  picture: $response
+stream: none

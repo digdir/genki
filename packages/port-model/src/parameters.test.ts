@@ -18,9 +18,15 @@ const setup = (
 ) => {
   const seen: ChatRequest[] = [];
   const adapter: ModelAdapter = {
-    protocol: 'proto',
-    endpointOptions: z.strictObject({}),
-    modelOptions: z.strictObject({}),
+    apis: [
+      {
+        id: 'proto/chat@1',
+        kind: 'chat',
+        family: 'proto',
+        modelOptions: z.strictObject({}),
+        default: true,
+      },
+    ],
     connect: () => ({
       chat: async (_m, request) => {
         seen.push(request);
@@ -42,8 +48,8 @@ const setup = (
     catalog: {
       endpoints: {
         e: {
-          protocol: 'proto',
           baseURL: 'https://e.example',
+          families: { proto: '' },
           auth: { kind: 'api-key', secret: 'secret://env/key' },
         },
       },
