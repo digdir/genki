@@ -75,11 +75,10 @@ Open the workspace at <http://localhost:5176>, log in as **Kari Testansatt** and
 | [`docs/bring-your-own-logic.md`](docs/bring-your-own-logic.md)               | A tool step or a whole engine you run yourself                                                                                                                                       |
 | [`docs/architecture/system-atlas.html`](docs/architecture/system-atlas.html) | Every module, what it does and what it talks to. Open it locally in a browser                                                                                                        |
 | [`docs/adr/`](docs/adr/)                                                     | Architecture decisions. Start with [0001](docs/adr/0001-foundations.md), [0023](docs/adr/0023-extension-model.md) and [0031](docs/adr/0031-services-variants-and-ways-of-working.md) |
-| [`docs/security/`](docs/security/README.md)                                  | What genki protects, what operators must configure, key rotation and hardening                                                                                                       |
+| [`docs/security/`](docs/security/README.md)                                  | Reporting a vulnerability, what genki protects, what operators must configure, key rotation and hardening                                                                            |
 | [`docs/security/assurance-case.md`](docs/security/assurance-case.md)         | The threat model, trust boundaries and why the security requirements hold                                                                                                            |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                         | Branches, checks, coding standards and pull requests                                                                                                                                 |
 | [`ROADMAP.md`](ROADMAP.md)                                                   | What the next year intends, and what genki will not do                                                                                                                               |
-| [`SECURITY.md`](SECURITY.md)                                                 | Reporting a vulnerability, and what happens next                                                                                                                                     |
 | [`ACCESSIBILITY.md`](ACCESSIBILITY.md)                                       | Our accessibility commitment, where we are, known limitations, and how to report a barrier                                                                                           |
 
 ## Repository layout
@@ -433,9 +432,9 @@ Contributions are welcome.
 
 1. Read [CONTRIBUTING.md](CONTRIBUTING.md).
 2. Run `npm run check` before you open a pull request.
-3. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
+3. Report vulnerabilities privately as described in [docs/security](docs/security/README.md#reporting-a-vulnerability), never in a public issue.
 
-Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). genki is released under the [MIT licence](LICENSE).
+Everyone taking part follows the [Code of Conduct](https://github.com/digdir/.github/blob/main/CODE_OF_CONDUCT.md). genki is released under the [MIT licence](LICENSE).
 
 ---
 
