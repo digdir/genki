@@ -107,7 +107,11 @@ export interface ShellProps {
   /** The reader changed the layout. The host stores it, and passes it back as `initialLayout`. */
   onLayoutChange?: ((layout: ShellLayout) => void) | undefined;
   request?: ShellRequest | undefined;
-  /** In a phone's width, put both rails in a bar above the main column (kunnskapsassistenten#120). */
+  /**
+   * Below two rails and the main column's floor, 774 by default, the rails stand in one row above
+   * the main column, and their buttons open the panels as drawers (kunnskapsassistenten#120). On
+   * by default; `false` keeps the rails at the sides.
+   */
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
@@ -145,7 +149,7 @@ export const Shell = ({
   initialLayout,
   onLayoutChange,
   request,
-  compactBar = false,
+  compactBar = true,
   skipLinks,
   gap = defaultGap,
   rail = defaultRail,
