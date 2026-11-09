@@ -4,7 +4,7 @@ import { ArrowsCirclepathIcon, InformationSquareIcon } from '@navikt/aksel-icons
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useT } from '../i18n.js';
 import { Markdown, type CiteRenderer, type TableFacts } from '../markdown/Markdown.js';
-import { documentKeys, documentOrder } from '../sources/pairing.js';
+import { documentKeys, readingOrder } from '../sources/pairing.js';
 import { distinctNames, isOwn } from '../sources/Sources.js';
 import type { SourceDocument, SourceTarget } from '../sources/types.js';
 import { readFootnotes, type AnswerMarker } from './citations.js';
@@ -373,19 +373,19 @@ export const Answer = ({
     });
   };
 
-  // Every document the answer cites, in the order Sources shows them: by their numbers, 1, 2, 3.
-  // Its numbered excerpts go under its title; a document cited only as a whole has none.
-  const used: UsedDocument[] = documentOrder(sources ?? [], pairing).flatMap((i) => {
+  // Every document the answer cites, in the order Sources shows them, from the same reading order:
+  // by their numbers, 1, 2, 3. Its cited excerpts go under its title, by number; a document cited
+  // only as a whole has none.
+  const order = readingOrder(sources ?? [], pairing);
+  const used: UsedDocument[] = order.documents.flatMap((i) => {
     const source = sources?.[i];
     if (!source) return [];
     const key = keys[i] ?? `@${i}`;
     const excerpts = byExcerpt
-      ? source.excerpts
-          .flatMap((e) => {
-            const n = pairing.numbers.get(e.chunkId);
-            return n === undefined ? [] : [{ n, chunkId: e.chunkId }];
-          })
-          .toSorted((a, b) => a.n - b.n)
+      ? (order.excerpts[i] ?? []).flatMap((e) => {
+          const n = pairing.numbers.get(e.chunkId);
+          return n === undefined ? [] : [{ n, chunkId: e.chunkId }];
+        })
       : [];
     const cited = byExcerpt ? excerpts.length > 0 : pairing.uses.has(key);
     return cited
