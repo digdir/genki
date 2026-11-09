@@ -140,6 +140,38 @@ describe('numbered excerpts, linked both ways', () => {
     expect(numbered).toEqual(['Utdrag 1', 'Utdrag 2', 'Utdrag 3', 'Utdrag 4']);
   });
 
+  it('an uncited excerpt has no way back to the answer', () => {
+    const onShowUse = vi.fn();
+    draw({
+      citations: cite('kudos::2021-2'),
+      onShowUse,
+      citationHref: (citation) => `#fotnote-${citation}`,
+    });
+    for (const name of [/Utdrag 2/, /Utdrag 3/, /Utdrag 4/]) {
+      const row = rowOf(name);
+      expect(row.dataset.uncited).toBe('true');
+      expect(within(row).queryAllByRole('link')).toEqual([]);
+      expect(row.querySelector('[href^="#"]')).toBeNull();
+      // Neither the mouse nor the keyboard leads to the answer from it.
+      fireEvent.click(within(row).getByRole('heading'));
+      fireEvent.click(row.querySelector('.uib-sources-quote') as HTMLElement);
+      fireEvent.click(row);
+      fireEvent.click(toggleOf(name));
+      fireEvent.keyDown(row, { key: 'Enter' });
+      fireEvent.keyDown(row, { key: 'Escape' });
+      // Open, its one link is to its page in the document, in a new tab.
+      for (const link of within(row).queryAllByRole('link'))
+        expect(link.getAttribute('target')).toBe('_blank');
+    }
+    expect(onShowUse).not.toHaveBeenCalled();
+    // Designsystemet's `Card` clicks the first link in a heading on a click anywhere on it.
+    for (const card of document.querySelectorAll('.uib-sources-document'))
+      expect(card.hasAttribute('data-clickdelegatefor')).toBe(false);
+    // The cited excerpt's own link still leads back.
+    fireEvent.click(within(rowOf(/Utdrag 1/)).getByRole('link', { name: '1: fotnote 1 i svaret' }));
+    expect(onShowUse).toHaveBeenCalledTimes(1);
+  });
+
   it('reads «Utdrag 1», 2, 3 from the top: the cards by their lowest number, and the cited excerpts in each by number before the rest', () => {
     // The report cites its third part before its first, and the memo comes first of all.
     draw({ citations: cite('attached:abc:0', 'kudos::2021-3', 'kudos::2021-1') });

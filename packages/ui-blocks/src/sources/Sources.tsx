@@ -565,10 +565,13 @@ const SourceItem = ({
     : undefined;
 
   return (
+    // Designsystemet's card, but not its `Card`: that one makes a click anywhere on the card
+    // click the first link in a heading, here an excerpt's first link back, so a click on an
+    // excerpt nothing cites went to that footnote. Only a cited excerpt's links lead back.
     // Listens for Escape only, when a footnote sent the reader here.
-    <Card
+    <div
       ref={card}
-      className="uib-sources-document ds-focus"
+      className="ds-card uib-sources-document ds-focus"
       id={id}
       tabIndex={-1}
       onKeyDown={leaveCard}
@@ -846,7 +849,7 @@ const SourceItem = ({
           </Paragraph>
         )}
       </Card.Block>
-    </Card>
+    </div>
   );
 };
 
