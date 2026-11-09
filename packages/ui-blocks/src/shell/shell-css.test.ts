@@ -136,6 +136,23 @@ describe('the Shell styles', () => {
     );
   });
 
+  it('stand both buttons in the bar on the main column’s text edge, the end one as the start one', () => {
+    // The rail's box is its button plus the head's padding on each side, so each button stands
+    // that padding from its own window edge. A rail kept at its 67 px floor put the end button
+    // 9 px from the edge at 390, where the start one stood at 16.
+    expect(css).toContain(
+      '.uib-shell[data-compact] > .uib-shell-side { container-type: normal; min-inline-size: 0; }',
+    );
+    const textEdge = /\.uib-shell-column \{[^}]*?padding-inline: (clamp\([^;]*\));/.exec(css)?.[1];
+    expect(textEdge).toContain('--genai-shell-main-padding-inline-min');
+    expect(css).toContain(
+      `.uib-shell[data-compact] > .uib-shell-side > .uib-shell-box > .uib-shell-header { padding-inline: ${textEdge}; }`,
+    );
+    expect(css).toContain(
+      '.uib-shell[data-compact] > .uib-shell-side > .uib-shell-box { padding-block: var(--genai-shell-bar-padding-block, var(--ds-size-2)); background: none; border-inline: 0; }',
+    );
+  });
+
   it('are each listed on the component page', () => {
     const names = [...new Set(uses.map((use) => use.name))];
     expect(names.filter((name) => !page.includes(`<code>${name}</code>`))).toEqual([]);
