@@ -199,13 +199,19 @@ export const useAssistant = ({
   // ── What the service can back, and what the layout holds ──
   const t = useT();
   const [models, setModels] = useState<ModelRow[]>();
-  const [modelsFailed, setModelsFailed] = useState<string>();
+  // Why genki could not say: the status it answered with, or none when it was not reached. The
+  // error's own message is the browser's or genki's, in their language, so it goes to the console.
+  const [modelsFailed, setModelsFailed] = useState<{ status?: number }>();
   const [modelsAttempt, setModelsAttempt] = useState(0);
   useEffect(() => {
     let gone = false;
     api.loadModels().then(
       (rows) => !gone && setModels(rows),
-      (error: Error) => !gone && setModelsFailed(error.message),
+      (error: Error) => {
+        if (gone) return;
+        console.error('[assistant] models', error.message);
+        setModelsFailed(error instanceof HttpError ? { status: error.status } : {});
+      },
     );
     return () => {
       gone = true;
@@ -395,7 +401,8 @@ export const useAssistant = ({
   const [turns, setTurns] = useState<Turn[]>([]);
   const [threadCorpus, setThreadCorpus] = useState<string>();
   const [view, setView] = useState<View>(currentId ? 'loading' : 'new');
-  const [viewError, setViewError] = useState<string>();
+  // As `modelsFailed`: the status genki answered with, or none when it was not reached.
+  const [viewError, setViewError] = useState<{ status?: number }>();
   const [reload, setReload] = useState(0);
   const ownThread = useRef<string>(undefined);
   const abort = useRef<AbortController>(undefined);
@@ -505,7 +512,8 @@ export const useAssistant = ({
         if (gone) return;
         if (error instanceof HttpError && error.status === 404) setView('notfound');
         else {
-          setViewError(error.message);
+          console.error('[assistant] thread', error.message);
+          setViewError(error instanceof HttpError ? { status: error.status } : {});
           setView('error');
         }
       },
@@ -940,9 +948,15 @@ export const useAssistant = ({
   /**
    * A question about the document goes into the thread, with the document as the block hands it
    * over, and the answer is put in sight. One asked while an answer is still coming waits for it.
+   * Where putting the answer in sight hides the document, and the field the question was typed
+   * in with it, the focus goes on to Chat's field rather than falling to the page: a document in
+   * the conversation's place closes, and one sharing the secondary panel with Chat gives way to
+   * Chat's tool.
    */
   const askAboutDocument = (ask: DocumentQuestion) => {
-    if (documentOverChat) setFocusField((n) => n + 1);
+    const hidesDocument =
+      documentOverChat || (documentZone === 'secondary' && chatZone === 'secondary');
+    if (hidesDocument) setFocusField((n) => n + 1);
     showChat();
     send(ask.question, { about: ask });
   };

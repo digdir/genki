@@ -3,7 +3,7 @@
 // kunnskapsassistenten, as the UI blocks preview draws it; what the preview never drew follows
 // the design's board 3: Filter in the main column as a strip with «Endre», Chat or Fremgangsmåte
 // in the secondary panel, Dokumentvisning in either, and the secondary panel's tool rule.
-import { Button, Details, Paragraph, SkipLink } from '@digdir/designsystemet-react';
+import { Button, Details, Heading, Paragraph, SkipLink } from '@digdir/designsystemet-react';
 import {
   AnswerActions,
   Composer,
@@ -41,6 +41,7 @@ import {
 import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -191,6 +192,7 @@ export const AssistantView = ({
   mainId?: string | undefined;
 }) => {
   const t = useT();
+  const approachHeadingId = useId();
   const chatZone = a.where('chat');
   const approachZone = a.where('approach');
   const filterZone = a.where('filter');
@@ -283,7 +285,11 @@ export const AssistantView = ({
       middle = (
         <ErrorState
           title={t('assembly.threadFailed')}
-          message={a.viewError}
+          message={
+            a.viewError?.status === undefined
+              ? t('assembly.unreached')
+              : t('assembly.answeredWithStatus', { status: a.viewError.status })
+          }
           onRetry={a.retryThread}
         />
       );
@@ -355,8 +361,14 @@ export const AssistantView = ({
           // Without the service's facts the collection is unknown, so nothing can be asked.
           <ErrorState
             title={t('assembly.serviceFailedTitle')}
+            // In the reader's language: the status genki answered with, never an error's own
+            // words, which are the browser's or genki's («Failed to fetch»).
             message={
-              a.modelsFailed ? t('assembly.serviceFailed', { error: a.modelsFailed }) : undefined
+              a.modelsFailed
+                ? a.modelsFailed.status === undefined
+                  ? t('assembly.serviceFailed')
+                  : t('assembly.serviceFailedStatus', { status: a.modelsFailed.status })
+                : undefined
             }
             onRetry={a.retryModels}
             headingLevel={2}
@@ -659,7 +671,8 @@ export const AssistantView = ({
     />
   );
   // Stored answers carry no steps, so a thread that has some says why none are shown.
-  const approachPanel = approachOf(a, a.active?.id, t) ?? (
+  const approachSteps = approachOf(a, a.active?.id, t);
+  const approachNote = (
     <Paragraph data-size="sm" className="uia-quiet">
       {a.working
         ? t('assembly.approachWaiting')
@@ -668,6 +681,7 @@ export const AssistantView = ({
           : t('assembly.approachEmpty')}
     </Paragraph>
   );
+  const approachPanel = approachSteps ?? approachNote;
   const tools: ShellTool[] = [
     ...(approachZone === 'secondary'
       ? [{ id: 'approach', label: t('builder.approach'), content: approachPanel }]
@@ -763,8 +777,24 @@ export const AssistantView = ({
     // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
     const chatAlone = chatZone === 'main' && filterZone !== 'main' && a.documentZone !== 'main';
     const parts: ReactNode[] = [];
+    // Without Chat beside it, Fremgangsmåte has the column's head, as wide as the strip under it.
+    // Its note is named by a heading, as the secondary panel's switcher names it there; the steps
+    // name themselves on their own summary.
     if (approachZone === 'main' && chatZone !== 'main')
-      parts.push(<div key="approach">{approachPanel}</div>);
+      parts.push(
+        approachSteps ? (
+          <div key="approach" className="uia-main-approach">
+            {approachSteps}
+          </div>
+        ) : (
+          <section key="approach" className="uia-main-approach" aria-labelledby={approachHeadingId}>
+            <Heading id={approachHeadingId} level={2} data-size="xs">
+              {t('builder.approach')}
+            </Heading>
+            {approachNote}
+          </section>
+        ),
+      );
     if (filterZone === 'main') parts.push(<div key="filter">{filterStrip}</div>);
     if (chatZone === 'main')
       parts.push(

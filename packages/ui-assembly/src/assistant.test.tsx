@@ -7,6 +7,7 @@ import {
   renderHook,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import {
   answerCopy,
@@ -862,19 +863,72 @@ describe('asking, whatever genki has said of the service', () => {
     const { api, asked } = fakeApi();
     api.loadModels = vi
       .fn<() => Promise<ModelRow[]>>()
-      .mockRejectedValueOnce(new Error('502 Bad Gateway'))
+      .mockRejectedValueOnce(new HttpError(502, '502 Bad Gateway'))
       .mockResolvedValue(rows);
     draw(state('sources-only').layout, api);
     expect(
       await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' }),
     ).toBeTruthy();
-    expect(screen.getByText(/502 Bad Gateway/)).toBeTruthy();
+    expect(screen.getByText(/Den svarte med feilkode 502\./)).toBeTruthy();
     await typeInField('Hva er fast?');
     await pressSend();
     await screen.findByText(/Rapporteringen er fast/);
     expect(api.loadModels).toHaveBeenCalledTimes(2);
     expect(asked).toHaveLength(1);
     expect(screen.queryByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' })).toBeNull();
+  });
+
+  it('says in the reader’s language why genki cannot be reached, never the browser’s or genki’s own words', async () => {
+    const { api } = fakeApi();
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.loadModels = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    draw(state('sources-only').layout, api);
+    const alert = (
+      await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' })
+    ).closest('[role="alert"]') as HTMLElement;
+    expect(alert.textContent).toContain('Spørsmål kan ikke sendes før tjenesten svarer.');
+    expect(alert.textContent).not.toMatch(/Failed to fetch|Feilen var/);
+    cleanup();
+    api.loadModels = vi.fn(async () => {
+      throw new HttpError(503, '503 Service Unavailable: upstream connect error');
+    });
+    draw(state('sources-only').layout, api);
+    const again = (
+      await screen.findByRole('heading', { name: 'Fikk ikke kontakt med tjenesten' })
+    ).closest('[role="alert"]') as HTMLElement;
+    expect(again.textContent).toContain(
+      'Spørsmål kan ikke sendes før tjenesten svarer. Den svarte med feilkode 503.',
+    );
+    expect(again.textContent).not.toMatch(/Service Unavailable|upstream/);
+    quiet.mockRestore();
+  });
+
+  it('says in the reader’s language why a thread could not be loaded, never the browser’s or genki’s own words', async () => {
+    const { api } = fakeApi();
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.loadThread = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    history.replaceState(null, '', '/?t=t-old');
+    draw(state('sources-only').layout, api, true);
+    const alert = (await screen.findByRole('heading', { name: 'Kunne ikke hente tråden' })).closest(
+      '[role="alert"]',
+    ) as HTMLElement;
+    expect(alert.textContent).toContain('Fikk ikke kontakt med tjenesten.');
+    expect(alert.textContent).not.toMatch(/Failed to fetch/);
+    cleanup();
+    api.loadThread = vi.fn(async () => {
+      throw new HttpError(500, '500 Internal Server Error');
+    });
+    draw(state('sources-only').layout, api, true);
+    const again = (await screen.findByRole('heading', { name: 'Kunne ikke hente tråden' })).closest(
+      '[role="alert"]',
+    ) as HTMLElement;
+    expect(again.textContent).toContain('Tjenesten svarte med feilkode 500.');
+    expect(again.textContent).not.toMatch(/Internal Server Error/);
+    quiet.mockRestore();
   });
 
   it('keeps the question in the field when genki still cannot be reached', async () => {
@@ -990,6 +1044,45 @@ describe('the way back to the answer', () => {
     expect(choice()).toBe('chat');
   });
 
+  it('moves the focus on to Chat’s field when a question from Dokumentvisning in the same panel hides the field it was typed in, while the answer comes', async () => {
+    const { api } = fakeApi();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const asked: AskParams[] = [];
+    api.ask = async function* (params): AsyncGenerator<StreamEvent, void> {
+      asked.push(params);
+      yield { type: 'text', text: 'Rapporteringen' };
+      await held;
+      yield {
+        type: 'done',
+        answer: { id: 'a2', text: answer, sources: [source], citations: [], noAnswer: false },
+      };
+    };
+    const footnote = await openStored(turnOn(chatBesideSources(), 'document-view').layout, api);
+    fireEvent.click(footnote);
+    fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/, hidden: true }));
+    const field = await screen.findByRole('textbox', {
+      name: 'Spør om dette dokumentet',
+      hidden: true,
+    });
+    field.focus();
+    fireEvent.change(field, { target: { value: 'Hvor ofte?' } });
+    await act(async () => {
+      fireEvent.submit(field.closest('form') as HTMLFormElement);
+    });
+    await waitFor(() => expect(asked).toHaveLength(1));
+    // The answer is still coming, and the focus is in Chat's field, not on the page.
+    expect(screen.getByRole('button', { name: 'Avbryt genereringen', hidden: true })).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('textbox', { name: /Spørsmål til KA/, hidden: true }),
+      ),
+    );
+    await act(async () => release());
+  });
+
   it('closes a document standing in the conversation’s place on Kilder’s way back, with the footnote focused', async () => {
     const layout = placeIn(turnOn(state('sources-only'), 'document-view'), 'document-view', 'main');
     const footnote = await openStored(layout.layout);
@@ -1094,6 +1187,21 @@ describe('the page around the blocks', () => {
     await screen.findByText('Fremgangsmåten vises her når du stiller et spørsmål.');
     expect(outline().h1s).toHaveLength(1);
     expect(outline().first?.tagName).toBe('H1');
+  });
+
+  it('names Fremgangsmåte by a heading at the head of the main column without Chat, as the secondary panel names it', async () => {
+    const approachInMain = placeIn(state('knowledge-assistant'), 'chat', 'secondary');
+    draw(approachInMain.layout, fakeApi().api);
+    const note = await screen.findByText('Fremgangsmåten vises her når du stiller et spørsmål.');
+    const region = screen.getByRole('region', { name: 'Fremgangsmåte' });
+    expect(region.contains(note)).toBe(true);
+    expect(within(region).getByRole('heading', { level: 2, name: 'Fremgangsmåte' })).toBeTruthy();
+    // The column's head, after the page's h1 and before the rest of the column.
+    const main = document.getElementById('main-content') as HTMLElement;
+    expect(main.contains(region)).toBe(true);
+    expect(
+      [...main.querySelectorAll('h1, h2')].map((h) => `${h.tagName} ${h.textContent}`).slice(0, 2),
+    ).toEqual(['H1 KA', 'H2 Fremgangsmåte']);
   });
 
   it('keeps the h1 while a document stands in the conversation’s place', async () => {
