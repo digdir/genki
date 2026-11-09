@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { nb as sharedNb } from '../i18n.js';
 import { AnswerActions, RECEIPT_MS, type AnswerActionsProps } from './AnswerActions.js';
+import { en, nb } from './i18n.js';
 
 beforeAll(() => {
   // jsdom lays nothing out; the call that keeps the receipt in view has to go somewhere.
@@ -170,5 +173,16 @@ describe('the link that works only here', () => {
       expect(
         document.getElementById(element.getAttribute('aria-describedby') ?? ''),
       ).not.toBeNull();
+  });
+});
+
+describe('the catalogue', () => {
+  it('has an English text for every Norwegian one', () => {
+    expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the answer actions' words in their own catalogue, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['answerActions']);
+    expect(sharedNb).not.toHaveProperty('answerActions');
   });
 });

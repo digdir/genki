@@ -9,7 +9,7 @@ import {
 } from '@digdir/designsystemet-react';
 import { ThumbDownIcon, ThumbUpIcon } from '@navikt/aksel-icons';
 import { useEffect, useId, useRef, useState } from 'react';
-import { translator, useT } from '../i18n.js';
+import { translator, useT } from './i18n.js';
 import type { AnswerFeedback, AnswerFeedbackStatus, AnswerRating } from './types.js';
 
 const reasonKeys = [
