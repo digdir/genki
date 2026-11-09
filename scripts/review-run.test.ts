@@ -17,7 +17,14 @@ const input = (over: Partial<RunInput> = {}): RunInput => ({
   startedAt: '2026-11-09T10:00:00Z',
   output: {
     findings: [
-      { severity: 'Pre-existing', title: 'Old bug', path: 'a.ts', line: 9, start_line: 7 },
+      {
+        severity: 'Pre-existing',
+        category: 'security',
+        title: 'Old bug',
+        path: 'a.ts',
+        line: 9,
+        start_line: 7,
+      },
     ],
   },
   execution: [
@@ -57,10 +64,11 @@ describe('the run record', () => {
     expect(runRecord(input()).subagents).toBe(2);
   });
 
-  it('records findings with severity, place and whether they were posted', () => {
+  it('records findings with severity, category, place and whether they were posted', () => {
     expect(runRecord(input()).findings).toEqual([
       {
         severity: 'preexisting',
+        category: 'security',
         title: 'Old bug',
         path: 'a.ts',
         line_start: 7,

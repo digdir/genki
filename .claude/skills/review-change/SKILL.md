@@ -39,7 +39,7 @@ If any part of a finding fails, drop it or keep only the part that held.
 
 ## 4. Report everything at once
 
-Each finding has a severity (Important, Nit or Pre-existing), what is wrong in one or two sentences, the evidence, and the smallest fix. When the fix replaces the lines the finding points at, give the exact replacement lines too.
+Each finding has a severity (Important, Nit or Pre-existing), the finder it came from as its category (correctness, security, other-paths, tests or docs), what is wrong in one or two sentences, the evidence, and the smallest fix. When the fix replaces the lines the finding points at, give the exact replacement lines too.
 
 Locally, list them with Important first. In CI, return them as the output the prompt asks for.
 

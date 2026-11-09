@@ -30,6 +30,7 @@ interface ExecutionMessage {
 
 interface Finding {
   severity: string;
+  category?: string;
   title: string;
   path: string;
   line: number;
@@ -87,6 +88,7 @@ export function runRecord(input: RunInput) {
     lines_changed: input.linesChanged,
     findings: findings.map((f) => ({
       severity: f.severity.toLowerCase().replace('-', ''),
+      category: f.category ?? null,
       title: f.title,
       path: f.path,
       line_start: f.start_line ?? f.line,

@@ -167,6 +167,14 @@ describe('after a push', () => {
   });
 });
 
+describe('the findings the review returns', () => {
+  it('name the finder each came from, so security findings can be counted', () => {
+    expect(text).toContain(
+      '"category":{"enum":["correctness","security","other-paths","tests","docs"]}',
+    );
+  });
+});
+
 describe('the silent group and the run record', () => {
   const step = (name: string) => review.steps.find((s) => s.name === name);
 

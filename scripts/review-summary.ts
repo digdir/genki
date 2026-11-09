@@ -51,7 +51,7 @@ export function parseFinding(thread: Thread): Finding | null {
     : (/^(.+?\.)(\s|$)/.exec(line)?.[1] ?? line);
   const fix =
     /\*\*Fix:\*\*\s*([\s\S]*?)(?:\n\n|<\/details>|$)/.exec(thread.body)?.[1]?.trim() ?? '';
-  const botFix = thread.replies.find(
+  const botFix = thread.replies.findLast(
     (r) => r.author.startsWith(BOT) && /^Fixed in `?([0-9a-f]{7,40})/.test(r.body),
   );
   const human = thread.replies.filter((r) => !r.author.startsWith(BOT));

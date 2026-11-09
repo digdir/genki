@@ -86,6 +86,21 @@ describe('reading a review thread', () => {
     ).toMatchObject({ status: 'open', fixedIn: undefined });
   });
 
+  it('names the latest fix when a reopened finding is fixed again', () => {
+    expect(
+      parseFinding(
+        thread({
+          isResolved: true,
+          replies: [
+            { author: 'github-actions[bot]', body: 'Fixed in `aaaaaaa1234567`: first.' },
+            { author: 'kent', body: 'Still broken.' },
+            { author: 'github-actions[bot]', body: 'Fixed in `bbbbbbb1234567`: second.' },
+          ],
+        }),
+      ),
+    ).toMatchObject({ status: 'fixed', fixedIn: 'bbbbbbb' });
+  });
+
   it('counts a finding as dismissed when the author says it will not be fixed', () => {
     expect(
       parseFinding(
