@@ -16,8 +16,11 @@ export interface ShellTool {
 export interface ShellToolsProps {
   /** In the order they are offered. */
   tools: readonly ShellTool[];
-  /** The tool shown, by its id. Without it, the block keeps its own, the first to begin with. */
-  active?: string | undefined;
+  /**
+   * The tool shown, by its id. Without it, the block keeps its own, the first to begin with. As
+   * `VariantPicker` and `CorpusChoice`, a controlled choice of one.
+   */
+  value?: string | undefined;
   /** The reader chose another tool. */
   onChange?: ((id: string) => void) | undefined;
   /** The heading's level when there is one tool, 2 by default. */
@@ -39,7 +42,7 @@ export interface ShellToolsProps {
  */
 export const ShellTools = ({
   tools,
-  active,
+  value,
   onChange,
   headingLevel = 2,
   pinIn,
@@ -48,7 +51,7 @@ export const ShellTools = ({
   const t = useT();
   const id = useId();
   const [own, setOwn] = useState<string>();
-  const chosen = active ?? own;
+  const chosen = value ?? own;
   const current = tools.find((tool) => tool.id === chosen) ?? tools[0];
   const tabs = useRef(new Map<string, HTMLButtonElement | null>());
   const mode = toolMode(tools.length);
