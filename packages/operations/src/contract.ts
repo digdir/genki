@@ -337,6 +337,7 @@ const seed = (s: Shape, v: unknown, every: boolean): unknown => {
 interface Recorded extends RecordedRequest {
   query: Record<string, string>;
   credentialSent: boolean;
+  signingKeySent: boolean;
 }
 
 const contractKey = 'contract-key';
@@ -475,6 +476,10 @@ const run = async (
       formField && isRecord(recordedBodyOf)
         ? Object.fromEntries(Object.entries(recordedBodyOf).filter(([k]) => k !== formField))
         : recordedBodyOf;
+    const keySent =
+      Object.values(headers).some((v) => v.includes(contractKey)) ||
+      Object.values(sentQuery).includes(contractKey);
+    const signingKeySent = !secret && placement?.place === 'module' && keySent;
     const credentialSent = secret
       ? secret.place === 'query'
         ? secret.name in sentQuery
@@ -483,11 +488,7 @@ const run = async (
         ? isRecord(recordedBodyOf) && recordedBodyOf[formField] === contractKey
         : placement?.place === 'basic'
           ? headers.authorization === basic
-          : placement?.place === 'module'
-            ? !Object.values(headers).some((v) => v.includes(contractKey)) &&
-              !Object.values(sentQuery).includes(contractKey)
-            : Object.values(headers).some((v) => v.includes(contractKey)) ||
-              Object.values(sentQuery).includes(contractKey);
+          : placement?.place === 'module' || keySent;
     const query = Object.fromEntries(
       Object.entries(sentQuery).filter(
         ([name, value]) =>
@@ -504,6 +505,7 @@ const run = async (
       headers: Object.fromEntries(Object.entries(headers).filter(([h]) => mapped.includes(h))),
       body,
       credentialSent,
+      signingKeySent,
     });
     const answer = recorded[at]?.response;
     if (!answer)
@@ -604,6 +606,7 @@ const checks: {
           ...same(`${at}headers`, request.headers, want.headers ?? {}),
           ...same(`${at}body`, request.body, want.body),
           ...(request.credentialSent ? [] : [`${at}the endpoint credential was not sent`]),
+          ...(request.signingKeySent ? [`${at}the key that only signs was sent`] : []),
         ];
       });
     },

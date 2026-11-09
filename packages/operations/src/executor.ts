@@ -573,11 +573,11 @@ const dispatch = async (
     const url =
       prepared.follow ?? new URL(`${withoutTrailingSlashes(endpoint.baseURL)}${prepared.path}`);
     if (!prepared.follow)
-      for (const [name, value] of Object.entries({
-        ...descriptor.api.query,
-        ...prepared.query,
-        ...credential.query,
-      }))
+      for (const [name, value] of Object.entries({ ...descriptor.api.query, ...prepared.query }))
+        url.searchParams.set(name, value);
+    const signedPath = `${url.pathname}${url.search}`;
+    if (!prepared.follow)
+      for (const [name, value] of Object.entries(credential.query))
         url.searchParams.set(name, value);
     const filenames = prepared.filenames ? { filenames: prepared.filenames } : {};
     const encoded = encodeBody(step.request.encoding, prepared.body, {
@@ -586,7 +586,7 @@ const dispatch = async (
     });
     const signed = await moduleHeaders(descriptor, step, endpoint, state, options, {
       body: encoded.body,
-      path: `${url.pathname}${url.search}`,
+      path: signedPath,
       key: credential.value,
     });
     const signals = [

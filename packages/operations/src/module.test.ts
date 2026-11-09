@@ -226,6 +226,97 @@ result:
     });
     expect(contractFailures(results)).toEqual([]);
   });
+
+  it('fails operation@1 when the key reaches a request', async () => {
+    const bytes = hmacSigner();
+    const yaml = signedOnly(bytes)
+      .replace('path: /orders,', 'path: /orders, headers: { x-item: $input.item },')
+      .replace(
+        '      request: { object: { item: text } }',
+        '      headers: { object: { x-item: text } }\n      request: { object: { item: text } }',
+      );
+    const fixture: OperationFixture = {
+      name: 'leaked-key',
+      deployment: 'model-1',
+      at: at.toISOString(),
+      input: { item: 'contract-key' },
+      request: {
+        method: 'POST',
+        path: '/orders',
+        headers: { 'x-item': 'contract-key' },
+        body: { item: 'contract-key' },
+      },
+      response: { body: { status: 'placed' } },
+      result: { status: 'placed' },
+      usage: { requests: 1 },
+    };
+    const results = await operationContract(parseDescriptor(yaml), [fixture], {
+      modules: () => bytes,
+    });
+    expect(contractFailures(results).flatMap((r) => r.problems)).toEqual([
+      'the key that only signs was sent',
+    ]);
+  });
+});
+
+describe('what a module reads (D)', () => {
+  it('a module never reads a key placed in the query through its path', async () => {
+    const bytes = pathEcho();
+    const yaml = yamlFor(bytes, "path: { ref: '^[a-z0-9/?=_-]+$' }")
+      .replace(
+        "api: { family: example, version: '1' }",
+        "api: { family: example, version: '1' }\nauth: { query: api_key }",
+      )
+      .replace('{ x-signature: sig, x-timestamp: ts }', '{ x-signed-path: path }');
+    const { outcome, sent } = await place(bytes, bytes, yaml);
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent[0]?.url.searchParams.get('api_key')).toBe('connection-key');
+    expect(sent[0]?.init?.headers).toMatchObject({ 'x-signed-path': '/base/orders' });
+  });
+
+  it('a module never reads a secret placed in the query through its path', async () => {
+    const bytes = pathEcho();
+    const yaml = `
+id: example/signed-token@1
+operation: signed-token
+status: described
+summary: A made-up API that takes an exchanged token in the query and a signed path.
+api: { family: example, version: '1' }
+modules:
+  echo:
+    sha256: ${sha256Of(bytes)}
+input: { object: { item: text } }
+output: { object: { status: plain } }
+result: { status: $response.status }
+steps:
+  - name: token
+    request: { method: POST, path: /token, body: { item: $input.item } }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { token: opaque } }
+    bind:
+      access: { from: $response.token, class: secret }
+  - name: place
+    auth: { query: access_token, secret: $steps.token.access }
+    request: { method: POST, path: /orders, body: { item: $input.item } }
+    module:
+      use: echo
+      emits: { path: { ref: '^[a-z0-9/?=_-]+$' } }
+      headers: { x-signed-path: path }
+    wire:
+      request: { object: { item: text } }
+      response: { object: { status: plain } }
+`;
+    const { outcome, sent } = await call(
+      parseDescriptor(yaml),
+      { item: 'pen' },
+      [json({ token: 'tok-very-secret' }), json({ status: 'placed' })],
+      { endpoint: { modules: () => bytes, now: () => at } },
+    );
+    expect(outcome).toEqual({ result: { status: 'placed' } });
+    expect(sent[1]?.url.searchParams.get('access_token')).toBe('tok-very-secret');
+    expect(sent[1]?.init?.headers).toMatchObject({ 'x-signed-path': '/base/orders' });
+  });
 });
 
 describe('hostile modules (D)', () => {
