@@ -28,8 +28,8 @@ import {
   Threads,
   VariantPicker,
   Welcome,
+  answerCopy,
   isEmptySelection,
-  uiBlocksNb,
   type AnswerCopied,
   type AnswerFeedbackStatus,
   type ConversationAnswer,
@@ -47,10 +47,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
+import { phrase, useT, type AssemblyTranslator } from './i18n.js';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
-
-const names = uiBlocksNb.builder;
 
 // The modifier to name; the shortcut takes both (kunnskapsassistenten's shortcutModifier.ts).
 const modifier = () =>
@@ -66,16 +65,6 @@ export const Assistant = ({ mainId, ...options }: AssistantProps) => (
   <AssistantView assistant={useAssistant(options)} mainId={mainId} />
 );
 
-/** The answer with the sources its footnotes cite, as kunnskapsassistenten's «Kopier svaret». */
-const copyText = (text: string, sources: readonly SourceDocument[] | undefined) => {
-  const cited = (sources ?? []).filter(
-    (s) => s.index !== undefined && text.includes(`[${s.index}]`),
-  );
-  if (cited.length === 0) return { text, count: 0 };
-  const list = cited.map((s) => `[${s.index}] ${s.title}${s.url ? `. ${s.url}` : ''}`);
-  return { text: `${text}\n\nKilder\n${list.join('\n')}`, count: cited.length };
-};
-
 const AnswerRow = ({
   a,
   turn,
@@ -87,6 +76,7 @@ const AnswerRow = ({
   end: ReactNode;
   search: ReactNode;
 }) => {
+  const t = useT();
   const [copied, setCopied] = useState<AnswerCopied>();
   const [status, setStatus] = useState<AnswerFeedbackStatus>();
   const copy = async (text: string, done: AnswerCopied) => {
@@ -103,12 +93,24 @@ const AnswerRow = ({
     <AnswerActions
       {...(copying
         ? {
+            // What the screen says: the footnotes numbered as drawn, and a line per reference.
             onCopyAnswer: () => {
-              const { text, count } = copyText(turn.text, turn.sources);
-              void copy(text, { kind: 'answer', sources: count });
+              const { text, sources } = answerCopy(turn.text, {
+                sources: turn.sources,
+                markers: turn.markers,
+                locale: t.locale,
+              });
+              void copy(text, { kind: 'answer', sources });
             },
-            ...(a.has('threads')
-              ? { onCopyLink: () => void copy(location.href, { kind: 'link' }), linkOnlyHere: true }
+            // A link that opens the thread: only where the thread is in the address.
+            ...(a.urlThreads && a.currentId
+              ? {
+                  onCopyLink: () =>
+                    void copy(new URL(a.hrefOf(a.currentId), location.href).href, {
+                      kind: 'link',
+                    }),
+                  linkOnlyHere: true,
+                }
               : {}),
           }
         : {})}
@@ -136,12 +138,12 @@ const AnswerRow = ({
 };
 
 /** «Fremgangsmåte» for one turn asked here, at the reader's level. Stored turns carry no steps. */
-const approachOf = (a: AssistantState, turnId: string | undefined) => {
-  const turn = a.turns.find((t) => t.id === turnId);
+const approachOf = (a: AssistantState, turnId: string | undefined, t: AssemblyTranslator) => {
+  const turn = a.turns.find((one) => one.id === turnId);
   const approach = turn?.approach;
   if (!turn || !approach) return null;
   const busy = turn.answer?.status === 'streaming';
-  const steps = stepsOf(approach, busy);
+  const steps = stepsOf(approach, busy, t.locale);
   if (steps.length === 0) return null;
   return (
     <>
@@ -155,7 +157,7 @@ const approachOf = (a: AssistantState, turnId: string | undefined) => {
       {a.level === 'detailed' ? (
         // No block draws the detailed level yet: the step frames as genki sent them, for now.
         <Details data-size="sm">
-          <Details.Summary>Tekniske detaljer</Details.Summary>
+          <Details.Summary>{t('assembly.technicalDetails')}</Details.Summary>
           <Details.Content>
             <ol className="uia-frames">
               {approach.frames.map((frame, i) => (
@@ -188,6 +190,7 @@ export const AssistantView = ({
   assistant: AssistantState;
   mainId?: string | undefined;
 }) => {
+  const t = useT();
   const chatZone = a.where('chat');
   const approachZone = a.where('approach');
   const filterZone = a.where('filter');
@@ -250,18 +253,20 @@ export const AssistantView = ({
   const start = a.view === 'new' || (a.view === 'ready' && a.turns.length === 0);
   const lastAnswer = a.turns.at(-1)?.answer;
 
-  // The skip link goes to the field's id, so it has a target (axe `region`).
+  // The skip link goes to the field's id, so it has a target (axe `region`). Read again only when
+  // the field may be another: on the other page, in another zone, or back from a missing thread.
   const [fieldId, setFieldId] = useState<string>();
+  const fieldShown = a.page === 'chat' && chatZone !== undefined && a.view !== 'notfound';
   useEffect(() => {
     const field = a.fieldRef.current;
     if (field && !field.id) field.id = 'composer-field';
     setFieldId(field?.id || undefined);
-  });
-  // No focus hides under the docked field: scroll padding as tall as the dock (WCAG 2.4.11).
-  const dockRef = useRef<HTMLDivElement>(null);
+  }, [a.fieldRef, fieldShown, chatZone]);
+  // No focus hides under the docked field: scroll padding as tall as the dock (WCAG 2.4.11). One
+  // observer per docked field, which reports as the field docks and grows.
+  const [dock, setDock] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     const main = document.getElementById(mainId);
-    const dock = dockRef.current;
     if (!main || !dock || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       main.style.scrollPaddingBlockEnd =
@@ -272,7 +277,7 @@ export const AssistantView = ({
       observer.disconnect();
       main.style.scrollPaddingBlockEnd = '';
     };
-  });
+  }, [mainId, dock]);
   // When the answer is done, «Avbryt genereringen» turns back into a disabled send button; focus
   // that was on it goes to the field, not to the page. Focus the reader moved elsewhere stays.
   const wasWorking = useRef(false);
@@ -290,21 +295,29 @@ export const AssistantView = ({
     });
   }, [a.working, a.fieldRef]);
 
+  // The page's one `h1`, the assistant's name, before everything else on it (WCAG 1.3.1, 2.4.6).
+  // Chat alone in the main column draws it, as kunnskapsassistenten does; otherwise the column.
+  const pageHeading = <h1 className="ds-sr-only">{name}</h1>;
+
   // ── Chat ──
-  const chat = (inPanel: boolean) => {
+  const chat = (inPanel: boolean, titled: boolean) => {
     let middle;
     if (a.view === 'notfound') {
       middle = (
         <NotFoundState
           homeHref={a.hrefOf()}
           onGoHome={() => a.leave(undefined)}
-          title="Fant ikke tråden"
-          description="Den kan være slettet, eller lenken kan være feil."
+          title={t('assembly.threadNotFoundTitle')}
+          description={t('assembly.threadNotFound')}
         />
       );
     } else if (a.view === 'error') {
       middle = (
-        <ErrorState title="Kunne ikke hente tråden" message={a.viewError} onRetry={a.retryThread} />
+        <ErrorState
+          title={t('assembly.threadFailed')}
+          message={a.viewError}
+          onRetry={a.retryThread}
+        />
       );
     } else if (start) {
       middle = (
@@ -312,8 +325,8 @@ export const AssistantView = ({
           <Welcome />
           {a.view === 'ready' ? (
             <EmptyState
-              title="Tråden har ingen meldinger ennå"
-              description="Still et spørsmål for å starte samtalen."
+              title={t('assembly.emptyThreadTitle')}
+              description={t('assembly.emptyThread')}
             />
           ) : null}
         </div>
@@ -329,7 +342,7 @@ export const AssistantView = ({
           target={a.answerTarget}
           header={(turn) =>
             turn.kind === 'answer' && approachZone === 'main' && chatZone === 'main'
-              ? approachOf(a, turn.id)
+              ? approachOf(a, turn.id, t)
               : null
           }
           {...(a.footnotes
@@ -349,7 +362,7 @@ export const AssistantView = ({
           onRegenerate={(turn, question) => {
             const own = a.turns.find((t) => t.id === turn.id || `${t.id}-q` === question?.id);
             const asked = question?.text ?? own?.question;
-            if (asked) void a.send(asked, own?.id ?? turn.id);
+            if (asked) a.send(asked, { replaces: own?.id ?? turn.id });
           }}
           closingQuestion
           onAtEndChange={setAtEnd}
@@ -368,14 +381,25 @@ export const AssistantView = ({
         data-start={start || undefined}
         data-in-panel={inPanel || undefined}
       >
-        {inPanel ? null : <h1 className="ds-sr-only">{name}</h1>}
+        {titled ? pageHeading : null}
         {middle}
+        {a.serviceTrouble ? (
+          // Without the service's facts the collection is unknown, so nothing can be asked.
+          <ErrorState
+            title={t('assembly.serviceFailedTitle')}
+            message={
+              a.modelsFailed ? t('assembly.serviceFailed', { error: a.modelsFailed }) : undefined
+            }
+            onRetry={a.retryModels}
+            headingLevel={2}
+          />
+        ) : null}
         {a.view === 'notfound' ? null : (
           <Composer
             className="uia-composer"
             value={a.draft}
             onChange={a.setDraft}
-            onSubmit={(question) => void a.send(question)}
+            onSubmit={(question) => a.send(question, { fromField: true })}
             working={a.working}
             onCancel={a.cancel}
             assistantName={name}
@@ -395,12 +419,12 @@ export const AssistantView = ({
                 })}
             actions={
               a.option('chat', 'variantPicker') ? (
-                <VariantPicker variants={a.variants} chosen={a.model} onChoose={a.setModel} />
+                <VariantPicker variants={a.variants} value={a.model} onChange={a.setModel} />
               ) : undefined
             }
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
-            {...(inPanel ? {} : { ref: dockRef })}
+            {...(inPanel ? {} : { ref: setDock })}
           />
         )}
         {start ? (
@@ -426,7 +450,12 @@ export const AssistantView = ({
   };
 
   // ── Filter ──
-  const filter = (pinIn: HTMLDivElement | null | undefined, headingLevel: 2 | 3) => (
+  // In the strip, the corpus line stands over the filter already: the documents go without it.
+  const filter = (
+    pinIn: HTMLDivElement | null | undefined,
+    headingLevel: 2 | 3,
+    inStrip = false,
+  ) => (
     <Filter
       {...(pinIn !== undefined ? { pinIn } : {})}
       yearPeriods={a.flags.has('year-ranges')}
@@ -458,7 +487,7 @@ export const AssistantView = ({
         <Documents
           documents={a.documents}
           corpus={a.corpus}
-          corpusLine={corpusLine}
+          {...(inStrip ? {} : { corpusLine })}
           headingLevel={(headingLevel + 1) as 3 | 4}
         />
       ) : null}
@@ -476,13 +505,13 @@ export const AssistantView = ({
   const narrowedTo = (a.facets ?? []).flatMap((field) => [...(a.selection[field.id] ?? [])]);
   // The design's strip over the conversation: what the thread reads from, and «Endre».
   const filterStrip = (
-    <section className="uia-filter-strip" aria-label="Filter">
+    <section className="uia-filter-strip" aria-label={t('builder.filter')}>
       <div className="uia-filter-strip-row">
         <div className="uia-filter-strip-text">
           {corpusLine}
           {narrowedTo.length > 0 ? (
             <Paragraph data-size="sm" className="uia-filter-strip-narrowed">
-              Avgrenset til: {narrowedTo.join(' · ')}
+              {t('conversation.narrowed', { values: narrowedTo.join(' · ') })}
             </Paragraph>
           ) : null}
         </div>
@@ -492,10 +521,10 @@ export const AssistantView = ({
           aria-expanded={stripOpen}
           onClick={() => setStripOpen((open) => !open)}
         >
-          {stripOpen ? 'Lukk' : 'Endre'}
+          {stripOpen ? t('assembly.stripClose') : t('assembly.stripChange')}
         </Button>
       </div>
-      {stripOpen ? <div className="uia-filter-strip-body">{filter(undefined, 2)}</div> : null}
+      {stripOpen ? <div className="uia-filter-strip-body">{filter(undefined, 2, true)}</div> : null}
     </section>
   );
 
@@ -518,7 +547,7 @@ export const AssistantView = ({
       }}
       {...(a.renameThread ? { onRename: a.renameThread } : {})}
       {...(a.deleteThread ? { onDelete: a.deleteThread } : {})}
-      footer={
+      foot={
         a.profile?.signedInAs ? (
           <SignedIn name={a.profile.signedInAs} signOutHref={a.hrefOf()} onSignOut={a.signOut} />
         ) : undefined
@@ -545,13 +574,14 @@ export const AssistantView = ({
     />
   ) : undefined;
 
+  const threadsAndFilter = phrase(t, [t('builder.threads'), t('builder.filter')]);
   let primary: ShellPanel | undefined;
   if (twoViews) {
     primary =
       primaryView === 'threads'
-        ? { label: 'Tråder og filter', children: threadList, foot }
+        ? { label: threadsAndFilter, children: threadList, foot }
         : {
-            label: 'Tråder og filter',
+            label: threadsAndFilter,
             head: (
               <Button
                 ref={back}
@@ -563,7 +593,7 @@ export const AssistantView = ({
                 }}
               >
                 <ArrowLeftIcon aria-hidden />
-                Tråder
+                {t('builder.threads')}
               </Button>
             ),
             pinnedRef: setFilterPin,
@@ -571,11 +601,16 @@ export const AssistantView = ({
             foot,
           };
   } else if (threadsOn) {
-    primary = { label: 'Tråder', children: threadList, foot };
+    primary = { label: t('builder.threads'), children: threadList, foot };
   } else if (filterZone === 'primary' && !filtersBeside) {
-    primary = { label: 'Filter', pinnedRef: setFilterPin, children: filter(filterPin, 2), foot };
+    primary = {
+      label: t('builder.filter'),
+      pinnedRef: setFilterPin,
+      children: filter(filterPin, 2),
+      foot,
+    };
   } else if (foot) {
-    primary = { label: names.settings, foot, footPinned: true };
+    primary = { label: t('builder.settings'), foot, footPinned: true };
   }
 
   // ── The secondary panel's tools, in the catalogue's order ──
@@ -615,7 +650,7 @@ export const AssistantView = ({
                 }}
               >
                 <FileTextIcon aria-hidden />
-                Vis i dokumentet
+                {t('assembly.showInDocument')}
                 <span className="ds-sr-only">, {source.title}</span>
               </Button>
             ),
@@ -644,29 +679,36 @@ export const AssistantView = ({
       onReturn={a.openDoc ? a.returnFromDocument : undefined}
       returnTo={a.openDoc?.returnTo}
       // Asked in the thread, where Chat is: without it there is nowhere to ask.
-      onAsk={chatZone ? (ask) => a.askAboutDocument(ask.question) : undefined}
+      onAsk={chatZone ? a.askAboutDocument : undefined}
       corpus={a.corpus?.label}
       headingLevel={3}
     />
   );
-  const approachPanel = approachOf(a, a.active?.id) ?? (
+  // Stored answers carry no steps, so a thread that has some says why none are shown.
+  const approachPanel = approachOf(a, a.active?.id, t) ?? (
     <Paragraph data-size="sm" className="uia-quiet">
       {a.working
-        ? 'Venter på det første steget …'
-        : 'Fremgangsmåten vises her når du stiller et spørsmål.'}
+        ? t('assembly.approachWaiting')
+        : a.answered.length > 0
+          ? t('assembly.approachNotKept')
+          : t('assembly.approachEmpty')}
     </Paragraph>
   );
   const tools: ShellTool[] = [
     ...(approachZone === 'secondary'
-      ? [{ id: 'approach', label: names.approach, content: approachPanel }]
+      ? [{ id: 'approach', label: t('builder.approach'), content: approachPanel }]
       : []),
-    ...(chatZone === 'secondary' ? [{ id: 'chat', label: names.chat, content: chat(true) }] : []),
-    ...(sourcesOn ? [{ id: 'sources', label: names.sources, content: sourcesView(false) }] : []),
+    ...(chatZone === 'secondary'
+      ? [{ id: 'chat', label: t('builder.chat'), content: chat(true, false) }]
+      : []),
+    ...(sourcesOn
+      ? [{ id: 'sources', label: t('builder.sources'), content: sourcesView(false) }]
+      : []),
     ...(a.documentZone === 'secondary'
       ? [
           {
             id: 'document-view',
-            label: names.documentView,
+            label: t('builder.documentView'),
             content: (
               <div
                 onKeyDownCapture={escapeStaysInDrawer}
@@ -689,17 +731,19 @@ export const AssistantView = ({
   const toolsView = onlySources ? (
     sourcesView(true)
   ) : tools.length > 0 ? (
-    <ShellTools tools={tools} active={a.tool} onChange={a.setTool} pinIn={toolsPin} />
+    <ShellTools tools={tools} value={a.tool} onChange={a.setTool} pinIn={toolsPin} />
   ) : null;
   // `filters-right-panel`: the filter over the tools, drawn first and named first, as
   // kunnskapsassistenten's withFiltersBesideSources.
   const secondary: ShellPanel | undefined =
     tools.length > 0 || filtersBeside
       ? {
-          // Named after what is in it, as one phrase: «Filter og kilder», «Fremgangsmåte og kilder».
-          label: [...(filtersBeside ? ['Filter'] : []), ...tools.map((t) => t.label)]
-            .map((part, at) => (at === 0 ? part : part.toLocaleLowerCase('nb-NO')))
-            .join(' og '),
+          // Named after what is in it, as one phrase: «Filter og kilder», «Fremgangsmåte, kilder og
+          // dokumentvisning».
+          label: phrase(t, [
+            ...(filtersBeside ? [t('builder.filter')] : []),
+            ...tools.map((tool) => tool.label),
+          ]),
           ...(onlySources || filtersBeside ? {} : { pinnedRef: setToolsPin }),
           children: filtersBeside ? (
             <>
@@ -739,6 +783,9 @@ export const AssistantView = ({
       />
     );
   } else {
+    // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it. With
+    // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
+    const chatAlone = chatZone === 'main' && filterZone !== 'main' && a.documentZone !== 'main';
     const parts: ReactNode[] = [];
     if (approachZone === 'main' && chatZone !== 'main')
       parts.push(<div key="approach">{approachPanel}</div>);
@@ -748,7 +795,7 @@ export const AssistantView = ({
         // Hidden, not gone, while a document stands in its place: the conversation keeps its
         // place and the field its text, and the way back finds the footnote.
         <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
-          {chat(false)}
+          {chat(false, false)}
         </div>,
       );
     // Beside Chat only while a document is open; without Chat, the document has the column.
@@ -766,25 +813,25 @@ export const AssistantView = ({
       parts.push(
         <EmptyState
           key="no-chat"
-          title="Legg Chat i innholdet for å prøve assistenten."
-          description="Uten Chat er det ingen samtale å prøve."
+          title={t('assembly.noChatTitle')}
+          description={t('assembly.noChat')}
         />,
       );
     // The main column cannot go, as a panel can: say it is empty rather than draw nothing.
     if (parts.length === 0)
       parts.push(
         <Paragraph key="empty" data-size="sm" className="uia-quiet">
-          Ingen klosser i innholdet.
+          {t('assembly.emptyMain')}
         </Paragraph>,
       );
-    // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it. With
-    // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
-    main =
-      chatZone === 'main' && parts.length === 1 && a.documentZone !== 'main' ? (
-        chat(false)
-      ) : (
-        <div className="uia-main">{parts}</div>
-      );
+    main = chatAlone ? (
+      chat(false, true)
+    ) : (
+      <div className="uia-main">
+        {pageHeading}
+        {parts}
+      </div>
+    );
   }
 
   return (
@@ -804,7 +851,7 @@ export const AssistantView = ({
               a.fieldRef.current?.focus();
             }}
           >
-            Hopp til skrivefeltet ({modifier()} + /)
+            {t('assembly.skipToField', { modifier: modifier() })}
           </SkipLink>
         ) : null
       }
