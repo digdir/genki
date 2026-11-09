@@ -83,6 +83,8 @@ describe('the paths that get the security checklist', () => {
     'apps/api/src/session-upgrade.ts',
     'apps/api/src/tenant-gate.ts',
     'packages/providers-postgres/src/schema.ts',
+    'packages/providers-pgvector/src/schema.ts',
+    'packages/providers-pgvector/src/partitions.ts',
     'packages/identity/src/claims.ts',
     'infra/main.bicep',
     '.github/workflows/ci.yml',

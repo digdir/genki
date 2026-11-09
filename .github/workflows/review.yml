@@ -32,7 +32,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if git diff --name-only "$BASE" HEAD | grep -qE '^(infra/|\.github/|Dockerfile|packages/(identity|kernel|guardrails)/|packages/providers-postgres/src/schema|apps/api/src/(access|altinn-pdp|boot-guard|dev-login|gate-|key-|login-|lockdown|model-access|rights|session-|tenant-))'; then
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(infra/|\.github/|Dockerfile|packages/(identity|kernel|guardrails)/|packages/providers-postgres/src/schema|packages/providers-pgvector/src/(schema|partitions)|apps/api/src/(access|altinn-pdp|boot-guard|dev-login|gate-|key-|login-|lockdown|model-access|rights|session-|tenant-))'; then
             echo "sensitive=true" >> "$GITHUB_OUTPUT"
           else
             echo "sensitive=false" >> "$GITHUB_OUTPUT"
