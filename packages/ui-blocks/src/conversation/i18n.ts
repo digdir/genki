@@ -1,4 +1,6 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
+import { enAnswer, nbAnswer } from '../answer/i18n.js';
 
 export const nbConversation = defineNamespace({
   youWrote: 'Du skrev:',
@@ -73,3 +75,15 @@ export const enConversation = {
   closeSearch: 'Close the search in the answer',
   dateTime: '{date}, {time}',
 } satisfies Translation<typeof nbConversation>;
+
+/**
+ * The conversation's own catalogue, with the answer's words it says in its own announcements. It
+ * stays out of the package's shared one, so a host that imports another block does not load it.
+ */
+export const nb = defineCatalogue({ conversation: nbConversation, answer: nbAnswer });
+export const en = {
+  conversation: enConversation,
+  answer: enAnswer,
+} satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

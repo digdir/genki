@@ -1,6 +1,6 @@
 import { createFormat, type Format } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
-import { translator } from '../i18n.js';
+import { translator } from './i18n.js';
 import { answerTime } from './time.js';
 
 const nb = createFormat('nb');

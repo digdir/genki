@@ -1,5 +1,5 @@
 import { useFormat } from '@genai/i18n/react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import { answerTime } from './time.js';
 
 export interface AnswerTimeProps {

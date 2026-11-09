@@ -1,6 +1,6 @@
 import { Card, Chip, Tag } from '@digdir/designsystemet-react';
-import { useT } from '../i18n.js';
 import { Markdown } from '../markdown/Markdown.js';
+import { useT } from './i18n.js';
 
 export interface ClarificationProps {
   /** The question back, as Markdown. */
