@@ -27,6 +27,24 @@ import { serviceDrafts } from './service-drafts.js';
 export const judgedModels = (byModel: DraftModelUsage[]) =>
   byModel.filter((m) => m.kind !== 'embedder').map((m) => m.model);
 
+// The model that wrote an answer: the one that used the most tokens. A check on the side, such
+// as for small talk, uses far fewer. A fallback model shows up here when the primary failed.
+export const writerOf = (byModel: DraftModelUsage[]) =>
+  byModel
+    .filter((m) => m.kind !== 'embedder')
+    .reduce<DraftModelUsage | undefined>(
+      (top, m) =>
+        !top || m.inputTokens + m.outputTokens > top.inputTokens + top.outputTokens ? m : top,
+      undefined,
+    )?.model;
+
+// The models that wrote the answers in a run, the one that wrote the most first.
+export const writersOf = (writers: (string | undefined)[]) => {
+  const counts = new Map<string, number>();
+  for (const w of writers) if (w) counts.set(w, (counts.get(w) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([model]) => model);
+};
+
 export const serviceRunKind = 'service-eval-run';
 export { serviceDraftKind, type ServiceDraft } from './service-drafts.js';
 
@@ -52,6 +70,10 @@ export interface ServiceRun extends Leased {
   testSetVersion: number;
   version: RunVersion;
   variant?: string;
+  // Set when the run is queued to the model it is meant to use, then to the model that wrote the
+  // most answers. models lists every model that wrote one, when there was more than one.
+  model?: string;
+  models?: string[];
   split?: CaseSplit;
   startedAt: string;
   endedAt: string | null;
@@ -76,6 +98,7 @@ export interface Outcome {
   passed: number;
   total: number;
   score: number | null;
+  models?: string[];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -83,8 +106,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export const casesIn = (set: TestSet, split?: CaseSplit) =>
-  split ? set.spec.cases.filter((c) => splitsFor(split).includes(c.split)) : set.spec.cases;
+export const casesIn = (set: TestSet, split?: CaseSplit, only?: string[]) =>
+  set.spec.cases.filter(
+    (c) => (!split || splitsFor(split).includes(c.split)) && (!only || only.includes(c.id)),
+  );
 
 export const summarize = (results: CaseResult[]): Outcome => {
   const passed = results.filter((r) => r.pass).length;
@@ -113,6 +138,17 @@ const modelsOf = (definition: Record<string, unknown>) => {
   const model = (isRecord(definition.spec) ? definition.spec.model : undefined) as
     { primary?: unknown; fallback?: unknown } | undefined;
   return [model?.primary, model?.fallback].filter((m): m is string => typeof m === 'string');
+};
+
+// The model that writes the answers: the variant's own model, else the primary model.
+export const answeringModel = ({ definition, variant }: Subject) => {
+  const variants = isRecord(definition.spec) ? definition.spec.variants : undefined;
+  const chosen = Array.isArray(variants)
+    ? variants.find((v) => isRecord(v) && v.id === variant)
+    : undefined;
+  return isRecord(chosen) && typeof chosen.model === 'string'
+    ? chosen.model
+    : modelsOf(definition)[0];
 };
 
 export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) => {
@@ -192,6 +228,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       ? choice.judgeModel(principal, judgeTenant, judgeId, 'builder', meter)
       : undefined;
     const results: CaseResult[] = [];
+    const writers: (string | undefined)[] = [];
     for (const c of cases) {
       const view = caseView(c);
       const base = {
@@ -221,6 +258,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         });
         continue;
       }
+      writers.push(writerOf(outcome.usage.byModel));
       const usedModels = judgedModels(outcome.usage.byModel);
       const grade = await gradeAnswer(
         c,
@@ -240,7 +278,7 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
         ...(grade.reason ? { reason: grade.reason } : {}),
       });
     }
-    return summarize(results);
+    return { ...summarize(results), models: writersOf(writers) };
   };
 
   const saveRun = (actor: string, tenant: string, run: ServiceRun, reason: string) =>
@@ -304,8 +342,10 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
     set: TestSet,
     subject: Subject,
     split?: CaseSplit,
+    only?: string[],
   ) => {
     const actor = actorOf(principal.actor ?? principal);
+    const model = answeringModel(subject);
     const queued: ServiceRun = {
       id: randomUUID(),
       service,
@@ -314,12 +354,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       testSetVersion: set.metadata.version,
       version: subject.version,
       ...(subject.variant ? { variant: subject.variant } : {}),
+      ...(model ? { model } : {}),
       ...(split ? { split } : {}),
       startedAt: new Date().toISOString(),
       endedAt: null,
       score: null,
       passed: 0,
-      total: casesIn(set, split).length,
+      total: casesIn(set, split, only).length,
       cost: null,
       tokens: { input: 0, output: 0 },
       cases: [],
@@ -338,7 +379,13 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
       const meter = choice.meter();
       try {
         await lease.update((run) => ({ ...run, status: 'running' }), 'Kjører');
-        const outcome = await runCases(principal, tenant, subject, casesIn(set, split), meter);
+        const outcome = await runCases(
+          principal,
+          tenant,
+          subject,
+          casesIn(set, split, only),
+          meter,
+        );
         await lease.update(
           (run) => ({
             ...run,
@@ -347,6 +394,8 @@ export const serviceEval = (deps: ModuleDeps, leaseOptions: LeaseOptions = {}) =
             score: outcome.score,
             passed: outcome.passed,
             total: outcome.total,
+            ...(outcome.models?.[0] ? { model: outcome.models[0] } : {}),
+            ...(outcome.models && outcome.models.length > 1 ? { models: outcome.models } : {}),
             cost: meter.costMicroNok(),
             tokens: { input: meter.inputTokens, output: meter.outputTokens },
             cases: outcome.results,

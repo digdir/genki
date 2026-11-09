@@ -190,6 +190,11 @@ const EvalRunSummary = z
     testSetVersion: z.number().int(),
     version: z.union([z.literal('draft'), z.number().int()]),
     split: z.enum(['locked', 'open']).optional(),
+    model: z.string().optional().describe('The model that wrote the most answers'),
+    models: z
+      .array(z.string())
+      .optional()
+      .describe('Every model that wrote an answer, when a fallback wrote some of them'),
     startedAt: z.string(),
     endedAt: z.string().nullable(),
     score: z.number().nullable(),
@@ -1092,6 +1097,11 @@ export const serviceRoutes: RouteConfig[] = [
             .optional()
             .openapi({ description: 'Defaults to the latest published version' }),
           split: z.enum(['locked', 'open']).optional(),
+          cases: z
+            .array(z.string())
+            .min(1)
+            .optional()
+            .openapi({ description: 'Run only these cases of the test set, by id' }),
           definition: record.optional().openapi({
             description: 'With version draft: run this definition instead of the saved draft',
           }),
@@ -1101,7 +1111,7 @@ export const serviceRoutes: RouteConfig[] = [
     },
     responses: {
       202: json(z.object({ id: z.string() }), 'Started'),
-      400: problem('Missing test set or invalid split'),
+      400: problem('Missing test set, invalid split, or a case the test set does not have'),
       ...tenantErrors,
       404: problem('No such test set or version'),
       409: problem('The test set has no cases'),

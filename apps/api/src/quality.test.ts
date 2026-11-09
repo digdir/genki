@@ -350,6 +350,31 @@ describe('eval runs for a service', () => {
     expect(run.tokens.input).toBeGreaterThan(0);
   });
 
+  it('runs only the cases asked for by id, and refuses a case the test set does not have', async () => {
+    const env = await boot();
+    const path = `${services}/eval-runs`;
+
+    const started = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'l1'],
+    });
+    expect(started.status).toBe(202);
+    await env.settled();
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`))
+      .body as unknown as ServiceRun;
+    const unknown = await env.send('POST', path, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['o1', 'x9'],
+    });
+    const empty = await env.send('POST', path, 'kari', { testSet: 'svar-frister', cases: [] });
+
+    expect(run.total).toBe(2);
+    expect(run.cases.map((c) => c.caseId).sort()).toEqual(['l1', 'o1']);
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).toContain('no case x9 in svar-frister');
+    expect(empty.status).toBe(400);
+  });
+
   it('never shows the lease of a run, owner and heartbeat, in the list or the run', async () => {
     const env = await boot();
     const id = await runPublished(env);
@@ -413,6 +438,21 @@ describe('eval runs for a service', () => {
     expect(unknown.status).toBe(404);
     expect(started.status).toBe(202);
     expect(run).toMatchObject({ status: 'succeeded', variant: 'default' });
+  });
+
+  it('records the model that wrote the answers, in the run and in the list', async () => {
+    const env = await boot();
+
+    const started = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+    });
+    await env.settled();
+    const run = await env.send('GET', `/tenants/${tenant}/eval-runs/${String(started.body.id)}`);
+    const listed = await env.send('GET', `${services}/eval-runs`);
+
+    expect(started.status).toBe(202);
+    expect(run.body).toMatchObject({ status: 'succeeded', model: modelId });
+    expect(listed.body.data).toEqual([expect.objectContaining({ model: modelId })]);
   });
 
   it('records the cost from the price list, and no cost when a model has no price', async () => {

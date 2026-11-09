@@ -27,7 +27,7 @@ To follow one run: `GET /tenants/{tenant}/tasks/{task}` and `GET /tenants/{tenan
 
 ## Two kinds of evaluation run
 
-- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`.
+- A service evaluation run starts with `POST /tenants/{tenant}/services/{id}/eval-runs` and is listed by `GET /tenants/{tenant}/services/{id}/eval-runs`. It runs every case of the test set, only one split with `split` (`locked` or `open`), or only the cases named in `cases` (case ids); a case id the test set does not have is a 400.
 - An eval capability run starts with `POST /tenants/{tenant}/eval-runs` (capability, test set, evaluators and provenance are required) and is listed by `GET /tenants/{tenant}/eval-runs`. Follow it with `GET /eval-tasks/{task}`; every instance answers the same status, read from the task and the stored run.
 - `GET /tenants/{tenant}/eval-runs/{runId}` finds both. `kind` tells them apart: `service` answers the run with its case results, `kernel` answers the same body as `GET /eval-runs/{id}`.
 - Neither kind shows its lease (`owner`, `heartbeatAt`).

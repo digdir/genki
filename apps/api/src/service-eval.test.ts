@@ -3,7 +3,7 @@ import type { Event, Part } from '@genai/contracts';
 import { gradeAnswer, parseTestSet } from '@genai/eval';
 import { usageByModel } from './draft-runner.js';
 import { notFoundOf } from './not-found.js';
-import { judgedModels } from './service-eval.js';
+import { answeringModel, judgedModels, writerOf, writersOf } from './service-eval.js';
 
 const usage = (model: { id: string; kind: string }, inputTokens: number): Event =>
   ({
@@ -85,5 +85,56 @@ describe('an answer that found nothing', () => {
       (await gradeAnswer(reject, { text: worded, noAnswer: notFoundOf(unmarked) }, { context }))
         .pass,
     ).toBe(false);
+  });
+});
+
+describe('the model a test run records', () => {
+  const definition = {
+    spec: {
+      model: { primary: 'foundry-openai/gpt-4o-2m-tps', fallback: 'foundry-openai/gpt-4.1-mini' },
+      variants: [{ id: 'default' }, { id: 'sonnet', model: 'foundry-claude/claude-sonnet-5-5' }],
+    },
+  };
+
+  it('is the own model of the variant, else the primary model', () => {
+    const run = (variant?: string) =>
+      answeringModel({ definition, files: {}, version: 'draft', ...(variant ? { variant } : {}) });
+
+    expect(run()).toBe('foundry-openai/gpt-4o-2m-tps');
+    expect(run('default')).toBe('foundry-openai/gpt-4o-2m-tps');
+    expect(run('sonnet')).toBe('foundry-claude/claude-sonnet-5-5');
+  });
+});
+
+describe('the model that wrote the answers', () => {
+  const used = (model: string, inputTokens: number, kind = 'model') => ({
+    model,
+    kind,
+    inputTokens,
+    outputTokens: 0,
+    costMicroNok: 0,
+  });
+
+  it('is the model that used the most tokens in a case, not a check on the side or the embedder', () => {
+    expect(
+      writerOf([
+        used('foundry/text-embedding-3-small', 900, 'embedder'),
+        used('foundry-openai/gpt-4.1-mini', 40),
+        used('foundry-openai/gpt-4o-2m-tps', 500),
+      ]),
+    ).toBe('foundry-openai/gpt-4o-2m-tps');
+    expect(writerOf([])).toBeUndefined();
+  });
+
+  it('names a fallback that wrote some answers, after the model that wrote the most', () => {
+    expect(
+      writersOf([
+        'foundry-openai/gpt-4o-2m-tps',
+        'foundry-openai/gpt-4.1-mini',
+        undefined,
+        'foundry-openai/gpt-4.1-mini',
+      ]),
+    ).toEqual(['foundry-openai/gpt-4.1-mini', 'foundry-openai/gpt-4o-2m-tps']);
+    expect(writersOf(['foundry-openai/gpt-4o-2m-tps'])).toEqual(['foundry-openai/gpt-4o-2m-tps']);
   });
 });
