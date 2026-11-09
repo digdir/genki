@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { mixArgs, srtTime, ssml, subtitles } from './demo.ts';
+import { languageScript, mixArgs, srtTime, ssml, subtitles } from './demo.ts';
 
 describe('demo recordings', () => {
+  it('tells the browser the demo language and its base language', () => {
+    expect(languageScript('nb-NO')).toBe(
+      "Object.defineProperty(navigator,'languages',{get:()=>['nb-NO','nb']});Object.defineProperty(navigator,'language',{get:()=>'nb-NO'});",
+    );
+  });
+
+  it('refuses a language that is not a language tag, so it cannot become browser code', () => {
+    expect(() => languageScript("nb'});alert(1);//")).toThrow(/language must be a tag/);
+    expect(() => languageScript('nb-NO\n')).toThrow(/language must be a tag/);
+  });
+
   it('writes subtitle times as hours, minutes, seconds and milliseconds', () => {
     expect(srtTime(0)).toBe('00:00:00,000');
     expect(srtTime(3723.456)).toBe('01:02:03,456');

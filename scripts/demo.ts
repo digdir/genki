@@ -86,6 +86,12 @@ export const mixArgs = (
   ];
 };
 
+export const languageScript = (language: string) => {
+  const tag = /^([a-z]{2,3})(?:-[A-Z]{2})?$/.exec(language);
+  if (!tag) throw new Error(`language must be a tag like nb-NO, not ${language}`);
+  return `Object.defineProperty(navigator,'languages',{get:()=>['${tag[0]}','${tag[1]}']});Object.defineProperty(navigator,'language',{get:()=>'${tag[0]}'});`;
+};
+
 const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { encoding: 'utf8' });
 
 const speechEndpoint = () => {
@@ -176,10 +182,7 @@ async function main(path: string) {
   for (const step of demo.steps) clips.push(await speak(step.say, demo, cache, speech));
 
   const init = join(out, 'language.js');
-  writeFileSync(
-    init,
-    `Object.defineProperty(navigator,'languages',{get:()=>${JSON.stringify([demo.language, demo.language.split('-')[0]])}});Object.defineProperty(navigator,'language',{get:()=>${JSON.stringify(demo.language)}});`,
-  );
+  writeFileSync(init, languageScript(demo.language));
   const session = `demo-${name}`;
   const ab = (...args: string[]) => run('agent-browser', ['--session', session, ...args]);
   const [w, h] = demo.viewport ?? [1280, 720];
