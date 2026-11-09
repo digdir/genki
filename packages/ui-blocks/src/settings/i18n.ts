@@ -1,4 +1,5 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
 
 export const nbSettings = defineNamespace({
   title: 'Innstillinger',
@@ -45,3 +46,13 @@ export const enSettings = {
   linksLabel: 'Settings and about {name}',
   linksLabelUnnamed: 'Settings and about the service',
 } satisfies Translation<typeof nbSettings>;
+
+/**
+ * The settings' own catalogue. It stays out of the package's shared one, so a host that imports
+ * another block, such as Approach, does not load these words. A block that borrows them puts this
+ * namespace in its own catalogue.
+ */
+export const nb = defineCatalogue({ settings: nbSettings });
+export const en = { settings: enSettings } satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

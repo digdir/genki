@@ -2,8 +2,8 @@ import { Fieldset, Link, Radio, Switch } from '@digdir/designsystemet-react';
 import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import { useId } from 'react';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
 import { displayLevels, isDisplayLevel, type DisplayLevel } from './displayLevel.js';
+import { useT } from './i18n.js';
 
 export interface DisplayLevelChoiceProps {
   /** The level in use, as the host keeps it. Without it, «Standard» is chosen. */

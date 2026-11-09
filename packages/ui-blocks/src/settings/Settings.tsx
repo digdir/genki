@@ -2,10 +2,10 @@ import { Heading, Paragraph, ToggleGroup } from '@digdir/designsystemet-react';
 import { MonitorIcon, MoonIcon, SunIcon } from '@navikt/aksel-icons';
 import { createContext, useContext, useId, type ReactNode } from 'react';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
 import { DisplayLevelChoice, ExperimentSwitches, type SettingsExperiment } from './Choices.js';
 import { isColorScheme, type ColorScheme } from './colorScheme.js';
 import type { DisplayLevel } from './displayLevel.js';
+import { useT } from './i18n.js';
 
 type HeadingLevel = 1 | 2 | 3 | 4 | 5;
 

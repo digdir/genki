@@ -2,7 +2,7 @@ import { Link } from '@digdir/designsystemet-react';
 import { CogIcon } from '@navikt/aksel-icons';
 import type { ReactNode } from 'react';
 import { plainClick } from '../dom.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 /** One of the host's pages, linked after «Innstillinger». */
 export interface SettingsLinkItem {
