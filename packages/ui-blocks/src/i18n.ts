@@ -13,6 +13,7 @@ import { enSettings, nbSettings } from './settings/i18n.js';
 import { enAnswerActions, nbAnswerActions } from './answer-actions/i18n.js';
 import { enConversation, nbConversation } from './conversation/i18n.js';
 import { enShell, nbShell } from './shell/i18n.js';
+import { enBuilder, nbBuilder } from './builder/i18n.js';
 
 const nbProcedure = defineNamespace({
   title: 'Fremgangsmåte',
@@ -227,6 +228,7 @@ export const nb = defineCatalogue({
   answerActions: nbAnswerActions,
   conversation: nbConversation,
   shell: nbShell,
+  builder: nbBuilder,
 });
 export const en = {
   procedure: enProcedure,
@@ -244,6 +246,7 @@ export const en = {
   answerActions: enAnswerActions,
   conversation: enConversation,
   shell: enShell,
+  builder: enBuilder,
 } satisfies Translation<typeof nb>;
 
 export const { useT, translator } = defineTranslations({ nb, en });
