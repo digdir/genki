@@ -245,10 +245,15 @@ describe('the review scripts', () => {
 
   it('run from the base branch, never from the pull request', () => {
     for (const job of jobs) {
-      const take = job.steps.findIndex((s) => s.name === 'Take the review scripts from the base branch');
+      const take = job.steps.findIndex(
+        (s) => s.name === 'Take the review scripts from the base branch',
+      );
       expect(take).toBeGreaterThan(-1);
       expect(job.steps[take].run).toContain('git show "$BASE:scripts/$f.ts"');
-      const runs = job.steps.slice(take + 1).map((s) => s.run ?? '').join('\n');
+      const runs = job.steps
+        .slice(take + 1)
+        .map((s) => s.run ?? '')
+        .join('\n');
       expect(runs).toContain('$RUNNER_TEMP/review/');
       for (const step of job.steps.slice(0, take)) expect(step.run ?? '').not.toContain('review-');
     }
