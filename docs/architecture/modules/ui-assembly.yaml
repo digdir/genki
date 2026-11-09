@@ -1,0 +1,42 @@
+id: ui-assembly
+plane: consumers
+name: UI assembly
+note: Puts the UI blocks together from a layout
+icon: chat
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/ui-assembly'
+summary: Draws an assistant from a layout of UI blocks and wires them to a genki service, for the app builder's preview.
+description:
+  A React package beside the UI blocks. It holds the state the blocks share and the events
+  that change it, places each block of a layout in its zone of the shell, and calls genki through
+  one interface, so the blocks themselves never fetch. It decides what happens when a block a
+  partner needs is off, such as footnotes without the sources.
+responsibilities:
+  - Draw any layout the block catalogue allows, live against a service
+  - Keep the state the blocks share and link their events
+  - Call genki for models, threads, facets and answers through one interface
+files:
+  - packages/ui-assembly/src/useAssistant.ts
+  - packages/ui-assembly/src/Assistant.tsx
+  - packages/ui-assembly/src/api.ts
+input: A layout, a service and a way to reach genki
+output: A rendered assistant
+replaces: []
+edges:
+  - to: ui-blocks
+    label: The blocks, the catalogue and the layout rules
+    kind: call
+    target: call
+    witness:
+      file: packages/ui-assembly/src/useAssistant.ts
+      imports: '@genai/ui-blocks'
+  - to: client
+    label: Streams answers from the service
+    kind: call
+    target: call
+    witness:
+      file: packages/ui-assembly/src/api.ts
+      imports: '@genai/client'
+keywords: ui assembly app builder layout wiring assistant preview byggeklosser
