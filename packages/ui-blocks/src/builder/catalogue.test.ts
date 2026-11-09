@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { catalogueProblems } from '@genai/i18n';
 import { describe, expect, it } from 'vitest';
 import * as exported from '../index.js';
@@ -84,6 +86,16 @@ describe('the block catalogue', () => {
     }
   });
 
+  it('uses every need word it knows, so no reason is written for a need nothing has', () => {
+    const used = new Set(
+      blockCatalogue.flatMap((spec) => [
+        ...spec.needs,
+        ...spec.options.flatMap((o) => o.needs ?? []),
+      ]),
+    );
+    expect(needWords.filter((need) => !used.has(need))).toEqual([]);
+  });
+
   it('lets four blocks stand in more than one place: Chat, Filter, Approach and Document view', () => {
     expect(movableBlocks.map((spec) => spec.id)).toEqual([
       'chat',
@@ -135,5 +147,21 @@ describe('the block catalogue', () => {
       },
     });
     expect(settingsSchema('chat').properties).toHaveProperty('footnotes.type', 'boolean');
+  });
+});
+
+describe('the catalogue and the blocks', () => {
+  it('is read by the builder, and imported by no block, so a host of a block takes no catalogue along', () => {
+    const src = join(import.meta.dirname, '..');
+    const offenders: string[] = [];
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === 'builder') continue;
+      for (const file of readdirSync(join(src, entry.name), { recursive: true }) as string[]) {
+        if (!/\.tsx?$/.test(file)) continue;
+        const text = readFileSync(join(src, entry.name, file), 'utf8');
+        if (/from '\.\.\/(\.\.\/)*builder\//.test(text)) offenders.push(`${entry.name}/${file}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

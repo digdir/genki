@@ -23,7 +23,7 @@ export const nbBuilder = defineNamespace({
   sources: 'Kilder',
   sourcesHelp: 'Utdragene svaret bygger på',
   documentView: 'Dokumentvisning',
-  documentViewHelp: 'Kilden åpnet på riktig side',
+  documentViewHelp: 'Dokumentet åpnet på utdraget svaret bygger på',
   notes: 'Notater',
   notesHelp: 'Hent inn utdrag og skriv med kildene på slep',
 
@@ -34,8 +34,9 @@ export const nbBuilder = defineNamespace({
   chatSuggestionsHelp: 'Tre spørsmål å starte med under feltet',
   chatFollowUps: 'Forslag til oppfølging',
   chatFollowUpsHelp: 'Knapper over feltet etter et svar',
-  chatDisclaimer: 'Merknad om kunstig intelligens',
-  chatDisclaimerHelp: 'Under feltet: svarene er laget med KI og kan inneholde feil',
+  chatDisclaimer: 'Merknad om feil',
+  chatDisclaimerHelp:
+    'Under feltet: «Assistenten kan gjøre feil. Husk å sjekke viktig informasjon.», med assistentens navn',
   chatCopy: 'Kopier',
   chatCopyHelp: 'Kopier svaret med kildene, og lenken til tråden',
   chatFeedback: 'Tilbakemelding',
@@ -76,10 +77,8 @@ export const nbBuilder = defineNamespace({
   needChannelConversations: 'Tråder er ikke slått på for denne brukerflaten.',
   needChannelFacets: 'Filtrering er ikke slått på for denne brukerflaten.',
   needChannelFeedback: 'Tilbakemelding er ikke slått på for denne brukerflaten.',
-  needComponentSources: 'Trenger Kilder.',
   needComponentSourcesOrDocumentView: 'Trenger Kilder eller Dokumentvisning.',
   needGenkiProjects: 'GenKI kan ikke lagre prosjekter ennå.',
-  needGenkiDocumentText: 'GenKI kan ikke hente hele dokumentet ennå.',
 });
 
 export const enBuilder = {
@@ -103,19 +102,20 @@ export const enBuilder = {
   sources: 'Sources',
   sourcesHelp: 'The excerpts the answer builds on',
   documentView: 'Document view',
-  documentViewHelp: 'The source opened at the right page',
+  documentViewHelp: 'The document opened at the excerpt the answer builds on',
   notes: 'Notes',
   notesHelp: 'Collect excerpts and write with the sources in tow',
 
   chatFootnotes: 'Footnotes',
   chatFootnotesHelp:
-    'Numbers in the answer that point to the excerpt in Sources or Document view, and «Sources used in the answer» under it',
+    'Numbers in the answer that point to the excerpt in Sources or Document view, and “Sources used in the answer” under it',
   chatSuggestions: 'Suggested questions',
   chatSuggestionsHelp: 'Three questions to start with under the field',
   chatFollowUps: 'Suggested follow-ups',
   chatFollowUpsHelp: 'Buttons over the field after an answer',
-  chatDisclaimer: 'Note on artificial intelligence',
-  chatDisclaimerHelp: 'Under the field: the answers are made with AI and may be wrong',
+  chatDisclaimer: 'Note on mistakes',
+  chatDisclaimerHelp:
+    'Under the field: “The assistant can make mistakes. Remember to check important information.”, with the assistant’s name',
   chatCopy: 'Copy',
   chatCopyHelp: 'Copy the answer with its sources, and the link to the thread',
   chatFeedback: 'Feedback',
@@ -155,10 +155,8 @@ export const enBuilder = {
   needChannelConversations: 'Threads are not turned on for this frontend.',
   needChannelFacets: 'Filtering is not turned on for this frontend.',
   needChannelFeedback: 'Feedback is not turned on for this frontend.',
-  needComponentSources: 'Needs Sources.',
   needComponentSourcesOrDocumentView: 'Needs Sources or Document view.',
   needGenkiProjects: 'GenKI cannot store projects yet.',
-  needGenkiDocumentText: 'GenKI cannot fetch the whole document yet.',
 } satisfies Translation<typeof nbBuilder>;
 
 /** A key in the `builder` namespace of the package's catalogue. */

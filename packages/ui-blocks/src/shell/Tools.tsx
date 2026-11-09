@@ -1,9 +1,9 @@
 import { Field, Heading, Label, Select } from '@digdir/designsystemet-react';
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { toolMode } from '../builder/layout.js';
 import { classes } from '../dom.js';
 import { useT } from '../i18n.js';
+import { toolMode } from './toolMode.js';
 
 export interface ShellTool {
   /** Stable across renders: the tool's state is kept by it. */

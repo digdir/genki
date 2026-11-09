@@ -18,10 +18,8 @@ const needKeys: Record<Need, BuilderKey> = {
   'channel:conversations': 'builder.needChannelConversations',
   'channel:facets': 'builder.needChannelFacets',
   'channel:feedback': 'builder.needChannelFeedback',
-  'component:sources': 'builder.needComponentSources',
   'component:sources|document-view': 'builder.needComponentSourcesOrDocumentView',
   'genki:projects': 'builder.needGenkiProjects',
-  'genki:document-text': 'builder.needGenkiDocumentText',
 };
 
 /** The catalogue key of the reason a need is not met. */
