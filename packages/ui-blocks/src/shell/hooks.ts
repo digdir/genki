@@ -111,18 +111,27 @@ export const useScrollTabStop = (): [boolean, (element: HTMLElement | null) => v
 
 /**
  * Scroll padding as tall as a pinned head, or scrolling into view and focus land under it (WCAG
- * 2.4.11). Observed, because the head changes with its content.
+ * 2.4.11). Observed, because the head changes with its content. Also set at once whenever the
+ * region is shown: an observer reports after the next frame's callbacks, so a block that scrolls
+ * to its target there, in a panel that just opened, would land under the head. The effect runs
+ * after its children's, so a drawer's dialog is already open when the head is measured.
  */
-export const useScrollPadding = (region: HTMLElement | null, head: HTMLElement | null) => {
+export const useScrollPadding = (
+  region: HTMLElement | null,
+  head: HTMLElement | null,
+  shown = true,
+) => {
   useEffect(() => {
-    if (region === null || head === null || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
+    if (region === null || head === null) return;
+    const pad = () => {
       region.style.scrollPaddingBlockStart = `${Math.round(head.offsetHeight)}px`;
-    });
-    observer.observe(head);
+    };
+    pad();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(pad);
+    observer?.observe(head);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       region.style.scrollPaddingBlockStart = '';
     };
-  }, [region, head]);
+  }, [region, head, shown]);
 };

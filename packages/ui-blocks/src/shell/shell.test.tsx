@@ -669,6 +669,41 @@ describe('the head, the pinned head and the foot', () => {
     expect(given).toEqual([region, null]);
   });
 
+  it('pads a panel’s region as tall as its pinned head as soon as it opens, not a frame later', () => {
+    // jsdom does no layout: the pinned head is 48 pixels while it is shown.
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        const shown = !this.closest('[hidden], dialog:not([open])');
+        return shown && this.classList.contains('uib-shell-pinned') ? 48 : 0;
+      },
+    });
+    try {
+      const secondaryPanel = {
+        label: 'Kilder',
+        pinned: <p>Verktøy</p>,
+        children: <a href="#kilde-1">Kilde 1</a>,
+      };
+      draw({ secondary: secondaryPanel });
+      const region = () => secondary().querySelector<HTMLElement>('.uib-shell-content');
+      expect(region()?.style.scrollPaddingBlockStart).toBe('0px');
+      // No observer has reported, and no frame has passed.
+      fireEvent.click(button('Vis kilder'));
+      expect(region()?.style.scrollPaddingBlockStart).toBe('48px');
+      fireEvent.click(button('Skjul kilder'));
+      expect(region()?.style.scrollPaddingBlockStart).toBe('0px');
+      // A drawer is measured once its dialog is open.
+      cleanup();
+      draw({ secondary: secondaryPanel }, 1000);
+      fireEvent.click(button('Vis kilder'));
+      expect(secondary().querySelector('dialog')?.open).toBe(true);
+      expect(region()?.style.scrollPaddingBlockStart).toBe('48px');
+    } finally {
+      if (height) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', height);
+    }
+  });
+
   it('ends the scrolling region with the foot, or pins it under when asked', () => {
     const { redraw } = draw();
     const foot = () =>

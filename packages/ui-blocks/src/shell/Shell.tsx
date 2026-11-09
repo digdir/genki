@@ -382,7 +382,7 @@ const Side = ({
   const element = useRef<HTMLElement>(null);
   const [content, setContentElement] = useState<HTMLDivElement | null>(null);
   const [pinned, setPinned] = useState<HTMLDivElement | null>(null);
-  useScrollPadding(content, pinned);
+  useScrollPadding(content, pinned, !collapsed);
   const onPinned = panel.pinnedRef;
   useEffect(() => {
     if (!onPinned || !pinned) return;
