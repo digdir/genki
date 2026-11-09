@@ -548,6 +548,18 @@ describe('Dokumentvisning in the assistant', () => {
     );
   });
 
+  it('keeps Escape in the document from closing a drawer, but not in its question field', async () => {
+    const footnote = await stored(withView().layout);
+    fireEvent.click(footnote);
+    fireEvent.click(await screen.findByRole('button', { name: /Vis i dokumentet/ }));
+    const field = await screen.findByRole('textbox', { name: 'Spør om dette dokumentet' });
+    // `fireEvent` says false when the default was prevented.
+    expect(fireEvent.keyDown(field, { key: 'Escape' })).toBe(true);
+    const title = await documentTitle();
+    expect(fireEvent.keyDown(title, { key: 'Escape' })).toBe(false);
+    await waitFor(() => expect(tab('Kilder').getAttribute('aria-selected')).toBe('true'));
+  });
+
   it('asks a question from the document in the thread, as any question', async () => {
     const { api, asked } = fakeApi();
     const footnote = await stored(withoutSources().layout, api);

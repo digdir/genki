@@ -39,7 +39,14 @@ import {
   type SourceTarget,
 } from '@genai/ui-blocks';
 import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
@@ -616,6 +623,14 @@ export const AssistantView = ({
         : {})}
     />
   );
+  // Escape in the document is its way back. In a drawer, a modal dialog, the browser would also
+  // close the drawer and put the focus on the drawer's button, wherever the way back sends it.
+  // Not from the question field, where Escape is the field's.
+  const escapeStaysInDrawer = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape' || !a.openDoc) return;
+    if (event.target instanceof Element && event.target.closest('form')) return;
+    event.preventDefault();
+  };
   const documentView = (titled: boolean) => (
     <DocumentView
       color="neutral"
@@ -654,6 +669,7 @@ export const AssistantView = ({
             label: names.documentView,
             content: (
               <div
+                onKeyDownCapture={escapeStaysInDrawer}
                 style={
                   {
                     '--genai-document-view-steps-inset': `${toolsPinHeight}px`,
@@ -738,7 +754,11 @@ export const AssistantView = ({
     // Beside Chat only while a document is open; without Chat, the document has the column.
     if (a.documentZone === 'main' && (!a.documentOverChat || a.openDoc))
       parts.push(
-        <div key="document-view" className="uia-main-document">
+        <div
+          key="document-view"
+          className="uia-main-document"
+          onKeyDownCapture={escapeStaysInDrawer}
+        >
           {documentView(true)}
         </div>,
       );
