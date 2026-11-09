@@ -1,4 +1,5 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
 
 export const nbCorpus = defineNamespace({
   label: 'Dokumentsamling',
@@ -29,3 +30,13 @@ export const enCorpus = {
   moreAbout: 'Show more about the document collection',
   lessAbout: 'Show less about the document collection',
 } satisfies Translation<typeof nbCorpus>;
+
+/**
+ * The document collection's own catalogue. It stays out of the package's shared one, so a host
+ * that imports another block, such as Approach, does not load these words. A block that borrows
+ * them, as the documents do, puts this namespace in its own catalogue.
+ */
+export const nb = defineCatalogue({ corpus: nbCorpus });
+export const en = { corpus: enCorpus } satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

@@ -10,7 +10,6 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useT } from '../i18n.js';
 import { AnnounceContext, freshText } from './announce.js';
 import { FacetField, type FieldHandle } from './FacetField.js';
 import {
@@ -20,6 +19,7 @@ import {
   NewThreadLink,
   type NewThreadLinkProps,
 } from './FilterStates.js';
+import { useT } from './i18n.js';
 import { chosenValues, sameSelection, valuesWithoutField } from './selection.js';
 import type { FilterField, FilterSelection } from './types.js';
 import { YearRangeField } from './YearRangeField.js';

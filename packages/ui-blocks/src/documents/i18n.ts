@@ -1,4 +1,6 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
+import { enCorpus, nbCorpus } from '../corpus/i18n.js';
 
 // `{types}` is the file types a host takes, as a list: «PDF og .docx».
 
@@ -55,3 +57,12 @@ export const enDocuments = {
   failed: 'The upload failed. Try again.',
   unavailable: 'Uploading is not available in this service yet.',
 } satisfies Translation<typeof nbDocuments>;
+
+/**
+ * The documents' own catalogue, with the collection's words they borrow. It stays out of the
+ * package's shared one, so a host that imports another block, such as Approach, does not load it.
+ */
+export const nb = defineCatalogue({ documents: nbDocuments, corpus: nbCorpus });
+export const en = { documents: enDocuments, corpus: enCorpus } satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

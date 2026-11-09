@@ -2,7 +2,10 @@ import { defineCatalogue, type Translation } from '@genai/i18n';
 import * as answer from './answer/i18n.js';
 import * as composer from './composer/i18n.js';
 import * as conversation from './conversation/i18n.js';
+import * as corpus from './corpus/i18n.js';
 import * as documentView from './document-view/i18n.js';
+import * as documents from './documents/i18n.js';
+import * as filter from './filter/i18n.js';
 import * as shared from './i18n.js';
 import * as sources from './sources/i18n.js';
 import * as states from './states/i18n.js';
@@ -26,6 +29,9 @@ export const nb = defineCatalogue({
   ...threads.nb,
   ...composer.nb,
   ...welcome.nb,
+  ...filter.nb,
+  ...corpus.nb,
+  ...documents.nb,
 });
 export const en = {
   ...shared.en,
@@ -38,4 +44,7 @@ export const en = {
   ...threads.en,
   ...composer.en,
   ...welcome.en,
+  ...filter.en,
+  ...corpus.en,
+  ...documents.en,
 } satisfies Translation<typeof nb>;

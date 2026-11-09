@@ -1,4 +1,5 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
 
 // `{field}` is the field's label in lower case, inside a sentence: «Velg alle dokumenttyper».
 
@@ -119,3 +120,13 @@ export const enFilter = {
   srRemove: 'Press to remove from {field}',
   srRemoveAll: 'Press to remove all from {field}',
 } satisfies Translation<typeof nbFilter>;
+
+/**
+ * The filter's own catalogue. It stays out of the package's shared one, so a host that imports
+ * another block, such as Approach, does not load these words. A block that borrows them puts this
+ * namespace in its own catalogue.
+ */
+export const nb = defineCatalogue({ filter: nbFilter });
+export const en = { filter: enFilter } satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+import { catalogueProblems } from '@genai/i18n';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { nb as sharedNb } from '../i18n.js';
 import {
   Documents,
   OwnDocuments,
@@ -8,6 +10,7 @@ import {
   type OwnDocument,
   type OwnDocumentsProps,
 } from './Documents.js';
+import { en, nb } from './i18n.js';
 import { fileSize, limitText } from './uploadText.js';
 
 // Ported from KA's DocumentsList, DocumentsList.corpus, OwnDocuments and uploadText tests.
@@ -292,5 +295,17 @@ describe('sizes in words', () => {
     expect(fileSize(Number.NaN, 'nb')).toBe('');
     expect(fileSize(-1, 'nb')).toBe('');
     expect(limitText(20 * 1024 * 1024)).toBe('20 MB');
+  });
+});
+
+describe('the catalogue', () => {
+  it('has an English text for every Norwegian one', () => {
+    expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the documents' words in their own catalogue, with the collection's they borrow, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['documents', 'corpus']);
+    expect(sharedNb).not.toHaveProperty('documents');
+    expect(sharedNb).not.toHaveProperty('corpus');
   });
 });
