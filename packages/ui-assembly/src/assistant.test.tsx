@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AskParams, AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
 import type { AssistantProfile } from './profile.js';
-import type { AssistantStorage } from './storage.js';
+import { browserStorage, type AssistantStorage } from './storage.js';
 
 // A fake genki: two variants of nothing, one service with a collection that has filter fields,
 // one stored thread, and an answer that cites one excerpt and reports two steps.
@@ -297,6 +297,21 @@ describe('the assistant a layout describes', () => {
     expect(await screen.findByRole('link', { name: /En gammel tråd/ })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /En annen tjenestes tråd/ })).toBeNull();
   });
+
+  it('lists every thread the key can read with `allThreads`, of any service', async () => {
+    const { api } = fakeApi();
+    render(
+      <Assistant
+        api={api}
+        layout={state('without-filter').layout}
+        service="ka"
+        tenant="digdir"
+        allThreads
+      />,
+    );
+    expect(await screen.findByRole('link', { name: /En annen tjenestes tråd/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /En gammel tråd/ })).toBeTruthy();
+  });
 });
 
 // kunnskapsassistenten's own arrangement, as the UI blocks preview draws it.
@@ -372,6 +387,92 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     signOut.addEventListener('click', (event) => event.preventDefault());
     fireEvent.click(signOut);
     expect([...kept.keys()]).toEqual([]);
+  });
+
+  // A host that is only the assistant: a path per page, as the UI blocks preview has them.
+  const paths = { home: '/', settings: '/innstillinger' };
+  const drawWithPaths = () =>
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={defaultLayout}
+        service="ka"
+        tenant="digdir"
+        profile={profile}
+        threadInUrl
+        paths={paths}
+      />,
+    );
+
+  it('gives «Innstillinger» its own path with `paths`, and a thread the home path with only `?t=`', async () => {
+    history.replaceState(null, '', '/?model=ka__default');
+    drawWithPaths();
+    const settings = await screen.findByRole('link', { name: 'Innstillinger' });
+    expect(settings.getAttribute('href')).toBe('/innstillinger');
+    fireEvent.click(settings);
+    expect(`${location.pathname}${location.search}${location.hash}`).toBe('/innstillinger');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Tråder/ }));
+    const thread = await screen.findByRole('link', { name: /En gammel tråd/ });
+    expect(thread.getAttribute('href')).toBe('/?t=t-old');
+    fireEvent.click(thread);
+    expect(`${location.pathname}${location.search}`).toBe('/?t=t-old');
+    expect(screen.queryByRole('heading', { level: 1, name: 'Innstillinger' })).toBeNull();
+  });
+
+  it('opens «Innstillinger» when the page is opened at its path with `paths`', async () => {
+    history.replaceState(null, '', '/innstillinger');
+    drawWithPaths();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Innstillinger' })).toBeTruthy();
+  });
+
+  it('keeps «Innstillinger» at `#innstillinger` without `paths`, and the rest of the host’s address', async () => {
+    history.replaceState(null, '', '/prov?layout=abc');
+    drawKa(memory().storage);
+    const settings = await screen.findByRole('link', { name: 'Innstillinger' });
+    expect(settings.getAttribute('href')).toBe('#innstillinger');
+    fireEvent.click(settings);
+    expect(`${location.pathname}${location.search}${location.hash}`).toBe(
+      '/prov?layout=abc#innstillinger',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Tråder/ }));
+    const thread = await screen.findByRole('link', { name: /En gammel tråd/ });
+    expect(thread.getAttribute('href')).toBe('/prov?layout=abc&t=t-old');
+  });
+
+  it('reads and writes the choices as JSON under the host’s prefix, so the keys it already has carry over', async () => {
+    localStorage.clear();
+    localStorage.setItem('preview.filter', JSON.stringify({ type: ['Årsrapport'] }));
+    localStorage.setItem('preview.flags', JSON.stringify(['filters-right-panel']));
+    const { api } = fakeApi();
+    render(
+      <Assistant
+        api={api}
+        layout={defaultLayout}
+        service="ka"
+        tenant="digdir"
+        profile={profile}
+        storage={browserStorage('preview.')}
+        threadInUrl
+      />,
+    );
+    await waitFor(() =>
+      expect(api.loadFacets).toHaveBeenCalledWith(
+        { type: ['Årsrapport'] },
+        'kudos',
+        expect.anything(),
+      ),
+    );
+    expect(
+      screen.getByRole('complementary', { name: 'Filter og kilder', hidden: true }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: 'Innstillinger' }));
+    fireEvent.click(await screen.findByRole('switch', { name: /Årsfilter med perioder/ }));
+    expect(JSON.parse(localStorage.getItem('preview.flags') ?? 'null')).toEqual([
+      'filters-right-panel',
+      'year-ranges',
+    ]);
+    localStorage.clear();
   });
 
   it('says so when a new collection starts a new thread', async () => {

@@ -76,9 +76,23 @@ export interface AssistantOptions {
   channels?: readonly Channel[] | undefined;
   /**
    * The assistant owns the page: the thread in the address as `?t=` (only with Tråder), so a
-   * reload opens it again; «Innstillinger» as `#innstillinger`; and the tab's title.
+   * reload opens it again; «Innstillinger» as `#innstillinger`, or at its own path with `paths`;
+   * and the tab's title.
    */
   threadInUrl?: boolean | undefined;
+  /**
+   * With `threadInUrl`, where the pages live in the address. Without it, the assistant is a page
+   * in its host's: «Innstillinger» is `#innstillinger`, and the rest of the address is kept, as
+   * the app builder's `/prov?layout=…` needs. With it, each page has a path of its own and the
+   * query holds only the thread, as a site that is only the assistant has it:
+   * `{ home: '/', settings: '/innstillinger' }`.
+   */
+  paths?: { home: string; settings: string } | undefined;
+  /**
+   * List every thread the key can read, of any service. Without it, only the threads of the
+   * service and its family, as a host for one service shows them.
+   */
+  allThreads?: boolean | undefined;
   /** Where the reader's choices are kept; nothing past the page without it. */
   storage?: AssistantStorage | undefined;
   /** Something the reader should hear about, such as a new thread after a new collection. */
@@ -135,13 +149,6 @@ const firstSentence = (text: string | undefined) => {
 };
 
 const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
-const writeThreadToAddress = (id: string | undefined, replace: boolean) => {
-  const url = new URL(location.href);
-  if (id) url.searchParams.set('t', id);
-  else url.searchParams.delete('t');
-  url.hash = '';
-  history[replace ? 'replaceState' : 'pushState'](null, '', url);
-};
 
 export const useAssistant = ({
   api,
@@ -152,6 +159,8 @@ export const useAssistant = ({
   profile,
   channels = ['conversations', 'facets', 'feedback'],
   threadInUrl = false,
+  paths,
+  allThreads = false,
   storage,
   onNotice,
   colorScheme = 'auto',
@@ -289,17 +298,39 @@ export const useAssistant = ({
     () =>
       loadedThreads
         ?.filter(
-          (thread) => !deleted.has(thread.id) && (!thread.service || inFamily(thread.service)),
+          (thread) =>
+            !deleted.has(thread.id) && (allThreads || !thread.service || inFamily(thread.service)),
         )
         .map((thread) =>
           renamed[thread.id] ? { ...thread, title: renamed[thread.id] ?? thread.title } : thread,
         ),
-    [loadedThreads, renamed, deleted, inFamily],
+    [loadedThreads, renamed, deleted, inFamily, allThreads],
+  );
+
+  // ── The address: `#innstillinger` in the host's page, or a path per page with `paths` ──
+  const home = paths?.home;
+  const settingsPath = paths?.settings;
+  const settingsHref = settingsPath ?? '#innstillinger';
+  const onSettingsAddress = () =>
+    settingsPath !== undefined
+      ? location.pathname === settingsPath
+      : location.hash === '#innstillinger';
+  /** The address of the conversation on this thread, or on a new one, as a link's `href`. */
+  const hrefOf = useCallback(
+    (thread?: string) => {
+      if (home !== undefined) return thread ? `${home}?t=${encodeURIComponent(thread)}` : home;
+      const url = new URL(location.href);
+      url.hash = '';
+      if (thread) url.searchParams.set('t', thread);
+      else url.searchParams.delete('t');
+      return `${url.pathname}${url.search}`;
+    },
+    [home],
   );
 
   // ── The thread on screen ──
   const [page, setPage] = useState<Page>(() =>
-    threadInUrl && location.hash === '#innstillinger' ? 'settings' : 'chat',
+    threadInUrl && onSettingsAddress() ? 'settings' : 'chat',
   );
   const [currentId, setCurrentId] = useState<string | undefined>(() =>
     urlThreads ? threadInAddress() : undefined,
@@ -316,8 +347,10 @@ export const useAssistant = ({
 
   const go = useCallback(
     (id: string | undefined, replace = false) => {
-      if (urlThreads) writeThreadToAddress(id, replace);
-      else if (threadInUrl && location.hash) {
+      if (urlThreads) history[replace ? 'replaceState' : 'pushState'](null, '', hrefOf(id));
+      else if (threadInUrl && home !== undefined) {
+        if (location.pathname !== home) history.pushState(null, '', home);
+      } else if (threadInUrl && location.hash) {
         const url = new URL(location.href);
         url.hash = '';
         history.pushState(null, '', url);
@@ -325,7 +358,7 @@ export const useAssistant = ({
       setPage('chat');
       setCurrentId(id);
     },
-    [urlThreads, threadInUrl],
+    [urlThreads, threadInUrl, hrefOf, home],
   );
   /** Opening a thread or «Ny tråd» shuts an open drawer, which would cover it. */
   const leave = useCallback(
@@ -340,12 +373,13 @@ export const useAssistant = ({
     if (!threadInUrl) return;
     const onPop = () => {
       abort.current?.abort();
-      setPage(location.hash === '#innstillinger' ? 'settings' : 'chat');
+      setPage(onSettingsAddress() ? 'settings' : 'chat');
       if (urlThreads) setCurrentId(threadInAddress());
     };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
-  }, [threadInUrl, urlThreads]);
+    // `onSettingsAddress` reads only `settingsPath`.
+  }, [threadInUrl, urlThreads, settingsPath]);
   const reported = useRef(onThreadChange);
   useEffect(() => {
     reported.current = onThreadChange;
@@ -789,14 +823,19 @@ export const useAssistant = ({
     },
     page,
     showSettings: () => {
-      if (threadInUrl && location.hash !== '#innstillinger') {
-        const url = new URL(location.href);
-        url.hash = 'innstillinger';
-        history.pushState(null, '', url);
+      if (threadInUrl && !onSettingsAddress()) {
+        if (settingsPath !== undefined) history.pushState(null, '', settingsPath);
+        else {
+          const url = new URL(location.href);
+          url.hash = 'innstillinger';
+          history.pushState(null, '', url);
+        }
       }
       setPage('settings');
       setRequest({ action: 'close-drawers' });
     },
+    settingsHref,
+    hrefOf,
     // the thread on screen
     view,
     viewError,

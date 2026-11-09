@@ -47,15 +47,6 @@ const names = uiBlocksNb.builder;
 const modifier = () =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.userAgent) ? 'Cmd' : 'Ctrl';
 
-/** This page's address with the thread given, or none, and the rest kept: the layout, the service. */
-const hereHref = (thread?: string) => {
-  const url = new URL(location.href);
-  url.hash = '';
-  if (thread) url.searchParams.set('t', thread);
-  else url.searchParams.delete('t');
-  return `${url.pathname}${url.search}`;
-};
-
 export interface AssistantProps extends AssistantOptions {
   /** The `id` of `<main>`, the target of «Hopp til hovedinnhold». */
   mainId?: string | undefined;
@@ -264,7 +255,7 @@ export const AssistantView = ({
     if (a.view === 'notfound') {
       middle = (
         <NotFoundState
-          homeHref={hereHref()}
+          homeHref={a.hrefOf()}
           onGoHome={() => a.leave(undefined)}
           title="Fant ikke tråden"
           description="Den kan være slettet, eller lenken kan være feil."
@@ -409,7 +400,7 @@ export const AssistantView = ({
       failed={a.facetsFailed}
       onRetry={a.retryFacets}
       thread={a.currentId}
-      newThreadHref={hereHref()}
+      newThreadHref={a.hrefOf()}
       onNewThread={(event) => {
         event.preventDefault();
         a.leave(undefined);
@@ -478,9 +469,9 @@ export const AssistantView = ({
       failed={a.threadsFailed}
       onRetry={a.reloadThreads}
       currentId={a.page === 'chat' ? a.currentId : undefined}
-      threadHref={(thread) => hereHref(thread.id)}
+      threadHref={(thread) => a.hrefOf(thread.id)}
       onOpenThread={(thread) => a.leave(thread.id)}
-      newThreadHref={hereHref()}
+      newThreadHref={a.hrefOf()}
       onNewThread={() => {
         if (twoViews) {
           setPrimaryView('filters');
@@ -492,7 +483,7 @@ export const AssistantView = ({
       {...(a.deleteThread ? { onDelete: a.deleteThread } : {})}
       footer={
         a.profile?.signedInAs ? (
-          <SignedIn name={a.profile.signedInAs} signOutHref={hereHref()} onSignOut={a.signOut} />
+          <SignedIn name={a.profile.signedInAs} signOutHref={a.hrefOf()} onSignOut={a.signOut} />
         ) : undefined
       }
       {...(twoViews
@@ -510,8 +501,8 @@ export const AssistantView = ({
   // ── Settings, from the primary panel's foot ──
   const foot = settingsOn ? (
     <SettingsLinks
-      settingsHref="#innstillinger"
-      currentHref={a.page === 'settings' ? '#innstillinger' : undefined}
+      settingsHref={a.settingsHref}
+      currentHref={a.page === 'settings' ? a.settingsHref : undefined}
       assistantName={name}
       onNavigate={() => a.showSettings()}
     />
