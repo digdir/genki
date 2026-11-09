@@ -178,6 +178,7 @@ const authFile = z.union([
   z.strictObject({
     basic: z.strictObject({ username: z.string().regex(/^[A-Za-z0-9._@-]{1,64}$/) }),
   }),
+  z.strictObject({ signedBy: z.literal('module') }),
 ]);
 
 const stepAuthFile = z.union([
@@ -401,7 +402,8 @@ export type CredentialPlacement =
   | { place: 'header'; name: string; scheme?: string }
   | { place: 'query'; name: string }
   | { place: 'form'; name: string }
-  | { place: 'basic'; username: string };
+  | { place: 'basic'; username: string }
+  | { place: 'module' };
 
 export type SecretPlacement =
   { place: 'header'; name: string; scheme?: string } | { place: 'query'; name: string };
@@ -549,6 +551,7 @@ const placementOf = (auth: z.infer<typeof authFile>): CredentialPlacement => {
   if ('query' in auth) return { place: 'query', name: auth.query };
   if ('form' in auth) return { place: 'form', name: auth.form };
   if ('basic' in auth) return { place: 'basic', username: auth.basic.username };
+  if ('signedBy' in auth) return { place: 'module' };
   return {
     place: 'header',
     name: auth.header.toLowerCase(),
@@ -1049,6 +1052,17 @@ const toStep = (
       );
   const placement = raw.credential ? placementOf(raw.credential) : defaults.placement;
   checkCredential(at, placement, request, wireRequest, defaults.apiQuery);
+  if (defaults.placement.place === 'module' && placement.place !== 'module')
+    throw new DescriptorError(`${at}: a key that only signs is placed on no request`);
+  if (
+    placement.place === 'module' &&
+    !raw.request.follow &&
+    !raw.auth &&
+    !(moduleSpec && defaults.modules[moduleSpec.use]?.keys.includes('connection'))
+  )
+    throw new DescriptorError(
+      `${at}: a key that only signs needs a module on every step that takes the connection key`,
+    );
   const wireQuery = scalarFields(`${at}: wire.query`, raw.wire.query, request.query);
   const wireHeaders = scalarFields(`${at}: wire.headers`, raw.wire.headers, request.headers);
   let wireFilenames: Shape | undefined;
