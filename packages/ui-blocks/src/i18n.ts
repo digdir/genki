@@ -1,6 +1,5 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
-import { enAnswer, nbAnswer } from './answer/i18n.js';
 import { enConversation, nbConversation } from './conversation/i18n.js';
 
 const nbProcedure = defineNamespace({
@@ -84,7 +83,8 @@ const nbSources = defineNamespace({
   open: 'Åpne',
   close: 'Lukk',
   excerptName: 'utdrag {n}',
-  excerptNameOfTotal: 'utdrag {n} av {total}',
+  excerptNameSection: 'utdrag fra {section}',
+  excerptNameUnnumbered: 'utdrag',
   showPassages: 'Vis utdrag fra dokumentet ({count})',
   hidePassages: 'Skjul utdrag fra dokumentet ({count})',
   useOnce: '{shown}: fotnote {n} i svaret',
@@ -164,7 +164,8 @@ const enSources = {
   open: 'Open',
   close: 'Close',
   excerptName: 'excerpt {n}',
-  excerptNameOfTotal: 'excerpt {n} of {total}',
+  excerptNameSection: 'excerpt from {section}',
+  excerptNameUnnumbered: 'excerpt',
   showPassages: 'Show excerpts from the document ({count})',
   hidePassages: 'Hide excerpts from the document ({count})',
   useOnce: '{shown}: footnote {n} in the answer',
@@ -203,13 +204,11 @@ const enSources = {
 export const nb = defineCatalogue({
   procedure: nbProcedure,
   sources: nbSources,
-  answer: nbAnswer,
   conversation: nbConversation,
 });
 export const en = {
   procedure: enProcedure,
   sources: enSources,
-  answer: enAnswer,
   conversation: enConversation,
 } satisfies Translation<typeof nb>;
 

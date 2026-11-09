@@ -150,6 +150,42 @@ describe('numbered excerpts, linked both ways', () => {
     ]);
   });
 
+  it('names an unnumbered excerpt’s button as it is titled, with no number from its place', () => {
+    draw({ citations: cite('kudos::2021-3') });
+    const names = [...document.querySelectorAll<HTMLElement>('.uib-sources-excerpt')].map(
+      (row) => within(row).getByRole('button', { name: /^Åpne / }).textContent,
+    );
+    expect(names).toEqual([
+      'Åpne utdrag 1',
+      'Åpne utdrag fra Ressursbruk og måloppnåelse',
+      'Åpne utdrag fra Internkontroll og risikovurdering',
+      'Åpne utdrag',
+    ]);
+    // Nor when the answer cites documents, and no excerpt has a number.
+    cleanup();
+    draw({ citations: [{ index: 1 }] });
+    expect(document.querySelectorAll('.uib-sources-excerpt')).toHaveLength(4);
+    expect(document.body.textContent).not.toMatch(/utdrag \d/i);
+  });
+
+  it('names its links in one piece, so no browser reads a space before the comma', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    fireEvent.click(toggleOf(/Ressursbruk/));
+    const page = screen.getByRole('link', { name: /^Les side 12 på Kudos/ });
+    expect(page.getAttribute('aria-label')).toBe(
+      `Les side 12 på Kudos, utdrag 1, ${nkom.title} (åpnes i ny fane)`,
+    );
+    const whole = screen.getAllByRole('link', { name: /^Les dokumentet på Kudos/ })[0];
+    expect(whole?.getAttribute('aria-label')).toBe(
+      `Les dokumentet på Kudos, ${nkom.title} (åpnes i ny fane)`,
+    );
+    // The words seen start the name (WCAG 2.5.3), and nothing hidden follows them in the link.
+    for (const link of [page, whole]) {
+      expect(link?.getAttribute('aria-label')?.startsWith(link?.textContent ?? '-')).toBe(true);
+      expect(link?.querySelector('.ds-sr-only')).toBeNull();
+    }
+  });
+
   it('an uncited excerpt has no way back to the answer', () => {
     const onShowUse = vi.fn();
     draw({

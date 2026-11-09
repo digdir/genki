@@ -324,6 +324,29 @@ export const inline = (
 
 const noCitation: CiteRenderer = () => undefined;
 
+// `[1, 2]` is drawn as one element, which no leaf sees: as `[1] [2]` each stays as written.
+const citeGroup = /\[(\d+(?:\s*,\s*\d+)+)\]/g;
+
+/**
+ * A line's words as this renderer draws them, with none of its inline syntax: emphasis and code
+ * as their words, a link as its words and an autolink as its address, `<br>` as a space. Each
+ * `[n]` stays as written, for the caller to number or drop.
+ */
+export const inlineText = (line: string) => {
+  let words = '';
+  const split = line.replace(/<br\s*\/?>/gi, ' ').replace(citeGroup, (_, list: string) =>
+    list
+      .split(',')
+      .map((n) => `[${n.trim()}]`)
+      .join(' '),
+  );
+  inline(split, noCitation, 'p', false, (value) => {
+    words += value;
+    return value;
+  });
+  return words;
+};
+
 /** What a table's scroll box is named by: its place among the text's tables, and its columns. */
 export interface TableFacts {
   number: number;
@@ -343,14 +366,7 @@ export interface BlockOptions {
 // answer sits.
 const headingSizes = ['md', 'sm', 'xs', '2xs', '2xs', '2xs'] as const;
 
-const wordsOf = (cell: string) => {
-  let words = '';
-  inline(cell, noCitation, 'c', false, (value) => {
-    words += value;
-    return value;
-  });
-  return words.trim();
-};
+const wordsOf = (cell: string) => inlineText(cell).trim();
 
 /**
  * The blocks of one text as elements. Pulled out of the component so the search can walk the very
