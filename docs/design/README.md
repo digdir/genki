@@ -9,3 +9,4 @@ Design briefs and mock screens for work that is not built yet. Each folder holds
 | Area                                                              | Status          | Records                      |
 | ----------------------------------------------------------------- | --------------- | ---------------------------- |
 | [Models and building blocks](models-and-building-blocks/brief.md) | Brief, no mocks | ADR 0048, ADR 0049, ADR 0050 |
+| [Demos](demos/brief.md)                                           | Brief, no mocks | ADR 0020, ADR 0041, ADR 0049 |
