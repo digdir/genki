@@ -121,6 +121,21 @@ describe('the Shell styles', () => {
     expect(css).toContain('.uib-shell-drawer[open] { display: flex;');
   });
 
+  it('put the rails in one row at the top in the bar, and the main column under it in full', () => {
+    expect(css).toContain(
+      '.uib-shell[data-compact] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); }',
+    );
+    expect(css).toContain(
+      ".uib-shell[data-compact] > .uib-shell-side[data-side='primary'] { grid-row: 1; grid-column: 1; }",
+    );
+    expect(css).toContain(
+      ".uib-shell[data-compact] > .uib-shell-side[data-side='secondary'] { grid-row: 1; grid-column: 3; }",
+    );
+    expect(css).toContain(
+      '.uib-shell[data-compact] > .uib-shell-main { grid-row: 2; grid-column: 1 / -1; }',
+    );
+  });
+
   it('are each listed on the component page', () => {
     const names = [...new Set(uses.map((use) => use.name))];
     expect(names.filter((name) => !page.includes(`<code>${name}</code>`))).toEqual([]);

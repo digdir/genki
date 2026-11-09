@@ -100,8 +100,9 @@
                 out. The breakpoints follow.
               </li>
               <li>
-                <strong>The bar:</strong> <code>compactBar</code> puts both rails in a bar above the
-                main column in a phone's width (kunnskapsassistenten#120).
+                <strong>The top row,</strong> the standard below 774: both rails stand in one row
+                above the main column (kunnskapsassistenten#120). <code>compactBar={false}</code>
+                keeps them at the sides.
               </li>
             </ul>
           </div>
@@ -133,6 +134,10 @@
                 footnote; <code>offer</code> one that has new content, such as an answer with
                 sources; or <code>close-drawers</code>, such as after choosing a thread. A new
                 object is acted on once.
+              </li>
+              <li>
+                <code>compactBar</code>: the top row below 774, on by default. <code>false</code>
+                keeps the rails at the sides on a phone.
               </li>
               <li>
                 <code>skipLinks</code>: more skip links after «Hopp til hovedinnhold», such as «Hopp
@@ -213,8 +218,17 @@
                 is Designsystemet's modal <code>Dialog</code> over the main column, in from its own
                 edge, at the design's width and never wider than the window: focus is trapped,
                 Escape closes it, focus goes back, and it has «Lukk …». Entering drawer mode folds
-                both, so nothing opens over the answer by itself (17 September). In the bar, below
-                774, the same drawers open from the bar's buttons.
+                both, so nothing opens over the answer by itself (17 September).
+              </li>
+              <li>
+                <strong>The top row below 774</strong> (kunnskapsassistenten#120): two rails and a
+                main column under its floor do not fit, 67 + 640 + 67, so the rails become one row
+                above the main column, which gets the whole width. The row holds the two icon
+                buttons, the primary panel's first and the secondary panel's last, on the same edges
+                as the text under them. They open the same drawers, which close with Escape and give
+                the focus back to the button. Grid placement, not other markup, so what is in the
+                panels keeps its state and the tab order stays primary button, main column,
+                secondary button.
               </li>
               <li>
                 <strong>Focus:</strong> when a panel folds with the focus in it, the focus goes to
@@ -245,11 +259,11 @@
               follows <code>data-color</code>, <code>data-color-scheme</code> and
               <code>data-size</code>, and reads every token through its own variable, with the token
               as the fallback. Six are pinned to the neutral family on purpose, as
-              kunnskapsassistenten's shell: the page, the panels, the rails, the bar, the drawer and
-              the borders stay grey whatever <code>data-color</code> the app sets, because accent
-              belongs to the content and to what can be pressed. The separator's line takes the
-              accent role without a family. The widths are not tokens: the shell sets them from its
-              own sums.
+              kunnskapsassistenten's shell: the page, the panels, the rails, the top row, the drawer
+              and the borders stay grey whatever <code>data-color</code> the app sets, because
+              accent belongs to the content and to what can be pressed. The separator's line takes
+              the accent role without a family. The widths are not tokens: the shell sets them from
+              its own sums.
             </p>
             <div class="table-wrap">
               <table>
@@ -279,7 +293,7 @@
                   <tr>
                     <td><code>--genai-shell-bar-background</code></td>
                     <td><code>--ds-color-neutral-surface-default</code></td>
-                    <td>the bar in a phone's width (pinned)</td>
+                    <td>the top row below 774 (pinned)</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-drawer-background</code></td>
@@ -289,7 +303,7 @@
                   <tr>
                     <td><code>--genai-shell-border-color</code></td>
                     <td><code>--ds-color-neutral-border-default</code></td>
-                    <td>the panels' edges, pinned heads, the foot and the bar (pinned)</td>
+                    <td>the panels' edges, pinned heads, the foot and the top row (pinned)</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-border-width</code></td>
@@ -409,7 +423,7 @@
                   <tr>
                     <td><code>--genai-shell-bar-padding-block</code></td>
                     <td><code>--ds-size-2</code></td>
-                    <td>above and below the bar's buttons</td>
+                    <td>above and below the top row's buttons</td>
                   </tr>
                   <tr>
                     <td><code>--genai-shell-drawer-close-margin</code></td>
@@ -528,8 +542,9 @@
                 columns, named after their role), 14 September (one panel below 1440, the sources
                 give way to 336), 15 September (the 67 px rail; a pointer path without dragging), 17
                 September (drawers below 1139; no edge where there is nothing to drag), 21 September
-                (the height budget: the panel's controls on one row, «Skjul» as an icon button), and
-                the issues above.
+                (the height budget: the panel's controls on one row, «Skjul» as an icon button), 9
+                November (the top row below 774 is the standard; kunnskapsassistenten has it behind
+                the experiment <code>mobile-top-row</code>), and the issues above.
               </li>
             </ul>
           </div>
@@ -544,10 +559,6 @@
                 kunnskapsassistenten#168 asks the secondary panel to switch between tools with tabs
                 for two and a menu for three or more. Kunnskapsassistenten has no such switch, so it
                 is not built; an app can put one in the panel's <code>head</code>.
-              </li>
-              <li>
-                The bar on phones (kunnskapsassistenten#120) was chosen by the designer, but is
-                still an experiment in kunnskapsassistenten, so it is off by default here too.
               </li>
               <li>The app builder (genki#210) would place blocks in the shell's panels.</li>
             </ul>
