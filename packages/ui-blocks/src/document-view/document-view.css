@@ -6,6 +6,9 @@
 
 @layer genai.components {
   .uib-document-view {
+    /* Room over an excerpt scrolled to. The block sets it inline from the height of «Utdrag i
+       svaret», which stays at the top; this is the room without that row. */
+    --_scroll-room: var(--ds-size-3);
     display: flex;
     flex-direction: column;
     gap: var(--genai-document-view-gap, var(--ds-size-4));
@@ -84,27 +87,82 @@
     color: var(--genai-document-view-note-color, var(--ds-color-neutral-text-subtle));
   }
 
-  /* The step between excerpts stays in reach while the reader scrolls the document, on the body's
-     own surface so the text scrolls under it. */
-  .uib-document-view-steps {
+  /* «Utdrag i svaret»: one chip per cited excerpt, as the canvas's KS-2d draws it. It stays in
+     reach while the reader scrolls the document, on the body's own surface so the text scrolls
+     under it. */
+  .uib-document-view-jumps {
     position: sticky;
-    inset-block-start: var(--genai-document-view-steps-inset, 0);
+    inset-block-start: var(--genai-document-view-jumps-inset, 0);
     z-index: 1;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--genai-document-view-steps-gap, var(--ds-size-2));
-    padding-block: var(--genai-document-view-steps-padding, var(--ds-size-1));
-    background: var(--genai-document-view-steps-background, var(--ds-color-background-tinted));
+    gap: var(--genai-document-view-jumps-gap, var(--ds-size-2));
+    padding-block: var(--genai-document-view-jumps-padding, var(--ds-size-1));
+    background: var(--genai-document-view-jumps-background, var(--ds-color-background-tinted));
   }
-  .uib-document-view-position {
-    margin: 0;
-    color: var(--genai-document-view-position-color, var(--ds-color-text-subtle));
+  .uib-document-view-jumps-label {
+    font-size: var(--genai-document-view-jumps-label-font-size, var(--ds-body-sm-font-size));
+    color: var(--genai-document-view-jumps-label-color, var(--ds-color-text-subtle));
   }
-  .uib-document-view-step-buttons {
+  .uib-document-view-jump-list {
     display: flex;
-    gap: var(--genai-document-view-step-buttons-gap, var(--ds-size-1));
+    flex-wrap: wrap;
+    gap: var(--genai-document-view-jump-list-gap, var(--ds-size-2));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* Designsystemet's chip, its number round as the answer's footnote marks. The one the reader is
+     on is pinned to accent, as the excerpt's own mark, or the two would part in a neutral host. */
+  .uib-document-view-jump {
+    --dsc-chip-padding-inline: var(--genai-document-view-jump-padding, var(--ds-size-1));
+    display: inline-flex;
+    align-items: center;
+    gap: var(--genai-document-view-jump-gap, var(--ds-size-1));
+  }
+  .uib-document-view-jump[aria-current='true'] {
+    --dsc-chip-background: var(
+      --genai-document-view-jump-current-background,
+      var(--ds-color-accent-surface-tinted)
+    );
+    --dsc-chip-border-color: var(
+      --genai-document-view-jump-current-border-color,
+      var(--ds-color-accent-base-default)
+    );
+    --dsc-chip-border-width: var(--genai-document-view-jump-current-border-width, 2px);
+    font-weight: var(--genai-document-view-jump-current-font-weight, var(--ds-font-weight-medium));
+  }
+  .uib-document-view-jump-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: var(--genai-document-view-jump-number-size, var(--ds-size-6));
+    block-size: var(--genai-document-view-jump-number-size, var(--ds-size-6));
+    border-radius: var(
+      --genai-document-view-jump-number-border-radius,
+      var(--ds-border-radius-full)
+    );
+    background: var(
+      --genai-document-view-jump-number-background,
+      var(--ds-color-accent-surface-tinted)
+    );
+    color: var(--genai-document-view-jump-number-color, var(--ds-color-accent-text-default));
+    font-size: var(--genai-document-view-jump-number-font-size, var(--ds-body-xs-font-size));
+    font-weight: var(--genai-document-view-jump-number-font-weight, var(--ds-font-weight-semibold));
+  }
+  .uib-document-view-jump[aria-current='true'] .uib-document-view-jump-number {
+    background: var(
+      --genai-document-view-jump-current-number-background,
+      var(--ds-color-accent-base-default)
+    );
+    color: var(
+      --genai-document-view-jump-current-number-color,
+      var(--ds-color-accent-base-contrast-default)
+    );
+  }
+  .uib-document-view-jump-page {
+    padding-inline-end: var(--genai-document-view-jump-page-padding, var(--ds-size-1));
   }
 
   .uib-document-view-passages {
@@ -133,8 +191,20 @@
     padding: var(--genai-document-view-passage-padding, var(--_passage-padding));
     background: var(--genai-document-view-passage-background, var(--ds-color-surface-default));
     border-radius: var(--genai-document-view-passage-border-radius, var(--ds-border-radius-lg));
-    /* Clear of the steps above when it is scrolled to. */
-    scroll-margin-block-start: var(--genai-document-view-passage-scroll-margin, var(--ds-size-12));
+    /* Clear of «Utdrag i svaret» above when it is scrolled to: the block sets the room from the
+       row's height. */
+    scroll-margin-block-start: var(
+      --genai-document-view-passage-scroll-margin,
+      var(--_scroll-room)
+    );
+  }
+  /* What focus lands on in an excerpt, or under the excerpts, stops clear of the row too. */
+  .uib-document-view-passage :is(a, button),
+  .uib-document-view-ask :is(input, button) {
+    scroll-margin-block-start: var(
+      --genai-document-view-passage-scroll-margin,
+      var(--_scroll-room)
+    );
   }
   .uib-document-view-passage > * {
     margin-block: 0;

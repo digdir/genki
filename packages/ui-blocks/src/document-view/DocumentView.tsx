@@ -1,5 +1,5 @@
-import { Button, Card, Heading, Link, Paragraph, Textfield } from '@digdir/designsystemet-react';
-import { ArrowLeftIcon, ExternalLinkIcon } from '@navikt/aksel-icons';
+import { Button, Card, Chip, Heading, Paragraph, Textfield } from '@digdir/designsystemet-react';
+import { ArrowLeftIcon } from '@navikt/aksel-icons';
 import {
   useEffect,
   useId,
@@ -13,11 +13,21 @@ import {
 import { useT } from './i18n.js';
 import { Markdown } from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
-import { orderedExcerpts, pairCitations, type SourceCitation } from '../sources/pairing.js';
+import {
+  orderedExcerpts,
+  pairCitations,
+  type Pairing,
+  type SourceCitation,
+} from '../sources/pairing.js';
 import {
   DocumentLink,
-  ExcerptNumber,
+  ExcerptTitle,
+  PageLink,
+  prefersStill,
+  reachesPage,
+  sectionOf,
   targetPosition,
+  useExcerptName,
   useSourceSubtitle,
   type BackTo,
 } from '../sources/Sources.js';
@@ -30,6 +40,12 @@ import type {
 
 /** Where «Tilbake til …» leads: the footnote the reader followed, or Sources. */
 export type DocumentViewReturn = 'answer' | 'sources';
+
+/**
+ * Where the reader opens a document in the host: «Vis i dokumentet» under an excerpt in Sources,
+ * or a footnote in the answer, when Sources is not there to take it.
+ */
+export type DocumentViewOpener = 'sources' | 'answer';
 
 /** A question the reader asked about the document, for the host to ask in the thread. */
 export interface DocumentQuestion {
@@ -50,13 +66,14 @@ export interface DocumentViewProps {
   /**
    * Which document, and where in it: a footnote's target, or the excerpt the reader chose in
    * Sources. An excerpt it names is marked, scrolled to and focused; a target that names only the
-   * document lands on its title. Each new target, by identity, is followed once.
+   * document lands on its title. Each new target, by identity, is followed once, and wins over an
+   * excerpt the reader has jumped to since.
    */
   target?: SourceTarget | undefined;
   /**
    * The answer's footnotes in order, as Sources takes them, so the excerpts are numbered «Utdrag N»
-   * and linked back the same way. Without them, or when they name only documents, nothing is
-   * numbered.
+   * and linked back the same way, and «Utdrag i svaret» jumps straight to each cited one. Without
+   * them, or when they name only documents, nothing is numbered and there is nothing to jump to.
    */
   citations?: readonly SourceCitation[] | undefined;
   /** A link back to the answer was followed: that footnote's index in `citations`. */
@@ -77,6 +94,12 @@ export interface DocumentViewProps {
   onAsk?: ((ask: DocumentQuestion) => void) | undefined;
   /** The target names a document or excerpt the sources do not hold. */
   onTargetMissing?: ((target: SourceTarget) => void) | undefined;
+  /**
+   * Where the reader opens a document in this host, so the hint before one is open names that
+   * control: `sources` for «Vis i dokumentet» under an excerpt in Sources, `answer` for a footnote.
+   * Without it, the hint names both.
+   */
+  opensFrom?: DocumentViewOpener | undefined;
   /** What the documents' collection is called, for «Les dokumentet på Kudos». */
   corpus?: string | undefined;
   /** The block's heading, «Dokumentvisning», or `false` for none. */
@@ -94,15 +117,6 @@ export interface DocumentViewProps {
 
 type Level = 2 | 3 | 4 | 5 | 6;
 
-const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
-
-const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
-
-/** The section an excerpt is from: the last step of its heading path. */
-const sectionOf = (path: string | undefined) => path?.split(' › ').at(-1);
-
-const still = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
 /**
  * Whether text the view does not have lies before an excerpt: when the parts' positions say the
  * document goes on between them, or that the first is not the document's start. Without positions
@@ -115,6 +129,35 @@ const gapBefore = (passages: readonly SourceExcerpt[], i: number) => {
   const before = passages[i - 1]?.position;
   return before !== undefined && here - before > 1;
 };
+
+/** A cited excerpt that «Utdrag i svaret» jumps to: its number, and the document it is in. */
+interface Jump {
+  n: number;
+  source: SourceDocument;
+  excerpt: SourceExcerpt;
+}
+
+/**
+ * The answer's cited excerpts, by their «Utdrag N» number, in whichever document each stands. Only
+ * footnotes that name excerpts number anything, so in document mode there is nothing to jump to.
+ */
+const jumpsOf = (sources: readonly SourceDocument[], pairing: Pairing | undefined): Jump[] => {
+  if (pairing?.mode !== 'excerpt') return [];
+  const held = new Map<string, Omit<Jump, 'n'>>();
+  for (const source of sources)
+    for (const excerpt of source.excerpts)
+      if (!held.has(excerpt.chunkId)) held.set(excerpt.chunkId, { source, excerpt });
+  return [...pairing.numbers]
+    .sort(([, a], [, b]) => a - b)
+    .flatMap(([chunkId, n]) => {
+      const where = held.get(chunkId);
+      return where ? [{ n, ...where }] : [];
+    });
+};
+
+/** What a document is, across new copies of the same sources. */
+const documentKey = (source: SourceDocument) =>
+  source.documentId ?? (source.index === undefined ? source.title : `#${source.index}`);
 
 const Empty = ({ level, title, text }: { level: number; title: string; text: string }) => (
   <div className="uib-document-view-empty">
@@ -129,9 +172,9 @@ const Empty = ({ level, title, text }: { level: number; title: string; text: str
 
 /**
  * «Dokumentvisning»: one source document, read in its own order, with the excerpt the reader came
- * for marked and focused, a way to step between its excerpts, the way back, and a question about
- * the document for the host to ask in the thread. Data in, events out: the host passes the
- * answer's sources and a target, as it does to Sources.
+ * for marked and focused, «Utdrag i svaret» to jump straight to each excerpt the answer cites, the
+ * way back, and a question about the document for the host to ask in the thread. Data in, events
+ * out: the host passes the answer's sources and a target, as it does to Sources.
  */
 export const DocumentView = ({
   sources,
@@ -145,6 +188,7 @@ export const DocumentView = ({
   returnTo = 'answer',
   onAsk,
   onTargetMissing,
+  opensFrom,
   corpus,
   title,
   headingLevel = 3,
@@ -155,64 +199,93 @@ export const DocumentView = ({
   className,
 }: DocumentViewProps) => {
   const t = useT();
+  const excerptName = useExcerptName();
   const titleId = useId();
   const documentTitleId = useId();
+  const jumpsId = useId();
+  const passageId = useId();
   const rootRef = useRef<HTMLElement>(null);
   const headRef = useRef<HTMLHeadingElement>(null);
   const passageRefs = useRef(new Map<string, HTMLElement>());
   const applied = useRef(new WeakSet<SourceTarget>());
-  const frame = useRef(0);
-  // The excerpt marked, as an index into the document's excerpts; -1 before a target names one or
-  // the reader steps to one, since a target that names only the document cites no excerpt.
-  const [current, setCurrentState] = useState(-1);
-  // The same, for presses that come faster than a render: each one steps from the last.
-  const currentRef = useRef(-1);
-  const setCurrent = (index: number) => {
-    currentRef.current = index;
-    setCurrentState(index);
-  };
+  // An excerpt the reader jumped to from «Utdrag i svaret», kept only while the host's target is
+  // the one it was chosen under: a new target from the host wins.
+  const [jumped, setJumped] = useState<{ under: SourceTarget | undefined; to: SourceTarget }>();
   const [landing, setLanding] = useState<{ chunkId: string | undefined }>();
   const [said, setSaid] = useState('');
-  const [question, setQuestion] = useState('');
-  const [sent, setSent] = useState('');
+  // The question being written, for the document it was written about.
+  const [draft, setDraft] = useState({ document: '', question: '', sent: '' });
+  const [jumpsRow, setJumpsRow] = useState<HTMLElement | null>(null);
 
-  const position = sources && target ? targetPosition(sources, target) : -1;
+  const own =
+    jumped && jumped.under === target && sources && targetPosition(sources, jumped.to) >= 0
+      ? jumped.to
+      : undefined;
+  const shown = own ?? target;
+  const position = sources && shown ? targetPosition(sources, shown) : -1;
   const source = position >= 0 ? sources?.[position] : undefined;
   const passages = useMemo(() => (source ? orderedExcerpts(source) : []), [source]);
   const pairing = useMemo(
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
+  const jumps = useMemo(() => jumpsOf(sources ?? [], pairing), [sources, pairing]);
   const subtitle = useSourceSubtitle(source ?? { title: '', excerpts: [] });
   const missing = target !== undefined && sources !== undefined && !source;
   // A footnote that names an excerpt this document does not hold marks nothing.
   const strayChunk =
     source !== undefined &&
-    target?.chunkId !== undefined &&
-    !passages.some((p) => p.chunkId === target.chunkId);
+    shown?.chunkId !== undefined &&
+    !passages.some((p) => p.chunkId === shown.chunkId);
+  // The excerpt marked, by its chunk and read from the target itself, so a new document never
+  // shows the last one's mark for a render.
+  const marked = source && !strayChunk ? shown?.chunkId : undefined;
+  const shownKey = source ? documentKey(source) : '';
 
   useEffect(() => {
-    if (target && (missing || strayChunk)) onTargetMissing?.(target);
+    if (target && !own && (missing || strayChunk)) onTargetMissing?.(target);
   }, [target, missing, strayChunk]);
 
   useEffect(() => {
-    // Once per target the app passes, and only once its document is here: new sources with the
-    // target still held move no focus.
-    if (!target || !source || applied.current.has(target)) return;
-    applied.current.add(target);
-    const at = target.chunkId ? passages.findIndex((p) => p.chunkId === target.chunkId) : -1;
-    setCurrent(at);
-    setSaid('');
-    setLanding({ chunkId: at >= 0 ? target.chunkId : undefined });
-  }, [target, source]);
+    // Once per target, the host's or a jump's, and only once its document is here: new sources
+    // with the target still held move no focus.
+    if (!shown || !source || applied.current.has(shown)) return;
+    applied.current.add(shown);
+    if (!own) setSaid('');
+    setLanding({ chunkId: marked });
+  }, [shown, source]);
+
+  // «Utdrag i svaret» stays at the top while the document scrolls, so an excerpt scrolled to must
+  // stop under it, however many lines its chips take: the room is the row's height, set on the
+  // block where the stylesheet reads it. Measured before each landing, which can come before the
+  // first resize is reported, and on every resize after.
+  const fitRoom = (row: HTMLElement | null) => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (!row) root.style.removeProperty('--_scroll-room');
+    else
+      root.style.setProperty(
+        '--_scroll-room',
+        `calc(${Math.ceil(row.getBoundingClientRect().height)}px + var(--ds-size-2))`,
+      );
+  };
+
+  useEffect(() => {
+    fitRoom(jumpsRow);
+    if (!jumpsRow || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => fitRoom(jumpsRow));
+    observer.observe(jumpsRow);
+    return () => observer.disconnect();
+  }, [jumpsRow]);
 
   useEffect(() => {
     if (!landing) return;
     const id = requestAnimationFrame(() => {
+      fitRoom(jumpsRow);
       const passage = landing.chunkId ? passageRefs.current.get(landing.chunkId) : undefined;
       // On the title, the block's top is shown too, so the way back stays in sight.
       (passage ?? rootRef.current)?.scrollIntoView?.({
-        behavior: still() ? 'auto' : 'smooth',
+        behavior: prefersStill() ? 'auto' : 'smooth',
         block: 'start',
       });
       (passage ?? headRef.current)?.focus({ preventScroll: true });
@@ -220,9 +293,8 @@ export const DocumentView = ({
     return () => cancelAnimationFrame(id);
   }, [landing]);
 
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-
   const level = headingLevel as Level;
+  const rootClass = className ? `uib-document-view ${className}` : 'uib-document-view';
   const heading =
     title === false ? null : (
       <Heading
@@ -246,21 +318,28 @@ export const DocumentView = ({
 
   if (!source)
     return (
-      <section className={classes('uib-document-view', className)} data-color={color} {...named}>
+      <section className={rootClass} data-color={color} {...named}>
         {/* Nothing to go back to before a target. */}
         {target ? back : null}
         {heading}
         <Empty
           level={headingLevel}
           title={missing ? t('documentView.missingTitle') : t('documentView.emptyTitle')}
-          text={missing ? t('documentView.missing') : t('documentView.empty')}
+          text={
+            missing
+              ? t('documentView.missing')
+              : opensFrom === 'sources'
+                ? t('documentView.emptyFromSources')
+                : opensFrom === 'answer'
+                  ? t('documentView.emptyFromAnswer')
+                  : t('documentView.empty')
+          }
         />
         {children}
       </section>
     );
 
   const documentTitle = source.title.trim() || t('sources.untitled');
-  const at = current < passages.length ? current : -1;
   const ordered = passages.every((p) => p.position !== undefined);
   const backTo: BackTo | undefined =
     onShowUse || citationHref
@@ -281,49 +360,29 @@ export const DocumentView = ({
       }
     : undefined;
 
-  const nameOf = (excerpt: SourceExcerpt) => {
-    const n = pairing?.mode === 'excerpt' ? pairing.numbers.get(excerpt.chunkId) : undefined;
-    const section = sectionOf(headingText(excerpt.heading));
-    if (n === undefined) return section ?? t('sources.excerptUnnumbered');
-    return section
-      ? `${t('sources.excerptNumber', { n })}: ${section}`
-      : t('sources.excerptNumber', { n });
+  // Straight to a cited excerpt, in this document or another of the answer's. Focus lands on it
+  // and says its name; a document of its own is said in the live region too.
+  const jump = ({ source: to, excerpt }: Jump) => {
+    setJumped({ under: target, to: { chunkId: excerpt.chunkId, documentId: to.documentId } });
+    setSaid(
+      to === source
+        ? ''
+        : t('documentView.opened', { title: to.title.trim() || t('sources.untitled') }),
+    );
   };
 
-  const step = (by: 1 | -1) => {
-    const from = currentRef.current < passages.length ? currentRef.current : -1;
-    const next = from + by;
-    const excerpt = passages[next];
-    if (!excerpt) return;
-    setCurrent(next);
-    setSaid(t('documentView.at', { title: nameOf(excerpt), n: next + 1, total: passages.length }));
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(() => {
-      passageRefs.current
-        .get(excerpt.chunkId)
-        ?.scrollIntoView?.({ behavior: still() ? 'auto' : 'smooth', block: 'start' });
-    });
-  };
-
+  const question = draft.document === shownKey ? draft.question : '';
+  const sent = draft.document === shownKey ? draft.sent : '';
   const ask = (event: FormEvent) => {
     event.preventDefault();
     const text = question.trim();
     if (!text || !onAsk) return;
-    onAsk({ question: text, source, excerpt: at >= 0 ? passages[at] : undefined });
-    setQuestion('');
-    setSent(t('documentView.askSent'));
+    onAsk({ question: text, source, excerpt: passages.find((p) => p.chunkId === marked) });
+    setDraft({ document: shownKey, question: '', sent: t('documentView.askSent') });
   };
 
-  const atFirst = at <= 0;
-  const atLast = at >= passages.length - 1;
-
   return (
-    <section
-      ref={rootRef}
-      className={classes('uib-document-view', className)}
-      data-color={color}
-      {...named}
-    >
+    <section ref={rootRef} className={rootClass} data-color={color} {...named}>
       {/* In the page from the first render: a live region announces only a change to it. */}
       <output className="ds-sr-only">{said}</output>
       {back}
@@ -371,41 +430,60 @@ export const DocumentView = ({
               {t('documentView.disclaimer')}
             </Paragraph>
           ) : null}
-          {passages.length > 1 ? (
+          {/* One chip per excerpt the answer cites, by its number, as the canvas's KS-2d draws
+              it: each jumps straight to its excerpt. No stepper and no bare count; what nothing
+              cites is reached by scrolling, in the document's order. */}
+          {jumps.length > 0 ? (
             <div
-              className="uib-document-view-steps"
+              ref={setJumpsRow}
+              className="uib-document-view-jumps"
               role="group"
-              aria-label={t('documentView.steps')}
+              aria-labelledby={jumpsId}
             >
-              {/* For the eye; the live region says it with the excerpt's name. */}
-              <Paragraph aria-hidden="true" data-size="xs" className="uib-document-view-position">
-                {at >= 0
-                  ? t('documentView.position', { n: at + 1, total: passages.length })
-                  : t('documentView.count', { count: passages.length })}
-              </Paragraph>
-              <div className="uib-document-view-step-buttons">
-                {/* `aria-disabled` and not `disabled` at the ends, so focus stays on the button. */}
-                <Button
-                  type="button"
-                  variant="tertiary"
-                  data-size="sm"
-                  aria-label={t('documentView.previousExcerpt')}
-                  aria-disabled={atFirst || undefined}
-                  onClick={() => step(-1)}
-                >
-                  {t('sources.previous')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="tertiary"
-                  data-size="sm"
-                  aria-label={t('documentView.nextExcerpt')}
-                  aria-disabled={atLast || undefined}
-                  onClick={() => step(1)}
-                >
-                  {t('sources.next')}
-                </Button>
-              </div>
+              <span id={jumpsId} className="uib-document-view-jumps-label">
+                {t('documentView.jumps')}
+              </span>
+              <ul className="uib-document-view-jump-list">
+                {jumps.map((item) => {
+                  const { n, excerpt } = item;
+                  const elsewhere = item.source !== source;
+                  const page = excerpt.page;
+                  // The name starts with what the chip shows, and says the page and, for another
+                  // document, which one, as the canvas's title on the chip does.
+                  const name = [
+                    t('sources.excerptNumber', { n }),
+                    page === undefined ? undefined : t('sources.page', { page }),
+                    elsewhere
+                      ? t('documentView.jumpIn', {
+                          title: item.source.title.trim() || t('sources.untitled'),
+                        })
+                      : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(', ');
+                  return (
+                    <li key={excerpt.chunkId}>
+                      <Chip.Button
+                        type="button"
+                        className="uib-document-view-jump"
+                        aria-label={name}
+                        title={elsewhere ? name : undefined}
+                        aria-current={!elsewhere && excerpt.chunkId === marked ? 'true' : undefined}
+                        onClick={() => jump(item)}
+                      >
+                        <span className="uib-document-view-jump-number" aria-hidden="true">
+                          {n}
+                        </span>
+                        {page === undefined ? null : (
+                          <span className="uib-document-view-jump-page" aria-hidden="true">
+                            {t('documentView.jumpPage', { page })}
+                          </span>
+                        )}
+                      </Chip.Button>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           ) : null}
           <ol className="uib-document-view-passages">
@@ -423,7 +501,8 @@ export const DocumentView = ({
                 excerpt.url && page !== undefined && reachesPage(excerpt.url, page)
                   ? excerpt.url
                   : undefined;
-              const here = i === at;
+              const here = excerpt.chunkId === marked;
+              const titleOf = `${passageId}-${i}`;
               return (
                 <li key={excerpt.chunkId}>
                   {gapBefore(passages, i) ? (
@@ -432,43 +511,35 @@ export const DocumentView = ({
                       <span className="ds-sr-only">{t('documentView.gap')}</span>
                     </p>
                   ) : null}
+                  {/* A group named by its title, so focus that lands here says which excerpt. */}
                   <div
                     ref={(el) => {
                       if (el) passageRefs.current.set(excerpt.chunkId, el);
                       else passageRefs.current.delete(excerpt.chunkId);
                     }}
                     className="uib-document-view-passage ds-focus"
+                    role="group"
+                    aria-labelledby={titleOf}
                     tabIndex={-1}
                     data-current={here || undefined}
                     data-uncited={uncited || undefined}
                     aria-busy={fetching || undefined}
                   >
-                    <Heading
-                      level={(headingLevel + 1) as Level}
-                      data-size="2xs"
+                    <ExcerptTitle
+                      id={titleOf}
+                      level={headingLevel + 1}
                       className="uib-document-view-passage-title"
-                      // Named by what it says, as in Sources: the number stands on a line of its
-                      // own, which a browser reads without the colon.
-                      aria-label={n === undefined ? undefined : nameOf(excerpt)}
-                    >
-                      {n === undefined ? null : (
-                        <ExcerptNumber
-                          n={n}
-                          label={t('sources.excerptNumber', { n })}
-                          uses={uses}
-                          back={
-                            backTo && {
-                              ...backTo,
-                              onShow:
-                                onShowUse &&
-                                ((citation) => onShowUse(citation, { source, excerpt })),
-                            }
-                          }
-                        />
-                      )}
-                      {section ? <span>{section}</span> : null}
-                      {!section && n === undefined ? t('sources.excerptUnnumbered') : null}
-                    </Heading>
+                      n={n}
+                      section={section}
+                      uses={uses}
+                      back={
+                        backTo && {
+                          ...backTo,
+                          onShow:
+                            onShowUse && ((citation) => onShowUse(citation, { source, excerpt })),
+                        }
+                      }
+                    />
                     {uncited ? (
                       <Paragraph data-size="xs" className="uib-document-view-uncited">
                         {t('sources.uncited')}
@@ -501,21 +572,14 @@ export const DocumentView = ({
                       </Paragraph>
                     )}
                     {pageLink && page !== undefined ? (
-                      <Link
+                      <PageLink
                         href={pageLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        data-size="sm"
+                        page={page}
+                        name={excerptName(n, section)}
+                        title={documentTitle}
+                        corpus={corpus}
                         className="uib-document-view-link"
-                      >
-                        {corpus
-                          ? t('sources.readPageOn', { page, corpus })
-                          : t('sources.readPage', { page })}
-                        <span className="ds-sr-only">
-                          , {nameOf(excerpt)}, {documentTitle} {t('sources.opensInNewTab')}
-                        </span>
-                        <ExternalLinkIcon aria-hidden />
-                      </Link>
+                      />
                     ) : null}
                   </div>
                 </li>
@@ -528,10 +592,9 @@ export const DocumentView = ({
                 label={t('documentView.askLabel')}
                 description={t('documentView.askHint')}
                 value={question}
-                onChange={(event) => {
-                  setQuestion(event.target.value);
-                  setSent('');
-                }}
+                onChange={(event) =>
+                  setDraft({ document: shownKey, question: event.target.value, sent: '' })
+                }
                 className="uib-document-view-ask-field"
               />
               <Button type="submit" aria-disabled={!question.trim() || undefined}>
