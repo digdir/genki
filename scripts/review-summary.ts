@@ -29,7 +29,6 @@ export interface Finding {
   url: string;
   status: Status;
   fixedIn?: string;
-  resolved: boolean;
 }
 
 export interface Walkthrough {
@@ -56,8 +55,13 @@ export function parseFinding(thread: Thread): Finding | null {
     (r) => r.author.startsWith(BOT) && /^Fixed in `?([0-9a-f]{7,40})/.test(r.body),
   );
   const human = thread.replies.filter((r) => !r.author.startsWith(BOT));
-  const status: Status =
-    thread.isResolved || botFix
+  const reopened =
+    !thread.isResolved &&
+    botFix !== undefined &&
+    thread.replies.slice(thread.replies.indexOf(botFix) + 1).some((r) => !r.author.startsWith(BOT));
+  const status: Status = reopened
+    ? 'open'
+    : thread.isResolved || botFix
       ? 'fixed'
       : human.some((r) => DISMISSED.test(r.body))
         ? 'dismissed'
@@ -71,13 +75,10 @@ export function parseFinding(thread: Thread): Finding | null {
     line: thread.line,
     url: thread.url,
     status,
-    resolved: thread.isResolved,
-    fixedIn: botFix ? /([0-9a-f]{7,40})/.exec(botFix.body)?.[1]?.slice(0, 7) : undefined,
+    fixedIn:
+      botFix && !reopened ? /([0-9a-f]{7,40})/.exec(botFix.body)?.[1]?.slice(0, 7) : undefined,
   };
 }
-
-export const unresolvedFixes = (findings: Finding[]) =>
-  findings.filter((f) => f.status === 'fixed' && f.fixedIn && !f.resolved);
 
 const cell = (s: string) => s.replaceAll('|', '\\|').replaceAll('\n', ' ');
 const order: Record<Severity, number> = { Important: 0, Nit: 1, 'Pre-existing': 2 };
@@ -233,10 +234,9 @@ async function main() {
     );
 
   if (mode === 'open') {
-    const all = await findings();
-    const open = all.filter((f) => f.status === 'open');
+    const open = (await findings()).filter((f) => f.status === 'open');
     writeFileSync('open-findings.json', JSON.stringify(open, null, 2));
-    console.log(`count=${open.length}\nunresolved=${unresolvedFixes(all).length}`);
+    console.log(`count=${open.length}`);
     return;
   }
 
@@ -262,11 +262,7 @@ async function main() {
         { t: f.thread_id, b: `Fixed in \`${process.env.HEAD}\`: ${f.note}` },
       );
     }
-    const toResolve = [
-      ...fixed.map((f) => f.thread_id),
-      ...unresolvedFixes(await findings()).map((f) => f.threadId),
-    ];
-    for (const t of new Set(toResolve)) {
+    for (const { thread_id: t } of fixed) {
       try {
         await graphql(
           `

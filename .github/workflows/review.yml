@@ -145,7 +145,6 @@ jobs:
       id-token: write
     outputs:
       count: ${{ steps.open.outputs.count }}
-      unresolved: ${{ steps.open.outputs.unresolved }}
       open: ${{ steps.open.outputs.open }}
       fixed: ${{ steps.claude.outputs.structured_output }}
     env:
@@ -190,7 +189,7 @@ jobs:
 
   resolve:
     needs: follow-up
-    if: needs.follow-up.outputs.count != '0' || needs.follow-up.outputs.unresolved != '0'
+    if: needs.follow-up.outputs.count != '0'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
