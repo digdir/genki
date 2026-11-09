@@ -4,8 +4,9 @@ import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
 import { Composer, ComposerDisclaimer, type ComposerProps } from './Composer.js';
+import { en, nb } from './i18n.js';
 
 afterEach(() => {
   cleanup();
@@ -407,5 +408,10 @@ describe('the composer’s language', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the question field's words in its own catalogue, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['composer']);
+    expect(sharedNb).not.toHaveProperty('composer');
   });
 });

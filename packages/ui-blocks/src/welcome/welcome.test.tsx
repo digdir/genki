@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { nb as sharedNb } from '../i18n.js';
+import { en, nb } from './i18n.js';
 import { Suggestions, Welcome } from './Welcome.js';
 
 afterEach(cleanup);
@@ -108,5 +111,16 @@ describe('the welcome’s language', () => {
     );
     expect(screen.getByRole('heading', { level: 3 }).textContent).toMatch(/^Hei/);
     expect(screen.getByRole('heading', { level: 4 }).textContent).toBe('Forslag');
+  });
+});
+
+describe('the catalogue', () => {
+  it('has an English text for every Norwegian one', () => {
+    expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the welcome's words in its own catalogue, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['welcome']);
+    expect(sharedNb).not.toHaveProperty('welcome');
   });
 });

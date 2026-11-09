@@ -1,5 +1,6 @@
 import { defineCatalogue, type Translation } from '@genai/i18n';
 import * as answer from './answer/i18n.js';
+import * as composer from './composer/i18n.js';
 import * as conversation from './conversation/i18n.js';
 import * as documentView from './document-view/i18n.js';
 import * as shared from './i18n.js';
@@ -7,6 +8,7 @@ import * as sources from './sources/i18n.js';
 import * as states from './states/i18n.js';
 import * as threads from './threads/i18n.js';
 import * as variantPicker from './variant-picker/i18n.js';
+import * as welcome from './welcome/i18n.js';
 
 /**
  * Every block's words in one catalogue, exported as `uiBlocksNb` and `uiBlocksEn`, for a host that
@@ -22,6 +24,8 @@ export const nb = defineCatalogue({
   ...states.nb,
   ...variantPicker.nb,
   ...threads.nb,
+  ...composer.nb,
+  ...welcome.nb,
 });
 export const en = {
   ...shared.en,
@@ -32,4 +36,6 @@ export const en = {
   ...states.en,
   ...variantPicker.en,
   ...threads.en,
+  ...composer.en,
+  ...welcome.en,
 } satisfies Translation<typeof nb>;

@@ -1,7 +1,7 @@
 import { Button, Chip, Spinner } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import type { ComposerAttachment, ComposerAttachmentError, ComposerAttachments } from './types.js';
 
 export const useAttachmentText = (attachments: ComposerAttachments | undefined) => {

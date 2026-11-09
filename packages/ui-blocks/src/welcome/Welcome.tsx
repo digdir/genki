@@ -1,7 +1,7 @@
 import { Button, Heading } from '@digdir/designsystemet-react';
 import { FileTextIcon } from '@navikt/aksel-icons';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface WelcomeProps {
   /** The reader's first name. Without it the greeting is «Hei». */
