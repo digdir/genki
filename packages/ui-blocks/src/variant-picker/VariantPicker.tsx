@@ -1,7 +1,7 @@
 import { Dropdown } from '@digdir/designsystemet-react';
 import { CheckmarkIcon, ChevronDownIcon } from '@navikt/aksel-icons';
 import { useId, useRef, useState } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface VariantOption {
   /** What the app sends as `model`, the platform's `id`. */

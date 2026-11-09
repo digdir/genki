@@ -1,8 +1,8 @@
 import { Alert, Button, Heading, Link, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { plainClick } from '../dom.js';
-import { useT } from '../i18n.js';
 import { errorTextKey, isRetryable, type ErrorKind } from './errorKinds.js';
+import { useT } from './i18n.js';
 
 export { CrashBoundary, type CrashBoundaryProps } from './CrashBoundary.js';
 export {

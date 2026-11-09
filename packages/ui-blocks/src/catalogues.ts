@@ -4,6 +4,8 @@ import * as conversation from './conversation/i18n.js';
 import * as documentView from './document-view/i18n.js';
 import * as shared from './i18n.js';
 import * as sources from './sources/i18n.js';
+import * as states from './states/i18n.js';
+import * as variantPicker from './variant-picker/i18n.js';
 
 /**
  * Every block's words in one catalogue, exported as `uiBlocksNb` and `uiBlocksEn`, for a host that
@@ -16,6 +18,8 @@ export const nb = defineCatalogue({
   ...answer.nb,
   ...conversation.nb,
   ...documentView.nb,
+  ...states.nb,
+  ...variantPicker.nb,
 });
 export const en = {
   ...shared.en,
@@ -23,4 +27,6 @@ export const en = {
   ...answer.en,
   ...conversation.en,
   ...documentView.en,
+  ...states.en,
+  ...variantPicker.en,
 } satisfies Translation<typeof nb>;
