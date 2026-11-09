@@ -18,8 +18,11 @@ describe('the blocks’ catalogue for hosts', () => {
     const missing: string[] = [];
     let catalogues = 0;
     for (const path of catalogueModules) {
-      const stem = path.replace(/\.ts$/, '');
-      const module = (await import(`./${stem}.ts`)) as { nb?: Catalogue; en?: Catalogue };
+      // Every catalogue module there is, found on disk, so a new block cannot be left out.
+      const module = (await import(/* @vite-ignore */ `./${path}`)) as {
+        nb?: Catalogue;
+        en?: Catalogue;
+      };
       if (!module.nb || !module.en) continue;
       catalogues += 1;
       for (const [name, words] of Object.entries(module.nb)) {
