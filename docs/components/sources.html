@@ -94,15 +94,19 @@
             <h2>Variants</h2>
             <ul>
               <li>
-                <strong>Footnotes that name excerpts</strong>: only cited excerpts get a number,
-                «Utdrag 1», «Utdrag 2», in the order the answer first cites them. Documents are
-                named by title.
+                <strong>Footnotes that name excerpts</strong>: cited excerpts are numbered «Utdrag
+                1», «Utdrag 2», in the order the answer first cites them, and read in that order
+                from the top: the documents by their lowest number, and in each, its cited excerpts
+                by number. An excerpt nothing cites comes after them in its document, takes the
+                numbers after the cited ones, in reading order, and says «Ikke vist til i svaret»,
+                with no link back. Documents are named by title.
               </li>
               <li>
                 <strong>Footnotes that name only documents</strong>, as long as a service cites
                 documents: nothing is numbered, since footnotes are numbered by excerpt and never by
                 document. A document's passages, which nothing cites alone, are closed behind «Vis
-                utdrag fra dokumentet (n)». A document no footnote names says so.
+                utdrag fra dokumentet (n)». A document no footnote names says so. The documents and
+                their passages keep the service's order.
               </li>
               <li>
                 <strong>Panel</strong>, with a search over the excerpts, and
@@ -184,7 +188,8 @@
             </ul>
             <p>
               <code>pairCitations</code> is exported, so the answer numbers its footnotes the same
-              way.
+              way, and so is <code>readingOrder</code>, so «Kilder brukt i svaret» lists the
+              documents in the order Sources shows them.
             </p>
             <h2>Related</h2>
             <ul>
@@ -558,9 +563,9 @@
             <h2>What we have learned</h2>
             <ul>
               <li>
-                A number on an excerpt with no visible use reads as made up. Only what a footnote
-                cites gets a number, and the pairing comes from the answer's footnotes, never a
-                guess.
+                A number on an excerpt with no visible use reads as made up. Only a cited excerpt
+                has a number a footnote leads to and links back; one nothing cites is numbered after
+                them and says so. The pairing comes from the answer's footnotes, never a guess.
               </li>
               <li>
                 Kudos excerpts are Marker's Markdown from PDFs. The block drops page markers, rules

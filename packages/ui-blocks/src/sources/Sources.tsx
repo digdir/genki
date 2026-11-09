@@ -28,9 +28,10 @@ import {
 import { excerptMarkdown, headingText } from './excerptMarkdown.js';
 import {
   documentKeys,
-  documentOrder,
   pairCitations,
+  readingOrder,
   type Pairing,
+  type ReadingOrder,
   type SourceCitation,
 } from './pairing.js';
 import { SourcesSearch } from './SourcesSearch.js';
@@ -124,11 +125,6 @@ type Level = 2 | 3 | 4 | 5 | 6;
 
 const classes = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
-export const orderedExcerpts = (source: SourceDocument): readonly SourceExcerpt[] =>
-  source.excerpts.every((e) => e.position !== undefined)
-    ? source.excerpts.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    : source.excerpts;
-
 const reachesPage = (url: string, page: number) => url.endsWith(`#page=${page}`);
 
 const qualifier = (id: string | undefined) => (id?.includes('::') ? id.split('::')[0] : undefined);
@@ -174,6 +170,7 @@ const distinctNames = (
 
 const prepare = (
   sources: readonly SourceDocument[],
+  order: ReadingOrder,
   name: (title: string, id: string) => string,
   itemId: SourcesProps['itemId'],
 ): Prepared[] => {
@@ -182,7 +179,10 @@ const prepare = (
   return sources.map((source, i) => {
     const key = keys[i] ?? `@${i}`;
     const passages: { text: string; excerpt?: SourceExcerpt }[] = source.excerpts.length
-      ? orderedExcerpts(source).map((excerpt) => ({ text: excerptMarkdown(excerpt.text), excerpt }))
+      ? (order.excerpts[i] ?? source.excerpts).map((excerpt) => ({
+          text: excerptMarkdown(excerpt.text),
+          excerpt,
+        }))
       : [{ text: excerptMarkdown(source.excerpt ?? '') }].filter((p) => p.text);
     const rows = passages.map((passage, j): Row => {
       const quote = passage.excerpt?.textUnavailable ? '' : passage.text;
@@ -417,6 +417,8 @@ type ItemProps = Pick<
   document: Prepared;
   level: number;
   pairing: Pairing | undefined;
+  /** Every shown excerpt's number: the cited ones first, then the rest in reading order. */
+  numbers: ReadonlyMap<string, number>;
   /** The links back to the answer, when the app takes them. */
   back:
     | (Omit<BackTo, 'onShow'> & {
@@ -441,6 +443,7 @@ const SourceItem = ({
   document: { source, key: documentKey, name: given, id, rows },
   level,
   pairing,
+  numbers,
   openRows,
   onRowOpenChange,
   open,
@@ -657,12 +660,13 @@ const SourceItem = ({
             const isOpen = openRows.has(key);
             const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
-            const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
+            // Only a cited excerpt has uses, and only its links lead back to the answer. One that
+            // nothing cites is numbered after the cited ones, and says it is not cited.
+            const cited = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
+            const n = excerpt ? numbers.get(excerpt.chunkId) : undefined;
             const uses =
-              byExcerpt && n !== undefined && excerpt
-                ? (pairing.uses.get(excerpt.chunkId) ?? [])
-                : [];
-            const uncited = byExcerpt && n === undefined;
+              cited !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
+            const uncited = byExcerpt && cited === undefined;
             const path = headingText(excerpt?.heading);
             const section = sectionOf(path);
             const name =
@@ -723,7 +727,7 @@ const SourceItem = ({
                         n={n}
                         label={t('sources.excerptNumber', { n })}
                         uses={uses}
-                        back={backFor(excerpt)}
+                        back={cited === undefined ? undefined : backFor(excerpt)}
                       />
                     )}
                     {section ? <span>{section}</span> : null}
@@ -887,20 +891,26 @@ export const Sources = ({
   const applied = useRef(new WeakSet<SourceTarget>());
   const frame = useRef(0);
 
-  const prepared = useMemo(
-    () => prepare(sources ?? [], (name, id) => t('sources.sameTitle', { title: name, id }), itemId),
-    [sources, t, itemId],
-  );
   const pairing = useMemo(
     () => (citations ? pairCitations(sources ?? [], citations) : undefined),
     [sources, citations],
   );
-  // The cards in the order of their numbers, 1, 2, 3, as the footnotes run; the search steps
-  // through them in the same order.
-  const order = useMemo(() => documentOrder(sources ?? [], pairing), [sources, pairing]);
+  // The cards, and the excerpts in each, in the order of their numbers, 1, 2, 3, as the footnotes
+  // run; the search steps through them in the same order.
+  const order = useMemo(() => readingOrder(sources ?? [], pairing), [sources, pairing]);
+  const prepared = useMemo(
+    () =>
+      prepare(
+        sources ?? [],
+        order,
+        (name, id) => t('sources.sameTitle', { title: name, id }),
+        itemId,
+      ),
+    [sources, order, t, itemId],
+  );
   const index = useMemo<SearchableItem[]>(
     () =>
-      order.flatMap(
+      order.documents.flatMap(
         (i) =>
           prepared[i]?.rows
             .filter((row) => row.flat)
@@ -1076,7 +1086,7 @@ export const Sources = ({
         />
       ) : sources?.length ? (
         <ol key={listKey} className="uib-sources-documents" {...named}>
-          {order.flatMap((i) => {
+          {order.documents.flatMap((i) => {
             const document = prepared[i];
             if (!document) return [];
             return [
@@ -1085,6 +1095,7 @@ export const Sources = ({
                   document={document}
                   level={headingLevel}
                   pairing={pairing}
+                  numbers={order.numbers}
                   openRows={openRows}
                   onRowOpenChange={setRowOpen}
                   open={cardOpen(document.key)}

@@ -119,22 +119,62 @@ describe('the sources block', () => {
 });
 
 describe('numbered excerpts, linked both ways', () => {
-  it('numbers only cited excerpts, 1, 2, 3 in the order the answer first cites them', () => {
+  it('numbers cited excerpts 1, 2, 3 in the order the answer first cites them', () => {
     draw({ citations: cite('kudos::2021-2', 'kudos::2021-1', 'kudos::2021-2') });
     expect(screen.getByRole('heading', { name: /Utdrag 1.*Internkontroll/ })).toBeTruthy();
     expect(screen.getByRole('heading', { name: /Utdrag 2.*Ressursbruk/ })).toBeTruthy();
-    expect(screen.queryByText('Utdrag 3')).toBeNull();
+    expect(rowOf(/Utdrag 1/).dataset.uncited).toBeUndefined();
+    expect(rowOf(/Utdrag 2/).dataset.uncited).toBeUndefined();
   });
 
-  it('shows an excerpt nothing cites without a number, and says it is not cited', () => {
+  it('numbers an excerpt nothing cites after the cited ones, and says it is not cited', () => {
     draw({ citations: cite('kudos::2021-1') });
     const row = screen
       .getByText('Ledelsen vurderer måloppnåelsen som god.')
       .closest('.uib-sources-excerpt') as HTMLElement;
-    expect(within(row).getByRole('heading').textContent).toBe('Utdrag');
+    // «Utdrag 1» is cited; the report’s two others are 2 and 3, and the memo’s excerpt 4.
+    expect(within(row).getByRole('heading').textContent).toBe('Utdrag 3');
     expect(row.dataset.uncited).toBe('true');
     expect(within(row).getByText('Ikke vist til i svaret')).toBeTruthy();
-    expect(within(row).queryByRole('link', { name: /^\d+: fotnote \d/ })).toBeNull();
+    const numbered = screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent);
+    expect(numbered).toEqual(['Utdrag 1', 'Utdrag 2', 'Utdrag 3', 'Utdrag 4']);
+  });
+
+  it('reads «Utdrag 1», 2, 3 from the top: the cards by their lowest number, and the cited excerpts in each by number before the rest', () => {
+    // The report cites its third part before its first, and the memo comes first of all.
+    draw({ citations: cite('attached:abc:0', 'kudos::2021-3', 'kudos::2021-1') });
+    const titles = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(titles).toEqual([memo.title, nkom.title]);
+    const read = [...document.querySelectorAll('.uib-sources-excerpt')].map((row) => [
+      row.querySelector('.uib-sources-excerpt-number')?.textContent,
+      row.querySelector('.uib-sources-quote')?.textContent,
+    ]);
+    expect(read).toEqual([
+      ['Utdrag 1', 'Notatet beskriver rutinen.'],
+      ['Utdrag 2', 'Ledelsen vurderer måloppnåelsen som god.'],
+      ['Utdrag 3', 'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.'],
+      ['Utdrag 4', 'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.'],
+    ]);
+  });
+
+  it('keeps each document’s own order of excerpts when nothing is numbered', () => {
+    for (const citations of [undefined, [{ index: 2 }, { index: 1 }]]) {
+      draw({ citations });
+      expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+        nkom.title,
+        memo.title,
+      ]);
+      expect(
+        [...document.querySelectorAll('.uib-sources-quote')].map((quote) => quote.textContent),
+      ).toEqual([
+        'Nkoms totale utgiftsbevilgning for 2021 var på 594,2 mill. kroner.',
+        'Arbeidet med internkontroll tar utgangspunkt i veilederne fra DFØ.',
+        'Ledelsen vurderer måloppnåelsen som god.',
+        'Notatet beskriver rutinen.',
+      ]);
+      expect(screen.queryByText(/^Utdrag \d/)).toBeNull();
+      cleanup();
+    }
   });
 
   it('runs the cards in the order of their numbers, 1, 2, 3, as the footnotes do', () => {
@@ -259,14 +299,23 @@ describe('the way back to the answer, beside the excerpt’s title', () => {
     const citations = cite('kudos::2021-3', 'kudos::2021-1', 'kudos::2021-3', 'attached:abc:0');
     draw({ citations, onShowUse: () => {} });
     const pairing = pairCitations([nkom, memo], citations);
-    const numbered = screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent);
-    expect(numbered.sort()).toEqual(
+    const cited = screen
+      .getAllByText(/^Utdrag \d+$/)
+      .filter((label) => !label.closest<HTMLElement>('.uib-sources-excerpt')?.dataset.uncited);
+    expect(cited.map((label) => label.textContent).sort()).toEqual(
       [...new Set(pairing.numbers.values())].map((n) => `Utdrag ${n}`).sort(),
     );
-    for (const label of screen.getAllByText(/^Utdrag \d+$/)) {
+    for (const label of cited) {
       const row = label.closest('.uib-sources-excerpt') as HTMLElement;
       expect(links(row).length).toBeGreaterThan(0);
     }
+    // Every footnote leads to a cited excerpt shown with its number, and to no uncited one.
+    pairing.targets.forEach((chunk, i) => {
+      const n = pairing.numbers.get(chunk ?? '');
+      const row = rowOf(new RegExp(`^Utdrag ${n}(:|$)`));
+      expect(row.dataset.uncited).toBeUndefined();
+      expect(pairing.uses.get(chunk ?? '')).toContain(i);
+    });
     expect(pairing.unpaired).toEqual([]);
   });
 });
