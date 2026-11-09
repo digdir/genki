@@ -17,9 +17,9 @@ Mark a finding Important only when the change would:
 
 Everything else is Nit at most: naming, structure, style, refactors.
 
-## Cap the nits
+## One round
 
-Report at most three Nits per review. Report Pre-existing problems in lines the pull request did not touch only when they are Important, at most two.
+Report every finding in one review. Never hold one back for a later round: the author should fix once. Report Pre-existing problems in lines the pull request did not touch only when they are Important.
 
 ## Do not report
 
