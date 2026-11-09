@@ -53,6 +53,7 @@ export const nbAnswer = defineNamespace({
   moreColumns: '{more} til',
   copyHeading: 'Kilder',
   copyPage: '{title}, s. {page}',
+  copyPart: '{title}, «{part}»',
 });
 
 export const enAnswer = {
@@ -110,6 +111,7 @@ export const enAnswer = {
   moreColumns: '{more} more',
   copyHeading: 'Sources',
   copyPage: '{title}, p. {page}',
+  copyPart: '{title}, “{part}”',
 } satisfies Translation<typeof nbAnswer>;
 
 /**
