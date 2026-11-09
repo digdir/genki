@@ -2,8 +2,8 @@ import { Button, Tooltip } from '@digdir/designsystemet-react';
 import { ClipboardIcon, ClipboardLinkIcon } from '@navikt/aksel-icons';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
 import { Feedback } from './Feedback.js';
+import { useT } from './i18n.js';
 import type { AnswerCopied, AnswerFeedback, AnswerFeedbackStatus } from './types.js';
 
 export interface AnswerActionsProps {

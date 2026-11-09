@@ -1,4 +1,5 @@
 import { defineCatalogue, type Translation } from '@genai/i18n';
+import * as answerActions from './answer-actions/i18n.js';
 import * as answer from './answer/i18n.js';
 import * as composer from './composer/i18n.js';
 import * as conversation from './conversation/i18n.js';
@@ -34,6 +35,7 @@ export const nb = defineCatalogue({
   ...corpus.nb,
   ...documents.nb,
   ...settings.nb,
+  ...answerActions.nb,
 });
 export const en = {
   ...shared.en,
@@ -50,4 +52,5 @@ export const en = {
   ...corpus.en,
   ...documents.en,
   ...settings.en,
+  ...answerActions.en,
 } satisfies Translation<typeof nb>;
