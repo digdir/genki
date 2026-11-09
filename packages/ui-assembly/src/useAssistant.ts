@@ -128,6 +128,12 @@ const readSelection = (stored: unknown): FilterSelection => {
   );
 };
 
+/** The first sentence of a service's description, as the picker's line under a variant, if short. */
+const firstSentence = (text: string | undefined) => {
+  const sentence = text?.split(/(?<=[.!?])\s/)[0]?.trim();
+  return sentence && sentence.length <= 140 ? sentence : undefined;
+};
+
 const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
 const writeThreadToAddress = (id: string | undefined, replace: boolean) => {
   const url = new URL(location.href);
@@ -212,7 +218,14 @@ export const useAssistant = ({
     () =>
       (models ?? [])
         .filter((row) => !row._alias_of && inFamily(serviceOf(row)) && row._pickable)
-        .map((row) => ({ id: row.id, title: row._variant_title ?? row.title ?? row.id })),
+        .map((row) => {
+          const description = firstSentence(row.description);
+          return {
+            id: row.id,
+            title: row._variant_title ?? row.title ?? row.id,
+            ...(description ? { description } : {}),
+          };
+        }),
     [models, inFamily],
   );
   const defaultModel = useMemo(() => {

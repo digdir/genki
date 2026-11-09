@@ -357,7 +357,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
     expect(screen.getByRole('navigation', { name: 'Tråder' })).toBeTruthy();
     expect(
-      screen.getByRole('complementary', { name: 'Filter og Kilder', hidden: true }),
+      screen.getByRole('complementary', { name: 'Filter og kilder', hidden: true }),
     ).toBeTruthy();
   });
 

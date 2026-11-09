@@ -600,7 +600,10 @@ export const AssistantView = ({
   const secondary: ShellPanel | undefined =
     tools.length > 0 || filtersBeside
       ? {
-          label: [...(filtersBeside ? ['Filter'] : []), ...tools.map((t) => t.label)].join(' og '),
+          // Named after what is in it, as one phrase: «Filter og kilder», «Fremgangsmåte og kilder».
+          label: [...(filtersBeside ? ['Filter'] : []), ...tools.map((t) => t.label)]
+            .map((part, at) => (at === 0 ? part : part.toLocaleLowerCase('nb-NO')))
+            .join(' og '),
           ...(onlySources || filtersBeside ? {} : { pinnedRef: setToolsPin }),
           children: filtersBeside ? (
             <>
