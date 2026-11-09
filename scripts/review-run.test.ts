@@ -117,6 +117,13 @@ describe('the silent group', () => {
     expect(shadow).toHaveLength(30);
   });
 
+  it('spreads the silent group over time instead of a block of numbers', () => {
+    for (let start = 400; start < 700; start++) {
+      const window = Array.from({ length: 20 }, (_, i) => shadowArm(start + i, 25, 'opened'));
+      expect(window.filter((a) => a === 'shadow').length).toBeGreaterThanOrEqual(4);
+    }
+  });
+
   it('is empty when the percent is zero', () => {
     expect(shadowArm(1000, 0, 'opened')).toBe('treated');
   });
