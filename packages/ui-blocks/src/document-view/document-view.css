@@ -113,6 +113,18 @@
     padding: 0;
     list-style: none;
   }
+  /* A chip, led by the name of the document it goes into where a run of them starts, in the
+     row label's own quiet words. */
+  .uib-document-view-jump-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--genai-document-view-jump-list-gap, var(--ds-size-2));
+  }
+  .uib-document-view-jump-doc {
+    font-size: var(--genai-document-view-jumps-label-font-size, var(--ds-body-sm-font-size));
+    color: var(--genai-document-view-jumps-label-color, var(--ds-color-text-subtle));
+  }
   /* Designsystemet's chip, its number round as the answer's footnote marks. The one the reader is
      on is pinned to accent, as the excerpt's own mark, or the two would part in a neutral host. */
   .uib-document-view-jump {
