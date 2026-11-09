@@ -113,7 +113,11 @@
                 <code>primary</code> and <code>secondary</code>: each a panel, with
                 <code>label</code> (its name, after what is in it: «Tråder og filter»),
                 <code>children</code> (what scrolls), <code>head</code> (controls on the panel's
-                row, beside «Skjul»), <code>pinned</code> (pinned to the top of what scrolls),
+                row, beside «Skjul»), <code>pinned</code> (pinned to the top of what scrolls; the
+                shell pads the scrolling region as tall as it, from the moment the panel opens, so a
+                block that scrolls to its target there does not land under it, and sets that height
+                on the region as <code>--uib-shell-pinned-block-size</code>, for a block that pins
+                its own head under it; the main column's <code>mainPinned</code> does the same),
                 <code>pinnedRef</code> (that region's element, for a block that draws its own head
                 there, such as the filter's <code>pinIn</code>; a stable function),
                 <code>foot</code> and <code>footPinned</code>,

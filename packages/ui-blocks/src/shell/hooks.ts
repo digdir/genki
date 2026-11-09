@@ -109,20 +109,36 @@ export const useScrollTabStop = (): [boolean, (element: HTMLElement | null) => v
   return [element !== null && scrolls && !reachable, setElement];
 };
 
+/** The pinned head's height, set on the region under it, for a block that pins its own head below. */
+const pinnedSizeProperty = '--uib-shell-pinned-block-size';
+
 /**
  * Scroll padding as tall as a pinned head, or scrolling into view and focus land under it (WCAG
- * 2.4.11). Observed, because the head changes with its content.
+ * 2.4.11), and the same height as `pinnedSizeProperty`. Observed, because the head changes with
+ * its content. Also set at once whenever the region is shown: an observer reports after the next
+ * frame's callbacks, so a block that scrolls to its target there, in a panel that just opened,
+ * would land under the head. The effect runs after its children's, so a drawer's dialog is
+ * already open when the head is measured.
  */
-export const useScrollPadding = (region: HTMLElement | null, head: HTMLElement | null) => {
+export const useScrollPadding = (
+  region: HTMLElement | null,
+  head: HTMLElement | null,
+  shown = true,
+) => {
   useEffect(() => {
-    if (region === null || head === null || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      region.style.scrollPaddingBlockStart = `${Math.round(head.offsetHeight)}px`;
-    });
-    observer.observe(head);
-    return () => {
-      observer.disconnect();
-      region.style.scrollPaddingBlockStart = '';
+    if (region === null || head === null) return;
+    const pad = () => {
+      const size = `${Math.round(head.offsetHeight)}px`;
+      region.style.scrollPaddingBlockStart = size;
+      region.style.setProperty(pinnedSizeProperty, size);
     };
-  }, [region, head]);
+    pad();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(pad);
+    observer?.observe(head);
+    return () => {
+      observer?.disconnect();
+      region.style.scrollPaddingBlockStart = '';
+      region.style.removeProperty(pinnedSizeProperty);
+    };
+  }, [region, head, shown]);
 };
