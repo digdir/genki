@@ -571,6 +571,13 @@ export const AssistantView = ({
           description="Uten Chat er det ingen samtale å prøve."
         />,
       );
+    // The main column cannot go, as a panel can: say it is empty rather than draw nothing.
+    if (parts.length === 0)
+      parts.push(
+        <Paragraph key="empty" data-size="sm" className="uia-quiet">
+          Ingen klosser i innholdet.
+        </Paragraph>,
+      );
     main = <div className="uia-main">{parts}</div>;
   }
 
