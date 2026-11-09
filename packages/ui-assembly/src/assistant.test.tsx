@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
-  defaultLayout,
   fromTemplate,
   placeIn,
   turnOff,
@@ -314,8 +313,9 @@ describe('the assistant a layout describes', () => {
   });
 });
 
-// kunnskapsassistenten's own arrangement, as the UI blocks preview draws it.
+// kunnskapsassistenten's own arrangement, as the UI blocks preview draws it: its template.
 describe('the assistant with kunnskapsassistenten’s choices', () => {
+  const kaLayout = fromTemplate('knowledge-assistant').layout;
   const memory = () => {
     const kept = new Map<string, unknown>();
     const storage: AssistantStorage = {
@@ -334,7 +334,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
       { id: 'filters-right-panel', title: 'Filtreringen i høyre panel' },
     ],
   };
-  const drawKa = (storage: AssistantStorage, layout = defaultLayout) =>
+  const drawKa = (storage: AssistantStorage, layout = kaLayout) =>
     render(
       <Assistant
         api={fakeApi().api}
@@ -395,7 +395,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     render(
       <Assistant
         api={fakeApi().api}
-        layout={defaultLayout}
+        layout={kaLayout}
         service="ka"
         tenant="digdir"
         profile={profile}
@@ -448,7 +448,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     render(
       <Assistant
         api={api}
-        layout={defaultLayout}
+        layout={kaLayout}
         service="ka"
         tenant="digdir"
         profile={profile}
@@ -480,7 +480,7 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     render(
       <Assistant
         api={fakeApi().api}
-        layout={defaultLayout}
+        layout={kaLayout}
         service="ka"
         tenant="digdir"
         profile={profile}
@@ -492,5 +492,120 @@ describe('the assistant with kunnskapsassistenten’s choices', () => {
     expect(notices).toEqual([
       'Byttet til GenKI-dokumentasjon. Du har fått en ny tråd, og filteret er tømt.',
     ]);
+  });
+});
+
+describe('Dokumentvisning in the assistant', () => {
+  // The stored thread, whose answer cites the excerpt c1 of «Tildelingsbrev 2022».
+  const stored = async (layout: AssistantLayout, api = fakeApi().api) => {
+    history.replaceState(null, '', '/?t=t-old');
+    draw(layout, api, true);
+    await waitFor(() => expect(footnotes()).toHaveLength(1));
+    return footnotes()[0] as HTMLElement;
+  };
+  const withView = () => turnOn(state('sources-only'), 'document-view');
+  const withoutSources = () => turnOff(withView(), 'sources');
+  const tab = (name: string) => screen.getByRole('tab', { name, hidden: true });
+  const documentTitle = () => screen.findByRole('heading', { name: 'Tildelingsbrev 2022' });
+
+  it('opens the document from «Vis i dokumentet» on an excerpt in Kilder, on its own tool', async () => {
+    const footnote = await stored(withView().layout);
+    fireEvent.click(footnote);
+    const show = await screen.findByRole('button', { name: /Vis i dokumentet/ });
+    fireEvent.click(show);
+    await waitFor(() => expect(tab('Dokumentvisning').getAttribute('aria-selected')).toBe('true'));
+    expect(await documentTitle()).toBeTruthy();
+  });
+
+  it('gives the focus back to «Vis i dokumentet» on «Tilbake til kildene», with Kilder shown', async () => {
+    const footnote = await stored(withView().layout);
+    fireEvent.click(footnote);
+    const show = await screen.findByRole('button', { name: /Vis i dokumentet/ });
+    show.focus();
+    fireEvent.click(show);
+    fireEvent.click(await screen.findByRole('button', { name: 'Tilbake til kildene' }));
+    await waitFor(() => expect(document.activeElement).toBe(show));
+    expect(tab('Kilder').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('keeps the footnotes without Kilder when Dokumentvisning is on, and a footnote opens the document', async () => {
+    const footnote = await stored(withoutSources().layout);
+    expect(screen.queryByRole('complementary', { name: 'Kilder', hidden: true })).toBeNull();
+    fireEvent.click(footnote);
+    expect(await documentTitle()).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tilbake til svaret' })).toBeTruthy();
+  });
+
+  it('gives the focus back to the footnote on «Tilbake til svaret»', async () => {
+    const footnote = await stored(withoutSources().layout);
+    footnote.focus();
+    fireEvent.click(footnote);
+    fireEvent.click(await screen.findByRole('button', { name: 'Tilbake til svaret' }));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(
+        footnote.getAttribute('aria-label'),
+      ),
+    );
+  });
+
+  it('asks a question from the document in the thread, as any question', async () => {
+    const { api, asked } = fakeApi();
+    const footnote = await stored(withoutSources().layout, api);
+    fireEvent.click(footnote);
+    const field = await screen.findByRole('textbox', { name: 'Spør om dette dokumentet' });
+    fireEvent.change(field, { target: { value: 'Hvor ofte rapporteres det?' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Spør' }));
+    });
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(asked[0]?.question).toBe('Hvor ofte rapporteres det?');
+    expect(asked[0]?.conversationId).toBe('t-old');
+    expect(await screen.findByText('Hvor ofte rapporteres det?')).toBeTruthy();
+  });
+
+  // The secondary panel starts folded, as in kunnskapsassistenten, so its tools are hidden.
+  const tools = () => document.querySelector<HTMLElement>('.uib-shell-tools');
+
+  it('is one of the secondary panel’s tools: a heading alone, tabs with one more, a dropdown with two', async () => {
+    const api = fakeApi().api;
+    const alone = draw(turnOn(state('chat-only'), 'document-view').layout, api);
+    await waitFor(() => expect(tools()?.dataset.mode).toBe('heading'));
+    expect(screen.getByRole('heading', { name: 'Dokumentvisning', hidden: true })).toBeTruthy();
+    alone.unmount();
+    const two = draw(withView().layout, api);
+    await waitFor(() => expect(tools()?.dataset.mode).toBe('tabs'));
+    expect(screen.getAllByRole('tab', { hidden: true }).map((t) => t.textContent)).toEqual([
+      'Kilder',
+      'Dokumentvisning',
+    ]);
+    two.unmount();
+    draw(placeIn(withView(), 'approach', 'secondary').layout, api);
+    await waitFor(() => expect(tools()?.dataset.mode).toBe('dropdown'));
+    const options = [...document.querySelectorAll('.uib-shell-tools-choice option')].map(
+      (o) => o.textContent,
+    );
+    expect(options).toEqual(['Fremgangsmåte', 'Kilder', 'Dokumentvisning']);
+  });
+
+  it('stands in «Innhold» in the conversation’s place while a document is open, and gives it back', async () => {
+    const inMain = placeIn(withoutSources(), 'document-view', 'main');
+    const footnote = await stored(inMain.layout);
+    const chat = () => document.querySelector<HTMLElement>('.uia-main-chat');
+    expect(screen.queryByRole('heading', { name: 'Dokumentvisning' })).toBeNull();
+    fireEvent.click(footnote);
+    expect(await screen.findByRole('heading', { level: 2, name: 'Dokumentvisning' })).toBeTruthy();
+    expect(chat()?.hidden).toBe(true);
+    expect(document.querySelector('.uib-shell-tools')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tilbake til svaret' }));
+    await waitFor(() => expect(chat()?.hidden).toBe(false));
+    expect(screen.queryByRole('heading', { name: 'Dokumentvisning' })).toBeNull();
+  });
+
+  it('is not in kunnskapsassistenten’s template: Kilder has no «Vis i dokumentet»', async () => {
+    const footnote = await stored(state('knowledge-assistant').layout);
+    fireEvent.click(footnote);
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Kilder' })).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /Vis i dokumentet/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Dokumentvisning', hidden: true })).toBeNull();
   });
 });

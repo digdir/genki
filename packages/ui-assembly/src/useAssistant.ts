@@ -5,7 +5,8 @@
 // - without Filter, the question goes to the collection from the setup, narrowed by nothing, and
 //   there is no «Endre»;
 // - without the corpus choice, the collection is the service's own, with no choice shown;
-// - without Kilder, no footnotes (V2-0010 pairs every footnote with an excerpt);
+// - without Kilder, a footnote opens the document in Dokumentvisning; without both, no footnotes
+//   (V2-0010 pairs every footnote with an excerpt);
 // - without Fremgangsmåte, no steps are asked for;
 // - without Innstillinger, the defaults;
 // - with one variant, no picker.
@@ -32,6 +33,7 @@ import {
   type CorpusOption,
   type DisplayLevel,
   type DocumentItem,
+  type DocumentViewReturn,
   type FilterField,
   type FilterSelection,
   type ModelRow,
@@ -113,6 +115,15 @@ export interface AssistantOptions {
 
 export type View = 'new' | 'loading' | 'ready' | 'notfound' | 'error';
 export type Page = 'chat' | 'settings';
+
+/** The document open in Dokumentvisning: the answer it is from, where in it, and the way back. */
+export interface OpenDocument {
+  turnId: string;
+  target: SourceTarget;
+  returnTo: DocumentViewReturn;
+  /** The secondary panel's tool before it opened, shown again on the way back. */
+  toolBefore: string | undefined;
+}
 
 // kunnskapsassistenten's threadHeading.ts: the first sentence, cut on a word at 80.
 export const shortTitle = (text: string) => {
@@ -210,10 +221,12 @@ export const useAssistant = ({
   const threadsOn = has('threads');
   const filterOn = has('filter');
   const sourcesOn = has('sources');
+  const documentOn = has('document-view');
   const chatOn = has('chat');
   const approachOn = has('approach');
   const settingsOn = has('settings');
-  const footnotes = chatOn && option('chat', 'footnotes');
+  // A footnote goes to Kilder, or without it to Dokumentvisning; with neither, there are none.
+  const footnotes = chatOn && option('chat', 'footnotes') && (sourcesOn || documentOn);
   const urlThreads = threadInUrl && threadsOn;
 
   const assistantName = profile?.assistantName ?? facts?.title ?? service;
@@ -391,10 +404,18 @@ export const useAssistant = ({
   const [answerTarget, setAnswerTarget] = useState<ConversationTarget>();
   const lastFollowed = useRef<ConversationTarget>(undefined);
   const [tool, setTool] = useState<string>();
+  const [openDoc, setOpenDoc] = useState<OpenDocument>();
+  // What had the focus when a document was opened from Kilder, to have it again on the way back.
+  const opener = useRef<HTMLElement>(undefined);
+  const [refocus, setRefocus] = useState<{ element: HTMLElement }>();
+  useEffect(() => {
+    if (refocus?.element.isConnected) refocus.element.focus();
+  }, [refocus]);
 
   useEffect(() => {
     setSourceTarget(undefined);
     setAnswerTarget(undefined);
+    setOpenDoc(undefined);
     setActiveId(undefined);
     setThreadCorpus(undefined);
     if (!currentId) {
@@ -736,6 +757,76 @@ export const useAssistant = ({
     setRequest({ action: 'open', side: 'secondary' });
   };
 
+  // ── Dokumentvisning ──
+  const documentZone = documentOn ? zoneOf(layout, 'document-view') : undefined;
+  // In the main column beside Chat, an open document stands in the conversation's place.
+  const documentOverChat = documentZone === 'main' && where('chat') === 'main';
+  const documentTurn = openDoc ? turns.find((t) => t.id === openDoc.turnId) : undefined;
+  const documentAnswer = documentTurn?.answer;
+  // The document keeps to the answer it was opened from, whichever answer Kilder shows after.
+  const documentCitations = useMemo(
+    () =>
+      documentAnswer && footnotes
+        ? answerCitations(documentAnswer.text, documentAnswer.sources, documentAnswer.markers)
+        : undefined,
+    [documentAnswer, footnotes],
+  );
+
+  /**
+   * A footnote, a document under the answer or «Vis i dokumentet» in Kilder opens the document:
+   * in the secondary panel on the Dokumentvisning tool, or in the main column.
+   */
+  const openDocument = (turnId: string, target: SourceTarget, returnTo: DocumentViewReturn) => {
+    const focused = document.activeElement;
+    opener.current = focused instanceof HTMLElement ? focused : undefined;
+    setOpenDoc({ turnId, target: { ...target }, returnTo, toolBefore: tool });
+    if (documentZone === 'secondary') {
+      setTool('document-view');
+      setRequest({ action: 'open', side: 'secondary' });
+    } else setRequest({ action: 'close-drawers' });
+  };
+
+  /** «Tilbake»: the document closes, and the focus goes back to where the reader came from. */
+  const returnFromDocument = () => {
+    const doc = openDoc;
+    setOpenDoc(undefined);
+    if (!doc) return;
+    if (documentZone === 'secondary') setTool(doc.toolBefore);
+    if (doc.returnTo === 'sources') {
+      setTool('sources');
+      // From the main column, Kilder's drawer opens again on a phone.
+      if (documentZone === 'main') setRequest({ action: 'open', side: 'secondary' });
+      const element = opener.current;
+      if (element?.isConnected) setRefocus({ element });
+      else {
+        setActiveId(doc.turnId);
+        setSourceTarget({ ...doc.target });
+      }
+    } else {
+      if (lastFollowed.current) setAnswerTarget({ ...lastFollowed.current });
+      setRequest({ action: 'close-drawers' });
+    }
+  };
+
+  // A question asked from the document while an answer is still coming waits for it to end.
+  const [queued, setQueued] = useState<string>();
+  /** A question about the document goes into the thread as any question does. */
+  const askAboutDocument = (question: string) => {
+    if (documentOverChat) {
+      setOpenDoc(undefined);
+      setFocusField((n) => n + 1);
+    }
+    // In a drawer the answer would be hidden.
+    setRequest({ action: 'close-drawers' });
+    setQueued(question);
+  };
+  useEffect(() => {
+    if (!queued || working) return;
+    setQueued(undefined);
+    void send(queued);
+    // `send` is new on every render; the question and the end of an answer are what start it.
+  }, [queued, working]);
+
   // ── Settings ──
   const defaultLevel = (
     approachOn ? settingsOf(layout, 'approach').level : 'standard'
@@ -871,6 +962,26 @@ export const useAssistant = ({
     },
     returnToAnswer: () => {
       if (lastFollowed.current) setAnswerTarget({ ...lastFollowed.current });
+      setRequest({ action: 'close-drawers' });
+    },
+    // the document view
+    documentZone,
+    documentOverChat,
+    openDoc,
+    documentAnswer,
+    documentCitations,
+    documentIndex: Math.max(
+      0,
+      answered.findIndex((t) => t.id === documentTurn?.id),
+    ),
+    openDocument,
+    returnFromDocument,
+    askAboutDocument,
+    /** «Utdrag N»'s link back from the document: that footnote in its answer. */
+    showDocumentUse: (citation: number) => {
+      if (!openDoc) return;
+      setAnswerTarget({ turnId: openDoc.turnId, citation });
+      if (documentOverChat) setOpenDoc(undefined);
       setRequest({ action: 'close-drawers' });
     },
     // the shell

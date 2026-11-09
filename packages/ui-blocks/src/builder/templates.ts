@@ -21,12 +21,13 @@ export const templateIds = [
 export type TemplateId = (typeof templateIds)[number];
 
 export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readonly BlockId[]>>>> = {
-  // Innstillinger too, which the canvas leaves out: the template is kunnskapsassistenten, and its
-  // «Prøv assistenten» must be the same app as the UI blocks preview, which has it in the foot.
+  // Innstillinger too, which the canvas leaves out, and no Dokumentvisning, which the canvas has:
+  // the template is kunnskapsassistenten, and its «Prøv assistenten» must be the same app as the
+  // UI blocks preview, which has Innstillinger in the foot and no document view.
   'knowledge-assistant': {
     primary: ['threads', 'filter', 'settings'],
     main: ['approach', 'chat'],
-    secondary: ['sources', 'document-view', 'notes'],
+    secondary: ['sources', 'notes'],
   },
   'sources-only': { primary: ['threads', 'filter'], main: ['chat'], secondary: ['sources'] },
   'approach-only': { primary: ['threads'], main: ['chat'], secondary: ['approach'] },

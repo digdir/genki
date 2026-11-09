@@ -127,7 +127,7 @@ describe('the layout rules', () => {
   it('starts from every built block in its default zone, and none that is not built', () => {
     expect(blocksIn(defaultLayout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(defaultLayout, 'main')).toEqual(['approach', 'chat']);
-    expect(blocksIn(defaultLayout, 'secondary')).toEqual(['sources']);
+    expect(blocksIn(defaultLayout, 'secondary')).toEqual(['sources', 'document-view']);
   });
 });
 
@@ -195,24 +195,27 @@ describe('the checks on a layout (V2-0006)', () => {
     });
   });
 
-  it('finds Document view without Sources, and Footnotes turned on without Sources', () => {
-    const problems = layoutProblems(
-      layout({
-        main: [{ block: 'chat', settings: { footnotes: true } }],
-        secondary: [{ block: 'document-view' }],
-      }),
-    );
-    expect(problems).toContainEqual({
-      rule: 'missing-partner',
-      block: 'document-view',
-      partner: 'sources',
-    });
-    expect(problems).toContainEqual({
+  it('finds Footnotes turned on with neither Sources nor Document view', () => {
+    expect(
+      layoutProblems(layout({ main: [{ block: 'chat', settings: { footnotes: true } }] })),
+    ).toContainEqual({
       rule: 'missing-partner',
       block: 'chat',
       option: 'footnotes',
       partner: 'sources',
+      need: 'component:sources|document-view',
     });
+  });
+
+  it('lets Document view stand without Sources, and Footnotes point to it there', () => {
+    const withView = layout({
+      main: [{ block: 'chat', settings: { footnotes: true } }],
+      secondary: [{ block: 'document-view' }],
+    });
+    expect(layoutProblems(withView)).toEqual([]);
+    expect(optionInForce(withView, 'chat', 'footnotes')).toBe(true);
+    const neither = layout({ main: [{ block: 'chat' }] });
+    expect(optionInForce(neither, 'chat', 'footnotes')).toBe(false);
   });
 
   it('finds the needs the service does not meet, for blocks and for options the layout turns on', () => {

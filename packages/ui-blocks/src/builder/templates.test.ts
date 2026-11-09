@@ -35,7 +35,7 @@ describe('the templates', () => {
     }
   });
 
-  it('give Kunnskapsassistenten threads, filter and settings, approach and chat, and the sources', () => {
+  it('give Kunnskapsassistenten threads, filter and settings, approach and chat, and the sources, with no document view, as it has none', () => {
     const { layout } = fromTemplate('knowledge-assistant');
     expect(blocksIn(layout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(layout, 'main')).toEqual(['approach', 'chat']);

@@ -19,6 +19,7 @@ const needKeys: Record<Need, BuilderKey> = {
   'channel:facets': 'builder.needChannelFacets',
   'channel:feedback': 'builder.needChannelFeedback',
   'component:sources': 'builder.needComponentSources',
+  'component:sources|document-view': 'builder.needComponentSourcesOrDocumentView',
   'genki:projects': 'builder.needGenkiProjects',
   'genki:document-text': 'builder.needGenkiDocumentText',
 };

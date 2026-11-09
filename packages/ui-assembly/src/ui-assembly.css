@@ -18,6 +18,18 @@
     flex-direction: column;
   }
 
+  /* While a document stands in the conversation's place. */
+  .uia-main > .uia-main-chat[hidden] {
+    display: none;
+  }
+
+  /* Dokumentvisning in «Innhold»: as wide as the conversation. */
+  .uia-main-document {
+    inline-size: 100%;
+    max-inline-size: var(--genai-assembly-chat-max-width, 728px);
+    margin-inline: auto;
+  }
+
   .uia-chat {
     display: flex;
     flex: 1 0 auto;

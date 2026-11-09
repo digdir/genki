@@ -4,8 +4,8 @@
 // canvas and from genki #210's `rules.ts`, which holds the same table; this file is that table,
 // driven from one place so the builder, its checks and the renderer read the same rules.
 //
-// Fotnoter is not a block here but an option on Chat that needs Kilder: V2-0010 pairs every
-// footnote with an excerpt, so a footnote never stands where Kilder is not.
+// Fotnoter is not a block here but an option on Chat that needs Kilder or Dokumentvisning: V2-0010
+// pairs every footnote with an excerpt, so a footnote never stands where neither shows it.
 import type { BuilderKey } from './i18n.js';
 
 /** The shell's three places: the panel before the main column, the main column, the panel after. */
@@ -17,7 +17,7 @@ export type Zone = (typeof zones)[number];
  * kits file (`v2/kits-and-components.json`):
  * - `service:*` is read from the service's published row (`/v1/models`) or its draft;
  * - `channel:*` is a channel the client is given;
- * - `component:<id>` is another block, which must be placed too;
+ * - `component:<id>` is another block, which must be placed too; `component:<a>|<b>` is either;
  * - `genki:*` is something genki does not have yet.
  */
 export const needWords = [
@@ -31,6 +31,7 @@ export const needWords = [
   'channel:facets',
   'channel:feedback',
   'component:sources',
+  'component:sources|document-view',
   'genki:projects',
   'genki:document-text',
 ] as const;
@@ -137,7 +138,12 @@ export const blockCatalogue: readonly BlockSpec[] = [
     ],
     needs: ['service:chat'],
     options: [
-      { id: 'footnotes', kind: 'switch', default: true, needs: ['component:sources'] },
+      {
+        id: 'footnotes',
+        kind: 'switch',
+        default: true,
+        needs: ['component:sources|document-view'],
+      },
       { id: 'suggestions', kind: 'switch', default: true },
       { id: 'followUps', kind: 'switch', default: true },
       { id: 'disclaimer', kind: 'switch', default: true },
@@ -190,14 +196,17 @@ export const blockCatalogue: readonly BlockSpec[] = [
     ],
     status: 'built',
   },
+  // The answer's sources, as Kilder reads them, and not Kilder itself: without Kilder a footnote
+  // opens the document here. The whole text needs a genki route that does not exist yet; until
+  // then the view shows the excerpts the answer retrieved, in the document's own order.
   {
     id: 'document-view',
     zones: ['secondary', 'main'],
     order: { main: 4, secondary: 3 },
-    members: [],
-    needs: ['component:sources', 'genki:document-text'],
+    members: ['DocumentView'],
+    needs: ['service:datasets|documents'],
     options: [],
-    status: 'planned',
+    status: 'built',
   },
   {
     id: 'notes',

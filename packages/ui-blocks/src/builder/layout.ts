@@ -153,13 +153,19 @@ export type LayoutProblem =
   | { rule: 'zone-not-allowed'; block: BlockId; zone: Zone }
   | { rule: 'placed-twice'; block: BlockId }
   | { rule: 'not-built'; block: BlockId }
-  | { rule: 'missing-partner'; block: BlockId; option?: string; partner: BlockId }
+  | {
+      rule: 'missing-partner';
+      block: BlockId;
+      option?: string;
+      /** The first of the blocks that would do, and the need that names them all. */
+      partner: BlockId;
+      need: Need;
+    }
   | { rule: 'needs-unmet'; block: BlockId; option?: string; need: Need };
 
-const partnerOf = (need: Need): BlockId | undefined => {
-  const id = need.startsWith('component:') ? need.slice('component:'.length) : undefined;
-  return isBlockId(id) ? id : undefined;
-};
+/** The blocks a `component:*` need asks for, any one of which will do; none for other needs. */
+export const partnersOf = (need: Need): BlockId[] =>
+  need.startsWith('component:') ? need.slice('component:'.length).split('|').filter(isBlockId) : [];
 
 /**
  * The options the layout itself turns on. One left at its default asks nothing: it is simply not
@@ -202,13 +208,14 @@ export const layoutProblems = (
   for (const id of seen) {
     const check = (needs: readonly Need[], option?: string) => {
       for (const need of needs) {
-        const partner = partnerOf(need);
+        const [partner, ...others] = partnersOf(need);
         if (partner) {
-          if (!seen.has(partner))
+          if (!seen.has(partner) && !others.some((other) => seen.has(other)))
             problems.push({
               rule: 'missing-partner',
               block: id,
               partner,
+              need,
               ...(option ? { option } : {}),
             });
         } else if (met && !met(need)) {
@@ -223,9 +230,9 @@ export const layoutProblems = (
 };
 
 /**
- * Whether an option is in force: on, with every block it depends on placed, and its other needs
- * met when `met` says which are. Fotnoter on Chat is off while Kilder is, whatever the switch
- * says, so a footnote never points nowhere.
+ * Whether an option is in force: on, with a block it depends on placed for each such need, and its
+ * other needs met when `met` says which are. Fotnoter on Chat is off while both Kilder and
+ * Dokumentvisning are, whatever the switch says, so a footnote never points nowhere.
  */
 export const optionInForce = (
   layout: AssistantLayout,
@@ -238,8 +245,10 @@ export const optionInForce = (
   const value = settingsOf(layout, id)[option];
   if (value !== true) return false;
   return (spec.needs ?? []).every((need) => {
-    const partner = partnerOf(need);
-    return partner ? isOn(layout, partner) : !met || met(need);
+    const partners = partnersOf(need);
+    return partners.length > 0
+      ? partners.some((partner) => isOn(layout, partner))
+      : !met || met(need);
   });
 };
 

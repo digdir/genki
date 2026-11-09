@@ -29,7 +29,7 @@ export const nbBuilder = defineNamespace({
 
   chatFootnotes: 'Fotnoter',
   chatFootnotesHelp:
-    'Nummer i svaret som peker til utdraget i Kilder, og «Kilder brukt i svaret» under svaret',
+    'Nummer i svaret som peker til utdraget i Kilder eller Dokumentvisning, og «Kilder brukt i svaret» under svaret',
   chatSuggestions: 'Forslag til spørsmål',
   chatSuggestionsHelp: 'Tre spørsmål å starte med under feltet',
   chatFollowUps: 'Forslag til oppfølging',
@@ -77,6 +77,7 @@ export const nbBuilder = defineNamespace({
   needChannelFacets: 'Filtrering er ikke slått på for denne brukerflaten.',
   needChannelFeedback: 'Tilbakemelding er ikke slått på for denne brukerflaten.',
   needComponentSources: 'Trenger Kilder.',
+  needComponentSourcesOrDocumentView: 'Trenger Kilder eller Dokumentvisning.',
   needGenkiProjects: 'GenKI kan ikke lagre prosjekter ennå.',
   needGenkiDocumentText: 'GenKI kan ikke hente hele dokumentet ennå.',
 });
@@ -108,7 +109,7 @@ export const enBuilder = {
 
   chatFootnotes: 'Footnotes',
   chatFootnotesHelp:
-    'Numbers in the answer that point to the excerpt in Sources, and «Sources used in the answer» under it',
+    'Numbers in the answer that point to the excerpt in Sources or Document view, and «Sources used in the answer» under it',
   chatSuggestions: 'Suggested questions',
   chatSuggestionsHelp: 'Three questions to start with under the field',
   chatFollowUps: 'Suggested follow-ups',
@@ -155,6 +156,7 @@ export const enBuilder = {
   needChannelFacets: 'Filtering is not turned on for this frontend.',
   needChannelFeedback: 'Feedback is not turned on for this frontend.',
   needComponentSources: 'Needs Sources.',
+  needComponentSourcesOrDocumentView: 'Needs Sources or Document view.',
   needGenkiProjects: 'GenKI cannot store projects yet.',
   needGenkiDocumentText: 'GenKI cannot fetch the whole document yet.',
 } satisfies Translation<typeof nbBuilder>;

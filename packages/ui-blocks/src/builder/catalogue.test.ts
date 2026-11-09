@@ -93,12 +93,20 @@ describe('the block catalogue', () => {
     ]);
   });
 
-  it('makes Footnotes an option of Chat that needs Sources, not a block of its own', () => {
+  it('makes Footnotes an option of Chat that needs Sources or Document view, not a block of its own', () => {
     expect(blockIds).not.toContain('footnotes');
     const footnotes = blockCatalogue
       .find((s) => s.id === 'chat')
       ?.options.find((o) => o.id === 'footnotes');
-    expect(footnotes?.needs).toEqual(['component:sources']);
+    expect(footnotes?.needs).toEqual(['component:sources|document-view']);
+  });
+
+  it('builds Document view from the answer’s sources, in the secondary panel first, without needing Sources', () => {
+    const view = blockCatalogue.find((s) => s.id === 'document-view');
+    expect(view?.status).toBe('built');
+    expect(view?.members).toEqual(['DocumentView']);
+    expect(view?.zones).toEqual(['secondary', 'main']);
+    expect(view?.needs).toEqual(['service:datasets|documents']);
   });
 
   it('puts Settings in the foot of the primary panel', () => {
@@ -107,10 +115,9 @@ describe('the block catalogue', () => {
     expect(settings?.slot).toBe('foot');
   });
 
-  it('marks Projects, Document view and Notes as not built', () => {
+  it('marks Projects and Notes as not built', () => {
     expect(blockCatalogue.filter((s) => s.status === 'planned').map((s) => s.id)).toEqual([
       'projects',
-      'document-view',
       'notes',
     ]);
   });

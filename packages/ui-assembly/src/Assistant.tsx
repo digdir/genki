@@ -2,7 +2,7 @@
 // linked through the channels `useAssistant` keeps. The arrangement inside each zone follows
 // kunnskapsassistenten, as the UI blocks preview draws it; what the preview never drew follows
 // the design's board 3: Filter in the main column as a strip with «Endre», Chat or Fremgangsmåte
-// in the secondary panel, and the secondary panel's tool rule.
+// in the secondary panel, Dokumentvisning in either, and the secondary panel's tool rule.
 import { Button, Details, Paragraph, SkipLink } from '@digdir/designsystemet-react';
 import {
   AnswerActions,
@@ -12,6 +12,7 @@ import {
   CorpusChoice,
   CorpusLine,
   Documents,
+  DocumentView,
   EmptyState,
   ErrorState,
   Filter,
@@ -35,8 +36,9 @@ import {
   type ShellPanel,
   type ShellTool,
   type SourceDocument,
+  type SourceTarget,
 } from '@genai/ui-blocks';
-import { ArrowLeftIcon } from '@navikt/aksel-icons';
+import { ArrowLeftIcon, FileTextIcon } from '@navikt/aksel-icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
@@ -184,8 +186,22 @@ export const AssistantView = ({
   const filterZone = a.where('filter');
   const threadsOn = a.has('threads');
   const sourcesOn = a.has('sources');
+  const documentOn = a.has('document-view');
   const settingsOn = a.has('settings');
   const name = a.assistantName;
+  // The document stands where the conversation was, with Dokumentvisning beside Chat in «Innhold».
+  const chatHidden = a.documentOverChat && !!a.openDoc;
+
+  /** A footnote, or a document under the answer: Kilder when it is there, else Dokumentvisning. */
+  const follow = (
+    turn: ConversationAnswer,
+    target: SourceTarget,
+    followed: NonNullable<AssistantState['lastFollowed']['current']>,
+  ) => {
+    a.lastFollowed.current = followed;
+    if (sourcesOn) a.showSources(turn.id, target);
+    else if (documentOn) a.openDocument(turn.id, target, 'answer');
+  };
 
   // The primary panel holds Tråder and Filter as two views, as kunnskapsassistenten does, and a
   // first visit lands on the filter.
@@ -296,15 +312,11 @@ export const AssistantView = ({
                 onOpenCitation: (
                   turn: ConversationAnswer,
                   citation: number,
-                  target: Parameters<AssistantState['showSources']>[1],
-                ) => {
-                  a.lastFollowed.current = { turnId: turn.id, citation };
-                  a.showSources(turn.id, target);
-                },
+                  target: SourceTarget,
+                ) => follow(turn, target, { turnId: turn.id, citation }),
                 onOpenDocument: (turn: ConversationAnswer, source: SourceDocument) => {
                   const target = { documentId: source.documentId, index: source.index };
-                  a.lastFollowed.current = { turnId: turn.id, document: target };
-                  a.showSources(turn.id, target);
+                  follow(turn, target, { turnId: turn.id, document: target });
                 },
                 sourcesUsed: true,
               }
@@ -562,6 +574,46 @@ export const AssistantView = ({
       search={a.option('sources', 'search')}
       details
       headingLevel={3}
+      {...(documentOn
+        ? {
+            excerptActions: ({ source, excerpt }) => (
+              <Button
+                variant="tertiary"
+                data-size="sm"
+                onClick={() => {
+                  if (!a.active) return;
+                  a.openDocument(
+                    a.active.id,
+                    { chunkId: excerpt.chunkId, documentId: source.documentId },
+                    'sources',
+                  );
+                }}
+              >
+                <FileTextIcon aria-hidden />
+                Vis i dokumentet
+                <span className="ds-sr-only">: {source.title}</span>
+              </Button>
+            ),
+          }
+        : {})}
+    />
+  );
+  const documentView = (titled: boolean) => (
+    <DocumentView
+      color="neutral"
+      {...(titled ? {} : { title: false })}
+      sources={a.documentAnswer?.sources}
+      target={a.openDoc?.target}
+      citations={a.documentCitations}
+      answerIndex={a.documentIndex}
+      answerCount={a.answered.length}
+      onShowUse={a.footnotes ? a.showDocumentUse : undefined}
+      onReturn={a.openDoc ? a.returnFromDocument : undefined}
+      returnTo={a.openDoc?.returnTo}
+      // Asked in the thread, where Chat is: without it there is nowhere to ask.
+      onAsk={chatZone ? (ask) => a.askAboutDocument(ask.question) : undefined}
+      corpus={a.corpus?.label}
+      headingLevel={3}
     />
   );
   const approachPanel = approachOf(a, a.active?.id) ?? (
@@ -577,6 +629,9 @@ export const AssistantView = ({
       : []),
     ...(chatZone === 'secondary' ? [{ id: 'chat', label: names.chat, content: chat(true) }] : []),
     ...(sourcesOn ? [{ id: 'sources', label: names.sources, content: sourcesView(false) }] : []),
+    ...(a.documentZone === 'secondary'
+      ? [{ id: 'document-view', label: names.documentView, content: documentView(false) }]
+      : []),
   ];
   // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the
   // tools only when there is a choice, or for a tool with no heading of its own.
@@ -640,8 +695,17 @@ export const AssistantView = ({
     if (filterZone === 'main') parts.push(<div key="filter">{filterStrip}</div>);
     if (chatZone === 'main')
       parts.push(
-        <div key="chat" className="uia-main-chat">
+        // Hidden, not gone, while a document stands in its place: the conversation keeps its
+        // place and the field its text, and the way back finds the footnote.
+        <div key="chat" className="uia-main-chat" hidden={chatHidden || undefined}>
           {chat(false)}
+        </div>,
+      );
+    // Beside Chat only while a document is open; without Chat, the document has the column.
+    if (a.documentZone === 'main' && (!a.documentOverChat || a.openDoc))
+      parts.push(
+        <div key="document-view" className="uia-main-document">
+          {documentView(true)}
         </div>,
       );
     if (!chatZone)
@@ -659,9 +723,10 @@ export const AssistantView = ({
           Ingen klosser i innholdet.
         </Paragraph>,
       );
-    // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it.
+    // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it. With
+    // Dokumentvisning beside it the wrapper stays, so opening a document moves nothing.
     main =
-      chatZone === 'main' && parts.length === 1 ? (
+      chatZone === 'main' && parts.length === 1 && a.documentZone !== 'main' ? (
         chat(false)
       ) : (
         <div className="uia-main">{parts}</div>
@@ -677,7 +742,7 @@ export const AssistantView = ({
       initialLayout={a.shellLayout}
       onLayoutChange={a.onShellLayout}
       skipLinks={
-        a.page === 'chat' && chatZone === 'main' ? (
+        a.page === 'chat' && chatZone === 'main' && !chatHidden ? (
           <SkipLink
             href={`#${fieldId ?? 'composer-field'}`}
             onClick={(event) => {

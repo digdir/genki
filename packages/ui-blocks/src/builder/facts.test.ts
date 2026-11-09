@@ -65,6 +65,7 @@ describe('the blocks a service is offered', () => {
       'filter',
       'approach',
       'sources',
+      'document-view',
     ]);
   });
 
@@ -76,6 +77,13 @@ describe('the blocks a service is offered', () => {
   it('offers no Chat to a service that does not answer in a chat (klarsprak)', () => {
     expect(offerOf('chat', facts('klarsprak')).unmet).toEqual(['service:chat']);
     expect(offerOf('sources', facts('klarsprak')).unmet).toEqual(['service:datasets|documents']);
+  });
+
+  it('offers Document view only where Sources would be: a service that searches documents', () => {
+    expect(offerOf('document-view', facts('klarsprak')).unmet).toEqual([
+      'service:datasets|documents',
+    ]);
+    expect(offerOf('document-view', facts('kunnskapsassistenten')).offered).toBe(true);
   });
 
   it('offers no Approach when the way of working reports no steps', () => {

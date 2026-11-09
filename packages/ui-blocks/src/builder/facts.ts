@@ -142,6 +142,7 @@ export const needMet = (facts: ServiceFacts, need: Need): boolean => {
     case 'channel:feedback':
       return facts.channels.includes('feedback');
     case 'component:sources':
+    case 'component:sources|document-view':
       return true;
     case 'genki:projects':
     case 'genki:document-text':
