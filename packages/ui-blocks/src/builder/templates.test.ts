@@ -35,9 +35,9 @@ describe('the templates', () => {
     }
   });
 
-  it('give Kunnskapsassistenten threads and filter, approach and chat, and the sources', () => {
+  it('give Kunnskapsassistenten threads, filter and settings, approach and chat, and the sources', () => {
     const { layout } = fromTemplate('knowledge-assistant');
-    expect(blocksIn(layout, 'primary')).toEqual(['threads', 'filter']);
+    expect(blocksIn(layout, 'primary')).toEqual(['threads', 'filter', 'settings']);
     expect(blocksIn(layout, 'main')).toEqual(['approach', 'chat']);
     expect(blocksIn(layout, 'secondary')).toEqual(['sources']);
   });
@@ -56,6 +56,6 @@ describe('the templates', () => {
 
   it('leave out the blocks the service is not offered', () => {
     const { layout } = fromTemplate('knowledge-assistant', (block) => block !== 'filter');
-    expect(blocksIn(layout, 'primary')).toEqual(['threads']);
+    expect(blocksIn(layout, 'primary')).toEqual(['threads', 'settings']);
   });
 });

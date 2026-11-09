@@ -21,8 +21,10 @@ export const templateIds = [
 export type TemplateId = (typeof templateIds)[number];
 
 export const templates: Readonly<Record<TemplateId, Readonly<Record<Zone, readonly BlockId[]>>>> = {
+  // Innstillinger too, which the canvas leaves out: the template is kunnskapsassistenten, and its
+  // «Prøv assistenten» must be the same app as the UI blocks preview, which has it in the foot.
   'knowledge-assistant': {
-    primary: ['threads', 'filter'],
+    primary: ['threads', 'filter', 'settings'],
     main: ['approach', 'chat'],
     secondary: ['sources', 'document-view', 'notes'],
   },

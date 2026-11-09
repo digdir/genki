@@ -115,7 +115,10 @@ describe('a family of services as variants', () => {
       channels,
       family: (service) => service.startsWith('kunnskapsassistenten'),
     });
-    expect(ka?.variants).toEqual(['kunnskapsassistenten__default', 'kunnskapsassistenten-demo__default']);
+    expect(ka?.variants).toEqual([
+      'kunnskapsassistenten__default',
+      'kunnskapsassistenten-demo__default',
+    ]);
     expect(optionOfferOf('chat', 'variantPicker', ka).offered).toBe(true);
   });
 });
