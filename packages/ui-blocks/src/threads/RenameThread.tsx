@@ -1,6 +1,6 @@
 import { Button, Textfield } from '@digdir/designsystemet-react';
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface RenameThreadProps {
   title: string;

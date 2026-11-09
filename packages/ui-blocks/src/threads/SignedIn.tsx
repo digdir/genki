@@ -1,6 +1,6 @@
 import { Link, Paragraph } from '@digdir/designsystemet-react';
 import { LeaveIcon, PersonIcon } from '@navikt/aksel-icons';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface SignedInProps {
   /** Who is signed in, as the reader knows themselves. Nothing is drawn without it. */

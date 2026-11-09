@@ -12,9 +12,9 @@ import {
   type ReactNode,
 } from 'react';
 import { classes, plainClick } from '../dom.js';
-import { useT } from '../i18n.js';
 import { DeleteThreadDialog } from './DeleteThreadDialog.js';
 import { groupThreads, rowTime, type ThreadGroup } from './grouping.js';
+import { useT } from './i18n.js';
 import { RenameThread } from './RenameThread.js';
 import { ThreadMenu } from './ThreadMenu.js';
 import { ThreadRow } from './ThreadRow.js';
