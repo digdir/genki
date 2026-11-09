@@ -49,18 +49,12 @@ export const orderedExcerpts = (source: SourceDocument): readonly SourceExcerpt[
     ? source.excerpts.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0))
     : source.excerpts;
 
-/** The order Sources shows the documents and their excerpts in, and each excerpt's number. */
+/** The order Sources shows the documents and their excerpts in. */
 export interface ReadingOrder {
   /** The documents, as indexes into `sources`, from the top. */
   documents: readonly number[];
   /** Per document, by its index into `sources`, its excerpts from the top. */
   excerpts: readonly (readonly SourceExcerpt[])[];
-  /**
-   * Each shown excerpt's number, by chunk id, when the answer cites excerpts: the cited ones as
-   * the footnotes number them, 1 to n, and the rest n + 1 on, in reading order. Empty when
-   * nothing is cited by excerpt, so nothing is numbered.
-   */
-  numbers: ReadonlyMap<string, number>;
 }
 
 const ascending = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
@@ -69,9 +63,9 @@ const ascending = (a: number, b: number) => (a === b ? 0 : a < b ? -1 : 1);
  * The order to show the documents and their excerpts in, from the pairing alone. When excerpts
  * are numbered, the documents run by their lowest number and, inside each, the cited excerpts by
  * number, so the panel reads «Utdrag 1», 2, 3 from the top as the footnotes do. What nothing cites
- * comes after, in the service's order of documents and the document's order of excerpts, and
- * takes the numbers after the cited ones. When nothing is numbered, the order is the service's
- * and the document's, unchanged.
+ * comes last, unnumbered: documents in the service's order, and excerpts last in their card, in
+ * the document's order. When nothing is numbered, the order is the service's and the document's,
+ * unchanged.
  */
 export const readingOrder = (
   sources: readonly SourceDocument[],
@@ -90,12 +84,7 @@ export const readingOrder = (
   const documents = sources
     .map((_, i) => i)
     .toSorted((a, b) => ascending(rank(excerpts[a]?.[0]), rank(excerpts[b]?.[0])));
-  const numbers = new Map(cited);
-  if (cited.size > 0)
-    for (const i of documents)
-      for (const excerpt of excerpts[i] ?? [])
-        if (!numbers.has(excerpt.chunkId)) numbers.set(excerpt.chunkId, numbers.size + 1);
-  return { documents, excerpts, numbers };
+  return { documents, excerpts };
 };
 
 export const citesExcerpts = (citations: readonly SourceCitation[]) =>

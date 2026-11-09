@@ -417,8 +417,6 @@ type ItemProps = Pick<
   document: Prepared;
   level: number;
   pairing: Pairing | undefined;
-  /** Every shown excerpt's number: the cited ones first, then the rest in reading order. */
-  numbers: ReadonlyMap<string, number>;
   /** The links back to the answer, when the app takes them. */
   back:
     | (Omit<BackTo, 'onShow'> & {
@@ -443,7 +441,6 @@ const SourceItem = ({
   document: { source, key: documentKey, name: given, id, rows },
   level,
   pairing,
-  numbers,
   openRows,
   onRowOpenChange,
   open,
@@ -663,13 +660,12 @@ const SourceItem = ({
             const isOpen = openRows.has(key);
             const rowHits = hitsFor(hits, key);
             const here = excerpt !== undefined && excerpt.chunkId === active;
-            // Only a cited excerpt has uses, and only its links lead back to the answer. One that
-            // nothing cites is numbered after the cited ones, and says it is not cited.
-            const cited = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
-            const n = excerpt ? numbers.get(excerpt.chunkId) : undefined;
+            // Only a cited excerpt has a number and uses, and only its links lead back to the
+            // answer. One that nothing cites is unnumbered, last in its card, and says so.
+            const n = byExcerpt && excerpt ? pairing.numbers.get(excerpt.chunkId) : undefined;
             const uses =
-              cited !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
-            const uncited = byExcerpt && cited === undefined;
+              n !== undefined && excerpt ? (pairing?.uses.get(excerpt.chunkId) ?? []) : [];
+            const uncited = byExcerpt && n === undefined;
             const path = headingText(excerpt?.heading);
             const section = sectionOf(path);
             const name =
@@ -730,7 +726,7 @@ const SourceItem = ({
                         n={n}
                         label={t('sources.excerptNumber', { n })}
                         uses={uses}
-                        back={cited === undefined ? undefined : backFor(excerpt)}
+                        back={backFor(excerpt)}
                       />
                     )}
                     {section ? <span>{section}</span> : null}
@@ -1098,7 +1094,6 @@ export const Sources = ({
                   document={document}
                   level={headingLevel}
                   pairing={pairing}
-                  numbers={order.numbers}
                   openRows={openRows}
                   onRowOpenChange={setRowOpen}
                   open={cardOpen(document.key)}
