@@ -331,6 +331,15 @@
     grid-column: 1 / -1;
   }
 
+  /* In the row a rail is as wide as its button plus the text edge on each side, not a side rail's
+     67. With size containment its `auto` column took the rail's floor, so the secondary button
+     stood 9 px from the window's edge at 390 and was clipped from 667. The drawer it holds is a
+     container of its own. */
+  .uib-shell[data-compact] > .uib-shell-side {
+    container-type: normal;
+    min-inline-size: 0;
+  }
+
   /* In the bar a rail is just its button. */
   .uib-shell[data-compact] > .uib-shell-side > .uib-shell-box {
     padding-block: var(--genai-shell-bar-padding-block, var(--ds-size-2));
