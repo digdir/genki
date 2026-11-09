@@ -433,14 +433,83 @@ describe('drawers, below 1139', () => {
     resizeTo(1300);
     expect(button('Vis tråder og filter')).toBeTruthy();
   });
+});
 
-  it('puts the rails in a bar above the main column in a phone’s width, when asked to', () => {
-    const { container, redraw } = draw({}, 390);
-    expect(container.querySelector('.uib-shell')?.hasAttribute('data-compact')).toBe(false);
-    redraw({ compactBar: true });
-    expect(container.querySelector('.uib-shell')?.hasAttribute('data-compact')).toBe(true);
-    resizeTo(800);
-    expect(container.querySelector('.uib-shell')?.hasAttribute('data-compact')).toBe(false);
+// kunnskapsassistenten's `mobile-top-row` (kunnskapsassistenten#120), the standard here.
+describe('the top row, below 774', () => {
+  const row = () => document.querySelector('.uib-shell')?.hasAttribute('data-compact');
+
+  it('below 774 px the rails are one row at the top, by default', () => {
+    draw({}, 390);
+    expect(row()).toBe(true);
+    expect([folded(primary()), folded(secondary())]).toEqual([true, true]);
+    expect(button('Vis tråder og filter').getAttribute('aria-expanded')).toBe('false');
+    expect(button('Vis kilder').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('keeps the tab order: the primary button, the main column, then the secondary button', () => {
+    draw({}, 390);
+    const order = [button('Vis tråder og filter'), screen.getByRole('main'), button('Vis kilder')];
+    for (const [before, after] of [
+      [order[0], order[1]],
+      [order[1], order[2]],
+    ] as const)
+      expect(before?.compareDocumentPosition(after as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('gives the main column the whole window, since the rails take nothing from its row', () => {
+    const { container } = draw({}, 390);
+    const shell = container.querySelector<HTMLElement>('.uib-shell');
+    expect(shell?.style.getPropertyValue('--uib-shell-main-min-width')).toBe('390px');
+  });
+
+  it('is not there at 774 px and wider, and follows the window without a reload', () => {
+    draw({}, 774);
+    expect(row()).toBe(false);
+    resizeTo(773);
+    expect(row()).toBe(true);
+    resizeTo(1000);
+    expect(row()).toBe(false);
+    resizeTo(393);
+    expect(row()).toBe(true);
+  });
+
+  it('is off when the host sets compactBar to false: the rails stay at the sides', () => {
+    const { container } = draw({ compactBar: false }, 390);
+    expect(row()).toBe(false);
+    const shell = container.querySelector<HTMLElement>('.uib-shell');
+    expect(shell?.hasAttribute('data-drawer')).toBe(true);
+    expect(shell?.style.getPropertyValue('--uib-shell-main-min-width')).toBe('256px');
+  });
+
+  it('opens each panel as a drawer from its button, one at a time', () => {
+    draw({}, 390);
+    fireEvent.click(button('Vis tråder og filter'));
+    const threads = document.querySelector<HTMLDialogElement>(
+      'dialog[aria-label="Tråder og filter"]',
+    );
+    expect(threads?.open).toBe(true);
+    expect(within(threads as HTMLElement).getByRole('link', { name: 'En tråd' })).toBeTruthy();
+    fireEvent.click(button('Vis kilder'));
+    const sources = document.querySelector<HTMLDialogElement>('dialog[aria-label="Kilder"]');
+    expect(sources?.open).toBe(true);
+    expect(threads?.open).toBe(false);
+  });
+
+  it('gives the focus back to the button that opened the drawer when the drawer closes', () => {
+    draw({}, 390);
+    fireEvent.click(button('Vis kilder'));
+    const drawer = document.querySelector<HTMLDialogElement>('dialog[aria-label="Kilder"]');
+    const link = within(drawer as HTMLElement).getByRole('link', { name: 'Kilde 1' });
+    act(() => link.focus());
+    fireEvent.focus(link);
+    // What the browser does on Escape: it closes the dialog and fires `close`.
+    act(() => {
+      drawer?.close();
+      drawer?.dispatchEvent(new Event('close'));
+    });
+    expect(document.activeElement).toBe(button('Vis kilder'));
+    expect(button('Vis kilder').getAttribute('aria-expanded')).toBe('false');
   });
 });
 

@@ -295,9 +295,9 @@
     flex-grow: 1;
   }
 
-  /* ── The bar, in a phone's width with `compactBar` ── */
+  /* ── The top row, below 774 unless the host sets `compactBar` to false ── */
 
-  /* The rails become one bar above the main column (kunnskapsassistenten#120). Grid placement,
+  /* The rails become one row above the main column (kunnskapsassistenten#120). Grid placement,
      not other markup, so what is in the panels keeps its state and the tab order stays primary
      button, main column, secondary button. */
   .uib-shell[data-compact] {
