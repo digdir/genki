@@ -186,4 +186,17 @@ describe('the Sources styles', () => {
     expect(rule).toContain('min-inline-size: var(--genai-sources-use-min-size, 24px)');
     expect(rule).toContain('min-block-size: var(--genai-sources-use-min-size, 24px)');
   });
+
+  it('draw «Utdrag N» two steps larger and bolder than the links back beside it', () => {
+    const title = flat.match(/\.uib-sources-excerpt-number \{([^}]*)\}/)?.[1] ?? '';
+    const uses = flat.match(/\.uib-sources-uses \{([^}]*)\}/)?.[1] ?? '';
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-size, var(--ds-body-md-font-size))',
+    );
+    expect(title).toContain(
+      'var(--genai-sources-excerpt-number-font-weight, var(--ds-font-weight-semibold))',
+    );
+    expect(uses).toContain('var(--genai-sources-uses-font-size, var(--ds-body-xs-font-size))');
+    expect(uses).toContain('var(--genai-sources-uses-font-weight, var(--ds-font-weight-regular))');
+  });
 });

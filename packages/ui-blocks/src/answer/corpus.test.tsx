@@ -164,7 +164,7 @@ describe('the answer on real answers from genki-test', () => {
       const cards = [...container.querySelectorAll<HTMLElement>('.uib-sources-document')];
       expect(cards.length, file).toBe(sources.length);
       expect(container.textContent, file).not.toMatch(/\b(?:Kilde|Utdrag) \d/);
-      expect(within(container).queryAllByRole('link', { name: /til svaret/i }), file).toEqual([]);
+      expect(within(container).queryAllByRole('link', { name: /fotnote \d/i }), file).toEqual([]);
       cards.forEach((card, i) => {
         // A document no footnote names says so; a cited one does not.
         expect(
