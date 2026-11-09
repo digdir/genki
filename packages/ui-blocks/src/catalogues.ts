@@ -5,6 +5,7 @@ import * as documentView from './document-view/i18n.js';
 import * as shared from './i18n.js';
 import * as sources from './sources/i18n.js';
 import * as states from './states/i18n.js';
+import * as threads from './threads/i18n.js';
 import * as variantPicker from './variant-picker/i18n.js';
 
 /**
@@ -20,6 +21,7 @@ export const nb = defineCatalogue({
   ...documentView.nb,
   ...states.nb,
   ...variantPicker.nb,
+  ...threads.nb,
 });
 export const en = {
   ...shared.en,
@@ -29,4 +31,5 @@ export const en = {
   ...documentView.en,
   ...states.en,
   ...variantPicker.en,
+  ...threads.en,
 } satisfies Translation<typeof nb>;

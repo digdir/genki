@@ -1,6 +1,6 @@
 import { Button, Dialog, Heading, Paragraph } from '@digdir/designsystemet-react';
 import { useEffect, useId, useRef } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface DeleteThreadDialogProps {
   /** The title of the thread to confirm, or undefined while nothing is asked. */

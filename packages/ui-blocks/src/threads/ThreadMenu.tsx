@@ -1,7 +1,7 @@
 import { Dropdown } from '@digdir/designsystemet-react';
 import { MenuElipsisHorizontalIcon, PencilIcon, TrashIcon } from '@navikt/aksel-icons';
 import { useState, type Ref } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 
 export interface ThreadMenuProps {
   title: string;
