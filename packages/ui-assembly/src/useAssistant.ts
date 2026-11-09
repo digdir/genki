@@ -13,6 +13,7 @@ import {
   answerCitations,
   blockSpec,
   factsFromModels,
+  isDisplayLevel,
   isEmptySelection,
   isOn,
   narrowing,
@@ -35,6 +36,7 @@ import {
   type FilterSelection,
   type ModelRow,
   type Need,
+  type ShellLayout,
   type ShellRequest,
   type SourceTarget,
   type VariantOption,
@@ -52,6 +54,7 @@ import {
 } from './api.js';
 import type { StepFrame } from './procedure.js';
 import type { AssistantProfile, FieldSpec } from './profile.js';
+import { useStoredValue, type AssistantStorage } from './storage.js';
 
 export interface AssistantFeedback {
   answerId: string;
@@ -71,8 +74,15 @@ export interface AssistantOptions {
   profile?: AssistantProfile | undefined;
   /** The channels the client is given; all three by default. */
   channels?: readonly Channel[] | undefined;
-  /** Keep the thread in the address as `?t=`, so a reload opens it again. Only with Tråder. */
+  /**
+   * The assistant owns the page: the thread in the address as `?t=` (only with Tråder), so a
+   * reload opens it again; «Innstillinger» as `#innstillinger`; and the tab's title.
+   */
   threadInUrl?: boolean | undefined;
+  /** Where the reader's choices are kept; nothing past the page without it. */
+  storage?: AssistantStorage | undefined;
+  /** Something the reader should hear about, such as a new thread after a new collection. */
+  onNotice?: ((text: string) => void) | undefined;
   /** The reader's colour scheme, kept by the host, which «Innstillinger» changes. */
   colorScheme?: ColorScheme | undefined;
   onColorSchemeChange?: ((scheme: ColorScheme) => void) | undefined;
@@ -107,11 +117,23 @@ export const shortTitle = (text: string) => {
 export const withoutFootnotes = (text: string) =>
   text.replace(/[ \u00a0]?\[\d+(?:\s*[,–-]\s*\d+)*\]/g, '');
 
+/** A stored filter, as kunnskapsassistenten reads its own: a field whose values are not all strings is dropped. */
+const readSelection = (stored: unknown): FilterSelection => {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+  return Object.fromEntries(
+    Object.entries(stored).filter(
+      (entry): entry is [string, string[]] =>
+        Array.isArray(entry[1]) && entry[1].every((value) => typeof value === 'string'),
+    ),
+  );
+};
+
 const threadInAddress = () => new URLSearchParams(location.search).get('t') ?? undefined;
 const writeThreadToAddress = (id: string | undefined, replace: boolean) => {
   const url = new URL(location.href);
   if (id) url.searchParams.set('t', id);
   else url.searchParams.delete('t');
+  url.hash = '';
   history[replace ? 'replaceState' : 'pushState'](null, '', url);
 };
 
@@ -124,6 +146,8 @@ export const useAssistant = ({
   profile,
   channels = ['conversations', 'facets', 'feedback'],
   threadInUrl = false,
+  storage,
+  onNotice,
   colorScheme = 'auto',
   onColorSchemeChange,
   onFeedback,
@@ -149,9 +173,12 @@ export const useAssistant = ({
   const facts = useMemo(
     () =>
       models
-        ? factsFromModels(models, service, { channels: channelKey.split(',') as Channel[] })
+        ? factsFromModels(models, service, {
+            channels: channelKey.split(',') as Channel[],
+            family: profile?.family,
+          })
         : undefined,
-    [models, service, channelKey],
+    [models, service, channelKey, profile],
   );
   const met = useCallback((need: Need) => (facts ? needMet(facts, need) : true), [facts]);
   /** A block the layout places, that is built, and whose needs the service meets. */
@@ -176,13 +203,17 @@ export const useAssistant = ({
 
   const assistantName = profile?.assistantName ?? facts?.title ?? service;
 
-  // ── Variants: the pickable rows of this service ──
+  // ── Variants: the pickable rows of this service, or of its family ──
+  const inFamily = useCallback(
+    (other: string) => other === service || (profile?.family?.(other) ?? false),
+    [service, profile],
+  );
   const variants = useMemo<VariantOption[]>(
     () =>
       (models ?? [])
-        .filter((row) => !row._alias_of && serviceOf(row) === service && row._pickable)
+        .filter((row) => !row._alias_of && inFamily(serviceOf(row)) && row._pickable)
         .map((row) => ({ id: row.id, title: row._variant_title ?? row.title ?? row.id })),
-    [models, service],
+    [models, inFamily],
   );
   const defaultModel = useMemo(() => {
     const own = (models ?? []).filter((row) => !row._alias_of && serviceOf(row) === service);
@@ -196,7 +227,11 @@ export const useAssistant = ({
   // ── The collection: the service's own, or the reader's choice where the layout offers one ──
   const ownDataset = facts?.datasets[0];
   const corpusChoice = filterOn && option('filter', 'corpus');
-  const [chosenCorpus, setChosenCorpus] = useState<string>();
+  const [chosenCorpus, setChosenCorpus] = useStoredValue<string | undefined>(
+    storage,
+    'corpus',
+    (stored) => (typeof stored === 'string' ? stored : undefined),
+  );
   const corpusKey = (corpusChoice ? chosenCorpus : undefined) ?? ownDataset?.key;
   const [corpora, setCorpora] = useState<CorpusOption[]>([]);
   useEffect(() => {
@@ -241,16 +276,18 @@ export const useAssistant = ({
     () =>
       loadedThreads
         ?.filter(
-          (thread) => !deleted.has(thread.id) && (!thread.service || thread.service === service),
+          (thread) => !deleted.has(thread.id) && (!thread.service || inFamily(thread.service)),
         )
         .map((thread) =>
           renamed[thread.id] ? { ...thread, title: renamed[thread.id] ?? thread.title } : thread,
         ),
-    [loadedThreads, renamed, deleted, service],
+    [loadedThreads, renamed, deleted, inFamily],
   );
 
   // ── The thread on screen ──
-  const [page, setPage] = useState<Page>('chat');
+  const [page, setPage] = useState<Page>(() =>
+    threadInUrl && location.hash === '#innstillinger' ? 'settings' : 'chat',
+  );
   const [currentId, setCurrentId] = useState<string | undefined>(() =>
     urlThreads ? threadInAddress() : undefined,
   );
@@ -267,10 +304,15 @@ export const useAssistant = ({
   const go = useCallback(
     (id: string | undefined, replace = false) => {
       if (urlThreads) writeThreadToAddress(id, replace);
+      else if (threadInUrl && location.hash) {
+        const url = new URL(location.href);
+        url.hash = '';
+        history.pushState(null, '', url);
+      }
       setPage('chat');
       setCurrentId(id);
     },
-    [urlThreads],
+    [urlThreads, threadInUrl],
   );
   /** Opening a thread or «Ny tråd» shuts an open drawer, which would cover it. */
   const leave = useCallback(
@@ -282,15 +324,15 @@ export const useAssistant = ({
     [go],
   );
   useEffect(() => {
-    if (!urlThreads) return;
+    if (!threadInUrl) return;
     const onPop = () => {
       abort.current?.abort();
-      setPage('chat');
-      setCurrentId(threadInAddress());
+      setPage(location.hash === '#innstillinger' ? 'settings' : 'chat');
+      if (urlThreads) setCurrentId(threadInAddress());
     };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
-  }, [urlThreads]);
+  }, [threadInUrl, urlThreads]);
   const reported = useRef(onThreadChange);
   useEffect(() => {
     reported.current = onThreadChange;
@@ -363,7 +405,13 @@ export const useAssistant = ({
     };
   }, [api, filterOn, corpusKey]);
 
-  const [chosenSelection, setSelection] = useState<FilterSelection>({});
+  // The filter is kept as kunnskapsassistenten keeps it: a field whose values are not all strings
+  // is dropped.
+  const [chosenSelection, setSelection] = useStoredValue<FilterSelection>(
+    storage,
+    'filter',
+    readSelection,
+  );
   // Without Filter, nothing narrows the question: the setup's collection as a whole.
   const selection = filterOn ? chosenSelection : {};
   const [facets, setFacets] = useState<FilterField[]>();
@@ -403,6 +451,7 @@ export const useAssistant = ({
     setSelection({});
     setBaseFacets(undefined);
     leave(undefined);
+    onNotice?.(`Byttet til ${corpusLabel(key)}. Du har fått en ny tråd, og filteret er tømt.`);
   };
 
   // ── The answer shown in Sources and Fremgangsmåte ──
@@ -609,6 +658,28 @@ export const useAssistant = ({
   const firstQuestion = turns.find((t) => t.question)?.question ?? '';
   const named = ((currentId && threads?.find((t) => t.id === currentId)?.title) || '').trim();
   const repeatsQuestion = !named || named === firstQuestion.trim().replace(/\s+/g, ' ');
+  // Each thread gives the tab its own title (WCAG 2.4.2), as kunnskapsassistenten's PageTitle.
+  const heading =
+    view === 'notfound' ? 'Fant ikke tråden' : named || shortTitle(firstQuestion) || 'Ny tråd';
+  useEffect(() => {
+    if (!threadInUrl) return;
+    const name =
+      page === 'settings' ? 'Innstillinger' : repeatsQuestion ? shortTitle(heading) : heading;
+    document.title = `${name} – ${assistantName}`;
+  }, [threadInUrl, page, heading, repeatsQuestion, assistantName]);
+
+  // Each row names its collection only when the list mixes several, by the collection's name.
+  const threadRows = useMemo(() => {
+    const own = ownDataset?.key ?? '';
+    const mixed = new Set((threads ?? []).map((t) => t.dataset ?? own)).size > 1;
+    return threads?.map(({ dataset, service: _service, ...thread }) =>
+      mixed ? { ...thread, dataset: corpusLabel(dataset ?? own) } : thread,
+    );
+    // `corpusLabel` reads the profile and `corpora`.
+  }, [threads, ownDataset, corpora]);
+
+  // The panels as the reader left them.
+  const [shellLayout] = useState(() => storage?.read('layout') as ShellLayout | undefined);
 
   /** A footnote or a document asks for Kilder: the panel opens, on the Kilder tool. */
   const showSources = (turnId: string, target: SourceTarget) => {
@@ -622,7 +693,21 @@ export const useAssistant = ({
   const defaultLevel = (
     approachOn ? settingsOf(layout, 'approach').level : 'standard'
   ) as DisplayLevel;
-  const [chosenLevel, setLevel] = useState<DisplayLevel>();
+  const [chosenLevel, setLevel] = useStoredValue<DisplayLevel | undefined>(
+    storage,
+    'displayLevel',
+    (stored) => (isDisplayLevel(stored) ? stored : undefined),
+  );
+  // The trials the reader turned on, of those the profile offers.
+  const [flagList, setFlagList] = useStoredValue<readonly string[]>(storage, 'flags', (stored) =>
+    Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [],
+  );
+  const offered = new Set((profile?.experiments ?? []).map((e) => e.id));
+  const flags: ReadonlySet<string> = new Set(
+    settingsOn ? flagList.filter((id) => offered.has(id)) : [],
+  );
+  const setFlag = (id: string, on: boolean) =>
+    setFlagList(on ? [...new Set([...flagList, id])] : flagList.filter((f) => f !== id));
   // Without Innstillinger, the setup's level stands.
   const level = (settingsOn ? chosenLevel : undefined) ?? defaultLevel;
 
@@ -657,6 +742,14 @@ export const useAssistant = ({
     documents,
     // threads
     threads,
+    threadRows,
+    // «Logg ut» forgets what this browser kept of the reader's choices, as kunnskapsassistenten's
+    // beforeLogout: the next person on a shared machine starts without them.
+    signOut: () => {
+      storage?.remove('filter');
+      storage?.remove('flags');
+      storage?.remove('corpus');
+    },
     threadsFailed,
     reloadThreads,
     renameThread: onRename
@@ -683,6 +776,11 @@ export const useAssistant = ({
     },
     page,
     showSettings: () => {
+      if (threadInUrl && location.hash !== '#innstillinger') {
+        const url = new URL(location.href);
+        url.hash = 'innstillinger';
+        history.pushState(null, '', url);
+      }
       setPage('settings');
       setRequest({ action: 'close-drawers' });
     },
@@ -725,11 +823,16 @@ export const useAssistant = ({
     },
     // the shell
     request,
+    shellLayout,
+    onShellLayout: (next: ShellLayout) => storage?.write('layout', next),
     tool,
     setTool,
     // settings
     level,
     setLevel,
+    flags,
+    setFlag,
+    threadInUrl,
     colorScheme,
     onColorSchemeChange,
     onFeedback,

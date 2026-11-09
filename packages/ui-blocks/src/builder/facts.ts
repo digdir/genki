@@ -78,7 +78,15 @@ export const servicesIn = (rows: readonly ModelRow[]) => {
 export const factsFromModels = (
   rows: readonly ModelRow[],
   service: string,
-  given: { channels: readonly Channel[]; steps?: boolean | undefined },
+  given: {
+    channels: readonly Channel[];
+    steps?: boolean | undefined;
+    /**
+     * The services whose pickable variants the reader may switch between, when the host offers
+     * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
+     */
+    family?: ((service: string) => boolean) | undefined;
+  },
 ): ServiceFacts | undefined => {
   const own = rows.filter((row) => !row._alias_of && serviceOf(row) === service);
   const first = own[0];
@@ -102,7 +110,11 @@ export const factsFromModels = (
     chat: own.some((row) => row._chat === true),
     datasets,
     documents: own.some((row) => row._documents != null),
-    variants: own.filter((row) => row._pickable).map((row) => row.id),
+    variants: given.family
+      ? rows
+          .filter((row) => !row._alias_of && row._pickable && given.family?.(serviceOf(row)))
+          .map((row) => row.id)
+      : own.filter((row) => row._pickable).map((row) => row.id),
     ...(given.steps === undefined ? {} : { steps: given.steps }),
     channels: given.channels,
   };

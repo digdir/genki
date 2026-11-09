@@ -12,8 +12,9 @@ export {
   type Turn,
 } from './api.js';
 export { Assistant, AssistantView, type AssistantProps } from './Assistant.js';
-export type { AssistantProfile, CorpusProfile, FieldSpec } from './profile.js';
+export type { AssistantExperiment, AssistantProfile, CorpusProfile, FieldSpec } from './profile.js';
 export { stepsOf, type StepFrame } from './procedure.js';
+export { browserStorage, useStoredValue, type AssistantStorage } from './storage.js';
 export {
   shortTitle,
   useAssistant,

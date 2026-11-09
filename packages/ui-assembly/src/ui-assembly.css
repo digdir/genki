@@ -79,6 +79,15 @@
     padding-block-end: var(--uia-main-end);
   }
 
+  /* Two views in one panel, as kunnskapsassistenten's stackedView.css: the filter over the tools. */
+  .uia-stacked {
+    inline-size: 100%;
+  }
+
+  .uia-stacked + .uia-stacked {
+    margin-block-start: var(--genai-assembly-stacked-gap, var(--ds-size-12));
+  }
+
   .uia-frames {
     margin: 0;
     padding-inline-start: var(--genai-assembly-frames-indent, var(--ds-size-5));

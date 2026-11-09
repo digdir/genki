@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
+  defaultLayout,
   fromTemplate,
   placeIn,
   turnOff,
@@ -13,6 +14,8 @@ import type { StreamEvent } from '@genai/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AskParams, AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
+import type { AssistantProfile } from './profile.js';
+import type { AssistantStorage } from './storage.js';
 
 // A fake genki: two variants of nothing, one service with a collection that has filter fields,
 // one stored thread, and an answer that cites one excerpt and reports two steps.
@@ -68,7 +71,10 @@ const fakeApi = () => {
         },
       ],
     })),
-    loadCorpora: vi.fn(async () => [{ key: 'kudos', label: 'Kudos' }]),
+    loadCorpora: vi.fn(async () => [
+      { key: 'kudos', label: 'Kudos' },
+      { key: 'genki-docs', label: 'GenKI-dokumentasjon' },
+    ]),
     loadFields: vi.fn(async () => [{ id: 'type', label: 'Dokumenttyper' }]),
     loadFacets: vi.fn(async () => [
       { id: 'type', label: 'Dokumenttyper', options: [{ value: 'Årsrapport', count: 3 }] },
@@ -263,7 +269,9 @@ describe('the assistant a layout describes', () => {
     );
     draw(three.layout, fakeApi().api);
     await waitFor(() => expect(tools()?.dataset.mode).toBe('dropdown'));
-    const options = screen.getAllByRole('option', { hidden: true }).map((o) => o.textContent);
+    const options = [...document.querySelectorAll('.uib-shell-tools-choice option')].map(
+      (o) => o.textContent,
+    );
     expect(options).toEqual(['Fremgangsmåte', 'Chat', 'Kilder']);
   });
 
@@ -288,5 +296,100 @@ describe('the assistant a layout describes', () => {
     draw(state('without-filter').layout, api);
     expect(await screen.findByRole('link', { name: /En gammel tråd/ })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /En annen tjenestes tråd/ })).toBeNull();
+  });
+});
+
+// kunnskapsassistenten's own arrangement, as the UI blocks preview draws it.
+describe('the assistant with kunnskapsassistenten’s choices', () => {
+  const memory = () => {
+    const kept = new Map<string, unknown>();
+    const storage: AssistantStorage = {
+      read: (key) => kept.get(key),
+      write: (key, value) => void kept.set(key, value),
+      remove: (key) => void kept.delete(key),
+    };
+    return { kept, storage };
+  };
+  const profile: AssistantProfile = {
+    assistantName: 'KA',
+    signedInAs: 'Testidentitet: test',
+    settingsNote: 'Valgene huskes i denne nettleseren.',
+    experiments: [
+      { id: 'year-ranges', title: 'Årsfilter med perioder' },
+      { id: 'filters-right-panel', title: 'Filtreringen i høyre panel' },
+    ],
+  };
+  const drawKa = (storage: AssistantStorage, layout = defaultLayout) =>
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={layout}
+        service="ka"
+        tenant="digdir"
+        profile={profile}
+        storage={storage}
+        threadInUrl
+      />,
+    );
+
+  it('keeps Kilder’s own heading when it is the secondary panel’s only tool', async () => {
+    drawKa(memory().storage);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(document.querySelector('.uib-shell-tools')).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Kilder', hidden: true })).toBeTruthy();
+  });
+
+  it('offers the profile’s experiments in «Innstillinger», with its note, and keeps the choice', async () => {
+    const { kept, storage } = memory();
+    drawKa(storage);
+    fireEvent.click(await screen.findByRole('link', { name: 'Innstillinger' }));
+    expect(location.hash).toBe('#innstillinger');
+    expect(await screen.findByText('Valgene huskes i denne nettleseren.')).toBeTruthy();
+    const trial = screen.getByRole('switch', { name: /Årsfilter med perioder/ });
+    fireEvent.click(trial);
+    expect(kept.get('flags')).toEqual(['year-ranges']);
+  });
+
+  it('puts the filter over Kilder with the trial «filters-right-panel», and only threads on the left', async () => {
+    const { storage } = memory();
+    storage.write('flags', ['filters-right-panel']);
+    drawKa(storage);
+    await screen.findByRole('textbox', { name: /Spørsmål til KA/ });
+    expect(screen.getByRole('navigation', { name: 'Tråder' })).toBeTruthy();
+    expect(
+      screen.getByRole('complementary', { name: 'Filter og Kilder', hidden: true }),
+    ).toBeTruthy();
+  });
+
+  it('keeps the filter, and forgets it, the trials and the collection on «Logg ut»', async () => {
+    const { kept, storage } = memory();
+    storage.write('filter', { type: ['Årsrapport'], bad: [1] });
+    storage.write('flags', ['year-ranges']);
+    storage.write('corpus', 'kudos');
+    drawKa(storage);
+    fireEvent.click(await screen.findByRole('button', { name: /Tråder/ }));
+    const signOut = await screen.findByRole('link', { name: 'Logg ut' });
+    signOut.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(signOut);
+    expect([...kept.keys()]).toEqual([]);
+  });
+
+  it('says so when a new collection starts a new thread', async () => {
+    const notices: string[] = [];
+    render(
+      <Assistant
+        api={fakeApi().api}
+        layout={defaultLayout}
+        service="ka"
+        tenant="digdir"
+        profile={profile}
+        onNotice={(text) => notices.push(text)}
+      />,
+    );
+    const choice = await screen.findByRole('combobox', { name: 'Dokumentsamling' });
+    fireEvent.change(choice, { target: { value: 'genki-docs' } });
+    expect(notices).toEqual([
+      'Byttet til GenKI-dokumentasjon. Du har fått en ny tråd, og filteret er tømt.',
+    ]);
   });
 });

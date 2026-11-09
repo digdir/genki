@@ -3,7 +3,7 @@
 // kunnskapsassistenten, as the UI blocks preview draws it; what the preview never drew follows
 // the design's board 3: Filter in the main column as a strip with «Endre», Chat or Fremgangsmåte
 // in the secondary panel, and the secondary panel's tool rule.
-import { Button, Details, Paragraph } from '@digdir/designsystemet-react';
+import { Button, Details, Paragraph, SkipLink } from '@digdir/designsystemet-react';
 import {
   AnswerActions,
   Composer,
@@ -42,6 +42,19 @@ import { stepsOf } from './procedure.js';
 import { useAssistant, type AssistantOptions, type AssistantState } from './useAssistant.js';
 
 const names = uiBlocksNb.builder;
+
+// The modifier to name; the shortcut takes both (kunnskapsassistenten's shortcutModifier.ts).
+const modifier = () =>
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.userAgent) ? 'Cmd' : 'Ctrl';
+
+/** This page's address with the thread given, or none, and the rest kept: the layout, the service. */
+const hereHref = (thread?: string) => {
+  const url = new URL(location.href);
+  url.hash = '';
+  if (thread) url.searchParams.set('t', thread);
+  else url.searchParams.delete('t');
+  return `${url.pathname}${url.search}`;
+};
 
 export interface AssistantProps extends AssistantOptions {
   /** The `id` of `<main>`, the target of «Hopp til hovedinnhold». */
@@ -197,9 +210,53 @@ export const AssistantView = ({
   // The strip in the main column opens the filter under it with «Endre».
   const [stripOpen, setStripOpen] = useState(false);
 
+  // kunnskapsassistenten's trials, where the profile offers them and the reader turned them on.
+  const filtersBeside = a.flags.has('filters-right-panel') && filterZone === 'primary';
+  const twoViews = threadsOn && filterZone === 'primary' && !filtersBeside;
+
   const [atEnd, setAtEnd] = useState(true);
   const start = a.view === 'new' || (a.view === 'ready' && a.turns.length === 0);
   const lastAnswer = a.turns.at(-1)?.answer;
+
+  // The skip link goes to the field's id, so it has a target (axe `region`).
+  const [fieldId, setFieldId] = useState<string>();
+  useEffect(() => {
+    const field = a.fieldRef.current;
+    if (field && !field.id) field.id = 'composer-field';
+    setFieldId(field?.id || undefined);
+  });
+  // No focus hides under the docked field: scroll padding as tall as the dock (WCAG 2.4.11).
+  const dockRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const main = document.getElementById(mainId);
+    const dock = dockRef.current;
+    if (!main || !dock || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      main.style.scrollPaddingBlockEnd =
+        getComputedStyle(dock).position === 'sticky' ? `${Math.round(dock.offsetHeight)}px` : '';
+    });
+    observer.observe(dock);
+    return () => {
+      observer.disconnect();
+      main.style.scrollPaddingBlockEnd = '';
+    };
+  });
+  // When the answer is done, «Avbryt genereringen» turns back into a disabled send button; focus
+  // that was on it goes to the field, not to the page. Focus the reader moved elsewhere stays.
+  const wasWorking = useRef(false);
+  useEffect(() => {
+    const ended = wasWorking.current && !a.working;
+    wasWorking.current = a.working;
+    if (!ended) return;
+    const lost = () => {
+      const active = document.activeElement;
+      return active === null || active === document.body || !active.isConnected;
+    };
+    if (lost()) a.fieldRef.current?.focus();
+    requestAnimationFrame(() => {
+      if (lost()) a.fieldRef.current?.focus();
+    });
+  }, [a.working, a.fieldRef]);
 
   // ── Chat ──
   const chat = (inPanel: boolean) => {
@@ -207,7 +264,7 @@ export const AssistantView = ({
     if (a.view === 'notfound') {
       middle = (
         <NotFoundState
-          homeHref="?"
+          homeHref={hereHref()}
           onGoHome={() => a.leave(undefined)}
           title="Fant ikke tråden"
           description="Den kan være slettet, eller lenken kan være feil."
@@ -315,6 +372,7 @@ export const AssistantView = ({
             }
             sticky={!start && !inPanel}
             fieldRef={a.fieldRef}
+            {...(inPanel ? {} : { ref: dockRef })}
           />
         )}
         {start ? (
@@ -343,13 +401,15 @@ export const AssistantView = ({
   const filter = (pinIn: HTMLDivElement | null | undefined, headingLevel: 2 | 3) => (
     <Filter
       {...(pinIn !== undefined ? { pinIn } : {})}
+      yearPeriods={a.flags.has('year-ranges')}
+      compactChips={a.flags.has('compact-filter-chips')}
       fields={a.facets}
       selection={a.selection}
       onChange={a.setSelection}
       failed={a.facetsFailed}
       onRetry={a.retryFacets}
       thread={a.currentId}
-      newThreadHref="?"
+      newThreadHref={hereHref()}
       onNewThread={(event) => {
         event.preventDefault();
         a.leave(undefined);
@@ -414,15 +474,15 @@ export const AssistantView = ({
   // ── Threads ──
   const threadList = (
     <Threads
-      threads={a.threads}
+      threads={a.threadRows}
       failed={a.threadsFailed}
       onRetry={a.reloadThreads}
       currentId={a.page === 'chat' ? a.currentId : undefined}
-      threadHref={(thread) => `?t=${encodeURIComponent(thread.id)}`}
+      threadHref={(thread) => hereHref(thread.id)}
       onOpenThread={(thread) => a.leave(thread.id)}
-      newThreadHref="?"
+      newThreadHref={hereHref()}
       onNewThread={() => {
-        if (filterZone === 'primary') {
+        if (twoViews) {
           setPrimaryView('filters');
           setSwitchedView(false);
         }
@@ -431,9 +491,11 @@ export const AssistantView = ({
       {...(a.renameThread ? { onRename: a.renameThread } : {})}
       {...(a.deleteThread ? { onDelete: a.deleteThread } : {})}
       footer={
-        a.profile?.signedInAs ? <SignedIn name={a.profile.signedInAs} signOutHref="?" /> : undefined
+        a.profile?.signedInAs ? (
+          <SignedIn name={a.profile.signedInAs} signOutHref={hereHref()} onSignOut={a.signOut} />
+        ) : undefined
       }
-      {...(filterZone === 'primary'
+      {...(twoViews
         ? {
             onShowFilters: () => {
               setPrimaryView('filters');
@@ -456,7 +518,7 @@ export const AssistantView = ({
   ) : undefined;
 
   let primary: ShellPanel | undefined;
-  if (threadsOn && filterZone === 'primary') {
+  if (twoViews) {
     primary =
       primaryView === 'threads'
         ? { label: 'Tråder og filter', children: threadList, foot }
@@ -482,18 +544,18 @@ export const AssistantView = ({
           };
   } else if (threadsOn) {
     primary = { label: 'Tråder', children: threadList, foot };
-  } else if (filterZone === 'primary') {
+  } else if (filterZone === 'primary' && !filtersBeside) {
     primary = { label: 'Filter', pinnedRef: setFilterPin, children: filter(filterPin, 2), foot };
   } else if (foot) {
     primary = { label: names.settings, foot, footPinned: true };
   }
 
   // ── The secondary panel's tools, in the catalogue's order ──
-  const sources = (
+  const sourcesView = (titled: boolean) => (
     <Sources
       color="neutral"
-      title={false}
-      sources={a.footnotes ? a.activeAnswer?.sources : a.activeAnswer?.sources}
+      {...(titled ? {} : { title: false })}
+      sources={a.activeAnswer?.sources}
       answerStatus={a.activeAnswer ? a.activeAnswer.status : 'unasked'}
       citations={a.citations}
       loading={a.activeAnswer?.status === 'streaming' && !a.activeAnswer.sources}
@@ -523,15 +585,30 @@ export const AssistantView = ({
       ? [{ id: 'approach', label: names.approach, content: approachPanel }]
       : []),
     ...(chatZone === 'secondary' ? [{ id: 'chat', label: names.chat, content: chat(true) }] : []),
-    ...(sourcesOn ? [{ id: 'sources', label: names.sources, content: sources }] : []),
+    ...(sourcesOn ? [{ id: 'sources', label: names.sources, content: sourcesView(false) }] : []),
   ];
+  // Kilder alone keeps its own heading, as kunnskapsassistenten draws it; the switcher names the
+  // tools only when there is a choice, or for a tool with no heading of its own.
+  const onlySources = tools.length === 1 && tools[0]?.id === 'sources';
+  const toolsView = onlySources ? (
+    sourcesView(true)
+  ) : tools.length > 0 ? (
+    <ShellTools tools={tools} active={a.tool} onChange={a.setTool} pinIn={toolsPin} />
+  ) : null;
+  // `filters-right-panel`: the filter over the tools, drawn first and named first, as
+  // kunnskapsassistenten's withFiltersBesideSources.
   const secondary: ShellPanel | undefined =
-    tools.length > 0
+    tools.length > 0 || filtersBeside
       ? {
-          label: tools.map((t) => t.label).join(' og '),
-          pinnedRef: setToolsPin,
-          children: (
-            <ShellTools tools={tools} active={a.tool} onChange={a.setTool} pinIn={toolsPin} />
+          label: [...(filtersBeside ? ['Filter'] : []), ...tools.map((t) => t.label)].join(' og '),
+          ...(onlySources || filtersBeside ? {} : { pinnedRef: setToolsPin }),
+          children: filtersBeside ? (
+            <>
+              <section className="uia-stacked">{filter(undefined, 2)}</section>
+              {toolsView ? <section className="uia-stacked">{toolsView}</section> : null}
+            </>
+          ) : (
+            toolsView
           ),
           // Folded until it has something to show, as kunnskapsassistenten's Kilder; open from the
           // start when Chat stands here, or there would be nothing to ask in.
@@ -540,6 +617,7 @@ export const AssistantView = ({
       : undefined;
 
   // ── The main column ──
+  const experiments = a.profile?.experiments ?? [];
   let main: ReactNode;
   if (a.page === 'settings' && settingsOn) {
     main = (
@@ -549,7 +627,16 @@ export const AssistantView = ({
         onColorSchemeChange={(scheme) => a.onColorSchemeChange?.(scheme)}
         displayLevel={a.level}
         onDisplayLevelChange={a.setLevel}
-        note="Valgene gjelder i denne forhåndsvisningen."
+        {...(experiments.length > 0
+          ? {
+              experiments: experiments.map((experiment) => ({
+                ...experiment,
+                on: a.flags.has(experiment.id),
+              })),
+              onExperimentChange: a.setFlag,
+            }
+          : {})}
+        note={a.profile?.settingsNote}
       />
     );
   } else {
@@ -578,11 +665,37 @@ export const AssistantView = ({
           Ingen klosser i innholdet.
         </Paragraph>,
       );
-    main = <div className="uia-main">{parts}</div>;
+    // Chat alone is the shell's child, as in kunnskapsassistenten, with no wrapper around it.
+    main =
+      chatZone === 'main' && parts.length === 1 ? (
+        chat(false)
+      ) : (
+        <div className="uia-main">{parts}</div>
+      );
   }
 
   return (
-    <Shell primary={primary} secondary={secondary} request={a.request} mainId={mainId}>
+    <Shell
+      primary={primary}
+      secondary={secondary}
+      request={a.request}
+      mainId={mainId}
+      initialLayout={a.shellLayout}
+      onLayoutChange={a.onShellLayout}
+      skipLinks={
+        a.page === 'chat' && chatZone === 'main' ? (
+          <SkipLink
+            href={`#${fieldId ?? 'composer-field'}`}
+            onClick={(event) => {
+              event.preventDefault();
+              a.fieldRef.current?.focus();
+            }}
+          >
+            Hopp til skrivefeltet ({modifier()} + /)
+          </SkipLink>
+        ) : null
+      }
+    >
       {main}
     </Shell>
   );

@@ -42,4 +42,26 @@ export interface AssistantProfile {
   corpora?: Readonly<Record<string, CorpusProfile>> | undefined;
   /** Who the reader is, for «Innlogget som» under the threads. */
   signedInAs?: string | undefined;
+  /**
+   * The services the reader may switch between as variants, and whose threads are listed, when
+   * more than the service's own, as kunnskapsassistenten's picker offers its family of services.
+   */
+  family?: ((service: string) => boolean) | undefined;
+  /**
+   * The trials the reader may turn on in «Innstillinger», «Eksperimenter». The assembly knows what
+   * kunnskapsassistenten's do: `year-ranges` and `compact-filter-chips` in the filter, and
+   * `filters-right-panel`, which puts the filter over the sources in the secondary panel.
+   */
+  experiments?: readonly AssistantExperiment[] | undefined;
+  /** The note at the foot of «Innstillinger». */
+  settingsNote?: string | undefined;
+}
+
+export interface AssistantExperiment {
+  id: string;
+  title: string;
+  description?: string | undefined;
+  /** Where it is discussed, such as its issue, with the link's words. */
+  href?: string | undefined;
+  hrefLabel?: string | undefined;
 }

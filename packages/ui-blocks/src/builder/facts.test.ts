@@ -108,3 +108,14 @@ describe('the blocks a service is offered', () => {
     expect(offerOf('projects', facts('kunnskapsassistenten')).unmet).toEqual(['genki:projects']);
   });
 });
+
+describe('a family of services as variants', () => {
+  it('counts the pickable rows of every service in the family, as kunnskapsassistenten’s picker', () => {
+    const ka = factsFromModels(models, 'kunnskapsassistenten', {
+      channels,
+      family: (service) => service.startsWith('kunnskapsassistenten'),
+    });
+    expect(ka?.variants).toEqual(['kunnskapsassistenten__default', 'kunnskapsassistenten-demo__default']);
+    expect(optionOfferOf('chat', 'variantPicker', ka).offered).toBe(true);
+  });
+});
