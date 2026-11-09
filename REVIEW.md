@@ -41,7 +41,14 @@ Report at most three Nits per review. Report Pre-existing problems in lines the 
 
 ## Evidence
 
-A claim about behaviour cites the file and line it comes from. Do not infer behaviour from a name. If you cannot point to the line, ask a question instead of reporting a finding.
+Every claim in a finding must hold. Posting nothing is better than posting something wrong.
+
+- A claim about behaviour cites the file and line that causes it. A name is not evidence.
+- A claim that something is missing, never called or matches nothing comes with the search that shows it.
+- A claim about what a pattern or regular expression matches is checked against the real paths or strings.
+- Before posting, try to prove each finding wrong. Drop it, or keep only the part that held, if any part fails.
+
+Each finding says what is wrong, the evidence (a file and line, or the command and what it showed) and the smallest fix. If you cannot point to the evidence, ask a question instead.
 
 ## Security
 

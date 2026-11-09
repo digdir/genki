@@ -51,11 +51,12 @@ describe('the model review workflow', () => {
     expect(text).not.toMatch(/secrets\.(?!GITHUB_TOKEN)/);
   });
 
-  it('gives the model only tools that read and one that comments', () => {
+  it('gives the model only tools that read, start a checking agent, or comment', () => {
     const action = review.steps.find((s) => s.uses?.startsWith('anthropics/claude-code-action@'));
     const tools = /--allowedTools "([^"]+)"/.exec(action?.with?.claude_args ?? '')?.[1]?.split(',');
     expect(tools).toEqual([
       'mcp__github_inline_comment__create_inline_comment',
+      'Task',
       'Read',
       'Grep',
       'Glob',
@@ -64,6 +65,50 @@ describe('the model review workflow', () => {
       'Bash(git diff:*)',
       'Bash(git log:*)',
       'Bash(git show:*)',
+      'Bash(git grep:*)',
+      'Bash(git ls-files:*)',
     ]);
+  });
+});
+
+describe('the paths that get the security checklist', () => {
+  const pattern = /grep -qE '([^']+)'/.exec(text)?.[1] ?? '';
+  const sensitive = new RegExp(pattern);
+
+  it.each([
+    'apps/api/src/dev-login.ts',
+    'apps/api/src/login-issuers.ts',
+    'apps/api/src/gate-runs.ts',
+    'apps/api/src/key-policies.ts',
+    'apps/api/src/session-upgrade.ts',
+    'apps/api/src/tenant-gate.ts',
+    'packages/providers-postgres/src/schema.ts',
+    'packages/identity/src/claims.ts',
+    'infra/main.bicep',
+    '.github/workflows/ci.yml',
+    'Dockerfile',
+  ])('include %s', (path) => {
+    expect(sensitive.test(path)).toBe(true);
+  });
+
+  it('leave out ordinary screens and docs', () => {
+    expect(sensitive.test('apps/portal/src/App.tsx')).toBe(false);
+    expect(sensitive.test('docs/development.md')).toBe(false);
+  });
+});
+
+describe('what the review may post', () => {
+  it('posts a finding only after an independent agent has tried to prove it wrong', () => {
+    expect(text).toContain('start a Task agent');
+    expect(text).toContain('asked to prove it wrong');
+  });
+
+  it('needs a search behind every claim that something is missing or matches nothing', () => {
+    expect(text).toContain('needs a search that shows it');
+  });
+
+  it('shows its evidence and a fix in every comment', () => {
+    expect(text).toContain('**Evidence:**');
+    expect(text).toContain('**Fix:**');
   });
 });
