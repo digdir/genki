@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { languageScript, mixArgs, srtTime, ssml, subtitles } from './demo.ts';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cached, keep, languageScript, mixArgs, srtTime, ssml, subtitles } from './demo.ts';
 
 describe('demo recordings', () => {
+  it('reuses a saved voice clip and leaves no partial file behind', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'demo-'));
+    const file = join(dir, 'line.mp3');
+    expect(cached(file)).toBe(false);
+    keep(file, Buffer.from('clip'));
+    expect(cached(file)).toBe(true);
+    expect(readdirSync(dir)).toEqual(['line.mp3']);
+  });
+
+  it('asks for the voice again when a saved clip is empty, and replaces it', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'demo-')), 'line.mp3');
+    writeFileSync(file, '');
+    expect(cached(file)).toBe(false);
+    keep(file, Buffer.from('clip'));
+    expect(readFileSync(file, 'utf8')).toBe('clip');
+  });
+
   it('tells the browser the demo language and its base language', () => {
     expect(languageScript('nb-NO')).toBe(
       "Object.defineProperty(navigator,'languages',{get:()=>['nb-NO','nb']});Object.defineProperty(navigator,'language',{get:()=>'nb-NO'});",

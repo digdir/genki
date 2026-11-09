@@ -1,7 +1,7 @@
 // Records a narrated demo of genki from demos/<name>.yaml. Run: node scripts/demo.ts demos/<name>.yaml
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -134,6 +134,21 @@ const speechEndpoint = () => {
   return { url: `${endpoint.replace(/\/$/, '')}/tts/cognitiveservices/v1`, token };
 };
 
+export const cached = (file: string) => {
+  try {
+    return readFileSync(file).length > 0;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+};
+
+export const keep = (file: string, data: Buffer) => {
+  const part = `${file}.${process.pid}.part`;
+  writeFileSync(part, data);
+  renameSync(part, file);
+};
+
 async function speak(
   text: string,
   demo: Demo,
@@ -144,7 +159,7 @@ async function speak(
     dir,
     `${createHash('sha256').update(`${demo.voice}\n${text}`).digest('hex').slice(0, 16)}.mp3`,
   );
-  if (!existsSync(file)) {
+  if (!cached(file)) {
     const { url, token } = speech();
     const res = await fetch(url, {
       method: 'POST',
@@ -157,7 +172,7 @@ async function speak(
       body: ssml(text, demo.voice, demo.language),
     });
     if (!res.ok) throw new Error(`Speech answered ${res.status}: ${await res.text()}`);
-    writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+    keep(file, Buffer.from(await res.arrayBuffer()));
   }
   const seconds = Number(
     run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]),
