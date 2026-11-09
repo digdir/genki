@@ -146,6 +146,15 @@
                 <code>color</code>: Designsystemet's <code>data-color</code> for the shell, set only
                 when given.
               </li>
+              <li>
+                <code>ShellTools</code>, for the secondary panel's <code>children</code>: its
+                <code>tools</code> (<code>id</code>, <code>label</code>, <code>content</code>),
+                <code>active</code> and <code>onChange</code>, and <code>headingLevel</code>. One
+                tool gets a heading, two get tabs and three or more a dropdown, the design's tool
+                rule (board 3, kunnskapsassistenten#168). The tabs follow the tabs pattern: one tab
+                stop, the arrows choose, Home and End go to the ends. The dropdown is
+                Designsystemet's <code>Select</code>. Every tool stays mounted while hidden.
+              </li>
             </ul>
             <h2>Related</h2>
             <ul>
@@ -404,6 +413,76 @@
                     <td><code>--genai-shell-drawer-close-margin</code></td>
                     <td><code>--ds-size-3</code></td>
                     <td>around a drawer's close button</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-gap</code></td>
+                    <td><code>--ds-size-4</code></td>
+                    <td>between the tools' switcher and the tool</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tabs-gap</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>between two tabs</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tabs-padding</code></td>
+                    <td><code>--ds-size-1</code></td>
+                    <td>around the tabs</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tabs-radius</code></td>
+                    <td><code>--ds-border-radius-lg</code></td>
+                    <td>the tabs' row</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tabs-background</code></td>
+                    <td><code>--ds-color-neutral-surface-tinted</code></td>
+                    <td>the tabs' row (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-min-height</code></td>
+                    <td><code>--ds-size-9</code></td>
+                    <td>a tab</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-padding-inline</code></td>
+                    <td><code>--ds-size-3</code></td>
+                    <td>a tab</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-radius</code></td>
+                    <td><code>--ds-border-radius-md</code></td>
+                    <td>a tab</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-color</code></td>
+                    <td><code>--ds-color-neutral-text-default</code></td>
+                    <td>a tab's text (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-font-weight</code></td>
+                    <td><code>--ds-font-weight-regular</code></td>
+                    <td>a tab's text</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-hover-background</code></td>
+                    <td><code>--ds-color-neutral-surface-hover</code></td>
+                    <td>a tab under the pointer (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-selected-background</code></td>
+                    <td><code>--ds-color-neutral-surface-default</code></td>
+                    <td>the chosen tab (pinned)</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-selected-shadow</code></td>
+                    <td><code>--ds-shadow-sm</code></td>
+                    <td>the chosen tab</td>
+                  </tr>
+                  <tr>
+                    <td><code>--genai-shell-tools-tab-selected-font-weight</code></td>
+                    <td><code>--ds-font-weight-medium</code></td>
+                    <td>the chosen tab's text</td>
                   </tr>
                 </tbody>
               </table>

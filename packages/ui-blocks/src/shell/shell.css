@@ -8,7 +8,8 @@
    The chrome is pinned to the neutral family on purpose, as kunnskapsassistenten's shell: the
    page, the panels, the rails, the bar and the borders stay grey whatever data-color the host
    sets, because accent belongs to the content and to what can be pressed. Six pins, each named
-   in shell-css.test.ts. The separator's line is the one exception: it is interactive, so it
+   in shell-css.test.ts, and four for the secondary panel's tool tabs, its chrome too. The
+   separator's line is the one exception: it is interactive, so it
    takes the accent role without a family. */
 @layer ds.theme, ds.base, ds.components, genai.components;
 
@@ -394,5 +395,65 @@
     block-size: auto;
     min-block-size: 0;
     padding-block-start: 0;
+  }
+
+  /* ── The secondary panel's tools (ShellTools), board 3's tool rule ── */
+
+  /* The switcher stands over the tool it shows; the tool's own heading is left out by the app. */
+  .uib-shell-tools {
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-tools-gap, var(--ds-size-4));
+    inline-size: 100%;
+  }
+
+  .uib-shell-tool[hidden] {
+    display: none;
+  }
+
+  /* Two tools: a segmented row, as the design draws it. Neutral, like the shell's chrome. */
+  .uib-shell-tools-tabs {
+    display: flex;
+    gap: var(--genai-shell-tools-tabs-gap, var(--ds-size-1));
+    padding: var(--genai-shell-tools-tabs-padding, var(--ds-size-1));
+    border-radius: var(--genai-shell-tools-tabs-radius, var(--ds-border-radius-lg));
+    background: var(--genai-shell-tools-tabs-background, var(--ds-color-neutral-surface-tinted));
+  }
+
+  .uib-shell-tools-tab {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    min-block-size: var(--genai-shell-tools-tab-min-height, var(--ds-size-9));
+    padding-inline: var(--genai-shell-tools-tab-padding-inline, var(--ds-size-3));
+    border: 0;
+    border-radius: var(--genai-shell-tools-tab-radius, var(--ds-border-radius-md));
+    background: none;
+    color: var(--genai-shell-tools-tab-color, var(--ds-color-neutral-text-default));
+    font: inherit;
+    font-weight: var(--genai-shell-tools-tab-font-weight, var(--ds-font-weight-regular));
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .uib-shell-tools-tab:hover {
+    background: var(
+      --genai-shell-tools-tab-hover-background,
+      var(--ds-color-neutral-surface-hover)
+    );
+  }
+
+  .uib-shell-tools-tab[aria-selected='true'] {
+    background: var(
+      --genai-shell-tools-tab-selected-background,
+      var(--ds-color-neutral-surface-default)
+    );
+    box-shadow: var(--genai-shell-tools-tab-selected-shadow, var(--ds-shadow-sm));
+    font-weight: var(--genai-shell-tools-tab-selected-font-weight, var(--ds-font-weight-medium));
+  }
+
+  .uib-shell-tools-choice {
+    inline-size: 100%;
   }
 }

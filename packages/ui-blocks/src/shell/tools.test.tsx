@@ -1,0 +1,106 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ShellTools, type ShellTool } from './Tools.js';
+
+afterEach(cleanup);
+
+const tool = (id: string, label: string): ShellTool => ({
+  id,
+  label,
+  content: <p>Innholdet i {label}</p>,
+});
+const sources = tool('sources', 'Kilder');
+const approach = tool('approach', 'Fremgangsmåte');
+const notes = tool('notes', 'Notater');
+
+describe('the secondary panel’s tools', () => {
+  it('draws nothing without a tool', () => {
+    const { container } = render(<ShellTools tools={[]} />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('names one tool with a heading, and offers no choice', () => {
+    render(<ShellTools tools={[sources]} headingLevel={3} />);
+    expect(screen.getByRole('heading', { level: 3, name: 'Kilder' })).toBeTruthy();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Innholdet i Kilder').closest('[hidden]')).toBeNull();
+  });
+
+  it('offers two tools as tabs, the first chosen, the other’s content hidden but kept', () => {
+    render(<ShellTools tools={[approach, sources]} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Fremgangsmåte', 'Kilder']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel', { name: 'Fremgangsmåte' }).closest('[hidden]')).toBeNull();
+    expect(
+      screen.getByText('Innholdet i Kilder', { selector: 'p' }).closest('[hidden]'),
+    ).not.toBeNull();
+  });
+
+  it('gives the tabs one tab stop, and lets the arrows, Home and End choose', () => {
+    render(<ShellTools tools={[approach, sources]} />);
+    const [first, second] = screen.getAllByRole('tab') as [HTMLElement, HTMLElement];
+    expect(first.getAttribute('tabindex')).toBe('0');
+    expect(second.getAttribute('tabindex')).toBe('-1');
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(second.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'End' });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second, { key: 'Home' });
+    expect(first.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('offers three tools or more in a dropdown named «Verktøy»', () => {
+    render(<ShellTools tools={[approach, sources, notes]} />);
+    const choice = screen.getByRole('combobox', { name: 'Verktøy' });
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Fremgangsmåte',
+      'Kilder',
+      'Notater',
+    ]);
+    fireEvent.change(choice, { target: { value: 'notes' } });
+    expect(screen.getByRole('region', { name: 'Notater' }).closest('[hidden]')).toBeNull();
+    expect(
+      screen.getByText('Innholdet i Kilder', { selector: 'p' }).closest('[hidden]'),
+    ).not.toBeNull();
+  });
+
+  it('follows the tool the app chooses, as when a footnote asks for the sources', () => {
+    const Host = () => {
+      const [active, setActive] = useState('approach');
+      return (
+        <>
+          <button type="button" onClick={() => setActive('sources')}>
+            Fotnote 1
+          </button>
+          <ShellTools tools={[approach, sources]} active={active} onChange={setActive} />
+        </>
+      );
+    };
+    render(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fotnote 1' }));
+    expect(screen.getByRole('tab', { name: 'Kilder' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('reports the reader’s choice, and not a choice of the tool already shown', () => {
+    const chosen: string[] = [];
+    render(<ShellTools tools={[approach, sources]} onChange={(id) => chosen.push(id)} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Fremgangsmåte' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Kilder' }));
+    expect(chosen).toEqual(['sources']);
+  });
+
+  it('falls back to the first tool when the chosen one is gone', () => {
+    render(<ShellTools tools={[approach, sources]} active="notes" />);
+    expect(screen.getByRole('tab', { name: 'Fremgangsmåte' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+});

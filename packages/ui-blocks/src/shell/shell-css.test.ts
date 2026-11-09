@@ -41,6 +41,11 @@ const neutralPins = [
   '--genai-shell-drawer-background',
   '--genai-shell-primary-background',
   '--genai-shell-rail-background',
+  // The secondary panel's tool tabs are its own chrome, grey as the design draws them.
+  '--genai-shell-tools-tab-color',
+  '--genai-shell-tools-tab-hover-background',
+  '--genai-shell-tools-tab-selected-background',
+  '--genai-shell-tools-tabs-background',
 ];
 
 describe('the Shell styles', () => {
