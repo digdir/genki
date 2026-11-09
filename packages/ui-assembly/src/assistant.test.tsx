@@ -20,6 +20,7 @@ import {
 } from '@genai/ui-blocks';
 import type { StreamEvent } from '@genai/client';
 import { InLocale } from '@genai/i18n/react';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpError, type AskParams, type AssistantApi } from './api.js';
 import { Assistant } from './Assistant.js';
@@ -549,6 +550,33 @@ describe('Dokumentvisning in the assistant', () => {
     expect(await documentTitle()).toBeTruthy();
   });
 
+  it('names «Vis i dokumentet» in one piece, the words seen and then the document', async () => {
+    const footnote = await stored(withView().layout);
+    fireEvent.click(footnote);
+    const show = await screen.findByRole('button', {
+      name: 'Vis i dokumentet, Tildelingsbrev 2022',
+    });
+    // No hidden box after the words, which a browser reads with a space before the comma.
+    expect(show.querySelector('.ds-sr-only')).toBeNull();
+    expect(show.textContent).toBe('Vis i dokumentet');
+  });
+
+  it('names in its hint what opens a document here: «Vis i dokumentet» with Kilder, a footnote without', async () => {
+    const hint = () => document.querySelector('.uib-document-view')?.textContent ?? '';
+    const withKilder = draw(withView().layout, fakeApi().api);
+    await waitFor(() =>
+      expect(hint()).toContain(
+        'Åpne et utdrag i kildene og velg «Vis i dokumentet», så vises dokumentet her.',
+      ),
+    );
+    withKilder.unmount();
+    draw(withoutSources().layout, fakeApi().api);
+    await waitFor(() =>
+      expect(hint()).toContain('Velg en fotnote i svaret, så vises dokumentet her.'),
+    );
+    expect(hint()).not.toContain('kildene');
+  });
+
   it('gives the focus back to «Vis i dokumentet» on «Tilbake til kildene», with Kilder shown', async () => {
     const footnote = await stored(withView().layout);
     fireEvent.click(footnote);
@@ -706,38 +734,32 @@ describe('Dokumentvisning in the assistant', () => {
     expect(options).toEqual(['Fremgangsmåte', 'Kilder', 'Dokumentvisning']);
   });
 
-  it('stops its steps under the secondary panel’s pinned switcher, not behind it', async () => {
-    // A ResizeObserver that reports at once, and every element 52 px tall.
-    const Real = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-      callback: ResizeObserverCallback;
-      constructor(callback: ResizeObserverCallback) {
-        this.callback = callback;
-      }
-      observe() {
-        this.callback([], this as unknown as ResizeObserver);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+  it('stops its jumps under the secondary panel’s pinned switcher, at the height the shell measures', async () => {
+    // Every element 52 px tall. The ResizeObserver stub never reports: the height is the one the
+    // shell sets as the panel opens, and the assembly measures nothing of its own.
     const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(52);
     try {
       draw(withView().layout, fakeApi().api);
       await waitFor(() => expect(tools()?.dataset.mode).toBe('tabs'));
-      await waitFor(() =>
-        expect(
-          document
-            .querySelector<HTMLElement>('.uib-document-view')
-            ?.parentElement?.style.getPropertyValue('--genai-document-view-steps-inset'),
-        ).toBe('52px'),
+      const view = document.querySelector<HTMLElement>('.uib-document-view');
+      const region = view?.closest<HTMLElement>('.uib-shell-content');
+      expect(region?.style.getPropertyValue('--uib-shell-pinned-block-size')).toBe('52px');
+      expect(view?.parentElement?.style.getPropertyValue('--genai-document-view-jumps-inset')).toBe(
+        'var(--uib-shell-pinned-block-size, 0px)',
       );
+      // The variable the block stops its jumps at, so a rename in the block fails here.
+      expect(
+        readFileSync(
+          `${import.meta.dirname}/../../ui-blocks/src/document-view/document-view.css`,
+          'utf8',
+        ),
+      ).toMatch(/inset-block-start:\s*var\(--genai-document-view-jumps-inset\b/);
     } finally {
       height.mockRestore();
-      globalThis.ResizeObserver = Real;
     }
   });
 
-  it('gives a folded panel its scroll padding as a document opens, so the excerpt clears the steps', async () => {
+  it('leaves a folded panel’s scroll padding to the shell, which has it as the document opens', async () => {
     // The ResizeObserver stub never reports, as the shell's comes a frame too late.
     const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(52);
     try {

@@ -147,4 +147,23 @@
     margin: 0;
     color: var(--genai-assembly-quiet-color, var(--ds-color-neutral-text-subtle));
   }
+
+  /* A host's notice (`useNotice`): at the foot of the page, centred over everything, as wide as
+     its words up to a reading width, and gone while it says nothing. */
+  .uia-notice {
+    position: fixed;
+    inset-block-end: var(--genai-assembly-notice-inset, var(--ds-size-4));
+    inset-inline-start: 50%;
+    translate: -50% 0;
+    z-index: var(--genai-assembly-notice-layer, 20);
+    inline-size: max-content;
+    max-inline-size: min(
+      var(--genai-assembly-notice-max-width, 560px),
+      calc(100% - 2 * var(--genai-assembly-notice-inset, var(--ds-size-4)))
+    );
+  }
+
+  .uia-notice:empty {
+    display: none;
+  }
 }

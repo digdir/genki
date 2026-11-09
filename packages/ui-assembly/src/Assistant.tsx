@@ -218,26 +218,10 @@ export const AssistantView = ({
   const [primaryView, setPrimaryView] = useState<'threads' | 'filters'>('filters');
   const [switchedView, setSwitchedView] = useState(false);
   const [filterPin, setFilterPin] = useState<HTMLDivElement | null>(null);
-  // The secondary panel's pinned region, where its tools' switcher stays while a tool scrolls.
+  // The secondary panel's pinned region, where its tools' switcher stays while a tool scrolls. The
+  // shell pads the panel's region as tall as it from the moment the panel opens, and hands its
+  // tools that height as `--uib-shell-pinned-block-size`.
   const [toolsPin, setToolsPin] = useState<HTMLDivElement | null>(null);
-  // Dokumentvisning's steps stay at the top while the document scrolls: under the switcher pinned
-  // there, not behind it.
-  const [toolsPinHeight, setToolsPinHeight] = useState(0);
-  useEffect(() => {
-    if (!toolsPin || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => setToolsPinHeight(Math.round(toolsPin.offsetHeight)));
-    observer.observe(toolsPin);
-    return () => observer.disconnect();
-  }, [toolsPin]);
-  // A folded panel that opens on a document gets its scroll padding from the shell a frame after
-  // the block has scrolled to the excerpt, which then opens under the steps. The same padding,
-  // the pinned switcher's height, is set here as the document opens: after the shell's own effects,
-  // which open a drawer, and before the block's next frame.
-  useEffect(() => {
-    const region = toolsPin?.parentElement;
-    if (!a.openDoc || !toolsPin || !region) return;
-    region.style.scrollPaddingBlockStart = `${Math.round(toolsPin.offsetHeight)}px`;
-  }, [a.openDoc, toolsPin]);
   const back = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (switchedView && primaryView === 'filters') back.current?.focus();
@@ -648,10 +632,12 @@ export const AssistantView = ({
                     'sources',
                   );
                 }}
+                // Named in one piece, the words seen and then which document: a hidden box after
+                // the words would make a browser read a space before the comma.
+                aria-label={`${t('documentView.show')}, ${source.title.trim() || t('sources.untitled')}`}
               >
                 <FileTextIcon aria-hidden />
-                {t('assembly.showInDocument')}
-                <span className="ds-sr-only">, {source.title}</span>
+                {t('documentView.show')}
               </Button>
             ),
           }
@@ -680,6 +666,9 @@ export const AssistantView = ({
       returnTo={a.openDoc?.returnTo}
       // Asked in the thread, where Chat is: without it there is nowhere to ask.
       onAsk={chatZone ? a.askAboutDocument : undefined}
+      // Its hint names what opens a document here: «Vis i dokumentet» in Kilder, or else a
+      // footnote, which goes to Kilder whenever Kilder is placed.
+      opensFrom={sourcesOn ? 'sources' : 'answer'}
       corpus={a.corpus?.label}
       headingLevel={3}
     />
@@ -712,9 +701,11 @@ export const AssistantView = ({
             content: (
               <div
                 onKeyDownCapture={escapeStaysInDrawer}
+                // Dokumentvisning's jumps stay at the top while the document scrolls: under the
+                // switcher the shell pins there, not behind it, at the height the shell measures.
                 style={
                   {
-                    '--genai-document-view-steps-inset': `${toolsPinHeight}px`,
+                    '--genai-document-view-jumps-inset': 'var(--uib-shell-pinned-block-size, 0px)',
                   } as CSSProperties
                 }
               >

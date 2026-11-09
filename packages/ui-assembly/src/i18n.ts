@@ -1,6 +1,7 @@
 // The assembly's words, with bokmål as the source and English held to it, as the blocks keep
 // theirs. The blocks' catalogue is part of it, so a word a block already has is read from there:
-// the blocks' names from `builder`, «Ny tråd» from `threads`, «Avgrenset til» from `conversation`.
+// the blocks' names from `builder`, «Ny tråd» from `threads`, «Avgrenset til» from `conversation`,
+// «Vis i dokumentet» from `documentView`.
 import { defineCatalogue, defineNamespace, intlLocale, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
 import { uiBlocksEn, uiBlocksNb } from '@genai/ui-blocks';
@@ -16,7 +17,6 @@ const nbAssembly = defineNamespace({
   technicalDetails: 'Tekniske detaljer',
   stripChange: 'Endre',
   stripClose: 'Lukk',
-  showInDocument: 'Vis i dokumentet',
   approachEmpty: 'Fremgangsmåten vises her når du stiller et spørsmål.',
   approachNotKept:
     'Fremgangsmåten lagres ikke med svarene i tråden. Den vises her når du stiller et nytt spørsmål.',
@@ -28,6 +28,16 @@ const nbAssembly = defineNamespace({
   corpusChanged: 'Byttet til {corpus}. Du har fått en ny tråd, og filteret er tømt.',
   tabTitle: '{page} – {assistant}',
   aboutDocument: 'Om «{title}»: {question}',
+  // What a host that only tries the assistant says in place of sending (`useLogOnly`).
+  logOnlyFeedback: 'Ville sendt tilbakemelding: {rating}. Ikke sendt i forhåndsvisningen.',
+  logOnlyFeedbackReasons:
+    'Ville sendt tilbakemelding: {rating} ({reasons}). Ikke sendt i forhåndsvisningen.',
+  ratingUp: 'tommel opp',
+  ratingDown: 'tommel ned',
+  logOnlyRename:
+    'Ville gitt tråden nytt navn: «{title}». Ikke endret i genki: det gamle navnet er tilbake når du laster siden på nytt.',
+  logOnlyDelete:
+    'Ville slettet tråden «{title}». Ikke slettet i genki: den er tilbake når du laster siden på nytt.',
   stepPlanQueries: 'Forsto spørsmålet',
   stepInspectFilters: 'Så på hvilke kilder tråden leser fra',
   stepSearch: 'Lette etter steder som handler om spørsmålet',
@@ -50,7 +60,6 @@ const enAssembly = {
   technicalDetails: 'Technical details',
   stripChange: 'Change',
   stripClose: 'Close',
-  showInDocument: 'Show in the document',
   approachEmpty: 'The approach shows here when you ask a question.',
   approachNotKept:
     'The approach is not kept with the answers in the thread. It shows here when you ask a new question.',
@@ -62,6 +71,15 @@ const enAssembly = {
   corpusChanged: 'Switched to {corpus}. You have a new thread, and the filter is cleared.',
   tabTitle: '{page} – {assistant}',
   aboutDocument: 'About “{title}”: {question}',
+  logOnlyFeedback: 'Would have sent feedback: {rating}. Not sent in the preview.',
+  logOnlyFeedbackReasons:
+    'Would have sent feedback: {rating} ({reasons}). Not sent in the preview.',
+  ratingUp: 'thumbs up',
+  ratingDown: 'thumbs down',
+  logOnlyRename:
+    'Would have renamed the thread “{title}”. Not changed in genki: the old name is back when you reload the page.',
+  logOnlyDelete:
+    'Would have deleted the thread “{title}”. Not deleted in genki: it is back when you reload the page.',
   stepPlanQueries: 'Understood the question',
   stepInspectFilters: 'Looked at which sources the thread reads from',
   stepSearch: 'Looked for passages about the question',

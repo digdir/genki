@@ -143,6 +143,30 @@
                 scheme. <code>mainId</code>: the target of «Hopp til hovedinnhold».
               </li>
             </ul>
+            <h2>For a host that only tries it</h2>
+            <p>
+              A host that tries the assistant on real threads, such as a preview, keeps three things
+              beside it. They are exported with it, so no host writes its own.
+            </p>
+            <ul>
+              <li>
+                <code>useNotice()</code>: <code>[say, view]</code>. <code>say</code> goes to
+                <code>onNotice</code>, and <code>view</code> is drawn once beside the assistant, a
+                polite live region that shows each notice for seven seconds.
+              </li>
+              <li>
+                <code>useStoredColorScheme(key)</code>: <code>[scheme, setScheme]</code> for
+                <code>colorScheme</code> and <code>onColorSchemeChange</code>, kept on
+                <code>&lt;html data-color-scheme&gt;</code> and in localStorage under
+                <code>key</code>, and followed when another tab changes it.
+              </li>
+              <li>
+                <code>useLogOnly(say, log)</code>: <code>onFeedback</code>,
+                <code>onRename</code> and <code>onDelete</code> that only log and say what they
+                would have done, so a real thread is never changed. «Sender …» shows for a moment,
+                as a real request would.
+              </li>
+            </ul>
             <h2>Related</h2>
             <ul>
               <li><a href="shell.html">Shell</a>: the zones it places the blocks in</li>
@@ -259,6 +283,21 @@
                   <td>the strip's ground</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-assembly-notice-inset</code></td>
+                  <td><code>--ds-size-4</code></td>
+                  <td><code>useNotice</code>'s notice: from the foot of the page and the sides</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-notice-max-width</code></td>
+                  <td><code>560px</code></td>
+                  <td>the notice's widest</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-assembly-notice-layer</code></td>
+                  <td><code>20</code></td>
+                  <td>the notice's <code>z-index</code>, over the page</td>
+                </tr>
+                <tr>
                   <td><code>--genai-shell-main-padding-block-end</code></td>
                   <td><code>--ds-size-8</code></td>
                   <td>
@@ -294,6 +333,16 @@
                 column, wherever Chat stands.
               </li>
               <li>An assistant that goes stops its answer, and reports nothing after.</li>
+              <li>
+                Dokumentvisning's hint names what opens a document in the layout: «Vis i dokumentet»
+                in Kilder, or a footnote when Kilder is off.
+              </li>
+              <li>
+                The assembly measures nothing of the shell's. The shell pads a panel's region as
+                tall as its pinned switcher from the moment the panel opens, and Dokumentvisning's
+                jumps stop under the switcher at the height the shell hands its tools,
+                <code>--uib-shell-pinned-block-size</code>.
+              </li>
             </ul>
           </div>
           <div class="wide">
@@ -317,8 +366,10 @@
                 canvas's «Spørsmål til én kilde» does?
               </li>
               <li>
-                The secondary panel's switcher and a folded panel's scroll padding are measured here
-                until the shell offers them itself.
+                Dokumentvisning's jumps read the shell's pinned height only because the assembly
+                hands it to them. Should the block read
+                <code>--uib-shell-pinned-block-size</code> itself, as the shell's page offers it to
+                a block that pins its own head?
               </li>
             </ul>
           </div>
