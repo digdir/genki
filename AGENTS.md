@@ -23,6 +23,7 @@ Docker must run for the Postgres, pgvector and knowledge server suites. Without 
 - `packages/kernel` and `packages/port-*`: contracts only. `packages/providers-*`: the only place a vendor SDK is imported. `packages/composition`: wires them.
 - `packages/definitions`: the service definition schema. `packages/i18n` and each app's `src/i18n`: user-facing text.
 - `docs/adr`: decisions. `docs/security`: what genki protects and the assurance case. `docs/architecture/modules`: the module atlas.
+- The code of conduct and other community health files come from [digdir/.github](https://github.com/digdir/.github) for every Digdir repository. Do not add a copy here. That includes `SECURITY.md`: genki's reporting scope is in [docs/security](docs/security/README.md#reporting-a-vulnerability).
 
 ## Tests
 

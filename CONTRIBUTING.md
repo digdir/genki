@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping. The platform is under development and not in production, so expect things to move. Read the [README](README.md) first, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). If you work with a coding agent, point it at [AGENTS.md](AGENTS.md).
+Thank you for helping. The platform is under development and not in production, so expect things to move. Read the [README](README.md) first, and follow the [Code of Conduct](https://github.com/digdir/.github/blob/main/CODE_OF_CONDUCT.md). If you work with a coding agent, point it at [AGENTS.md](AGENTS.md).
 
 ## Run it locally
 
@@ -82,4 +82,4 @@ genki is maintained by [Digdir R&D Lab](https://baksia.digdir.no/teams/lab/), th
 
 ## Questions
 
-Open an issue for questions, bugs and ideas. For a vulnerability, follow [SECURITY.md](SECURITY.md) and never use a public issue.
+Open an issue for questions, bugs and ideas. For a vulnerability, follow [docs/security](docs/security/README.md#reporting-a-vulnerability) and never use a public issue.

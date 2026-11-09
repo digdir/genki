@@ -27,6 +27,7 @@ Report every finding in one review. Never hold one back for a later round: the a
 - `package-lock.json` and files written by a generator, such as `docs/architecture/system-atlas.html` from `npm run atlas:build`
 - Portal mock data under `apps/portal/src/mock`
 - Test code that breaks production rules on purpose
+- A missing community health file such as `SECURITY.md` or a code of conduct: Digdir provides them for every repository from `digdir/.github`
 
 ## Always check
 
