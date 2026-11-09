@@ -3,8 +3,9 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
 import { colorSchemes, isColorScheme, type ColorScheme } from './colorScheme.js';
+import { en, nb } from './i18n.js';
 import { ColorSchemeToggle, Settings, SettingsSection, type SettingsProps } from './Settings.js';
 
 afterEach(cleanup);
@@ -148,6 +149,11 @@ describe('the settings block', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it("keeps the settings' words in their own catalogue, out of the shared one that Approach loads", () => {
+    expect(Object.keys(nb)).toEqual(['settings']);
+    expect(sharedNb).not.toHaveProperty('settings');
   });
 });
 

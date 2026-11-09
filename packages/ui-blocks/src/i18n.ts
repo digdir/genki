@@ -1,6 +1,5 @@
 import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
 import { defineTranslations } from '@genai/i18n/react';
-import { enSettings, nbSettings } from './settings/i18n.js';
 import { enAnswerActions, nbAnswerActions } from './answer-actions/i18n.js';
 import { enShell, nbShell } from './shell/i18n.js';
 import { enBuilder, nbBuilder } from './builder/i18n.js';
@@ -45,14 +44,12 @@ const enProcedure = {
 
 export const nb = defineCatalogue({
   procedure: nbProcedure,
-  settings: nbSettings,
   answerActions: nbAnswerActions,
   shell: nbShell,
   builder: nbBuilder,
 });
 export const en = {
   procedure: enProcedure,
-  settings: enSettings,
   answerActions: enAnswerActions,
   shell: enShell,
   builder: enBuilder,
