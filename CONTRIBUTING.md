@@ -60,9 +60,17 @@ The pull request says how risky it is and how to undo it.
 
 ### Automated review
 
-Every pull request from this repository gets a review by a model, following [REVIEW.md](REVIEW.md). It comments and never approves, blocks or merges. Its findings are Important, Nit or Pre-existing.
+Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It never approves, blocks or merges.
 
-Answer every thread before you merge: fix it and say so, or say why not ("not fixing, because ..."). A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To run it again after a change, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
+- **One summary comment** at the top of the pull request: what it changes, every finding with its status, and a prompt you can give your coding agent to fix the open ones.
+- **One review** with all findings at once, as Important, Nit or Pre-existing. Most have a suggestion you can commit from the pull request.
+- **After each push**, a cheaper model checks the open findings against the new code. Fixed ones are answered with the commit and resolved, and the summary is updated. A push never brings new findings.
+
+Run the same review before you open the pull request, so the one in CI finds nothing: `/review-change` in Claude Code, or ask another agent to follow that procedure.
+
+Answer every open thread before you merge: fix it, or say why not ("not fixing, because ..."), which marks it dismissed. A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have new commits reviewed, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
+
+Each review run also uploads `review-run.json` as a workflow artifact: cost, duration, model, the kind of author and the findings, with no names. The review dashboard reads these. The repository variable `REVIEW_SHADOW_PERCENT` puts that share of pull requests, chosen by number, in a silent group: the review runs and is recorded but posts nothing, so the dashboard can compare. It is 0 unless set.
 
 ## Who maintains genki
 
