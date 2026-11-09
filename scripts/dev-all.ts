@@ -17,17 +17,6 @@ export interface DevProcess {
   env?: Record<string, string>;
 }
 
-// Run npm through the node that runs this script: spawning `npm` without a shell fails on
-// Windows, where npm is npm.cmd. npm sets npm_execpath to its own CLI when it runs a script;
-// under pnpm or yarn it points to their CLI, so fall back to plain `npm` then.
-export const npmCommand = (
-  args: string[],
-  execPath = process.env.npm_execpath,
-): Pick<DevProcess, 'command' | 'args'> =>
-  execPath && /(^|[\\/])npm-cli\.js$/.test(execPath)
-    ? { command: process.execPath, args: [execPath, ...args] }
-    : { command: 'npm', args };
-
 const vite = (name: string, port: number, env: Record<string, string> = {}): DevProcess => ({
   name,
   port,
