@@ -130,15 +130,57 @@ describe('the document view', () => {
 });
 
 describe('the excerpt the reader came for', () => {
-  it('is marked, scrolled to and focused, and Escape goes back', async () => {
+  it('is marked, scrolled to the top and focused, and Escape goes back', async () => {
+    const scrolled: Element[] = [];
+    const scroll = vi.fn(function (this: Element, options?: ScrollIntoViewOptions) {
+      if (options?.block === 'start') scrolled.push(this);
+    });
+    Element.prototype.scrollIntoView = scroll;
     const onReturn = vi.fn();
     draw({ target: { chunkId: 'kudos::2021-3' }, citations: cite('kudos::2021-3'), onReturn });
     await frame();
     const part = passageOf(/internkontroll/);
     expect(marked()).toEqual([part]);
+    expect(scrolled).toEqual([part]);
     expect(document.activeElement).toBe(part);
     fireEvent.keyDown(part, { key: 'Escape' });
     expect(onReturn).toHaveBeenCalledOnce();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  it('never marks a passage of the next document by the last one’s place, not even for a render', async () => {
+    const other: SourceDocument = {
+      title: 'Tildelingsbrev 2022',
+      documentId: 'kudos::2022',
+      excerpts: [
+        { chunkId: 'kudos::2022-1', text: 'Første del av brevet.', position: 1 },
+        { chunkId: 'kudos::2022-4', text: 'Andre del av brevet.', position: 4 },
+        { chunkId: 'kudos::2022-7', text: 'Tredje del av brevet.', position: 7 },
+      ],
+    };
+    const { rerender, container } = render(
+      <DocumentView sources={[report, other]} target={{ chunkId: 'kudos::2021-3' }} />,
+    );
+    await frame();
+    const records: MutationRecord[] = [];
+    const changes = new MutationObserver((list) => records.push(...list));
+    changes.observe(container, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-current'],
+      attributeOldValue: true,
+    });
+    rerender(<DocumentView sources={[report, other]} target={{ chunkId: 'kudos::2022-7' }} />);
+    await frame();
+    records.push(...changes.takeRecords());
+    const unmarked = records
+      .filter((r) => r.attributeName === 'data-current' && r.oldValue === 'true')
+      .map((r) => r.target.textContent);
+    changes.disconnect();
+    // Only the old document's mark went away; no passage of the new one had it and lost it.
+    expect(unmarked.filter((text) => text?.includes('brevet'))).toEqual([]);
+    expect(marked()).toEqual([passageOf(/Tredje del/)]);
   });
 
   it('is none when the target names only the document, which lands on the title', async () => {
@@ -167,8 +209,8 @@ describe('the excerpt the reader came for', () => {
 
   it('goes back on Escape anywhere on the document, but not from the question field', () => {
     const onReturn = vi.fn();
-    draw({ onReturn, onAsk: () => {} });
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Neste utdrag' }), { key: 'Escape' });
+    draw({ onReturn, onAsk: () => {}, citations: cite('kudos::2021-2') });
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Utdrag 1/ }), { key: 'Escape' });
     expect(onReturn).toHaveBeenCalledOnce();
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
     expect(onReturn).toHaveBeenCalledOnce();
@@ -182,57 +224,132 @@ describe('the excerpt the reader came for', () => {
   });
 });
 
-describe('stepping between excerpts', () => {
-  it('moves the mark with «Forrige» and «Neste», and says where in a live region', async () => {
-    draw({ target: { chunkId: 'kudos::2021-2' } });
-    await frame();
-    const steps = screen.getByRole('group', { name: 'Utdrag i dokumentet' });
-    expect(steps.textContent).toContain('1 av 3');
-    const next = within(steps).getByRole('button', { name: 'Neste utdrag' });
-    next.focus();
-    fireEvent.click(next);
-    expect(marked()).toEqual([passageOf(/internkontroll/)]);
-    expect(steps.textContent).toContain('2 av 3');
-    expect(document.querySelector('output')?.textContent).toBe(
-      'Internkontroll, 2 av 3 i dokumentet',
-    );
-    // Focus stays on the button, so the reader can press it again.
-    expect(document.activeElement).toBe(next);
-    fireEvent.click(within(steps).getByRole('button', { name: 'Forrige utdrag' }));
-    expect(marked()).toEqual([passageOf(/594,2/)]);
+describe('«Utdrag i svaret»: jumping straight to a cited excerpt', () => {
+  const jumps = () => screen.queryByRole('group', { name: 'Utdrag i svaret:' });
+  const chips = () =>
+    within(jumps() as HTMLElement)
+      .getAllByRole('button')
+      .map((chip) => chip.getAttribute('aria-label'));
+
+  it('has one chip per cited excerpt, by its «Utdrag N» number, and none for what nothing cites', () => {
+    draw({ citations: cite('kudos::2021-3', 'kudos::2021-2', 'kudos::2021-3') });
+    expect(chips()).toEqual(['Utdrag 1', 'Utdrag 2, side 12']);
+    expect(screen.getByRole('heading', { name: 'Utdrag 1: Internkontroll' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Utdrag 2: Ressursbruk' })).toBeTruthy();
+    // «måloppnåelsen» is cited by nothing: reached by scrolling, in the document's order.
+    expect(passageOf(/måloppnåelsen/).textContent).toContain('Ikke vist til i svaret');
   });
 
-  it('counts every press, even two that come before the next render', () => {
-    draw();
-    const next = screen.getByRole('button', { name: 'Neste utdrag' });
-    act(() => {
-      next.click();
-      next.click();
+  it('jumps straight to the excerpt, marks it and lands focus on it, named by its title', async () => {
+    draw({
+      target: { chunkId: 'kudos::2021-3' },
+      citations: cite('kudos::2021-3', 'kudos::2021-2'),
     });
+    await frame();
+    const chip = within(jumps() as HTMLElement).getByRole('button', { name: /^Utdrag 2/ });
+    fireEvent.click(chip);
+    await frame();
+    const part = passageOf(/594,2/);
+    expect(marked()).toEqual([part]);
+    expect(chip.getAttribute('aria-current')).toBe('true');
+    expect(document.activeElement).toBe(part);
+    expect(screen.getByRole('group', { name: 'Utdrag 2: Ressursbruk' })).toBe(part);
+  });
+
+  it('says the page on a chip only when the excerpt has one, and never makes one up', () => {
+    draw({ citations: cite('kudos::2021-3', 'kudos::2021-2') });
+    const [first, second] = within(jumps() as HTMLElement).getAllByRole('button');
+    expect(first?.textContent).toBe('1');
+    expect(second?.textContent).toBe('2s. 12');
+  });
+
+  it('opens a cited excerpt in another of the answer’s documents, and says which document', async () => {
+    draw({
+      target: { chunkId: 'kudos::2021-2' },
+      citations: cite('attached:abc:0', 'kudos::2021-2'),
+    });
+    await frame();
+    fireEvent.click(screen.getByRole('button', { name: 'Utdrag 1, i Internt notat' }));
+    await frame();
+    expect(screen.getByRole('heading', { level: 3, name: memo.title })).toBeTruthy();
+    expect(document.activeElement).toBe(passageOf(/rutinen/));
+    expect(document.querySelector('output')?.textContent).toBe('Viser dokumentet Internt notat.');
+    expect(screen.getByRole('button', { name: 'Utdrag 1' }).getAttribute('aria-current')).toBe(
+      'true',
+    );
+  });
+
+  it('lets a new target from the host win over an excerpt the reader jumped to', async () => {
+    const citations = cite('attached:abc:0', 'kudos::2021-2');
+    const { rerender } = render(
+      <DocumentView
+        sources={[report, memo]}
+        target={{ chunkId: 'kudos::2021-2' }}
+        citations={citations}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Utdrag 1, i Internt notat' }));
+    expect(screen.getByRole('heading', { level: 3, name: memo.title })).toBeTruthy();
+    rerender(
+      <DocumentView
+        sources={[report, memo]}
+        target={{ chunkId: 'kudos::2021-3' }}
+        citations={citations}
+      />,
+    );
+    await frame();
+    expect(screen.getByRole('heading', { level: 3, name: report.title })).toBeTruthy();
     expect(marked()).toEqual([passageOf(/internkontroll/)]);
   });
 
-  it('starts from the document’s first excerpt when nothing is marked yet', () => {
-    draw();
-    const steps = screen.getByRole('group', { name: 'Utdrag i dokumentet' });
-    expect(steps.textContent).toContain('3 utdrag');
-    fireEvent.click(within(steps).getByRole('button', { name: 'Neste utdrag' }));
-    expect(marked()).toEqual([passageOf(/594,2/)]);
-  });
-
-  it('keeps the step at an end focusable but inert, so focus stays where the reader pressed', async () => {
-    draw({ target: { chunkId: 'kudos::2021-9' } });
+  it('draws no chips, no stepper and no count when the footnotes name only documents', async () => {
+    draw({ target: { chunkId: 'kudos::2021-3' }, citations: [{ index: 1 }] });
     await frame();
-    const next = screen.getByRole('button', { name: 'Neste utdrag' });
-    expect(next.getAttribute('aria-disabled')).toBe('true');
-    expect(next.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(next);
-    expect(marked()).toEqual([passageOf(/måloppnåelsen/)]);
+    expect(jumps()).toBeNull();
+    expect(screen.queryByRole('button', { name: /Neste|Forrige/ })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/\d av \d/);
+    // It opens at the passage the reader came from, and marks it.
+    expect(marked()).toEqual([passageOf(/internkontroll/)]);
+    expect(document.activeElement).toBe(passageOf(/internkontroll/));
   });
 
-  it('draws no steps for a document with one excerpt', () => {
-    draw({ target: { chunkId: 'attached:abc:0' } });
-    expect(screen.queryByRole('group', { name: 'Utdrag i dokumentet' })).toBeNull();
+  it('stops an excerpt landed on under the row, measured before the scroll, however tall the row is drawn', async () => {
+    const observers: (() => void)[] = [];
+    // A resize is reported a frame after the landing's scroll, or never.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly report: () => void) {
+          observers.push(() => this.report());
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const height = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ height: 76 } as DOMRect);
+    const room = () =>
+      screen
+        .getByRole('region', { name: 'Dokumentvisning' })
+        .style.getPropertyValue('--_scroll-room');
+    let atScroll = '';
+    Element.prototype.scrollIntoView = () => {
+      atScroll = room();
+    };
+    draw({
+      target: { chunkId: 'kudos::2021-2' },
+      citations: cite('kudos::2021-3', 'kudos::2021-2'),
+    });
+    await frame();
+    expect(atScroll).toBe('calc(76px + var(--ds-size-2))');
+    // Two lines of chips at a narrow width: the room follows.
+    height.mockReturnValue({ height: 120 } as DOMRect);
+    act(() => observers.forEach((report) => report()));
+    expect(room()).toBe('calc(120px + var(--ds-size-2))');
+    height.mockRestore();
+    vi.unstubAllGlobals();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 });
 
@@ -289,6 +406,36 @@ describe('asking about the document', () => {
     expect(screen.getByText('Spørsmålet er sendt til tråden.')).toBeTruthy();
   });
 
+  it('forgets a question written about one document when another opens', async () => {
+    const { rerender } = render(
+      <DocumentView
+        sources={[report, memo]}
+        target={{ chunkId: 'kudos::2021-3' }}
+        onAsk={() => {}}
+      />,
+    );
+    const field = () => screen.getByRole('textbox', { name: 'Spør om dette dokumentet' });
+    fireEvent.change(field(), { target: { value: 'Hva sier rapporten om DFØ?' } });
+    rerender(
+      <DocumentView
+        sources={[report, memo]}
+        target={{ chunkId: 'attached:abc:0' }}
+        onAsk={() => {}}
+      />,
+    );
+    await frame();
+    expect((field() as HTMLInputElement).value).toBe('');
+  });
+
+  it('keeps the question while the reader jumps between excerpts of the same document', async () => {
+    draw({ onAsk: () => {}, citations: cite('kudos::2021-3', 'kudos::2021-2') });
+    const field = screen.getByRole('textbox', { name: 'Spør om dette dokumentet' });
+    fireEvent.change(field, { target: { value: 'Hva sier rapporten om DFØ?' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Utdrag 2/ }));
+    await frame();
+    expect((field as HTMLInputElement).value).toBe('Hva sier rapporten om DFØ?');
+  });
+
   it('sends nothing while the field is empty, and keeps the button focusable', () => {
     const onAsk = vi.fn();
     draw({ onAsk });
@@ -325,6 +472,15 @@ describe('the link to the original', () => {
       within(passageOf(/594,2/)).getByRole('link', { name: /^Les side 12 på Kudos/ }),
     ).toBeTruthy();
   });
+
+  it('names the page link in one piece, so no browser reads a space before the comma', () => {
+    draw();
+    const link = within(passageOf(/594,2/)).getByRole('link', { name: /^Les side 12/ });
+    expect(link.getAttribute('aria-label')).toBe(
+      `Les side 12 på Kudos, Ressursbruk, ${report.title} (åpnes i ny fane)`,
+    );
+    expect(link.querySelector('.ds-sr-only')).toBeNull();
+  });
 });
 
 describe('with no document to show', () => {
@@ -333,6 +489,18 @@ describe('with no document to show', () => {
     expect(screen.getByRole('heading', { name: 'Ingen dokument er åpnet' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Tilbake/ })).toBeNull();
     expect(passages()).toEqual([]);
+  });
+
+  it('names the control that opens a document where the host has it: in Sources, or a footnote', () => {
+    const hint = () => document.querySelector('.uib-document-view-empty p')?.textContent;
+    const { rerender } = render(<DocumentView sources={[report]} opensFrom="sources" />);
+    expect(hint()).toBe(
+      'Åpne et utdrag i kildene og velg «Vis i dokumentet», så vises dokumentet her.',
+    );
+    rerender(<DocumentView sources={[report]} opensFrom="answer" />);
+    expect(hint()).toBe('Velg en fotnote i svaret, så vises dokumentet her.');
+    rerender(<DocumentView sources={[report]} />);
+    expect(hint()).toMatch(/«Vis i dokumentet», eller velg en fotnote i svaret/);
   });
 
   it('reports a target the sources do not hold, and says so', async () => {
@@ -379,22 +547,32 @@ const read = (path: string) => readFileSync(`${import.meta.dirname}/${path}`, 'u
 describe('the document view styles', () => {
   const css = read('document-view.css').replace(/\s+/g, ' ');
 
-  it('follow the host’s colour family, but for the current excerpt’s mark (accent) and the quiet notes (neutral)', () => {
+  it('follow the host’s colour family, but for the marks of the excerpt the reader is on and the chips’ numbers (accent) and the quiet notes (neutral)', () => {
     const pinned = [
       ...css.matchAll(
         /var\(\s?(--genai-[a-z-]+),\s?var\(--ds-color-(accent|neutral|brand\d|success|warning|danger|info)-/g,
       ),
     ].map((match) => `${match[1]} ${match[2]}`);
     expect([...new Set(pinned)].sort()).toEqual([
+      '--genai-document-view-jump-current-background accent',
+      '--genai-document-view-jump-current-border-color accent',
+      '--genai-document-view-jump-current-number-background accent',
+      '--genai-document-view-jump-current-number-color accent',
+      '--genai-document-view-jump-number-background accent',
+      '--genai-document-view-jump-number-color accent',
       '--genai-document-view-note-color neutral',
       '--genai-document-view-passage-current-background accent',
       '--genai-document-view-passage-current-marker-color accent',
     ]);
   });
 
-  it('keep the steps between excerpts in reach while the document scrolls', () => {
-    const steps = css.match(/\.uib-document-view-steps \{([^}]*)\}/)?.[1] ?? '';
-    expect(steps).toContain('position: sticky');
+  it('keep «Utdrag i svaret» in reach while the document scrolls, and what is scrolled to clear of it', () => {
+    const row = css.match(/\.uib-document-view-jumps \{([^}]*)\}/)?.[1] ?? '';
+    expect(row).toContain('position: sticky');
+    const passage = css.match(/\.uib-document-view-passage \{([^}]*)\}/)?.[1] ?? '';
+    expect(passage).toMatch(
+      /scroll-margin-block-start: var\(\s?--genai-document-view-passage-scroll-margin,\s?var\(--_scroll-room\)\s?\)/,
+    );
   });
 });
 

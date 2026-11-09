@@ -6,7 +6,7 @@
     <title>Document view · Components</title>
     <meta
       name="description"
-      content="Shows one source document in its own order, with the excerpt the reader came for marked, steps between its excerpts, and a question about the document for the thread."
+      content="Shows one source document in its own order, with the excerpt the reader came for marked, a chip that jumps straight to each excerpt the answer cites, and a question about the document for the thread."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -35,7 +35,8 @@
             </div>
             <p class="summary">
               Shows one source document in its own order, with the excerpt the reader came for
-              marked, steps between its excerpts, and a question about the document for the thread.
+              marked, a chip that jumps straight to each excerpt the answer cites, and a question
+              about the document for the thread.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -52,8 +53,8 @@
               </dd>
               <dt>Canvas</dt>
               <dd>
-                00-Dokumentvisning (FN-1b, FN-1c, FN-1d), KA-3b, and board 3 of 03-builder («Prøv
-                assistenten»)
+                00-Dokumentvisning (FN-1b, FN-1c, FN-1d), KA-3b, KS-2d («Utdrag i svaret»), and
+                board 3 of 03-builder («Prøv assistenten»)
               </dd>
             </dl>
           </div>
@@ -97,7 +98,16 @@
               <li>
                 <strong>A target that names an excerpt</strong> marks it, scrolls to it and focuses
                 it. <strong>One that names only the document</strong> lands on its title and marks
-                nothing until the reader steps.
+                nothing.
+              </li>
+              <li>
+                <strong>«Utdrag i svaret»</strong>, with footnotes that name excerpts: one chip per
+                cited excerpt, by its «Utdrag N» number, with «s. N» when the excerpt has a page.
+                Each jumps straight to its excerpt, in this document or another of the answer's,
+                marks it and lands focus on it, named by its title. The row stays at the top while
+                the document scrolls. What nothing cites has no chip and is reached by scrolling.
+                With footnotes that name only documents there is no row, and no stepper or count
+                takes its place.
               </li>
             </ul>
             <p>
@@ -113,7 +123,16 @@
                 <code>sources</code> and <code>target</code>: the answer's <code>sources[]</code>,
                 as Sources takes them, and which document to show and where. A footnote's target, or
                 the excerpt the reader chose in Sources. Each new target, by identity, is followed
-                once. <code>onTargetMissing</code> reports one the sources do not hold.
+                once, and wins over an excerpt the reader has jumped to since.
+                <code>onTargetMissing</code> reports one the sources do not hold.
+              </li>
+              <li>
+                <code>opensFrom</code>: where the reader opens a document in this host, so the hint
+                before one is open names that control. <code>sources</code> says «Åpne et utdrag i
+                kildene og velg «Vis i dokumentet»», <code>answer</code> says «Velg en fotnote i
+                svaret». Without it, the hint names both. The catalogue's
+                <code>documentView.show</code>, «Vis i dokumentet», is the words for the host's own
+                control.
               </li>
               <li>
                 <code>citations</code>, <code>onShowUse</code>, <code>citationHref</code>,
@@ -167,10 +186,11 @@
               <code>@layer genai.components</code>, after Designsystemet's layers, follows
               <code>data-color</code>, <code>data-color-scheme</code> and <code>data-size</code>,
               and reads every token through its own variable, with the token as the fallback. Set
-              one on any ancestor to change that detail only. Three are pinned on purpose, as in
-              Sources: the mark on the excerpt the reader is on to accent, and the quiet notes to
-              neutral. The steps between excerpts stay at the top while the document scrolls, on the
-              body's own surface.
+              one on any ancestor to change that detail only. Some are pinned on purpose, as in
+              Sources: the mark on the excerpt the reader is on, its chip and the chips' round
+              numbers to accent, as the answer's footnote marks, and the quiet notes to neutral.
+              «Utdrag i svaret» stays at the top while the document scrolls, on the body's own
+              surface, and an excerpt scrolled to stops under it, as tall as the row is drawn.
             </p>
             <table>
               <thead>
@@ -287,6 +307,116 @@
                   <td>the head's padding</td>
                 </tr>
                 <tr>
+                  <td><code>--genai-document-view-jump-current-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>the chip of the excerpt the reader is on (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-current-border-color</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>its border (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-current-border-width</code></td>
+                  <td>2px</td>
+                  <td>its border</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-current-font-weight</code></td>
+                  <td><code>--ds-font-weight-medium</code></td>
+                  <td>its «s. N»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-current-number-background</code></td>
+                  <td><code>--ds-color-accent-base-default</code></td>
+                  <td>its round number (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-current-number-color</code></td>
+                  <td><code>--ds-color-accent-base-contrast-default</code></td>
+                  <td>its round number (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-gap</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>gap between a chip's number and «s. N»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-list-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between the chips</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-background</code></td>
+                  <td><code>--ds-color-accent-surface-tinted</code></td>
+                  <td>a chip's round number, as the answer's footnote marks (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-border-radius</code></td>
+                  <td><code>--ds-border-radius-full</code></td>
+                  <td>its corners</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-color</code></td>
+                  <td><code>--ds-color-accent-text-default</code></td>
+                  <td>its digits (pinned to accent)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-font-size</code></td>
+                  <td><code>--ds-body-xs-font-size</code></td>
+                  <td>its digits</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-font-weight</code></td>
+                  <td><code>--ds-font-weight-semibold</code></td>
+                  <td>its digits</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-number-size</code></td>
+                  <td><code>--ds-size-6</code></td>
+                  <td>its width and height</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-padding</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>a chip's padding at the sides (Designsystemet's chip)</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jump-page-padding</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>room after «s. N»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-background</code></td>
+                  <td><code>--ds-color-background-tinted</code></td>
+                  <td>«Utdrag i svaret», which the text scrolls under</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-gap</code></td>
+                  <td><code>--ds-size-2</code></td>
+                  <td>gap between «Utdrag i svaret:» and the chips</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-inset</code></td>
+                  <td>0</td>
+                  <td>where the row stops at the top, for a host with a bar over the panel</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-label-color</code></td>
+                  <td><code>--ds-color-text-subtle</code></td>
+                  <td>«Utdrag i svaret:»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-label-font-size</code></td>
+                  <td><code>--ds-body-sm-font-size</code></td>
+                  <td>«Utdrag i svaret:»</td>
+                </tr>
+                <tr>
+                  <td><code>--genai-document-view-jumps-padding</code></td>
+                  <td><code>--ds-size-1</code></td>
+                  <td>space over and under the row</td>
+                </tr>
+                <tr>
                   <td><code>--genai-document-view-note-color</code></td>
                   <td><code>--ds-color-neutral-text-subtle</code></td>
                   <td>what the view shows, and that the text is quoted (pinned to neutral)</td>
@@ -333,18 +463,13 @@
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-passage-scroll-margin</code></td>
-                  <td><code>--ds-size-12</code></td>
-                  <td>room over an excerpt scrolled to, clear of the steps</td>
+                  <td><code>--ds-size-3</code>, under «Utdrag i svaret» as tall as it is drawn</td>
+                  <td>room over an excerpt scrolled to, and over what focus lands on in one</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-passages-gap</code></td>
                   <td><code>--ds-size-3</code></td>
                   <td>gap between excerpts</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-document-view-position-color</code></td>
-                  <td><code>--ds-color-text-subtle</code></td>
-                  <td>«2 av 5»</td>
                 </tr>
                 <tr>
                   <td><code>--genai-document-view-quote-font-size</code></td>
@@ -372,31 +497,6 @@
                   <td>an excerpt's heading path</td>
                 </tr>
                 <tr>
-                  <td><code>--genai-document-view-step-buttons-gap</code></td>
-                  <td><code>--ds-size-1</code></td>
-                  <td>gap between «Forrige» and «Neste»</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-document-view-steps-background</code></td>
-                  <td><code>--ds-color-background-tinted</code></td>
-                  <td>the steps, which the text scrolls under</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-document-view-steps-gap</code></td>
-                  <td><code>--ds-size-2</code></td>
-                  <td>gap between «2 av 5» and the buttons</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-document-view-steps-inset</code></td>
-                  <td>0</td>
-                  <td>where the steps stop at the top, for a host with a bar over the panel</td>
-                </tr>
-                <tr>
-                  <td><code>--genai-document-view-steps-padding</code></td>
-                  <td><code>--ds-size-1</code></td>
-                  <td>space over and under the steps</td>
-                </tr>
-                <tr>
                   <td><code>--genai-document-view-subtitle-color</code></td>
                   <td><code>--ds-color-text-subtle</code></td>
                   <td>the line under the title, and why there is no link</td>
@@ -422,6 +522,12 @@
                 judgement.
               </li>
               <li>Users should be able to move between the excerpts in a document.</li>
+              <li>
+                No pager with a bare count at the top, as Sources has none. The canvas never steps
+                excerpts with a counter; its newest board (KS-2d) jumps straight to each cited
+                excerpt by its number, which matches the answer's footnotes and Sources. Uncited
+                excerpts are read by scrolling, in the document's order.
+              </li>
               <li>
                 genki has no route for a document's whole text, or all of its chunks: the frontend
                 contract gives only the excerpts an answer retrieved. The view says so, and links to
