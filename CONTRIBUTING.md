@@ -60,11 +60,15 @@ The pull request says how risky it is and how to undo it.
 
 ### Automated review
 
-Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It posts all its findings at once as Important, Nit or Pre-existing, most with a suggestion you can commit from the pull request. It never approves, blocks or merges.
+Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It never approves, blocks or merges.
+
+- **One summary comment** at the top of the pull request: what it changes, every finding with its status, and a prompt you can give your coding agent to fix the open ones.
+- **One review** with all findings at once, as Important, Nit or Pre-existing. Most have a suggestion you can commit from the pull request.
+- **After each push**, a cheaper model checks the open findings against the new code. Fixed ones are answered with the commit and resolved, and the summary is updated. A push never brings new findings.
 
 Run the same review before you open the pull request, so the one in CI finds nothing: `/review-change` in Claude Code, or ask another agent to follow that procedure.
 
-Answer every thread before you merge: fix it and say so, or say why not ("not fixing, because ..."). A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have the commits since the last review checked, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
+Answer every open thread before you merge: fix it, or say why not ("not fixing, because ..."), which marks it dismissed. A reply is enough; no second person is needed. When a finding is wrong because a rule is missing or unclear, fix REVIEW.md in a separate pull request, so the next review knows. To have new commits reviewed, add the label `review again`. Pull requests from forks are not reviewed automatically; a maintainer runs the review locally.
 
 ## Who maintains genki
 

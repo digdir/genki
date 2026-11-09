@@ -9,11 +9,28 @@ const workflow = parse(text) as {
   concurrency?: unknown;
   permissions: Record<string, string>;
   jobs: {
+    'follow-up': {
+      if: string;
+      permissions: Record<string, string>;
+      steps: {
+        id?: string;
+        name?: string;
+        uses?: string;
+        run?: string;
+        with?: Record<string, string>;
+      }[];
+    };
     review: {
       if: string;
       concurrency: unknown;
       permissions: Record<string, string>;
-      steps: { name?: string; uses?: string; run?: string; with?: Record<string, string> }[];
+      steps: {
+        id?: string;
+        name?: string;
+        uses?: string;
+        run?: string;
+        with?: Record<string, string>;
+      }[];
     };
   };
 };
@@ -63,7 +80,7 @@ describe('the model review workflow', () => {
     const action = review.steps.find((s) => s.uses?.startsWith('anthropics/claude-code-action@'));
     const tools = /--allowedTools "([^"]+)"/.exec(action?.with?.claude_args ?? '')?.[1]?.split(',');
     expect(tools).toEqual([
-      'Task',
+      'Agent',
       'Read',
       'Grep',
       'Glob',
@@ -86,6 +103,45 @@ describe('the model review workflow', () => {
   });
 });
 
+describe('after a push', () => {
+  const followUp = workflow.jobs['follow-up'];
+  const model = followUp.steps.find((s) => s.uses?.startsWith('anthropics/claude-code-action@'));
+
+  it('does not review the pull request again on a push', () => {
+    expect(review.if).toContain("github.event.action != 'synchronize'");
+    expect(followUp.if).toContain("github.event.action == 'synchronize'");
+  });
+
+  it('calls a model only when there are open findings to check', () => {
+    for (const step of followUp.steps.filter(
+      (s) =>
+        s.uses && !s.uses.startsWith('actions/checkout@') && !s.uses.startsWith('jdx/mise-action@'),
+    ))
+      expect(step.if).toBe("steps.open.outputs.count != '0'");
+  });
+
+  it('gives the checking model only tools that read, and the cheaper model', () => {
+    const args = model?.with?.claude_args ?? '';
+    expect(args).toContain('--model claude-sonnet-5-5');
+    const tools = /--allowedTools "([^"]+)"/.exec(args)?.[1]?.split(',') ?? [];
+    expect(
+      tools.every((t) => /^(Read|Grep|Glob|Bash\(git (diff|log|show|grep|ls-files):\*\))$/.test(t)),
+    ).toBe(true);
+  });
+
+  it('looks for fixes and never for new findings', () => {
+    expect(model?.with?.prompt).toContain('Find nothing new.');
+  });
+
+  it('skips forks, drafts and dependency bumps like the review does', () => {
+    expect(followUp.if).toContain('!github.event.pull_request.draft');
+    expect(followUp.if).toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    expect(followUp.if).toContain("github.event.pull_request.user.login != 'renovate[bot]'");
+  });
+});
+
 describe('one round per pull request', () => {
   it('follows the review procedure and rules from the base branch, with the security checklist every time', () => {
     const prompt = action()?.with?.prompt ?? '';
@@ -95,7 +151,7 @@ describe('one round per pull request', () => {
   });
 
   it('runs every finder at once and verifies every finding before anything is posted', () => {
-    expect(procedure).toContain('Start these five Task agents at the same time');
+    expect(procedure).toContain('Start these five subagents (the Agent tool) in one message');
     expect(procedure).toContain('asked to prove it wrong');
     expect(procedure).toContain('needs a search that shows it');
   });
@@ -108,8 +164,20 @@ describe('one round per pull request', () => {
     expect(post).toContain('```suggestion');
   });
 
-  it('on review again, looks only at what changed since the last review', () => {
+  it('on review again, looks only at what changed since the last review, in the files the pull request changes', () => {
     expect(action()?.with?.prompt).toContain('git diff {0} HEAD');
+    expect(action()?.with?.prompt).toContain('git diff --name-only {1}...HEAD');
+  });
+
+  it('reviews the whole pull request again when the last reviewed commit was rebased away', () => {
+    const last = review.steps.find((s) => s.id === 'last')?.run ?? '';
+    expect(last).toContain('git merge-base --is-ancestor "$sha" HEAD');
+  });
+
+  it('posts a review even when it finds nothing, so the next review again knows where to start', () => {
+    const post = review.steps.find((s) => s.name === 'Post all findings as one review')?.run ?? '';
+    expect(post).not.toContain('then empty');
+    expect(post).not.toContain('[ -s review.json ] || exit 0');
   });
 
   it('never caps findings to hold some back for a later round', () => {

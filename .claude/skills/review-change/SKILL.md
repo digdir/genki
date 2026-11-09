@@ -19,7 +19,7 @@ List every changed file and what behaviour each hunk changes. Every later step c
 
 ## 2. Find, in parallel
 
-Start these five Task agents at the same time. Give each the range, the file list and the rules. Each must look at every changed file and return candidates with file and line, or say it found nothing in that file.
+Start these five subagents (the Agent tool) in one message, so they run at the same time. Give each the range, the file list and the rules. Each must look at every changed file and return candidates with file and line, or say it found nothing in that file.
 
 - **Correctness**: logic, edge cases, error paths, the second call, the failed call, concurrency, data loss.
 - **Security**: the checklist in `.github/review-security.md` and the promises in `docs/security/README.md`.
@@ -29,7 +29,7 @@ Start these five Task agents at the same time. Give each the range, the file lis
 
 ## 3. Verify, in parallel
 
-Merge duplicates. For each candidate, start a Task agent that gets only the claim, the file and the line, and is asked to prove it wrong. Run them at the same time. It reads the code and runs the searches itself. Keep a candidate only when it holds.
+Merge duplicates. For each candidate, start a subagent that gets only the claim, the file and the line, and is asked to prove it wrong. Run them at the same time. It reads the code and runs the searches itself. Keep a candidate only when it holds.
 
 - A claim that something is missing, never called or matches nothing needs a search that shows it: `git grep`, `git ls-files`, Grep or Glob.
 - A claim about what a pattern or regular expression matches needs a check against the real paths or strings.
