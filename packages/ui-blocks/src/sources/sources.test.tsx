@@ -3,7 +3,8 @@ import { catalogueProblems } from '@genai/i18n';
 import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { nb as sharedNb } from '../i18n.js';
+import { en, nb } from './i18n.js';
 import { pairCitations, type SourceCitation } from './pairing.js';
 import { Sources, type SourcesProps } from './Sources.js';
 import type { SourceDocument } from './types.js';
@@ -148,6 +149,42 @@ describe('numbered excerpts, linked both ways', () => {
     expect(screen.getAllByText(/^Utdrag \d+$/).map((label) => label.textContent)).toEqual([
       'Utdrag 1',
     ]);
+  });
+
+  it('names an unnumbered excerpt’s button as it is titled, with no number from its place', () => {
+    draw({ citations: cite('kudos::2021-3') });
+    const names = [...document.querySelectorAll<HTMLElement>('.uib-sources-excerpt')].map(
+      (row) => within(row).getByRole('button', { name: /^Åpne / }).textContent,
+    );
+    expect(names).toEqual([
+      'Åpne utdrag 1',
+      'Åpne utdrag fra Ressursbruk og måloppnåelse',
+      'Åpne utdrag fra Internkontroll og risikovurdering',
+      'Åpne utdrag',
+    ]);
+    // Nor when the answer cites documents, and no excerpt has a number.
+    cleanup();
+    draw({ citations: [{ index: 1 }] });
+    expect(document.querySelectorAll('.uib-sources-excerpt')).toHaveLength(4);
+    expect(document.body.textContent).not.toMatch(/utdrag \d/i);
+  });
+
+  it('names its links in one piece, so no browser reads a space before the comma', () => {
+    draw({ citations: cite('kudos::2021-1') });
+    fireEvent.click(toggleOf(/Ressursbruk/));
+    const page = screen.getByRole('link', { name: /^Les side 12 på Kudos/ });
+    expect(page.getAttribute('aria-label')).toBe(
+      `Les side 12 på Kudos, utdrag 1, ${nkom.title} (åpnes i ny fane)`,
+    );
+    const whole = screen.getAllByRole('link', { name: /^Les dokumentet på Kudos/ })[0];
+    expect(whole?.getAttribute('aria-label')).toBe(
+      `Les dokumentet på Kudos, ${nkom.title} (åpnes i ny fane)`,
+    );
+    // The words seen start the name (WCAG 2.5.3), and nothing hidden follows them in the link.
+    for (const link of [page, whole]) {
+      expect(link?.getAttribute('aria-label')?.startsWith(link?.textContent ?? '-')).toBe(true);
+      expect(link?.querySelector('.ds-sr-only')).toBeNull();
+    }
   });
 
   it('an uncited excerpt has no way back to the answer', () => {
@@ -673,5 +710,10 @@ describe('the catalogue', () => {
 
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
+  });
+
+  it('keeps its words to itself, out of the shared catalogue that Approach loads', () => {
+    expect(Object.keys(nb)).toEqual(['sources']);
+    expect(sharedNb).not.toHaveProperty('sources');
   });
 });

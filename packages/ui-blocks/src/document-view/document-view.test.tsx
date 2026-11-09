@@ -4,7 +4,7 @@ import { InLocale } from '@genai/i18n/react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { en, nb } from '../i18n.js';
+import { en, nb } from './i18n.js';
 import { propsMissingFromPage } from '../sources/fixtures/docsProps.js';
 import type { SourceCitation } from '../sources/pairing.js';
 import type { SourceDocument } from '../sources/types.js';
@@ -455,7 +455,10 @@ describe('the link to the original', () => {
   it('reads «Les dokumentet på Kudos», named apart by the title, in a new tab', () => {
     draw();
     const link = screen.getByRole('link', { name: /^Les dokumentet på Kudos/ });
-    expect(link.textContent).toContain(report.title);
+    expect(link.getAttribute('aria-label')).toBe(
+      `Les dokumentet på Kudos, ${report.title} (åpnes i ny fane)`,
+    );
+    expect(link.querySelector('.ds-sr-only')).toBeNull();
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('href')).toBe(report.url);
   });

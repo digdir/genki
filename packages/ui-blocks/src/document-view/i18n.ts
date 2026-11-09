@@ -1,4 +1,6 @@
-import { defineNamespace, type Translation } from '@genai/i18n';
+import { defineCatalogue, defineNamespace, type Translation } from '@genai/i18n';
+import { defineTranslations } from '@genai/i18n/react';
+import { enSources, nbSources } from '../sources/i18n.js';
 
 // The words the document view shares with Sources (the excerpt's title «Utdrag N», «Ikke vist til
 // i svaret», «side N», the link to the original and «Tilbake til svaret») are read from Sources'
@@ -71,3 +73,12 @@ export const enDocumentView = {
   ask: 'Ask',
   askSent: 'The question was sent to the thread.',
 } satisfies Translation<typeof nbDocumentView>;
+
+/** The document view's own catalogue, with the Sources words it shares, out of the shared one. */
+export const nb = defineCatalogue({ documentView: nbDocumentView, sources: nbSources });
+export const en = {
+  documentView: enDocumentView,
+  sources: enSources,
+} satisfies Translation<typeof nb>;
+
+export const { useT, translator } = defineTranslations({ nb, en });
