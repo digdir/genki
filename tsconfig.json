@@ -143,6 +143,9 @@
       "path": "packages/ui-blocks"
     },
     {
+      "path": "packages/ui-assembly"
+    },
+    {
       "path": "apps/api"
     },
     {

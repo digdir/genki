@@ -142,7 +142,8 @@ export const blockCatalogue: readonly BlockSpec[] = [
       { id: 'followUps', kind: 'switch', default: true },
       { id: 'disclaimer', kind: 'switch', default: true },
       { id: 'copy', kind: 'switch', default: true },
-      { id: 'feedback', kind: 'switch', default: true, needs: ['channel:feedback'] },
+      // Off by default, as in kunnskapsassistenten since 6 October (AnswerActions' `feedback`).
+      { id: 'feedback', kind: 'switch', default: false, needs: ['channel:feedback'] },
       { id: 'variantPicker', kind: 'switch', default: true, needs: ['service:variants'] },
       {
         id: 'attachments',
