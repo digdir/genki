@@ -12,8 +12,8 @@ import {
   type ReactNode,
 } from 'react';
 import { classes } from '../dom.js';
-import { useT } from '../i18n.js';
 import { useMedia, useScrollPadding, useScrollTabStop, useViewportWidth } from './hooks.js';
+import { useT } from './i18n.js';
 import {
   breakpoints,
   clampWidth,

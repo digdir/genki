@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { useT } from '../i18n.js';
+import { useT } from './i18n.js';
 import { widthStep, widthStride, type ShellSide, type WidthRange } from './layout.js';
 
 /** Pointer travel still counted as a click; 4 px is where Windows starts a drag (`SM_CXDRAG`). */
