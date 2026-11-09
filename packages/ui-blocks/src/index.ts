@@ -15,6 +15,6 @@ export * from './documents/Documents.js';
 export * from './settings/index.js';
 export * from './answer-actions/index.js';
 export * from './document-view/DocumentView.js';
-export { nb as uiBlocksNb, en as uiBlocksEn } from './i18n.js';
+export { nb as uiBlocksNb, en as uiBlocksEn } from './catalogues.js';
 export * from './shell/index.js';
 export * from './builder/index.js';
