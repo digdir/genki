@@ -248,6 +248,7 @@ const credentialFor = async (
   const { credential } = endpoint;
   const value = await credentialValue(credential);
   const placement = step.credential;
+  if (placement.place === 'module') return { query: {}, headers: {}, value };
   if (placement.place === 'basic')
     return {
       query: {},
@@ -585,7 +586,7 @@ const dispatch = async (
     });
     const signed = await moduleHeaders(descriptor, step, endpoint, state, options, {
       body: encoded.body,
-      path: prepared.path,
+      path: `${url.pathname}${url.search}`,
       key: credential.value,
     });
     const signals = [

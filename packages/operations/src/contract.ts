@@ -483,8 +483,11 @@ const run = async (
         ? isRecord(recordedBodyOf) && recordedBodyOf[formField] === contractKey
         : placement?.place === 'basic'
           ? headers.authorization === basic
-          : Object.values(headers).some((v) => v.includes(contractKey)) ||
-            Object.values(sentQuery).includes(contractKey);
+          : placement?.place === 'module'
+            ? !Object.values(headers).some((v) => v.includes(contractKey)) &&
+              !Object.values(sentQuery).includes(contractKey)
+            : Object.values(headers).some((v) => v.includes(contractKey)) ||
+              Object.values(sentQuery).includes(contractKey);
     const query = Object.fromEntries(
       Object.entries(sentQuery).filter(
         ([name, value]) =>
