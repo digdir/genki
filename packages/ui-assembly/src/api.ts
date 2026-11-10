@@ -152,7 +152,14 @@ interface WireSource {
   url?: string;
   document_id?: string;
   documentId?: string;
-  excerpts?: { chunk_id?: string; chunkId?: string; text?: string; position?: number }[];
+  excerpts?: {
+    chunk_id?: string;
+    chunkId?: string;
+    text?: string;
+    position?: number;
+    /** The markers that cite this excerpt, from a service that cites excerpts. */
+    markers?: string[];
+  }[];
   version?: string;
   publishedAt?: string;
 }
@@ -234,14 +241,41 @@ const fromChunks = (chunks: readonly ApiChunk[], corpus?: CorpusProfile) => {
   return { sources: [...documents.values()], markers };
 };
 
+// A stored turn keeps its markers only on its excerpts; each leads to the excerpt as drawn.
+const markersFromSources = (
+  wire: readonly WireSource[],
+  drawn: readonly SourceDocument[],
+): AnswerMarker[] | undefined => {
+  const found = wire.flatMap((source, s) =>
+    (source.excerpts ?? []).flatMap((excerpt, e) => {
+      const shown = drawn[s]?.excerpts[e];
+      const markers: unknown = excerpt.markers;
+      if (!shown || !Array.isArray(markers)) return [];
+      const documentId = drawn[s]?.documentId;
+      return markers
+        .filter((marker): marker is string => typeof marker === 'string')
+        .map((marker) => ({
+          marker,
+          chunkId: shown.chunkId,
+          ...(documentId ? { documentId } : {}),
+        }));
+    }),
+  );
+  return found.length > 0 ? found : undefined;
+};
+
 const answerFromMessage = (message: ApiMessage, corpus?: CorpusProfile): AnswerData => {
-  if (message.sources && message.sources.length > 0)
+  if (message.sources && message.sources.length > 0) {
+    const sources = message.sources.map((s, at) => sourceFromWire(s, corpus, at));
+    const markers = markersFromSources(message.sources, sources);
     return {
       text: message.text,
       status: 'complete',
-      sources: message.sources.map((s, at) => sourceFromWire(s, corpus, at)),
+      sources,
+      ...(markers ? { markers } : {}),
       created: message.created,
     };
+  }
   if (message.chunks.length > 0) {
     const { sources, markers } = fromChunks(message.chunks, corpus);
     return { text: message.text, status: 'complete', sources, markers, created: message.created };
