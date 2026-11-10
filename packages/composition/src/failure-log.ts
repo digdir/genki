@@ -171,6 +171,7 @@ export const failureLoggingEventLog = (
         code?: unknown;
         status?: string;
         message?: unknown;
+        provider?: { status?: unknown; body?: unknown };
       };
       if (event.type === 'kernel.resource.used' && data.port === 'model' && data.ref?.id)
         models.set(event.task, (models.get(event.task) ?? new Set()).add(data.ref.id));
@@ -185,6 +186,12 @@ export const failureLoggingEventLog = (
           ...(typeof data.code === 'string' ? { code: data.code } : {}),
           ...(options.messages && typeof data.message === 'string'
             ? { message: data.message }
+            : {}),
+          ...(typeof data.provider?.status === 'number'
+            ? { providerStatus: data.provider.status }
+            : {}),
+          ...(options.messages && typeof data.provider?.body === 'string'
+            ? { providerBody: data.provider.body }
             : {}),
         });
       }

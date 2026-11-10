@@ -5,6 +5,7 @@ import {
   intersect,
   metadataMap,
   numbersIn,
+  queryYearsIn,
   tokenize,
   yearsIn,
   javaBoundary,
@@ -88,7 +89,7 @@ export const isNumericFactQuery = (queries: string[]) =>
 
 export const queryYears = (queries: string[]) => {
   const years = new Set<string>();
-  for (const q of queries) for (const y of yearsIn(q)) years.add(y);
+  for (const q of queries) for (const y of queryYearsIn(q)) years.add(y);
   return years;
 };
 
@@ -99,11 +100,15 @@ export const prioritize = (
   orgFields: string[],
   weights: BoostWeights,
   useContent: boolean,
+  detectedOrgs: string[] = [],
 ): Chunk[] => {
   const queryTokens = new Set(queries.flatMap((q) => [...tokenize(q)]));
   const years = queryYears(queries);
   const numeric = isNumericFactQuery(queries);
-  const filterOrgs = new Set(orgFields.flatMap((f) => selectedOptions(filters, f)));
+  const filterOrgs = new Set([
+    ...orgFields.flatMap((f) => selectedOptions(filters, f)),
+    ...detectedOrgs,
+  ]);
   return chunks
     .map((chunk) => {
       const title = chunk.title ?? '';
@@ -215,29 +220,40 @@ export const suppressDuplicateFiles = (chunks: Chunk[]): Chunk[] => {
   });
 };
 
-export const detectOrgFilter = (
+export type DetectionUse = 'boost' | 'hint' | 'filter';
+
+export interface Detection {
+  kind: 'organisation' | 'year' | 'rule';
+  field: string;
+  values: string[];
+  queries: string[];
+  use: DetectionUse;
+}
+
+export type Detected = Pick<Detection, 'field' | 'values' | 'queries'>;
+
+export const detectOrganisations = (
   queries: string[],
   facets: Record<string, FacetValue[]>,
   orgFields: string[],
   minLength: number,
-): { field: string; values: string[] } | undefined => {
-  if (queries.length === 0) return undefined;
-  const text = queries.join(' ');
-  for (const field of orgFields) {
-    const matches = [
-      ...new Set(
-        (facets[field] ?? [])
-          .filter((f) => f.value.length >= minLength && containsWord(text, f.value))
-          .map((f) => f.value),
-      ),
-    ];
-    if (matches.length > 0) return { field, values: matches };
-  }
-  return undefined;
-};
+): Detected[] =>
+  orgFields.flatMap((field) => {
+    const values = new Set<string>();
+    const found = new Set<string>();
+    for (const { value } of facets[field] ?? []) {
+      if (value.length < minLength || values.has(value)) continue;
+      const naming = queries.filter((q) => containsWord(q, value));
+      if (naming.length === 0) continue;
+      values.add(value);
+      for (const q of naming) found.add(q);
+    }
+    return values.size > 0
+      ? [{ field, values: [...values], queries: queries.filter((q) => found.has(q)) }]
+      : [];
+  });
 
-export const detectYears = (queries: string[]): string[] =>
-  queries.length === 0 ? [] : [...yearsIn(queries.join(' '))];
+export const detectYears = (queries: string[]): string[] => [...queryYears(queries)];
 
 export const unionModes = ['cap', 'interleave', 'rrf'] as const;
 export type UnionMode = (typeof unionModes)[number];

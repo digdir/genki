@@ -67,6 +67,10 @@ A list answers an object with the items in `data`: `{ "data": [...] }`, sometime
 
 - `POST` and `PUT /operator/model-endpoints` take `settings` (non-secret values a descriptor reads as `$connection.<name>`) and `keys` (named platform secrets only a module reaches). Only an operator sets them, and a change is audited with its reason. `GET /tenants/{tenant}/catalog` lists a shared connection without `settings` and `keys`.
 - A descriptor module may set `Authorization` when the descriptor's `auth` is `{ signedBy: module }`, reads `host`, `headers`, `header_names`, `header.<name>`, `body_sha256` and `connection.<setting>`, may sign binary, multipart and streamed requests, takes `connection.<key name>` keys and can derive keys with `hmac_sha256_derive`. A fixture may carry `settings`.
+### 2026-11-10: provider errors are kept for the audit, and a non-streamed descriptor step answers with its text
+
+- When a provider answers a model's descriptor call (chat, decide or an operation step, not embeddings) with an error, the run's audit `kernel.error` event carries `provider: { status, body }`: the HTTP status and the first 500 characters of the error body, JSON or plain text, with the connection's key, its named keys, bound secrets and the headers a module signed replaced by `[redacted]`. For a built-in provider (OpenAI, Anthropic) `body` is the SDK's error message. The run timeline shows it to those who manage the service. The caller's `kernel.error` and answer are unchanged.
+- A `call-operation@1` step without `stream` outputs `{ result, text }` when `result` is text or has a text field `text`, so a flow that ends on it answers with that text instead of the JSON of `result`.
 
 ### 2026-11-06: a streamed descriptor step answers with its text
 

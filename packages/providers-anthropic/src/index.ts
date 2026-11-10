@@ -162,7 +162,8 @@ const toModelError = (error: unknown): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIUserAbortError)
     return new ModelError('cancelled', 'the request was cancelled');
-  if (error instanceof APIError) return errorFromStatus(error.status, error.message);
+  if (error instanceof APIError)
+    return errorFromStatus(error.status, error.message, undefined, error.message);
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
 

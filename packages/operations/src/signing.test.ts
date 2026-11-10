@@ -525,6 +525,36 @@ describe('connection settings and named keys (D)', () => {
     expect(leaks(sent, exchanges, ['wJalrXUtnFEMI', 'connection-key'])).toEqual([]);
   });
 
+  it('a provider error body that echoes a named key or a derived signature is redacted before it is stored', async () => {
+    const bytes = signer([
+      {
+        derive: { key: 'connection.signing', prefix: 'AWS4', of: [{ text: '20261106' }], as: 'k1' },
+      },
+      { hmac: { key: 'k1', of: [{ input: 'body' }] } },
+    ]);
+    const signature = hex(hmac('AWS4extra-signing-key', '20261106'), JSON.stringify({ item: 'pen' }));
+    const { outcome, sent, exchanges } = await run(
+      bytes,
+      { keys: '[connection, connection.signing]' },
+      undefined,
+      { endpoint: { keys: { signing: async () => 'extra-signing-key' } } },
+      [
+        json(
+          { error: { message: `bad signature ${signature} for key extra-signing-key` } },
+          403,
+        ),
+      ],
+    );
+    expect(headersOf(sent).get('x-signature')).toBe(signature);
+    const error = errorOf(outcome) as Error & { provider?: { status: number; body?: string } };
+    expect(error.provider).toEqual({
+      status: 403,
+      body: expect.stringContaining('bad signature [redacted] for key [redacted]'),
+    });
+    expect(leaks(sent, exchanges, ['extra-signing-key', 'connection-key'])).toEqual([]);
+    expect(`${error.message}${error.provider?.body ?? ''}`).not.toContain(signature);
+  });
+
   it('a derived key never replaces a key the module was given', async () => {
     const bytes = signer([
       { derive: { key: 'connection', prefix: 'x', of: [{ text: 'y' }], as: 'connection' } },

@@ -86,7 +86,7 @@ A descriptor maps usage from wherever the provider reports it: a field in the an
 
 ### 10. Errors
 
-A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An answer whose content type differs from the one declared fails the call.
+A descriptor maps the provider's error envelope to Genki's error kinds (`invalid`, `unavailable`, `rate-limited`, `refused`, `processor`). `429` with `Retry-After` is honoured up to the step's cap. An answer whose content type differs from the one declared fails the call. The provider's status and the first 500 characters of its error body, JSON or plain text, with the connection's key and bound secrets redacted, go to the run's audit error and the run timeline of those who manage the service, never to the caller; the API log has the status, and the body only with `LOG_FAILURE_MESSAGES`.
 
 ### 11. Sessions
 
@@ -108,6 +108,7 @@ A descriptor may declare `checks` on an answer: `same-names` (every question has
 - The kernel's usage totals add open units (`units`), and the API shows them wherever usage is returned; the portal does not show them yet.
 - Bundled descriptors cannot ship modules yet; a module comes in an upload.
 - The blind test of 2026-11-06 found that a provider which signs every request could not be described: a module could not set `Authorization`, read the host or the headers it signs over, sign a binary, multipart or streamed request, or take a key id or a second key from the connection. Modules and connections gained those, generically, with a test for each rule (`packages/operations/src/signing.test.ts`). A fixture records the settings it ran with. A call whose connection lacks a setting or key any step reads fails before the first request, in a live session too; a key named but unresolvable fails at its step. A tenant sees a shared connection without its settings and keys.
+- A live run on genki-test on 6 November failed with only "the service failed": the provider's error was in no run, audit event or log. The provider's status and redacted error body are now kept for the audit and shown to those who manage the service, and a non-streamed `call-operation@1` step whose result is text, or has a text field `text`, answers with that text as a streamed one does.
 
 ### What never changes
 
