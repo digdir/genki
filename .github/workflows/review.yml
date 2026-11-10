@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
       pull-requests: write
       id-token: write
@@ -76,12 +77,12 @@ jobs:
             Return the structured output:
             - `summary`: two or three sentences on what the pull request changes and why, for a reader who has not opened it.
             - `changes`: one row per area the pull request touches (a package, an app, workflows, docs), with one sentence on what changes there.
-            - `findings`: every confirmed finding. `title` is the finding in at most ten words. `line` (and `start_line` for a range) must be a line on the new side of `gh pr diff`; if the problem is elsewhere, use the nearest changed line and name the real place in `evidence`. Give `suggestion` only when it replaces exactly the lines from `start_line` (or `line`) to `line`. An empty list when nothing is confirmed.
+            - `findings`: every confirmed finding. `title` is the finding in at most ten words. `rule` is the REVIEW.md bullet the finding rests on, by its first words, and `severity` follows it. `line` (and `start_line` for a range) must be a line on the new side of `gh pr diff`; if the problem is elsewhere, use the nearest changed line and name the real place in `evidence`. Give `suggestion` only when it replaces exactly the lines from `start_line` (or `line`) to `line`. An empty list when nothing is confirmed.
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 120
-            --allowedTools "Agent,Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*)"
-            --json-schema '{"type":"object","required":["summary","changes","findings"],"properties":{"summary":{"type":"string"},"changes":{"type":"array","items":{"type":"object","required":["area","summary"],"properties":{"area":{"type":"string"},"summary":{"type":"string"}}}},"findings":{"type":"array","items":{"type":"object","required":["severity","category","title","path","line","problem","evidence","fix"],"properties":{"severity":{"enum":["Important","Nit","Pre-existing"]},"category":{"enum":["correctness","security","other-paths","tests","docs"]},"title":{"type":"string"},"path":{"type":"string"},"line":{"type":"integer"},"start_line":{"type":"integer"},"problem":{"type":"string"},"evidence":{"type":"string"},"fix":{"type":"string"},"suggestion":{"type":"string"}}}}}}'
+            --allowedTools "Agent,Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh run view:*),Bash(gh run list:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*)"
+            --json-schema '{"type":"object","required":["summary","changes","findings"],"properties":{"summary":{"type":"string"},"changes":{"type":"array","items":{"type":"object","required":["area","summary"],"properties":{"area":{"type":"string"},"summary":{"type":"string"}}}},"findings":{"type":"array","items":{"type":"object","required":["severity","category","rule","title","path","line","problem","evidence","fix"],"properties":{"severity":{"enum":["Important","Nit","Pre-existing"]},"category":{"enum":["correctness","security","other-paths","tests","docs"]},"rule":{"type":"string"},"title":{"type":"string"},"path":{"type":"string"},"line":{"type":"integer"},"start_line":{"type":"integer"},"problem":{"type":"string"},"evidence":{"type":"string"},"fix":{"type":"string"},"suggestion":{"type":"string"}}}}}}'
       - name: Post all findings as one review
         if: steps.arm.outputs.arm == 'treated'
         env:
@@ -89,6 +90,7 @@ jobs:
         run: |
           jq --arg sha "$HEAD" '
             def text: "**\(.severity)**: \(.title)\n\n\(.problem)"
+              + (if (.rule // "") | length > 0 then "\n\n**Rule:** \(.rule)" else "" end)
               + (if .suggestion then "\n\n```suggestion\n\(.suggestion)\n```" else "" end)
               + "\n\n<details>\n<summary>Evidence and fix</summary>\n\n**Evidence:** \(.evidence)\n\n**Fix:** \(.fix)\n\n</details>";
             (.findings | sort_by({Important: 0, Nit: 1, "Pre-existing": 2}[.severity])) as $f

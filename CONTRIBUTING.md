@@ -63,7 +63,7 @@ The pull request says how risky it is and how to undo it.
 Every pull request from this repository gets one review by a model when it opens, following [REVIEW.md](REVIEW.md) and the procedure in [.claude/skills/review-change/SKILL.md](.claude/skills/review-change/SKILL.md). It never approves, blocks or merges.
 
 - **One summary comment** at the top of the pull request: what it changes, every finding with its status, and a prompt you can give your coding agent to fix the open ones.
-- **One review** with all findings at once, as Important, Nit or Pre-existing. Most have a suggestion you can commit from the pull request.
+- **One review** with all findings at once, as Important, Nit or Pre-existing, each naming the rule in REVIEW.md it rests on. Most have a suggestion you can commit from the pull request. When the change alters what CI runs, the review reads whatever checks have finished and treats pending ones as unknown, not as missing or failed. It reports a CI wiring problem only when it can show it from the workflow file or a finished run.
 - **After each push**, a cheaper model checks the open findings against the new code. Fixed ones are answered with the commit and resolved, and the summary is updated. A push never brings new findings.
 
 Run the same review before you open the pull request, so the one in CI finds nothing: `/review-change` in Claude Code, or ask another agent to follow that procedure.
