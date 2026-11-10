@@ -818,6 +818,15 @@ describe('the answer as copied', () => {
     );
   });
 
+  it('copies [N] inside code as written, since code is drawn without footnotes', () => {
+    const markdown = 'Kjør `items[1]` først [1].\n\n```\nx[1] = 2\n```';
+    expect(answerCopy(markdown, { sources }).text).toContain('Kjør items[1] først.\n\nx[1] = 2');
+    expect(answerCopy(markdown, { sources, markers }).text).toContain(
+      'Kjør items[1] først [1].\n\nx[1] = 2',
+    );
+    expect(finishedText(`${markdown}\n\nslutt`)).toBe('Kjør items[1] først.\n\nx[1] = 2');
+  });
+
   it('writes the reference list in the reader’s language', () => {
     expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
       'Sources\n[1] Årsrapport Nasjonal kommunikasjonsmyndighet 2021 (2022).',
@@ -825,6 +834,38 @@ describe('the answer as copied', () => {
     expect(answerCopy(text, { sources: [paged], markers, locale: 'en' }).text).toContain(
       ', p. 12 (2022).',
     );
+  });
+});
+
+describe('the answer on adversarial input', () => {
+  const quickly = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const blanks = ' '.repeat(100_000);
+
+  it('reads the service’s message for a closing «Prøv igjen» in linear time', () => {
+    for (const message of [`${blanks}x`, `Prøv igjen${blanks}x`]) {
+      cleanup();
+      expect(
+        quickly(() => draw({ status: 'failed', text: '', failure: { kind: 'model', message } })),
+      ).toBeLessThan(1000);
+    }
+    cleanup();
+    draw({
+      status: 'failed',
+      text: '',
+      failure: { kind: 'model', message: 'Feil.  Try again !.' },
+    });
+    expect(screen.getByText(/^Feil\. Dokumentene/)).toBeTruthy();
+  });
+
+  it('drops the blanks at the end of each copied line in linear time', () => {
+    const line = `x${blanks}y`;
+    expect(quickly(() => answerCopy(line, {}))).toBeLessThan(1000);
+    expect(quickly(() => finishedText(`${line}\n\nslutt`))).toBeLessThan(1000);
+    expect(answerCopy('x \t\ny  ', {}).text).toBe('x\ny');
   });
 });
 

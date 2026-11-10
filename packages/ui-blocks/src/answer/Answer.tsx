@@ -45,9 +45,8 @@ export interface AnswerFailure {
 export const failureRetryable = (kind: AnswerFailureKind) =>
   kind !== 'access' && kind !== 'tooLong' && kind !== 'filter' && kind !== 'threadGone';
 
-// Anchored to the end, so «Prøv igjen senere» stays: a service sentence that ends by asking for
-// what the button under it does would say it twice.
-const retryPrompt = /\s*(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*[.!…]*\s*$/iu;
+// At the end only, so «Prøv igjen senere» stays; no `\s*` in front, which made it quadratic.
+const retryPrompt = /(?:Prøv igjen(?: om litt)?|Please try again|Try again)\s*(?:[.!…]+\s*)?$/iu;
 
 /**
  * Where focus goes back to in the answer: a footnote, by its index in the answer's footnotes, or
