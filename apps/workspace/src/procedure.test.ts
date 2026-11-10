@@ -44,6 +44,18 @@ describe('the approach from the stream', () => {
     expect(withStep(start, { tool: 'search', iteration: 2 }, t)).toBe(start);
   });
 
+  it('keeps one step when a tool used earlier is called again twice in a row', () => {
+    const state = ['search', 'read_chunks', 'search', 'search'].reduce(
+      (s, tool) => withStep(s, { tool }, t),
+      empty,
+    );
+    expect(shown(state)).toEqual([
+      ['Lette etter steder som handler om spørsmålet', 'done'],
+      ['Leste de relevante delene nøye', 'done'],
+      ['Lette etter steder som handler om spørsmålet', 'active'],
+    ]);
+  });
+
   it('shows the planned steps as waiting, and moves through them in order', () => {
     const planned = withStep(
       empty,

@@ -19,8 +19,13 @@ export interface StreamStep {
   missing?: boolean;
 }
 
+/** A step as the workspace keeps it; `key` names the tool or label it came from. */
+export interface StreamedStep extends ProcedureStep {
+  key: string;
+}
+
 export interface ProcedureState {
-  steps: readonly ProcedureStep[];
+  steps: readonly StreamedStep[];
   read?: number;
 }
 
@@ -42,7 +47,7 @@ const toolTitle = (tool: string | undefined, t: T) => {
 const titleOf = (frame: StreamStep, t: T) =>
   (typeof frame.label === 'string' && frame.label.trim()) || toolTitle(frame.tool, t);
 
-const idOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
+const keyOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
 
 const detailsOf = (frame: StreamStep): Partial<ProcedureStep> => ({
   ...(frame.description ? { description: frame.description } : {}),
@@ -59,13 +64,13 @@ const detailsOf = (frame: StreamStep): Partial<ProcedureStep> => ({
   ...(frame.missing ? { missing: true } : {}),
 });
 
-const planned = (steps: readonly ProcedureStep[], plan: string[] | undefined, t: T) => {
+const planned = (steps: readonly StreamedStep[], plan: string[] | undefined, t: T) => {
   if (!plan?.length) return steps;
   const waiting = plan.flatMap((tool) => {
     const title = toolTitle(tool, t);
-    const id = `tool:${tool}`;
-    return title && !steps.some((s) => s.id === id)
-      ? [{ id, title, status: 'waiting' as const }]
+    const key = `tool:${tool}`;
+    return title && !steps.some((s) => s.key === key)
+      ? [{ id: key, key, title, status: 'waiting' as const }]
       : [];
   });
   return waiting.length ? [...steps, ...waiting] : steps;
@@ -78,28 +83,29 @@ export const withStep = (state: ProcedureState, frame: StreamStep, t: T): Proced
   const steps = planned(withRead.steps, frame.plan, t);
   const title = titleOf(frame, t);
   if (!title) return steps === withRead.steps ? withRead : { ...withRead, steps };
-  const id = idOf(frame, title);
+  const key = keyOf(frame, title);
   const details = detailsOf(frame);
-  const at = steps.findIndex((s) => s.id === id && s.status !== 'done');
+  const at = steps.findIndex((s) => s.key === key && s.status !== 'done');
   const current = steps[at];
   if (current?.status === 'active' && !Object.keys(details).length)
     return steps === withRead.steps ? withRead : { ...withRead, steps };
-  const added: ProcedureStep = {
-    id: steps.some((s) => s.id === id) ? `${id}:${steps.length}` : id,
+  const added: StreamedStep = {
+    id: steps.some((s) => s.key === key) ? `${key}:${steps.length}` : key,
+    key,
     title,
     status: 'active',
     ...details,
   };
-  const done = (s: ProcedureStep): ProcedureStep =>
+  const done = (s: StreamedStep): StreamedStep =>
     s.status === 'active' ? { ...s, status: 'done' } : s;
-  const next: ProcedureStep[] =
+  const next: StreamedStep[] =
     at === -1
       ? [
           ...steps.filter((s) => s.status !== 'waiting').map(done),
           added,
           ...steps.filter((s) => s.status === 'waiting'),
         ]
-      : steps.map((s, i): ProcedureStep =>
+      : steps.map((s, i): StreamedStep =>
           i === at
             ? { ...s, title, ...details, status: 'active' }
             : i < at
@@ -110,7 +116,7 @@ export const withStep = (state: ProcedureState, frame: StreamStep, t: T): Proced
 };
 
 /** The steps when the answer is done: all done, without planned steps the run never reached. */
-export const allDone = (steps: readonly ProcedureStep[]): readonly ProcedureStep[] =>
+export const allDone = <S extends ProcedureStep>(steps: readonly S[]): readonly S[] =>
   steps.flatMap((s) =>
     s.status === 'waiting' ? [] : s.status === 'done' ? [s] : [{ ...s, status: 'done' as const }],
   );
