@@ -5,6 +5,7 @@ import { InMemoryDefinitionStore, SettingsRegistry } from '@genai/definitions';
 import { envSecrets } from '@genai/kernel';
 import { createAdmin } from './admin.js';
 import { createPlatform } from './composition.js';
+import { localeMiddleware } from './i18n/index.js';
 
 const tenant = '991825827';
 
@@ -77,6 +78,7 @@ const boot = async () => {
     extensions: platform.extensions,
   });
   const app = new Hono();
+  app.use('*', localeMiddleware);
   platform.mount(app, admin);
   const call = (
     path: string,
@@ -86,6 +88,7 @@ const boot = async () => {
       ifMatch?: number;
       as?: string;
       session?: string;
+      language?: string;
     } = {},
   ) =>
     app.request(path, {
@@ -96,6 +99,7 @@ const boot = async () => {
         'change-reason': 'Hjelp fra Digdir',
         ...(init.ifMatch !== undefined ? { 'if-match': `"${init.ifMatch}"` } : {}),
         ...(init.session ? { 'support-session': init.session } : {}),
+        ...(init.language ? { 'accept-language': init.language } : {}),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });
@@ -507,7 +511,104 @@ describe('settings and named keys of a model connection', () => {
 
   it('refuses a setting name that is not an identifier', async () => {
     const { call } = await boot();
-    expect(await refusal(call, { settings: { 'key id': 'x' } })).toContain('settings');
+    expect(await refusal(call, { settings: { 'key id': 'x' } })).toContain(
+      '"path":"settings.key id","message":"a lowercase letter, then letters, digits or _, at most 32 characters"',
+    );
+  });
+
+  it('accepts a setting named constructor when the connection has no keys', async () => {
+    const { call } = await boot();
+    const created = await call('/operator/model-endpoints', {
+      body: { ...connection, settings: { constructor: 'x' } },
+    });
+    expect(created.status).toBe(201);
+  });
+
+  it('each settings and keys validation error from the operator routes comes back in the requested language', async () => {
+    const { call } = await boot();
+    const many = (count: number, prefix: string, value: string) =>
+      Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}${i}`, value]));
+    const endpoints = '/operator/model-endpoints';
+    const catalogRoute = '/operator/catalog/model-endpoint/signert';
+    const cases: [string, Record<string, unknown>, string, string][] = [
+      [
+        endpoints,
+        { settings: many(21, 's', 'x') },
+        'at most 20 settings',
+        'høyst 20 innstillinger',
+      ],
+      [
+        endpoints,
+        { settings: { 'key id': 'x' } },
+        'a lowercase letter, then letters, digits or _, at most 32 characters',
+        'en liten bokstav, deretter bokstaver, sifre eller _, høyst 32 tegn',
+      ],
+      [
+        endpoints,
+        { settings: { keyId: ' x' } },
+        'printable text of at most 256 characters',
+        'synlig tekst på høyst 256 tegn',
+      ],
+      [
+        endpoints,
+        { settings: { keyId: 'secret://platform/k' } },
+        'a setting is not a secret; name it under keys',
+        'en innstilling er ikke en hemmelighet; legg den under keys',
+      ],
+      [
+        endpoints,
+        { keys: many(5, 'k', 'secret://platform/k') },
+        'at most 4 named keys, each a key name',
+        'høyst 4 navngitte nøkler, hver med et nøkkelnavn',
+      ],
+      [
+        endpoints,
+        { keys: { signing: 'the-key' } },
+        'use a platform secret: secret://platform/<name>',
+        'bruk en hemmelighet for plattformen: secret://platform/<name>',
+      ],
+      [
+        endpoints,
+        { settings: { signing: 'x' }, keys: { signing: 'secret://platform/k' } },
+        'a name is a setting or a key, not both',
+        'et navn er enten en innstilling eller en nøkkel',
+      ],
+      [
+        catalogRoute,
+        { keys: many(5, 'k', 'secret://platform/k') },
+        'at most 4 named keys',
+        'høyst 4 navngitte nøkler',
+      ],
+      [
+        catalogRoute,
+        { keys: { signing: 'the-key' } },
+        'must be a secret:// reference',
+        'må være en secret://-referanse',
+      ],
+      [
+        '/operator/catalog/model/fakegpt',
+        { endpoint: 'fake', deployment: 'gpt', residency: 'norway', settings: { keyId: 'x' } },
+        'only the operator sets settings, and only on a model connection',
+        'bare operatøren setter settings, og bare på en modellkobling',
+      ],
+    ];
+    for (const [path, extra, en, nb] of cases)
+      for (const [language, expected] of [
+        ['en', en],
+        ['nb', nb],
+      ] as const) {
+        const res = await call(path, {
+          method: path === endpoints ? 'POST' : 'PUT',
+          body: path === endpoints || path === catalogRoute ? { ...connection, ...extra } : extra,
+          language,
+        });
+        expect(res.status).toBe(400);
+        const { errors } = await json<{ errors: { message: string }[] }>(res);
+        expect(
+          errors.map((e) => e.message),
+          `${path} ${language}`,
+        ).toContain(expected);
+      }
   });
 
   it('refuses a setting value with a control character, leading or trailing space, or over 256 characters', async () => {

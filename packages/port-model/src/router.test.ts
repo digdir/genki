@@ -269,6 +269,38 @@ describe('model catalog', () => {
     ]);
   });
 
+  const withOne = (extra: Record<string, unknown>) =>
+    parseCatalog(
+      {
+        ...catalog,
+        endpoints: { ...catalog.endpoints, one: { ...catalog.endpoints.one, ...extra } },
+      },
+      [recording('proto-a').adapter, recording('proto-b').adapter],
+    );
+
+  it('a setting named constructor with no keys is accepted', () => {
+    expect(withOne({ settings: { constructor: 'x' } }).ok).toBe(true);
+  });
+
+  it('refuses a name that is both a setting and a key, at the key', () => {
+    expect(withOne({ settings: { signing: 'x' }, keys: { signing: 'secret://env/k' } })).toEqual({
+      ok: false,
+      errors: [{ path: 'endpoints.one.keys', message: 'a name is a setting or a key, not both' }],
+    });
+  });
+
+  it('refuses a setting name that is not an identifier, naming the rule', () => {
+    expect(withOne({ settings: { 'key id': 'x' } })).toEqual({
+      ok: false,
+      errors: [
+        {
+          path: 'endpoints.one.settings.key id',
+          message: 'a lowercase letter, then letters, digits or _, at most 32 characters',
+        },
+      ],
+    });
+  });
+
   it('refuses to start with a token provider nobody registered', () => {
     expect(
       () =>

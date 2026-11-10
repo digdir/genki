@@ -1,5 +1,10 @@
 import { perThousandView, type Principal } from '@genai/contracts';
-import { allowedHostPattern, connectionKeys, connectionSettings } from '@genai/port-model';
+import {
+  allowedHostPattern,
+  connectionKeys,
+  connectionSettings,
+  firstIssue,
+} from '@genai/port-model';
 import type { Context } from 'hono';
 import type { CatalogItem } from './catalog-registry.js';
 import { platformScope } from './config-store.js';
@@ -80,12 +85,7 @@ export const endpointProblems = (
     });
   if (body.settings !== undefined) {
     const parsed = connectionSettings.safeParse(body.settings);
-    const issue = parsed.success ? undefined : parsed.error.issues[0];
-    if (issue)
-      errors.push({
-        path: ['settings', ...issue.path.map(String)].join('.'),
-        message: issue.message,
-      });
+    if (!parsed.success) errors.push(firstIssue(parsed.error, ['settings']));
   }
   if (body.keys !== undefined) {
     const keys = record(body.keys);
@@ -98,7 +98,7 @@ export const endpointProblems = (
           message: 'use a platform secret: secret://platform/<name>',
         });
     for (const name of Object.keys(record(body.settings)))
-      if (name in keys)
+      if (Object.hasOwn(keys, name))
         errors.push({ path: `keys.${name}`, message: 'a name is a setting or a key, not both' });
   }
   const auth = record(body.auth);

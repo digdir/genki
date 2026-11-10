@@ -35,9 +35,16 @@ const discoveryRule = z.strictObject({
 
 export const connectionSettingValue = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
 
+const settingName = z
+  .string()
+  .regex(
+    settingNamePattern,
+    'a lowercase letter, then letters, digits or _, at most 32 characters',
+  );
+
 export const connectionSettings = z
   .record(
-    z.string().regex(settingNamePattern),
+    settingName,
     z
       .string()
       .regex(connectionSettingValue, 'printable text of at most 256 characters')
@@ -46,7 +53,7 @@ export const connectionSettings = z
   .refine((s) => Object.keys(s).length <= 20, 'at most 20 settings');
 
 export const connectionKeys = z
-  .record(z.string().regex(settingNamePattern), secret)
+  .record(settingName, secret)
   .refine((k) => Object.keys(k).length <= 4, 'at most 4 named keys');
 
 export const allowedHostPattern =
@@ -64,7 +71,7 @@ const endpoint = z
     settings: connectionSettings.optional(),
     keys: connectionKeys.optional(),
   })
-  .refine((e) => !Object.keys(e.settings ?? {}).some((name) => name in (e.keys ?? {})), {
+  .refine((e) => !Object.keys(e.settings ?? {}).some((name) => Object.hasOwn(e.keys ?? {}, name)), {
     message: 'a name is a setting or a key, not both',
     path: ['keys'],
   });
@@ -113,6 +120,17 @@ export type CatalogResult =
 
 const pathOf = (base: (string | number)[], issue: { path: PropertyKey[] }) =>
   [...base, ...issue.path].map(String).join('.');
+
+const messageOf = (issue: z.core.$ZodIssue) =>
+  issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message;
+
+/** The first thing wrong with a value, as a path under `base` and a message that names the rule. */
+export const firstIssue = (error: z.ZodError, base: (string | number)[] = []) => {
+  const issue = error.issues[0];
+  return issue
+    ? { path: pathOf(base, issue), message: messageOf(issue) }
+    : { path: base.map(String).join('.'), message: 'invalid' };
+};
 
 /** The URL a connection serves one family at: its base under `baseURL`, or the base itself when it is a full URL. */
 export const familyURL = (endpoint: Pick<CatalogEndpoint, 'baseURL'>, base: string) =>
@@ -179,7 +197,7 @@ export const parseCatalog = (
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => ({ path: pathOf([], i), message: i.message })),
+      errors: parsed.error.issues.map((i) => ({ path: pathOf([], i), message: messageOf(i) })),
     };
   }
   const apis = registryOf(registry);

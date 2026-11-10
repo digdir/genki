@@ -5,6 +5,7 @@ import {
   allowedHostPattern,
   connectionKeys,
   connectionSettings,
+  firstIssue,
   residencies,
   type Residency,
 } from '@genai/port-model';
@@ -453,12 +454,7 @@ export class CatalogRegistry {
         continue;
       }
       const parsed = schema.safeParse(out[field]);
-      const issue = parsed.success ? undefined : parsed.error.issues[0];
-      if (!parsed.success)
-        errors.push({
-          path: [`spec.${field}`, ...(issue?.path ?? []).map(String)].join('.'),
-          message: issue?.message ?? 'invalid',
-        });
+      if (!parsed.success) errors.push(firstIssue(parsed.error, [`spec.${field}`]));
       else if (field === 'keys')
         for (const [name, ref] of Object.entries(parsed.data as Record<string, string>))
           if (!ref.startsWith('secret://platform/'))
