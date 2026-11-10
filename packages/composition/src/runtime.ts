@@ -1,4 +1,11 @@
-import type { Principal, Ref, Usage } from '@genai/contracts';
+import {
+  unitPricesFor,
+  type PriceSpec,
+  type PriceUnit,
+  type Principal,
+  type Ref,
+  type Usage,
+} from '@genai/contracts';
 import {
   platformSettings,
   SettingsRegistry,
@@ -24,12 +31,17 @@ import { batchCapabilityFor, batchStrategy } from '@genai/jobs';
 import {
   CapabilityRegistry,
   checkCapability,
+  createGate,
   createKernel,
+  InMemoryProviderObjects,
   type Capability as KernelCapability,
   type EventLog,
   type Kernel,
+  type MediaOutputConfig,
+  type ProviderObjectStore,
   type PolicyDecisionPoint,
   type PortContext,
+  type PortProvider,
   type SecretResolver,
   type StateStore,
   type Strategy,
@@ -37,6 +49,7 @@ import {
   type TokenProviders,
 } from '@genai/kernel';
 import { BlobPortProvider, InMemoryBlobStore, type BlobStore } from '@genai/port-blob';
+import { blobMediaInput, blobMediaOutput, mediaOutputConfigOf } from './media-output.js';
 import { EmbeddingRouter, type EmbeddingAdapter } from '@genai/port-embedding';
 import {
   IndexWriterRouter,
@@ -46,7 +59,27 @@ import {
   type KnowledgeAdapter,
 } from '@genai/port-knowledge';
 import {
+  liveSession,
+  liveSessionConfig,
+  loadDescriptors,
+  SessionChannels,
+  type DescriptorRegistry,
+} from '@genai/operations';
+import { liveDescriptors } from './operation-descriptors.js';
+import {
+  migratedCatalog,
+  migrateConnections,
+  registryApiFor,
+  withLegacyCatalogs,
+} from './connection-migration.js';
+import { migratePrices, perThousandPrices } from './prices.js';
+import {
+  apiRegistry,
+  ModelError,
   ModelRouter,
+  type BuiltInApi,
+  type OperationPort,
+  type ProcessorRecordCheck,
   parseCatalog,
   type Capability,
   type ModelClassificationStore,
@@ -70,6 +103,7 @@ import { OpenApiToolSource } from '@genai/providers-openapi-tools';
 import {
   pgvectorEngine,
   pgvectorEngineName,
+  type KnowledgePools,
   type PgvectorEngineOptions,
 } from '@genai/providers-pgvector';
 import { typesense } from '@genai/providers-typesense';
@@ -98,7 +132,22 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 import { withDocumentScope } from './document-scope.js';
-import { failureLoggingEventLog, loggedModels, type ApiLog } from './failure-log.js';
+import { outsideRun } from './outside-run.js';
+import { operationGovernance } from './operation-governance.js';
+import {
+  operationTryPolicy,
+  operationTryRunner,
+  operationTryStrategy,
+  type TryExchanges,
+  type EnvironmentTier,
+} from './operation-try.js';
+import {
+  failureLoggingEventLog,
+  loggedEmbedders,
+  loggedModels,
+  throttleLoggedFetch,
+  type ApiLog,
+} from './failure-log.js';
 import {
   guardedSend,
   httpSearchAdapter,
@@ -111,7 +160,9 @@ import {
   ContextualKnowledgeRouter,
   portContexts,
   routerCatalog,
+  knowledgeServerEndpoints,
   withoutEngines,
+  withoutKnowledgeServer,
 } from './knowledge-context.js';
 import { sharedRecipeFinder } from './recipe-shares.js';
 import { openRetrievalPorts, usingRetrievalPorts, type RuntimeConfig } from './retrieval-ports.js';
@@ -128,6 +179,7 @@ export const strategyModelNeeds = new Map<string, Capability[]>([
   [strategyKey('single-call', 1), []],
   [strategyKey('remote-agent', 1), []],
   [strategyKey('step-flow', 1), ['json-schema']],
+  [strategyKey('live-session', 1), []],
 ]);
 
 export const inMemoryClassifications = (): ModelClassificationStore => {
@@ -143,7 +195,9 @@ export const inMemoryClassifications = (): ModelClassificationStore => {
 export interface Catalogs {
   models: unknown;
   knowledge: unknown;
+  /** Rerankers on engines without an API; colbert rerankers here move into the model catalogue. */
   rerank: unknown;
+  /** An embedding catalogue from before ADR 0048; its embedders move into the model catalogue. */
   embeddings?: unknown;
 }
 
@@ -167,6 +221,42 @@ export interface PolicyParts {
   catalog(): CatalogRegistry | undefined;
 }
 
+const draftRefusal =
+  'a call-operation step runs only in a published service version, not in a draft';
+
+/** The described port for published service versions only; a draft cannot run a call-operation step. */
+export const publishedOnly = (
+  provider: PortProvider<OperationPort>,
+  published: (task: string) => Promise<boolean>,
+): PortProvider<OperationPort> => ({
+  open: (ref, ctx) => {
+    const port = provider.open(ref, ctx);
+    return {
+      info: () => port.info(),
+      call: async (descriptor, input) => {
+        if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
+        return port.call(descriptor, input);
+      },
+      ...(port.stream
+        ? {
+            stream: async function* (descriptor, input) {
+              if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
+              yield* (port.stream as NonNullable<OperationPort['stream']>)(descriptor, input);
+            },
+          }
+        : {}),
+      ...(port.session
+        ? {
+            session: async (descriptor, input, io) => {
+              if (!(await published(ctx.task))) throw new ModelError('refused', draftRefusal);
+              return (port.session as NonNullable<OperationPort['session']>)(descriptor, input, io);
+            },
+          }
+        : {}),
+    };
+  },
+});
+
 export interface RuntimeInput {
   platformTenant: string;
   catalogs: Catalogs;
@@ -181,6 +271,9 @@ export interface RuntimeInput {
   ) => DefinitionStore;
   policy: PolicyDecisionPoint | ((parts: PolicyParts) => PolicyDecisionPoint);
   admitsModelUse?: (principal: Principal) => boolean;
+  environmentTier?: EnvironmentTier;
+  descriptors?: DescriptorRegistry;
+  published?: (capabilityId: string) => boolean;
   log: EventLog;
   tasks: TaskStore;
   state?: StateStore;
@@ -188,10 +281,14 @@ export interface RuntimeInput {
   tokenProviders?: TokenProviders;
   egress?: EgressOptions;
   blobStore?: BlobStore;
+  mediaOutput?: MediaOutputConfig;
   connections?: ConnectionRegistry;
   modelClassifications?: ModelClassificationStore;
   knowledgePool?: PgvectorEngineOptions['pool'];
+  knowledgeServer?: KnowledgePools;
+  knowledgeGuard?: () => void;
   embeddingAdapters?: EmbeddingAdapter[];
+  processorRecords?: ProcessorRecordCheck;
   searchOnlyClusters?: (string | undefined)[];
   catalogPolicy?: CatalogPolicy;
   prices?: Record<string, unknown>;
@@ -211,6 +308,9 @@ export interface RuntimeInput {
   derivedCatalog?: (entries: ConfigEntry<unknown>[]) => ConfigEntry<unknown>[];
   sharedTools?: (connection: string) => string | undefined;
   endpointFetch?: (endpoint: string) => typeof fetch | undefined;
+  foreignFetch?: (hosts: string[]) => typeof fetch;
+  providerObjects?: ProviderObjectStore;
+  liveSessions?: SessionChannels;
   agents?: (id: string) => RegisteredAgent | undefined;
 }
 
@@ -241,7 +341,10 @@ export const referencesOf = (configs: unknown[]): CatalogReferences => {
         for (const v of Object.values(value)) if (typeof v === 'string') found.models.add(v);
     }
     for (const d of config.knowledge?.datasets ?? []) if (d.dataset) found.datasets.add(d.dataset);
-    if (config.knowledge?.reranker) found.rerankers.add(config.knowledge.reranker);
+    if (config.knowledge?.reranker) {
+      found.rerankers.add(config.knowledge.reranker);
+      found.models.add(config.knowledge.reranker);
+    }
   }
   return found;
 };
@@ -302,23 +405,86 @@ export const createRuntime = async (input: RuntimeInput) => {
   });
 
   const modelAdapters = [openAiChat, anthropicMessages];
+  const embeddingAdapters = [openAiEmbeddings, ...(input.embeddingAdapters ?? [])];
+  const rerankAdapters = [colbert];
+  const portApis: BuiltInApi[] = [
+    ...embeddingAdapters.map((a) => ({
+      id: a.api.id,
+      kind: 'embed',
+      family: a.api.family,
+      modelOptions: a.modelOptions as unknown as z.ZodObject,
+      units: ['input-token', 'request'] as PriceUnit[],
+    })),
+    ...rerankAdapters.flatMap((a) =>
+      a.api
+        ? [
+            {
+              id: a.api.id,
+              kind: 'rerank',
+              family: a.api.family,
+              modelOptions: a.rerankerOptions as unknown as z.ZodObject,
+              units: ['request'] as PriceUnit[],
+            },
+          ]
+        : [],
+    ),
+  ];
+  const descriptors = liveDescriptors(input.descriptors ?? loadDescriptors(), configEntries);
+  await descriptors.refresh();
+  const folded = withLegacyCatalogs(
+    input.catalogs.models,
+    input.catalogs.embeddings,
+    input.catalogs.rerank,
+    Object.fromEntries(rerankAdapters.flatMap((a) => (a.api ? [[a.engine, a.api]] : []))),
+  );
+  const rerankSeed = folded.rerank;
+  const modelSeed = migratedCatalog(
+    folded.models,
+    registryApiFor(apiRegistry(modelAdapters, descriptors, portApis)),
+  );
+  const typedCalls = input.processorRecords ?? 'warn';
+  const prices: Record<string, unknown> = input.prices ?? {};
+  const unitPrices: Record<string, unknown> = { ...prices };
+  const priceSeed = { ...prices };
+  const environmentTier = input.environmentTier ?? 'production';
+  const governance = operationGovernance(configEntries, environmentTier);
+  const blobStore = input.blobStore ?? new InMemoryBlobStore();
+  const gate = createGate({
+    tier: environmentTier,
+    media: blobMediaOutput(input.mediaOutput ?? mediaOutputConfigOf(process.env), blobStore),
+    mediaInput: blobMediaInput(blobStore),
+    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    ...(input.logger
+      ? {
+          egress: (endpoint: string) =>
+            throttleLoggedFetch(
+              endpoint,
+              input.endpointFetch?.(endpoint) ?? globalThis.fetch,
+              input.logger as ApiLog,
+            ),
+        }
+      : input.endpointFetch
+        ? { egress: input.endpointFetch }
+        : {}),
+    outside: outsideRun(input.log, input.now),
+  });
   const embedders = new EmbeddingRouter({
-    catalog: input.catalogs.embeddings ?? { endpoints: {} },
-    adapters: [openAiEmbeddings, ...(input.embeddingAdapters ?? [])],
+    gate,
+    descriptors,
+    catalog: modelSeed,
+    adapters: embeddingAdapters,
     secrets: catalogSecrets,
+    priceOf: (id) => unitPricesFor(unitPrices[id], 'embed'),
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
+  const loggedEmbedderRouter = input.logger
+    ? loggedEmbedders(
+        embedders,
+        input.logger,
+        async (task) => (await input.tasks.get(task))?.task.service.capability.id,
+      )
+    : embedders;
   const embeddingModels = new Set(embedders.describe().map((e) => e.id));
-  const smallestEmbedder = embedders
-    .describe()
-    .sort((a, b) => a.dimensions - b.dimensions || a.id.localeCompare(b.id))[0];
-  const defaultEmbedding = smallestEmbedder
-    ? {
-        model: smallestEmbedder.id,
-        dimensions: smallestEmbedder.dimensions,
-        residency: smallestEmbedder.residency,
-      }
-    : undefined;
   const embeddingResidency = (model: string) =>
     embedders.describe().find((e) => e.id === model)?.residency;
   const residencyOf = (dataset: string) => knowledge.datasets().get(dataset)?.residency;
@@ -334,7 +500,7 @@ export const createRuntime = async (input: RuntimeInput) => {
         signal: new AbortController().signal,
         meter: async () => undefined,
       };
-      const port = embedders.open({ kind: 'embedder', id: model }, ctx, {
+      const port = loggedEmbedderRouter.open({ kind: 'embedder', id: model }, ctx, {
         ...(residency ? { maxResidency: residency } : {}),
       });
       return (await port.embed(texts)).vectors;
@@ -343,7 +509,13 @@ export const createRuntime = async (input: RuntimeInput) => {
   const pgvector = input.knowledgePool
     ? pgvectorEngine({
         pool: input.knowledgePool,
+        ...(input.knowledgeServer ? { knowledge: input.knowledgeServer } : {}),
+        ...(input.knowledgeGuard ? { knowledgeGuard: input.knowledgeGuard } : {}),
         ...(embeddingModels.size > 0 ? { embedder: queryEmbedder } : {}),
+        onVacuumError: (error) =>
+          input.logger?.('knowledge vacuum failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
       })
     : undefined;
   const knowledgeAdapters: KnowledgeAdapter[] = [
@@ -358,24 +530,39 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(pgvector ? [pgvector.writer as IndexWriterAdapter] : []),
   ];
   const knowledgeSeed = withoutEngines(
-    input.catalogs.knowledge,
+    input.knowledgeServer
+      ? input.catalogs.knowledge
+      : withoutKnowledgeServer(input.catalogs.knowledge, input.onWarning),
     pgvector ? [] : [pgvectorEngineName],
     input.onWarning,
   );
+  const providerObjects = input.providerObjects ?? new InMemoryProviderObjects(input.now);
   const models = new ModelRouter({
-    catalog: input.catalogs.models,
-    ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    gate,
+    descriptors,
+    governance,
+    objects: providerObjects,
+    ...(input.foreignFetch ? { foreignFetch: input.foreignFetch } : {}),
+    catalog: modelSeed,
     adapters: modelAdapters,
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
+    portApis,
+    typedCalls,
+    onUnrecordedProcessor: (connection, kind) =>
+      input.logger?.('model call on a connection without a processor record', {
+        connection,
+        kind,
+        processorRecords: typedCalls,
+      }),
     sources: [azureDeployments],
     classifications: input.modelClassifications ?? inMemoryClassifications(),
-    priceOf: (id) =>
-      prices[id] as { inputPerThousand: number; outputPerThousand: number } | undefined,
+    priceOf: (id) => unitPrices[id] as PriceSpec | undefined,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     onParameterDropped: (model, parameter) =>
       input.logger?.('model rejected a request parameter', { model, parameter }),
   });
+  const kindsOf = (id: string) =>
+    Object.keys(models.describe().find((m) => m.id === id)?.apis ?? {});
   const knowledge = new ContextualKnowledgeRouter({
     catalog: routerCatalog(knowledgeSeed),
     adapters: knowledgeAdapters,
@@ -390,13 +577,23 @@ export const createRuntime = async (input: RuntimeInput) => {
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
   });
   const rerank = new RerankRouter({
-    catalog: input.catalogs.rerank,
-    adapters: [colbert],
-    ...(input.endpointFetch ? { fetchFor: input.endpointFetch } : {}),
+    gate,
+    catalog: rerankSeed,
+    models: modelSeed,
+    adapters: rerankAdapters,
     secrets: catalogSecrets,
     ...(input.tokenProviders ? { tokenProviders: input.tokenProviders } : {}),
     ...(input.onWarning ? { onWarning: input.onWarning } : {}),
   });
+  const migrated = await migrateConnections({
+    store: configEntries,
+    seed: modelSeed,
+    apis: models.apis(),
+    ...(input.modelClassifications ? { classifications: input.modelClassifications } : {}),
+    ...(input.now ? { now: input.now } : {}),
+  });
+  if (Object.values(migrated).some((n) => n > 0))
+    input.logger?.('model connections moved to the shape of ADR 0048', { ...migrated });
   const discovery = await models.refresh();
   for (const f of discovery.failed)
     input.onWarning?.(`model discovery failed for ${f.endpoint}: ${f.error}`);
@@ -422,7 +619,6 @@ export const createRuntime = async (input: RuntimeInput) => {
         return owning && owning !== owner ? mcp.resolve(name, version, ctx, owning) : undefined;
       },
     });
-  const blobStore = input.blobStore ?? new InMemoryBlobStore();
   const blob = new BlobPortProvider(blobStore);
 
   const agentLoop = usingRetrievalPorts(
@@ -454,10 +650,12 @@ export const createRuntime = async (input: RuntimeInput) => {
       retrieval: async (ctx, config) =>
         createRagRetrieval(await openRetrievalPorts(ctx, config as RuntimeConfig)),
       agent: agentLoop as Strategy<unknown>,
+      describedOperations: true,
     }),
   );
   const wrap = input.wrapStrategy ?? ((strategy: Strategy) => strategy);
   const preferences = userPreferenceReader(configEntries);
+  const liveSessions = input.liveSessions ?? new SessionChannels();
   const serviceStrategies: Strategy[] = [
     singleCall as Strategy,
     agentLoop as Strategy,
@@ -468,6 +666,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       }),
     ) as Strategy,
     stepFlow,
+    liveSession(liveSessions) as Strategy,
     createRemoteAgent({
       transport: createRemoteTransport({ guard: toolSourceOptions.guard, secrets: catalogSecrets }),
       ...(input.agents ? { agents: input.agents } : {}),
@@ -478,6 +677,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       wrap(
         withHooks(
           guardStrategy(withSettings(settings, strategy), {
+            decisions: true,
             rules: ruleHooks,
             answerLanguage: async (ctx, request, config, question) =>
               answerLanguageFor(
@@ -505,6 +705,7 @@ export const createRuntime = async (input: RuntimeInput) => {
       [strategyKey('agent-loop', 1), agentLoopConfig],
       [strategyKey('rag-single-shot', 1), ragConfig],
       [strategyKey('step-flow', 1), stepFlowConfig],
+      [strategyKey('live-session', 1), liveSessionConfig],
       [
         strategyKey('remote-agent', 1),
         input.egress?.testOverride?.allowHttp
@@ -521,23 +722,22 @@ export const createRuntime = async (input: RuntimeInput) => {
     blocks: new Set(blocks.refs()),
     models: models.models(),
     retrieval: retrievalConfig,
-    rerankers: new Set(
-      ((input.catalogs.rerank as { rerankers?: { id: string }[] }).rerankers ?? []).map(
-        (r) => r.id,
-      ),
-    ),
+    rerankers: new Set(rerank.rerankers()),
     rerankerResidency: (id) => rerank.residency(id),
     datasets: new Set(knowledge.datasets().keys()),
     modelNeeds: strategyModelNeeds,
     strategyResidency: (id, config) =>
       id === strategyKey('remote-agent', 1)
-        ? ((config as { endpoint?: { residency?: Residency } }).endpoint?.residency ??
-          input.agents?.(String((config as { agent?: unknown }).agent ?? ''))?.endpoint.residency)
+        ? ((config as { endpoint?: { residency?: Residency } } | null)?.endpoint?.residency ??
+          input.agents?.(String((config as { agent?: unknown } | null)?.agent ?? ''))?.endpoint
+            .residency)
         : undefined,
   };
+  const tryExchanges: TryExchanges = new Map();
   const strategies: Strategy[] = [
     ...serviceStrategies,
     batchStrategy as Strategy,
+    operationTryStrategy(environmentTier, tryExchanges) as Strategy,
     ...(input.extraStrategies?.({
       models,
       knowledge,
@@ -554,6 +754,12 @@ export const createRuntime = async (input: RuntimeInput) => {
     rerank,
     tools,
     blob,
+    decision: models.decisions(),
+    operation: models.operations(),
+    described: publishedOnly(models.described(), async (task) => {
+      const capability = await capabilityOf(task);
+      return capability !== undefined && (input.published?.(capability) ?? true);
+    }),
   };
   const registry = new CapabilityRegistry({ strategies, ports });
   registry.replace(() => false, input.platformCapabilities ?? []);
@@ -599,7 +805,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     strategies,
     capabilities: registry,
     ports,
-    policy,
+    policy: operationTryPolicy(policy),
     log,
     tasks: taskStore,
     ...(input.state ? { state: input.state } : {}),
@@ -628,28 +834,56 @@ export const createRuntime = async (input: RuntimeInput) => {
   const store = input.definitions(plugins, sharedSkill, sharedRecipe);
   late.store = store;
 
-  const prices: Record<string, unknown> = input.prices ?? {};
+  let knowledgeCatalog: EffectiveCatalogs['knowledge'] | undefined;
+  /** Brings the knowledge server's filter indexes in line with the current catalog. */
+  const followKnowledge = () => {
+    if (!pgvector || !knowledgeCatalog) return;
+    const onKnowledgeServer = new Set(knowledgeServerEndpoints(knowledgeCatalog));
+    pgvector
+      .followCatalog(
+        knowledge
+          .datasetConfigs()
+          .filter((d) => onKnowledgeServer.has(d.endpoint))
+          .map((d) => d.config),
+      )
+      .catch((error: unknown) =>
+        input.onWarning?.(`knowledge filter indexes not updated: ${String(error)}`),
+      );
+  };
   const apply = (catalogs: EffectiveCatalogs) => {
     models.reload(catalogs.models);
+    embedders.reload(catalogs.models);
+    rerank.reloadModels(catalogs.models);
+    replaceSet(
+      embeddingModels,
+      embedders.describe().map((e) => e.id),
+    );
     knowledge.reload(catalogs.knowledge);
     writers.reload(catalogs.knowledge);
+    knowledgeCatalog = catalogs.knowledge;
+    followKnowledge();
     rerank.reload(catalogs.rerank);
     replaceSet(plugins.datasets, knowledge.datasets().keys());
     replaceSet(plugins.rerankers, rerank.rerankers());
-    replaceRecord(prices, catalogs.prices);
+    replaceRecord(unitPrices, catalogs.prices);
+    replaceRecord(prices, perThousandPrices(catalogs.prices));
   };
   const catalog = new CatalogRegistry({
     seed: {
-      models: input.catalogs.models,
+      models: modelSeed,
       knowledge: knowledgeSeed,
-      rerank: input.catalogs.rerank,
-      prices: { ...prices },
+      rerank: rerankSeed,
+      prices: priceSeed,
     },
     store: configEntries,
     checks: {
-      models: (c) => problemsOf(parseCatalog(c, modelAdapters, [azureDeployments.kind])),
+      models: (c) => [
+        ...problemsOf(parseCatalog(c, models.apis(), [azureDeployments.kind])),
+        ...embedders.problems(c),
+        ...rerank.problems(c),
+      ],
       knowledge: (c) => problemsOf(parseKnowledgeCatalog(c, knowledgeAdapters)),
-      rerank: (c) => problemsOf(parseRerankCatalog(c, [colbert])),
+      rerank: (c) => problemsOf(parseRerankCatalog(c, rerankAdapters)),
     },
     apply,
     ...(input.catalogPolicy ? { policy: input.catalogPolicy } : {}),
@@ -658,10 +892,46 @@ export const createRuntime = async (input: RuntimeInput) => {
     localEngines: () =>
       new Set(knowledgeAdapters.filter((a) => a.requiresBaseURL === false).map((a) => a.engine)),
     ...(input.derivedCatalog ? { derive: input.derivedCatalog } : {}),
+    priceKinds: kindsOf,
+    priceUnits: (id, kind) => {
+      const api = models.describe().find((m) => m.id === id)?.apis[kind];
+      return api ? (models.apis().get(api)?.units ?? []) : [];
+    },
     ...(input.now ? { now: input.now } : {}),
   });
   await catalog.initialize();
   released.catalog = catalog;
+  const pricesMoved = await migratePrices({
+    store: configEntries,
+    kindsOf,
+    ...(input.now ? { now: input.now } : {}),
+  });
+  if (pricesMoved > 0) {
+    input.logger?.('model prices moved to prices per kind and unit', { prices: pricesMoved });
+    await catalog.refresh();
+  }
+  const smallestEmbedder = embedders
+    .describe()
+    .sort((a, b) => a.dimensions - b.dimensions || a.id.localeCompare(b.id))[0];
+  const defaultEmbedding = smallestEmbedder
+    ? {
+        model: smallestEmbedder.id,
+        dimensions: smallestEmbedder.dimensions,
+        residency: smallestEmbedder.residency,
+      }
+    : undefined;
+  const unrecorded = await connectionsWithoutProcessorRecord(
+    governance,
+    new Set([
+      ...models.describe().map((m) => m.endpoint),
+      ...catalog.list({ kind: 'model-endpoint' }).map((e) => e.id),
+    ]),
+  );
+  if (unrecorded.length > 0)
+    input.logger?.('model connections without a processor record', {
+      connections: unrecorded,
+      processorRecords: typedCalls,
+    });
 
   const serviceLimits = { ...defaultServiceLimits, ...input.serviceLimits };
   const limited = (capability: KernelCapability): KernelCapability => ({
@@ -753,6 +1023,7 @@ export const createRuntime = async (input: RuntimeInput) => {
 
   return {
     kernel,
+    gate,
     registry,
     ports,
     strategies,
@@ -763,7 +1034,7 @@ export const createRuntime = async (input: RuntimeInput) => {
     models,
     knowledge,
     rerank,
-    embedders,
+    embedders: loggedEmbedderRouter,
     writers,
     tools,
     mcp,
@@ -791,7 +1062,23 @@ export const createRuntime = async (input: RuntimeInput) => {
     decorate,
     refreshTools,
     sync,
+    followKnowledge,
     quarantined: () => [...quarantine.values()],
+    descriptors,
+    providerObjects,
+    liveSessions,
+    environmentTier,
+    governance,
+    processorRecords: typedCalls,
+    unitPrices,
+    tryOperation: operationTryRunner({
+      kernel: () => kernel,
+      registry,
+      platformTenant,
+      tier: environmentTier,
+      exchanges: tryExchanges,
+      ...(input.admitsModelUse ? { admits: input.admitsModelUse } : {}),
+    }),
   };
 };
 
@@ -806,6 +1093,16 @@ const replaceSet = (target: Set<string> | undefined, values: Iterable<string>) =
 const replaceRecord = (target: Record<string, unknown>, values: Record<string, unknown>) => {
   for (const key of Object.keys(target)) Reflect.deleteProperty(target, key);
   Object.assign(target, values);
+};
+
+const connectionsWithoutProcessorRecord = async (
+  governance: { processorRecorded(endpoint: string): Promise<boolean> },
+  connections: Set<string>,
+) => {
+  const checked = await Promise.all(
+    [...connections].sort().map(async (c) => ((await governance.processorRecorded(c)) ? [] : [c])),
+  );
+  return checked.flat();
 };
 
 const problemsOf = (result: { ok: boolean; errors?: { path: string; message: string }[] }) =>

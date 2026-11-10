@@ -39,6 +39,13 @@ export const blocks = defineNamespace({
   operationsMissing: 'Finnes ikke i fila: {names}.',
   noOperations: 'Ingen operasjoner er valgt. Velg minst én.',
   operationsUndescribed: '{lacking} av {total} operasjoner mangler beskrivelse: {names}.',
+  secretNotForHosts:
+    'Hemmeligheten «{secret}» er ikke satt opp for {hosts}. Be noen med retten «Administrere tjenester» om å legge til adressen på hemmeligheten.',
+  secretHostsRequired:
+    'Skriv adressene hemmeligheten skal brukes mot, for eksempel https://api.example.no.',
+  secretHostInvalid:
+    '«{host}» er ikke en gyldig adresse. Skriv for eksempel https://api.example.no.',
+  secretNotFound: 'Hemmeligheten «{name}» finnes ikke.',
   noTools: 'Serveren har ingen verktøy.',
   toolsLacking: '{lacking} av {total} verktøy mangler beskrivelse eller inputSchema: {names}.',
   listNotAnswered: 'Ble ikke kjørt fordi serveren ikke svarte på tools/list.',

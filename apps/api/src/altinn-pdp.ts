@@ -20,7 +20,12 @@ export type AltinnPdpChoice =
       authorization: AltinnAuthorization;
       app: ReturnType<typeof createMockAltinnPdp>['app'];
     }
-  | { kind: 'altinn'; authorization: AltinnAuthorization; baseURL: string };
+  | {
+      kind: 'altinn';
+      authorization: AltinnAuthorization;
+      baseURL: string;
+      warm: () => Promise<unknown>;
+    };
 
 export const altinnPdpSettings = [
   'ALTINN_PDP_URL',
@@ -42,12 +47,15 @@ const privateKeyOf = (raw: string): JWK => {
   return key;
 };
 
+export const mockRightsWanted = (env: Record<string, string | undefined>) =>
+  isDevMode(env) && env.GENAI_MOCK_RIGHTS === 'true';
+
 export const altinnPdpFrom = (
   env: Record<string, string | undefined>,
   testData: IdentityTestDataInput,
   fetchFn: typeof fetch = fetch,
 ): AltinnPdpChoice => {
-  if (!env.ALTINN_PDP_URL) {
+  if (!env.ALTINN_PDP_URL || mockRightsWanted(env)) {
     if (!isDevMode(env))
       throw new Error(
         'ALTINN_PDP_URL is not set; the mock Altinn rights run only with GENAI_DEV_MODE=true',
@@ -73,6 +81,7 @@ export const altinnPdpFrom = (
   return {
     kind: 'altinn',
     baseURL,
+    warm: () => exchanged.token(),
     authorization: cachedAltinnAuthorization(
       httpAltinnAuthorization({
         baseURL,

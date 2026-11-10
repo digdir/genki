@@ -927,6 +927,40 @@ describe('batch runs over a document set', () => {
     expect(audit[0]).toMatchObject({ outcome: 'applied', reason: 'Oppsummerer årsrapportene' });
   });
 
+  it('shows tokens and cost of a batch run only with view-usage or to the person who started it', async () => {
+    const env = await boot();
+    const estimate = await estimateFor(env);
+    const run = await runTo(env, { estimate: estimate.id, maxCostNok: 5 });
+
+    const listed = (await env.send('GET', base, 'erik')).body.data as Record<string, unknown>[];
+    const detail = (await env.send('GET', `${base}/${String(run.id)}`, 'erik')).body;
+    const json = (await env.send('GET', `${base}/${String(run.id)}/export?format=json`, 'erik'))
+      .body;
+    const csv = String(
+      (await env.send('GET', `${base}/${String(run.id)}/export?format=csv`, 'erik')).body,
+    );
+    const own = (await env.send('GET', `${base}/${String(run.id)}`, 'kari')).body;
+
+    for (const field of ['tokens', 'costMicroNok', 'cap', 'perItem']) {
+      expect(listed[0]).not.toHaveProperty(field);
+      expect(detail).not.toHaveProperty(field);
+    }
+    for (const item of detail.items as Record<string, unknown>[]) {
+      expect(item).not.toHaveProperty('tokens');
+      expect(item).not.toHaveProperty('costMicroNok');
+    }
+    for (const item of json.items as Record<string, unknown>[])
+      expect(item).not.toHaveProperty('costMicroNok');
+    const row =
+      csv
+        .replace(/^\uFEFF/, '')
+        .split('\r\n')[2]
+        ?.split(';') ?? [];
+    expect(row.slice(13, 16)).toEqual(['', '', '']);
+    expect(own).toHaveProperty('costMicroNok');
+    expect(own).toHaveProperty('tokens');
+  });
+
   it('keeps runs to their tenant and needs the right to manage services to start one', async () => {
     const env = await boot();
     const estimate = await estimateFor(env);

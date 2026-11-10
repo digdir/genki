@@ -146,6 +146,7 @@ const boot = async (prices?: Record<string, ModelPrice>) => {
         json: {
           data: [
             { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
             { id: 'gpt-41-dommer', model: 'gpt-4.1', status: 'succeeded' },
           ],
         },
@@ -433,6 +434,26 @@ describe('eval runs for a service', () => {
 
     expect(withPrice.body.cost).toBeGreaterThan(0);
     expect(withoutPrice.body.cost).toBeNull();
+  });
+
+  it('shows the cost and tokens of an eval run only with view-usage', async () => {
+    const env = await boot({
+      [modelId]: { inputPerThousand: 1, outputPerThousand: 2 },
+      [judgeId]: { inputPerThousand: 1, outputPerThousand: 2 },
+    });
+    const id = await runPublished(env);
+
+    const run = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'erik')).body;
+    const list = (await env.send('GET', `${services}/eval-runs`, 'erik')).body.data as Record<
+      string,
+      unknown
+    >[];
+    const withUsage = (await env.send('GET', `/tenants/${tenant}/eval-runs/${id}`, 'kari')).body;
+
+    expect(run).not.toHaveProperty('cost');
+    expect(run).not.toHaveProperty('tokens');
+    expect(list[0]).not.toHaveProperty('cost');
+    expect(withUsage.cost).toBeGreaterThan(0);
   });
 
   it('runs a draft without publishing it', async () => {

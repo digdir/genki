@@ -1,5 +1,6 @@
 import { assistantApi } from './api/assistant';
 import type { StepBlockSchema } from './data/step-blocks';
+import type { StepOperation } from './data/step-operations';
 import type { StrategyEntry } from './data/strategies';
 import { buildingBlocksApi } from './api/building-blocks';
 import { datasetsApi } from './api/datasets';
@@ -92,6 +93,21 @@ export interface IngestionBackend {
   reason?: string;
 }
 
+export interface Attachment {
+  type: string;
+  id: string;
+  mediaType: string;
+  bytes: number;
+  step?: string;
+  url: string;
+}
+
+export interface PublishedRunResult {
+  task: string;
+  answer: string;
+  attachments: Attachment[];
+}
+
 export interface DraftRunResult {
   ok: true;
   task: string;
@@ -135,6 +151,7 @@ export interface ApiContext {
     headers?: Record<string, string>,
   ) => Promise<T>;
   tenantPath: (tenant: string) => string;
+  query?: <T>(method: string, path: string, body: unknown) => Promise<T>;
   send?: (
     method: string,
     path: string,
@@ -285,8 +302,47 @@ export const createApiClient = ({
     cache,
     getJson: (path: string, signal?: AbortSignal) => get<unknown>(path, signal),
     getHealth: (signal?: AbortSignal) =>
-      fetchJson<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
-    ...featureClients({ get, request, tenantPath, send: raw }),
+      get<{ status: 'ok'; version: string; lockdown?: boolean }>('/health', signal),
+    isReadOnlyInLockdown: async (signal?: AbortSignal) =>
+      (await get<{ lockdownReadOnly?: boolean }>('/me', signal)).lockdownReadOnly === true,
+    ...featureClients({ get, request, tenantPath, send: raw, query: sendJson }),
+    stepOperations: async (tenant: string, signal?: AbortSignal) =>
+      (await get<{ data: StepOperation[] }>(`${tenantPath(tenant)}/step-flows/operations`, signal))
+        .data,
+    runPublished: async (service: string, text: string): Promise<PublishedRunResult> => {
+      const response = await sendRaw('POST', '/v1/chat/completions', {
+        model: service,
+        messages: [{ role: 'user', content: text }],
+      });
+      const body = (await response.json().catch(() => undefined)) as
+        | {
+            choices?: { message?: { content?: string } }[];
+            attachments?: Attachment[];
+            error?: { message?: string };
+          }
+        | undefined;
+      if (!response.ok) {
+        const title = body?.error?.message;
+        const problem = title
+          ? { type: 'about:blank', title, status: response.status }
+          : (body as Problem | undefined);
+        throw new ApiError(response.status, problem, retryAfterOf(response));
+      }
+      return {
+        task: response.headers.get('genai-task') ?? '',
+        answer: body?.choices?.[0]?.message?.content ?? '',
+        attachments: body?.attachments ?? [],
+      };
+    },
+    media: async (url: string, signal?: AbortSignal) => {
+      const bearer = token();
+      const response = await send(`${baseUrl}${url}`, {
+        headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok) throw new ApiError(response.status, undefined);
+      return response.blob();
+    },
     listStepBlocks: async (tenant: string, signal?: AbortSignal) =>
       (await get<{ blocks: StepBlockSchema[] }>(`${tenantPath(tenant)}/step-flows/blocks`, signal))
         .blocks,
@@ -428,7 +484,7 @@ export const createApiClient = ({
       const metadata = definition.metadata as { tenant?: unknown } | undefined;
       if (typeof metadata?.tenant !== 'string') return definition;
       try {
-        const completed = await request<{ definition?: Record<string, unknown> }>(
+        const completed = await sendJson<{ definition?: Record<string, unknown> }>(
           'POST',
           `${tenantPath(metadata.tenant)}/definitions/complete`,
           { definition },
@@ -442,7 +498,7 @@ export const createApiClient = ({
     },
     validate: async (definition: unknown, files: Record<string, string> = {}) => {
       try {
-        await request<{ valid: true }>('POST', '/definitions/validate', { definition, files });
+        await sendJson<{ valid: true }>('POST', '/definitions/validate', { definition, files });
         return { valid: true, errors: [] } satisfies ValidationResult;
       } catch (error) {
         if (error instanceof ApiError && error.status === 422)
@@ -655,11 +711,17 @@ export const createApiClient = ({
         { tool },
         { 'change-reason': reason },
       ),
-    setSecret: (tenant: string, name: string, value: string, reason: string) =>
+    setSecret: (
+      tenant: string,
+      name: string,
+      value: string,
+      reason: string,
+      allowedHosts?: string[],
+    ) =>
       request<{ ref: string }>(
         'PUT',
         `${tenantPath(tenant)}/secrets/${encodeURIComponent(name)}`,
-        { value },
+        { value, ...(allowedHosts ? { allowedHosts } : {}) },
         { 'change-reason': reason },
       ),
     configList: (path: string, signal?: AbortSignal) =>
@@ -694,7 +756,7 @@ export const createApiClient = ({
       }),
     draftInputFields: async (tenant: string, definition: unknown) =>
       (
-        await request<{ fields: PlaygroundInputField[] }>(
+        await sendJson<{ fields: PlaygroundInputField[] }>(
           'POST',
           `${tenantPath(tenant)}/definitions/input-fields`,
           { definition },
@@ -709,7 +771,7 @@ export const createApiClient = ({
       bundle: TenantBundle,
       options: { dryRun: boolean; onConflict: 'skip' | 'overwrite'; reason: string },
     ) =>
-      request<ImportPlan>(
+      (options.dryRun ? sendJson<ImportPlan> : request<ImportPlan>)(
         'POST',
         `${tenantPath(tenant)}/import?dryRun=${options.dryRun}&onConflict=${options.onConflict}`,
         bundle,

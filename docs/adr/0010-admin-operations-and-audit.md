@@ -1,6 +1,6 @@
 # 0010 Admin operations and audit
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
+Status: accepted, 2026-10-12 (built; lockdown exception for the platform tenant, ADR 0033, 2026-11-03). Proposed 2026-10-06
 
 ## Decision
 
@@ -8,7 +8,7 @@ Status: accepted, 2026-10-12 (built). Proposed 2026-10-06
 - Who may do what in a tenant is granted in Altinn (0027), not by a platform action, so there is no `platform.access.grant`.
 - The audit log is therefore the event log. Every event has an actor: the kernel, a strategy or a principal.
 - The portal, the console, git automation, the builder assistant and the optimiser all change things through the same capabilities.
-- Operators act across tenants only through support sessions with a reason and a time limit. The session appears in the tenant's own log.
+- Operators act across tenants only through support sessions with a reason and a time limit. The session appears in the tenant's own log. In the locked test environment an operator also has every right in `PLATFORM_TENANT` without a support session (ADR 0033).
 
 ## Why
 

@@ -26,6 +26,7 @@
     "@genai/ingest": "0.0.0",
     "@genai/jobs": "0.0.0",
     "@genai/kernel": "0.0.0",
+    "@genai/operations": "0.0.0",
     "@genai/plugins": "0.0.0",
     "@genai/port-blob": "0.0.0",
     "@genai/port-embedding": "0.0.0",
@@ -33,7 +34,9 @@
     "@genai/port-model": "0.0.0",
     "@genai/port-rerank": "0.0.0",
     "@genai/port-tools": "0.0.0",
+    "@genai/port-usage": "0.0.0",
     "@genai/providers-a2a-client": "0.0.0",
+    "@genai/providers-ai-gateway": "0.0.0",
     "@genai/providers-anthropic": "0.0.0",
     "@genai/providers-colbert": "0.0.0",
     "@genai/providers-documents": "0.0.0",
@@ -41,6 +44,8 @@
     "@genai/providers-mcp-client": "0.0.0",
     "@genai/providers-openai": "0.0.0",
     "@genai/providers-openapi-tools": "0.0.0",
+    "@genai/providers-parquet": "0.0.0",
+    "@genai/providers-pgboss": "0.0.0",
     "@genai/providers-pgvector": "0.0.0",
     "@genai/providers-postgres": "0.0.0",
     "@genai/providers-postgres-source": "0.0.0",
@@ -58,7 +63,7 @@
     "hono": "^4.13.13",
     "jose": "^6.2.12",
     "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@genai/client": "0.0.0",

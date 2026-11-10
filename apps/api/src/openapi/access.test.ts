@@ -250,7 +250,7 @@ describe('access and extensions API reference', () => {
     await conforms(
       await send(`${t}/secrets/lovdata`, 'kari', {
         method: 'PUT',
-        body: { value: 'ikke-en-ekte-verdi' },
+        body: { value: 'ikke-en-ekte-verdi', allowedHosts: ['https://lovdata.example.no'] },
         reason,
       }),
       'put',

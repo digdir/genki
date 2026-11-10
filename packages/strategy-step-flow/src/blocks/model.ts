@@ -3,6 +3,8 @@ import type { Emitted } from '@genai/kernel';
 import {
   defaultMaxOutputTokens,
   ModelError,
+  untrustedData,
+  untrustedDataNote,
   type ChatRequest,
   type ChatResult,
   type ModelPort,
@@ -91,10 +93,24 @@ const generation = {
   maxTokens: z.number().int().positive().optional(),
 };
 
-const messages = (system: string | undefined, prompt: string): ChatRequest['messages'] => [
-  ...(system ? [{ role: 'system' as const, content: system }] : []),
-  { role: 'user' as const, content: prompt },
-];
+export const withUntrustedNote = (ctx: BlockContext, system: string | undefined) => {
+  const note = untrustedDataNote(ctx.config.languages);
+  return system ? `${system}\n\n${note}` : note;
+};
+
+const framed = (text: string) => text.includes('<untrusted_data');
+
+const messages = (
+  ctx: BlockContext,
+  system: string | undefined,
+  prompt: string,
+): ChatRequest['messages'] => {
+  const content = framed(prompt) ? withUntrustedNote(ctx, system) : system;
+  return [
+    ...(content ? [{ role: 'system' as const, content }] : []),
+    { role: 'user' as const, content: prompt },
+  ];
+};
 
 const tuning = (p: { temperature?: number | undefined; maxTokens?: number | undefined }) => ({
   ...(p.temperature === undefined ? {} : { temperature: p.temperature }),
@@ -111,11 +127,12 @@ export const modelBlock: Block<z.infer<typeof modelInput>, z.infer<typeof modelP
   input: modelInput,
   params: modelParams,
   output: z.strictObject({ text: z.string() }),
+  framesStepText: true,
   run: async function* (ctx, input, params) {
     const result = yield* callModel(
       ctx,
       {
-        messages: messages(params.system, input.prompt),
+        messages: messages(ctx, params.system, input.prompt),
         ...tuning(params),
         ...(params.stream ? { purpose: 'answer' as const } : {}),
       },
@@ -200,7 +217,9 @@ const evidence = (chunks: FlowChunk[], maxLength: number) => {
   const { docs, used } = contextFromChunks(chunks, chunks.length, maxLength);
   return {
     used,
-    text: docs.map((d, i) => `[${i + 1}] ${d.content}`).join('\n\n'),
+    text: docs
+      .map((d, i) => `[${i + 1}] ${untrustedData('source', d.content, { id: d.source })}`)
+      .join('\n\n'),
   };
 };
 
@@ -346,7 +365,7 @@ async function* extractWindow(
   const text = context ? `${prompt}\n\n${citeInstruction}\n\nExcerpts:\n${context.text}` : prompt;
   const schema = context ? (citedSchema(params.schema) as Record<string, unknown>) : params.schema;
   const parsed = yield* askForObject(ctx, {
-    messages: messages(params.system, text),
+    messages: messages(ctx, params.system, text),
     jsonSchema: { name: params.name, schema },
     reasoning: params.reasoning,
     ...tuning({
@@ -385,6 +404,7 @@ export const extractBlock: Block<z.infer<typeof extractInput>, z.infer<typeof ex
   input: extractInput,
   params: extractParams,
   output: z.record(z.string(), z.unknown()),
+  framesStepText: true,
   run: async function* (ctx, input, params) {
     const chunks = (input.chunks ?? []) as FlowChunk[];
     const cited = chunks.length > 0;
@@ -436,10 +456,10 @@ export const classifyBlock: Block<z.infer<typeof classifyInput>, z.infer<typeof 
     const prompt = [
       params.instructions ?? 'Classify the text with exactly one of the labels.',
       `Labels: ${params.labels.join(', ')}`,
-      `Text:\n${input.text ?? textOf(ctx.input)}`,
+      `Text:\n${untrustedData('text', input.text ?? textOf(ctx.input))}`,
     ].join('\n\n');
     const result = yield* callModel(ctx, {
-      messages: messages(params.system, prompt),
+      messages: messages(ctx, params.system, prompt),
       jsonSchema: {
         name: 'classification',
         schema: {

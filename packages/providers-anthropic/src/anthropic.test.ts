@@ -41,7 +41,7 @@ const router = (
 ) =>
   new ModelRouter({
     catalog: {
-      endpoints: { foundry: { protocol: 'anthropic-messages', baseURL: `${url}/anthropic`, auth } },
+      endpoints: { foundry: { families: { anthropic: '' }, baseURL: `${url}/anthropic`, auth } },
       models: [
         {
           id: 'foundry/claude-opus',
@@ -432,12 +432,12 @@ describe.skipIf(!live)('live anthropic-messages on Azure AI Foundry', () => {
       catalog: {
         endpoints: {
           listing: {
-            protocol: 'openai-chat',
+            families: { openai: '' },
             baseURL: process.env.FOUNDRY_OPENAI_BASE_URL,
             auth: { kind: 'api-key', header: 'api-key', secret: 'secret://env/foundry-openai-key' },
           },
           claude: {
-            protocol: 'anthropic-messages',
+            families: { anthropic: '' },
             baseURL: process.env.FOUNDRY_CLAUDE_BASE_URL,
             auth: { kind: 'api-key', secret: 'secret://env/foundry-claude-key' },
             discovery: {

@@ -11,6 +11,7 @@ import {
 import {
   fromOrgNo,
   INTERNAL_GRANT_PREFIX,
+  lockdownUserScope,
   trustedEntraScope,
   type AltinnResourceDetail,
   type OrgNo,
@@ -51,6 +52,8 @@ export interface ClientRegistry {
 
 export interface TrustedEntra {
   groups: readonly string[];
+  userGroups?: readonly string[];
+  clientIds: readonly string[];
   emailDomain?: string;
   tenant: string;
   resource: string;
@@ -131,14 +134,40 @@ const assuranceOf = (acr: unknown): Assurance | undefined => {
 const expiresAt = (payload: JWTPayload) =>
   payload.exp === undefined ? {} : { expiresAt: new Date(payload.exp * 1000).toISOString() };
 
+const claim = (...values: unknown[]) =>
+  values
+    .find((v): v is string => typeof v === 'string' && v.trim() !== '')
+    ?.trim()
+    .slice(0, 120);
+
+const named = (name: string | undefined) => (name ? { name } : {});
+
+const orgNamesOf = (parties: { org: string; name: string | undefined }[]) => {
+  const names = Object.fromEntries(
+    parties.flatMap(({ org, name }) => (name ? [[org, name] as const] : [])),
+  );
+  return Object.keys(names).length > 0 ? { orgNames: names } : {};
+};
+
 const trustedEntraLogin = (
   issuer: string,
   trusted: TrustedEntra,
   payload: JWTPayload,
+  registered: boolean,
 ): VerifiedIdentity => {
-  const configured = new Set(trusted.groups.map((g) => g.toLowerCase()));
-  const groups = Array.isArray(payload.groups) ? payload.groups : [];
-  if (!groups.some((g) => typeof g === 'string' && configured.has(g.toLowerCase())))
+  const claimed = new Set(
+    (Array.isArray(payload.groups) ? payload.groups : []).flatMap((g) =>
+      typeof g === 'string' ? [g.toLowerCase()] : [],
+    ),
+  );
+  const member = (groups: readonly string[]) => groups.some((g) => claimed.has(g.toLowerCase()));
+  const operatorLogin = member(trusted.groups);
+  const userLogin = !operatorLogin && member(trusted.userGroups ?? []);
+  const allowedClient =
+    typeof payload.client_id === 'string' && trusted.clientIds.includes(payload.client_id);
+  if (userLogin ? registered || !allowedClient : !registered && !allowedClient)
+    throw new AuthenticationError('entra_not_trusted', 'the login comes from an untrusted client');
+  if (!operatorLogin && !userLogin)
     throw new AuthenticationError('entra_not_trusted', 'the login is in no trusted Entra group');
   const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
   if (trusted.emailDomain && !email.endsWith(`@${trusted.emailDomain.toLowerCase()}`))
@@ -148,12 +177,13 @@ const trustedEntraLogin = (
       kind: 'employee',
       issuer,
       subject: payload.sub as string,
+      ...named(claim(payload.name, payload.email)),
       assurance: 'entraid',
       tenant: trusted.tenant,
       authorizedFor: [
         { org: trusted.tenant, resource: trusted.resource, actions: [...PLATFORM_RIGHTS] },
       ],
-      scopes: [trustedEntraScope],
+      scopes: [userLogin ? lockdownUserScope : trustedEntraScope],
       ...expiresAt(payload),
     },
   };
@@ -162,11 +192,12 @@ const trustedEntraLogin = (
 const employee = (
   issuer: Extract<TrustedIssuer, { kind: 'ansattporten' }>,
   payload: JWTPayload,
+  registered: boolean,
 ): VerifiedIdentity => {
   const assurance = assuranceOf(payload.acr);
   if (!assurance) throw new AuthenticationError('insufficient_assurance', 'unknown acr');
   if (assurance === 'entraid' && issuer.trustedEntra)
-    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload);
+    return trustedEntraLogin(issuer.issuer, issuer.trustedEntra, payload, registered);
   if (assurance === 'entraid' && !issuer.acceptEntraId)
     throw new AuthenticationError('insufficient_assurance', 'Entra ID logins are not accepted');
   if (issuer.minAssurance === 'high' && assurance !== 'high')
@@ -181,7 +212,15 @@ const employee = (
       (d.authorized_parties ?? []).flatMap((p) => {
         const org = fromOrgNo(p.orgno);
         return org
-          ? [{ org, resource: d.resource, actions: p.actions ?? [], listed: !p.actions }]
+          ? [
+              {
+                org,
+                resource: d.resource,
+                actions: p.actions ?? [],
+                listed: !p.actions,
+                name: claim(p.name),
+              },
+            ]
           : [];
       }),
     );
@@ -196,6 +235,8 @@ const employee = (
       kind: 'employee',
       issuer: issuer.issuer,
       subject: payload.sub as string,
+      ...named(claim(payload.name)),
+      ...(typeof payload.client_id === 'string' ? { client: payload.client_id } : {}),
       assurance,
       authorizedFor: authorizedFor.map(({ org, resource, actions }) => ({
         org,
@@ -203,6 +244,7 @@ const employee = (
         actions,
       })),
       ...(orgs.length === 1 ? { tenant: orgs[0] } : {}),
+      ...orgNamesOf(authorizedFor),
       ...expiresAt(payload),
     },
     ...(pid ? { personId: pid } : {}),
@@ -292,6 +334,7 @@ const operator = (
       kind: 'operator',
       issuer: issuer.issuer,
       subject: payload.oid,
+      ...named(claim(payload.name, payload.preferred_username, payload.email)),
       assurance: 'entraid',
       roles,
       ...expiresAt(payload),
@@ -352,7 +395,7 @@ export const createTokenVerifier = (options: TokenVerifierOptions) => ({
     if (issuer.kind === 'ansattporten') {
       if (typeof payload.sub !== 'string')
         throw new AuthenticationError('invalid_token', 'missing sub');
-      const verified = employee(issuer, payload);
+      const verified = employee(issuer, payload, registered !== undefined);
       return registered ? confineToClient(verified, registered) : verified;
     }
     if (issuer.kind === 'entra') return operator(issuer, payload);

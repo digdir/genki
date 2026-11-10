@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { envSecrets, type PortContext } from '@genai/kernel';
+import { createGate, envSecrets, type PortContext } from '@genai/kernel';
 import {
   parseRerankCatalog,
   RerankError,
@@ -166,7 +166,7 @@ describe('rerank router', () => {
     expect(calls).toBe(0);
   });
 
-  it('refuses an unknown reranker and one outside the allowed residency', () => {
+  it('refuses an unknown reranker at open and one outside the allowed residency when called', async () => {
     const r = new RerankRouter({
       catalog: catalog('degrade', 'global'),
       adapters: [stub(async () => [])],
@@ -175,6 +175,133 @@ describe('rerank router', () => {
     });
 
     expect(() => r.open({ kind: 'reranker', id: 'none' }, context())).toThrow(/no reranker none/);
-    expect(() => r.open({ kind: 'reranker', id: 'colbert' }, context())).toThrow(/outside eu/);
+    await expect(
+      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank({
+        query: 'hei',
+        documents: ['a'],
+      }),
+    ).rejects.toThrow(/outside eu/);
+  });
+
+  it('a rerank call is refused in lockdown for a login without model access', async () => {
+    let calls = 0;
+    const r = new RerankRouter({
+      catalog: catalog(),
+      adapters: [
+        stub(async () => {
+          calls += 1;
+          return [];
+        }),
+      ],
+      secrets: envSecrets({}),
+      gate: createGate({ admits: (principal) => principal.subject === 'admitted' }),
+    });
+
+    await expect(
+      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs),
+    ).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    expect(calls).toBe(0);
+  });
+
+  it('a rerank call outside the service residency is refused even when the reranker degrades on failure', async () => {
+    const { r } = router(async () => []);
+    const port = r.open(
+      { kind: 'reranker', id: 'colbert' },
+      { ...context(), serviceResidency: 'norway' },
+    );
+    await expect(port.rerank(docs)).resolves.toMatchObject({ ranking: [] });
+    const strict = new RerankRouter({
+      catalog: catalog('degrade', 'eu'),
+      adapters: [stub(async () => [])],
+      secrets: envSecrets({}),
+    });
+    await expect(
+      strict
+        .open({ kind: 'reranker', id: 'colbert' }, { ...context(), serviceResidency: 'norway' })
+        .rerank(docs),
+    ).rejects.toMatchObject({ code: 'residency' });
+  });
+
+  it('a rerank call for a tenant the reranker is not shared with is refused', async () => {
+    const r = new RerankRouter({
+      catalog: {
+        ...catalog(),
+        rerankers: [
+          { id: 'colbert', endpoint: 'main', residency: 'norway', tenants: ['111222333'] },
+        ],
+      },
+      adapters: [stub(async () => [])],
+      secrets: envSecrets({}),
+    });
+
+    await expect(
+      r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs),
+    ).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+  });
+
+  it('rerank usage is metered', async () => {
+    const metered: unknown[] = [];
+    const { r } = router(async () => [{ index: 0, score: 1, rank: 1 }]);
+    const ctx: PortContext = {
+      ...context(),
+      meter: async (usage, model) => {
+        metered.push({ usage, model });
+      },
+    };
+
+    await r.open({ kind: 'reranker', id: 'colbert' }, ctx).rerank(docs);
+
+    expect(metered).toEqual([
+      { usage: { requests: 1 }, model: { kind: 'reranker', id: 'colbert' } },
+    ]);
+  });
+});
+
+describe('rerankers in the model catalogue (ADR 0048)', () => {
+  const modelStub = (index: number): RerankAdapter => ({
+    ...stub(async () => [{ index, score: 0.9, rank: 1 }]),
+    engine: 'model-stub',
+    api: { id: 'stub/rerank@1', family: 'stub' },
+  });
+  const models = (residency = 'norway') => ({
+    endpoints: {
+      stub: {
+        baseURL: 'https://rerank.example',
+        auth: { kind: 'api-key', secret: 'secret://env/k' },
+        families: { stub: '' },
+      },
+    },
+    models: [
+      { id: 'colbert', endpoint: 'stub', residency, apis: { rerank: 'stub/rerank@1' } },
+      { id: 'luna', endpoint: 'stub', residency, apis: { chat: 'openai/chat-completions@1' } },
+    ],
+  });
+
+  it('a model binding an API for rerank is a reranker and wins over a rerank catalogue entry with the same id', async () => {
+    const r = new RerankRouter({
+      catalog: catalog(),
+      models: models('eu'),
+      adapters: [stub(async () => [{ index: 1, score: 0.9, rank: 1 }]), modelStub(2)],
+      secrets: envSecrets({ K: 'k' }),
+    });
+
+    expect(r.rerankers()).toEqual(['colbert']);
+    expect(r.residency('colbert')).toBe('eu');
+    const ranked = await r.open({ kind: 'reranker', id: 'colbert' }, context()).rerank(docs);
+    expect(ranked.ranking.map((x) => x.index)).toEqual([2]);
+  });
+
+  it('a reranker model on an API without an implementation is a problem', () => {
+    const r = new RerankRouter({
+      catalog: { endpoints: {}, rerankers: [] },
+      adapters: [stub(async () => [])],
+      secrets: envSecrets({ K: 'k' }),
+    });
+
+    expect(r.problems(models()).map((p) => p.path)).toEqual(['models.0.apis.rerank']);
   });
 });

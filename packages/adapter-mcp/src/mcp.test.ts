@@ -461,6 +461,25 @@ describe('transport', () => {
       error: { code: -32601, message: 'Method not found', data: { method: 'ping' } },
     });
   });
+  it('answers 413 when a body streams in past the size limit', async () => {
+    const chunk = new Uint8Array(1024).fill(32);
+    const res = typed(
+      await setup({ maxBodyBytes: 4096 }).app.request('/api/mcp', {
+        method: 'POST',
+        headers: { 'x-api-key': 'good' },
+        body: new ReadableStream({
+          start(controller) {
+            for (let i = 0; i < 5; i += 1) controller.enqueue(chunk);
+            controller.close();
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit),
+    );
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error.code).toBe(-32700);
+  });
 });
 
 describe('discovery', () => {

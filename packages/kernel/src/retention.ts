@@ -61,6 +61,21 @@ export interface RetentionStore {
   purge(cutoff: RetentionCutoff): Promise<PurgeCount>;
 }
 
+export const outsideRunLogPrefix = (tenant: string) => `outside-run:${tenant}:`;
+
+export const outsideRunTask = (tenant: string, at: Date) =>
+  `${outsideRunLogPrefix(tenant)}${at.toISOString().slice(0, 10)}`;
+
+export interface OutsideRunCutoff {
+  tenant: string;
+  before: Date;
+}
+
+export interface OutsideRunRetentionStore {
+  /** Deletes each outside-run log whose day is before the cutoff's day; returns the days removed. */
+  purge(cutoff: OutsideRunCutoff): Promise<number>;
+}
+
 export interface ThreadCutoff {
   tenant: string;
   agent: string;
@@ -70,6 +85,28 @@ export interface ThreadCutoff {
 export interface ThreadRetentionStore {
   agents(tenant: string): Promise<string[]>;
   purge(cutoff: ThreadCutoff): Promise<number>;
+}
+
+export interface ThreadErasure {
+  erase(tenant: string, thread: string): Promise<number>;
+}
+
+export class InMemoryThreadErasure implements ThreadErasure {
+  constructor(
+    private readonly log: InMemoryEventLog,
+    private readonly tasks: InMemoryTaskStore,
+  ) {}
+
+  async erase(tenant: string, thread: string): Promise<number> {
+    let count = 0;
+    for (const { task } of this.tasks.all()) {
+      if (task.tenant !== tenant || task.thread !== thread) continue;
+      this.log.dropPayloads(task.id);
+      this.tasks.dropContent(task.id, 'conversation-deleted');
+      count += 1;
+    }
+    return count;
+  }
 }
 
 export class InMemoryRetentionStore implements RetentionStore {
@@ -107,11 +144,23 @@ export class InMemoryRetentionStore implements RetentionStore {
         count.envelopes += 1;
       } else if (ended < cutoff.payloadBefore.getTime() && !this.#purged.has(task.id)) {
         this.log.dropPayloads(task.id);
-        this.tasks.dropContent(task.id);
+        this.tasks.dropContent(task.id, 'retention');
         this.#purged.add(task.id);
         count.payloads += 1;
       }
     }
     return count;
+  }
+}
+
+export class InMemoryOutsideRunRetention implements OutsideRunRetentionStore {
+  constructor(private readonly log: InMemoryEventLog) {}
+
+  async purge(cutoff: OutsideRunCutoff): Promise<number> {
+    const prefix = outsideRunLogPrefix(cutoff.tenant);
+    const before = outsideRunTask(cutoff.tenant, cutoff.before);
+    const expired = this.log.tasks().filter((t) => t.startsWith(prefix) && t < before);
+    for (const task of expired) this.log.drop(task);
+    return expired.length;
   }
 }

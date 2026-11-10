@@ -78,6 +78,7 @@ const hostOf = (url: string) => {
 
 export interface SecretSource {
   resolve(ref: string): Promise<string>;
+  hostsFor?(ref: string): Promise<readonly string[] | undefined>;
 }
 
 export const declaredSecrets = (
@@ -92,4 +93,5 @@ export const declaredSecrets = (
       );
     return inner.resolve(ref);
   },
+  hostsFor: async (ref) => inner.hostsFor?.(ref),
 });

@@ -1,13 +1,15 @@
 # 0035 Operator login
 
-Status: proposed, 2026-10-16
+Status: proposed, 2026-10-16 (partly built, 2026-11-03: `OPERATOR_SUBJECTS` holds `issuer|subject` pairs that count only for Ansattporten employees logging in through `OPERATOR_CLIENT_IDS`; operator pids in `identity.yaml` count only with the dev-mode mock login)
+
+Not built yet: `OPERATOR_ENTRA_GROUPS`, `OPERATOR_EMAIL_DOMAIN`, `OPERATOR_BREAK_GLASS_UNTIL` and the break-glass audit, the two marks, logging the admitting group per login, and the `amr` check. Outside the mock login, startup ignores operator pids in `identity.yaml` with a log line instead of refusing them.
 
 ## Context
 
 Operators run the console: tenants, catalog, settings, support sessions and audit (ADR 0010). ADR 0008 says operators are Digdir staff with Entra ID, never a tenant principal. Today the API recognises an operator in three ways:
 
-- by token subject, listed in `OPERATOR_SUBJECTS`, for any trusted issuer, Maskinporten included (`apps/api/src/operators.ts`);
-- by the `pid` claim of an Ansattporten token, for persons marked `operator: true` in `apps/api/config/local/identity.yaml`;
+- by token subject, listed in `OPERATOR_SUBJECTS` as `issuer|subject` pairs, for Ansattporten employees who log in through one of `OPERATOR_CLIENT_IDS` (`apps/api/src/operators.ts`);
+- with the dev-mode mock login, by the `pid` claim, for persons marked `operator: true` in `apps/api/config/local/identity.yaml`;
 - in lockdown, by an Entra ID login through Ansattporten whose `groups` claim holds one of `LOCKDOWN_ENTRA_GROUPS` (ADR 0033). That rule also gives the person every right in `PLATFORM_TENANT`, so in genki-test an operator reaches the Digdir tenant's data without a support session.
 
 ## Decision

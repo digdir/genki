@@ -121,6 +121,20 @@ describe('støttetilgang som kan endre', () => {
     });
   });
 
+  it('keeps the tab the operator chose while the sessions reload after the start', async () => {
+    const { fetch } = recording();
+    const clickKeysWhenShown = new MutationObserver(() => {
+      const keys = screen.queryByRole('tab', { name: 'Nøkler' });
+      if (!keys) return;
+      clickKeysWhenShown.disconnect();
+      fireEvent.click(keys);
+    });
+    clickKeysWhenShown.observe(document.body, { childList: true, subtree: true });
+    await startSession(fetch);
+
+    expect(await screen.findByRole('region', { name: 'Integrasjoner › Nøkler' })).toBeTruthy();
+  });
+
   it('extends the session from the banner with a reason', async () => {
     const { calls, fetch } = recording();
     await startSession(fetch, '15 minutter');

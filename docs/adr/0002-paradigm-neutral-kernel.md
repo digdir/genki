@@ -13,12 +13,12 @@ The kernel holds only what has stayed constant across completion, chat, RAG, age
 
 The kernel has no concept of message, tool or chat. A **strategy** turns input into output and is a plugin: single-shot RAG, the agent loop and step graphs today. Protocol adapters, models, search, stores and authenticators are plugins too.
 
-v1 reserves fields for what it does not build yet: duplex interaction, interrupts with human approval, oversight risk class, and checkpoints.
+v1 reserves a field for duplex interaction, which it does not build yet. Interrupts with human approval, checkpoints and the oversight risk class are built.
 
 ## Rules
 
 - `packages/kernel` imports only `packages/contracts`. CI fails otherwise.
-- Contracts and ports follow semver independently. Event types carry their own version.
+- Contracts and ports follow semver independently, though every package is still at `0.0.0`. Event types carry their own version.
 - New event types start as `x.<namespace>.<name>` and move to `kernel.*` once two strategies use them.
 - If a new paradigm cannot be a strategy, a port change or an `x.*` event, write an ADR that answers: which invariant does not hold, why not an extension, can it ship as an additive minor version, and what is the migration path.
 - Only the kernel writes the audit record: status, input, usage, resources used, spawned children, resolved interrupts, errors, scores and feedback. A strategy that emits a kernel-owned event fails.

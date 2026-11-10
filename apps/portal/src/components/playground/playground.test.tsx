@@ -426,6 +426,33 @@ describe('Prøveområde', () => {
     ]);
   });
 
+  it('a variant of the service can be picked, and the run asks for it with its model', async () => {
+    const runs: PlaygroundRunRequest[] = [];
+    const options = structuredClone(examplePlaygroundOptions);
+    const chosen = options.services.find((s) => s.chat) ?? options.services[0];
+    const version = chosen?.versions[0];
+    if (!chosen || !version) throw new Error('example has no service');
+    const fast = options.models.find((m) => m.id !== version.setup.model)?.id ?? '';
+    version.variants = [{ id: 'default' }, { id: 'mini', title: 'Rask', model: fast }];
+    await openPage({ options, runs });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Tjeneste: / }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Variant' }), {
+      target: { value: 'mini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk oppsettet' }));
+    expect(
+      screen.getByRole('button', { name: new RegExp(`^Tjeneste: ${chosen.name} \\(Rask\\), `) }),
+    ).toBeTruthy();
+    askSample(chosen.exampleQuestions?.[0] ?? '');
+
+    await waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0]?.setup).toMatchObject({
+      service: { id: chosen.id, variant: 'mini' },
+      model: fast,
+    });
+  });
+
   it('a used-up quota shows the message from the API', async () => {
     await openPage({ quotaExhausted: true });
     askSample('Hva sier evalueringene om digital veiledning?');

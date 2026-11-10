@@ -74,7 +74,9 @@ export const admitConfined = async (
 ): Promise<boolean> => {
   const confined = principal.confinedTo;
   if (!confined) return true;
-  const channel = channelOf(new URL(request.url).pathname);
+  const path = new URL(request.url).pathname;
+  if (path === '/me' && request.method === 'GET') return true;
+  const channel = channelOf(path);
   if (!channel) return false;
   if (!confined.client) return true;
   const client = await clients.get(confined.tenant, confined.client);
@@ -222,7 +224,12 @@ const problem = (
 
 const channelPaths = {
   mcp: ['POST /api/mcp'],
-  openai: ['GET /v1/models', 'POST /v1/chat/completions'],
+  openai: [
+    'GET /v1/models',
+    'GET /v1/sessions',
+    'POST /v1/chat/completions',
+    'GET /v1/tasks/{task}/media/{id}',
+  ],
   rest: ['GET /api/tools/openapi.json', 'POST /api/tools/call/{tool}'],
   conversations: ['GET /api/conversations', 'POST /api/conversations'],
   feedback: ['POST /api/feedback'],

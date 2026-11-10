@@ -22,6 +22,7 @@ import { problem, type Authenticator } from './http.js';
 import { withChangeReasons, withTags, withUndocumentedRoutes } from './openapi-routes.js';
 import { registerPlatformRoutes, type PlatformApiOptions } from './platform.js';
 import { registerReference } from './reference/index.js';
+import { requestTiming, type RequestTimingOptions } from './request-timing.js';
 import type { ServiceDrafts } from './service-drafts.js';
 import { kernelTaskReader, type TaskReader } from './timeline.js';
 
@@ -71,6 +72,7 @@ const withoutApiKeys = (caller: Caller): Authenticator => ({
 
 export interface AppOptions {
   platform?: PlatformOptions;
+  requestTiming?: RequestTimingOptions;
 }
 
 export const createApp = (version: string, options: AppOptions = {}) => {
@@ -85,6 +87,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       });
     },
   });
+  if (options.requestTiming) app.use('*', requestTiming(options.requestTiming));
   acceptDecodedIds(app);
 
   app.use('*', securityHeaders);
@@ -133,6 +136,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
         settings,
         ...(options.platform.models ? { models: options.platform.models } : {}),
         ...(options.platform.now ? { now: options.platform.now } : {}),
+        ...(options.platform.names ? { names: options.platform.names } : {}),
       });
     const access = options.platform.access ?? tenantAccess(admin);
     const tasks =
@@ -170,6 +174,7 @@ export const createApp = (version: string, options: AppOptions = {}) => {
       ...(options.platform.lifecycle ? { lifecycle: options.platform.lifecycle } : {}),
       ...(options.platform.names ? { names: options.platform.names } : {}),
       ...(options.platform.now ? { now: options.platform.now } : {}),
+      lockdown,
     });
   }
 

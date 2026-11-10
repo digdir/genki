@@ -1,6 +1,6 @@
 # 0024 Skills as a definition kind
 
-Status: accepted, 2026-10-12 (built). Proposed 2026-10-07
+Status: accepted, 2026-10-12 (built; amendment accepted with ADR 0040, 2026-10-29, not built). Proposed 2026-10-07
 
 ## Decision
 
@@ -9,6 +9,7 @@ A skill is a third definition kind, `Skill`, next to `Service` and `StepFlow` (0
 - **Versions are whole numbers**, like services. A draft lives as a `skill-draft` config entry until it is published as the next version.
 - **Services pin skills** in `spec.skills` as `id@version`. Publishing a service checks that every pinned version is published and that the skill's tools are within the service's own tools. A skill never widens access: it can only narrow or guide what the service already may do.
 - **Skills reach the model only when pinned.** The skills module adds them to the capability config through `decorateCapability`, at sync and for draft runs. A service without `spec.skills` runs exactly as before.
+- **Agent-loop skills load on demand.** `use_skill` loads the pinned instructions and examples into the agent's conversation and records the skill for the run. Every later synthesis, including forced finalization, retries, citation backfill and empty-answer recovery, receives the loaded skills in its system prompt. Loading a skill again does not duplicate its synthesis instructions; pinned skills that were never loaded are omitted. The `generationPrompt` template keeps its existing placeholders and behavior.
 - **Publishing has four requirements:** a test run on the current draft, a pass rate at or above the test set's threshold (or `skills.defaultPassThreshold`, 0.9), every `must_reject` case rejected, and only published tools.
 - **Sharing goes through Digdir.** A tenant asks to share a published version (`skill-share`, state `pending_digdir`), a Digdir operator approves or rejects it, and other tenants can then pin or copy that version, read-only; other versions stay private.
 - **The exchange format is Agent Skills:** a zip with `SKILL.md` (YAML frontmatter and instructions) and its attachments, for both export and import.
@@ -16,6 +17,12 @@ A skill is a third definition kind, `Skill`, next to `Service` and `StepFlow` (0
 ## Why
 
 Instructions that several services share were copied by hand between prompts and drifted apart. Making them a versioned, tested definition gives them the same review, pinning and rollback as services, and the Agent Skills format keeps them portable to other tools (0023).
+
+## Accepted with ADR 0040 (not built)
+
+- **The pass rate blocks only with a calibrated judge.** It is graded on `criteria` cases by a model-based judge, so it blocks publishing only once that judge is calibrated (ADR 0003).
+- **Until then a draft below the threshold needs an override.** It is published only with the owner's override and a reason, which is written to the audit log.
+- **Unchanged:** a test run on the current draft, every `must_reject` case rejected and only published tools.
 
 ## Consequences
 

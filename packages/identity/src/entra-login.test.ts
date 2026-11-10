@@ -4,11 +4,13 @@ import {
   altinnPolicy,
   createSigningKey,
   createTokenVerifier,
+  lockdownUserScope,
   PLATFORM_RIGHTS,
   platformRightsOf,
   trustedEntraScope,
   withAltinnActions,
   type AltinnAuthorization,
+  type ClientRegistry,
   type SigningKey,
   type TrustedEntra,
 } from './index.js';
@@ -19,6 +21,7 @@ const RESOURCE = 'urn:altinn:resource:digdir-genai-platform-test';
 const PLATFORM = '312521172';
 const TRUSTED_GROUP = '0f0e0d0c-0b0a-4908-8706-050403020100';
 const OTHER_GROUP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const USER_GROUP = '11111111-2222-4333-8444-555555555555';
 
 let key: SigningKey;
 
@@ -50,12 +53,16 @@ const sign = (claims: Record<string, unknown>) =>
 
 const trusted: TrustedEntra = {
   groups: [TRUSTED_GROUP],
+  clientIds: ['genki-test-portal', 'genki-test-console'],
   emailDomain: 'digdir.example',
   tenant: PLATFORM,
   resource: RESOURCE,
 };
 
-const verifier = (trustedEntra: TrustedEntra | null = trusted) =>
+const verifier = (
+  trustedEntra: TrustedEntra | null = trusted,
+  registeredClients?: ClientRegistry,
+) =>
   createTokenVerifier({
     issuers: [
       {
@@ -64,6 +71,7 @@ const verifier = (trustedEntra: TrustedEntra | null = trusted) =>
         audience: AUDIENCE,
         keys: createLocalJWKSet({ keys: [key.publicJwk] }),
         ...(trustedEntra ? { trustedEntra } : {}),
+        ...(registeredClients ? { registeredClients } : {}),
       },
     ],
   });
@@ -85,10 +93,52 @@ describe('Entra logins through Ansattporten in lockdown', () => {
     expect(platformRightsOf(principal, '999999999', RESOURCE)).toEqual([]);
   });
 
+  it('names a trusted Entra login by its name claim, or by its email when the token has none', async () => {
+    const named = await verifier().verify(await sign(entraClaims({ name: 'Kari Tester' })));
+    const unnamed = await verifier().verify(await sign(entraClaims()));
+
+    expect(named.principal.name).toBe('Kari Tester');
+    expect(unnamed.principal.name).toBe('Kari.Tester@Digdir.example');
+  });
+
   it('matches group ids without regard to case', async () => {
     const token = await sign(entraClaims({ groups: [TRUSTED_GROUP.toUpperCase()] }));
 
     await expect(verifier().verify(token)).resolves.toBeDefined();
+  });
+
+  it('an Entra login from a client not in the allowlist gets no operator mark and no lockdown access', async () => {
+    const cases = [
+      entraClaims({ client_id: 'some-other-ansattporten-client' }),
+      entraClaims({ client_id: undefined }),
+    ];
+
+    for (const claims of cases)
+      await expect(verifier().verify(await sign(claims))).rejects.toMatchObject({
+        code: 'entra_not_trusted',
+      });
+  });
+
+  it('lets a trusted Entra login in through a registered tenant client, confined to that client', async () => {
+    const registered: ClientRegistry = {
+      byClientId: async (clientId) =>
+        clientId === 'genki-test-portal'
+          ? {
+              clientId,
+              audience: 'genki-test-portal',
+              tenant: PLATFORM,
+              service: 'klarsprak',
+              client: 'tenant-app',
+            }
+          : undefined,
+    };
+
+    const identity = await verifier(trusted, registered).verify(await sign(entraClaims()));
+    expect(identity.principal.confinedTo).toEqual({
+      tenant: PLATFORM,
+      service: 'klarsprak',
+      client: 'tenant-app',
+    });
   });
 
   it('refuses an Entra login outside the configured groups', async () => {
@@ -113,6 +163,7 @@ describe('Entra logins through Ansattporten in lockdown', () => {
   it('trusts the groups alone when no email domain is configured', async () => {
     const groupsOnly: TrustedEntra = {
       groups: trusted.groups,
+      clientIds: trusted.clientIds,
       tenant: PLATFORM,
       resource: RESOURCE,
     };
@@ -173,5 +224,122 @@ describe('Entra logins through Ansattporten in lockdown', () => {
       (await policy.decide({ ...principal, tenant: '999999999' }, 'invoke', service)).allow,
     ).toBe(false);
     expect(asked).toEqual([]);
+  });
+});
+
+describe('user groups in lockdown', () => {
+  const withUsers: TrustedEntra = { ...trusted, userGroups: [USER_GROUP] };
+  const userClaims = (overrides: Record<string, unknown> = {}) =>
+    entraClaims({ groups: [OTHER_GROUP, USER_GROUP], ...overrides });
+
+  it('gives a user-group login every platform right in the platform organisation, with the lockdown-user scope and not the trusted one', async () => {
+    const { principal } = await verifier(withUsers).verify(await sign(userClaims()));
+
+    expect(principal).toMatchObject({
+      kind: 'employee',
+      assurance: 'entraid',
+      tenant: PLATFORM,
+      authorizedFor: [{ org: PLATFORM, resource: RESOURCE, actions: [...PLATFORM_RIGHTS] }],
+      scopes: [lockdownUserScope],
+    });
+    expect(platformRightsOf(principal, PLATFORM, RESOURCE)).toEqual([...PLATFORM_RIGHTS]);
+  });
+
+  it('a login in both settings is a trusted Entra login', async () => {
+    const token = await sign(entraClaims({ groups: [USER_GROUP, TRUSTED_GROUP] }));
+
+    const { principal } = await verifier(withUsers).verify(token);
+
+    expect(principal.scopes).toEqual([trustedEntraScope]);
+    expect(principal.authorizedFor?.[0]?.actions).toEqual([...PLATFORM_RIGHTS]);
+  });
+
+  it('trusts user groups when no operator groups are configured', async () => {
+    const usersOnly: TrustedEntra = { ...withUsers, groups: [] };
+
+    const { principal } = await verifier(usersOnly).verify(await sign(userClaims()));
+
+    expect(principal.scopes).toEqual([lockdownUserScope]);
+  });
+
+  it('refuses a user-group login from a client outside the allowlist, with the wrong email or through a registered tenant client', async () => {
+    const registered: ClientRegistry = {
+      byClientId: async (clientId) =>
+        clientId === 'genki-test-portal'
+          ? {
+              clientId,
+              audience: 'genki-test-portal',
+              tenant: PLATFORM,
+              service: 'klarsprak',
+              client: 'tenant-app',
+            }
+          : undefined,
+    };
+    const cases = [
+      { claims: userClaims({ client_id: 'some-other-client' }) },
+      { claims: userClaims({ email: 'kari@example.com' }) },
+      { claims: userClaims(), registered },
+    ];
+
+    for (const { claims, registered: clients } of cases)
+      await expect(verifier(withUsers, clients).verify(await sign(claims))).rejects.toMatchObject({
+        code: 'entra_not_trusted',
+      });
+  });
+
+  it('still refuses an Entra login in neither group', async () => {
+    const token = await sign(entraClaims({ groups: [OTHER_GROUP] }));
+
+    await expect(verifier(withUsers).verify(token)).rejects.toMatchObject({
+      code: 'entra_not_trusted',
+    });
+  });
+
+  it('ignores a lockdown-user scope the caller supplies', async () => {
+    const scope = `openid profile ${lockdownUserScope}`;
+    const testId = await sign({ acr: 'idporten-loa-substantial', pid: '01017012345', scope });
+    const outside = await sign(entraClaims({ groups: [OTHER_GROUP], scope }));
+    const machine = await new SignJWT({
+      scope: `legacy:query ${lockdownUserScope}`,
+      client_id: 'mp-client',
+      consumer: { authority: 'iso6523-actorid-upis', ID: `0192:${PLATFORM}` },
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+      .setIssuer('https://test.maskinporten.example')
+      .setAudience(AUDIENCE)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(key.privateKey);
+    const maskinporten = createTokenVerifier({
+      issuers: [
+        {
+          kind: 'maskinporten',
+          issuer: 'https://test.maskinporten.example',
+          audience: AUDIENCE,
+          keys: createLocalJWKSet({ keys: [key.publicJwk] }),
+        },
+      ],
+    });
+
+    expect((await verifier(withUsers).verify(testId)).principal.scopes).toBeUndefined();
+    await expect(verifier(withUsers).verify(outside)).rejects.toMatchObject({
+      code: 'entra_not_trusted',
+    });
+    expect((await maskinporten.verify(machine)).principal.scopes).toEqual(['legacy:query']);
+  });
+
+  it('lets a user-group login invoke services in the platform organisation without a pid', async () => {
+    const policy = altinnPolicy({
+      altinn: { decide: async () => 'Deny' },
+      identities: { personId: async () => undefined },
+      requirementFor: () => ({ resource: RESOURCE, action: 'use-services', scope: 'legacy:query' }),
+    });
+    const { principal } = await verifier(withUsers).verify(await sign(userClaims()));
+    const service = { kind: 'capability' as const, id: `${PLATFORM}/klarsprak` };
+
+    expect(await policy.decide(principal, 'invoke', service)).toEqual({ allow: true });
+    expect(
+      (await policy.decide({ ...principal, tenant: '999999999' }, 'invoke', service)).allow,
+    ).toBe(false);
   });
 });

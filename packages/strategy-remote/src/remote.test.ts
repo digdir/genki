@@ -15,6 +15,7 @@ interface Seen {
 }
 
 const servers: Server[] = [];
+const agentHosts = new Set<string>();
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(
@@ -48,7 +49,9 @@ const fakeAgent = async (
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   servers.push(server);
-  return { seen, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  agentHosts.add(url);
+  return { seen, url };
 };
 
 const secrets: SecretResolver = {
@@ -56,6 +59,7 @@ const secrets: SecretResolver = {
     if (ref === `secret://tenant/${tenant}/agent-key`) return 'agent-token';
     throw new Error(`no secret ${ref}`);
   },
+  hostsFor: async () => [...agentHosts],
 };
 
 const open = { testOverride: { allowLoopback: true, allowHttp: true } };

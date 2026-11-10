@@ -1,3 +1,4 @@
+import { ExternalLinkIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -10,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api';
 import { CopyButton } from '../../components/CopyButton';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { useAsync } from '../../hooks';
 import { useT } from '../../i18n';
 import { useFormat } from '@genai/i18n/react';
@@ -112,7 +113,7 @@ const ClientCard = ({
           {spec.url ? (
             <Link href={spec.url} target="_blank" rel="noopener">
               {spec.url}
-              <Icon d={icons.external} size={16} />
+              <Icon icon={ExternalLinkIcon} size={16} />
               <span className="visually-hidden">{t('serviceChannels.newTab')}</span>
             </Link>
           ) : null}

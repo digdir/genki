@@ -50,6 +50,7 @@ const throughAdminTasks = [
   'POST /operator/datasets/:dataset/pipelines',
   'POST /operator/datasets/:dataset/pipelines/:id/execute',
   'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/cancel',
+  'POST /operator/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
   'POST /operator/datasets/:id/engine-switches',
   'POST /operator/datasets/:id/engine-switches/:sid/activate',
   'POST /operator/datasets/:id/engine-switches/:sid/cancel',
@@ -65,6 +66,15 @@ const throughAdminTasks = [
   'POST /operator/quality/labels',
   'POST /operator/quality/matrix/release',
   'POST /operator/quality/matrix/runs',
+  'POST /operator/operations/:id{.+}/try',
+  'POST /operator/operation-kinds/:kind/maturity',
+  'PUT /operator/model-endpoints/:id',
+  'PUT /operator/model-endpoints/:id/processor-record',
+  'DELETE /operator/model-endpoints/:id/processor-record',
+  'PUT /operator/operation-descriptors/:id{.+}',
+  'POST /operator/operation-descriptors/:id{.+}/status',
+  'POST /operator/operation-descriptors/:id{.+}/fixtures',
+  'DELETE /operator/operation-descriptors/:id{.+}',
   'POST /operator/skills/shares/:id/decision',
   'PUT /operator/recipes/shares/:flow',
   'DELETE /operator/recipes/shares/:flow',
@@ -86,6 +96,7 @@ const throughAdminTasks = [
   'POST /tenants/:tenant/datasets/:dataset/pipelines',
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/execute',
   'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/cancel',
+  'POST /tenants/:tenant/datasets/:dataset/pipelines/:id/executions/:execution/redrive',
   'POST /tenants/:tenant/datasets/:id/engine-switches',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/activate',
   'POST /tenants/:tenant/datasets/:id/engine-switches/:sid/cancel',
@@ -161,6 +172,7 @@ const throughAdminTasks = [
   'PUT /tenants/:tenant/projects/:project',
   'PUT /tenants/:tenant/projects/:project/subscriptions/:selection',
   'PUT /tenants/:tenant/secrets/:name',
+  'PUT /tenants/:tenant/secrets/:name/hosts',
   'PUT /tenants/:tenant/services/:id/draft',
   'PUT /tenants/:tenant/services/:id/lifecycle',
   'PUT /tenants/:tenant/settings/:key',
@@ -260,7 +272,7 @@ describe('writes run as admin tasks', () => {
 
     const saved = await send(path, 'kari', {
       method: 'PUT',
-      body: { value: 'hemmelig-verdi' },
+      body: { value: 'hemmelig-verdi', allowedHosts: ['https://arkiv.example.no'] },
       reason,
     });
 

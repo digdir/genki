@@ -1,9 +1,11 @@
+import { ChevronLeftIcon, VitalsIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
   Field,
   Heading,
   Label,
+  Paragraph,
   Select,
   Spinner,
   Tag,
@@ -28,7 +30,7 @@ import {
 import { useT } from '../../i18n';
 import { useAsync } from '../../hooks';
 import { ErrorState, Loading } from '../../states';
-import type { TaskStatus, TaskTimeline, TimelineStep } from '../../types';
+import type { RunErasure, TaskStatus, TaskTimeline, TimelineStep } from '../../types';
 import { actorText, formatDuration, relativeTime, whole } from './format';
 import { notPricedLabel, serviceLabel, statusOf } from '../../format';
 import { BatchView } from './BatchView';
@@ -36,9 +38,35 @@ import { Steps } from './Steps';
 
 type Flash = { text: string; color: 'success' | 'info' } | undefined;
 
-const pseudonymOf = (caller: string) => /\((A-[A-Z0-9]{4})\)/.exec(caller)?.[1];
+const ErasedNotice = ({ erasure }: { erasure: RunErasure }) => {
+  const t = useT();
+  const f = useFormat();
+  const when = erasure.at ? f.dateTime(erasure.at) : undefined;
+  const reason =
+    erasure.reason === 'conversation-deleted'
+      ? when
+        ? t('logRun.erasedConversation', { when })
+        : t('logRun.erasedConversationUndated')
+      : erasure.reason === 'retention'
+        ? when
+          ? t('logRun.erasedRetention', { when })
+          : t('logRun.erasedRetentionUndated')
+        : when
+          ? t('logRun.erasedOther', { when })
+          : t('logRun.erasedOtherUndated');
+  return (
+    <Alert data-color="info" data-size="sm" role="note" aria-labelledby="erased-h">
+      <Heading level={3} data-size="2xs" id="erased-h">
+        {t('logRun.erasedTitle')}
+      </Heading>
+      <Paragraph data-size="sm">
+        {reason} {t('logRun.erasedKept')}
+      </Paragraph>
+    </Alert>
+  );
+};
 
-const traceIcon = 'M4 12h4l3-7 4 14 3-7h2';
+const pseudonymOf = (caller: string) => /\((A-[A-Z0-9]{4})\)/.exec(caller)?.[1];
 
 export const RunDetail = ({
   api,
@@ -168,7 +196,8 @@ export const RunDetail = ({
     open[key(i)] ?? (step.type === 'approval' && step.state === 'waiting' && !decision);
   const allOpen = steps.length > 0 && steps.every((s, i) => isOpen(s, i));
 
-  const tokens = run.inputTokens + run.outputTokens;
+  const usageShown = run.inputTokens !== undefined && run.outputTokens !== undefined;
+  const tokens = (run.inputTokens ?? 0) + (run.outputTokens ?? 0);
   const finished = items.filter((i) => i.status === 'Fullført');
   const batchTokens = finished.reduce((a, i) => a + i.tokens, 0);
   const facts: { l: string; v: string; sub?: string }[] = child
@@ -227,25 +256,33 @@ export const RunDetail = ({
                   ? t('logRun.soFar', { value: formatDuration(run.durationSeconds, f) })
                   : formatDuration(run.durationSeconds, f),
           },
-          {
-            l: t('logRun.tokens'),
-            v: whole(tokens, f),
-            sub: t('logRun.tokensSplit', {
-              input: whole(run.inputTokens, f),
-              output: whole(run.outputTokens, f),
-            }),
-          },
-          {
-            l: t('logRun.cost'),
-            v: ore(
-              live && header.status === 'ready' && header.data
-                ? header.data.usage.costMicroNok === null ||
-                  header.data.usage.costMicroNok === undefined
-                  ? null
-                  : header.data.usage.costMicroNok / 10_000
-                : run.costOre,
-            ),
-          },
+          ...(usageShown
+            ? [
+                {
+                  l: t('logRun.tokens'),
+                  v: whole(tokens, f),
+                  sub: t('logRun.tokensSplit', {
+                    input: whole(run.inputTokens ?? 0, f),
+                    output: whole(run.outputTokens ?? 0, f),
+                  }),
+                },
+                {
+                  l: t('logRun.cost'),
+                  v: ore(
+                    live && header.status === 'ready' && header.data?.usage
+                      ? header.data.usage.costMicroNok === null ||
+                        header.data.usage.costMicroNok === undefined
+                        ? null
+                        : header.data.usage.costMicroNok / 10_000
+                      : run.costMicroNok !== undefined
+                        ? run.costMicroNok === null
+                          ? null
+                          : run.costMicroNok / 10_000
+                        : (run.costOre ?? null),
+                  ),
+                },
+              ]
+            : []),
           { l: t('logRun.steps'), v: String(steps.length) },
         ];
 
@@ -333,7 +370,7 @@ export const RunDetail = ({
       {child ? (
         <nav aria-label={t('logRun.breadcrumbs')} className="crumbs">
           <a href={`#/log/${runId}`} className="log-back">
-            <Icon d="M15 6l-6 6 6 6" size={16} />
+            <Icon icon={ChevronLeftIcon} size={16} />
             {run.service}
           </a>
           <span aria-hidden="true">/</span>
@@ -399,13 +436,14 @@ export const RunDetail = ({
           </div>
         </div>
         <span className="log-meta">{meta}</span>
-        {excerpt ? <p className="meta">{excerpt}</p> : null}
+        {run.erasure ? <ErasedNotice erasure={run.erasure} /> : null}
+        {excerpt && !run.erasure ? <p className="meta">{excerpt}</p> : null}
         <ul aria-label={t('logRun.tracing')} className="plain-list log-traces">
           {traces.map((t) => (
             <li key={t.note}>
-              <Icon d={traceIcon} size={16} strokeWidth={1.6} />
+              <Icon icon={VitalsIcon} size={16} />
               <span>{t.note}</span>
-              {t.link ? <a href="#/integrations?tab=tracing">{t.link}</a> : null}
+              {t.link ? <a href="#/developer/runs">{t.link}</a> : null}
             </li>
           ))}
         </ul>
@@ -487,6 +525,7 @@ export const RunDetail = ({
       {steps.length > 0 ? (
         <Steps
           steps={steps}
+          media={{ task: runId, load: api.media }}
           isOpen={isOpen}
           onToggle={(i) => {
             const step = steps[i] as TimelineStep;

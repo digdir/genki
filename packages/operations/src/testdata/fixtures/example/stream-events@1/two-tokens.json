@@ -1,0 +1,52 @@
+{
+  "source": "Made up for this test",
+  "deployment": "model-1",
+  "input": {
+    "question": "Hei?"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/answers",
+    "body": {
+      "model": "model-1",
+      "question": "Hei?"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "event": "token",
+        "data": {
+          "text": "Hei "
+        }
+      },
+      {
+        "event": "token",
+        "data": {
+          "text": "der"
+        }
+      },
+      {
+        "event": "stats",
+        "data": {
+          "input": 4,
+          "output": 2
+        }
+      },
+      {
+        "event": "finished",
+        "data": {}
+      }
+    ]
+  },
+  "result": {
+    "answer": "Hei der"
+  },
+  "usage": {
+    "requests": 1,
+    "inputTokens": 4,
+    "outputTokens": 2
+  },
+  "dropped": 0
+}
