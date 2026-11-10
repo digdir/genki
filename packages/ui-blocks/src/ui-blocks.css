@@ -1,6 +1,7 @@
 @import './approach/approach.css';
 @import './markdown/markdown.css';
 @import './sources/sources.css';
+@import './document-view/document-view.css';
 
 .uib-visually-hidden {
   position: absolute;

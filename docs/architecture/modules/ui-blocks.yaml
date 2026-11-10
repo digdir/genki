@@ -22,6 +22,7 @@ files:
   - packages/ui-blocks/src/approach/Approach.tsx
   - packages/ui-blocks/src/sources/Sources.tsx
   - packages/ui-blocks/src/sources/pairing.ts
+  - packages/ui-blocks/src/document-view/DocumentView.tsx
   - packages/ui-blocks/src/i18n.ts
 input: Steps, sources, footnotes and state as props
 output: Rendered components and callbacks
@@ -34,4 +35,4 @@ edges:
     witness:
       file: packages/ui-blocks/src/i18n.ts
       imports: '@genai/i18n'
-keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes designsystemet react
+keywords: ui blocks building blocks components approach fremgangsmåte sources kilder footnotes document view dokumentvisning designsystemet react
