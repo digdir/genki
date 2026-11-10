@@ -226,7 +226,7 @@ export const Chat = ({
     inFlight.current = controller;
     setAnnounce('');
     setBusy(true);
-    const startedAt = Date.now();
+    const startedAt = now().getTime();
     let reply: ChatReply;
     try {
       reply = await api.chat(
@@ -275,7 +275,7 @@ export const Chat = ({
             procedure: {
               ...m.procedure,
               steps: allDone(m.procedure.steps),
-              finishedAt: Date.now(),
+              finishedAt: now().getTime(),
             },
           }
         : {},

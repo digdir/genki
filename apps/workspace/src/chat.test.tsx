@@ -358,6 +358,27 @@ describe('chat', () => {
     expect(screen.getByText(/Brukte 1 kilde · tok \d+ sekund/)).toBeTruthy();
   });
 
+  it('marks every step done once the answer is there, and times it by the workspace clock', async () => {
+    let clock = Date.parse('2026-10-07T10:00:00Z');
+    const api: WorkspaceApi = {
+      ...mockWorkspaceApi(),
+      chat: async (_service, _history, _onDelta, _signal, _input, _conversation, _docs, onStep) => {
+        onStep?.({ tool: 'search' });
+        clock += 41_000;
+        return { text: 'Ja.', sources: [{ title: 'Årsrapport 2025', index: 1 }] };
+      },
+    };
+    await renderApp('#/chat', { api, now: () => new Date(clock) });
+    const field = await screen.findByRole('textbox', { name: 'Still et spørsmål om rapportene' });
+    fireEvent.change(field, { target: { value: 'Gikk ventetida ned?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Ja.');
+    fireEvent.click(screen.getByText('Fremgangsmåte'));
+    const step = screen.getByText('Lette etter steder som handler om spørsmålet').closest('li');
+    expect(step?.getAttribute('aria-current')).toBeNull();
+    expect(screen.getByText('Brukte 1 kilde · tok 41 sekunder')).toBeTruthy();
+  });
+
   it('shows no approach when the service sends no steps a person can read', async () => {
     const api: WorkspaceApi = {
       ...mockWorkspaceApi(),
