@@ -83,12 +83,7 @@ describe('reading an answer’s footnotes', () => {
 
   it('draws two markers a space apart that mean one excerpt as one footnote', () => {
     expect(drawn('Samme utdrag [1] [4].')).toEqual(['a2', 'dropped']);
-    expect(drawn('Samme utdrag [1]\t[4] og [1] **x** [4].')).toEqual([
-      'a2',
-      'dropped',
-      'a2',
-      'a2',
-    ]);
+    expect(drawn('Samme utdrag [1]\t[4] og [1] **x** [4].')).toEqual(['a2', 'dropped', 'a2', 'a2']);
   });
 
   it('keeps side-by-side markers for two excerpts of one document apart, and two for one document as one', () => {
