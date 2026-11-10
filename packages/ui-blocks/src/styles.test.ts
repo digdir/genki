@@ -58,7 +58,9 @@ const literalSizes = (flat: string) => {
   );
 };
 
-describe.each(sheets)('the styles in $path', ({ css, flat }) => {
+const bareWeights = (css: string) => css.match(/font-weight:(?!\s*var\()[^;}]*/g) ?? [];
+
+describe.each(sheets)('the styles in $path', ({ path, css, flat }) => {
   it('hold no literal colour, only Designsystemet tokens', () => {
     expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
     expect(css.match(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi) ?? []).toEqual([]);
@@ -69,7 +71,13 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
 
   it('hold no literal size or weight outside a --genai- fallback, but the container query', () => {
     expect(literalSizes(flat)).toEqual([]);
-    expect(css.match(/font-weight:\s*\d/g) ?? []).toEqual([]);
+    expect(bareWeights(css)).toEqual([]);
+  });
+
+  it('name every variable after the block whose folder holds the sheet', () => {
+    const block = path.slice(0, path.indexOf('/'));
+    const names = genaiUses(flat).map((use) => use.name);
+    expect(names.filter((name) => !name.startsWith(`--genai-${block}-`))).toEqual([]);
   });
 
   it('read every token through a --genai- variable, with the token as the fallback', () => {
@@ -114,11 +122,19 @@ describe.each(sheets)('the styles in $path', ({ css, flat }) => {
 });
 
 describe('the lint', () => {
-  it('reads every block stylesheet, Approach’s among them', () => {
+  it('reads the stylesheets in the blocks’ folders, Approach’s among them', () => {
     expect(sheets.map((sheet) => sheet.path)).toEqual(
       expect.arrayContaining(['approach/approach.css']),
     );
   });
+
+  it.each(['bold', '600', 'normal'])(
+    'refuses font-weight: %s bare, and takes it behind a variable',
+    (value) => {
+      expect(bareWeights(`a { font-weight: ${value}; }`)).toEqual([`font-weight: ${value}`]);
+      expect(bareWeights(`a { font-weight: var(--genai-block-weight, ${value}); }`)).toEqual([]);
+    },
+  );
 
   it('finds every block stylesheet imported by ui-blocks.css, which hosts load', () => {
     const entry = read('ui-blocks.css');
