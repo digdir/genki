@@ -39,7 +39,8 @@ const toolTitle = (tool: string | undefined, t: T) => {
   return key ? t(key) : undefined;
 };
 
-const titleOf = (frame: StreamStep, t: T) => frame.label?.trim() || toolTitle(frame.tool, t);
+const titleOf = (frame: StreamStep, t: T) =>
+  (typeof frame.label === 'string' && frame.label.trim()) || toolTitle(frame.tool, t);
 
 const idOf = (frame: StreamStep, title: string) => (frame.tool ? `tool:${frame.tool}` : title);
 

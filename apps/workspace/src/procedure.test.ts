@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translator } from './i18n';
-import { allDone, withStep, type ProcedureState } from './procedure';
+import { allDone, withStep, type ProcedureState, type StreamStep } from './procedure';
 
 const t = translator('nb');
 const empty: ProcedureState = { steps: [] };
@@ -24,6 +24,13 @@ describe('the approach from the stream', () => {
     const start = withStep(empty, { tool: 'search' }, t);
     expect(withStep(start, { tool: 'use_skill' }, t)).toBe(start);
     expect(withStep(start, { event: 'agent/iteration-started', iteration: 2 }, t)).toBe(start);
+  });
+
+  it('uses its own title for the tool when the label the platform sends is not text', () => {
+    const frame = JSON.parse('{"tool":"search","label":42}') as StreamStep;
+    expect(withStep(empty, frame, t).steps[0]?.title).toBe(
+      'Lette etter steder som handler om spørsmålet',
+    );
   });
 
   it('leaves out a tool named like a property every object has, such as toString', () => {
