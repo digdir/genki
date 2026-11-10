@@ -1,11 +1,7 @@
 import type { ProcedureStep } from '@genai/ui-blocks';
 import type { PlainKey, T } from './i18n';
 
-/**
- * A `genai_step` frame from the stream. `event`, `stage`, `label`, `tool` and `iteration` are in
- * docs/frontend-contract.md. The rest is what the approach card needs and the platform does not
- * send yet; only the example data in the workspace sends it, so the card can be designed in full.
- */
+/** A `genai_step` frame. Members not in docs/frontend-contract.md come only from the example data. */
 export interface StreamStep {
   event?: string;
   stage?: string;
@@ -74,11 +70,7 @@ const planned = (steps: readonly ProcedureStep[], plan: string[] | undefined, t:
   return waiting.length ? [...steps, ...waiting] : steps;
 };
 
-/**
- * The approach after one more step frame. The step it names is in progress and the ones before it
- * are done. A planned step moves from waiting to in progress; a step not in the plan is added after
- * the others. A frame with nothing a person can read changes nothing.
- */
+/** The approach after one more frame: the step it names is in progress, the ones before it done. */
 export const withStep = (state: ProcedureState, frame: StreamStep, t: T): ProcedureState => {
   const read = frame['documents-total'];
   const withRead = read !== undefined && read !== state.read ? { ...state, read } : state;
