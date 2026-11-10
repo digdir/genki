@@ -18,7 +18,7 @@
     "@genai/contracts": "0.0.0",
     "@genai/i18n": "0.0.0",
     "@genai/kernel": "0.0.0",
-    "hono": "^4.13.13",
+    "hono": "^4.13.17",
     "zod": "^4.6.7"
   }
 }
