@@ -41,6 +41,7 @@ Docker must be running: the Postgres, pgvector and Typesense-writer suites start
 - **Tests are required.** New functionality comes with automated tests in the same pull request, and every rule gets a test whose name states it, for example `refuses to start without a database unless dev mode is on`. A bug fix comes with the regression test that would have caught it. No check enforces this; the maintainer who merges is responsible for it.
 - **Few comments.** Let names explain the code. Add at most one short line where something is genuinely unclear; the reason for a change belongs in the commit message or a test.
 - **Architecture decisions** live in [docs/adr](docs/adr) as numbered files (`NNNN-short-title.md`) with a status line, the decision and why. Add one when you change a contract, a boundary or a security property, and keep its status honest about what is built.
+- **Component pages.** The building blocks assistants are made from (chat, approach, sources and the rest) each have a page in [docs/components](docs/components/index.html). A PR that changes a component updates its page in the same PR: phase, variants, what we learned and open questions, and a line in the change log on the landing page.
 - **Atlas.** If you add a module or a cross-package import, update `docs/architecture/modules/*.yaml` and run `npm run atlas:build`.
 
 ## Commits and pull requests

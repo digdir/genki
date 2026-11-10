@@ -1,0 +1,34 @@
+id: ui-blocks
+plane: consumers
+name: UI building blocks
+note: The components assistants are made from
+icon: chat
+color: '#74a7ff'
+status: Library
+packages:
+  - '@genai/ui-blocks'
+summary: Shared React components for assistants, such as Approach, used by the workspace and later the builder's preview.
+description: A shared React package (ADR 0053) with the components an assistant is made from, built
+  on Designsystemet. Components get plain props and report what the person did through callbacks;
+  they do not fetch. The workspace turns the stream into props, and the builder's preview will draw
+  the draft with the same components. Each component has a page in docs/components.
+responsibilities:
+  - Draw the components assistants are made from with Designsystemet
+  - Texts in bokmål and English
+  - Accessible status and live updates while the assistant works
+  - Every token a block's stylesheet reads can be changed through its own CSS variable
+files:
+  - packages/ui-blocks/src/approach/Approach.tsx
+  - packages/ui-blocks/src/i18n.ts
+input: Steps, counts and state as props
+output: Rendered components and callbacks
+replaces: []
+edges:
+  - to: i18n
+    label: Locale and translated labels
+    kind: call
+    target: call
+    witness:
+      file: packages/ui-blocks/src/i18n.ts
+      imports: '@genai/i18n'
+keywords: ui blocks building blocks components approach fremgangsmåte designsystemet react

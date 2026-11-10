@@ -1,10 +1,12 @@
 import { Alert, Button, Details, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
+import { Approach } from '@genai/ui-blocks';
 import { useEffect, useId, useState } from 'react';
 import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
 import { Feedback } from './Feedback';
 import { useT } from './i18n';
+import { inLanguage } from './procedure';
 import type {
   AssistantMessage,
   ChatMessage,
@@ -19,6 +21,8 @@ interface Props {
   messages: ChatMessage[];
   organisation: string;
   now: Date;
+  /** The workspace's clock, for the seconds an answer in progress has taken. */
+  clock?: () => Date;
   onRetry: (message: AssistantMessage) => void;
   onFeedback: (input: FeedbackInput) => Promise<void>;
   onOpenTable?: (message: AssistantMessage) => void;
@@ -114,6 +118,7 @@ const Answer = ({
   message,
   organisation,
   now,
+  clock,
   onRetry,
   onFeedback,
   onOpenTable,
@@ -130,8 +135,21 @@ const Answer = ({
     !message.failure &&
     !message.table &&
     (!!message.noAnswer || !message.text.trim());
+  const procedure = message.procedure?.steps.length ? message.procedure : undefined;
+  const cited = message.sources.filter((s) => s.index !== undefined).length;
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
+      {procedure ? (
+        <Approach
+          steps={inLanguage(procedure.steps, t)}
+          working={!!message.pending}
+          startedAt={procedure.startedAt}
+          {...(clock ? { now: () => clock().getTime() } : {})}
+          {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
+          {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
+          {...(!message.pending && cited ? { used: cited } : {})}
+        />
+      ) : null}
       {empty ? (
         <Paragraph data-size="sm" className="alert-title">
           {t('answer.noAnswer')}
@@ -141,7 +159,7 @@ const Answer = ({
           {t('answer.aiTag')}
         </Tag>
       ) : null}
-      {message.pending && !message.text ? (
+      {message.pending && !message.text && !procedure ? (
         <Spinner aria-label={t('answer.working')} data-size="sm" />
       ) : null}
       {message.table ? (
