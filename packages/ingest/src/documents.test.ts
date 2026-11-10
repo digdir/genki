@@ -151,6 +151,39 @@ describe('web content', () => {
 
     expect(docs[0]).toMatchObject({ title: 'Hei' });
   });
+
+  it('a Markdown page is titled from its frontmatter, not from the URL', async () => {
+    const markdown = '---\ntitle: "Gi abonnenter tilgang"\n---\n\nTekst om tilgang.\n';
+    const { docs } = await ingest(
+      websiteSource({
+        entries: [{ loc: 'https://docs.example.test/nb/grant-subscriber-access/index.md' }],
+        fetchBody: async () => ({
+          bytes: new TextEncoder().encode(markdown),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs[0]).toMatchObject({
+      title: 'Gi abonnenter tilgang',
+      frontmatter_title: 'Gi abonnenter tilgang',
+    });
+  });
+
+  it('a Markdown page keeps its frontmatter product and language as fields', async () => {
+    const markdown = '---\ntitle: Kom i gang\nproduct: Maskinporten\nlang: nb\n---\n\nTekst.\n';
+    const { docs } = await ingest(
+      websiteSource({
+        entries: [{ loc: 'https://docs.example.test/docs/Maskinporten/kom_i_gang.md' }],
+        fetchBody: async () => ({
+          bytes: new TextEncoder().encode(markdown),
+          contentType: 'text/markdown; charset=utf-8',
+        }),
+      }),
+    );
+
+    expect(docs[0]).toMatchObject({ product: 'Maskinporten', language: 'nb' });
+  });
 });
 
 describe('documents through a converter', () => {
