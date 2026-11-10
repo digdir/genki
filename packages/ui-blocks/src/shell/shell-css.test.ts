@@ -32,8 +32,7 @@ const outside = uses.reduce((rest, use) => rest.replace(use.whole, ''), css);
 /** A size no token has, allowed only as the single fallback of a named variable. */
 const literal = /^\d*\.?\d+(?:px|rem|em|r?lh|ch|%|[dsl]?vh|vw)$/;
 
-// The chrome is neutral on purpose, as kunnskapsassistenten's shell: the page, the panels, the
-// rails, the bar and the borders stay grey whatever data-color the host sets.
+// The chrome stays neutral whatever data-color the host sets, as kunnskapsassistenten's.
 const neutralPins = [
   '--genai-shell-background',
   '--genai-shell-bar-background',
@@ -132,9 +131,7 @@ describe('the Shell styles', () => {
   });
 
   it('stand both buttons in the bar on the main column’s text edge, the end one as the start one', () => {
-    // The rail's box is its button plus the head's padding on each side, so each button stands
-    // that padding from its own window edge. A rail kept at its 67 px floor put the end button
-    // 9 px from the edge at 390, where the start one stood at 16.
+    // A rail is its button plus the head's padding, so each button keeps that from its edge.
     expect(css).toContain(
       '.uib-shell[data-compact] > .uib-shell-side { container-type: normal; min-inline-size: 0; }',
     );
@@ -154,8 +151,7 @@ describe('the Shell styles', () => {
   });
 });
 
-// A `data-color` written into the markup is a pin a host's `color` cannot reach (V2-0009 §3):
-// each is named here and justified by the comment on the line above it.
+// A `data-color` in the markup is a pin a host's `color` cannot reach: each named here.
 describe('the Shell markup', () => {
   it('pins to neutral only the panel buttons kunnskapsassistenten draws neutral, with the reason', () => {
     const lines = readFileSync(`${import.meta.dirname}/Shell.tsx`, 'utf8').split('\n');

@@ -4,8 +4,7 @@ import { defineTranslations } from '@genai/i18n/react';
 // `{panel}` is the panel's own name, lower-cased: «Skjul tråder og filter».
 export const nbShell = defineNamespace({
   skipToMain: 'Hopp til hovedinnhold',
-  // The word beside the icon on an open primary panel; the button's name starts with it, so a
-  // voice user can say what they see (WCAG 2.5.3).
+  // The word beside the icon, which the button's name starts with (WCAG 2.5.3).
   hide: 'Skjul',
   hidePanel: 'Skjul {panel}',
   showPanel: 'Vis {panel}',
@@ -28,11 +27,7 @@ export const enShell = {
   width: '{width} pixels',
 } satisfies Translation<typeof nbShell>;
 
-/**
- * The shell's own catalogue. It stays out of the package's shared one, so a host that imports
- * another block, such as Approach, does not load these words. A block that borrows them puts this
- * namespace in its own catalogue.
- */
+/** The shell's own catalogue, apart from the shared one, so a host loads only its words. */
 export const nb = defineCatalogue({ shell: nbShell });
 export const en = { shell: enShell } satisfies Translation<typeof nb>;
 

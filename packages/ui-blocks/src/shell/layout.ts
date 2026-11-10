@@ -1,9 +1,4 @@
-// The shell's model: two side panels that fold to a rail, resize, and become drawers in a narrow
-// window, beside a main column with a floor and a ceiling. Pure, so the arithmetic is tested
-// without a DOM. Ported from kunnskapsassistenten's layout/viewModel.ts and layout/resize.ts.
-//
-// Panels are named after their place, never after a side or their content: a panel's content
-// and its name are the host's, and either may move.
+// The shell's model, pure: two panels that fold, resize and become drawers beside a main column.
 
 /** A side panel. `primary` stands before the main column, `secondary` after it. */
 export type ShellSide = 'primary' | 'secondary';
@@ -57,12 +52,7 @@ export interface ShellGeometry {
   rail: number;
 }
 
-/**
- * Kunnskapsassistenten's sizes. The primary panel: 328 px inside, what its filter was drawn for,
- * plus padding, so 400 is its floor too. The secondary panel: 432 fits the design's frames and
- * makes 1536 with all three open; 336 is what 1440 leaves it. Neither has a ceiling, so a panel
- * can take about half the window (kunnskapsassistenten#80, #122).
- */
+/** Kunnskapsassistenten's sizes; no ceiling, so a panel can take about half the window. */
 export const defaultPanelSizes: Record<ShellSide, PanelSize> = {
   primary: { width: 400, minWidth: 400, maxWidth: Number.POSITIVE_INFINITY },
   secondary: { width: 432, minWidth: 336, maxWidth: Number.POSITIVE_INFINITY },
@@ -92,14 +82,7 @@ const present = (geometry: ShellGeometry) => shellSides.filter((side) => geometr
 const railOf = (geometry: ShellGeometry, side: ShellSide) =>
   geometry.panels[side] ? geometry.rail : 0;
 
-/**
- * Where the layout changes, summed from the sizes so the breakpoints move with them:
- * - `both`: the narrowest window with both panels open, 400 + 32 + 640 + 32 + 336 = 1440;
- * - `drawer`: below it an open panel no longer fits beside the main column and is drawn over it,
- *   from the widest one-panel state, 400 + 32 + 640 + 67 = 1139;
- * - `compact`: below it two rails eat a main column already under its floor, 67 + 640 + 67 = 774.
- * 0 means never.
- */
+/** Where the layout changes, summed from the sizes: `both` 1440, `drawer` 1139, `compact` 774. */
 export const breakpoints = (geometry: ShellGeometry) => {
   const { primary, secondary } = geometry.panels;
   const { gap, main } = geometry;
@@ -154,11 +137,7 @@ export const initialState = (
   return next;
 };
 
-/**
- * The layout worth storing. A width is kept only when the reader moved it: storing the default
- * too would make «reset» and «never touched» differ, and a changed default would never reach a
- * browser that had merely opened the app once.
- */
+/** The layout worth storing: a width only when the reader moved it. */
 export const storedLayout = (geometry: ShellGeometry, state: ShellState): ShellLayout => {
   const layout: Required<{ [K in keyof ShellLayout]: NonNullable<ShellLayout[K]> }> = {
     collapsed: {},
@@ -193,10 +172,7 @@ export const withDismissed = (state: ShellState, side: ShellSide, dismissed: boo
     ? state
     : { ...state, dismissed: { ...state.dismissed, [side]: dismissed } };
 
-/**
- * Resize a panel, within its floor and ceiling and in whole pixels. A backstop: `widthRange`
- * decides what fits the window, and `fittedWidths` draws a stored width the window cannot hold.
- */
+/** Resize a panel within its floor and ceiling, in whole pixels. */
 export const withWidth = (
   geometry: ShellGeometry,
   state: ShellState,
@@ -220,12 +196,7 @@ const occupied = (geometry: ShellGeometry, state: ShellState, side: ShellSide) =
 const gapOf = (geometry: ShellGeometry, state: ShellState, side: ShellSide) =>
   geometry.panels[side] && !state.collapsed[side] ? geometry.gap : 0;
 
-/**
- * The widths actually DRAWN in this window, which the separator reports. When a dragged width
- * does not fit, what gives, in order: the main column down to its floor (in CSS), any widening
- * past the design's width (the yielding panel first), the yielding panel down to its floor, then
- * the other one down to its floor.
- */
+/** The widths drawn in this window; what gives first is the main column, then any widening. */
 export const fittedWidths = (
   geometry: ShellGeometry,
   state: ShellState,
@@ -268,12 +239,7 @@ export interface WidthRange {
   max: number;
 }
 
-/**
- * How wide a panel may be dragged in this window: from its floor up to what is left once the
- * other panel and the main column's floor have theirs. A drag takes room only from the main
- * column, so the other edge never moves. Read for the panel OPEN, also while a drag has folded
- * it. If the limits cross, the floor wins.
- */
+/** How wide a panel may be dragged: up to what the other panel and the main column leave. */
 export const widthRange = (
   geometry: ShellGeometry,
   state: ShellState,
@@ -311,12 +277,7 @@ export const drawerPlacement = (side: ShellSide): 'left' | 'right' =>
 export const drawerWidth = (geometry: ShellGeometry, side: ShellSide, viewport: number) =>
   Math.min(geometry.panels[side]?.width ?? 0, viewport);
 
-/**
- * The widths as custom properties on the shell, so the stylesheet never needs the state. A folded
- * panel reports its rail. In drawer mode every panel is a rail on the row, open or not, and the
- * main column's floor yields to the window rather than scroll sideways (WCAG 1.4.10). In the bar
- * the rails stand above the main column and take nothing from the row.
- */
+/** The widths as custom properties on the shell, so the stylesheet never needs the state. */
 export const layoutStyle = (
   geometry: ShellGeometry,
   state: ShellState,

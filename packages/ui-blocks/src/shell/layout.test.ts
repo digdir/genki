@@ -203,9 +203,7 @@ describe('drawers', () => {
   });
 });
 
-// Every width from 280 to 2000, every reachable state, and widths from the design, from a drag as
-// far as it goes and from storage with numbers far too big: the row never scrolls sideways
-// (WCAG 1.4.10). As kunnskapsassistenten's viewportFit.test.ts.
+// Every width from 280 to 2000 and every reachable state: no sideways scroll (WCAG 1.4.10).
 describe('the row and the window, from 280 to 2000 px', () => {
   const points = breakpoints(geometry);
   const windows = Array.from({ length: 2000 - 280 + 1 }, (_, index) => 280 + index);
