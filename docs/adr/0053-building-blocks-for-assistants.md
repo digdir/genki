@@ -2,11 +2,11 @@
 
 Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace)
 
-Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, a playground, and a way for a service definition to say which components it has and where.
+Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, a playground, and a way for a service definition to say which components it has and where. All but projects and notes are proposed in open pull requests #403 to #413.
 
 ## Decision
 
-The components an assistant is made from (chat, threads, approach, sources, filter and the rest) are React components in one shared package, `@genai/ui-blocks`, in this repository.
+The components an assistant is made from (chat, threads, approach, sources, filter and the rest) are React components in one shared package, `@genai/ui-blocks`, in this repository. They are what a person sees and uses, not the reusable definition parts that ADR 0050 calls building blocks.
 
 - **One component, every place.** The workspace draws a published service with them, and the builder's preview in the portal draws the draft with the same components. A component is not drawn a second way anywhere else.
 - **Data in, events out.** A component does not fetch and does not know about the API. It gets plain props (the steps, the counts, whether the assistant is working) and reports what the person did through callbacks. Each app turns what the API sends into those props.
@@ -18,12 +18,12 @@ The components an assistant is made from (chat, threads, approach, sources, filt
 
 ## Why
 
-The builder's preview drew the components as sketches with example content, and the workspace drew its own chat. The two would drift, and the preview would show a service owner something their users never see. A shared package makes the preview true by construction.
+The builder proposed in #210 draws the components as sketches with example content, and the workspace draws its own chat. The two would drift, and the preview would show a service owner something their users never see. A shared package makes the preview true by construction.
 
 The component library was first planned in kunnskapsassistenten (digdir/kunnskapsassistenten#167). Building it here puts it next to the API it depends on, the workspace that runs services and the builder that composes them, so a change to the stream, a component and the builder can land in one PR. Kunnskapsassistenten can use the package once it is published.
 
 ## Consequences
 
-- The workspace and the portal depend on `@genai/ui-blocks`. The package depends on `@genai/i18n` only, so it stays usable outside this repository.
+- The workspace depends on `@genai/ui-blocks`, and the portal will once the builder's preview draws the components. Of this repository's packages it depends on `@genai/i18n` only, so it stays usable outside this repository; its icons come from `@navikt/aksel-icons`.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.
-- The builder's templates and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition, which needs its own decision.
+- The layout templates proposed for the builder in #210 and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition, which needs its own decision.
