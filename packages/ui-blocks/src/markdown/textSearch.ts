@@ -1,6 +1,4 @@
-// Text search over what a part has already drawn: texts with ids in, match positions out. It
-// fetches nothing and asks the host for nothing — it is a filter over the words on screen.
-// Ported from KA's src/components/textSearch.ts, which the sources panel has used since #70.
+// Text search over the words a part has drawn: texts with ids in, match positions out.
 
 export interface SearchableItem {
   /** The same id as the thing the text came from, so a hit can be pointed back at it. */
@@ -24,13 +22,15 @@ const RAISED = '⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾';
 const PLAIN = '0123456789+-=()';
 const raisedChar = new RegExp(`[${RAISED}]`, 'g');
 
-/**
- * Case-insensitive, and superscripts fold to plain, since a keyboard has no «²». `toLowerCase()`
- * keeps the length of æ ø å and each superscript is one UTF-16 unit like its plain twin, so an
- * offset found in the folded copy is valid in the original.
- */
+// İ is the one letter whose lowercase is longer, i and a dot; as i, every offset stays the same.
+const DOTTED_CAPITAL_I = /İ/g;
+
+// Case and superscripts folded, with the length kept, so an offset in the copy fits the original.
 const fold = (text: string) =>
-  text.toLocaleLowerCase('nb').replace(raisedChar, (char) => PLAIN[RAISED.indexOf(char)] ?? char);
+  text
+    .replace(DOTTED_CAPITAL_I, 'i')
+    .toLocaleLowerCase('nb')
+    .replace(raisedChar, (char) => PLAIN[RAISED.indexOf(char)] ?? char);
 
 /** Every match in reading order. Matches never overlap. */
 export const findHits = (items: readonly SearchableItem[], query: string): SearchHit[] => {
@@ -54,11 +54,7 @@ export const findHits = (items: readonly SearchableItem[], query: string): Searc
 export const hitsFor = (hits: readonly SearchHit[], itemId: string): SearchHit[] =>
   hits.filter((hit) => hit.itemId === itemId);
 
-/**
- * Move one hit, and stop at the ends rather than wrap: a wrapping «Forrige» on the first hit looks
- * usable and says nothing about where it lands. The buttons that call this are `aria-disabled`
- * when they would be no-ops.
- */
+/** Move one hit, and stop at the ends rather than wrap, which would hide where it lands. */
 export const stepHit = (total: number, current: number, step: 1 | -1): number =>
   total === 0 ? 0 : Math.min(Math.max(current + step, 0), total - 1);
 
@@ -68,10 +64,7 @@ export interface TextRun {
   hit?: SearchHit;
 }
 
-/**
- * Split a text into plain and matched runs, so the caller can wrap the matched ones in `<mark>`.
- * The runs cover the whole text exactly once, in order.
- */
+/** A text as plain and matched runs that cover it once, in order, for `<mark>`. */
 export const splitByHits = (text: string, hits: readonly SearchHit[]): TextRun[] => {
   if (hits.length === 0) return [{ text }];
 
@@ -86,12 +79,7 @@ export const splitByHits = (text: string, hits: readonly SearchHit[]): TextRun[]
   return runs;
 };
 
-/**
- * The runs of one leaf of rendered output, given where that leaf starts in the flat text the hits
- * were found in. A hit that spans two leaves — a query that runs over the end of a `<strong>` — is
- * one hit, and comes back here clipped to each leaf it covers, which is what the browser's own
- * find-in-page draws.
- */
+/** The runs of one drawn leaf at `offset` in the flat text, a hit clipped to each leaf it covers. */
 export const runsIn = (text: string, offset: number, hits: readonly SearchHit[]): TextRun[] => {
   const end = offset + text.length;
   const inside = hits
