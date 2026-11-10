@@ -9,8 +9,7 @@ import {
   type SearchableItem,
 } from './textSearch.js';
 
-// KA's own cases for this module (src/components/textSearch.test.ts), plus the two functions the
-// part needs that KA does not: a hit has to be mapped back onto the leaves of rendered Markdown.
+// KA's own cases for this module, plus the two that map a hit onto drawn Markdown.
 const risk: SearchableItem = { id: 'a', text: 'Risiko og risikovurdering' };
 const goals: SearchableItem = { id: 'b', text: 'Måloppnåelse og ressursbruk' };
 const more: SearchableItem = { id: 'c', text: 'Risiko står også her' };
@@ -45,6 +44,23 @@ describe('findHits', () => {
     // What `excerptMarkdown` raised: «m²» and a footnote mark the reader can see but not type.
     expect(findHits([{ id: 'a', text: 'arealet er 42 m²' }], 'm2')).toHaveLength(1);
     expect(findHits([{ id: 'a', text: 'Husleie¹⁾' }], 'husleie1')).toHaveLength(1);
+  });
+
+  it('keeps every offset after an İ, whose lowercase is two characters', () => {
+    const item = { id: 'a', text: 'İstanbul og Oslo, İSTANBUL' };
+    expect(matched(item, 'oslo')).toEqual(['Oslo']);
+    expect(matched(item, 'istanbul')).toEqual(['İstanbul', 'İSTANBUL']);
+    expect(matched(item, 'İstanbul')).toEqual(['İstanbul', 'İSTANBUL']);
+  });
+
+  it('folds no character but İ to a lowercase of another length, so no offset drifts', () => {
+    const longer: number[] = [];
+    for (let code = 0; code <= 0x10ffff; code += 1) {
+      if (code >= 0xd800 && code <= 0xdfff) continue;
+      const char = String.fromCodePoint(code);
+      if (char.toLocaleLowerCase('nb').length !== char.length) longer.push(code);
+    }
+    expect(longer).toEqual([0x130]);
   });
 
   it('does not overlap matches', () => {
@@ -98,9 +114,7 @@ describe('splitByHits', () => {
 });
 
 describe('runsIn', () => {
-  // The shape a drawn excerpt has: `Vi har en **viktig** tekst` is three strings in the document
-  // with nothing between them on screen, so a query over the end of the bold one is one hit drawn
-  // in two places — what the browser's own find does.
+  // `Vi har en **viktig** tekst` is three strings drawn with nothing between them.
   const leaves = ['Vi har en ', 'viktig', ' tekst om lønn.'];
   const flat = leaves.join('');
   // Where each leaf starts in the flat text, as `visibleText` reports it.

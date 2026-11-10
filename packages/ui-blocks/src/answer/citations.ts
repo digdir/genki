@@ -46,7 +46,7 @@ const writtenMarkers = (text: string): Written[] => {
     },
     true,
     (value) => {
-      touched = true;
+      if (value.trim()) touched = true;
       return value;
     },
     () => {

@@ -83,8 +83,7 @@ describe('pairing footnotes with what is shown', () => {
 });
 
 describe('the order Sources reads in', () => {
-  // The shape of a Digdir annual report on a local #283 answer: the uncited excerpt at part 34
-  // came before «Utdrag 1» at part 92, since a card ran by part alone.
+  // A real annual report's shape: an uncited excerpt at part 34 and «Utdrag 1» at part 92.
   const report: SourceDocument = {
     index: 6,
     title: 'Årsrapport Digitaliseringsdirektoratet 2023',

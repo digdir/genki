@@ -1,5 +1,5 @@
 import type { Locale } from '@genai/i18n';
-import { cellsOf, inlineText } from '../markdown/Markdown.js';
+import { cellsOf, inlineText, type FootnoteLabel } from '../markdown/Markdown.js';
 import { excerptMarkdown, headingText } from '../sources/excerptMarkdown.js';
 import { documentKeys } from '../sources/pairing.js';
 import { distinctNames, sectionOf } from '../sources/Sources.js';
@@ -23,9 +23,6 @@ export interface AnswerCopy {
   sources: number;
 }
 
-// A footnote and the space before it: the space goes with it, or «kvartalsvis [1].» is pasted as
-// «kvartalsvis .».
-const footnote = /([ \t]?)\[(\d{1,3})\]/g;
 const blockSyntax = /^(#{1,6}\s+|[-*]\s+|\d+\.\s+|>\s?)/;
 
 /** What a `[N]` becomes: a new number, nothing (it leads nowhere), or itself (it is prose). */
@@ -34,13 +31,20 @@ type Label = number | null | undefined;
 const fence = /^\s*```/;
 const tableRule = /^\|[\s:|-]+\|$/;
 
-/** One line of prose or of a table as the words drawn, with no Markdown left in it. */
-const words = (line: string) =>
+/** One line of prose or of a table as the words drawn, its footnotes as `label` says. */
+const words = (line: string, label: FootnoteLabel) =>
   line.startsWith('|')
     ? cellsOf(line)
-        .map((cell) => inlineText(cell).trim())
+        .map((cell) => inlineText(cell, label).trim())
         .join('\t')
-    : inlineText(line.replace(blockSyntax, ''));
+    : inlineText(line.replace(blockSyntax, ''), label);
+
+// By hand: `/[ \t]+\n/` rescans a long run of blanks from each of its characters.
+const withoutTrailingBlanks = (line: string) => {
+  let end = line.length;
+  while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end -= 1;
+  return line.slice(0, end);
+};
 
 /**
  * Markdown stripped to the words a reader sees, for the clipboard and for a live region: no block
@@ -53,15 +57,11 @@ const plain = (markdown: string, label: (n: number) => Label) => {
   for (const raw of markdown.split('\n')) {
     if (fence.test(raw)) code = !code;
     else if (code) lines.push(raw);
-    else if (!tableRule.test(raw.trim())) lines.push(words(raw.trim()));
+    else if (!tableRule.test(raw.trim())) lines.push(words(raw.trim(), label));
   }
   return lines
+    .map(withoutTrailingBlanks)
     .join('\n')
-    .replace(footnote, (whole, space: string, n: string) => {
-      const shown = label(Number(n));
-      return shown === undefined ? whole : shown === null ? '' : `${space}[${shown}]`;
-    })
-    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
