@@ -180,6 +180,15 @@ describe('the approach card', () => {
     expect(within(step('Skrev svaret')).getByText(/waiting/)).toBeTruthy();
   });
 
+  it('names its own classes uib-approach, beside the package’s shared hidden text', () => {
+    draw({ onShowRead: () => undefined });
+    const classes = [...document.querySelectorAll('[class]')].flatMap((el) => [...el.classList]);
+    const ours = classes.filter((name) => name.startsWith('uib-'));
+    expect(ours.length).toBeGreaterThan(5);
+    const shared = new Set(ours.filter((name) => !/^uib-approach(?:-|$)/.test(name)));
+    expect([...shared]).toEqual(['uib-visually-hidden']);
+  });
+
   it('has an English text for every Norwegian one', () => {
     expect(catalogueProblems(nb, en)).toEqual([]);
   });

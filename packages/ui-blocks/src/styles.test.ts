@@ -120,6 +120,11 @@ describe('the lint', () => {
     );
   });
 
+  it('finds every block stylesheet imported by ui-blocks.css, which hosts load', () => {
+    const entry = read('ui-blocks.css');
+    expect(sheets.filter(({ path }) => !entry.includes(`@import './${path}';`))).toEqual([]);
+  });
+
   it('leaves ui-blocks.css, which it does not read, nothing but the imports and the hidden text', () => {
     const rest = strip(read('ui-blocks.css'))
       .replace(/@import '[^']+';/g, '')
