@@ -230,6 +230,14 @@ describe('the run mapper', () => {
     expect(mapRun(ragRun()).hits.get('c1')).toMatchObject({ score: 0.91 });
   });
 
+  it("keeps a model call's tokens and cost out of its raw data when usage is hidden", () => {
+    seq = 0;
+    const steps = mapRun([usage(10, 12, 3)], { details: true, usage: false }).steps;
+
+    expect(JSON.stringify(steps)).not.toMatch(/inputTokens|outputTokens/);
+    expect(mapRun([usage(10, 12, 3)], { details: true }).steps[0]?.raw).toBeDefined();
+  });
+
   it('leaves token counts out of the steps when usage is hidden, but keeps the model', () => {
     const steps = mapRun(ragRun(), { usage: false }).steps;
     const model = steps.find((s) => s.type === 'model');

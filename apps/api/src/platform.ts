@@ -344,7 +344,8 @@ const routes = {
   timeline: createRoute({
     method: 'get',
     path: '/tenants/{tenant}/tasks/{task}/timeline',
-    summary: 'A task as a timeline: status, numbers and steps, from what the client may see',
+    summary:
+      'A task as a timeline: status, numbers and steps, with the error details only for those who manage services',
     request: {
       params: z.object({
         tenant: tenantParam,
