@@ -27,8 +27,7 @@ import { markedNotFound } from './not-found.js';
 import type { ModuleDeps } from './platform-modules.js';
 import { serviceDrafts } from './service-drafts.js';
 
-// Embedders and rerankers such as ColBERT are metered like models, but they write no answer and
-// have no model family, so a judge cannot be checked against them. Usage without a kind stays.
+// Embedders and rerankers write no answer to judge.
 const notAnswering = new Set(['embedder', 'reranker']);
 
 export const judgedModels = (byModel: DraftModelUsage[]) =>
@@ -60,10 +59,10 @@ export interface ServiceRun extends Leased {
   version: RunVersion;
   subject?: string;
   variant?: string;
-  // The model the run is set to answer with: the variant's own model, else the primary model.
+  // The model the run is set to answer with.
   model?: string;
   split?: CaseSplit;
-  // The cases a run was limited to. Such a run does not stand for the whole test set.
+  // The cases the run was limited to.
   selected?: string[];
   startedAt: string;
   endedAt: string | null;
@@ -129,8 +128,7 @@ const modelsOf = (definition: Record<string, unknown>) => {
   return [model?.primary, model?.fallback].filter((m): m is string => typeof m === 'string');
 };
 
-// The model that writes the answers: the variant's own model, else the primary model.
-// Without a chosen variant a run uses the first one, as the draft runner does.
+// Without a chosen variant, the first one, as the draft runner does.
 export const answeringModel = ({ definition, variant }: Subject) => {
   const variants = isRecord(definition.spec) ? definition.spec.variants : undefined;
   const list = Array.isArray(variants) ? (variants as Variant[]) : [];

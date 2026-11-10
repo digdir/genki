@@ -346,8 +346,7 @@ export const sourceRecord = (c: Chunk): SourceRecord => ({
 
 const blank = (text: string | undefined) => !text || text.trim().length === 0;
 
-// One short sentence says no more than that nothing was found. A second sentence explains, points
-// further or answers in part, and is worth more to the user than the service's own wording.
+// A second sentence explains more than that nothing was found.
 const onlySaysNothingFound = (text: string) =>
   text.trim().length <= 200 &&
   text
@@ -471,7 +470,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
 
     let smallTalk: Promise<boolean> | undefined;
     const isSmallTalk = (text: string) =>
-      // The question is the user's text: marked as data, it cannot tell the check what to answer.
+      // The question is data, so it cannot answer the check.
       (smallTalk ??= evaluator(smallTalkCheck, untrustedData('user-message', text)).then(
         (verdict) => /^\s*SMALL_TALK\b/i.test(verdict),
         () => false,
@@ -483,9 +482,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       query,
       history,
       signal: ctx.signal,
-      // The answer is written in a call of its own, without tools. A service can give it its
-      // instructions on sources, form and what not to fill in too, not only the agent. The note
-      // on untrusted data comes last, as in the agent's own prompt.
+      // The untrusted-data note comes last, as in the agent's prompt.
       systemPrompt:
         systemPromptWithDate((options.now ?? (() => new Date()))()) +
         (settings.instructionsInAnswer && settings.instructions
@@ -548,10 +545,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
         turn.toolCalls.length === 0 ||
         !(turn.finishReason === 'tool_calls' || turn.finishReason === 'stop')
       ) {
-        // An answer from a run that has not searched comes from the model's own knowledge. With
-        // the guard on, only small talk passes on a first question; a follow-up may rest on
-        // earlier answers, so it passes after the re-prompts. A turn cut off while calling tools
-        // was trying to search, so it is asked to call the tool again with shorter arguments.
+        // An answer before any search comes from the model's own knowledge.
         const cutOff = turn.toolCalls.length > 0;
         const guard =
           Boolean(settings.noToolCallRetry) &&
@@ -922,10 +916,7 @@ export const createAgentLoop = (options: AgentLoopOptions): Strategy<AgentLoopRu
       workspace.citations.length === 0 &&
       (soundsLikeRefusal(answer ?? '') ||
         (settings.noAnswerText !== undefined && answer === settings.noAnswerText));
-    // A service can say in its own words that its sources do not cover a question, instead of
-    // however the model put it. Only after a search, since small talk is not a miss in the sources,
-    // and only a short answer that says no more than that: a longer one explains or answers in
-    // part, and running out of rounds is not a miss either.
+    // Only a plain miss in the sources gets the service's own words.
     if (
       foundNothing &&
       settings.noAnswerText &&

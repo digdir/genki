@@ -5,12 +5,11 @@ const shortRefusalLength = 80;
 
 type Answered = Pick<ServiceRunSuccess, 'noAnswer' | 'answer' | 'parts'>;
 
-// The run or its strategy said it found nothing, as a test run grades a refusal. A blank or short
-// answer is not taken for one there, so a broken answer does not pass a case that expects one.
+// Test runs: only a run or strategy mark counts, not a blank answer.
 export const markedNotFound = (outcome: Answered) =>
   outcome.noAnswer || outcome.parts.some((p) => p.meta?.noAnswer === true);
 
-// A batch run also counts a short answer that reads as "found nothing", and an empty one.
+// Batch runs also count a short answer that reads as a refusal.
 export const notFoundOf = (outcome: Answered) =>
   markedNotFound(outcome) ||
   (outcome.answer.trim().length <= shortRefusalLength && soundsLikeRefusal(outcome.answer));
