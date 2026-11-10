@@ -1,6 +1,6 @@
 // The state the blocks share and the events that change it, lifted from the UI blocks preview's
 // App.tsx so any layout can be drawn from it. The blocks stay as they are: data in, events out
-// (ADR 0046). What happens when a partner block is off follows the app builder plan's wiring table:
+// (#234's ADR). What happens when a partner block is off follows the app builder plan's wiring table:
 // - without Tråder, one thread per visit, and a new one from the greeting;
 // - without Filter, the question goes to the collection from the setup, narrowed by nothing, and
 //   there is no «Endre»;
