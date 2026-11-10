@@ -99,6 +99,19 @@ export interface DocumentPage {
   found?: number;
 }
 
+export type CitationStatus = 'found' | 'earlier' | 'withdrawn' | 'unknown';
+
+/** What a cited document id is now: in the generation, an earlier id of a document in it, withdrawn on a date, or unknown. */
+export interface CitationResolution {
+  cited: string;
+  status: CitationStatus;
+  document?: string;
+  title?: string;
+  url?: string;
+  /** The day the document was deleted or withdrawn, as YYYY-MM-DD. */
+  withdrawnOn?: string;
+}
+
 export interface FacetValue {
   value: string;
   count: number;
@@ -128,6 +141,7 @@ export interface KnowledgePort {
     filters?: Record<string, FilterValue>,
   ): Promise<Record<string, FacetValue[]>>;
   documents?(request: DocumentsRequest): Promise<DocumentPage>;
+  resolveCitations?(ids: string[]): Promise<CitationResolution[]>;
   export?: DatasetExport;
 }
 
@@ -135,7 +149,14 @@ export interface DatasetExport {
   vectors: boolean;
   documents(): AsyncIterable<IndexDocument>;
   count(cap: number): Promise<number>;
+  /** The documents without their chunks, for a copy that reads each one later (#366). */
+  list?(): AsyncIterable<ExportedDocument>;
+  /** One document with its chunks, or undefined when the engine no longer has it. */
+  document?(id: string): Promise<IndexDocument | undefined>;
 }
+
+/** A document as an export lists it: what an engine keeps of it, without its chunks. */
+export type ExportedDocument = Omit<IndexDocument, 'chunks' | 'phrases'>;
 
 export type KnowledgeErrorCode =
   | 'rate_limited'

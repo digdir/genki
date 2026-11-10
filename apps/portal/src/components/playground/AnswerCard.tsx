@@ -1,3 +1,9 @@
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CodeIcon,
+  InformationSquareIcon,
+} from '@navikt/aksel-icons';
 import { Button, Chip, Heading, Link, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
 import { useId, useState } from 'react';
@@ -17,7 +23,7 @@ import {
 } from '../../data/playground';
 import { useT, type T } from '../../i18n';
 import { AnswerMarkdown, type CiteRenderer } from '../AnswerMarkdown';
-import { Icon, icons } from '../Icon';
+import { Icon } from '../Icon';
 import { ResultTableView, tableFrom } from '../ResultTable';
 
 const citedOrder = (result: PlaygroundResult) => {
@@ -119,7 +125,7 @@ const SourceItem = ({
               aria-controls={excerptId}
               onClick={() => setExpanded((open) => !open)}
             >
-              <Icon d={expanded ? 'M6 15l6-6 6 6' : icons.chevronDown} size={16} />
+              <Icon icon={expanded ? ChevronUpIcon : ChevronDownIcon} size={16} />
               {t('playground.excerpt')}
             </Button>
           ) : null}
@@ -131,7 +137,7 @@ const SourceItem = ({
             aria-expanded={detailsOpen}
             onClick={() => onOpen(detailsOpen ? null : source.chunkId)}
           >
-            <Icon d={icons.info} size={16} />
+            <Icon icon={InformationSquareIcon} size={16} />
           </Button>
         </div>
       </div>
@@ -397,7 +403,7 @@ export const AnswerCard = ({
           {t('playground.saveAsTest')}
         </Button>
         <Button variant="tertiary" data-size="sm" onClick={onShowCall}>
-          <Icon d={icons.code} size={18} />
+          <Icon icon={CodeIcon} size={18} />
           {t('common.apiCall')}
         </Button>
       </div>

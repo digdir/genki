@@ -9,6 +9,7 @@ import type {
   PlaygroundServiceVersion,
   PlaygroundSetup,
   PlaygroundSource,
+  PlaygroundVariant,
   PlaygroundStreamEvent,
   RunStats,
 } from '../api/playground';
@@ -190,6 +191,19 @@ export const versionOf = (options: PlaygroundOptions, setup: PlaygroundSetup) =>
   return service && version ? { service, version } : undefined;
 };
 
+export const variantLabel = (variant: PlaygroundVariant, t: T = nbT) =>
+  variant.title ?? (variant.id === 'default' ? t('playground.variantDefault') : variant.id);
+
+export const variantOf = (options: PlaygroundOptions, setup: PlaygroundSetup) => {
+  const variants = versionOf(options, setup)?.version.variants ?? [];
+  return variants.find((v) => v.id === setup.service?.variant) ?? variants[0];
+};
+
+const serviceName = (options: PlaygroundOptions, setup: PlaygroundSetup, name: string, t: T) => {
+  const variant = variantOf(options, setup);
+  return variant ? `${name} (${variantLabel(variant, t)})` : name;
+};
+
 const nameIn = (list: { id: string; name: string; ref?: string }[], id: string) =>
   list.find((x) => x.id === id || x.ref === id)?.name ?? id;
 
@@ -207,7 +221,7 @@ export const setupChips = (options: PlaygroundOptions, setup: PlaygroundSetup, t
   if (found)
     chips.push(
       t('playground.chipService', {
-        name: found.service.name,
+        name: serviceName(options, setup, found.service.name, t),
         version: versionLabel(found.version, t).toLowerCase(),
       }),
     );
@@ -233,7 +247,7 @@ export const resultLabel = (options: PlaygroundOptions, setup: PlaygroundSetup, 
   const found = versionOf(options, setup);
   const model = modelOf(options, setup.model).name;
   return found
-    ? `${model} · ${found.service.name}, ${versionLabel(found.version, t).toLowerCase()}`
+    ? `${model} · ${serviceName(options, setup, found.service.name, t)}, ${versionLabel(found.version, t).toLowerCase()}`
     : model;
 };
 

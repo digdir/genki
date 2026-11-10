@@ -1,0 +1,39 @@
+id: example/export-link@1
+operation: export-link
+status: described
+summary: A made-up API that starts an export and answers with a link to the file, which may be a csv or a tsv.
+api:
+  family: example
+  version: '2026-11-01'
+input:
+  object:
+    query: text
+output:
+  object:
+    data: { media: [text/csv, text/tab-separated-values] }
+steps:
+  - name: start
+    request:
+      method: POST
+      path: /exports
+      body:
+        query: $input.query
+    wire:
+      request:
+        object:
+          query: text
+      response:
+        object:
+          location: plain
+    bind:
+      link: { from: $response.location, class: url }
+  - name: fetch
+    request:
+      method: GET
+      follow: $steps.start.link
+    response:
+      encoding: binary
+    wire:
+      response: { media: [text/csv, text/tab-separated-values] }
+result:
+  data: $response

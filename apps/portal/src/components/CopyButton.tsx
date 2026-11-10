@@ -1,7 +1,8 @@
+import { FilesIcon } from '@navikt/aksel-icons';
 import { Button } from '@digdir/designsystemet-react';
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
-import { Icon, icons } from './Icon';
+import { Icon } from './Icon';
 
 export const CopyButton = ({
   text,
@@ -30,7 +31,7 @@ export const CopyButton = ({
           setCopied(true);
         }}
       >
-        <Icon d={icons.copy} size={16} />
+        <Icon icon={FilesIcon} size={16} />
         {label ?? t('common.copy')}
       </Button>
       <span role="status" className="copy-status">

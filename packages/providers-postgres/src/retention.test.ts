@@ -3,7 +3,9 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { textPart, type Event, type Task } from '@genai/contracts';
+import { outsideRunTask } from '@genai/kernel';
 import {
+  ContentKeys,
   createPostgresStores,
   erased,
   LocalKeyWrapper,
@@ -15,6 +17,7 @@ import { stopPostgres } from './testing/index.js';
 let container: StartedPostgreSqlContainer;
 let stores: Awaited<ReturnType<typeof createPostgresStores>>;
 let pool: pg.Pool;
+const wrapper = new LocalKeyWrapper(randomBytes(32));
 
 const tenant = '991825827';
 const other = '889640782';
@@ -69,7 +72,7 @@ const cutoff = (owner = tenant) => ({
 beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:16-alpine').start();
   pool = new pg.Pool({ connectionString: container.getConnectionUri() });
-  stores = await createPostgresStores(pool, new LocalKeyWrapper(randomBytes(32)));
+  stores = await createPostgresStores(pool, wrapper);
   await seed('fresh', tenant, 10);
   await seed('old', tenant, 100);
   await seed('ancient', tenant, 800);
@@ -119,6 +122,14 @@ describe('postgres retention', () => {
     ).toBe(0);
   });
 
+  it('reads a run whose payload was dropped as erased after the retention period, with the time', async () => {
+    const [old, ...rest] = await stores.tasks.erasures(tenant, ['old', 'fresh', 'elsewhere']);
+
+    expect(old).toEqual({ task: 'old', reason: 'retention', at: expect.any(String) });
+    expect(rest).toEqual([]);
+    expect(await stores.tasks.erasures(other, ['old'])).toEqual([]);
+  });
+
   it('deletes the whole task after the audit period', async () => {
     expect(await stores.tasks.get('ancient')).toBeUndefined();
     expect(await collect('ancient')).toEqual([]);
@@ -139,6 +150,53 @@ describe('postgres retention', () => {
     expect(await stores.retention.purge(cutoff())).toEqual({ payloads: 0, envelopes: 0 });
     expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 1, envelopes: 0 });
     expect(await stores.retention.purge(cutoff(other))).toEqual({ payloads: 0, envelopes: 0 });
+  });
+});
+
+describe('postgres outside-run log retention', () => {
+  const neighbour = `${tenant}1`;
+  const logDay = (owner: string, days: number) => outsideRunTask(owner, daysAgo(days));
+  const seedLog = async (owner: string, days: number) => {
+    const task = logDay(owner, days);
+    const base = { v: 1, task, ts: daysAgo(days).toISOString(), actor: 'kernel' as const };
+    const scope = { tenant: owner, key: taskScope(task) };
+    await stores.log.append(
+      { ...base, type: 'kernel.gate.call', audience: 'audit', data: { operation: 'embed' } },
+      scope,
+    );
+    await stores.log.append(
+      { ...base, type: 'kernel.usage', audience: 'audit', data: { usage: { requests: 1 } } },
+      scope,
+    );
+  };
+  const keyCount = async (task: string) =>
+    (await pool.query('select 1 from content_keys where scope = $1', [taskScope(task)])).rowCount;
+
+  beforeAll(async () => {
+    for (const days of [0, 200, 201, 400]) await seedLog(tenant, days);
+    await seedLog(other, 400);
+    await seedLog(neighbour, 400);
+  });
+
+  it('deletes each outside-run log day before the cutoff with its content key', async () => {
+    expect(await stores.outsideRunRetention.purge({ tenant, before: daysAgo(200) })).toBe(2);
+
+    for (const days of [201, 400]) {
+      expect(await collect(logDay(tenant, days))).toEqual([]);
+      expect(await keyCount(logDay(tenant, days))).toBe(0);
+    }
+  });
+
+  it("keeps the cutoff day, today's log and other tenants' logs", async () => {
+    for (const days of [0, 200]) expect(await collect(logDay(tenant, days))).toHaveLength(2);
+    expect(await collect(logDay(other, 400))).toHaveLength(2);
+    expect(await collect(logDay(neighbour, 400))).toHaveLength(2);
+    expect(await keyCount(logDay(neighbour, 400))).toBe(1);
+  });
+
+  it('purging the outside-run log twice changes nothing the second time', async () => {
+    expect(await stores.outsideRunRetention.purge({ tenant, before: daysAgo(200) })).toBe(0);
+    expect(await collect(logDay(tenant, 0))).toHaveLength(2);
   });
 });
 
@@ -179,5 +237,89 @@ describe('postgres conversation retention', () => {
     expect(await stores.threadRetention.purge({ tenant, agent: 'svar', before: daysAgo(90) })).toBe(
       0,
     );
+  });
+});
+
+describe('postgres thread erasure', () => {
+  const seedTurn = async (id: string, owner: string, thread: string) => {
+    const scope = {
+      tenant: owner,
+      key: JSON.stringify(['thread', JSON.stringify(['employee', 'test', 'kari', owner]), thread]),
+    };
+    const task: Task = {
+      id,
+      tenant: owner,
+      owner: 'kernel',
+      status: 'completed',
+      principal: { kind: 'employee', id: 'kari' },
+      service: {
+        capability: { id: `${owner}/svar/default`, version: '1' },
+        strategy: { id: 'single-call', version: '1' },
+        configHash: 'x',
+      },
+      thread,
+      result: [textPart('hemmelig svar')],
+      artifacts: [],
+      usage: {},
+      createdAt: now.toISOString(),
+      endedAt: now.toISOString(),
+    };
+    const base = { v: 1, task: id, ts: now.toISOString(), actor: 'kernel' as const };
+    await stores.log.append(
+      { ...base, type: 'kernel.task.input', data: { parts: [textPart('vedlagt brev')] } },
+      scope,
+    );
+    await stores.tasks.put(
+      { task, principal: { kind: 'employee', issuer: 'test', subject: 'kari' }, lastSeq: 0 },
+      scope,
+    );
+    return scope.key;
+  };
+
+  it('erases the content key of every task in the thread, only in the owner tenant', async () => {
+    const scope = await seedTurn('turn-1', tenant, 'samtale-1');
+    await seedTurn('turn-2', tenant, 'samtale-2');
+    await seedTurn('turn-3', other, 'samtale-1');
+
+    expect(await stores.threadErasure.erase(tenant, 'samtale-1')).toBe(1);
+
+    expect((await collect('turn-1'))[0]?.data).toEqual(erased);
+    expect((await stores.tasks.get('turn-1'))?.task.result).toBeUndefined();
+    expect(
+      (
+        await pool.query('select 1 from erased_scopes where tenant = $1 and scope = $2', [
+          tenant,
+          scope,
+        ])
+      ).rowCount,
+    ).toBe(1);
+    expect((await collect('turn-2'))[0]?.data).toEqual({ parts: [textPart('vedlagt brev')] });
+    expect((await collect('turn-3'))[0]?.data).toEqual({ parts: [textPart('vedlagt brev')] });
+  });
+
+  it('a run whose conversation was deleted reads as erased, with the time it was erased', async () => {
+    await seedTurn('turn-4', tenant, 'samtale-4');
+    await seedTurn('turn-5', tenant, 'samtale-5');
+    const before = Date.now();
+
+    await stores.threadErasure.erase(tenant, 'samtale-4');
+
+    const found = await stores.tasks.erasures(tenant, ['turn-4', 'turn-5']);
+    expect(found).toEqual([
+      { task: 'turn-4', reason: 'conversation-deleted', at: expect.any(String) },
+    ]);
+    expect(Date.parse(found[0]?.at ?? '')).toBeGreaterThanOrEqual(before - 5000);
+    expect(await stores.tasks.erasures(other, ['turn-4'])).toEqual([]);
+  });
+
+  it('a conversation removed after its retention period reads as erased by retention', async () => {
+    const scope = await seedTurn('turn-6', tenant, 'samtale-6');
+    const keys = new ContentKeys(stores.runtimePool, wrapper);
+
+    await keys.erase(tenant, scope, 'retention');
+
+    expect(await stores.tasks.erasures(tenant, ['turn-6'])).toEqual([
+      { task: 'turn-6', reason: 'retention', at: expect.any(String) },
+    ]);
   });
 });

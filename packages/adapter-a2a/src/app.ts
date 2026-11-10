@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   checkInputFields,
   fieldsQuery,
@@ -719,15 +720,21 @@ export const createA2aApp = (options: A2aAppOptions) => {
   app.get(`${path}/:agent/.well-known/agent-card.json`, card);
   app.get(`${path}/:agent`, card);
 
+  app.use(
+    `${path}/:agent`,
+    bodyLimit({
+      maxSize: maxBody,
+      onError: (c) =>
+        json(
+          c,
+          rpcError(null, errorCodes.invalidRequest, `Request body exceeds ${maxBody} bytes`),
+          413,
+        ),
+    }),
+  );
   app.post(`${path}/:agent`, async (c) => {
     const principal = principalOf(c);
     const text = await c.req.text();
-    if (Buffer.byteLength(text) > maxBody)
-      return json(
-        c,
-        rpcError(null, errorCodes.invalidRequest, `Request body exceeds ${maxBody} bytes`),
-        413,
-      );
     let body: unknown;
     try {
       body = JSON.parse(text);

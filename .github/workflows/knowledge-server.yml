@@ -1,0 +1,182 @@
+name: knowledge-server
+
+# The knowledge server's steps that infra cannot do (infra/README.md, Knowledge server), run as the deploy
+# identity, so nobody needs Azure access of their own.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [test, prod]
+        default: test
+      action:
+        description: 'check: server, settings, admins, peering, job and apps. restart: only if a setting waits for it. setup: run the principals job and show its log. restore-drill: restore to a new server, time it, delete it.'
+        type: choice
+        options: [check, restart, setup, restore-drill]
+        default: check
+
+permissions:
+  contents: read
+
+# The same group as infra and deploy, so none of these runs while the template changes the server.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      BASE: genai-${{ inputs.environment }}
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Find the knowledge server
+        id: server
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt extension.dynamic_install_allow_preview=true --only-show-errors
+          server=$(az postgres flexible-server list -g "$RG" \
+            --query "[?starts_with(name, '$BASE-knowledge-') && name != '$BASE-knowledge-restore-drill'].name | [0]" -o tsv)
+          if [ -z "$server" ]; then
+            echo "::error::No knowledge server in $RG. Set KNOWLEDGE_SERVER_STAGE to server and run infra first."
+            exit 1
+          fi
+          echo "Knowledge server: $server"
+          echo "name=$server" >> "$GITHUB_OUTPUT"
+
+      - name: Check
+        if: inputs.action == 'check'
+        env:
+          SERVER: ${{ steps.server.outputs.name }}
+        run: |
+          fail=0
+          echo "== Server"
+          az postgres flexible-server show -g "$RG" -n "$SERVER" -o table --query "{state:state, version:version, sku:sku.name, storageGb:storage.storageSizeGb, backupDays:backup.backupRetentionDays, geoBackup:backup.geoRedundantBackup, standby:highAvailability.mode, publicAccess:network.publicNetworkAccess}"
+          state=$(az postgres flexible-server show -g "$RG" -n "$SERVER" --query state -o tsv)
+          [ "$state" = Ready ] || { echo "::error::The server is $state, not Ready"; fail=1; }
+
+          echo "== Settings"
+          for name in azure.extensions shared_preload_libraries; do
+            az postgres flexible-server parameter show -g "$RG" -s "$SERVER" -n "$name" -o table \
+              --query "{name:name, value:value, pendingRestart:isConfigPendingRestart}"
+          done
+          pending=$(az postgres flexible-server parameter show -g "$RG" -s "$SERVER" -n shared_preload_libraries --query isConfigPendingRestart -o tsv)
+          [ "$pending" = true ] && { echo "::error::shared_preload_libraries waits for a restart: run this workflow with restart"; fail=1; }
+
+          echo "== Entra admins"
+          az postgres flexible-server microsoft-entra-admin list -g "$RG" -s "$SERVER" -o table --query "[].{name:principalName, type:principalType}"
+
+          echo "== Peering"
+          for side in "$BASE-vnet:to-$BASE-knowledge-vnet" "$BASE-knowledge-vnet:to-$BASE-vnet"; do
+            vnet=${side%%:*}
+            peering=${side#*:}
+            peering_state=$(az network vnet peering show -g "$RG" --vnet-name "$vnet" -n "$peering" --query peeringState -o tsv 2>/dev/null || echo missing)
+            echo "$vnet / $peering: $peering_state"
+            [ "$peering_state" = Connected ] || { echo "::error::$vnet / $peering is $peering_state, not Connected"; fail=1; }
+          done
+
+          echo "== Last setup job run"
+          az containerapp job execution list -g "$RG" -n "$BASE-knowledge-setup" -o table \
+            --query "[0].{execution:name, status:properties.status, started:properties.startTime}" || true
+
+          echo "== Apps"
+          for app in api worker; do
+            host=$(az containerapp show -g "$RG" -n "$BASE-$app" --query "properties.template.containers[0].env[?name=='KNOWLEDGE_PGHOST'].value | [0]" -o tsv)
+            echo "$BASE-$app: KNOWLEDGE_PGHOST=${host:-unset (stage server)}"
+            az containerapp revision list -g "$RG" -n "$BASE-$app" -o table \
+              --query "[?properties.active].{revision:name, health:properties.healthState, running:properties.runningState, replicas:properties.replicas}"
+            unhealthy=$(az containerapp revision list -g "$RG" -n "$BASE-$app" --query "length([?properties.active && properties.healthState=='Unhealthy'])" -o tsv)
+            [ "$unhealthy" = 0 ] || { echo "::error::$BASE-$app has an unhealthy revision"; fail=1; }
+          done
+          fqdn=$(az containerapp show -g "$RG" -n "$BASE-api" --query properties.configuration.ingress.fqdn -o tsv)
+          health=$(curl -s -o /dev/null -w '%{http_code}' "https://$fqdn/health" || true)
+          echo "API /health: $health"
+          [ "$health" = 200 ] || { echo "::error::The API's /health answered $health"; fail=1; }
+          exit $fail
+
+      - name: Restart if a setting waits for it
+        if: inputs.action == 'restart'
+        env:
+          SERVER: ${{ steps.server.outputs.name }}
+        run: |
+          pending=$(az postgres flexible-server parameter show -g "$RG" -s "$SERVER" -n shared_preload_libraries --query isConfigPendingRestart -o tsv)
+          if [ "$pending" != true ]; then
+            echo "No setting waits for a restart; nothing to do."
+            exit 0
+          fi
+          echo "Restarting $SERVER"
+          az postgres flexible-server restart -g "$RG" -n "$SERVER"
+          az postgres flexible-server parameter show -g "$RG" -s "$SERVER" -n shared_preload_libraries -o table \
+            --query "{name:name, value:value, pendingRestart:isConfigPendingRestart}"
+
+      - name: Run the principals job
+        if: inputs.action == 'setup'
+        run: |
+          job="$BASE-knowledge-setup"
+          execution=$(az containerapp job start -g "$RG" -n "$job" --query name -o tsv)
+          echo "Started $execution"
+          # The job times out after 600 s (replicaTimeout); wait a little longer.
+          status=Running
+          for _ in $(seq 1 70); do
+            status=$(az containerapp job execution show -g "$RG" -n "$job" --job-execution-name "$execution" --query properties.status -o tsv)
+            case "$status" in Succeeded | Failed | Stopped | Degraded) break ;; esac
+            sleep 10
+          done
+          echo "Execution $execution: $status"
+
+          # The log comes from the job's log stream while its replica is kept, or else from Log Analytics,
+          # where records arrive after some minutes. Neither is documented for a finished job.
+          echo "== Log"
+          if ! az containerapp job logs show -g "$RG" -n "$job" --execution "$execution" --container setup --tail 300 --format text; then
+            workspace=$(az monitor log-analytics workspace list -g "$RG" --query "[0].customerId" -o tsv)
+            rows=""
+            for _ in $(seq 1 20); do
+              rows=$(az monitor log-analytics query -w "$workspace" --timespan PT2H -o tsv \
+                --analytics-query "ContainerAppConsoleLogs | where ContainerGroupName startswith '$execution' | order by TimeGenerated asc | project Log" 2>/dev/null || true)
+              [ -n "$rows" ] && break
+              sleep 30
+            done
+            if [ -n "$rows" ]; then
+              echo "$rows"
+            else
+              echo "::warning::No log found for $execution; see the job's execution history in the Azure portal."
+            fi
+          fi
+          [ "$status" = Succeeded ] || { echo "::error::The principals job ended $status"; exit 1; }
+
+      - name: Restore drill
+        if: inputs.action == 'restore-drill'
+        env:
+          SERVER: ${{ steps.server.outputs.name }}
+        run: |
+          drill="$BASE-knowledge-restore-drill"
+          restore_time=$(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Restoring $SERVER as of $restore_time to $drill"
+          start=$SECONDS
+          az postgres flexible-server restore -g "$RG" -n "$drill" --source-server "$SERVER" --restore-time "$restore_time" \
+            --vnet "$BASE-knowledge-vnet" --subnet postgres \
+            --private-dns-zone "$SERVER.private.postgres.database.azure.com" -o none
+          elapsed=$((SECONDS - start))
+          state=$(az postgres flexible-server show -g "$RG" -n "$drill" --query state -o tsv)
+          echo "Restore took ${elapsed} s ($((elapsed / 60)) min $((elapsed % 60)) s); $drill is $state" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete the restored server
+        if: always() && inputs.action == 'restore-drill'
+        run: |
+          drill="$BASE-knowledge-restore-drill"
+          if az postgres flexible-server show -g "$RG" -n "$drill" -o none 2>/dev/null; then
+            az postgres flexible-server delete -g "$RG" -n "$drill" --yes
+            echo "Deleted $drill"
+          fi

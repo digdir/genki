@@ -1,10 +1,12 @@
 import type { Principal, Usage } from '@genai/contracts';
 import {
-  databaseConnection,
-  readableTextExtensions,
-  rowMapping,
+  knowledgeSourceRefusal,
+  kudosNarrowing,
+  pipelineSpec,
+  type PipelineSpec,
   type SkipReason,
   type SkippedDocument,
+  type SourceEstimate,
 } from '@genai/ingest';
 import { nextRun, parseCron } from '@genai/jobs';
 import { z } from 'zod';
@@ -16,112 +18,17 @@ import {
   type ConfigEntryStore,
 } from './config-store.js';
 
+export {
+  pipelineSpec,
+  unboundedKudos,
+  unboundedKudosMessage,
+  type PipelineSpec,
+  type SourceEstimate,
+} from '@genai/ingest';
+
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
-const glob = z.string().min(1).max(500);
-
-const chunkStrategy = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('header-based'),
-    splitMaxLength: z.number().int().positive().optional(),
-    overlap: z.number().int().min(0).optional(),
-  }),
-  z.strictObject({
-    kind: z.literal('fixed-width'),
-    width: z.number().int().positive(),
-    overlap: z.number().int().min(0),
-  }),
-]);
-
-export const pipelineSpec = z.strictObject({
-  name: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  source: z.discriminatedUnion('kind', [
-    z.strictObject({
-      kind: z.literal('website'),
-      sitemap: z.url({ protocol: /^https$/ }),
-      include: z.array(glob).default([]),
-      exclude: z.array(glob).default([]),
-      baseUrl: z.url().optional(),
-    }),
-    z.strictObject({
-      kind: z.literal('folder'),
-      path: z.string().min(1),
-      include: z.array(glob).default(['**/*.md']),
-      exclude: z.array(glob).optional(),
-      baseUrl: z.url().optional(),
-      keepExtension: z.boolean().optional(),
-      titleFrom: z
-        .enum(['file-name', 'heading'])
-        .optional()
-        .describe('heading: the first # heading, or the top-level name: of a YAML file'),
-      extensions: z
-        .array(z.enum(readableTextExtensions))
-        .min(1)
-        .optional()
-        .describe('File types read as text; default .md, .txt, .html, .htm'),
-    }),
-    z.strictObject({
-      kind: z.literal('upload'),
-    }),
-    z.strictObject({
-      kind: z.literal('kudos'),
-      profile: z.enum(['prod', 'preprod']).default('prod'),
-      startingPage: z.number().int().positive().default(1),
-      types: z.array(z.string().min(1)).default([]),
-      since: z.iso.date().optional(),
-      orgs: z.array(z.string().min(1)).optional(),
-    }),
-    z.strictObject({
-      kind: z.literal('episerver'),
-      path: z.string().min(1),
-      language: z.string().min(1).default('no'),
-      pageTypes: z.array(z.string().min(1)).default([]),
-      offset: z.number().int().min(0).default(0),
-      limit: z.number().int().positive().optional(),
-      baseUrl: z.url().optional(),
-    }),
-    z.strictObject({
-      kind: z.literal('database'),
-      connection: databaseConnection,
-      mapping: rowMapping,
-    }),
-  ]),
-  chunking: z
-    .strictObject({
-      strategy: chunkStrategy.default({ kind: 'header-based' }),
-      minimumLength: z.number().int().min(0).default(200),
-      maximumLength: z.number().int().positive().default(4000),
-      metadataStyle: z.enum(['edn', 'json', 'none']).default('json'),
-    })
-    .prefault({}),
-  phrases: z
-    .strictObject({
-      model: z.string().min(1),
-      fallbackModel: z.string().min(1).optional(),
-      perChunk: z.number().int().min(1).max(20).default(5),
-    })
-    .optional(),
-  parallelism: z.number().int().min(1).max(16).default(2),
-  maxDocumentFailures: z.number().int().positive().max(100_000).default(10),
-  enabled: z.boolean().default(true),
-  schedule: z.enum(['none', 'daily', 'weekly']).default('none'),
-});
-
-export type PipelineSpec = z.infer<typeof pipelineSpec>;
 
 export const scheduleCron = { daily: '0 3 * * *', weekly: '0 3 * * 1' } as const;
-
-export const unboundedKudos = (spec: { source?: unknown }) => {
-  const source = (spec.source ?? {}) as { kind?: unknown; types?: unknown; since?: unknown };
-  return (
-    source.kind === 'kudos' &&
-    !(Array.isArray(source.types) && source.types.length > 0) &&
-    !source.since
-  );
-};
-
-export const unboundedKudosMessage =
-  'En innlesing fra Kudos må avgrenses med dokumenttyper eller en startdato, ellers leses hele arkivet inn.';
 
 export interface Pipeline {
   dataset: string;
@@ -154,10 +61,21 @@ export interface IngestionReport {
   skipped: number;
   skippedDocuments?: SkippedDocument[];
   failed: string[];
+  /** Documents whose jobs ended as dead letters, for a run that runs as jobs. */
+  failedDocuments?: number;
+  /** For a run on the knowledge database: what its listing found against its pipeline's records. */
+  new?: number;
+  changed?: number;
+  deleted?: number;
+  unchanged?: number;
+  /** Set when the build that attaches the run's standalone generation went as a `knowledge.build` job. */
+  buildSent?: number;
   generation?: string;
   promoted?: boolean;
   previous?: string;
   usage?: Record<string, Usage>;
+  /** Source-specific facts, such as how many rows a Parquet lookup matched. */
+  source?: Record<string, unknown>;
 }
 
 export interface IngestionBackend {
@@ -168,12 +86,6 @@ export interface IngestionBackend {
   unavailableFor?(target: IngestionTarget, pipeline?: Pipeline): string | undefined;
   run(job: IngestionJob, signal: AbortSignal): Promise<IngestionReport>;
   estimate?(pipeline: Pipeline): Promise<SourceEstimate | undefined>;
-}
-
-export interface SourceEstimate {
-  documents: number;
-  exact: boolean;
-  basis: { listed: number; sampled: number; matching: number };
 }
 
 export interface BackendStatus {
@@ -251,7 +163,8 @@ export class InMemoryIngestionBackend implements IngestionBackend {
   }
 }
 
-export type ExecutionStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Execution {
   id: string;
@@ -266,16 +179,76 @@ export interface Execution {
   report?: IngestionReport;
   error?: string;
   cancelledBy?: string;
+  /** Runs as knowledge jobs and ends with them, so the check for stopped runs leaves it alone. */
+  runsAsJobs?: boolean;
+  /** When the API admitted the run; only the API sets it (ADR 0042, "Jobs"). */
+  admittedAt?: string;
+  cancelRequestedAt?: string;
+  /** The generation a run of an engine switch writes into, and that switch (ADR 0025). */
+  generation?: string;
+  engineSwitch?: string;
+}
+
+export type JobRunResult =
+  { ok: true; value: Execution } | { ok: false; message: string; conflict?: boolean };
+
+/**
+ * Records of runs that run as jobs (ADR 0042): a run and its ingest job commit together, one run
+ * per pipeline is open and at most one waits as `queued`.
+ */
+export interface JobRunStore {
+  start(input: {
+    id: string;
+    dataset: string;
+    pipeline: string;
+    pipelineVersion: number;
+    backend: string;
+    startedBy: string;
+    startedAt: string;
+    admittedAt: string;
+    generation?: string;
+    engineSwitch?: string;
+  }): Promise<JobRunResult>;
+  cancel(input: {
+    dataset: string;
+    execution: string;
+    by: string;
+    at: string;
+  }): Promise<Execution | undefined>;
+  redrive(input: {
+    dataset: string;
+    pipeline: string;
+    execution: string;
+    by: string;
+    reason: string;
+    at: string;
+  }): Promise<JobRunResult>;
+}
+
+export interface JobRuns {
+  /** The datasets whose runs are jobs; #139 sets it to the datasets on `connection: knowledge`. */
+  runsAsJobs(dataset: string): boolean;
+  runs: JobRunStore;
+  /** Sends a `knowledge.drop` job for one generation on the knowledge server (ADR 0025). */
+  drop?(input: { tenant: string; dataset: string; generation: string }): Promise<void>;
 }
 
 export interface ExecutionStore {
   save(execution: Execution): Promise<void>;
   get(id: string): Promise<Execution | undefined>;
   list(dataset: string, pipeline: string): Promise<Execution[]>;
+  beat(execution: Execution, at: string): Promise<void>;
+  failStale(input: {
+    heartbeatBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }): Promise<number>;
 }
 
 export class InMemoryExecutionStore implements ExecutionStore {
   readonly #executions = new Map<string, Execution>();
+  readonly #heartbeats = new Map<string, string>();
 
   async save(execution: Execution) {
     this.#executions.set(execution.id, structuredClone(execution));
@@ -291,6 +264,34 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((e) => e.dataset === dataset && e.pipeline === pipeline)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
       .map((e) => structuredClone(e));
+  }
+
+  async beat(execution: Execution, at: string) {
+    if (this.#executions.get(execution.id)?.status === 'running')
+      this.#heartbeats.set(execution.id, at);
+  }
+
+  async failStale(input: {
+    heartbeatBefore: string;
+    except: string[];
+    endedAt: string;
+    error: string;
+  }) {
+    const stale = [...this.#executions.values()].filter(
+      (e) =>
+        e.status === 'running' &&
+        !e.runsAsJobs &&
+        (this.#heartbeats.get(e.id) ?? e.startedAt) < input.heartbeatBefore &&
+        !input.except.includes(e.id),
+    );
+    for (const e of stale)
+      this.#executions.set(e.id, {
+        ...e,
+        status: 'failed',
+        endedAt: input.endedAt,
+        error: input.error,
+      });
+    return stale.length;
   }
 }
 
@@ -321,6 +322,15 @@ export const ingestionLockedMessage =
 export const runLockedMessage = (dataset: string, execution: string) =>
   `the dataset ${dataset} is already being ingested by run ${execution}; wait for it to finish or cancel it`;
 
+export const staleRunMessage = 'the platform restarted while the run was going';
+
+export const switchHoldMessage = (dataset: string, engineSwitch: string) =>
+  `the dataset ${dataset} is being switched to another search engine (${engineSwitch}); its pipelines run again once the switch is ready, active or ended`;
+
+const runHeartbeatMs = 30_000;
+
+const staleRunAfterMs = 2 * 60_000;
+
 export const writerLockKeys = (target: IngestionTarget) => [
   `dataset:${target.dataset}`,
   ...Object.values(target.collections).map((c) => `collection:${target.endpoint}/${c}`),
@@ -342,6 +352,7 @@ export class IngestionService {
   readonly #serial = serialized();
   readonly #finished = new Set<(execution: Execution) => void>();
   readonly #running = new Map<string, RunningExecution>();
+  #held: (dataset: string) => Promise<string | undefined> = async () => undefined;
 
   constructor(
     private readonly options: {
@@ -351,9 +362,63 @@ export class IngestionService {
       now?: () => Date;
       newId?: () => string;
       admits?: (principal: Principal | undefined) => boolean;
+      jobs?: JobRuns;
       onRefused?: (message: string) => void;
+      onError?: (message: string) => void;
     },
   ) {}
+
+  /** An open engine switch holds every pipeline of its dataset while its own runs are open (ADR 0042). */
+  holdWith(held: (dataset: string) => Promise<string | undefined>) {
+    this.#held = held;
+  }
+
+  /**
+   * Starts a run of an engine switch: as jobs, into the switch's generation, admitted here like any
+   * run and never held by the switch itself (ADR 0025).
+   */
+  async startSwitchRun(input: {
+    pipeline: Pipeline;
+    generation: string;
+    engineSwitch: string;
+    by: string;
+    principal?: Principal;
+  }): Promise<JobRunResult> {
+    // A switch's runs are admitted like any run: in lockdown only a configured key starts them.
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; a run of engine switch ${input.engineSwitch} by ${input.by} did not start`,
+      );
+      return { ok: false, message: ingestionLockedMessage };
+    }
+    const jobs = this.options.jobs;
+    if (!jobs) return { ok: false, message: 'runs on the knowledge database need the job queue' };
+    const now = this.#now();
+    return jobs.runs.start({
+      id: this.options.newId?.() ?? crypto.randomUUID(),
+      dataset: input.pipeline.dataset,
+      pipeline: input.pipeline.id,
+      pipelineVersion: input.pipeline.version,
+      backend: 'knowledge-jobs',
+      startedBy: input.by,
+      startedAt: now,
+      admittedAt: now,
+      generation: input.generation,
+      engineSwitch: input.engineSwitch,
+    });
+  }
+
+  /** Sends the `knowledge.drop` job that removes one generation from the knowledge server. */
+  async dropGeneration(input: { tenant: string; dataset: string; generation: string }) {
+    const drop = this.options.jobs?.drop;
+    if (!drop)
+      throw new Error('dropping a generation on the knowledge database needs the job queue');
+    await drop(input);
+  }
+
+  execution(id: string) {
+    return this.options.executions.get(id);
+  }
 
   get backend() {
     return {
@@ -367,10 +432,23 @@ export class IngestionService {
 
   availability(target: IngestionTarget, pipeline?: Pipeline): BackendStatus {
     const backend = this.options.backend;
+    // The worker writes a dataset on the knowledge database, as jobs: the API only starts the run.
+    if (this.options.jobs?.runsAsJobs(target.dataset))
+      return { name: 'knowledge-jobs', available: true };
     const reason = backend.available
       ? backend.unavailableFor?.(target, pipeline)
       : (backend.unavailableReason ?? 'ingestion is not available');
     return { name: backend.name, available: reason === undefined, ...(reason ? { reason } : {}) };
+  }
+
+  async failStaleRuns(): Promise<number> {
+    const now = this.options.now?.() ?? new Date();
+    return this.options.executions.failStale({
+      heartbeatBefore: new Date(now.getTime() - staleRunAfterMs).toISOString(),
+      except: [...this.#running.keys()],
+      endedAt: now.toISOString(),
+      error: staleRunMessage,
+    });
   }
 
   #now() {
@@ -417,6 +495,12 @@ export class IngestionService {
             message: i.message,
           })),
         };
+      const refused =
+        (await this.#kudosNarrowing(input, parsed.data)) ??
+        (this.options.jobs?.runsAsJobs(input.dataset)
+          ? await this.#knowledgeRefusal(input, parsed.data)
+          : undefined);
+      if (refused) return { ok: false, errors: [refused] };
       try {
         const saved = await appendVersion(this.options.store, {
           kind,
@@ -440,6 +524,69 @@ export class IngestionService {
         throw error;
       }
     });
+  }
+
+  /**
+   * A Kudos slice only grows, whatever engine its dataset is on: an engine switch fills the knowledge
+   * database while the dataset is still on its old engine, and two complete listings delete what a
+   * narrower slice leaves out. Compared with the last version saved, deleted or not.
+   */
+  async #kudosNarrowing(
+    input: { scope: string; dataset: string; id: string },
+    spec: PipelineSpec,
+  ): Promise<{ path: string; message: string } | undefined> {
+    if (spec.source.kind !== 'kudos') return undefined;
+    const previous = (
+      await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
+    ).at(-1);
+    const before = previous ? pipelineSpec.safeParse(previous.spec) : undefined;
+    return before?.success && before.data.source.kind === 'kudos'
+      ? kudosNarrowing(before.data.source, spec.source)
+      : undefined;
+  }
+
+  /**
+   * What a dataset on the knowledge database does not take yet (issue 139): a second pipeline, until
+   * co-owners are built; search phrases, until recipes hold them; a source kind no dataset there
+   * needs yet; and a changed chunking, which its generation keeps from its first run.
+   */
+  async #knowledgeRefusal(
+    input: { scope: string; dataset: string; id: string },
+    spec: PipelineSpec,
+  ): Promise<{ path: string; message: string } | undefined> {
+    const source = knowledgeSourceRefusal(spec.source.kind);
+    if (source) return { path: 'spec.source.kind', message: source };
+    if (spec.phrases)
+      return {
+        path: 'spec.phrases',
+        message:
+          'search phrases cannot fill a dataset on the knowledge database until recipes hold them',
+      };
+    const others = (await this.options.store.latest({ kind, scope: input.scope })).filter(
+      (e) =>
+        !e.deleted &&
+        e.id.startsWith(`${input.dataset}#`) &&
+        e.id !== `${input.dataset}#${input.id}`,
+    );
+    if (others.length > 0)
+      return {
+        path: 'id',
+        message: `a dataset on the knowledge database is filled by one pipeline until co-owners are built; it has ${others
+          .map((e) => e.id.slice(input.dataset.length + 1))
+          .join(', ')}`,
+      };
+    // The last version saved, deleted or not: the generation keeps the chunking of the pipeline's first run.
+    const previous = (
+      await this.options.store.history(kind, input.scope, `${input.dataset}#${input.id}`)
+    ).at(-1);
+    const before = previous ? pipelineSpec.safeParse(previous.spec) : undefined;
+    if (before?.success && JSON.stringify(before.data.chunking) !== JSON.stringify(spec.chunking))
+      return {
+        path: 'spec.chunking',
+        message:
+          "chunking changes through a new generation, which is not built yet; the dataset's generation keeps the chunking it was filled with",
+      };
+    return undefined;
   }
 
   async remove(input: {
@@ -494,6 +641,13 @@ export class IngestionService {
       );
       return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
     }
+    const holder = await this.#held(input.pipeline.dataset);
+    if (holder)
+      return {
+        ok: false,
+        conflict: true,
+        errors: [{ path: 'dataset', message: switchHoldMessage(input.pipeline.dataset, holder) }],
+      };
     const backend = this.options.backend;
     const status = this.availability(input.target, input.pipeline);
     if (!status.available)
@@ -503,13 +657,34 @@ export class IngestionService {
       };
     if (!input.pipeline.spec.enabled)
       return { ok: false, errors: [{ path: 'enabled', message: 'the pipeline is turned off' }] };
-    const holder = this.#holder(input.target);
-    if (holder)
+    const jobs = this.options.jobs;
+    if (jobs?.runsAsJobs(input.pipeline.dataset)) {
+      const now = this.#now();
+      const started = await jobs.runs.start({
+        id: this.options.newId?.() ?? crypto.randomUUID(),
+        dataset: input.pipeline.dataset,
+        pipeline: input.pipeline.id,
+        pipelineVersion: input.pipeline.version,
+        backend: backend.name,
+        startedBy: input.by,
+        startedAt: now,
+        admittedAt: now,
+      });
+      if (!started.ok)
+        return {
+          ok: false,
+          ...(started.conflict ? { conflict: true } : {}),
+          errors: [{ path: 'pipeline', message: started.message }],
+        };
+      return { ok: true, value: started.value, done: Promise.resolve(started.value) };
+    }
+    const locked = this.#holder(input.target);
+    if (locked)
       return {
         ok: false,
         conflict: true,
         errors: [
-          { path: 'dataset', message: runLockedMessage(input.target.dataset, holder.execution.id) },
+          { path: 'dataset', message: runLockedMessage(input.target.dataset, locked.execution.id) },
         ],
       };
     const execution: Execution = {
@@ -529,6 +704,10 @@ export class IngestionService {
       keys: writerLockKeys(input.target),
     };
     this.#running.set(execution.id, running);
+    const beat = setInterval(() => {
+      void this.options.executions.beat(execution, this.#now()).catch(() => undefined);
+    }, runHeartbeatMs);
+    beat.unref?.();
     const done = this.options.executions
       .save(execution)
       .then(() =>
@@ -571,7 +750,14 @@ export class IngestionService {
       .then(async (finished) => {
         try {
           await this.options.executions.save(finished);
+        } catch (error) {
+          this.options.onError?.(
+            `ingestion ${execution.id} ended as ${finished.status} but was not saved: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         } finally {
+          clearInterval(beat);
           this.#running.delete(execution.id);
         }
         for (const listener of this.#finished) listener(finished);
@@ -580,20 +766,69 @@ export class IngestionService {
     return { ok: true, value: execution, done };
   }
 
-  cancel(input: {
+  async cancel(input: {
     dataset: string;
     execution: string;
     by: string;
-  }): { ok: true; value: Execution } | { ok: false; errors: { path: string; message: string }[] } {
+  }): Promise<
+    { ok: true; value: Execution } | { ok: false; errors: { path: string; message: string }[] }
+  > {
     const running = this.#running.get(input.execution);
-    if (!running || running.execution.dataset !== input.dataset)
+    if (running && running.execution.dataset === input.dataset) {
+      running.cancelledBy = input.by;
+      running.controller.abort(new Error(`cancelled by ${input.by}`));
+      return { ok: true, value: running.execution };
+    }
+    const marked = this.options.jobs
+      ? await this.options.jobs.runs.cancel({ ...input, at: this.#now() })
+      : undefined;
+    return marked
+      ? { ok: true, value: marked }
+      : {
+          ok: false,
+          errors: [{ path: 'execution', message: `no running ingestion ${input.execution}` }],
+        };
+  }
+
+  /** Reopens a run that runs as jobs and has the worker send its dead letters back (ADR 0042). */
+  async redrive(input: {
+    dataset: string;
+    pipeline: string;
+    execution: string;
+    by: string;
+    reason: string;
+    principal?: Principal;
+  }): Promise<
+    | { ok: true; value: Execution }
+    | { ok: false; errors: { path: string; message: string }[]; conflict?: boolean }
+  > {
+    if (this.options.admits && !this.options.admits(input.principal)) {
+      this.options.onRefused?.(
+        `${ingestionLockedMessage}; sending back ${input.execution} by ${input.by} was refused`,
+      );
+      return { ok: false, errors: [{ path: 'principal', message: ingestionLockedMessage }] };
+    }
+    const jobs = this.options.jobs;
+    if (!jobs?.runsAsJobs(input.dataset))
       return {
         ok: false,
-        errors: [{ path: 'execution', message: `no running ingestion ${input.execution}` }],
+        errors: [{ path: 'execution', message: 'only a run that runs as jobs can be sent back' }],
       };
-    running.cancelledBy = input.by;
-    running.controller.abort(new Error(`cancelled by ${input.by}`));
-    return { ok: true, value: running.execution };
+    const sent = await jobs.runs.redrive({
+      dataset: input.dataset,
+      pipeline: input.pipeline,
+      execution: input.execution,
+      by: input.by,
+      reason: input.reason,
+      at: this.#now(),
+    });
+    return sent.ok
+      ? sent
+      : {
+          ok: false,
+          ...(sent.conflict ? { conflict: true } : {}),
+          errors: [{ path: 'execution', message: sent.message }],
+        };
   }
 
   onFinished(listener: (execution: Execution) => void) {

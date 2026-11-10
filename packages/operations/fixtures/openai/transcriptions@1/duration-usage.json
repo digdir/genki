@@ -1,0 +1,48 @@
+{
+  "source": "the OpenAI API reference (openai/openai-openapi, openapi.yaml): Create transcription and TranscriptTextUsageDuration ({ type: duration, seconds }), as the diarization example reports it; the audio is a synthetic silent WAV",
+  "deployment": "gpt-transcribe",
+  "input": {
+    "audio": {
+      "mediaType": "audio/mpeg",
+      "data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+    },
+    "prompt": "Et møte om budsjett"
+  },
+  "request": {
+    "method": "POST",
+    "path": "/audio/transcriptions",
+    "body": {
+      "model": "gpt-transcribe",
+      "file": {
+        "mediaType": "audio/mpeg",
+        "bytes": 44,
+        "sha256": "4f8734c5e13ac599e168cf247a51c1dd0758537ce00bf16d7fed1a3d14d07041"
+      },
+      "prompt": "Et møte om budsjett",
+      "response_format": "json"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "text": "Hi, I need help with diarization.",
+      "usage": {
+        "type": "duration",
+        "seconds": 27
+      },
+      "logprobs": []
+    }
+  },
+  "result": {
+    "text": "Hi, I need help with diarization.",
+    "usage": {
+      "audioSeconds": 27,
+      "requests": 1
+    }
+  },
+  "usage": {
+    "audioSeconds": 27,
+    "requests": 1
+  },
+  "dropped": 1
+}

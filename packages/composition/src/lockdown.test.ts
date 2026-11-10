@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '@genai/contracts';
 import {
   configuredCredentialScope,
+  lockdownUserScope,
+  isAdmittedEntraLogin,
+  isTrustedEntraLogin,
   mayUseModels,
   readOnlyInLockdown,
   trustedEntraFrom,
@@ -15,8 +18,15 @@ describe('Entra logins in lockdown', () => {
   it('trusts Entra groups only in lockdown and only when groups are configured', () => {
     const locked = { GENAI_LOCKDOWN: 'true', LOCKDOWN_ENTRA_GROUPS: ` ${group} ` };
 
-    expect(trustedEntraFrom(locked, '312521172', resource)).toEqual({
+    expect(
+      trustedEntraFrom(
+        { ...locked, OPERATOR_CLIENT_IDS: ' console , portal ' },
+        '312521172',
+        resource,
+      ),
+    ).toEqual({
       groups: [group],
+      clientIds: ['console', 'portal'],
       tenant: '312521172',
       resource,
     });
@@ -51,5 +61,44 @@ describe('Entra logins in lockdown', () => {
       true,
     ]);
     expect([entra, testId, key].map(readOnlyInLockdown)).toEqual([false, true, false]);
+  });
+
+  it('reads LOCKDOWN_USER_GROUPS alongside the operator groups, also without them', () => {
+    const userGroup = '11111111-2222-4333-8444-555555555555';
+    const locked = { GENAI_LOCKDOWN: 'true', OPERATOR_CLIENT_IDS: 'portal' };
+
+    expect(
+      trustedEntraFrom({ ...locked, LOCKDOWN_USER_GROUPS: ` ${userGroup} ` }, '1', resource),
+    ).toEqual({
+      groups: [],
+      userGroups: [userGroup],
+      clientIds: ['portal'],
+      tenant: '1',
+      resource,
+    });
+    expect(trustedEntraFrom({ LOCKDOWN_USER_GROUPS: userGroup }, '1', resource)).toBeUndefined();
+  });
+
+  it('admits a lockdown user like a trusted Entra login, but only as a person', () => {
+    const user: Principal = {
+      kind: 'employee',
+      issuer: 'test',
+      subject: 'bruker',
+      scopes: [lockdownUserScope],
+    };
+    const key: Principal = {
+      kind: 'agency-system',
+      issuer: 'test',
+      subject: 'key',
+      scopes: [lockdownUserScope],
+    };
+
+    expect([isAdmittedEntraLogin(user), mayUseModels(user), readOnlyInLockdown(user)]).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    expect(isTrustedEntraLogin(user)).toBe(false);
+    expect([isAdmittedEntraLogin(key), mayUseModels(key)]).toEqual([false, false]);
   });
 });

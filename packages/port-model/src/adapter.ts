@@ -1,11 +1,18 @@
-import type { Credential } from '@genai/kernel';
+import type { PriceUnit } from '@genai/contracts';
+import type { Credential, Shape } from '@genai/kernel';
 import type { z } from 'zod';
-import { ModelError, type ChatChunk, type ChatRequest, type ChatResult } from './port.js';
+import type { DecisionRequest, DecisionResult } from './decision.js';
+import {
+  ModelError,
+  type ChatChunk,
+  type ChatRequest,
+  type ChatResult,
+  type ModelErrorCode,
+} from './port.js';
 
-export interface EndpointConfig<O = unknown> {
+export interface EndpointConfig {
   baseURL: string;
   credential: Credential;
-  options: O;
   maxRetries: number;
   timeoutMs: number;
   fetch?: typeof fetch;
@@ -13,23 +20,46 @@ export interface EndpointConfig<O = unknown> {
 
 export interface DeploymentConfig<O = unknown> {
   deployment: string;
+  api: string;
   options: O;
 }
 
+export interface ModelTransport {
+  api: string;
+  source: 'configured' | 'learned' | 'default';
+}
+
 export interface ModelConnection<M = unknown> {
+  describe?(model: DeploymentConfig<M>): ModelTransport;
   chat(model: DeploymentConfig<M>, request: ChatRequest, signal: AbortSignal): Promise<ChatResult>;
   chatStream(
     model: DeploymentConfig<M>,
     request: ChatRequest,
     signal: AbortSignal,
   ): AsyncIterable<ChatChunk>;
+  decide?(
+    model: DeploymentConfig<M>,
+    request: DecisionRequest,
+    signal: AbortSignal,
+  ): Promise<DecisionResult>;
 }
 
-export interface ModelAdapter<E = unknown, M = unknown> {
-  protocol: string;
-  endpointOptions: z.ZodType<E>;
-  modelOptions: z.ZodType<M>;
-  connect(endpoint: EndpointConfig<E>): ModelConnection<M>;
+/** One wire API an adapter implements in code, registered under its API id (ADR 0048). */
+export interface BuiltInApi {
+  id: string;
+  kind: string;
+  family: string;
+  modelOptions: z.ZodObject;
+  units?: PriceUnit[];
+  /** The API a model binds for this kind when it names none and its connection offers only this family. */
+  default?: boolean;
+}
+
+export interface ModelAdapter<M = unknown> {
+  apis: BuiltInApi[];
+  /** The closed shape of the replay state this adapter puts in `continuation`. */
+  continuation?: Shape;
+  connect(endpoint: EndpointConfig): ModelConnection<M>;
 }
 
 export const errorFromStatus = (
@@ -47,7 +77,25 @@ export const errorFromStatus = (
   return new ModelError('unavailable', 'the model is unavailable');
 };
 
-export { authenticatedFetch, authHeaders, type Credential } from '@genai/kernel';
+const errorCodeOfKind: Record<string, ModelErrorCode> = {
+  invalid: 'bad_request',
+  unavailable: 'unavailable',
+  'rate-limited': 'rate_limited',
+  refused: 'refused',
+  processor: 'refused',
+};
+
+/** The model error for a descriptor call: the error kind the descriptor maps, else the status. */
+export const describedError = (
+  status: number | undefined,
+  message: string,
+  kind?: string,
+): ModelError => {
+  const code = kind ? errorCodeOfKind[kind] : undefined;
+  return code ? new ModelError(code, message) : errorFromStatus(status, message);
+};
+
+export { authenticatedFetch, authHeaders, shape, type Credential } from '@genai/kernel';
 
 export interface DiscoveredDeployment {
   deployment: string;

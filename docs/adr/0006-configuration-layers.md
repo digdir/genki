@@ -9,6 +9,8 @@ Every setting is defined once, with a schema, a default, a category, a sensitivi
 - **Dataset settings** (source, chunking, embedding, collection naming) are set only by the dataset's owner. A tenant that uses a shared dataset can never override them, and the owner's settings never override the consuming tenant's service.
 - **Service settings** resolve along the consumer path: platform default, then tenant, then service version, then call. The later layer wins.
 
+The resolver supports the dataset axis, but no registered setting uses it yet: source, chunking, embedding and collection naming live in the dataset's and pipeline's own definitions, owned by the dataset's tenant.
+
 Rules:
 
 - Platform locks and policy rules are ceilings that no lower layer can pass. A locked setting shows why it is locked.

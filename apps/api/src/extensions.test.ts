@@ -14,10 +14,12 @@ import { KernelError, type Kernel } from '@genai/kernel';
 import { InMemoryConnections } from '@genai/providers-mcp-client';
 import type { Admin } from './admin.js';
 import {
+  adminExtensions,
   InMemoryTenantSecrets,
   mountExtensions,
   TenantDirectory,
   TenantSecretVault,
+  type ToolAdminDeps,
 } from './extensions.js';
 import { digdir, other } from './testkit.js';
 
@@ -574,6 +576,27 @@ describe('lists and statuses', () => {
       'testSet',
       'evaluators',
       'provenance',
+    ]);
+  });
+});
+
+describe('adding an organisation', () => {
+  it('renames an organisation that is added again, and keeps its status', async () => {
+    const directory = new TenantDirectory();
+    await directory.add({ orgNumber: '312521172', name: '312521172', status: 'active' }, 'seed');
+    const operator: Principal = { kind: 'operator', issuer: 'test', subject: 'drift' };
+    const create = adminExtensions({ tools: {} as ToolAdminDeps, directory })[
+      'platform.tenant.create'
+    ];
+
+    const outcome = await create?.(
+      { tenant: '312521172', orgNumber: '312521172', name: 'Testetaten', reason: 'Navnet manglet' },
+      operator,
+    );
+
+    expect(outcome).toMatchObject({ ok: true });
+    expect(await directory.list()).toEqual([
+      { orgNumber: '312521172', name: 'Testetaten', status: 'active' },
     ]);
   });
 });

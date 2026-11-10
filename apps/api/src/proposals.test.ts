@@ -6,12 +6,14 @@ import { InMemoryEvalRunStore } from '@genai/eval';
 import {
   InMemoryConnections,
   McpToolSource,
+  TenantSecrets,
   type EgressRequest,
   type EgressResponse,
   type RemoteTool,
 } from '@genai/providers-mcp-client';
 import type { AssistantProposal } from '@genai/strategy-builder';
 import { tenantAccess } from './access.js';
+import { actorNames } from './actor-names.js';
 import { createAdmin } from './admin.js';
 import { createBuildingBlocksModule } from './building-blocks.js';
 import type { CatalogRegistry } from './catalog-registry.js';
@@ -21,6 +23,7 @@ import type { ModuleDeps } from './platform-modules.js';
 import {
   connectorMappingKind,
   createProposalsModule,
+  proposalKind,
   storeProposal,
   type CatalogProposal,
   type OperatorProposal,
@@ -137,7 +140,12 @@ const setup = async () => {
     tenants: async () => [{ orgNumber: digdir, name: 'Digitaliseringsdirektoratet' }],
     extensions: {
       ...adminExtensions({
-        tools: { connections, source, onToolsChanged: async () => undefined },
+        tools: {
+          connections,
+          source,
+          secrets: new TenantSecrets({ resolve: async () => 'secret' }),
+          onToolsChanged: async () => undefined,
+        },
         directory: new TenantDirectory(),
       }),
       ...blocks.handlers,
@@ -303,6 +311,43 @@ describe('assistant proposals', () => {
       ask: 'Kan tjenesten lese Excel-arket direkte?',
       detail: proposal(4).detail,
     });
+  });
+
+  it('the operator sees who asked the assistant, by the name from their login', async () => {
+    const { send, admin } = await setup();
+    const stored = await storeProposal(
+      admin,
+      { ...(people.kari as Principal), name: 'Kari Nordmann' },
+      digdir,
+      { id: 'soknadsuttrekk', name: 'Søknadsuttrekk' },
+      proposal(4),
+    );
+
+    const listed = await json<{ data: OperatorProposal[] }>(
+      await send('/operator/proposals?level=4', 'operator'),
+    );
+
+    expect(listed.data.find((p) => p.id === stored?.id)).toMatchObject({
+      requestedBy: 'employee:test:kari',
+      requestedByName: 'Kari Nordmann',
+    });
+  });
+
+  it('names who asked for an older proposal from the person who first saved it', async () => {
+    const { send, create, configEntries } = await setup();
+    const stored = await create(4);
+    const [first] = await configEntries.history(proposalKind, digdir, stored.id);
+    if (!first) throw new Error('not stored');
+    const older = { ...(first.spec as CatalogProposal) };
+    delete older.requestedBy;
+    await configEntries.append({ ...first, version: first.version + 1, spec: older });
+    await actorNames(configEntries).remember(people.kari as Principal, 'Kari Nordmann');
+
+    const listed = await json<{ data: OperatorProposal[] }>(
+      await send('/operator/proposals?level=4', 'operator'),
+    );
+
+    expect(listed.data.find((p) => p.id === stored.id)?.requestedByName).toBe('Kari Nordmann');
   });
 
   it('a level-4 proposal is stored with status sent and a case id and the operator can move it to planned', async () => {

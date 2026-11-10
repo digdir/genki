@@ -24,13 +24,24 @@ module.exports = {
       },
     },
     {
+      name: 'no-code-execution-in-the-platform',
+      comment:
+        'ADR 0043: code a model, user or tenant writes runs in agentctl, never in the platform; the one exception is the sandboxed WebAssembly module of ADR 0049',
+      severity: 'error',
+      from: {
+        path: '^(apps/(api|worker)|packages)/',
+        pathNot: ['\\.test(-utils)?\\.ts$', '^packages/operations/src/module\\.ts$'],
+      },
+      to: { path: '^(node:)?(child_process|vm|worker_threads)$' },
+    },
+    {
       name: 'vendor-sdks-only-in-providers',
       comment:
         'model, search, database and document library clients may only be imported by provider packages',
       severity: 'error',
       from: { pathNot: '^packages/providers-' },
       to: {
-        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth)/',
+        path: 'node_modules/(openai|@anthropic-ai|typesense|pg|pg-boss|postgres|drizzle-orm|@azure|pdfjs-dist|mammoth|hyparquet|hyparquet-compressors)/',
       },
     },
     {
@@ -49,14 +60,15 @@ module.exports = {
         ],
       },
       to: {
-        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector)/',
+        path: '^packages/providers-(openai|anthropic|typesense|typesense-writer|colbert|langfuse|pgvector|pgboss)/',
       },
     },
     {
       name: 'not-unresolvable',
+      comment: 'Vite query suffixes such as ?inline are resolved by the bundler',
       severity: 'error',
       from: {},
-      to: { couldNotResolve: true },
+      to: { couldNotResolve: true, pathNot: '\\?inline$' },
     },
     {
       name: 'only-apps-compose',

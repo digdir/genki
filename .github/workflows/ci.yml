@@ -2,6 +2,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
   workflow_call:
@@ -14,23 +15,47 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      static: ${{ steps.scope.outputs.static }}
+      tests: ${{ steps.scope.outputs.tests }}
+      size: ${{ steps.scope.outputs.size }}
+      image: ${{ steps.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+        run: node scripts/ci-scope.ts $BASE
+
   static:
+    needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
       - run: npm run format:check
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run boundaries
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run lint
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run typecheck
+      - if: needs.scope.outputs.static == 'true'
+        run: npm run boundaries
 
   test:
+    needs: scope
+    if: needs.scope.outputs.tests != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -38,30 +63,58 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ needs.scope.outputs.tests == 'changed' && 0 || 1 }}
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --no-audit --no-fund
-      - run: npx vitest run --shard=${{ matrix.shard }}/4
+      - run: npx vitest run --shard=${{ matrix.shard }}/4 --passWithNoTests ${CHANGED:+--changed "$CHANGED"}
         env:
           TESTCONTAINERS_RYUK_DISABLED: 'false'
+          DEBUG_PRINT_LIMIT: '200000'
+          CHANGED: ${{ needs.scope.outputs.tests == 'changed' && (github.event.pull_request.base.sha || github.event.merge_group.base_sha) || '' }}
+
+  size:
+    needs: scope
+    if: needs.scope.outputs.size == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - run: npm run size
 
   check:
-    needs: [static, test]
+    needs: [scope, static, test, size]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: test "${{ needs.static.result }}" = success && test "${{ needs.test.result }}" = success
+      - env:
+          SCOPE: ${{ needs.scope.result }}
+          STATIC: ${{ needs.static.result }}
+          TEST: ${{ needs.test.result }}
+          TESTS_IN_SCOPE: ${{ needs.scope.outputs.tests != 'none' }}
+          SIZE: ${{ needs.size.result }}
+          SIZE_IN_SCOPE: ${{ needs.scope.outputs.size }}
+        run: |
+          passed() { [ "$1" = success ] || { [ "$1" = skipped ] && [ "$2" = false ]; }; }
+          test "$SCOPE" = success && test "$STATIC" = success && passed "$TEST" "$TESTS_IN_SCOPE" && passed "$SIZE" "$SIZE_IN_SCOPE"
 
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: gitleaks
@@ -70,26 +123,29 @@ jobs:
           git /repo --redact --no-banner --exit-code 1
 
   image:
+    needs: scope
+    if: needs.scope.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+      - run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: api
-          push: false
-          load: true
+          outputs: type=docker,oci-mediatypes=true,rewrite-timestamp=true
           tags: genai-api:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: apps
-          push: false
-          load: true
+          outputs: type=docker,oci-mediatypes=true,rewrite-timestamp=true
           tags: genai-apps:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

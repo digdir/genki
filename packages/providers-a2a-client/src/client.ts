@@ -123,7 +123,13 @@ export class A2aClient {
         headers: {
           accept: 'application/json',
           'a2a-version': clientA2aVersion,
-          ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+          ...(await authHeaders(
+            this.connection,
+            this.connection.endpoint,
+            this.guard,
+            this.secrets,
+            signal,
+          )),
         },
         ...this.#limits(),
       },
@@ -157,7 +163,7 @@ export class A2aClient {
           'content-type': 'application/json',
           accept: 'application/json',
           'a2a-version': clientA2aVersion,
-          ...(await authHeaders(this.connection, this.guard, this.secrets, signal)),
+          ...(await authHeaders(this.connection, target.url, this.guard, this.secrets, signal)),
         },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
         ...this.#limits(),

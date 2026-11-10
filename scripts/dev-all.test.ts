@@ -15,6 +15,8 @@ import {
 } from './dev-all.ts';
 
 const portOf = (name: string) => devProcesses({}).find((p) => p.name === name)?.port;
+const apiEnv = (env: Record<string, string>) =>
+  devProcesses(env).find((p) => p.name === 'api')?.env;
 
 describe('dev:all', () => {
   it('runs each app on the port its vite config and OIDC client expect', () => {
@@ -41,11 +43,37 @@ describe('dev:all', () => {
     expect(localModelPort('not a url')).toBeUndefined();
   });
 
+  it('passes LOCAL_MODEL_RESPONSES from .env.local to the local test model', () => {
+    expect(
+      devProcesses({
+        LOCAL_MODEL_URL: 'http://127.0.0.1:8095/v1',
+        LOCAL_MODEL_RESPONSES: '/tmp/answers',
+      }).find((p) => p.name === 'model')?.env,
+    ).toEqual({ LOCAL_MODEL_PORT: '8095', LOCAL_MODEL_RESPONSES: '/tmp/answers' });
+  });
+
   it('starts the API in dev mode unless GENAI_DEV_MODE is set', () => {
-    const api = (env: Record<string, string>) =>
-      devProcesses(env).find((p) => p.name === 'api')?.env;
-    expect(api({})).toEqual({ GENAI_DEV_MODE: 'true' });
-    expect(api({ GENAI_DEV_MODE: 'false' })).toEqual({});
+    expect(apiEnv({})).toMatchObject({ GENAI_DEV_MODE: 'true' });
+    expect(apiEnv({ GENAI_DEV_MODE: 'false' })).toEqual({});
+  });
+
+  it('runs the API as the test tier in dev mode unless GENAI_ENV is set', () => {
+    expect(apiEnv({})).toMatchObject({ GENAI_ENV: 'test' });
+    expect(apiEnv({ GENAI_DEV_MODE: 'true' })).toMatchObject({ GENAI_ENV: 'test' });
+    expect(apiEnv({ GENAI_ENV: 'local' })).not.toHaveProperty('GENAI_ENV');
+  });
+
+  it('gives the mock persons their mock rights in dev mode, even when ALTINN_PDP_URL is set', () => {
+    expect(apiEnv({ ALTINN_PDP_URL: 'https://platform.tt02.altinn.no' })).toMatchObject({
+      GENAI_MOCK_RIGHTS: 'true',
+    });
+  });
+
+  it('asks the real Altinn PDP when GENAI_MOCK_RIGHTS=false or the login is real Ansattporten', () => {
+    expect(apiEnv({ GENAI_MOCK_RIGHTS: 'false' })).not.toHaveProperty('GENAI_MOCK_RIGHTS');
+    expect(apiEnv({ ANSATTPORTEN_ISSUER: 'https://test.ansattporten.no' })).not.toHaveProperty(
+      'GENAI_MOCK_RIGHTS',
+    );
   });
 
   it('points the workspace portal link at the dev:all portal', () => {
@@ -69,7 +97,7 @@ describe('dev:all', () => {
       ['console', 8102],
       ['workspace', 8103],
     ]);
-    expect(byName.api?.env).toEqual({ GENAI_DEV_MODE: 'true', PORT: '8100' });
+    expect(byName.api?.env).toMatchObject({ GENAI_DEV_MODE: 'true', PORT: '8100' });
     expect(byName.console?.env).toEqual({
       GENAI_API_PORT: '8100',
       VITE_PUBLIC_API_BASE: 'http://localhost:8100',
@@ -162,5 +190,32 @@ describe('dev:all', () => {
     expect(await run.exited).toBe(3);
     expect(lines.join('')).toContain('dies  | stopped (exit 3), stopping the rest');
     expect(pids.map(alive)).toEqual([false, false]);
+  });
+
+  it('stops the rest when a command cannot start', async () => {
+    const lines: string[] = [];
+    const run = runAll(
+      [forever('stays'), { name: 'gone', port: 0, command: 'no-such-command-genki', args: [] }],
+      { cwd: repoRoot, colour: false, write: (t) => lines.push(t) },
+    );
+    const pids = run.pids();
+    expect(await run.exited).toBe(1);
+    expect(lines.join('')).toContain('gone  | could not start');
+    expect(alive(pids[0])).toBe(false);
+  });
+
+  it('stops the processes a child started, as npm starts the servers', async () => {
+    const lines: string[] = [];
+    const grandchild = `require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }).pid`;
+    const run = runAll([forever('parent', `console.log('child ' + ${grandchild});`)], {
+      cwd: repoRoot,
+      colour: false,
+      write: (t) => lines.push(t),
+    });
+    await vi.waitFor(() => expect(lines.join('')).toMatch(/child \d+/));
+    const pid = Number(/child (\d+)/.exec(lines.join(''))?.[1]);
+    run.stop(0);
+    await run.exited;
+    await vi.waitFor(() => expect(alive(pid)).toBe(false));
   });
 });

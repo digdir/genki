@@ -2,8 +2,10 @@ import type { Principal, Ref, Task, TaskStatus } from '@genai/contracts';
 import {
   KernelError,
   type ContentScope,
+  type ErasureReason,
   type StateStore,
   type StoredTask,
+  type TaskErasure,
   type TaskStore,
 } from '@genai/kernel';
 import type { Pool } from 'pg';
@@ -109,6 +111,28 @@ export class PostgresTaskStore implements TaskStore {
     return Promise.all(found.rows.map(async (row) => (await this.#decode(row)).task));
   }
 
+  async erasures(tenant: string, tasks: string[]): Promise<TaskErasure[]> {
+    if (tasks.length === 0) return [];
+    const found = await this.pool.query<{
+      id: string;
+      scope: string;
+      reason: ErasureReason | null;
+      erased_at: Date | null;
+    }>(
+      `select t.id, t.scope, e.reason, e.erased_at from tasks t
+       left join erased_scopes e on e.tenant = t.tenant and e.scope = t.scope
+       where t.tenant = $1 and t.id = any($2) and (e.scope is not null or t.body is null)`,
+      [tenant, tasks],
+    );
+    return found.rows.map((row) => ({
+      task: row.id,
+      reason:
+        row.reason ??
+        (row.erased_at === null || row.scope.startsWith('["task",') ? 'retention' : 'erased'),
+      ...(row.erased_at ? { at: row.erased_at.toISOString() } : {}),
+    }));
+  }
+
   async list(query: TaskQuery = {}): Promise<TaskSummary[]> {
     const status = query.status === undefined ? null : [query.status].flat();
     const found = await this.pool.query<{
@@ -130,6 +154,34 @@ export class PostgresTaskStore implements TaskStore {
       createdAt: row.created_at.toISOString(),
       ...(row.ended_at === null ? {} : { endedAt: row.ended_at.toISOString() }),
     }));
+  }
+
+  async envelopes(query: { tenant: string; since?: string; limit?: number }): Promise<Task[]> {
+    const found = await this.pool.query<{ envelope: Task }>(
+      `select envelope from tasks
+       where tenant = $1 and ($2::timestamptz is null or created_at >= $2)
+       order by created_at desc limit $3`,
+      [query.tenant, query.since ?? null, query.limit ?? 1000],
+    );
+    return found.rows.map((row) => row.envelope);
+  }
+
+  async tokensUsed(query: {
+    tenant: string;
+    since: string;
+    excludeCapabilityPrefix?: string;
+  }): Promise<number> {
+    const found = await this.pool.query<{ tokens: string }>(
+      `select coalesce(sum(
+         coalesce((envelope->'usage'->>'inputTokens')::numeric, 0) +
+         coalesce((envelope->'usage'->>'outputTokens')::numeric, 0)), 0) as tokens
+       from tasks
+       where tenant = $1 and created_at >= $2
+         and ($3::text is null
+           or not starts_with(coalesce(envelope->'service'->'capability'->>'id', ''), $3))`,
+      [query.tenant, query.since, query.excludeCapabilityPrefix ?? null],
+    );
+    return Number(found.rows[0]?.tokens ?? 0);
   }
 
   async #decode(row: TaskRow): Promise<StoredTask> {
