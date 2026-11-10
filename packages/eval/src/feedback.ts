@@ -107,11 +107,7 @@ export const anonymousFeedback = (
   );
 };
 
-/**
- * The current feedback: the latest record per task and credential, newest first. A later rating or
- * comment on the same answer from the same credential replaces the earlier one instead of counting
- * twice; every record stays in the store and on the task timeline. `records` must be newest first.
- */
+/** Keeps the latest record per task and credential; `records` must be newest first. */
 export const currentFeedback = (records: FeedbackRecord[]): FeedbackRecord[] => {
   const seen = new Set<string>();
   return records.filter((r) => {
