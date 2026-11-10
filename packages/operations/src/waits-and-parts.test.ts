@@ -190,7 +190,7 @@ describe('a step sent in parts', () => {
     expect(sent).toEqual([]);
   });
 
-  it('a descriptor whose parts could pass the 100 requests a call may make is refused at load', () => {
+  it('the load check counts one request per step and per part against the 100 a call may make', () => {
     expect(refused(upload().replace('most: 5', 'most: 98'))).toBeUndefined();
     expect(refused(upload().replace('most: 5', 'most: 99'))).toMatch(
       /may need 101 requests with every part, more than the 100 a call may make/,

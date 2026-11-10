@@ -34,7 +34,7 @@ A descriptor is a list of `steps`. A step is one request on one transport. A one
 
 - `bind` captures values from an answer under a name, each with its class (section 4). Later steps use them as `$steps.<name>.<field>`.
 - `until` repeats a step until a condition on its answer holds, with an interval, a longest duration and the wait the answer asks for: `until.after` maps it from a field or a declared header, or else the provider's `Retry-After` is honoured, never shorter than the interval nor longer than 60 seconds.
-- `parts: { of, bytes, most }` repeats a step once per byte range of a media input, for uploads in parts. It reads `$part.index`, `$part.offset` and `$part.body`, which is media under the same consent as the whole input, and binds each field as a list in part order. `most` caps the parts; a file that needs more is refused before anything leaves, and a descriptor whose steps could need more than the 100 requests a call may make is refused at load.
+- `parts: { of, bytes, most }` repeats a step once per byte range of a media input, for uploads in parts. It reads `$part.index`, `$part.offset` and `$part.body`, which is media under the same consent as the whole input, and binds each field as a list in part order. `most` caps the parts; a file that needs more is refused before anything leaves, and a descriptor with more than the 100 requests a call may make, counting one per step and one per part, is refused at load; polls and retries are counted at run time against the same limit.
 - `finally` lists steps that run whether the steps before them succeeded or failed, such as deleting what a job created.
 - `result` maps what the operation returns from any step's answer.
 
