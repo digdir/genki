@@ -327,7 +327,7 @@ const reply = (text: string, sources: ChatReply['sources']): ChatReply => ({
 
 /**
  * The approach as the platform should send it, from the design. The platform sends only tool
- * names today (ADR 0046); this lets the card be seen in full.
+ * names today (ADR 0053); this lets the card be seen in full.
  */
 const exampleSteps: StreamStep[] = [
   {

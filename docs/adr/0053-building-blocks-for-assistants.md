@@ -1,4 +1,4 @@
-# 0046 Building blocks for assistants
+# 0053 Building blocks for assistants
 
 Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace)
 
