@@ -532,18 +532,16 @@ describe('connection settings and named keys (D)', () => {
       },
       { hmac: { key: 'k1', of: [{ input: 'body' }] } },
     ]);
-    const signature = hex(hmac('AWS4extra-signing-key', '20261106'), JSON.stringify({ item: 'pen' }));
+    const signature = hex(
+      hmac('AWS4extra-signing-key', '20261106'),
+      JSON.stringify({ item: 'pen' }),
+    );
     const { outcome, sent, exchanges } = await run(
       bytes,
       { keys: '[connection, connection.signing]' },
       undefined,
       { endpoint: { keys: { signing: async () => 'extra-signing-key' } } },
-      [
-        json(
-          { error: { message: `bad signature ${signature} for key extra-signing-key` } },
-          403,
-        ),
-      ],
+      [json({ error: { message: `bad signature ${signature} for key extra-signing-key` } }, 403)],
     );
     expect(headersOf(sent).get('x-signature')).toBe(signature);
     const error = errorOf(outcome) as Error & { provider?: { status: number; body?: string } };
