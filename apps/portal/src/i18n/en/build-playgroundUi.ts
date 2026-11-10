@@ -63,6 +63,7 @@ export const playgroundUi = {
     modelSilentWithin:
       '{model} did not respond within 60 seconds. There is nothing wrong with the setup. Try again in a moment. {notStored}',
     refused: '{model} cannot be used in this setup.',
+    invalidSetup: 'The run was refused: {reason} {notStored}',
     quotaUsedUp: 'The quota for the month is used up. {notStored}',
     setupLabel: 'Setup {key}',
     setupSessionNote: 'Changes here do not affect anything that is published.',

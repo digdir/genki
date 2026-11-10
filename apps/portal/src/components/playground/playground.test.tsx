@@ -460,6 +460,42 @@ describe('Prøveområde', () => {
     expect(screen.getByText(/^Kvoten for måneden er brukt opp\./)).toBeTruthy();
   });
 
+  it('The portal shows a 422 setup refusal as the validation message, not as a model that did not answer', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          {
+            path: 'setup.spec.knowledge.datasets[0].dataset',
+            message: 'Datasettet digdir/kudos lagres utenfor EU/EØS.',
+          },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByRole('heading', { name: 'Vi fikk ikke svar' })).toBeTruthy();
+    expect(
+      screen.getByText(/^Kjøringen ble avvist: Datasettet digdir\/kudos lagres utenfor EU\/EØS\./),
+    ).toBeTruthy();
+    expect(screen.queryByText(/svarte ikke/)).toBeNull();
+  });
+
+  it('words a model residency refusal in the language of the screen', async () => {
+    await openPage({
+      invalidSetup: {
+        title: 'Invalid setup',
+        errors: [
+          { path: 'setup.spec.model.primary', message: 'model x runs in global, outside eu' },
+        ],
+      },
+    });
+    askSample('Hva sier evalueringene om digital veiledning?');
+
+    expect(await screen.findByText(/^Kjøringen ble avvist: /)).toBeTruthy();
+    expect(screen.queryByText(/runs in global/)).toBeNull();
+  });
+
   it('starts on the first service exposed for chat, not the first in the list', async () => {
     const options = structuredClone(examplePlaygroundOptions);
     options.services.sort((x) => (x.chat ? 1 : -1));

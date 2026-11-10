@@ -29,7 +29,8 @@ import type {
   PlaygroundStreamEvent,
   PlaygroundStreamProblem,
 } from '../../api/playground';
-import type { Problem } from '../../types';
+import type { Problem, Residency } from '../../types';
+import { describeProblem } from '../../screens/service/publish';
 import {
   decisionQuestion,
   evaluationQuestion,
@@ -182,6 +183,16 @@ const errorText = (error: unknown, model: string, t: T) => {
     const policy = (error.problem as Partial<PlaygroundRefusal> | undefined)?.policy;
     return `${t('playground.refused', { model })}${policy ? ` ${policy.rule}` : ''} ${notStored}`;
   }
+  if (error instanceof ApiError && error.status === 422 && error.problem) {
+    const first = error.problem.errors?.[0];
+    return t('playground.invalidSetup', {
+      reason:
+        first && first.path !== 'input.file'
+          ? describeProblem(first, t).message
+          : error.problem.title,
+      notStored,
+    });
+  }
   if (error instanceof ApiError && error.status === 429)
     return error.problem?.title ?? t('playground.quotaUsedUp', { notStored });
   return slowModelText(model, t);
@@ -268,8 +279,16 @@ const fileInput = async (chosen: ChosenFile): Promise<PlaygroundInput> =>
       }
     : { file: { name: chosen.name, sample: true } };
 
-const otherModel = (options: PlaygroundOptions, current: string) =>
-  options.models.find((m) => m.status === 'allowed' && m.id !== current)?.id ?? current;
+const reach: Residency[] = ['norway', 'eu', 'global'];
+
+const otherModel = (options: PlaygroundOptions, current: string) => {
+  const at = options.models.find((m) => m.id === current)?.dataLocation;
+  const within = (place: Residency) => !at || reach.indexOf(place) <= reach.indexOf(at);
+  return (
+    options.models.find((m) => m.status === 'allowed' && m.id !== current && within(m.dataLocation))
+      ?.id ?? current
+  );
+};
 
 export const PlaygroundPanel = ({
   layout,
