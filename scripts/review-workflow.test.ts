@@ -183,6 +183,7 @@ describe('the findings the review returns', () => {
     expect(text).toContain('"rule":{"type":"string"}');
     const post = review.steps.find((s) => s.name === 'Post all findings as one review')?.run ?? '';
     expect(post).toContain('**Rule:** \\(.rule)');
+    expect(post).toContain('(.rule // "") | length > 0');
     expect(rules).toContain('its severity follows that bullet');
     expect(procedure).toContain('Severity follows the rule.');
   });

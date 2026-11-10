@@ -90,7 +90,7 @@ jobs:
         run: |
           jq --arg sha "$HEAD" '
             def text: "**\(.severity)**: \(.title)\n\n\(.problem)"
-              + (if .rule then "\n\n**Rule:** \(.rule)" else "" end)
+              + (if (.rule // "") | length > 0 then "\n\n**Rule:** \(.rule)" else "" end)
               + (if .suggestion then "\n\n```suggestion\n\(.suggestion)\n```" else "" end)
               + "\n\n<details>\n<summary>Evidence and fix</summary>\n\n**Evidence:** \(.evidence)\n\n**Fix:** \(.fix)\n\n</details>";
             (.findings | sort_by({Important: 0, Nit: 1, "Pre-existing": 2}[.severity])) as $f

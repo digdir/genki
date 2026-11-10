@@ -50,7 +50,7 @@ export function parseFinding(thread: Thread): Finding | null {
   const title = thread.body.startsWith(`**${head[1]}**:`)
     ? line
     : (/^(.+?\.)(\s|$)/.exec(line)?.[1] ?? line);
-  const rule = /\*\*Rule:\*\*\s*(.*)/.exec(thread.body)?.[1]?.trim() ?? '';
+  const rule = /\*\*Rule:\*\*[ \t]*(.*)/.exec(thread.body)?.[1]?.trim() ?? '';
   const fix =
     /\*\*Fix:\*\*\s*([\s\S]*?)(?:\n\n|<\/details>|$)/.exec(thread.body)?.[1]?.trim() ?? '';
   const botFix = thread.replies.findLast(

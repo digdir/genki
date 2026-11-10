@@ -48,6 +48,16 @@ describe('reading a review thread', () => {
     expect(parseFinding(thread())?.rule).toBe('');
   });
 
+  it('a finding with an empty rule shows no rule instead of the next line', () => {
+    expect(
+      parseFinding(
+        thread({
+          body: '**Nit**: Title\n\nProblem.\n\n**Rule:** \n\n<details>\n<summary>Evidence and fix</summary>\n\n**Fix:** x\n\n</details>',
+        }),
+      )?.rule,
+    ).toBe('');
+  });
+
   it('shortens an older comment without a title to its first sentence', () => {
     expect(
       parseFinding(
