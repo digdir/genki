@@ -46,6 +46,13 @@ export const capabilityLabel: Record<Capability, PlainKey> = {
   reasoning: 'endpoints.capReasoning',
 };
 
+const modelSlug = (deployment: string) =>
+  deployment
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+|-+$/g, '');
+
 const secretPrefix = 'secret://platform/';
 
 const problemText = (error: unknown, fallback: string) => {
@@ -483,7 +490,11 @@ export const ModelForm = ({
 
   const save = async () => {
     const found = {
-      ...(deployment.trim() ? {} : { deployment: t('endpoints.deploymentRequired') }),
+      ...(deployment.trim()
+        ? modelSlug(deployment)
+          ? {}
+          : { deployment: t('endpoints.deploymentNeedsLetterOrDigit') }
+        : { deployment: t('endpoints.deploymentRequired') }),
       ...(target ? {} : { target: t('endpoints.chooseEndpoint') }),
       ...(reasonError(reason, t) ? { reason: reasonError(reason, t) as string } : {}),
     };
@@ -493,7 +504,7 @@ export const ModelForm = ({
     setBusy(true);
     try {
       const saved = await api.saveModel(
-        `${target}/${deployment.trim().toLowerCase()}`,
+        `${target}/${modelSlug(deployment)}`,
         {
           endpoint: target,
           deployment: deployment.trim(),

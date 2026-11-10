@@ -48,6 +48,7 @@ export const endpoints = {
   secretSaved: 'The secret {name} is saved. The value is not shown again.',
   addEndpoint: 'Add connection',
   deploymentRequired: 'Write the name of the deployment at the provider.',
+  deploymentNeedsLetterOrDigit: 'The deployment name must contain at least one letter or digit.',
   chooseEndpoint: 'Choose a connection.',
   saveModelFailed: 'Could not save the model. Try again shortly.',
   addModel: 'Add model',
