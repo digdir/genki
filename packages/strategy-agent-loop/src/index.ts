@@ -11,6 +11,7 @@ import {
   type ChatResult,
   type ModelPort,
   type ToolSpec,
+  normaliseCitationMarkers,
   untrustedData,
   untrustedDataNote,
 } from '@genai/port-model';
@@ -39,13 +40,7 @@ import {
   soundsLikeRefusal,
 } from './citation-backfill.js';
 import { attachedChunks, attachedNote } from './attached.js';
-import {
-  chunkIdsToMarkers,
-  normaliseCitationMarkers,
-  parseCitations,
-  sourcesFirst,
-  stripPageMarkers,
-} from './citations.js';
+import { chunkIdsToMarkers, parseCitations, sourcesFirst, stripPageMarkers } from './citations.js';
 import { skillCatalog, useSkill, useSkillTool, withLoadedSkills } from './skills.js';
 import { sourcesPart, type SourceRecord } from './sources.js';
 import type { Evaluator } from './structured.js';

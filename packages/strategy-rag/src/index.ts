@@ -5,6 +5,7 @@ import {
   defaultMaxOutputTokens,
   instructionsConfig,
   languageInstructionsConfig,
+  normaliseCitationMarkers,
   untrustedDataNote,
 } from '@genai/port-model';
 import {
@@ -13,7 +14,6 @@ import {
   generationPromptFor,
   modelRoles,
   sessionFor,
-  normaliseCitationMarkers,
   numberByDocument,
   runtimeSkills,
   skillsSection,

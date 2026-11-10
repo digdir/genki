@@ -72,6 +72,27 @@ describe('ported headless-rag flows', () => {
     expect(notices(out.events)).toContainEqual(expect.objectContaining({ kind: 'retrieval' }));
   });
 
+  it('fact-checker: reads OpenAI file-search markers as citations', async () => {
+    const retrieval = stubRetrieval([chunk('c1'), chunk('c2')]);
+    const models = fakeModels({ primary: ['Påstanden stemmer 【2†L1-L4】 og 【1†source】.'] });
+
+    const out = await run(
+      { flows: allFlows(), entry: 'fact-checker@1', models, retrieval },
+      { data: { claim: 'Digdir har fått økt bevilgning i 2025' } },
+    );
+
+    expect(answerOf(out.result)).toEqual({
+      mime: 'text/plain',
+      body: { kind: 'text', text: 'Påstanden stemmer [2] og [1].' },
+      meta: {
+        citations: [
+          { index: 1, chunkId: 'c1' },
+          { index: 2, chunkId: 'c2' },
+        ],
+      },
+    });
+  });
+
   it('ai-overview: plans, reranks, passes the evidence gate and keeps a cited overview', async () => {
     const strong = [
       chunk('c1', { rerankScore: 0.9, document: 'd1' }),

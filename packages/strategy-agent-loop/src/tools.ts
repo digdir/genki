@@ -1,8 +1,7 @@
-import { untrustedData } from '@genai/port-model';
+import { normaliseCitationMarkers, untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
-  normaliseCitationMarkers,
   numberByDocument,
   parseCitations,
   sourcesFirst,

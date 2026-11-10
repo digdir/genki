@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseCitationMarkers, stripSourceLists } from './citations.js';
+import { normaliseCitationMarkers } from '@genai/port-model';
+import { stripSourceLists } from './citations.js';
 import { stripCodeFences } from './structured.js';
 
 const quickly = (run: () => unknown) => {
