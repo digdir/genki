@@ -119,7 +119,16 @@ export const retrieveBlock: Block<z.infer<typeof retrieveInput>, z.infer<typeof 
     const found: { chunks: FlowChunk[]; attribution?: unknown } = params.inOrder?.values.length
       ? await searchInOrder(retrieval, queries, userIntent, params.inOrder, signal)
       : await retrieval.retrieve(queries, userIntent ? { userIntent } : {}, signal);
-    yield { type: 'kernel.notice', data: { kind: 'retrieval', hits: hits(found.chunks), queries } };
+    const detections = (found.attribution as { detections?: unknown[] } | undefined)?.detections;
+    yield {
+      type: 'kernel.notice',
+      data: {
+        kind: 'retrieval',
+        hits: hits(found.chunks),
+        queries,
+        ...(detections?.length ? { detections } : {}),
+      },
+    };
     return {
       queries,
       ...(userIntent ? { userIntent } : {}),

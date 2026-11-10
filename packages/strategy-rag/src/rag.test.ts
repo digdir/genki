@@ -13,7 +13,12 @@ import {
   type ChatResult,
   type ModelPort,
 } from '@genai/port-model';
-import { SOURCES_MIME, type Chunk, type SourceRecord } from '@genai/strategy-agent-loop';
+import {
+  SOURCES_MIME,
+  type Chunk,
+  type SearchDetection,
+  type SourceRecord,
+} from '@genai/strategy-agent-loop';
 import {
   createRagSingleShot,
   ragConfig,
@@ -253,6 +258,21 @@ describe('rag-single-shot strategy', () => {
         .filter((e) => e.type === 'kernel.notice')
         .map((e) => (e.data as { kind?: string }).kind),
     ).toEqual(['plan', 'retrieval', 'rerank', 'read']);
+  });
+
+  it('records what the search detected in the retrieval notice', async () => {
+    const detections: SearchDetection[] = [
+      { kind: 'organisation', field: 'orgs_short', values: ['NAV'], queries: ['q'], use: 'boost' },
+    ];
+    const r = retrieval({
+      retrieve: async () => ({ chunks: [chunk(1)], attribution: { detections } }),
+    });
+    const out = await run({ strategy: {} }, r.impl);
+
+    const notice = out.events.find(
+      (e) => e.type === 'kernel.notice' && (e.data as { kind?: string }).kind === 'retrieval',
+    );
+    expect(notice?.data).toMatchObject({ detections });
   });
 
   it('generates once with numbered context, keeping the streamed numbers and publishing every numbered source in order', async () => {

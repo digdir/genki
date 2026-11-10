@@ -1,5 +1,6 @@
 import { addUsage, countedKeys, usageKeys } from './usage-sum.js';
 import {
+  providerFailureOf,
   strategyEventTypes,
   type CapabilityDescriptor,
   type Event,
@@ -440,9 +441,14 @@ export const createKernel = (options: KernelOptions): Kernel => {
     if (l.finished) return;
     l.finished = true;
     const code = error instanceof KernelError ? error.code : 'strategy_error';
+    const provider = providerFailureOf(error);
     await emit(
       l,
-      { type: 'kernel.error', data: { code, message: error.message }, audience: 'audit' },
+      {
+        type: 'kernel.error',
+        data: { code, message: error.message, ...(provider ? { provider } : {}) },
+        audience: 'audit',
+      },
       'kernel',
     );
     const clientMessage = error instanceof KernelError ? error.message : 'the service failed';

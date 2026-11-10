@@ -104,7 +104,7 @@ export const catalogueSettings: PlatformSetting[] = [
     z.boolean(),
     true,
     'retrieval',
-    'Add a filter detected from organisation and year names in the question.',
+    'Detect organisations and years the search names: a hint for an agent, a ranking boost otherwise.',
     [retrieval('autoFilter.enabled')],
   ),
   setting(
@@ -112,7 +112,7 @@ export const catalogueSettings: PlatformSetting[] = [
     z.array(z.record(z.string(), z.unknown())),
     [],
     'retrieval',
-    'Ordered auto-filter rules.',
+    'Ordered auto-filter rules: a filter without an agent, a hint for an agent.',
     [retrieval('autoFilter.rules')],
   ),
   setting(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { call, readSignal, result, run } from './harness.test-utils.js';
+import { call, readSignal, result, retrieval, run, toolMessages } from './harness.test-utils.js';
 
 const filtered = {
   'retrieve-filter-by': {
@@ -103,5 +103,90 @@ describe('agent loop with caller filters', () => {
 
     expect(empty.meta).toMatchObject({ noAnswer: true });
     expect(answered.meta?.noAnswer).toBeUndefined();
+  });
+});
+
+describe('what the search detected in the query', () => {
+  const detected = () => {
+    const r = retrieval();
+    return retrieval({
+      search: async (queries, options, signal) => ({
+        ...(await r.impl.search(queries, options, signal)),
+        attribution: {
+          detections: [
+            {
+              kind: 'organisation',
+              field: 'orgs_long',
+              values: ['Datatilsynet'],
+              queries,
+              use: 'hint',
+            },
+            { kind: 'year', field: 'title', values: ['2023', '2024'], queries, use: 'hint' },
+          ],
+        },
+      }),
+    }).impl;
+  };
+  const searchOnce = {
+    primary: {
+      loop: [
+        () => result('', [call('search', { queries: ['Hva sier DFØ om Datatilsynet i 2023?'] })]),
+        () => result('Svar.'),
+      ],
+    },
+  };
+
+  it('tells the agent what the query names and which field can filter on it, without filtering', async () => {
+    const out = await run({ retrieval: detected(), scripts: searchOnce });
+
+    expect(toolMessages(out.loops[1])[0]).toContain(
+      'Hint, no filter applied: The query names "Datatilsynet"; orgs_long can filter on it. The query names the years "2023", "2024"; title can filter on them. Add filter_by only if the question asks for nothing else; a question about an organisation also needs other organisations\' documents.',
+    );
+  });
+
+  it('words a rule hint as what the query suggests', async () => {
+    const r = retrieval();
+    const ruled = retrieval({
+      search: async (queries, options, signal) => ({
+        ...(await r.impl.search(queries, options, signal)),
+        attribution: {
+          detections: [{ kind: 'rule', field: 'language', values: ['en'], queries, use: 'hint' }],
+        },
+      }),
+    }).impl;
+
+    const out = await run({ retrieval: ruled, scripts: searchOnce });
+
+    expect(toolMessages(out.loops[1])[0]).toContain(
+      'The query suggests language "en"; language can filter on it.',
+    );
+  });
+
+  it('gives no hint for what the search only ranked by', async () => {
+    const r = retrieval();
+    const boosted = retrieval({
+      search: async (queries, options, signal) => ({
+        ...(await r.impl.search(queries, options, signal)),
+        attribution: {
+          detections: [
+            { kind: 'organisation', field: 'orgs_long', values: ['NAV'], queries, use: 'boost' },
+          ],
+        },
+      }),
+    }).impl;
+
+    const out = await run({ retrieval: boosted, scripts: searchOnce });
+
+    expect(toolMessages(out.loops[1])[0]).not.toContain('Hint');
+  });
+
+  it('records what the search detected in the retrieval notice', async () => {
+    const out = await run({ retrieval: detected(), scripts: searchOnce });
+
+    const notice = out.notices.find((n) => n.kind === 'retrieval');
+    expect(notice?.detections).toEqual([
+      expect.objectContaining({ field: 'orgs_long', use: 'hint' }),
+      expect.objectContaining({ field: 'title', use: 'hint' }),
+    ]);
   });
 });
