@@ -1104,6 +1104,17 @@ describe('mock Ansattporten tokens have the real shape', () => {
     expect(logout.headers.get('location')).toBeNull();
   });
 
+  it('matches loopback redirects in linear time on a long adversarial address', async () => {
+    const { ansattporten } = setup();
+    const uri = `http://localhost:${'1'.repeat(4)}${'/:1'.repeat(30_000)}`;
+    const started = performance.now();
+    const response = await ansattporten.app.request(
+      `/authorize?${authorizeParams({ client_id: 'local-portal', redirect_uri: uri }).params}`,
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(response.status).toBe(400);
+  });
+
   it('binds an authorization code to the requested loopback port', async () => {
     const { ansattporten } = setup();
     const params = {

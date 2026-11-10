@@ -438,11 +438,9 @@ export const createMockAnsattporten = (options: MockAnsattportenOptions) => {
   app.get('/jwks.json', (c) => c.json(jwks()));
   app.get('/jwks', (c) => c.json(jwks()));
 
-  // RFC 8252 §7.3: a loopback redirect URI may use any port, chosen when the request is made,
-  // so a local stack started on other ports can still sign in.
+  // RFC 8252 §7.3: a loopback redirect may use any port; every other character must match.
   const withoutLoopbackPort = (uri: string) => {
     if (!URL.canParse(uri)) return uri;
-    // Preserve every other character; URL serialization also normalizes hosts and paths.
     return uri.replace(/^(http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]))(?::\d+)?(?=[/?#]|$)/, '$1');
   };
   const registered = (uris: readonly string[], uri: string) =>
