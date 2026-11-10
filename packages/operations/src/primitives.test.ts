@@ -134,6 +134,66 @@ describe('steps', () => {
     expect(JSON.stringify(exchanges)).not.toContain('tok-very-secret');
   });
 
+  it('a provider error body is kept on the error with the connection key and every bound secret replaced by [redacted]', async () => {
+    const { outcome } = await call(
+      example('example/token-score@1'),
+      { text: 'hei', questions: [{ name: 'urgent' }], tags: ['a'] },
+      [
+        json({ access_token: 'tok-very-secret', expires_in: 60 }),
+        {
+          status: 503,
+          type: 'text/plain',
+          body: 'token tok-very-secret and connection-key refused',
+        },
+      ],
+    );
+    expect('error' in outcome && outcome.error).toMatchObject({
+      status: 503,
+      provider: { status: 503, body: 'token [redacted] and [redacted] refused' },
+    });
+  });
+
+  it('an error a descriptor maps to a kind keeps the provider status and body too', async () => {
+    const { outcome } = await call(
+      example('example/token-score@1'),
+      { text: 'hei', questions: [{ name: 'urgent' }], tags: ['a'] },
+      [
+        json({ access_token: 'tok-very-secret', expires_in: 60 }),
+        json({ error: { detail: 'questions are too vague' } }, 422),
+      ],
+    );
+    expect('error' in outcome && outcome.error).toMatchObject({
+      kind: 'invalid',
+      message: 'questions are too vague',
+      provider: { status: 422, body: '{"error":{"detail":"questions are too vague"}}' },
+    });
+  });
+
+  it('an error body that is not text/plain is kept for the audit but is not the error message', async () => {
+    const { outcome } = await call(
+      example('example/token-score@1'),
+      { text: 'hei', questions: [{ name: 'urgent' }], tags: ['a'] },
+      [{ status: 502, type: 'text/html', body: '<html><body>Bad gateway</body></html>' }],
+    );
+    const error = 'error' in outcome ? (outcome.error as OperationError) : undefined;
+    expect(error?.message).toBe('the provider answered 502');
+    expect(error?.provider).toEqual({
+      status: 502,
+      body: '<html><body>Bad gateway</body></html>',
+    });
+  });
+
+  it('an empty error body leaves only the status on the error', async () => {
+    const { outcome } = await call(
+      example('example/token-score@1'),
+      { text: 'hei', questions: [{ name: 'urgent' }], tags: ['a'] },
+      [{ status: 502, type: 'text/plain', body: '' }],
+    );
+    const error = 'error' in outcome ? (outcome.error as OperationError) : undefined;
+    expect(error?.message).toBe('the provider answered 502');
+    expect(error?.provider).toEqual({ status: 502 });
+  });
+
   it('a mapping may not read a secret, only a step may place it', () => {
     const yaml = yamlOf('example/token-score@1').replace(
       "prompt: { $concat: ['Vurder: ', $input.text] }",

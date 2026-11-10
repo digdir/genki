@@ -154,7 +154,7 @@ const toModelError = (error: unknown, signal: AbortSignal): ModelError => {
   if (error instanceof ModelError) return error;
   if (error instanceof APIError) {
     const code = (error.error as { code?: string } | undefined)?.code ?? error.code ?? undefined;
-    return errorFromStatus(error.status, error.message, code);
+    return errorFromStatus(error.status, error.message, code, error.message);
   }
   return new ModelError('unavailable', error instanceof Error ? error.message : String(error));
 };
