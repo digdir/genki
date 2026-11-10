@@ -16,6 +16,7 @@ import type {
   DocumentRules,
   FeedbackInput,
   InputField,
+  MediaAttachment,
   ServiceOption,
   Source,
   FailedRun,
@@ -108,6 +109,7 @@ interface Chunk {
   error?: RunError;
   table?: unknown;
   csv?: string;
+  attachments?: unknown;
 }
 
 const linkable = (url: string | undefined) =>
@@ -137,6 +139,27 @@ export const sourcesFrom = (chunk: Chunk, locale: Locale = 'nb'): Source[] => {
     }));
   return (chunk.citations ?? []).map((url, i) => ({ title: url, index: i + 1, ...linkable(url) }));
 };
+
+export const mediaFrom = (value: unknown): MediaAttachment[] =>
+  Array.isArray(value)
+    ? value.flatMap((a) => {
+        const m = (a ?? {}) as Record<string, unknown>;
+        return typeof m.id === 'string' &&
+          typeof m.mediaType === 'string' &&
+          typeof m.url === 'string' &&
+          m.url.startsWith('/v1/tasks/')
+          ? [
+              {
+                id: m.id,
+                mediaType: m.mediaType,
+                bytes: typeof m.bytes === 'number' ? m.bytes : 0,
+                url: m.url,
+                ...(typeof m.step === 'string' ? { step: m.step } : {}),
+              },
+            ]
+          : [];
+      })
+    : [];
 
 export const serviceName = (id: string) => {
   const bare = id.slice(id.lastIndexOf('/') + 1).replace(/__default$/, '');
@@ -213,6 +236,14 @@ export const createWorkspaceApi = ({
       });
       const body = (await readJson(response)) as { lockdown?: unknown } | undefined;
       return response.ok && body?.lockdown === true;
+    },
+    readOnlyInLockdown: async (signal) => {
+      const response = await send(`${baseUrl}/me`, {
+        headers: headers(),
+        ...(signal ? { signal } : {}),
+      });
+      const body = (await readJson(response)) as { lockdownReadOnly?: unknown } | undefined;
+      return response.ok && body?.lockdownReadOnly === true;
     },
     rights: async (tenant, signal) => {
       try {
@@ -441,6 +472,7 @@ export const createWorkspaceApi = ({
       let table: ResultTable | undefined;
       let csv: string | undefined;
       let runError: RunError | undefined;
+      let media: MediaAttachment[] = [];
       for await (const data of sseEvents(response.body)) {
         if (data === '[DONE]') break;
         let chunk: Chunk;
@@ -455,6 +487,7 @@ export const createWorkspaceApi = ({
           onDelta(text);
         }
         if (chunk.no_answer) noAnswer = true;
+        if (chunk.attachments) media = mediaFrom(chunk.attachments);
         if (chunk.error) runError = chunk.error;
         if (chunk.table) {
           table = tableFrom(chunk.table);
@@ -494,8 +527,18 @@ export const createWorkspaceApi = ({
         sources,
         ...(noAnswer ? { noAnswer } : {}),
         ...(table ? { table, ...(csv ? { csv } : {}) } : {}),
+        ...(media.length ? { media } : {}),
         ...withTask,
       };
+    },
+
+    media: async (url, signal) => {
+      const response = await send(`${baseUrl}${url}`, {
+        headers: headers({ accept: '*/*' }),
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok) throw new ApiError(response.status, await readJson(response));
+      return response.blob();
     },
 
     sendFeedback: async ({ task, rating, reasons, comment }: FeedbackInput) => {

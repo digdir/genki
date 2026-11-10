@@ -972,6 +972,35 @@ export const logTimelines: TaskTimeline[] = [
     t4Steps,
   ),
   timeline('t5', 'Høringsoppsummering', 'running', 'Samlet jobb', at(0, 7, 30), 4320, 0, 0, 0, []),
+  {
+    ...timeline(
+      't8',
+      'Kunnskapsassistenten',
+      'completed',
+      'Chat',
+      at(1, 18, 41),
+      3.9,
+      3870,
+      290,
+      1.9,
+      [
+        { type: 'trigger', title: 'Startet', summary: 'Oppgaven ble mottatt', t: 0 },
+        {
+          type: 'model',
+          title: 'Modellkall',
+          summary: 'gpt-4o · 3 870 inn, 290 ut',
+          t: 0.6,
+          dur: 3.2,
+          tokens: 4160,
+        },
+        { type: 'result', title: 'Svar', summary: 'Svaret er slettet', t: 3.9 },
+      ],
+    ),
+    erasure: {
+      reason: 'conversation-deleted',
+      at: new Date(Date.parse(at(1, 18, 41)) + 12_000).toISOString(),
+    },
+  },
   timeline(
     't6',
     'Møtereferat',
@@ -1042,6 +1071,7 @@ export const logTasks: TaskRow[] = logTimelines.map((t) => {
     id: t.id,
     status: t.status,
     service,
+    ...(t.erasure ? { erasure: t.erasure } : {}),
     capability: `999888777/${service}/default`,
     createdAt: t.startedAt,
     endedAt:

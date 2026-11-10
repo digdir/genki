@@ -14,7 +14,9 @@ const resource = 'urn:altinn:resource:digdir-genai-platform';
 
 const encode = (value: unknown) =>
   btoa(JSON.stringify(value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-const idToken = (name: string) => `${encode({ alg: 'none' })}.${encode({ name })}.sig`;
+let sentNonce: string | undefined;
+const idToken = (name: string, nonce = sentNonce) =>
+  `${encode({ alg: 'none' })}.${encode({ name, nonce })}.sig`;
 
 const notFound = () => new Response('404 Not Found', { status: 404 });
 const json = (body: unknown, status = 200) =>
@@ -131,7 +133,9 @@ const startLogin = async (c: ReturnType<typeof client>) => {
   const before = c.visited.length;
   void c.auth.login();
   await waitFor(() => expect(c.visited.length).toBeGreaterThan(before));
-  return new URL(c.visited.at(-1) ?? '');
+  const url = new URL(c.visited.at(-1) ?? '');
+  sentNonce = url.searchParams.get('nonce') ?? undefined;
+  return url;
 };
 
 beforeEach(() => {
@@ -196,13 +200,37 @@ describe('operator login with Ansattporten', () => {
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 
+  it('tells a user-group Entra login that the console is for operators', async () => {
+    const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'kari@digdir.example' })}.sig`;
+    const api = liveApi(false, (path) =>
+      path === '/api/mock/ansattporten/token'
+        ? json({
+            access_token: entraAccess,
+            id_token: idToken('Kari Bruker'),
+            token_type: 'Bearer',
+          })
+        : undefined,
+    );
+    const c = client(api.fetch);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+    window.history.replaceState(null, '', `/callback?code=abc&state=${state}`);
+
+    render(<App auth={c.auth} fetch={api.fetch} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Du har ikke tilgang til driftskonsollet' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Driftskonsollet er bare for Digdirs driftsteam/)).toBeTruthy();
+    expect(screen.queryByRole('navigation')).toBeNull();
+  });
+
   it('makes the console treat a trusted Entra login as operator and names it by email', async () => {
     const entraAccess = `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', email: 'lise@digdir.example' })}.sig`;
     const api = liveApi(true, (path) =>
       path === '/api/mock/ansattporten/token'
         ? json({
             access_token: entraAccess,
-            id_token: `${encode({ alg: 'none' })}.${encode({ acr: 'entraid' })}.sig`,
+            id_token: `${encode({ alg: 'none' })}.${encode({ acr: 'entraid', nonce: sentNonce })}.sig`,
             token_type: 'Bearer',
           })
         : undefined,
@@ -229,6 +257,44 @@ describe('operator login with Ansattporten', () => {
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/kunne ikke fullføres/);
     expect(api.calls.some((call) => call.path === '/api/mock/ansattporten/token')).toBe(false);
+  });
+
+  it('refuses a login whose ID token nonce does not match the one it sent', async () => {
+    const api = liveApi(true, (path) =>
+      path === '/api/mock/ansattporten/token'
+        ? json({
+            access_token: 'access',
+            id_token: idToken('Ola Drift', 'other'),
+            token_type: 'Bearer',
+          })
+        : undefined,
+    );
+    const c = client(api.fetch);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+
+    await expect(
+      c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`)),
+    ).rejects.toThrow(/could not be completed|kunne ikke fullføres/);
+    expect(c.auth.current()).toBeUndefined();
+  });
+
+  it('refuses a login whose ID token carries no nonce', async () => {
+    const api = liveApi(true, (path) =>
+      path === '/api/mock/ansattporten/token'
+        ? json({
+            access_token: 'access',
+            id_token: `${encode({ alg: 'none' })}.${encode({ name: 'Ola Drift' })}.sig`,
+            token_type: 'Bearer',
+          })
+        : undefined,
+    );
+    const c = client(api.fetch);
+    const state = (await startLogin(c)).searchParams.get('state') ?? '';
+
+    await expect(
+      c.auth.completeLogin?.(new URL(`http://localhost:5174/callback?code=a&state=${state}`)),
+    ).rejects.toThrow(/could not be completed|kunne ikke fullføres/);
+    expect(c.auth.current()).toBeUndefined();
   });
 
   it('takes the authorize and end-session endpoints from the identity provider metadata', async () => {

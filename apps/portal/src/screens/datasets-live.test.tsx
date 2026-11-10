@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { mockAnsattporten } from '../auth';
 import { exampleOrganisations, mockFetch, type FeatureMockOptions } from '../mock';
+import { exampleLiveDatasets } from '../mock/datasets';
 import { exampleEndpoints } from '../mock/search-engines';
 import { expectAccessible } from '../test-utils';
 
@@ -464,6 +465,50 @@ describe('live dataset detail', () => {
       source: { kind: 'website', exclude: ['/sok', '/sok/**'] },
     });
     expect(put?.reason).toBe('Holder med en gang i uken');
+  });
+
+  it('saving a Kudos dataset without a start date leaves its source without one', async () => {
+    const own = exampleLiveDatasets.find((d) => d.id === 'nettsider');
+    if (!own) throw new Error('the example datasets changed');
+    const evalueringer = {
+      ...own,
+      id: 'evalueringer',
+      fullId: '999888777/evalueringer',
+      name: 'Evalueringer',
+      source: 'kudos' as const,
+    };
+    const { calls, fetch } = recorded({
+      datasets: [evalueringer],
+      pipelines: {
+        '999888777/evalueringer': [
+          {
+            id: 'kudos',
+            version: 1,
+            spec: {
+              name: 'Evalueringer',
+              source: { kind: 'kudos', types: ['Evaluering'] },
+              schedule: 'none',
+            },
+          },
+        ],
+      },
+    });
+    await renderLive(
+      `#/datasets/${encodeURIComponent('999888777/evalueringer')}?tab=source`,
+      fetch,
+    );
+    // The form mounts again once the pipeline has loaded.
+    fireEvent.change(await screen.findByLabelText('Oppdater'), { target: { value: 'weekly' } });
+    const card = screen.getByRole('region', { name: 'Kilde og innstillinger' });
+    fireEvent.change(within(card).getByLabelText('Begrunnelse'), {
+      target: { value: 'Holder med en gang i uken' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Lagre' }));
+    expect(await screen.findByText(/Endringene er lagret/)).toBeTruthy();
+
+    const put = calls.filter((c) => c.method === 'PUT').at(-1);
+    expect(put?.body).toMatchObject({ schedule: 'weekly', source: { kind: 'kudos' } });
+    expect((put?.body as { source: Record<string, unknown> }).source).not.toHaveProperty('since');
   });
 
   it('uploads dropped files one by one with a result per file, and deletes a file', async () => {

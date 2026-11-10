@@ -116,6 +116,7 @@ export const kernelOwnedEventTypes = [
   'kernel.interrupt.resolved',
   'kernel.usage',
   'kernel.resource.used',
+  'kernel.gate.call',
   'kernel.error',
   'kernel.score',
   'kernel.feedback',
@@ -148,26 +149,123 @@ export interface Usage {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  audioSeconds?: number;
+  images?: number;
+  videoSeconds?: number;
+  characters?: number;
   requests?: number;
+  /** Units a descriptor names that are not built in, such as `page`, by name. */
+  units?: Record<string, number>;
   costMicroNok?: number;
 }
 
+/** A unit a descriptor may name and an operator may price: lowercase letters, digits and hyphens. */
+export const unitNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
+
+export const priceUnits = [
+  'input-token',
+  'output-token',
+  'cached-input-token',
+  'audio-second',
+  'image',
+  'video-second',
+  'character',
+  'request',
+] as const;
+export type PriceUnit = (typeof priceUnits)[number];
+
+/** The usage field each price unit counts. */
+export const unitFields = {
+  'input-token': 'inputTokens',
+  'output-token': 'outputTokens',
+  'cached-input-token': 'cachedInputTokens',
+  'audio-second': 'audioSeconds',
+  image: 'images',
+  'video-second': 'videoSeconds',
+  character: 'characters',
+  request: 'requests',
+} as const satisfies Record<PriceUnit, keyof Usage>;
+
+/** NOK per one unit, for the built-in units and any unit a descriptor names. */
+export type UnitPrices = Partial<Record<PriceUnit, number>> & Record<string, number | undefined>;
+
+/** A model's prices, per operation kind. */
+export type ModelPrices = Record<string, UnitPrices>;
+
+/** The price shape before ADR 0048: NOK per 1,000 input and output tokens, for every kind. */
 export interface UsagePrice {
   inputPerThousand: number;
   outputPerThousand: number;
 }
 
-export const withListPrice = (usage: Usage, price: UsagePrice | undefined): Usage =>
-  usage.costMicroNok !== undefined || !price
-    ? usage
-    : {
-        ...usage,
-        costMicroNok: Math.round(
-          (((usage.inputTokens ?? 0) / 1000) * price.inputPerThousand +
-            ((usage.outputTokens ?? 0) / 1000) * price.outputPerThousand) *
-            1_000_000,
-        ),
-      };
+export type PriceSpec = ModelPrices | UsagePrice;
+
+export const isPerThousandPrice = (spec: unknown): spec is UsagePrice =>
+  typeof spec === 'object' && spec !== null && 'inputPerThousand' in spec;
+
+const perUnit = (perThousand: number) => Number((perThousand / 1000).toPrecision(12));
+
+export const unitPricesOfPerThousand = (price: UsagePrice): UnitPrices => ({
+  'input-token': perUnit(price.inputPerThousand),
+  'output-token': perUnit(price.outputPerThousand),
+});
+
+/** The unit prices of one kind; a price from before ADR 0048 holds for every kind. */
+export const unitPricesFor = (spec: unknown, kind: string): UnitPrices | undefined => {
+  if (spec === undefined || spec === null) return undefined;
+  if (isPerThousandPrice(spec)) return unitPricesOfPerThousand(spec);
+  return (spec as ModelPrices)[kind];
+};
+
+/** The per-1,000-token view of a price, from its chat prices or else the first kind with token prices. */
+export const perThousandView = (spec: unknown): UsagePrice | undefined => {
+  if (spec === undefined || spec === null) return undefined;
+  if (isPerThousandPrice(spec)) return spec;
+  const prices = spec as ModelPrices;
+  const units =
+    prices.chat ??
+    Object.values(prices).find(
+      (p) => p['input-token'] !== undefined || p['output-token'] !== undefined,
+    );
+  if (!units) return undefined;
+  const thousand = (n: number | undefined) => Number(((n ?? 0) * 1000).toPrecision(12));
+  return {
+    inputPerThousand: thousand(units['input-token']),
+    outputPerThousand: thousand(units['output-token']),
+  };
+};
+
+/** The units a call reports, counted from its usage, built-in and open. */
+export const usageUnits = (usage: Usage): Record<string, number> => ({
+  ...Object.fromEntries(
+    priceUnits.flatMap((unit) => {
+      const count = usage[unitFields[unit]];
+      return count ? [[unit, count] as const] : [];
+    }),
+  ),
+  ...Object.fromEntries(Object.entries(usage.units ?? {}).filter(([, count]) => count)),
+});
+
+/** The cost of a call when every unit it reports has a price; otherwise the usage stays unpriced. */
+export const pricedUsage = (usage: Usage, prices: UnitPrices | undefined): Usage => {
+  if (usage.costMicroNok !== undefined || !prices) return usage;
+  const units = usageUnits(usage);
+  const cached = prices['cached-input-token'];
+  let nok = 0;
+  for (const [unit, count] of Object.entries(units)) {
+    if (unit === 'cached-input-token') {
+      if (cached !== undefined) nok += count * (cached - (prices['input-token'] ?? 0));
+      continue;
+    }
+    const price = prices[unit];
+    if (price === undefined) {
+      if (unit === 'request') continue;
+      return usage;
+    }
+    nok += count * price;
+  }
+  return { ...usage, costMicroNok: Math.round(nok * 1_000_000) };
+};
 
 export interface ModelProvenance {
   id: string;
@@ -180,6 +278,8 @@ export interface IndexProvenance {
   engine?: string;
   generation?: string;
   collections?: string[];
+  /** The generation's data version on the knowledge server that answered (ADR 0042). */
+  dataVersion?: number;
 }
 
 export type ResourceProvenance = { model: ModelProvenance } | { index: IndexProvenance };

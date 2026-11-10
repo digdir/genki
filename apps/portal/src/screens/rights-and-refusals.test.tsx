@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../App';
 import { createApiClient } from '../api';
@@ -93,7 +93,9 @@ describe('refusals from the API', () => {
       ),
     );
     expect(await screen.findByText('Månedskvoten for tokens er brukt opp')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe('#/usage');
+    expect(screen.getByRole('link', { name: 'Se forbruket' }).getAttribute('href')).toBe(
+      '#/statistics',
+    );
     cleanup();
 
     await renderAs(
@@ -471,10 +473,19 @@ describe('the step flow picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start med assistenten' }));
     fireEvent.click(await screen.findByRole('button', { name: /^Arbeidsmåte/ }));
 
-    const picker = (await screen.findByRole('combobox', { name: 'Stegflyt' })) as HTMLSelectElement;
-    expect(screen.queryByRole('textbox', { name: /Stegflyt/ })).toBeNull();
-    await screen.findByRole('option', { name: 'postruting, versjon 2' });
-    fireEvent.change(picker, { target: { value: 'postruting@2' } });
+    const picker = await screen.findByRole('combobox', { name: 'Stegflyt' });
+    expect(picker.tagName).toBe('INPUT');
+    await screen.findByText('postruting, versjon 2 (nyeste)');
+    const item = document.createElement('data');
+    item.value = 'postruting@2';
+    item.textContent = 'postruting, versjon 2 (nyeste)';
+    act(() => {
+      picker
+        .closest('ds-suggestion')
+        ?.dispatchEvent(
+          new CustomEvent('comboboxbeforeselect', { detail: item, cancelable: true }),
+        );
+    });
     expect(
       screen.getByRole('link', { name: 'Åpne i stegflyt-editoren' }).getAttribute('href'),
     ).toBe('#/step-flows/postruting');

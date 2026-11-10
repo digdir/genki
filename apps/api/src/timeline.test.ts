@@ -215,7 +215,8 @@ const usageEvent = (seq: number, model: string, usage: Record<string, number>) =
 
 describe('run timeline cost', () => {
   const at = new Date('2026-10-07T12:32:04.000Z');
-  const used = (usage: Record<string, number>) => ({ ...task, usage }) as Task;
+  const used = (usage: Record<string, number | Record<string, number>>) =>
+    ({ ...task, usage }) as Task;
 
   it('adds up what each call cost, below one øre too', () => {
     const timeline = toTimeline(
@@ -256,6 +257,32 @@ describe('run timeline cost', () => {
     expect(timeline.stats).toMatchObject({ unpricedTokens: 39_104 });
   });
 
+  it('shows open units of a run, and marks a unit without a price as not priced', () => {
+    const timeline = toTimeline(
+      used({ units: { page: 4 }, audioSeconds: 12 }),
+      [usageEvent(1, 'lab/ocr', { units: { page: 4 }, audioSeconds: 12 } as never)],
+      at,
+    );
+
+    expect(timeline).toMatchObject({
+      priced: false,
+      units: { page: 4, 'audio-second': 12 },
+      unpricedUnits: { page: 4, 'audio-second': 12 },
+    });
+    expect(timeline.stats).toMatchObject({ units: { page: 4 }, unpricedUnits: { page: 4 } });
+  });
+
+  it('shows open units that all have a price as priced', () => {
+    const timeline = toTimeline(
+      used({ units: { page: 4 }, costMicroNok: 40_000 }),
+      [usageEvent(1, 'lab/ocr', { units: { page: 4 }, costMicroNok: 40_000 } as never)],
+      at,
+    );
+
+    expect(timeline).toMatchObject({ priced: true, units: { page: 4 } });
+    expect(timeline).not.toHaveProperty('unpricedUnits');
+  });
+
   it('keeps the priced part of a run that also used an unpriced model', () => {
     const timeline = toTimeline(
       used({ inputTokens: 1500, outputTokens: 150, costMicroNok: 5320 }),
@@ -281,5 +308,65 @@ describe('run timeline cost', () => {
     );
 
     expect(timeline).toMatchObject({ costMicroNok: 714, priced: true });
+  });
+});
+
+describe('decisions in the timeline', () => {
+  const at = (seq: number, data: unknown) =>
+    ({ seq, ts: `2026-10-07T12:32:0${seq}.000Z`, type: 'kernel.notice', data }) as unknown as Event;
+  const decision = {
+    kind: 'decision',
+    rule: 'purpose-check',
+    operation: 'decide',
+    model: 'foundry-openai/gpt-6-luna',
+    question: 'within_purpose',
+    threshold: 0.8,
+    decidedBy: 'model',
+  };
+
+  it('the decision shows in the run timeline', () => {
+    const timeline = toTimeline(
+      task,
+      [
+        at(1, {
+          ...decision,
+          answer: 'uncertain',
+          probability: 0.62,
+          refusal: false,
+          outcome: 'person',
+        }),
+        at(2, { ...decision, answer: 'refused', refusal: true, outcome: 'person' }),
+        at(3, {
+          ...decision,
+          answer: 'within',
+          refusal: false,
+          outcome: 'continue',
+          decidedBy: 'person',
+        }),
+      ],
+      new Date('2026-10-07T12:32:04.000Z'),
+    );
+    const steps = timeline.steps.filter((s) => s.type === 'decision');
+    expect(steps.map((s) => [s.title, s.summary])).toEqual([
+      ['Beslutning om formålet', 'Usikkert'],
+      ['Beslutning om formålet', 'Modellen ville ikke svare'],
+      ['En person avgjorde formålet', 'Innenfor formålet'],
+    ]);
+    expect(steps[0]?.model).toBe('foundry-openai/gpt-6-luna');
+    expect(steps[0]?.blocks).toEqual([
+      {
+        kind: 'kv',
+        rows: [
+          ['Operasjon', 'decide'],
+          ['Spørsmål', 'within_purpose'],
+          ['Svar', 'Usikkert'],
+          ['Sannsynlighet', '0,62'],
+          ['Modellen ville ikke svare', 'Nei'],
+          ['Utfall', 'Sendt til en person'],
+        ],
+      },
+    ]);
+    expect(steps[1]?.blocks[0]?.rows).toContainEqual(['Modellen ville ikke svare', 'Ja']);
+    expect(steps[1]?.blocks[0]?.rows?.map((r) => r[0])).not.toContain('Sannsynlighet');
   });
 });

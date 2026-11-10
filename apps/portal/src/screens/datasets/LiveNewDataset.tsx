@@ -1,3 +1,4 @@
+import { ChevronLeftIcon } from '@navikt/aksel-icons';
 import {
   Alert,
   Button,
@@ -41,7 +42,6 @@ import {
 
 type Source = 'web' | 'upload' | 'kudos';
 
-const back = 'M15 6l-6 6 6 6';
 const urlPattern = /^https:\/\/[^\s.]+\.[^\s]+/;
 const years = ['2010', '2015', '2018', '2020', '2022', '2024'];
 
@@ -326,7 +326,7 @@ export const LiveNewDataset = ({
           onCancel();
         }}
       >
-        <Icon d={back} size={18} />
+        <Icon icon={ChevronLeftIcon} size={18} />
         {t('datasets.title')}
       </a>
       <div className="stack-sm">
@@ -371,7 +371,9 @@ export const LiveNewDataset = ({
             </label>
           ))}
           <p className="meta">
-            {t.rich('datasets.integrationsHint', { link: (c) => <a href="#/integrations">{c}</a> })}
+            {t.rich('datasets.integrationsHint', {
+              link: (c) => <a href="#/developer/systems">{c}</a>,
+            })}
           </p>
         </Fieldset>
       ) : null}

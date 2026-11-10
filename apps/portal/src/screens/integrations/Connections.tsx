@@ -16,7 +16,7 @@ import { reasonProblem } from '../../components/ReasonField';
 
 const errorText = (error: unknown, t: T) =>
   error instanceof ApiError
-    ? (error.problem?.errors?.map((e) => e.message).join(' ') ?? error.message)
+    ? error.problem?.errors?.map((e) => e.message).join(' ') || error.message
     : t('integConnections.wrong');
 
 const emptyForm = { id: '', name: '', endpoint: '', secretName: '', secretValue: '' };

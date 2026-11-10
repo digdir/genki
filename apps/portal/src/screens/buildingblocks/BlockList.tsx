@@ -1,3 +1,4 @@
+import { PlusIcon } from '@navikt/aksel-icons';
 import {
   Button,
   Chip,
@@ -22,7 +23,7 @@ import {
   type CatalogProposal,
   type ConnectorView,
 } from '../../api/building-blocks';
-import { Icon, icons } from '../../components/Icon';
+import { Icon } from '../../components/Icon';
 import { navigate } from '../../hooks';
 import { useT } from '../../i18n';
 import {
@@ -208,6 +209,7 @@ export const BlockList = ({
             </Heading>
             <span className="bb-meta">{t(g.description)}</span>
             {g.kind === 'skill' ? <a href="#/skills">{t('blocks.goToSkills')}</a> : null}
+            {g.kind === 'step_flow' ? <a href="#/step-flows">{t('blocks.goToStepFlows')}</a> : null}
           </div>
           <ul className="bb-grid">
             {g.items.map((b) => (
@@ -245,7 +247,7 @@ export const BlockList = ({
           <ApiCallButton call={listCall} />
           {rights.canRegister ? (
             <Button variant="secondary" onClick={() => navigate('/building-blocks/new')}>
-              <Icon d={icons.plus} />
+              <Icon icon={PlusIcon} />
               {t('blocks.addOwn')}
             </Button>
           ) : null}

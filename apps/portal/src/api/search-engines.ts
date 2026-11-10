@@ -13,7 +13,14 @@ export type EngineCapability =
 export type SwitchMethod = 'copy' | 'reingest';
 
 export type SwitchState =
-  'running' | 'failed' | 'comparing' | 'ready' | 'active' | 'rolled_back' | 'cancelled';
+  | 'running'
+  | 'failed'
+  | 'comparing'
+  | 'ready'
+  | 'activating'
+  | 'active'
+  | 'rolled_back'
+  | 'cancelled';
 
 export type Verdict = 'same' | 'better' | 'worse';
 
@@ -91,6 +98,8 @@ export interface EngineSwitchView {
   error?: { message: string; percent: number };
   comparison?: RetrievalComparison;
   comparisonNote?: string;
+  /** Into the knowledge database: documents of the fill that could not be read in. */
+  failedDocuments?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   canRollback: boolean;
@@ -173,6 +182,7 @@ export interface EngineSwitch {
   failure?: { message: string };
   comparison?: SwitchComparison;
   comparisonNote?: string;
+  failedDocuments?: number;
   minimumReasonLength: number;
   previousKeptUntil?: string;
   decision?: SwitchDecision;
@@ -248,6 +258,7 @@ export const toSwitch = (view: EngineSwitchView): EngineSwitch => ({
   ...(view.error ? { failure: { message: view.error.message } } : {}),
   ...(view.comparison ? { comparison: toComparison(view.comparison) } : {}),
   ...(view.comparisonNote ? { comparisonNote: view.comparisonNote } : {}),
+  ...(view.failedDocuments ? { failedDocuments: view.failedDocuments } : {}),
   minimumReasonLength: view.minimumReasonLength,
   ...(view.previousKeptUntil ? { previousKeptUntil: view.previousKeptUntil } : {}),
   ...(view.decision ? { decision: view.decision } : {}),

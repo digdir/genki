@@ -147,7 +147,12 @@ const boot = async (replies: Reply[], { publish = true } = {}) => {
     if (!body.messages)
       return {
         status: 200,
-        json: { data: [{ id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' }] },
+        json: {
+          data: [
+            { id: 'gpt-4o-2M-tps', model: 'gpt-4o', status: 'succeeded' },
+            { id: 'gpt-5.6-terra', model: 'gpt-5.6-terra', status: 'succeeded' },
+          ],
+        },
       };
     requests.push(body.messages as { role: string; content: string }[]);
     const reply = replies[chats] ?? { text: 'Ferdig.' };

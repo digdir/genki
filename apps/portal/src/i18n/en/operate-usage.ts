@@ -129,7 +129,7 @@ export const usageArea = {
     cannotEstimate: 'The cost cannot be estimated because the model is not priced.',
     aboutPerMonth: 'About {value} per month.',
     save: 'Save',
-    title: 'Usage',
+    title: 'Statistics',
     lead: 'Tokens and estimated cost for the services of {tenant}. The cost is an estimate. The final amount is on the invoice from Digdir.',
     export: 'Export',
     allProjects: 'All services and projects',
@@ -148,5 +148,13 @@ export const usageArea = {
     quotaUnknown: 'The quota is not stated.',
     quotaIs: 'The quota for {tenant} is {millions} million tokens per month.',
     createService: 'Create a service',
+    bySource: 'By source',
+    modelsBySource: 'Models by source',
+    source: 'Source',
+    share: 'Share',
+    sourceGenki: 'Genki',
+    sourceGateway: 'AI gateway',
+    sourceNote:
+      "The sum includes calls through the AI gateway, also those that did not go through Genki. Each call is counted once. The gateway's amounts are converted to kroner at the rate for the day.",
   },
 } satisfies Translation<typeof source>;

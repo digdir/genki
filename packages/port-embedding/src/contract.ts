@@ -21,7 +21,6 @@ export type EmbeddingScenario = 'echo' | 'short' | { status: number };
 export interface EmbeddingContractFixture {
   adapter: EmbeddingAdapter;
   basePath?: string;
-  endpointOptions?: Record<string, unknown>;
   modelOptions?: Record<string, unknown>;
   inputs(body: Record<string, unknown>): string[];
   vectors(vectors: number[][], inputTokens: number): FakeReply;
@@ -61,10 +60,9 @@ export const embeddingContractTarget = async (
         catalog: {
           endpoints: {
             contract: {
-              protocol: fixture.adapter.protocol,
-              baseURL: `${server.url}${fixture.basePath ?? ''}`,
+              baseURL: server.url,
               auth: { kind: 'bearer', secret: 'secret://env/contract-key' },
-              options: fixture.endpointOptions ?? {},
+              families: { [fixture.adapter.api.family]: fixture.basePath ?? '' },
             },
           },
           models: [
@@ -72,9 +70,9 @@ export const embeddingContractTarget = async (
               id: 'contract/embedder',
               endpoint: 'contract',
               deployment: 'contract-embedder',
-              dimensions,
               residency: 'norway',
-              ...(maxBatch === undefined ? {} : { maxBatch }),
+              apis: { embed: fixture.adapter.api.id },
+              embed: { dimensions, ...(maxBatch === undefined ? {} : { maxBatch }) },
               options: fixture.modelOptions ?? {},
             },
           ],

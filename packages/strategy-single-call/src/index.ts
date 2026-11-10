@@ -6,6 +6,8 @@ import {
   instructionsConfig,
   languageInstructionsConfig,
   ModelError,
+  untrustedData,
+  untrustedDataNote,
   type ChatMessage,
   type ChatRequest,
   type ChatResult,
@@ -91,10 +93,20 @@ const validatorFor = (fields: OutputField[]) =>
     ),
   );
 
-const partText = (part: Part): string => {
+const isUntrusted = (part: Part) => part.meta?.attached === true || part.meta?.untrusted === true;
+
+const plainText = (part: Part): string => {
   if (part.body.kind === 'text') return part.body.text;
   if (part.body.kind === 'json') return JSON.stringify(part.body.json);
   throw new Error(`single-call reads text and JSON input only, not ${part.mime}`);
+};
+
+const partText = (part: Part): string => {
+  if (!isUntrusted(part)) return plainText(part);
+  const name = part.meta?.name;
+  return untrustedData(part.meta?.attached === true ? 'document' : 'tool', plainText(part), {
+    title: typeof name === 'string' ? name : undefined,
+  });
 };
 
 const historyOf = (data: unknown): ChatMessage[] => {
@@ -123,7 +135,10 @@ const userContent = (input: Input): string => {
 const messagesFor = (config: SingleCallRuntimeConfig, input: Input): ChatMessage[] => [
   {
     role: 'system',
-    content: baseInstructions(config.strategy.instructions) + skillsSection(config.skills),
+    content:
+      baseInstructions(config.strategy.instructions) +
+      skillsSection(config.skills) +
+      ((input.parts ?? []).some(isUntrusted) ? `\n\n${untrustedDataNote(config.languages)}` : ''),
   },
   ...(config.strategy.examples ?? []).map((content) => ({ role: 'system' as const, content })),
   ...historyOf(input.data),

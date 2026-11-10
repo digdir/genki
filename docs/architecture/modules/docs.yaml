@@ -1,0 +1,41 @@
+id: docs
+plane: consumers
+name: Docs site
+note: Published with GitHub Pages
+icon: ui
+color: '#74a7ff'
+status: React app
+packages:
+  - '@genai/docs'
+summary: 'The Norwegian documentation site: building blocks, flows and the target picture, for
+  leaders, service owners and architects.'
+description: A static site at https://digdir.github.io/genki/ with no API and no sign-in. It is
+  a thin shell (header, footer, theme) around the pages in packages/docs-site, and its content is
+  written from the README and the ADRs and lives in packages/docs-content. The portal shows the
+  same pages signed out, so a change to a decision and to the page that explains it can land in
+  the same pull request.
+responsibilities:
+  - Explain the platform without reading code
+  - Show each flow step by step through the building blocks
+  - Link every building block to its ADRs and packages
+files:
+  - apps/docs/src/App.tsx
+  - apps/docs/src/main.tsx
+input: Readers
+output: Links into the repository
+edges:
+  - to: docs-content
+    label: Links in the header and footer
+    kind: call
+    target: call
+    witness:
+      file: apps/docs/src/App.tsx
+      imports: '@genai/docs-content'
+  - to: docs-site
+    label: Renders the shared pages, figures and search
+    kind: call
+    target: call
+    witness:
+      file: apps/docs/src/App.tsx
+      imports: '@genai/docs-site'
+keywords: docs documentation site pages norwegian målbilde byggeklosser flyt

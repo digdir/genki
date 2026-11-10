@@ -39,6 +39,25 @@ describe('the organisation in the header', () => {
 
     expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
   });
+
+  it('keeps the switcher open when it is clicked as soon as the header appears', async () => {
+    const name = 'Handler for Testetaten, org.nr. 999 888 777. Bytt virksomhet';
+    const clicked = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        const button = document.querySelector(`[aria-label="${name}"]`);
+        if (!button) return;
+        observer.disconnect();
+        fireEvent.click(button);
+        resolve();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    render(<App auth={mockAnsattporten(kari)} fetch={mockFetch()} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Logg inn' })[0] as HTMLElement);
+    await clicked;
+
+    expect(screen.getByRole('dialog', { name: 'Velg virksomhet' })).toBeTruthy();
+  });
 });
 
 describe('login from the start page', () => {
@@ -101,17 +120,20 @@ describe('an expired session', () => {
 });
 
 describe('shell', () => {
-  it('the side menu lists the eleven items in design order and marks the current one with aria-current=page', async () => {
-    await renderAt('#/usage');
+  it('the side menu groups the items in design order and marks the current one with aria-current=page', async () => {
+    await renderAt('#/statistics');
 
     expect(screen.getByRole('link', { name: 'Hopp til hovedinnhold' }).getAttribute('href')).toBe(
       '#hovedinnhold',
     );
     const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    for (const group of ['Bygg', 'Analyse', 'Administrasjon'])
+      expect(within(menu).getByRole('list', { name: group })).toBeTruthy();
+    expect(within(menu).queryByRole('heading')).toBeNull();
     expect(
       within(menu)
-        .getAllByRole('link')
-        .map((a) => a.firstChild?.textContent),
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('a')?.firstChild?.textContent),
     ).toEqual([
       'Oversikt',
       'Tjenester',
@@ -119,19 +141,51 @@ describe('shell', () => {
       'Datasett',
       'Byggeklosser',
       'Prøveområde',
-      'Tilgang',
-      'Forbruk',
-      'Integrasjoner',
+      'Utviklerverktøy',
+      'Statistikk',
       'Logg',
+      'Tilgang',
       'Innstillinger',
-      'Brukerveiledning',
-      'Driftsstatus',
-      'Kontakt Digdir',
     ]);
-    expect(within(menu).getByRole('link', { name: 'Forbruk' }).getAttribute('aria-current')).toBe(
-      'page',
-    );
+    expect(
+      within(menu).getByRole('link', { name: 'Statistikk' }).getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.queryByRole('banner')).toBeNull();
     expect(document.documentElement.lang || 'nb').toBe('nb');
+  });
+
+  it('sends the old usage address on to Statistikk', async () => {
+    await renderAt('#/usage');
+    await waitFor(() => expect(window.location.hash).toBe('#/statistics'));
+  });
+
+  it.each([
+    ['#/integrations', '#/developer/systems'],
+    ['#/integrations?tab=hooks&saved=Fnr', '#/developer/hooks?saved=Fnr'],
+    ['#/integrations?tab=tracing', '#/developer/runs'],
+    ['#/integrations/code', '#/developer/api/code'],
+    ['#/integrations/hooks/fnr', '#/developer/hooks/fnr'],
+  ])('sends the old Integrasjoner address %s on to %s', async (from, to) => {
+    await renderAt(from);
+    await waitFor(() => expect(window.location.hash).toBe(to));
+  });
+
+  it('sends the old user guide address on to Kom i gang', async () => {
+    await renderAt('#/help');
+    await waitFor(() => expect(window.location.hash).toBe('#/onboarding'));
+  });
+
+  it('shrinks the sidebar to icons, keeps the menu and the organisation, and remembers it', async () => {
+    await renderAt('#/overview');
+    fireEvent.click(screen.getByRole('button', { name: 'Skjul sidepanelet' }));
+    const menu = screen.getByRole('navigation', { name: 'Hovedmeny' });
+    expect(within(menu).getByRole('link', { name: 'Tjenester' }).getAttribute('title')).toBe(
+      'Tjenester',
+    );
+    expect(within(menu).getByRole('button', { name: /Handler for Testetaten/ })).toBeTruthy();
+    expect(localStorage.getItem('genki.sidebarCollapsed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Vis sidepanelet' }));
+    expect(within(menu).getByRole('link', { name: 'Tjenester' })).toBeTruthy();
   });
 
   it('switches organisation from the org switcher and shows role per organisation', async () => {
@@ -146,13 +200,18 @@ describe('shell', () => {
     expect(screen.queryByRole('dialog', { name: 'Velg virksomhet' })).toBeNull();
   });
 
-  it('shows rights from Altinn in the user menu and closes it with Escape', async () => {
+  it('lists the profile menu in design order and closes it with Escape', async () => {
     await renderAt('#/overview');
 
     fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
     const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-    expect(within(menu).getByText('Se forbruk og kostnad')).toBeTruthy();
-    expect(within(menu).getByRole('link', { name: /Se eller endre i Altinn/ })).toBeTruthy();
+    expect(
+      within(menu)
+        .getAllByRole('link')
+        .map((a) => a.firstChild?.textContent),
+    ).toEqual(['Kom i gang', 'Profil', 'Kontakt Digdir', 'Databehandling']);
+    expect(within(menu).queryByRole('button', { name: 'Om tjenesten' })).toBeNull();
+    expect(within(menu).getByRole('button', { name: 'Logg ut' })).toBeTruthy();
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
@@ -209,7 +268,7 @@ describe('shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Kari Nordmann, åpne brukermeny' }));
     const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-    fireEvent.mouseDown(within(menu).getByText('Rettighetene dine'));
+    fireEvent.mouseDown(within(menu).getByText('Profil'));
     expect(screen.getByRole('dialog', { name: 'Brukermeny' })).toBeTruthy();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('dialog', { name: 'Brukermeny' })).toBeNull();
@@ -246,7 +305,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/help', 'Brukerveiledning'],
+    ['/onboarding', 'Kom i gang'],
     ['/status', 'Driftsstatus'],
     ['/contact', 'Kontakt Digdir'],
   ])('gives the unbuilt %s page its own h1', async (path, title) => {
@@ -255,7 +314,7 @@ describe('shell', () => {
   });
 
   it.each([
-    ['/help', /Slik henger sidene sammen/],
+    ['/onboarding', /Slik henger sidene sammen/],
     ['/status', /Siden spør plattformens API om det svarer/],
     ['/contact', /ikke et eget kontaktpunkt for brukerstøtte ennå/],
   ])(
@@ -296,9 +355,9 @@ describe('login through Ansattporten in live mode', () => {
     render(<App auth={callbackClient()} fetch={mockFetch()} live />);
 
     expect(await screen.findByText('Testdepartementet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
-    expect(within(menu).getByText('Lese')).toBeTruthy();
+    go('#/profile');
+    const menu = screen.getByRole('main');
+    expect(await within(menu).findByText('Lese')).toBeTruthy();
     expect(within(menu).getByText('Skrive')).toBeTruthy();
   });
 
@@ -326,10 +385,10 @@ describe('login through Ansattporten in live mode', () => {
       login: () => Promise.reject(new Error('unused')),
       logout: async () => undefined,
     };
+    window.location.hash = '#/profile';
     render(<App auth={auth} fetch={mockFetch()} live />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ingrid Berg, åpne brukermeny' }));
-    const menu = screen.getByRole('dialog', { name: 'Brukermeny' });
+    const menu = await screen.findByRole('main');
     expect(
       within(menu)
         .getAllByText(/./, { selector: '.ds-tag' })
@@ -383,7 +442,7 @@ it('derives rights from the old read and write actions the same way as the API',
   expect(rightsFor(['read', 'write', 'use-services']).labels).toEqual(['Bruke tjenester']);
 });
 
-describe('language choice in the user menu', () => {
+describe('language choice on the profile page', () => {
   it('follows the browser until the person picks a language, saves it and sends it to the API', async () => {
     const auth = mockAnsattporten(kari);
     await auth.login();
@@ -400,8 +459,8 @@ describe('language choice in the user menu', () => {
     };
     render(<App auth={auth} fetch={recording} languages={['en-GB', 'nb']} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Kari Nordmann, open user menu' }));
-    const choice = screen.getByRole('group', { name: 'Språk / Language' });
+    window.location.hash = '#/profile';
+    const choice = await screen.findByRole('group', { name: 'Språk / Language' });
     expect(within(choice).getByRole('radio', { name: 'Same as browser' })).toHaveProperty(
       'checked',
       true,
@@ -422,17 +481,22 @@ describe('language choice in the user menu', () => {
 });
 
 describe('a locked environment', () => {
-  const locked = (lockdown: boolean): typeof fetch => {
+  const locked = (lockdown: boolean, readOnly = true): typeof fetch => {
     const base = mockFetch();
     return async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      return url.endsWith('/health')
-        ? Response.json({ status: 'ok', version: 'test', lockdown })
-        : base(input, init);
+      if (url.endsWith('/health'))
+        return Response.json({ status: 'ok', version: 'test', lockdown });
+      if (url.endsWith('/me'))
+        return Response.json({
+          organisations: [],
+          ...(readOnly ? { lockdownReadOnly: true } : {}),
+        });
+      return base(input, init);
     };
   };
 
-  it('tells a TestID login that changes, models and ingestion need an Entra login', async () => {
+  it('tells a read-only login that changes, models and ingestion need an Entra login', async () => {
     await renderAt('/overview', locked(true));
 
     expect(
@@ -442,21 +506,17 @@ describe('a locked environment', () => {
     ).toBeTruthy();
   });
 
-  it('shows an Entra login the ordinary locked-environment banner', async () => {
-    const token = `e30.${btoa(JSON.stringify({ acr: 'entraid' })).replace(/=+$/, '')}.sig`;
-    const auth: AuthClient = {
-      current: () => ({ ...kari, token }),
-      login: async () => ({ ...kari, token }),
-      logout: async () => undefined,
-    };
-    window.location.hash = '#/overview';
-    render(<App auth={auth} fetch={locked(true)} />);
+  it('shows no banner to an admitted Entra login', async () => {
+    const seen: string[] = [];
+    const fetcher = locked(true, false);
+    await renderAt('/overview', async (input, init) => {
+      seen.push(String(input instanceof Request ? input.url : input));
+      return fetcher(input, init);
+    });
 
-    expect(
-      await screen.findByText(
-        'Låst testmiljø: bare Entra ID-innlogging kan endre. Den og API-nøklene og klientene den lager kan bruke modeller og lese inn.',
-      ),
-    ).toBeTruthy();
+    await waitFor(() => expect(seen.some((url) => url.endsWith('/me'))).toBe(true));
+    expect(await screen.findAllByRole('navigation', { name: 'Hovedmeny' })).toHaveLength(1);
+    expect(screen.queryByText(/Låst testmiljø/)).toBeNull();
   });
 
   it('shows no banner when the environment is not locked', async () => {

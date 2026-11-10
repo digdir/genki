@@ -25,6 +25,7 @@ const reranker = z.strictObject({
   endpoint: id,
   residency: z.enum(residencies),
   onFailure: z.enum(failureModes).default('degrade'),
+  tenants: z.array(z.string().regex(/^\d{9}$/)).optional(),
   options: z.record(z.string(), z.unknown()).default({}),
 });
 

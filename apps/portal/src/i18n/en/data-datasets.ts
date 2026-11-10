@@ -82,9 +82,9 @@ const datasets = {
   residencyGlobalLabel: 'Globally, including outside the EU/EEA',
   residencyUnknown: 'Not specified',
   usableNorway:
-    'The dataset can be used by all services, including those that require data to stay in Norway.',
+    'The dataset can be used by all services, including those that only allow processing in Norway.',
   usableEu:
-    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that require data to stay in Norway.',
+    'The dataset can be used by services that allow processing in the EU/EEA or globally, but not by services that only allow processing in Norway.',
   usableGlobal: 'The dataset can therefore only be used by services that allow global processing.',
   usableUnknown:
     'Where the dataset is processed is not specified. It can therefore only be used by services that allow global processing.',
@@ -238,7 +238,7 @@ const datasets = {
   liveChoiceUploadDesc: 'Documents you have yourself: PDF, Word, text, Markdown or HTML.',
   choiceUploadExample: 'For example consultation responses or internal guides.',
   integrationsHint:
-    'Publishing systems, archives and other line-of-business systems are connected under <link>Integrations</link>. They then appear here as sources.',
+    'Publishing systems, archives and other line-of-business systems are connected under <link>Systems in developer tools</link>. They then appear here as sources.',
   nameOfDataset: 'Name of the dataset',
   reportsFrom: 'Reports from',
   allOrgs: 'All organisations',
@@ -466,6 +466,11 @@ export const searchEngine = {
   swFirstNow: 'First match now:',
   swFirstWith: 'First match with {engine}:',
   swNotFound: 'Not found among the first 5',
+  swFailedDocuments:
+    '{count} documents could not be read in. They are read in again before the switch is adopted.',
+  swRefreshing:
+    'Reading in what changed in the source since the transfer. Then {engine} is adopted.',
+  swRefreshFailed: 'The ingestion before the switch stopped: {message}. Try adopting it again.',
   swAdoptHeading: 'Adopt {engine}',
   swRetained:
     '{engine} is kept for {days} days <undecided/>, so you can go back without ingesting again.',
