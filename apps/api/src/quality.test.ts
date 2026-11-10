@@ -755,6 +755,23 @@ describe('improvements', () => {
     expect((await send('POST', `${services}/improvements`, 'kari', {})).status).toBe(409);
   });
 
+  it('learns from the latest run of the whole test set, not a later run of only the marked cases', async () => {
+    const env = await boot();
+    await runPublished(env);
+    const marked = await env.send('POST', `${services}/eval-runs`, 'kari', {
+      testSet: 'svar-frister',
+      cases: ['l1'],
+    });
+    await env.settled();
+
+    const started = await env.send('POST', `${services}/improvements`, 'kari', {});
+    await env.settled();
+
+    expect(marked.status).toBe(202);
+    expect(started.status).toBe(202);
+    expect(env.optimiserPrompts[0]).toContain('Når er fristen for søknad?');
+  });
+
   describe('one language at a time', () => {
     const withEnglishText = () => {
       const next = structuredClone(service);
