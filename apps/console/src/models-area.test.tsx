@@ -321,6 +321,24 @@ describe('Modeller: the model list', () => {
       reason,
     });
   });
+
+  it('derives a valid model id from a deployment with a provider prefix and keeps the deployment as typed', async () => {
+    const { calls, fetch } = recorded();
+    await signedIn('#/models?tab=models', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Legg til modell' }));
+    const panel = await dialog('Legg til modell');
+    typeInto(within(panel).getByLabelText('Tilkobling'), 'local-model');
+    typeInto(within(panel).getByLabelText('Utrulling (deployment)'), 'Azure:GPT-6.1-Sol');
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre modell' }));
+
+    expect(await screen.findByText(/Azure:GPT-6.1-Sol er lagret/)).toBeTruthy();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      path: '/operator/models/local-model/azure-gpt-6.1-sol',
+      body: { deployment: 'Azure:GPT-6.1-Sol' },
+    });
+  });
 });
 
 describe('Modeller: one model', () => {
