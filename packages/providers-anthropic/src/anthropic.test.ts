@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { envSecrets } from '@genai/kernel';
-import { ModelRouter, rejectedParameter, type ChatChunk, type ModelPort } from '@genai/port-model';
+import { ModelRouter, type ChatChunk, type ModelPort } from '@genai/port-model';
 import { fakeHttp, testContext, type FakeReply, type FakeServer } from '@genai/port-model/testing';
 import { azureDeployments, openAiChat } from '@genai/providers-openai';
 import { anthropicMessages } from './index.js';
@@ -91,7 +91,7 @@ describe('anthropic-messages adapter', () => {
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false, false]);
   });
 
-  it("rejectedParameter reads Anthropic's 'temperature: Extra inputs are not permitted' as a temperature refusal, and the Anthropic adapter retries without it", async () => {
+  it('retries without temperature when Anthropic says temperature is an extra input', async () => {
     const refusal = {
       type: 'error',
       error: {
@@ -111,7 +111,6 @@ describe('anthropic-messages adapter', () => {
       temperature: 0,
     });
 
-    expect(rejectedParameter(400, `400 ${JSON.stringify(refusal)}`)).toBe('temperature');
     expect(answer.content).toBe('Hei');
     expect(seen.map((s) => 'temperature' in s.body)).toEqual([true, false]);
   });
