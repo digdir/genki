@@ -166,6 +166,11 @@ const OperationFixture = z
     name: z.string().describe('Lower case letters, digits and dashes; unique in the upload'),
     source: z.string().optional().describe('Where the recording comes from'),
     deployment: z.string(),
+    at: z.string().optional().describe('The time a module signs with, when the descriptor has one'),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe("The descriptor's typed input"),
     request: z.object({
       method: z.string(),
@@ -188,6 +193,10 @@ const OperationFixture = z
 const WireExchange = z
   .object({
     deployment: z.string(),
+    settings: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('The connection settings the call read as $connection.<name>'),
     input: z.unknown().describe('The typed input as it was sent, masked'),
     request: z.object({
       method: z.string(),

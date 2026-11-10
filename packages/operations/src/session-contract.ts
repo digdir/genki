@@ -49,6 +49,7 @@ const bytesOf = (base64: string) => new Uint8Array(Buffer.from(base64, 'base64')
 
 export interface SessionCase {
   deployment: string;
+  settings?: Record<string, string>;
   input: unknown;
   session: SessionFixture;
   result: unknown;
@@ -132,6 +133,7 @@ export const replaySession = async (
       endpoint: {
         baseURL: 'https://contract.invalid/base',
         credential: { kind: 'api-key', key: async () => options.key },
+        ...(fixture.settings ? { settings: fixture.settings } : {}),
         connection: 'contract',
         tenant: '999888777',
         run: 'operation-contract',

@@ -17,6 +17,8 @@ const connection = z.object({
   baseURL: z.url({ protocol: /^https?$/ }),
   auth,
   families: z.record(z.string(), z.string()),
+  settings: z.record(z.string(), z.string()).optional(),
+  keys: z.record(z.string(), secret).optional(),
 });
 
 /** An embedding model in the model catalogue, as the embedding port reads it. */

@@ -151,6 +151,53 @@ describe('Modeller: connections', () => {
     expect(screen.getByText('DBA-2026-17')).toBeTruthy();
   });
 
+  it('shows the settings and the named keys of a connection, the keys by secret name', async () => {
+    await signedIn('#/models?connection=foundry');
+    const facts = await screen.findByRole('region', { name: 'Tilkobling' });
+    expect(within(facts).getByText('keyId')).toBeTruthy();
+    expect(within(facts).getByText(/AKID-7/)).toBeTruthy();
+    expect(within(facts).getByText('signing')).toBeTruthy();
+    expect(within(facts).getByText(/foundry-signing-key/)).toBeTruthy();
+    expect(within(facts).queryByText(/secret:\/\//)).toBeNull();
+  });
+
+  it('saving a connection unchanged keeps its settings and keys as stored, without doubling the secret prefix', async () => {
+    const { changes, fetch } = recorded();
+    await signedIn('#/models?connection=foundry', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rediger tilkoblingen' }));
+    const panel = await dialog('Rediger foundry');
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre tilkobling' }));
+    expect(await screen.findByText(/Tilkoblingen foundry er lagret/)).toBeTruthy();
+    const put = changes().find((c) => c.method === 'PUT') as Call;
+    expect(put.body).toMatchObject({
+      settings: { keyId: 'AKID-7' },
+      keys: { signing: 'secret://platform/foundry-signing-key' },
+    });
+  });
+
+  it('a key named like a setting is refused in the form, and nothing is saved', async () => {
+    const { changes, fetch } = recorded();
+    await signedIn('#/models?connection=foundry', fetch);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rediger tilkoblingen' }));
+    const panel = await dialog('Rediger foundry');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til nøkkel' }));
+    typeInto(
+      within(panel).getByLabelText('Navn på nøkkelen', { selector: '#endpoint-key-name-1' }),
+      'keyId',
+    );
+    typeInto(
+      within(panel).getByLabelText('Navn på hemmeligheten', { selector: '#endpoint-key-value-1' }),
+      'other',
+    );
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre tilkobling' }));
+    expect(
+      await within(panel).findByText(/Et navn er enten en innstilling eller en nøkkel/),
+    ).toBeTruthy();
+    expect(changes()).toEqual([]);
+  });
+
   it('editing a connection sends its families and discovery rules with the reason', async () => {
     const { changes, fetch } = recorded();
     await signedIn('#/models?connection=foundry', fetch);
@@ -178,6 +225,66 @@ describe('Modeller: connections', () => {
         { idPrefix: 'foundry-claude', include: ['claude-*'] },
       ],
     });
+  });
+
+  it('editing a connection sends its settings and named keys with the reason', async () => {
+    const { changes, fetch } = recorded();
+    await signedIn('#/models?connection=foundry', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rediger tilkoblingen' }));
+    const panel = await dialog('Rediger foundry');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til innstilling' }));
+    typeInto(
+      within(panel).getByLabelText('Navn på innstillingen', {
+        selector: '#endpoint-setting-name-1',
+      }),
+      'region',
+    );
+    typeInto(
+      within(panel).getByLabelText('Verdi', { selector: '#endpoint-setting-value-1' }),
+      'eu-north-1',
+    );
+    fireEvent.click(within(panel).getByRole('button', { name: 'Legg til nøkkel' }));
+    typeInto(
+      within(panel).getByLabelText('Navn på nøkkelen', { selector: '#endpoint-key-name-1' }),
+      'verify',
+    );
+    typeInto(
+      within(panel).getByLabelText('Navn på hemmeligheten', { selector: '#endpoint-key-value-1' }),
+      'hmac-key',
+    );
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre tilkobling' }));
+
+    expect(await screen.findByText(/Tilkoblingen foundry er lagret/)).toBeTruthy();
+    const put = changes().find((c) => c.method === 'PUT') as Call;
+    expect(put.reason).toBe(reason);
+    expect(put.body).toMatchObject({
+      settings: { keyId: 'AKID-7', region: 'eu-north-1' },
+      keys: {
+        signing: 'secret://platform/foundry-signing-key',
+        verify: 'secret://platform/hmac-key',
+      },
+    });
+  });
+
+  it('a setting that holds a secret reference is refused in the form, and nothing is saved', async () => {
+    const { changes, fetch } = recorded();
+    await signedIn('#/models?connection=foundry', fetch);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rediger tilkoblingen' }));
+    const panel = await dialog('Rediger foundry');
+    typeInto(
+      within(panel).getByLabelText('Verdi', { selector: '#endpoint-setting-value-0' }),
+      'secret://platform/hmac-key',
+    );
+    giveReason(panel);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Lagre tilkobling' }));
+
+    expect(
+      await within(panel).findByText(/En hemmelighet hører hjemme under Flere nøkler/),
+    ).toBeTruthy();
+    expect(changes()).toEqual([]);
   });
 
   it('adds a connection and stores its secret without showing it again', async () => {
