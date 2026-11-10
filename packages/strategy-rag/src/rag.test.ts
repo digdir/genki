@@ -282,7 +282,9 @@ describe('rag-single-shot strategy', () => {
   });
 
   it('rewrites OpenAI-style markers such as 【1†L1-L4】 as [N], so their sources are cited', async () => {
-    const m = model('Svar 【3†L1-L4】 og 【1:0†source】.', { stream: true });
+    const m = model('Svar 【3†L1-L4】 og 【1:0†source】.\nKilder: 【3†source】, 【1†source】', {
+      stream: true,
+    });
     const out = await run(
       { strategy: { generate: true }, model: { primary: 'primary', tenant: '991825827' } },
       undefined,

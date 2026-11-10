@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { call, result, run } from './harness.test-utils.js';
+import { call, readSignal, result, run } from './harness.test-utils.js';
 
 const filtered = {
   'retrieve-filter-by': {
@@ -63,6 +63,26 @@ describe('agent loop with caller filters', () => {
       { index: 1, chunkId: 'c1' },
       { index: 2, chunkId: 'c2' },
     ]);
+  });
+
+  it('an answer from generate_response with OpenAI-style markers passes the grounding gate as cited', async () => {
+    const out = await run({
+      scripts: {
+        primary: {
+          loop: [
+            () => result('', [call('search', { queries: ['x'] })]),
+            () => result('', [call('read_chunks', { chunk_ids: ['c1'] })]),
+            () => result('', [call('generate_response', { query: 'x' })]),
+          ],
+          read: [() => readSignal('gap-remaining', { scope_assessment: 'ambiguous' })],
+          synth: [() => 'Svar 【1†L1-L4】.\nKilder: 【1†source】'],
+        },
+      },
+    });
+
+    expect(out.text).toBe('Svar [1].');
+    expect(out.meta?.citations).toEqual([{ index: 1, chunkId: 'c1' }]);
+    expect(out.notices).not.toContainEqual(expect.objectContaining({ source: 'grounding-gate' }));
   });
 
   it('says nothing about filters when the caller set none', async () => {

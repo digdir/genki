@@ -235,7 +235,7 @@ export const createRagSingleShot = (options: RagOptions): Strategy<RagRuntimeCon
       filter.end();
       return full;
     });
-    const text = normaliseCitationMarkers(stripSourceLists(generated));
+    const text = stripSourceLists(normaliseCitationMarkers(generated));
     const citations = parseCitations(text, numbered.index);
     yield {
       type: 'kernel.result',

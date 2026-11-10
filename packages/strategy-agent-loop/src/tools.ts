@@ -2,6 +2,7 @@ import { untrustedData } from '@genai/port-model';
 import { z } from 'zod';
 import {
   detectInsufficientContext,
+  normaliseCitationMarkers,
   numberByDocument,
   parseCitations,
   sourcesFirst,
@@ -633,12 +634,14 @@ const generate = async (env: ToolEnvironment, raw: unknown): Promise<ToolOutcome
   let text: string;
   try {
     text = stripSourceLists(
-      await env.synthesize(
-        env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
-        generationPromptFor(
-          env.generationPrompt ?? defaultGenerationPrompt,
-          context,
-          args.data.query,
+      normaliseCitationMarkers(
+        await env.synthesize(
+          env.systemPrompt + skillsSection([...workspace.loadedSkills.values()]),
+          generationPromptFor(
+            env.generationPrompt ?? defaultGenerationPrompt,
+            context,
+            args.data.query,
+          ),
         ),
       ),
     );
