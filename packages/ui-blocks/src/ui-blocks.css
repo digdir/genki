@@ -1,4 +1,5 @@
 @import './approach/approach.css';
+@import './shell/shell.css';
 
 .uib-visually-hidden {
   position: absolute;

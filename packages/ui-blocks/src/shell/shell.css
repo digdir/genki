@@ -1,0 +1,407 @@
+/* ADR V2-0009: after Designsystemet's layers, so a host's own CSS wins, and every token read
+   through a --genai-shell-* variable at the point of use, listed on docs/components/shell.html.
+
+   The widths come from the shell's own sums as inline --uib-shell-* properties on .uib-shell
+   (layoutStyle() in layout.ts), so a panel can fold, resize or become a drawer without the
+   stylesheet knowing. They are not tokens and not the host's to set.
+
+   The chrome is pinned to the neutral family on purpose, as kunnskapsassistenten's shell: the
+   page, the panels, the rails, the bar and the borders stay grey whatever data-color the host
+   sets, because accent belongs to the content and to what can be pressed. Six pins, each named
+   in shell-css.test.ts. The separator's line is the one exception: it is interactive, so it
+   takes the accent role without a family. */
+@layer ds.theme, ds.base, ds.components, genai.components;
+
+@layer genai.components {
+  /* The page is tinted, not white: white cards on a light grey page. Each region keeps its ground
+     in --_shell-region, so a pinned head hides what scrolls under it in the right colour. */
+  .uib-shell {
+    --_shell-region: var(--genai-shell-background, var(--ds-color-neutral-background-tinted));
+
+    display: flex;
+    align-items: stretch;
+    block-size: 100%;
+    background: var(--genai-shell-background, var(--ds-color-neutral-background-tinted));
+    font-family: var(--genai-shell-font-family, var(--ds-font-family)), sans-serif;
+  }
+
+  /* `border-box`, so a panel is exactly the width the sums say, padding included. Positioned for
+     the separator, with no `overflow`, so its focus ring is not clipped. A container, so what is
+     in it can ask the panel's width. */
+  .uib-shell-side {
+    box-sizing: border-box;
+    position: relative;
+    container-type: inline-size;
+  }
+
+  /* Only these `flex` values decide who gives way: the main column first, to its floor, then
+     the secondary panel. `0 1`, not `0 0`, only for the pixel a fractional window leaves. */
+  .uib-shell-side[data-side='primary'] {
+    flex: 0 1 var(--uib-shell-primary-width);
+    min-inline-size: var(--uib-shell-primary-min-width);
+  }
+
+  /* Explicit, because a flex item's minimum is its content: a long word would hold the panel too
+     wide, and an empty panel would collapse. */
+  .uib-shell-side[data-side='secondary'] {
+    flex: 0 1 var(--uib-shell-secondary-width);
+    min-inline-size: var(--uib-shell-secondary-min-width);
+  }
+
+  /* A margin, not `gap`: the space belongs beside an OPEN panel; a rail sits flush against the
+     main column, or it reads as a hole. Must match the shell's `gap` prop. */
+  .uib-shell-side[data-side='primary']:not([data-collapsed]) {
+    margin-inline-end: var(--genai-shell-gap, var(--ds-size-8));
+  }
+
+  .uib-shell-side[data-side='secondary']:not([data-collapsed]) {
+    margin-inline-start: var(--genai-shell-gap, var(--ds-size-8));
+  }
+
+  /* The panel's box, apart from the landmark, because the separator cannot be inside it:
+     `overflow: hidden` would clip its focus ring. Only the content scrolls, so the button never
+     scrolls away. */
+  .uib-shell-box {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-box-gap, var(--ds-size-4));
+    align-items: start;
+    block-size: 100%;
+    inline-size: 100%;
+    padding-block: var(--genai-shell-padding-block, var(--ds-size-8));
+    overflow: hidden;
+  }
+
+  .uib-shell-side[data-side='primary'] > .uib-shell-box {
+    --_shell-region: var(--genai-shell-primary-background, var(--ds-color-neutral-surface-default));
+
+    background: var(--genai-shell-primary-background, var(--ds-color-neutral-surface-default));
+    border-inline-end: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
+  }
+
+  /* No ground of its own while open, on purpose: the secondary panel shares the main column's.
+     `border-default`, not `border-subtle`, which does not reach 3:1 (WCAG 1.4.11) here. */
+  .uib-shell-side[data-side='secondary'] > .uib-shell-box {
+    border-inline-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
+  }
+
+  /* A rail keeps a panel's ground, so it reads as a folded column, not a hole. The padding is
+     part of the rail's width in the sums: change both or neither. `> .uib-shell-box`, so only the
+     row's box, not the one in an open drawer. */
+  .uib-shell-side[data-collapsed] > .uib-shell-box {
+    align-items: center;
+    background: var(--genai-shell-rail-background, var(--ds-color-neutral-surface-default));
+  }
+
+  .uib-shell-header,
+  .uib-shell-content {
+    box-sizing: border-box;
+    inline-size: 100%;
+    padding-inline: var(--genai-shell-padding-inline, var(--ds-size-5));
+  }
+
+  .uib-shell-side[data-collapsed] > .uib-shell-box > .uib-shell-header {
+    padding-inline: var(--genai-shell-rail-padding-inline, var(--ds-size-3));
+  }
+
+  /* `space-between`, not a margin, so a rail's lone button is centred by the rail's padding. */
+  .uib-shell-header {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--genai-shell-header-gap, var(--ds-size-2));
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* The host's controls on the panel's row. An auto margin, not a wrapper: three items in a
+     `space-between` row would put this one in the middle. */
+  .uib-shell-head {
+    display: flex;
+    gap: var(--genai-shell-header-gap, var(--ds-size-2));
+    align-items: center;
+    margin-inline-end: auto;
+  }
+
+  /* Ends the row even alone: a lone item in a `space-between` row sits at the start. */
+  .uib-shell-hide {
+    margin-inline-start: auto;
+  }
+
+  /* `:empty` is exact: React renders nothing for an empty slot, not even whitespace. */
+  .uib-shell-head:empty,
+  .uib-shell-pinned:empty,
+  .uib-shell-content[hidden] {
+    display: none;
+  }
+
+  /* An empty head row in a drawer takes no room: a zero-height flex item still gets the gap. */
+  .uib-shell-drawer .uib-shell-header:has(> .uib-shell-head:empty) {
+    display: none;
+  }
+
+  /* The panel's only scroller. `min-block-size: 0`, or the flex item grows to its content and
+     the panel clips with nothing to scroll. Positioned for the reason given at `.uib-shell-main`. */
+  .uib-shell-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--genai-shell-content-gap, var(--ds-size-4));
+    align-items: start;
+    position: relative;
+    min-block-size: 0;
+    overflow-y: auto;
+    padding-block-end: var(--genai-shell-padding-block, var(--ds-size-8));
+  }
+
+  /* Pinned while its region scrolls, on the region's ground; the gap is tight, because pinned room
+     is reading room lost. */
+  .uib-shell-pinned {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-pinned-gap, var(--ds-size-3));
+    inline-size: 100%;
+    padding-block-end: var(--genai-shell-pinned-padding-block-end, var(--ds-size-3));
+    background: var(--genai-shell-pinned-background, var(--_shell-region));
+    border-block-end: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
+  }
+
+  /* The foot: under the scroller when pinned, at its end by default (kunnskapsassistenten#123). */
+  .uib-shell-foot {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--genai-shell-foot-gap, var(--ds-size-4));
+    inline-size: 100%;
+    block-size: fit-content;
+    padding-inline: var(--genai-shell-padding-inline, var(--ds-size-5));
+    padding-block-start: var(--genai-shell-foot-padding-block-start, var(--ds-size-4));
+    border-block-start: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
+  }
+
+  /* At the end of the scroller, which has the inline padding already; the end paddings would
+     otherwise add up. */
+  .uib-shell-content > .uib-shell-foot {
+    padding-inline: 0;
+    margin-block-start: var(--genai-shell-foot-margin-block-start, var(--ds-size-6));
+  }
+
+  .uib-shell-content:has(> .uib-shell-foot),
+  .uib-shell-box:has(> .uib-shell-foot) > .uib-shell-content {
+    padding-block-end: 0;
+  }
+
+  .uib-shell-box:has(> .uib-shell-content > .uib-shell-foot),
+  .uib-shell-box:has(> .uib-shell-foot) {
+    padding-block-end: var(--genai-shell-foot-padding-block-start, var(--ds-size-4));
+  }
+
+  /* The movable edge, inside the landmark and over the panel's border, so it takes no part in
+     the row's widths. Centred on the border, which is the edge the reader sees. */
+  .uib-shell-separator {
+    position: absolute;
+    inset-block: 0;
+    inline-size: var(--genai-shell-separator-grip, var(--ds-size-2));
+    cursor: col-resize;
+    /* A touch here is a drag; otherwise the browser takes it as a scroll. */
+    touch-action: none;
+  }
+
+  .uib-shell-separator[data-side='primary'] {
+    inset-inline-end: calc(
+      -0.5 *
+        (
+          var(--genai-shell-separator-grip, var(--ds-size-2)) -
+            var(--genai-shell-border-width, var(--ds-border-width-default))
+        )
+    );
+  }
+
+  .uib-shell-separator[data-side='secondary'] {
+    inset-inline-start: calc(
+      -0.5 *
+        (
+          var(--genai-shell-separator-grip, var(--ds-size-2)) -
+            var(--genai-shell-border-width, var(--ds-border-width-default))
+        )
+    );
+  }
+
+  /* Drawn only while in use; the focus ring is Designsystemet's, through `ds-focus`. */
+  .uib-shell-separator::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(
+      0.5 *
+        (
+          var(--genai-shell-separator-grip, var(--ds-size-2)) -
+            var(--genai-shell-separator-line-width, var(--ds-border-width-focus))
+        )
+    );
+    inline-size: var(--genai-shell-separator-line-width, var(--ds-border-width-focus));
+    background: transparent;
+  }
+
+  .uib-shell-separator:hover::before,
+  .uib-shell-separator[data-dragging]::before {
+    background: var(--genai-shell-separator-line-color, var(--ds-color-base-default));
+  }
+
+  /* Positioned, so an absolutely placed descendant such as a visually hidden heading is placed
+     against the scroller, not the page, which would then grow a scrollbar of its own. `main`
+     scrolls and fills the field between the panels, so the wheel works in the margins. The end
+     padding is on the scroller, where a sticky compose field measures its offset from. */
+  .uib-shell-main {
+    --_shell-region: var(--genai-shell-background, var(--ds-color-neutral-background-tinted));
+
+    position: relative;
+    flex: 1 0 0;
+    min-inline-size: var(--uib-shell-main-min-width);
+    overflow-y: auto;
+    padding-block-end: calc(
+      var(--genai-shell-main-padding-block-end, var(--ds-size-8)) + env(safe-area-inset-bottom)
+    );
+  }
+
+  /* The centred reading width, at least as tall as the scroller, so a view that grows can keep
+     its compose field at the bottom. The last child is the host's view, and grows. The inline
+     padding is the gap on a desktop and narrows to 16 px on a phone, where the column is the
+     window. */
+  .uib-shell-column {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100%;
+    max-inline-size: var(--uib-shell-main-max-width);
+    margin-inline: auto;
+    padding-block-start: var(--genai-shell-main-padding-block-start, var(--ds-size-8));
+    padding-inline: clamp(
+      var(--genai-shell-main-padding-inline-min, var(--ds-size-4)),
+      var(--genai-shell-main-padding-inline-fluid, 4vw),
+      var(--genai-shell-main-padding-inline-max, var(--ds-size-8))
+    );
+  }
+
+  .uib-shell-column > :last-child {
+    flex-grow: 1;
+  }
+
+  /* ── The top row, below 774 unless the host sets `compactBar` to false ── */
+
+  /* The rails become one row above the main column (kunnskapsassistenten#120). Grid placement,
+     not other markup, so what is in the panels keeps its state and the tab order stays primary
+     button, main column, secondary button. */
+  .uib-shell[data-compact] {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* A pseudo-element, not a wrapper, which would take each button out of its landmark. */
+  .uib-shell[data-compact]::before {
+    content: '';
+    grid-row: 1;
+    grid-column: 1 / -1;
+    background: var(--genai-shell-bar-background, var(--ds-color-neutral-surface-default));
+    border-block-end: var(--genai-shell-border-width, var(--ds-border-width-default)) solid
+      var(--genai-shell-border-color, var(--ds-color-neutral-border-default));
+  }
+
+  .uib-shell[data-compact] > .uib-shell-side[data-side='primary'] {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .uib-shell[data-compact] > .uib-shell-side[data-side='secondary'] {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .uib-shell[data-compact] > .uib-shell-main {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  /* In the row a rail is as wide as its button plus the text edge on each side, not a side rail's
+     67. With size containment its `auto` column took the rail's floor, so the secondary button
+     stood 9 px from the window's edge at 390 and was clipped from 667. The drawer it holds is a
+     container of its own. */
+  .uib-shell[data-compact] > .uib-shell-side {
+    container-type: normal;
+    min-inline-size: 0;
+  }
+
+  /* In the bar a rail is just its button. */
+  .uib-shell[data-compact] > .uib-shell-side > .uib-shell-box {
+    padding-block: var(--genai-shell-bar-padding-block, var(--ds-size-2));
+    background: none;
+    border-inline: 0;
+  }
+
+  /* The buttons stand on the same edges as the text under them. */
+  .uib-shell[data-compact] > .uib-shell-side > .uib-shell-box > .uib-shell-header {
+    padding-inline: clamp(
+      var(--genai-shell-main-padding-inline-min, var(--ds-size-4)),
+      var(--genai-shell-main-padding-inline-fluid, 4vw),
+      var(--genai-shell-main-padding-inline-max, var(--ds-size-8))
+    );
+  }
+
+  /* ── Drawers, where an open panel does not fit beside the main column ── */
+
+  /* Designsystemet's `Dialog`. `[open]` is load-bearing: without it this `display` beats the
+     browser's `dialog:not([open]) { display: none }`, and the drawer would never close. A
+     container of its own, so what is in it asks the drawer's width, not the rail's. */
+  .uib-shell-drawer {
+    --dsc-dialog-background: var(
+      --genai-shell-drawer-background,
+      var(--ds-color-neutral-surface-default)
+    );
+
+    padding: 0;
+    container-type: inline-size;
+  }
+
+  .uib-shell-drawer[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The design's width, not a dragged one: a width chosen beside the main column says nothing
+     about a drawer over it. */
+  .uib-shell-drawer[data-side='primary'] {
+    --dsc-dialog-placement-inline-max-width: var(--uib-shell-primary-drawer-width);
+  }
+
+  .uib-shell-drawer[data-side='secondary'] {
+    --dsc-dialog-placement-inline-max-width: var(--uib-shell-secondary-drawer-width);
+  }
+
+  /* Designsystemet floats the close button, which does nothing in a flex column. */
+  .uib-shell-drawer > button[command='close'] {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    margin-block: var(--genai-shell-drawer-close-margin, var(--ds-size-3)) 0;
+    margin-inline: 0 var(--genai-shell-drawer-close-margin, var(--ds-size-3));
+  }
+
+  /* Takes what the close button leaves; `min-block-size: 0` lets the content scroll instead of
+     pushing the drawer taller than the screen. */
+  .uib-shell-drawer > .uib-shell-box {
+    --_shell-region: var(--genai-shell-drawer-background, var(--ds-color-neutral-surface-default));
+
+    flex: 1 1 auto;
+    block-size: auto;
+    min-block-size: 0;
+    padding-block-start: 0;
+  }
+}
