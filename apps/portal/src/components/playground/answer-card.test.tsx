@@ -167,8 +167,8 @@ describe('answer text in Prøveområde', () => {
       ['Årsrapport 2024', [3]],
     ]);
 
-    const { container } = card(r);
-    const items = container.querySelectorAll('.playground-sources > ol > li');
+    card(r);
+    const items = within(screen.getByRole('list', { name: 'Kilder' })).getAllByRole('listitem');
     expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toContain('Første utdrag.');
     expect(items[0]?.textContent).toContain('Andre utdrag.');
@@ -176,6 +176,37 @@ describe('answer text in Prøveområde', () => {
     expect(items[0]?.getAttribute('value')).toBe('1');
     expect(items[1]?.getAttribute('value')).toBe('3');
     expect(items[0]?.textContent).not.toMatch(/\[\d+\]/);
+  });
+
+  it('numbers an uncited source after the highest citation so it never takes a cited number', () => {
+    card(
+      result({
+        text: 'Først [1] og så [2].',
+        sources: [
+          { chunkId: 'c1', title: 'Tildelingsbrev 2024', document: '48211', text: 'Første.' },
+          { chunkId: 'c2', title: 'Tildelingsbrev 2024', document: '48211', text: 'Andre.' },
+          { chunkId: 'c3', title: 'Årsrapport 2024', document: '48300', text: 'Tredje.' },
+        ],
+        citations: [
+          { index: 1, chunkId: 'c1' },
+          { index: 2, chunkId: 'c2' },
+        ],
+      }),
+    );
+    const items = within(screen.getByRole('list', { name: 'Kilder' })).getAllByRole('listitem');
+    expect(items.map((item) => item.getAttribute('value'))).toEqual(['1', '3']);
+  });
+
+  it('renders a long run of unclosed link brackets in an excerpt in linear time', () => {
+    const started = performance.now();
+    card(
+      result({
+        text: 'Svar [1].',
+        sources: [{ chunkId: 'c1', title: 'Rapport', text: '[a'.repeat(50_000) }],
+        citations: [{ index: 1, chunkId: 'c1' }],
+      }),
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 
@@ -215,7 +246,9 @@ describe('source excerpts in Prøveområde', () => {
           name: view === 'excerpt' ? 'Utdrag fra Veileder' : 'Detaljer om Veileder',
         }),
       );
-      const excerpt = screen.getByRole('region', { name: 'Utdrag fra Veileder' });
+      const excerpt = screen.getByRole('region', {
+        name: view === 'excerpt' ? 'Utdrag fra Veileder' : 'Tekst fra Veileder',
+      });
       expect(excerpt.querySelector('script, img, svg, a, [onerror], [onload]')).toBeNull();
       expect(excerpt.textContent).toContain('<script>alert(1)</script>');
       expect(excerpt.textContent).toContain('<img src=x onerror=alert(1)>');
@@ -223,8 +256,17 @@ describe('source excerpts in Prøveområde', () => {
     },
   );
 
+  it('names the open excerpt and the full text in the details view apart', () => {
+    card(result({ sources: [{ chunkId: 'c1', title: 'Veileder', text: 'Hele teksten.' }] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Utdrag fra Veileder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detaljer om Veileder' }));
+
+    expect(screen.getByRole('region', { name: 'Utdrag fra Veileder' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Tekst fra Veileder' })).toBeTruthy();
+  });
+
   it('keeps the dataset and a single ordinal in the list, with technical identifiers behind info', () => {
-    const { container } = card(
+    card(
       result({
         sources: [
           {
@@ -240,9 +282,10 @@ describe('source excerpts in Prøveområde', () => {
       }),
     );
     const sources = screen.getByRole('list', { name: 'Kilder' });
-    const row = container.querySelector('.playground-source-row') as HTMLElement;
-    expect(within(sources).getAllByRole('listitem')).toHaveLength(1);
-    expect(sources.querySelector('li')?.value).toBe(1);
+    const [row, ...others] = within(sources).getAllByRole('listitem');
+    if (!(row instanceof HTMLLIElement)) throw new Error('expected one source row');
+    expect(others).toHaveLength(0);
+    expect(row.value).toBe(1);
     expect(row.textContent).toContain('digdir/ai-policy');
     expect(sources.textContent).not.toContain('[1]');
     expect(row.textContent).not.toMatch(/chunk-123|doc-456|Kapittel 1|Publisert/);

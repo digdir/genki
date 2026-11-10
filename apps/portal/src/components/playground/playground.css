@@ -571,3 +571,8 @@
   font-size: 14px;
   color: var(--ds-color-neutral-text-subtle);
 }
+
+.playground-source-excerpts .playground-markdown,
+.playground-source-text .playground-markdown {
+  font-size: inherit;
+}

@@ -61,7 +61,7 @@ export const blocksOf = (text: string): Block[] => {
 };
 
 const inlinePattern =
-  /(\*\*[^\n]+?\*\*|__[^_\n]+?__|`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|\[\d+(?:\s*,\s*\d+)*\]|\*[^*\s][^*\n]*?\*)/;
+  /(\*\*[^\n]+?\*\*|__[^_\n]+?__|`[^`\n]+`|\[[^[\]\n]+\]\(https?:\/\/[^\s)]+\)|\[\d+(?:\s*,\s*\d+)*\]|\*[^*\s][^*\n]*?\*)/;
 
 export type CiteRenderer = (n: number, key: string) => ReactNode | undefined;
 

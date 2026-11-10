@@ -122,9 +122,9 @@ export const playgroundUi = {
     sourceDetails: 'Detaljer om {title}',
     excerpt: 'Utdrag',
     sourceExcerpt: 'Utdrag fra {title}',
+    sourceText: 'Tekst fra {title}',
     sourcePublished: 'Publisert {date}',
     untitledSource: 'Kilde uten tittel',
-    sourceVersion: 'versjon {version}',
     searchNote: 'Søkemerknad:',
     searchNoteText: {
       one: '{count} dokument ble hoppet over i søket. Se kjøringen for hvilke og hvorfor.',

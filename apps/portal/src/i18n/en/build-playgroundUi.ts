@@ -124,9 +124,9 @@ export const playgroundUi = {
     sourceDetails: 'Details about {title}',
     excerpt: 'Excerpt',
     sourceExcerpt: 'Excerpt from {title}',
+    sourceText: 'Text from {title}',
     sourcePublished: 'Published {date}',
     untitledSource: 'Untitled source',
-    sourceVersion: 'version {version}',
     searchNote: 'Search note:',
     searchNoteText: {
       one: '{count} document was skipped in the search. See the run for which one and why.',

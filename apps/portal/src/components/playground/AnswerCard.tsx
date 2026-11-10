@@ -43,20 +43,25 @@ export interface SourceGroup {
   first: PlaygroundSource;
   chunks: PlaygroundSource[];
   numbers: number[];
+  ordinal: number;
 }
 
 export const groupSources = (result: PlaygroundResult): SourceGroup[] => {
   const groups = new Map<string, SourceGroup>();
   for (const source of result.sources) {
     const key = documentKey(source);
-    const group = groups.get(key) ?? { key, first: source, chunks: [], numbers: [] };
+    const group = groups.get(key) ?? { key, first: source, chunks: [], numbers: [], ordinal: 0 };
     group.chunks.push(source);
     for (const c of result.citations ?? [])
       if (c.chunkId === source.chunkId && !group.numbers.includes(c.index))
         group.numbers.push(c.index);
     groups.set(key, group);
   }
-  return [...groups.values()].map((g) => ({ ...g, numbers: g.numbers.sort((x, y) => x - y) }));
+  let next = Math.max(0, ...(result.citations ?? []).map((c) => c.index));
+  return [...groups.values()].map((g) => {
+    const numbers = g.numbers.sort((x, y) => x - y);
+    return { ...g, numbers, ordinal: numbers[0] ?? (next += 1) };
+  });
 };
 
 const sourceLabel = (source: PlaygroundSource, t: T) =>
@@ -105,7 +110,7 @@ const SourceItem = ({
     return text ? [{ chunkId: chunk.chunkId, text }] : [];
   });
   return (
-    <li {...(group.numbers[0] ? { value: group.numbers[0] } : {})}>
+    <li value={group.ordinal}>
       <div className="playground-source-row">
         <div className="playground-source-label">
           {url ? <Link href={url}>{title}</Link> : <span>{title}</span>}
@@ -217,7 +222,7 @@ const SourceDetail = ({
         <div
           className="playground-source-text"
           role="region"
-          aria-label={t('playground.sourceExcerpt', { title })}
+          aria-label={t('playground.sourceText', { title })}
           tabIndex={0}
         >
           <AnswerMarkdown text={source.text} />
