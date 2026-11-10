@@ -1,13 +1,8 @@
 import { decodeEntities } from '../markdown/Markdown.js';
 
-// Excerpts are Marker's Markdown from PDF conversion. This keeps what is Markdown for
-// Markdown to draw, drops what the conversion left (page markers, page rules,
-// running heads, anchors and other tags), and writes headings, list items, table rows,
-// links and raised marks as text, as KA's readableText does.
-// Not a sanitiser; Markdown draws everything as text.
+// Marker's PDF Markdown made fit to quote: its leftovers go and its markup is read as KA reads it.
 
-// Backslash escapes become noncharacters (U+FDD0 on) until the end, so an escaped
-// `|` or `<` is never cut or taken for a tag. Not private use: Kudos has some in its text.
+// Escapes are noncharacters until the end, so an escaped `|` or `<` is never cut or read as a tag.
 const ESCAPABLE = '\\`*_{}[]()#+-.!|"\'~<>';
 const ESCAPED = /\\([\\`*_{}[\]()#+\-.!|"'~<>])/g;
 const BASE = 0xfdd0;
@@ -30,26 +25,154 @@ const restore = (text: string) =>
     (char) => KEPT[char] ?? `\\${ESCAPABLE[char.charCodeAt(0) - BASE] ?? ''}`,
   );
 
-const SCRIPT_OR_STYLE = /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
-const COMMENT = /<!--[\s\S]*?-->/g;
 // `<` or `</` and a letter; the name ends at a space or `/`, as HTML reads it.
 const TAG = /<\/?[a-z][a-z0-9-]*(?:[\s/][^<>]*)?>/gi;
 const BREAK_TAG = /<br\s*\/?>/gi;
-const RAISABLE = /<(sup|sub)\b[^<>]*>([\s\S]*?)<\/\1\s*>/gi;
-const IMAGE = /!\[([^\]]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g;
-// A link in a quotation is its words, as KA draws it; the document link is at the card's end.
-const LINK = /\[([^\]\n]+)\]\((?:[^()\s]|\([^()\s]*\))*\)/g;
 const AUTOLINK = /<(https?:\/\/[^<>\s]+)>/gi;
 
+// The first match at or after a position that only moves forward, so no part is searched twice.
+const searcher = (text: string, pattern: RegExp) => {
+  let from = Number.POSITIVE_INFINITY;
+  let found: RegExpExecArray | null = null;
+  return (at: number) => {
+    if (at < from || (found && found.index < at)) {
+      pattern.lastIndex = at;
+      found = pattern.exec(text);
+      from = at;
+    }
+    return found;
+  };
+};
+
+// `<script>` and `<style>` with all they hold, by hand: the one pattern for them is quadratic.
+const dropScriptsAndStyles = (text: string) => {
+  const opener = /<(script|style)\b/gi;
+  const tagEnd = searcher(text, />/g);
+  const closer = {
+    script: searcher(text, /<\/script\s*>/gi),
+    style: searcher(text, /<\/style\s*>/gi),
+  };
+  let out = '';
+  let kept = 0;
+  for (let open = opener.exec(text); open; open = opener.exec(text)) {
+    const end = tagEnd(opener.lastIndex);
+    if (!end) continue;
+    const close = closer[(open[1] ?? '').toLowerCase() as keyof typeof closer](end.index + 1);
+    if (!close) continue;
+    out += text.slice(kept, open.index);
+    kept = close.index + close[0].length;
+    opener.lastIndex = kept;
+  }
+  return out + text.slice(kept);
+};
+
+const dropComments = (text: string) => {
+  let out = '';
+  let kept = 0;
+  for (let open = text.indexOf('<!--'); open !== -1; open = text.indexOf('<!--', kept)) {
+    const close = text.indexOf('-->', open + 4);
+    if (close === -1) break;
+    out += text.slice(kept, open);
+    kept = close + 3;
+  }
+  return out + text.slice(kept);
+};
+
+type Pass = RegExp | ((text: string) => string);
+
 // Repeated until nothing changes, since one round of `<scr<script>ipt>` leaves `<script>`.
-const removeUntilStable = (text: string, ...patterns: RegExp[]) => {
+const removeUntilStable = (text: string, ...passes: Pass[]) => {
   let result = text;
   let previous: string;
   do {
     previous = result;
-    for (const pattern of patterns) result = result.replace(pattern, '');
+    for (const pass of passes)
+      result = typeof pass === 'function' ? pass(result) : result.replace(pass, '');
   } while (result !== previous);
   return result;
+};
+
+// Each `<sup>` or `<sub>` and its text, as `replace` gives it back.
+const replaceRaisable = (text: string, replace: (name: string, inner: string) => string) => {
+  const opener = /<(sup|sub)\b/gi;
+  const tagEnd = searcher(text, /[<>]/g);
+  const closer = { sup: searcher(text, /<\/sup\s*>/gi), sub: searcher(text, /<\/sub\s*>/gi) };
+  let out = '';
+  let kept = 0;
+  for (let open = opener.exec(text); open; open = opener.exec(text)) {
+    const name = open[1] ?? '';
+    const end = tagEnd(opener.lastIndex);
+    if (end?.[0] !== '>') continue;
+    const close = closer[name.toLowerCase() as keyof typeof closer](end.index + 1);
+    if (!close) continue;
+    out += text.slice(kept, open.index) + replace(name, text.slice(end.index + 1, close.index));
+    kept = close.index + close[0].length;
+    opener.lastIndex = kept;
+  }
+  return out + text.slice(kept);
+};
+
+// Where a link's `(address)` ends, or -1; openers that share a `]` ask about one place in turn.
+const addressEnd = (text: string) => {
+  const address = /\((?:[^()\s]|\([^()\s]*\))*\)/y;
+  let asked = -1;
+  let end = -1;
+  return (at: number) => {
+    if (at !== asked) {
+      address.lastIndex = at;
+      end = address.test(text) ? address.lastIndex : -1;
+      asked = at;
+    }
+    return end;
+  };
+};
+
+// Each `[words](address)` after `opener` as its words; the words end at the first `stop`.
+const linkWords = (
+  text: string,
+  opener: string,
+  stop: RegExp,
+  least: number,
+  address: (at: number) => number,
+) => {
+  const close = searcher(text, stop);
+  let out = '';
+  let kept = 0;
+  for (let open = text.indexOf(opener); open !== -1;) {
+    const start = open + opener.length;
+    const bracket = close(start);
+    if (!bracket) break;
+    const end =
+      bracket[0] === ']' && bracket.index - start >= least ? address(bracket.index + 1) : -1;
+    if (end === -1) {
+      open = text.indexOf(opener, open + 1);
+      continue;
+    }
+    out += text.slice(kept, open) + text.slice(start, bracket.index);
+    kept = end;
+    open = text.indexOf(opener, kept);
+  }
+  return out + text.slice(kept);
+};
+
+const images = (text: string) => linkWords(text, '![', /\]/g, 0, addressEnd(text));
+// A link in a quotation is its words, as KA draws it; the document link is at the card's end.
+const links = (text: string) => linkWords(text, '[', /[\]\n]/g, 1, addressEnd(text));
+
+// The text between an opening and a closing mark, `**` and `~~` among them, by hand.
+const unwrap = (text: string, opener: RegExp, closer: RegExp, width: number) => {
+  const close = searcher(text, closer);
+  let out = '';
+  let kept = 0;
+  for (let open = opener.exec(text); open; open = opener.exec(text)) {
+    const start = open.index + width;
+    const end = close(start + 1);
+    if (!end) break;
+    out += text.slice(kept, open.index) + text.slice(start, end.index);
+    kept = end.index + width;
+    opener.lastIndex = kept;
+  }
+  return out + text.slice(kept);
 };
 
 const RAISED: Record<string, string> = {
@@ -99,44 +222,38 @@ const shifted = (text: string, characters: Record<string, string>) => {
 const raised = (text: string) => shifted(text, RAISED);
 const shiftedBy = (tag: string) => (tag.toLowerCase() === 'sup' ? RAISED : LOWERED);
 
-// «Husleie1)» in a table cell is a footnote mark that lost its raise; in prose the
-// shape can mean something else. A `)` that closes an open `(` is kept.
+// «Husleie1)» in a table cell is a footnote mark that lost its raise; one closing a `(` is kept.
 const GLUED_FOOTNOTE = /(?<=\p{L})\d{1,2}\)(?![\p{L}\p{N}])/gu;
 
-const insideParentheses = (text: string, offset: number) => {
+const raiseGluedFootnotes = (text: string) => {
   let depth = 0;
-  for (const char of text.slice(0, offset)) {
-    if (char === '(') depth += 1;
-    else if (char === ')') depth = Math.max(0, depth - 1);
-  }
-  return depth > 0;
+  let read = 0;
+  return text.replace(GLUED_FOOTNOTE, (mark: string, offset: number) => {
+    for (; read < offset; read += 1) {
+      if (text[read] === '(') depth += 1;
+      else if (text[read] === ')') depth = Math.max(0, depth - 1);
+    }
+    return depth > 0 ? mark : (raised(mark) ?? mark);
+  });
 };
-
-const raiseGluedFootnotes = (text: string) =>
-  text.replace(GLUED_FOOTNOTE, (mark: string, offset: number) =>
-    insideParentheses(text, offset) ? mark : (raised(mark) ?? mark),
-  );
 
 // What Markdown would read as markup in a raised mark's text, «*» above all.
 const MARKUP = /[\\`*_~[\]|]/g;
 
-// A `<sup>` or `<sub>` as superscript or subscript characters when every character has one,
-// «m²», «CO₂», else as its text, a footnote's «*» included: KA's readableText rule for
-// `<sup>`, used for `<sub>` too. No element is left, and the tag's attributes and inner tags go.
-const shiftMark = (_: string, name: string, inner: string) => {
-  const text = removeUntilStable(inner, SCRIPT_OR_STYLE, COMMENT, TAG);
+// A `<sup>` or `<sub>` as «m²» or «CO₂» when every character has a raised twin, else as its text.
+const shiftMark = (name: string, inner: string) => {
+  const text = removeUntilStable(inner, dropScriptsAndStyles, dropComments, TAG);
   return shifted(text.trim(), shiftedBy(name)) ?? text.replace(MARKUP, escaped);
 };
 
 const inline = (text: string, cell: boolean) => {
-  const kept = removeUntilStable(text, SCRIPT_OR_STYLE, COMMENT)
-    .replace(RAISABLE, shiftMark)
-    .replace(BREAK_TAG, cell ? ' ' : BREAK);
-  const clean = removeUntilStable(kept, SCRIPT_OR_STYLE, COMMENT, TAG)
-    .replace(IMAGE, '$1')
-    .replace(LINK, '$1')
-    .replace(AUTOLINK, '$1');
-  return (cell ? raiseGluedFootnotes(clean) : clean).replace(/[ \t]+/g, ' ').trim();
+  const kept = replaceRaisable(
+    removeUntilStable(text, dropScriptsAndStyles, dropComments),
+    shiftMark,
+  ).replace(BREAK_TAG, cell ? ' ' : BREAK);
+  const clean = removeUntilStable(kept, dropScriptsAndStyles, dropComments, TAG);
+  const words = links(images(clean)).replace(AUTOLINK, '$1');
+  return (cell ? raiseGluedFootnotes(words) : words).replace(/[ \t]+/g, ' ').trim();
 };
 
 // Marker's page marker, the page number alone on its line, and its rule.
@@ -145,18 +262,10 @@ const THEMATIC_BREAK = /^(?:([-*_])(?:\s*\1){2,}|={3,})$/;
 const TABLE_ROW = /^\|.*\|$/;
 const DELIMITER_CELL = /^\s*:?-+:?\s*$/;
 const FENCE = /^\s*```/;
-// A page's running head or foot, «Årsrapport 2024 | 4». Marker sets the page number in bold in
-// some reports, and where a chunk crosses a page break it can run two pages' heads onto one line
-// with the title repeated and the numbers together: «**42** | Nkom årsrapport 2020 Nkom årsrapport
-// 2020 | **43 42** | Nkom årsrapport 2020» (Nkom's 2020 report). One pipe
-// and a number at one end does not cover that, so the rule is about the shape of the whole line:
-// every part is either a page number or one short piece of text, with at least one of each.
-// A table row is not one — it starts and ends with a pipe. Only on a line of its own, since prose
-// can hold the same shape.
+// A running head, «Årsrapport 2024 | 4»: page numbers and short text, on a line of its own.
 const PAGE_NUMBERS = /^\d{1,3}(?: \d{1,3}){0,3}$/;
 const HEAD_TEXT = /^[^|]{1,80}$/;
-// The number can be glued to the title instead of standing alone, «Årsrapport 2022 | Lånekassen
-// 46». A year is four digits, so it is not one of these.
+// A page number glued to the title, «Lånekassen 46»; a year has four digits.
 const GLUED_NUMBER = /(?:^\d{1,3}\s)|(?:\s\d{1,3}$)/;
 const EMPHASIS = /^(\*\*|__|\*|_)([\s\S]*)\1$/;
 
@@ -167,10 +276,7 @@ const unemphasised = (cell: string) => {
   return marked ? (marked[2] ?? '').trim() : trimmed;
 };
 
-// Two pages of one report are a page apart, never a hundred. A line of numbers that are far
-// apart is a row of figures with its outer pipes lost — «Husleie | 3 024 010 | 2 900 000»,
-// «Årsverk | 158 | 162» — and deleting one of those from a quotation is worse than leaving a
-// running head in, because nobody can see that it went.
+// A head's pages are close; numbers far apart are a row of figures that lost its outer pipes.
 const PAGE_SPREAD = 2;
 
 const isRunningHead = (line: string) => {
@@ -192,7 +298,21 @@ const isRunningHead = (line: string) => {
 };
 // Marker escaping a tag and raising the escape's «&» with it: «<sup>&</sup>lt;sup>5</sup>».
 const SPLIT_ENTITY = /<sup>&<\/sup>(lt|gt);/gi;
-const HEADING = /^#{1,6}\s+(.*?)(?:\s+#+)?$/;
+const ONE_LINE = /^.*$/;
+
+// A heading's text: one to six `#`, a space, the text, and no closing run of `#`.
+const headingOf = (line: string) => {
+  let level = 0;
+  while (line[level] === '#') level += 1;
+  const rest = line.slice(level);
+  const words = rest.trimStart();
+  if (level < 1 || level > 6 || words === rest) return undefined;
+  let end = words.length;
+  while (end > 0 && words[end - 1] === '#') end -= 1;
+  const before = words.slice(0, end);
+  const text = end < words.length && /\s$/.test(before) ? before.trimEnd() : words;
+  return ONE_LINE.test(text) ? text : undefined;
+};
 
 // A line that must read as text, not as a list item or a heading.
 const literal = (line: string) =>
@@ -202,9 +322,7 @@ const literal = (line: string) =>
 
 const cellsOf = (row: string) => row.replace(/^\|/, '').replace(/\|$/, '').split('|');
 
-// A table row as one line, cells joined by « · », since an excerpt is a quotation in a
-// narrow column. Empty rows and trailing cells go; an empty cell before a filled one is
-// «–», so the columns keep their place.
+// A table row as one line, cells joined by « · », and an empty cell before a filled one as «–».
 const tableRow = (row: string) => {
   const cells = cellsOf(row);
   if (cells.every((cell) => DELIMITER_CELL.test(cell))) return undefined;
@@ -218,8 +336,8 @@ export const excerptMarkdown = (markdown: string): string => {
     protect(markdown.replace(/\r\n?/g, '\n')).replace(SPLIT_ENTITY, (_, name: string) =>
       name.toLowerCase() === 'lt' ? '<' : '>',
     ),
-    SCRIPT_OR_STYLE,
-    COMMENT,
+    dropScriptsAndStyles,
+    dropComments,
   ).split('\n');
   const alone = (i: number) => !lines[i - 1]?.trim() && !lines[i + 1]?.trim();
   const out: string[] = [];
@@ -245,8 +363,7 @@ export const excerptMarkdown = (markdown: string): string => {
     }
     // A list item is a line with a bullet and a heading a line of its own, as KA draws them.
     const block = line.replace(/^>\s?/, '').replace(/^[-*+]\s+/, '• ');
-    const title = HEADING.exec(block);
-    const text = inline(title?.[1] ?? block, false);
+    const text = inline(headingOf(block) ?? block, false);
     if (text || !line) out.push(literal(text));
   }
   return restore(
@@ -263,35 +380,33 @@ const restorePlain = (text: string) =>
     char in KEPT ? '' : (ESCAPABLE[char.charCodeAt(0) - BASE] ?? ''),
   );
 
-// KA's readableHeading: one step of a heading path as plain text, with its tags, anchors,
-// emphasis, links and code gone, and its marks raised. `_` counts only at a word's edge,
-// and `*` only with no space just inside it.
-const plain = (step: string) =>
-  decodeEntities(
-    restorePlain(
-      removeUntilStable(
-        removeUntilStable(protect(step), SCRIPT_OR_STYLE, COMMENT)
-          .replace(RAISABLE, (_, name: string, inner: string) => {
-            const text = removeUntilStable(inner, TAG).trim();
-            return shifted(text, shiftedBy(name)) || text;
-          })
-          .replace(BREAK_TAG, ' '),
-        SCRIPT_OR_STYLE,
-        COMMENT,
-        TAG,
-      )
-        .replace(IMAGE, '$1')
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '$1')
-        .replace(/(?<![\p{L}\p{N}_])__(?=\S)([\s\S]*?\S)__(?![\p{L}\p{N}_])/gu, '$1')
-        .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1')
-        .replace(/(?<![\p{L}\p{N}*])\*(?=\S)([^*\n]*?\S)\*(?![\p{L}\p{N}*])/gu, '$1')
-        .replace(/(?<![\p{L}\p{N}_])_(?=\S)([^_\n]*?\S)_(?![\p{L}\p{N}_])/gu, '$1'),
-    ),
-  )
-    .replace(/\s+/g, ' ')
-    .trim();
+// The `(address)` of a heading's link: everything up to the first `)`.
+const anyAddress = (text: string) => {
+  const parenthesis = searcher(text, /\)/g);
+  return (at: number) => {
+    const close = text[at] === '(' ? parenthesis(at + 1) : null;
+    return close ? close.index + 1 : -1;
+  };
+};
+
+// KA's readableHeading: one step of a heading path as plain text, its marks raised.
+const plain = (step: string) => {
+  const kept = replaceRaisable(
+    removeUntilStable(protect(step), dropScriptsAndStyles, dropComments),
+    (name, inner) => {
+      const text = removeUntilStable(inner, TAG).trim();
+      return shifted(text, shiftedBy(name)) || text;
+    },
+  ).replace(BREAK_TAG, ' ');
+  const pictured = images(removeUntilStable(kept, dropScriptsAndStyles, dropComments, TAG));
+  let text = linkWords(pictured, '[', /\]/g, 1, anyAddress(pictured)).replace(/`([^`]+)`/g, '$1');
+  text = unwrap(text, /\*\*(?=\S)/g, /(?<=\S)\*\*/g, 2);
+  text = unwrap(text, /(?<![\p{L}\p{N}_])__(?=\S)/gu, /(?<=\S)__(?![\p{L}\p{N}_])/gu, 2);
+  text = unwrap(text, /~~(?=\S)/g, /(?<=\S)~~/g, 2)
+    .replace(/(?<![\p{L}\p{N}*])\*(?=\S)([^*\n]*?\S)\*(?![\p{L}\p{N}*])/gu, '$1')
+    .replace(/(?<![\p{L}\p{N}_])_(?=\S)([^_\n]*?\S)_(?![\p{L}\p{N}_])/gu, '$1');
+  return decodeEntities(restorePlain(text)).replace(/\s+/g, ' ').trim();
+};
 
 const STEP = ' › ';
 

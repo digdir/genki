@@ -203,9 +203,7 @@ describe('Markdown', () => {
   });
 
   it('counts its leaves in the order it draws them, so a mark lands where the hit is', () => {
-    // Everything that puts a plain string in the document: text, emphasis, a code span, an entity,
-    // an escape, an image's alt text, a link drawn as its words, a table cell, a list item, a
-    // fenced block and an uncited [1].
+    // Every kind of markup that puts a plain string in the document.
     const text = [
       '# Tittel med **fet**',
       'Tekst &amp; \\* `kode` ![bilde](x.png) [ord](https://a.no) <https://b.no> [1]',
@@ -221,8 +219,7 @@ describe('Markdown', () => {
     const { text: flat, offsets } = visibleText(text, false);
     const { container } = render(<Markdown text={text} links={false} />);
 
-    // The drawn text and the collected text are the same walk: same pieces, same order. Newlines
-    // go from both sides, since a fenced block holds real ones and a block gap is one of ours.
+    // Same pieces in the same order; newlines go from both, as a fenced block holds real ones.
     expect(flat.replace(/\n/g, '')).toBe((container.textContent ?? '').replace(/\n/g, ''));
     // Every offset points at a real place, and they only move forward.
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));

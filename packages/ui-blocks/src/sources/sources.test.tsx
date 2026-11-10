@@ -188,8 +188,7 @@ describe('numbered excerpts, linked both ways', () => {
   });
 
   it('keeps «Les dokumentet»’s and «Les side N»’s words in a span before the icon, so the icon stands off as in kunnskapsassistenten', () => {
-    // Designsystemet sets a link's icon off from its words only when the words are in a span
-    // (`.ds-link:has(> span) > svg:last-child`). A link named in one piece still needs the span.
+    // Designsystemet spaces the icon only after a span (`.ds-link:has(> span) > svg:last-child`).
     draw({ citations: cite('kudos::2021-1') });
     fireEvent.click(toggleOf(/Ressursbruk/));
     const page = screen.getByRole('link', { name: /^Les side 12 på Kudos/ });

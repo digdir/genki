@@ -2,18 +2,10 @@ import { Heading, Table } from '@digdir/designsystemet-react';
 import { Fragment, type ReactNode } from 'react';
 import { runsIn, type SearchHit } from './textSearch.js';
 
-/**
- * Called with every plain string this renderer puts in the document, in document order. It is how
- * the search marks a hit without the caller having to know the markup: the same walk produces the
- * text that is searched (`visibleLeaves`) and the text that is drawn, so the two can never drift.
- */
+/** Called with every plain string drawn, in order; the search walks the same code, so no drift. */
 export type Leaf = (text: string, key: string) => ReactNode;
 
-/**
- * Called where the drawing breaks a line — between two blocks. Two leaves inside one block have
- * nothing between them on screen, so a query runs straight across a `<strong>`; two blocks have a
- * line, so it cannot run across them. Only the collecting walk uses it.
- */
+/** Called between two blocks, where a query cannot run across; only the collecting walk uses it. */
 export type Gap = () => void;
 
 const plain: Leaf = (text) => text;
@@ -27,19 +19,13 @@ export type Block =
   | { kind: 'code'; text: string }
   | { kind: 'table'; head: string[]; align: Align[]; rows: string[][] };
 
-// The text after the marker starts at its first non-space, so the run of spaces in front of it can
-// be read only one way: a pattern where `\s+` and `.*` could share that run is quadratic in it.
+// The text starts at its first non-space, so `\s+` and `.*` never share a run: linear time.
 const bullet = /^\s*[-*+]\s+(\S.*)?$/;
 const numbered = /^\s*(\d{1,9})[.)]\s+(\S.*)?$/;
 // A heading's text is what `.` matches: a line break other than `\n` in it makes the line text.
 const oneLine = /^.*$/;
 
-/**
- * The text and depth of a heading, or undefined when the line is not one: up to three spaces, one
- * to six `#` (the depth), at least one space, then the text, without a closing run of `#` and the
- * spaces around it. Read by hand, since a single pattern must try every way to share the spaces
- * between the text and the closing run, which is cubic in a long run of them.
- */
+/** A heading's text and depth, without its closing `#` run, read by hand: one pattern is cubic. */
 const headingOf = (line: string): { text: string; depth: number } | undefined => {
   const marks = line.trimStart();
   if (line.length - marks.length > 3) return undefined;
@@ -314,9 +300,7 @@ const holdFootnotes = (nodes: ReactNode[], footnotes: ReadonlySet<number>, key: 
   return out;
 };
 
-// With `links` false, a link is drawn as its words and an autolink as its address. Every piece
-// that comes out of this as a plain string goes through `leaf`, which is what lets the search mark
-// it; a piece the caller turned into an element of its own is the caller's to handle.
+// With `links` false, a link is its words; every plain string goes through `leaf` for the search.
 export const inline = (
   text: string,
   cite: CiteRenderer,
@@ -326,8 +310,7 @@ export const inline = (
 ): ReactNode[] => {
   const footnotes = new Set<number>();
   const nodes = text.split(inlinePattern).map((part, i) => {
-    // One pass, in document order: `markup` can call `inline` again, so a second pass over the
-    // results would hand a nested leaf over before the plain text that comes in front of it.
+    // One pass, so a nested leaf from `markup` never comes before the text in front of it.
     if (i % 2 === 0) {
       const value = decodeEntities(part);
       return value === '' ? '' : leaf(value, `${key}-l${i}`);
@@ -392,11 +375,7 @@ const headingSizes = ['md', 'sm', 'xs', '2xs', '2xs', '2xs'] as const;
 
 const wordsOf = (cell: string) => inlineText(cell).trim();
 
-/**
- * The blocks of one text as elements. Pulled out of the component so the search can walk the very
- * same code with a collecting `leaf` (`visibleLeaves`): one walk, so the text that is searched and
- * the text that is drawn cannot drift apart.
- */
+/** The blocks of one text as elements, the same walk the search makes with a collecting `leaf`. */
 export const renderBlocks = (
   text: string,
   cite: CiteRenderer,
@@ -513,12 +492,7 @@ export interface VisibleText {
   offsets: number[];
 }
 
-/**
- * What this text is drawn as, with none of the syntax that produced it. The search indexes this,
- * not the Markdown behind it: `**viktig** tekst` is drawn as «viktig» and « tekst», so a search of
- * the source would find `viktig` at an offset that is nowhere on screen, and would find `**` as
- * text. It is the same walk `Markdown` renders with, so the two cannot drift apart.
- */
+/** The text as drawn, without its syntax, for the search: the same walk `Markdown` renders with. */
 export const visibleText = (markdown: string, links = true): VisibleText => {
   let text = '';
   const offsets: number[] = [];
