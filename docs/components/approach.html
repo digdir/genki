@@ -6,7 +6,7 @@
     <title>Approach · Components</title>
     <meta
       name="description"
-      content="Shows how the assistant works on a question: the steps it takes, what it read, and which filter the answer is based on. Working name, may be renamed before it is built."
+      content="Shows how the assistant works on a question: the steps it takes, what it read, and which filter the answer is based on. Working name, may still be renamed."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -35,7 +35,7 @@
             </div>
             <p class="summary">
               Shows how the assistant works on a question: the steps it takes, what it read, and
-              which filter the answer is based on. Working name, may be renamed before it is built.
+              which filter the answer is based on. Working name, may still be renamed.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -146,9 +146,12 @@
               </li>
               <li>
                 The steps come from the platform, never from the component. The workspace asks for
-                <code>genai_steps</code>, shows a label as sent, and translates known tool names
-                (plan, search, read, rerank, write). Frames a person cannot read are left out, and
-                there is no card without steps.
+                <code>genai_steps</code>, shows a label as sent, and translates the tool names it
+                knows (<code>plan_queries</code>, <code>inspect_filters</code>, <code>search</code>,
+                <code>read_chunks</code>, <code>rerank_results</code>, <code>report_gaps</code>,
+                <code>generate_response</code>) in the person's language, also after a switch.
+                Frames a person cannot read are left out, a tool called again in a row stays one
+                step, and there is no card without steps.
               </li>
             </ul>
           </div>
@@ -164,8 +167,8 @@
                 with the text from the design, so it can be seen and tested in full.
               </li>
               <li>
-                «Vis de 38 som ble lest» and «Utdyp hva som mangler» are placeholders. Where they
-                lead is not designed yet.
+                Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet,
+                so the workspace shows neither link.
               </li>
             </ul>
             <h3>Proposed step frame</h3>
@@ -191,8 +194,8 @@
               </li>
               <li><code>sources-used</code>: the source numbers the answer used.</li>
               <li>
-                <code>missing</code>: the step says what was not found. The tool name
-                <code>report_gaps</code> is reserved for this step.
+                <code>missing</code>: the step says what was not found. The workspace titles a tool
+                named <code>report_gaps</code> as this step; no strategy has that tool yet.
               </li>
             </ul>
           </div>
@@ -203,8 +206,8 @@
               <li>
                 <strong>Relevant later: «Det jeg ikke fant» has no data.</strong> The step and its
                 link «Utdyp hva som mangler» need the platform to say what it looked for and did not
-                find, and where it looked. No strategy sends this today, so the first version leaves
-                the step out. Built when the platform can send it.
+                find, and where it looked. No strategy sends this today, so only the example data
+                shows the step. Built when the platform can send it.
               </li>
             </ul>
           </div>

@@ -8,17 +8,7 @@
       name="description"
       content="Working document: the components assistants in the shared solution are built from, with variants and what we have learned."
     />
-    <!--
-      A working document for the team building the component library (digdir/kunnskapsassistenten#171,
-      part of digdir/kunnskapsassistenten#167). Moved to genki from kunnskapsassistenten, since the
-      components are built in genki and shared by the workspace and the builder's preview.
-      Maintained by Claude as part of the component work. This page is the landing
-      page; each component listed in #167 has a page of its own (chat.html, sources.html, ...),
-      all with the same sections in the same order, and an <article class="component"> with
-      data-component, data-phase and data-optional so people and agents read them the same way.
-      When a component changes: update its page and its badges here, and add a line to the change
-      log at the bottom of this page.
-    -->
+    <!-- When a component changes, update its page, its badges here and the change log below. -->
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -32,7 +22,7 @@
           variants, and what we learn as we build and test.
         </p>
         <p class="meta-line">
-          Last updated 2 November 2026 · Grows as we build · Not meant for service owners yet.
+          Last updated 10 November 2026 · Grows as we build · Not meant for service owners yet.
         </p>
       </header>
 
@@ -41,14 +31,19 @@
         <h2 id="changelog">Change log</h2>
         <ul class="changelog">
           <li>
+            <strong>10 November 2026:</strong> Approach shows its step titles in the person's
+            language, keeps a tool called again in a row as one step, counts only cited sources as
+            used, and shows no link until the app has somewhere for it to lead.
+          </li>
+          <li>
             <strong>2 November 2026:</strong> Approach is in the Building phase: the card above the
             answer is built in <code>@genai/ui-blocks</code> (ADR 0053) and shown in the workspace.
           </li>
           <li>
             <strong>2 November 2026:</strong> The pages moved to genki, in
             <code>docs/components/</code>, from kunnskapsassistenten. The components are built in
-            genki and shared by the workspace and the builder's preview. Issue numbers still point
-            to kunnskapsassistenten. Approach notes that «Det jeg ikke fant» has no data yet.
+            genki, used by the workspace and later by the builder's preview. Issue numbers still
+            point to kunnskapsassistenten. Approach notes that «Det jeg ikke fant» has no data yet.
           </li>
           <li>
             <strong>19 October 2026:</strong> Each component has a page of its own. This page is the
@@ -400,11 +395,11 @@
               <li><strong>Ready:</strong> can be chosen when an assistant is set up.</li>
             </ul>
             <p>
-              All components are drafts for now. The list of components follows
+              All components but Approach are drafts for now. The list of components follows
               <a href="https://github.com/digdir/kunnskapsassistenten/issues/167"
                 >kunnskapsassistenten#167</a
-              >. What we have learned comes from the canvas
-              <a href="https://claude.ai/artifact/WTXEnA5VYmCiJwzCMjpZNM">Fellesløsningen</a>.
+              >. What we have learned comes from the design canvas «Fellesløsningen», which is not
+              public.
             </p>
           </section>
         </div>
@@ -522,7 +517,6 @@
 
       <footer>
         <p>
-          Canvas: <a href="https://claude.ai/artifact/WTXEnA5VYmCiJwzCMjpZNM">Fellesløsningen</a> ·
           Inspiration:
           <a href="https://designsystemet.no/no/components">designsystemet.no/no/components</a>
         </p>
