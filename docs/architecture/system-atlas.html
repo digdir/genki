@@ -5683,6 +5683,13 @@
                 witness: { file: 'packages/eval/src/feedback.ts', imports: '@genai/contracts' },
               },
               {
+                to: 'port-model',
+                label: 'Marks run sources as untrusted data for the criteria judge',
+                kind: 'call',
+                target: 'call',
+                witness: { file: 'packages/eval/src/evaluators.ts', imports: '@genai/port-model' },
+              },
+              {
                 to: 'port-knowledge',
                 label: 'Search and fetch through the knowledge port',
                 kind: 'call',
