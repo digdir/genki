@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { BlocksPanel } from './BlocksPanel';
 import { useBlocksState } from './BlocksStep';
 import { draftChannels } from './channels';
+import { TemplatesPanel } from './TemplatesPanel';
 
 afterEach(cleanup);
 
@@ -20,7 +21,10 @@ const switchIn = (group: string, name: string | RegExp) =>
 
 // An invented draft that answers in a chat and searches nothing.
 const plainChat = factsFromDefinition(
-  { metadata: { id: 'svarhjelp', name: 'Svarhjelp' }, spec: { output: { kind: 'answer' } } },
+  {
+    metadata: { id: 'svarhjelp', name: 'Svarhjelp' },
+    spec: { output: { kind: 'answer' }, exposure: { chat: true } },
+  },
   { channels: draftChannels },
 );
 
@@ -77,5 +81,66 @@ describe('the options on a block', () => {
     ).toBeTruthy();
     expect(screen.getByText('Vedlegg (kommer)')).toBeTruthy();
     expect(screen.queryByRole('switch', { name: /Tilbakemelding/ })).toBeNull();
+  });
+});
+
+// The same draft once it searches a dataset whose own fields can narrow it.
+const withDataset = factsFromDefinition(
+  {
+    metadata: { id: 'svarhjelp', name: 'Svarhjelp', tenant: 'eksempel' },
+    spec: {
+      output: { kind: 'answer' },
+      exposure: { chat: true },
+      knowledge: { datasets: [{ dataset: 'eksempel/veiledere' }] },
+    },
+  },
+  { channels: draftChannels, filtersOf: () => [{ field: 'tema', kinds: ['multiselect'] }] },
+);
+
+const WithTemplates = ({ facts }: { facts?: ServiceFacts | undefined }) => {
+  const blocks = useBlocksState(undefined, facts);
+  return (
+    <>
+      <TemplatesPanel current={blocks.template} onPick={blocks.pick} />
+      <BlocksPanel state={blocks.state} facts={blocks.facts} onChange={blocks.change} />
+    </>
+  );
+};
+
+describe('the blocks a draft cannot back yet', () => {
+  it('holds them, and puts them back where they stood once the draft can back them', () => {
+    const { rerender } = render(<Harness facts={plainChat} />);
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
+    rerender(<Harness facts={withDataset} />);
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+  });
+});
+
+describe('the templates', () => {
+  it('start with none chosen, since the start is every built block and no template', () => {
+    render(<WithTemplates />);
+    expect(screen.queryAllByRole('button', { pressed: true })).toEqual([]);
+  });
+
+  it('take a template’s layout, and hold the blocks the draft cannot back until it can', () => {
+    const { rerender } = render(<WithTemplates facts={plainChat} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Bruk Bare kilder' }));
+    expect(
+      screen.getByRole('button', { name: 'Bruk Bare kilder' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(false);
+    expect(switchIn('Innhold', 'Chat').checked).toBe(true);
+    rerender(<WithTemplates facts={withDataset} />);
+    expect(switchIn('Venstre panel', 'Filter').checked).toBe(true);
+    expect(switchIn('Høyre panel', 'Kilder').checked).toBe(true);
+    expect(switchIn('Innhold', 'Fremgangsmåte').checked).toBe(false);
+  });
+
+  it('mark the blocks not built yet as coming in a template’s list', () => {
+    render(<WithTemplates />);
+    expect(screen.getByRole('button', { name: 'Bruk Notater i fokus' }).textContent).toContain(
+      'Notater (kommer)',
+    );
   });
 });

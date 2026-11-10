@@ -52,7 +52,7 @@ const groups: { zone: Zone; legend: PlainKey }[] = [
 
 const reasons = (t: T, needs: readonly Need[]) => needs.map((need) => t(needKey(need))).join(' ');
 
-/** «Valg for …»: the options the draft can back drawn from their schema, the rest with why not. */
+/** «Valg for …»: the options the draft backs, drawn from their schema; the rest with why not. */
 const BlockOptions = ({
   id,
   state,
@@ -73,7 +73,7 @@ const BlockOptions = ({
     const label = t(optionKey(id, option.id));
     if (offer.planned) return [t('builderBlocks.planned', { block: label })];
     if (!offer.offered) return [`${label}: ${reasons(t, offer.unmet)}`];
-    // On, but with no partner in the layout: it is not in force (V2-0010).
+    // On, but with no partner in the layout: it is not in force.
     const partners = (option.needs ?? []).filter((need) => partnersOf(need).length > 0);
     return value[option.id] === true && !optionInForce(state.layout, id, option.id)
       ? [`${label}: ${reasons(t, partners)}`]

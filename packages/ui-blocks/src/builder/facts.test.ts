@@ -11,7 +11,12 @@ import {
   type Channel,
   type ModelRow,
 } from './facts.js';
-import { draftWithDataset, draftWithDocuments, draftWithFields } from './fixtures/drafts.js';
+import {
+  byggereglerFilters,
+  draftWithDataset,
+  draftWithDocuments,
+  draftWithFields,
+} from './fixtures/drafts.js';
 import rows from './fixtures/genki-test-models.json' with { type: 'json' };
 
 // The rows are genki-test's `/v1/models` as the agents' key saw them on 2026-11-09.
@@ -135,11 +140,12 @@ describe('a family of services as variants', () => {
 });
 
 describe('the facts of a draft', () => {
-  const given = { channels: ['conversations', 'facets'] as Channel[] };
+  const filtersOf = (dataset: string) => byggereglerFilters[dataset];
+  const given = { channels: ['conversations', 'facets'] as Channel[], filtersOf };
   const draftOffered = (definition: unknown) =>
     blockIds.filter((id) => offerOf(id, factsFromDefinition(definition, given)).offered);
 
-  it('reads a draft’s datasets and their multiselect fields from its definition', () => {
+  it('reads a draft’s datasets from its definition, and their multiselect fields from each dataset', () => {
     expect(factsFromDefinition(draftWithDataset, given)).toEqual({
       service: 'byggesak',
       title: 'Byggesaksveileder',
@@ -151,11 +157,17 @@ describe('the facts of a draft', () => {
     });
   });
 
+  it('takes no filter fields from the definition, whose filters are the default values', () => {
+    const facts = factsFromDefinition(draftWithDataset, { channels: given.channels });
+    expect(facts?.datasets).toEqual([{ tenant: 'felles', key: 'byggeregler', filterFields: [] }]);
+    expect(offerOf('filter', facts).unmet).toEqual(['service:filter-fields']);
+  });
+
   it('counts only the variants a draft lets the reader pick in a chat', () => {
     expect(factsFromDefinition(draftWithDataset, given)?.variants).toEqual(['byggesak__standard']);
   });
 
-  it('offers no Chat to a draft that answers in fields', () => {
+  it('offers no Chat to a draft that is not exposed to a chat', () => {
     expect(factsFromDefinition(draftWithFields, given)?.chat).toBe(false);
     expect(draftOffered(draftWithFields)).not.toContain('chat');
   });
@@ -165,6 +177,12 @@ describe('the facts of a draft', () => {
     expect(offered).toContain('sources');
     expect(offered).toContain('document-view');
     expect(offered).not.toContain('filter');
+  });
+
+  it('names a draft by its name when it has no id yet, and finds a dataset without a tenant in its own', () => {
+    const facts = factsFromDefinition(draftWithDocuments, given);
+    expect(facts?.service).toBe('vedleggsleser');
+    expect(facts?.datasets).toEqual([{ tenant: 'eksempel', key: 'notater', filterFields: [] }]);
   });
 
   it('offers no Feedback on a draft whose frontend is given no feedback channel', () => {
@@ -178,8 +196,13 @@ describe('the facts of a draft', () => {
   });
 
   it('lists a draft as `/v1/models` rows, so the try view reads the same facts as the builder', () => {
-    const rows = modelRowsFromDefinition(draftWithDataset);
+    const rows = modelRowsFromDefinition(draftWithDataset, filtersOf);
     expect(rows.map((row) => row.id)).toEqual(['byggesak__standard', 'byggesak__kort']);
+    expect(rows[0]?._datasets?.[0]?.filters?.[1]).toEqual({
+      field: 'aar',
+      kinds: ['multiselect', 'contains'],
+      'value-type': 'integer',
+    });
     expect(factsFromModels(rows, 'byggesak', given)).toEqual(
       factsFromDefinition(draftWithDataset, given),
     );

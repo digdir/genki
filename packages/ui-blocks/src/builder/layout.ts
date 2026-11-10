@@ -1,6 +1,4 @@
-// The layout rules, ported from genki #210's `rules.ts` (its builder for new services) and driven by
-// the catalogue instead of a table of their own, so there is one table. #210 names the zones
-// `left`, `main` and `right`; these are the shell's `primary`, `main` and `secondary`.
+// The layout rules, first written for the portal's builder, driven by the catalogue as one table.
 import {
   blockCatalogue,
   blockSpec,

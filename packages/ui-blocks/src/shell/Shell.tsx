@@ -115,7 +115,7 @@ export interface ShellProps {
   compactBar?: boolean | undefined;
   /** More skip links, after «Hopp til hovedinnhold». */
   skipLinks?: ReactNode;
-  /** Drawn in a host's preview this wide: laid out for it, with no `<main>` and no skip links. */
+  /** Drawn in a host's preview this wide: laid out for it, no `<main>`, no skip links. */
   frameWidth?: number | undefined;
   /** The gap beside an open panel in CSS pixels. Must match `--genai-shell-gap`. */
   gap?: number | undefined;

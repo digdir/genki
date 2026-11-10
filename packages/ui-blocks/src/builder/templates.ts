@@ -1,4 +1,4 @@
-// The canvas's eight templates, then the portal builder's two it lacks; unbuilt blocks are left out.
+// The canvas's eight templates, then two of the portal builder's; unbuilt blocks are left out.
 import { blockSpec, type BlockId, type Zone } from './catalogue.js';
 import { normalised, type AssistantLayout, type BuilderState } from './layout.js';
 import type { BuilderKey } from './i18n.js';

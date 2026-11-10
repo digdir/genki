@@ -1,7 +1,7 @@
 /** The width the preview draws the service at, as on an ordinary laptop screen. */
 export const previewWidth = 1280;
 
-/** The zoom that fits the service drawn at {@link previewWidth} to the space, within readable limits. */
+/** The zoom that fits the service drawn at {@link previewWidth} to the space, kept readable. */
 export const previewScale = (available: number) =>
   available <= 0
     ? 1

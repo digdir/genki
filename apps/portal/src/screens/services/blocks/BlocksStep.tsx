@@ -78,8 +78,9 @@ export const useBlocksState = (
       setState(next);
       setTemplate(undefined);
     },
+    // Blocks the draft cannot back yet are held, and come in once it can.
     pick: (id: TemplateId) => {
-      setState(fromTemplate(id, offered));
+      setState(fitService(fromTemplate(id), offered).state);
       setTemplate(id);
     },
     restart: () => setConversation((n) => n + 1),

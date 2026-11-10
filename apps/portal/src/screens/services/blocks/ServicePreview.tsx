@@ -15,7 +15,7 @@ import {
   type BlockId,
   type Zone,
 } from '@genai/ui-blocks/builder';
-import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useT, type PlainKey } from '../../../i18n';
 import { blockLabel } from './BlocksPanel';
@@ -84,13 +84,14 @@ export const ServicePreview = ({
   height?: number;
 }) => {
   const t = useT();
+  const titleId = useId();
   const used = zones.filter((zone) => blocksIn(layout, zone).length);
   const [viewport, available] = useAvailableWidth();
   const scale = previewScale(available);
   return (
-    <section className="service-preview" aria-labelledby="forhandsvisning-tittel">
+    <section className="service-preview" aria-labelledby={titleId}>
       <div className="service-preview-head">
-        <Heading level={2} data-size="2xs" id="forhandsvisning-tittel">
+        <Heading level={2} data-size="2xs" id={titleId}>
           {t('builderBlocks.previewTitle')}
         </Heading>
         <ToggleGroup

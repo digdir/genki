@@ -59,7 +59,7 @@ import {
 } from '../../data/service-form';
 import { sharedInstructionsOf, withSharedInstructions } from '../../data/service-languages';
 import { useFormat } from '@genai/i18n/react';
-import { factsFromDefinition } from '@genai/ui-blocks/builder';
+import { datasetsOfDefinition, factsFromDefinition } from '@genai/ui-blocks/builder';
 import { actorLabel, formatDateTime, notPricedLabel } from '../../format';
 import { useT, type PlainKey } from '../../i18n';
 import { needsRight, rightLabel, useRights, useUserName } from '../../Shell';
@@ -106,6 +106,7 @@ import { Integrations } from '../Integrations';
 import { LanguageInstructionTabs } from './LanguageInstructionTabs';
 import { BlocksFullscreen, BlocksStep, useBlocksState } from './blocks/BlocksStep';
 import { draftChannels } from './blocks/channels';
+import { useDatasetFilters } from './blocks/datasetFilters';
 import { takeOver } from './blocks/handoff';
 import '../service/service.css';
 
@@ -677,9 +678,14 @@ export const Builder = ({
       }) as unknown as Record<string, unknown>,
     [service, tenant, serviceId, current],
   );
+  const datasetFilters = useDatasetFilters(api, datasetsOfDefinition(definition));
   const draftFacts = useMemo(
-    () => factsFromDefinition(definition, { channels: draftChannels }),
-    [definition],
+    () =>
+      factsFromDefinition(definition, {
+        channels: draftChannels,
+        filtersOf: (dataset) => datasetFilters[dataset],
+      }),
+    [definition, datasetFilters],
   );
   const blocks = useBlocksState(isNew ? takeOver : undefined, draftFacts);
   const rename = (name: string) => change((d) => renameService(d, name, current > 0));

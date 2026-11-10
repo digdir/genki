@@ -4,6 +4,7 @@ import type { AssistantLayout } from '@genai/ui-blocks/builder';
 import '@genai/ui-blocks/styles.css';
 import { useMemo, useRef } from 'react';
 import type { ApiClient } from '../../../api';
+import { useT } from '../../../i18n';
 import { draftChannels } from './channels';
 import { createDraftApi } from './draftApi';
 import { draftServiceOf, type DraftSource } from './draftService';
@@ -18,12 +19,14 @@ export interface TryRun {
 
 /** The assistant the layout describes, live on the draft through the portal's playground. */
 export const TryView = ({ layout, run }: { layout: AssistantLayout; run: TryRun }) => {
+  const t = useT();
   const source = useRef(run.source);
   source.current = run.source;
   const service = draftServiceOf(run.source);
+  const name = t('playground.pageTitle');
   const api = useMemo(
-    () => createDraftApi({ api: run.api, tenant: run.tenant, source: () => source.current }),
-    [run.api, run.tenant],
+    () => createDraftApi({ api: run.api, tenant: run.tenant, source: () => source.current, name }),
+    [run.api, run.tenant, name],
   );
   return (
     <Assistant

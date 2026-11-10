@@ -1,8 +1,8 @@
 # 0053 Building blocks for assistants
 
-Status: proposed, 2026-11-02 (partly built: the package and Approach, used in the workspace)
+Status: proposed, 2026-11-02 (partly built: the package and its components, Approach used in the workspace, and every built component drawn in the portal builder's try view through `@genai/ui-assembly`)
 
-Not built yet: the other components from the list (chat, threads, sources, filter, footnotes, projects, notes, document view), the builder's preview drawing the real components, a playground, and a way for a service definition to say which components it has and where.
+Not built yet: projects and notes, and a way for a service definition to say which components it has and where. `@genai/ui-assembly`, which puts the components together from a layout and calls genki through `@genai/client`, is a new boundary that needs its own decision.
 
 ## Decision
 
@@ -24,6 +24,6 @@ The component library was first planned in kunnskapsassistenten (digdir/kunnskap
 
 ## Consequences
 
-- The workspace and the portal depend on `@genai/ui-blocks`. The package depends on `@genai/i18n` only, so it stays usable outside this repository.
+- The workspace and the portal depend on `@genai/ui-blocks`, and the portal's try view on `@genai/ui-assembly`; the components themselves never fetch. The package depends on `@genai/i18n` and `@navikt/aksel-icons` only, so it stays usable outside this repository.
 - What a component needs from the platform shows up as gaps. Approach is the first: the stream sends tool calls and agent iterations, but not what the assistant understood, how many documents it read or what it did not find. Those need the step frames in `docs/frontend-contract.md` to carry more, which is a separate change.
 - The builder's templates and the kits in kunnskapsassistenten describe the same thing, a layout and a set of components. They should become one description in the service definition, which needs its own decision.

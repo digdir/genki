@@ -27,6 +27,7 @@ describe('the templates', () => {
   });
 
   it('leave Projects and Notes out of «Notater i fokus» until they are built, and keep Threads and Chat', () => {
+    expect(templates['notes-focus'].primary).toEqual(['projects', 'threads']);
     expect(templates['notes-focus'].secondary).toEqual(['notes']);
     const { layout } = fromTemplate('notes-focus');
     expect(blocksIn(layout, 'primary')).toEqual(['threads']);

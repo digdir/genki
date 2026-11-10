@@ -252,8 +252,7 @@ export const AssistantView = ({
     if (field && !field.id) field.id = 'composer-field';
     setFieldId(field?.id || undefined);
   }, [a.fieldRef, fieldShown, chatZone]);
-  // When the answer is done, «Avbryt genereringen» turns back into a disabled send button; focus
-  // that was on it goes to the field, not to the page. Focus the reader moved elsewhere stays.
+  // When the answer is done, focus that was on «Avbryt genereringen» goes to the field.
   const wasWorking = useRef(false);
   useEffect(() => {
     const ended = wasWorking.current && !a.working;
@@ -382,6 +381,7 @@ export const AssistantView = ({
         {a.view === 'notfound' ? null : (
           <Composer
             className="uia-composer"
+            shortcut={!framed}
             value={a.draft}
             onChange={a.setDraft}
             onSubmit={(question) => a.send(question, { fromField: true })}

@@ -1,4 +1,5 @@
 import {
+  filterSet,
   HttpError,
   shortTitle,
   sourceFromWire,
@@ -8,10 +9,16 @@ import {
   type ThreadRow,
   type Turn,
 } from '@genai/ui-assembly';
-import { modelRowsFromDefinition, type ModelRow } from '@genai/ui-blocks/builder';
+import {
+  datasetsOfDefinition,
+  modelRowsFromDefinition,
+  type DatasetFilter,
+  type ModelRow,
+} from '@genai/ui-blocks/builder';
 import type { ApiClient } from '../../../api';
 import type {
   PlaygroundHistoryTurn,
+  PlaygroundOptions,
   PlaygroundResult,
   PlaygroundSetup,
   PlaygroundSource,
@@ -19,29 +26,32 @@ import type {
 } from '../../../api/playground';
 import { withDraftService } from '../../../components/playground/PlaygroundPanel';
 import { initialSetup } from '../../../data/playground';
+import { loadDatasetFilters } from './datasetFilters';
 import { draftServiceOf, type DraftSource } from './draftService';
 
+type AskParams = Parameters<AssistantApi['ask']>[0];
 type AskEvent = AssistantApi['ask'] extends (...args: never[]) => AsyncGenerator<infer E>
   ? E
   : never;
 type Source = Extract<AskEvent, { type: 'done' }>['answer']['sources'][number];
-type FilterSet = NonNullable<Parameters<AssistantApi['ask']>[0]['filters']>;
+type FilterSet = NonNullable<AskParams['filters']>;
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 
-/** The draft with the reader's filter added to every variant's own, so it narrows and never widens. */
+const variantsOf = (spec: Record<string, unknown>): unknown[] =>
+  Array.isArray(spec.variants) && spec.variants.length ? spec.variants : ['default'];
+
+/** The draft with the reader's filter added to each variant's own: it narrows, never widens. */
 export const narrowedDefinition = (definition: Record<string, unknown>, filters: FilterSet) => {
   const spec = record(definition.spec);
-  const variants =
-    Array.isArray(spec.variants) && spec.variants.length ? spec.variants : ['default'];
   return {
     ...definition,
     spec: {
       ...spec,
-      variants: variants.map((variant) => {
+      variants: variantsOf(spec).map((variant) => {
         const own = typeof variant === 'string' ? { id: variant } : record(variant);
         const fixed = record(own.filters).fields;
         return {
@@ -51,6 +61,19 @@ export const narrowedDefinition = (definition: Record<string, unknown>, filters:
       }),
     },
   };
+};
+
+/** The draft searching only the one of its datasets the reader chose, if it is one of them. */
+export const definitionFor = (definition: Record<string, unknown>, dataset: string) => {
+  const spec = record(definition.spec);
+  const knowledge = record(spec.knowledge);
+  const all = Array.isArray(knowledge.datasets) ? knowledge.datasets : [];
+  const chosen = all.filter((d) => {
+    const id = String(record(d).dataset ?? '');
+    return id.slice(id.lastIndexOf('/') + 1) === dataset;
+  });
+  if (chosen.length === 0 || chosen.length === all.length) return definition;
+  return { ...definition, spec: { ...spec, knowledge: { ...knowledge, datasets: chosen } } };
 };
 
 /** The playground's sources, one per excerpt, as the answer's documents with their excerpts. */
@@ -76,6 +99,14 @@ export const sourcesOf = (sources: readonly PlaygroundSource[]): Source[] => {
 
 const answerTextOf = (result: PlaygroundResult) =>
   result.clarification?.question ?? result.text ?? '';
+
+/** A failed request in the assistant's terms, so its status says what went wrong. */
+const asHttpError = (error: unknown) => {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && !(error instanceof HttpError)
+    ? new HttpError(status, error instanceof Error ? error.message : String(status))
+    : error;
+};
 
 /** Turns callbacks into events a generator yields, in order, ending or failing with the run. */
 const queued = async function* <E>(run: (push: (event: E) => void) => Promise<void>) {
@@ -123,22 +154,33 @@ export interface DraftApiOptions {
   tenant: string;
   /** The draft as it is now, read at each question. */
   source: () => DraftSource | undefined;
+  /** The playground's name in the reader's language, for a run with no draft. */
+  name?: string | undefined;
   now?: () => number;
 }
 
-/**
- * An `AssistantApi` for a draft: each question is a playground run of it with the turns so far
- * as history, and the threads are this visit's only, since a draft has no stored conversations.
- */
+/** An `AssistantApi` for a draft: each question a playground run, the threads this visit's. */
 export const createDraftApi = ({
   api,
   tenant,
   source,
+  name,
   now = () => Date.now(),
 }: DraftApiOptions): AssistantApi => {
   const service = draftServiceOf(source());
-  let options: ReturnType<ApiClient['playground']['options']> | undefined;
-  const optionsOnce = () => (options ??= api.playground.options(tenant));
+  let options: Promise<PlaygroundOptions> | undefined;
+  // A failed call is not kept, so the next question asks again.
+  const optionsOnce = () =>
+    (options ??= api.playground.options(tenant).catch((error: unknown) => {
+      options = undefined;
+      throw error;
+    }));
+  const filters = new Map<string, Promise<readonly DatasetFilter[]>>();
+  const filtersOnce = (dataset: string) => {
+    const found = filters.get(dataset) ?? loadDatasetFilters(api, dataset).catch(() => [] as const);
+    filters.set(dataset, found);
+    return found;
+  };
 
   const setupFor = async (draft: DraftSource | undefined): Promise<PlaygroundSetup> => {
     const loaded = await optionsOnce();
@@ -150,27 +192,37 @@ export const createDraftApi = ({
     return { ...setup, service: { id: service, version: 'draft', ...own } };
   };
 
-  /** The draft's `/v1/models` rows; for the playground's setup, one row for what it searches. */
-  const rowsOf = async (): Promise<ModelRow[]> => {
+  /** What the try view runs, as a definition: the draft, or the playground's setup as one. */
+  const definitionNow = async (): Promise<Record<string, unknown>> => {
     const draft = source();
-    if (draft?.definition) return modelRowsFromDefinition(draft.definition);
-    const setup = await setupFor(draft);
-    return modelRowsFromDefinition({
-      metadata: { id: service, name: setup.service?.id ?? service, tenant },
+    if (draft?.definition) return draft.definition;
+    const [setup, loaded] = await Promise.all([setupFor(draft), optionsOnce()]);
+    const named = loaded.services.find((s) => s.id === setup.service?.id)?.name;
+    return {
+      metadata: { id: service, name: named ?? name ?? service, tenant },
       spec: {
         output: { kind: setup.output === 'fields' ? 'fields' : 'answer' },
+        exposure: { chat: setup.output !== 'fields' },
         knowledge: { datasets: setup.datasets.map((dataset) => ({ dataset })) },
       },
-    });
+    };
+  };
+
+  const rowsOf = async (): Promise<ModelRow[]> => {
+    const definition = await definitionNow();
+    const ids = datasetsOfDefinition(definition);
+    const found = await Promise.all(ids.map(filtersOnce));
+    const byId = new Map(ids.map((id, at) => [id, found[at]]));
+    return modelRowsFromDefinition(definition, (id) => byId.get(id));
   };
 
   const threads = new Map<string, Kept>();
   let minted = 0;
 
+  // Every variant's row lists the same datasets: the first row's are the draft's.
+  const datasetsOf = async () => (await rowsOf())[0]?._datasets ?? [];
   const datasetOf = async (key: string) =>
-    (await rowsOf())
-      .flatMap((row) => row._datasets ?? [])
-      .find((d) => (d['dataset-config-key'] ?? d.id) === key);
+    (await datasetsOf()).find((d) => (d['dataset-config-key'] ?? d.id) === key);
 
   return {
     loadModels: rowsOf,
@@ -186,37 +238,41 @@ export const createDraftApi = ({
       return { title: kept.title, turns: kept.turns };
     },
 
-    loadCorpora: async () =>
-      (await api.listDatasets()).map((d) => ({
-        key: d.id,
-        label: d.name,
-        ...(d.description ? { description: d.description } : {}),
-      })),
+    // The draft's own datasets: it searches no other.
+    loadCorpora: async () => {
+      const [own, loaded] = await Promise.all([datasetsOf(), optionsOnce()]);
+      return own.flatMap((d) => {
+        const key = d['dataset-config-key'] ?? d.id;
+        if (!key) return [];
+        const named = loaded.datasets.find((o) => o.id === `${d.tenant}/${key}` || o.id === key);
+        return [{ key, label: named?.name ?? key }];
+      });
+    },
 
-    // The draft's own filter fields, as its definition declares them.
+    // The fields the dataset declares, as the frontend contract reads them.
     loadFields: async (dataset): Promise<readonly FieldSpec[]> =>
       ((await datasetOf(dataset))?.filters ?? [])
         .filter((f) => f.kinds?.includes('multiselect'))
-        .map((f) => ({ id: f.field, label: f.field })),
+        .map((f) => ({
+          id: f.field,
+          label: f.field,
+          ...(f['value-type'] === 'integer' ? { integer: true } : {}),
+        })),
 
-    // One call per field, narrowed by the other fields only: each count is «given the others».
+    // One call per field, narrowed by the other fields only: counts «given the others».
     loadFacets: async (selection, dataset, fields) => {
       const found = await datasetOf(dataset);
       return Promise.all(
         fields.map(async (field) => {
-          const others = fields
-            .filter((f) => f.id !== field.id && (selection[f.id]?.length ?? 0) > 0)
-            .map((f) => ({
-              field: f.id,
-              type: 'multiselect',
-              'value-type': 'string',
-              'selected-options': [...(selection[f.id] ?? [])],
-            }));
+          const others = Object.fromEntries(
+            Object.entries(selection).filter(([id]) => id !== field.id),
+          );
+          const filter = filterSet(others, fields);
           const query = new URLSearchParams({
             tenant: found?.tenant || tenant,
             'dataset-config-key': dataset,
             fields: field.id,
-            ...(others.length ? { filter: JSON.stringify({ fields: others }) } : {}),
+            ...(filter ? { filter: JSON.stringify(filter) } : {}),
           });
           const body = (await api.getJson(`/api/facets?${query.toString()}`)) as {
             fields?: { field: string; options: { value: string | number; count: number }[] }[];
@@ -250,30 +306,41 @@ export const createDraftApi = ({
             : [],
         )
         .slice(-20);
-      const draft = source();
-      const base = await setupFor(draft);
-      const definition = base.service?.definition as Record<string, unknown> | undefined;
-      const setup =
-        params.filters && definition && base.service
+      const setup = await setupFor(source());
+      const draft = setup.service?.definition as Record<string, unknown> | undefined;
+      const variant = params.model.startsWith(`${service}__`)
+        ? params.model.slice(service.length + 2)
+        : undefined;
+      const chosen = draft && params.dataset ? definitionFor(draft, params.dataset.key) : draft;
+      const narrowed =
+        chosen && params.filters ? narrowedDefinition(chosen, params.filters) : chosen;
+      const run =
+        narrowed && setup.service
           ? {
-              ...base,
-              service: {
-                ...base.service,
-                definition: narrowedDefinition(definition, params.filters),
-              },
+              ...setup,
+              service: { ...setup.service, ...(variant ? { variant } : {}), definition: narrowed },
             }
-          : base;
+          : setup;
       const asked = now();
       const seen = new Set<string>();
       let answer: AnswerData | undefined;
       for await (const event of queued<PlaygroundStreamEvent>((push) =>
-        api.playground.runStream(
-          tenant,
-          { setup, input: { text: params.question }, ...(history.length ? { history } : {}) },
-          push,
-          params.signal,
-        ),
+        api.playground
+          .runStream(
+            tenant,
+            {
+              setup: run,
+              input: { text: params.question },
+              ...(history.length ? { history } : {}),
+            },
+            push,
+            params.signal,
+          )
+          .catch((error: unknown) => {
+            throw asHttpError(error);
+          }),
       )) {
+        if (params.signal.aborted) break;
         if ('setup' in event && event.setup === 'compareWith') continue;
         if (event.event === 'delta')
           yield event.channel === 'answer'
@@ -317,13 +384,15 @@ export const createDraftApi = ({
           };
         }
       }
-      if (answer)
-        kept.turns.push({
-          id: `${id}-${kept.turns.length + 1}`,
-          question: params.question,
-          askedAt: asked,
-          answer,
-        });
+      // A stopped or answerless run fails the turn, so it is not left streaming.
+      if (params.signal.aborted) throw new DOMException('The question was stopped', 'AbortError');
+      if (!answer) throw new Error('the run ended without an answer');
+      kept.turns.push({
+        id: `${id}-${kept.turns.length + 1}`,
+        question: params.question,
+        askedAt: asked,
+        answer,
+      });
     },
   };
 };

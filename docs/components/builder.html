@@ -6,7 +6,7 @@
     <title>App builder catalogue · Components</title>
     <meta
       name="description"
-      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the eight templates; the layout rules; and the service facts the needs are checked against."
+      content="The blocks the app builder offers, where each may stand, what it needs from the service and its options; the ten templates; the layout rules; and the service facts the needs are checked against."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -37,8 +37,8 @@
             <p class="summary">
               The blocks the app builder offers, at the canvas's grain: where each may stand, in
               what order, what it needs from the service, and the options a service owner may set.
-              With them, the eight templates, the rules a layout must keep, and the service facts
-              the needs are checked against. It draws nothing: the builder page does.
+              With them, the ten templates, the rules a layout must keep, and the service facts the
+              needs are checked against. It draws nothing: the builder page does.
             </p>
             <dl class="facts">
               <dt>UI name</dt>
@@ -92,7 +92,7 @@
               </li>
               <li>
                 <strong>The templates</strong>, <code>templates</code> and
-                <code>fromTemplate</code>: the canvas's eight, in its order.
+                <code>fromTemplate</code>: the canvas's eight, in its order, then two it lacks.
               </li>
               <li>
                 <strong>The layout</strong>, <code>AssistantLayout</code>: the blocks per zone, each
@@ -133,8 +133,7 @@
             <h2>The secondary panel's tools</h2>
             <p>
               <code>toolMode</code> is the shell's rule, re-exported here: one tool gives a heading,
-              two give tabs, three or more a dropdown. The builder writes it on the right zone, «To
-              verktøy – faner».
+              two give tabs, three or more a dropdown.
             </p>
           </div>
           <div class="wide">
@@ -266,8 +265,10 @@
           <div class="wide">
             <h2>The templates</h2>
             <p>
-              The canvas's eight, in its order. A template lists the blocks the design puts in each
-              zone, also those not built: the builder shows them marked «kommer», and
+              The canvas's eight, in its order, then «Dokumentvisning i fokus» and «Notater i
+              fokus», which the portal's builder had and the canvas lacks. A template lists the
+              blocks the design puts in each zone, also those not built: the builder shows them
+              marked «kommer», and
               <code>fromTemplate</code> leaves them out, with the blocks the service cannot back.
               Choosing one replaces the layout. «Kunnskapsassistenten» has Innstillinger and no
               Dokumentvisning, unlike the canvas, so it draws the same app as the UI blocks preview.
@@ -338,6 +339,20 @@
                     <td>none</td>
                     <td>approach, chat</td>
                     <td>none</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <code>document-focus</code> <small>«Dokumentvisning i fokus»</small>
+                    </th>
+                    <td>none</td>
+                    <td>document-view</td>
+                    <td>chat, sources</td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><code>notes-focus</code> <small>«Notater i fokus»</small></th>
+                    <td>projects, threads</td>
+                    <td>chat</td>
+                    <td>notes</td>
                   </tr>
                 </tbody>
               </table>
@@ -416,8 +431,10 @@
               <li>
                 <code>factsFromDefinition(definition, given)</code> reads a draft the same way:
                 <code>modelRowsFromDefinition</code> lists it as the rows genki would give once it
-                is published, from its output, its variants and its datasets with their multiselect
-                fields.
+                is published: a chat when it is exposed to one, its variants, and its datasets. A
+                dataset declares its own filter fields; the host reads them and passes them as
+                <code>filtersOf</code>, since the definition's <code>filters</code> are default
+                values.
               </li>
               <li>
                 The channels come from the host. Whether a service reports steps is not in the row:

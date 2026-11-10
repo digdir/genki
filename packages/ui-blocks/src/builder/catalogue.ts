@@ -1,11 +1,4 @@
-// The blocks the app builder offers, at the grain of the design's board «3 · byggeklosser og
-// forhåndsvisning»: the canvas's blocks, each made of the package's smaller blocks (its members),
-// with the options a service owner may set. The zones, the order and the needs come from the
-// canvas and from genki #210's `rules.ts`, which holds the same table; this file is that table,
-// driven from one place so the builder, its checks and the renderer read the same rules.
-//
-// Fotnoter is not a block here but an option on Chat that needs Kilder or Dokumentvisning: V2-0010
-// pairs every footnote with an excerpt, so a footnote never stands where neither shows it.
+// The app builder's one table of blocks at the canvas's grain: members, zones, order, needs, options.
 import { enBuilder, nbBuilder, type BuilderKey } from './i18n.js';
 
 /** The shell's three places: the panel before the main column, the main column, the panel after. */
@@ -136,6 +129,7 @@ export const blockCatalogue: readonly BlockSpec[] = [
     ],
     needs: ['service:chat'],
     options: [
+      // Fotnoter is Chat's option, not a block: a footnote needs an excerpt to point to.
       {
         id: 'footnotes',
         kind: 'switch',
@@ -254,7 +248,7 @@ const both = (key: string) => {
   return { nb: nbBuilder[name], en: enBuilder[name] };
 };
 
-/** The block's options as a JSON Schema (2020-12) with ADR 0030's hints, for `@genai/schema-forms`. */
+/** The block's options as JSON Schema with ADR 0030's hints, for `@genai/schema-forms`. */
 export const settingsSchema = (id: BlockId) => {
   const spec = blockSpec(id);
   return {

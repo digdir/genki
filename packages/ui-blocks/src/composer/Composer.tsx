@@ -153,9 +153,7 @@ export const Composer = ({
 
   const focusField = () => field.current?.focus();
 
-  // «Avbryt» turns back into a send button that is disabled until the next question, and the
-  // focus on it falls to the page. The field takes it instead, where the next question is written.
-  // Only focus that was on «Avbryt»: a reader who moved on is left where they are.
+  // Focus that was on «Avbryt» goes to the field once it turns back into the send button.
   const cancelHeldFocus = useRef(false);
   useEffect(() => {
     if (working || !cancelHeldFocus.current) return;
@@ -326,7 +324,7 @@ export const Composer = ({
               className="uib-composer-send"
               data-color={actionColor}
               onBlur={(event) => {
-                // Focus moved to something the reader chose. Disabled or gone, it moves to nothing.
+                // Focus moved to something the reader chose. Gone, it moves to nothing.
                 if (event.relatedTarget) cancelHeldFocus.current = false;
               }}
               onClick={() => {

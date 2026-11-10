@@ -5,20 +5,26 @@ import type {
   PlaygroundStreamEvent,
 } from '../../../api/playground';
 
-// An invented draft that searches one dataset with two filter fields.
+// An invented draft that answers in a chat and searches one dataset, which has two filter fields.
 export const definition = {
   kind: 'Service',
   metadata: { id: 'byggesak', name: 'Byggesaksveileder', tenant: 'eksempel' },
   spec: {
     output: { kind: 'answer' },
+    exposure: { chat: true },
     model: { primary: 'modell-b' },
-    variants: ['default'],
-    knowledge: {
-      datasets: [
-        { dataset: 'felles/byggeregler', filters: { kommune: 'multiselect', aar: 'multiselect' } },
-      ],
-    },
+    variants: ['default', 'kort'],
+    knowledge: { datasets: [{ dataset: 'felles/byggeregler' }, { dataset: 'felles/plankart' }] },
   },
+};
+
+const declared = {
+  byggeregler: [
+    { field: 'kommune', kinds: ['multiselect'] },
+    { field: 'aar', kinds: ['multiselect'], 'value-type': 'integer' },
+    { field: 'tekst', kinds: ['contains'] },
+  ],
+  plankart: [],
 };
 
 const options: PlaygroundOptions = {
@@ -72,25 +78,40 @@ export const answered = (text: string) => (): PlaygroundStreamEvent[] => [
   { event: 'done', quota: { usedPercent: 0, monthlyTokens: 0 } },
 ];
 
-/** The parts of the portal's client the try view calls, with what they were asked. */
-export const fakeClient = (events: (request: PlaygroundRunRequest) => PlaygroundStreamEvent[]) => {
+/** The portal client's parts the try view calls; a run sends nothing once its signal is aborted. */
+export const fakeClient = (
+  events: (request: PlaygroundRunRequest) => PlaygroundStreamEvent[],
+  { optionsFail = 0 }: { optionsFail?: number } = {},
+) => {
   const requests: PlaygroundRunRequest[] = [];
   const paths: string[] = [];
+  let failing = optionsFail;
   const api = {
     playground: {
-      options: async () => options,
+      options: async () => {
+        if (failing > 0) {
+          failing -= 1;
+          throw new Error('options failed');
+        }
+        return options;
+      },
       runStream: async (
         _tenant: string,
         body: PlaygroundRunRequest,
         onEvent: (event: PlaygroundStreamEvent) => void,
+        signal?: AbortSignal,
       ) => {
         requests.push(structuredClone(body));
-        for (const event of events(body)) onEvent(event);
+        for (const event of events(body)) {
+          if (signal?.aborted) return;
+          onEvent(event);
+        }
       },
     },
-    listDatasets: async () => [{ id: 'felles/byggeregler', name: 'Byggeregler', description: '' }],
     getJson: async (path: string) => {
       paths.push(path);
+      const dataset = /^\/api\/datasets\/([a-z]+)$/.exec(path)?.[1];
+      if (dataset) return { dataset: { filters: declared[dataset as keyof typeof declared] } };
       return { fields: [{ field: 'kommune', options: [{ value: 'Oslo', count: 3 }] }] };
     },
   } as unknown as ApiClient;
