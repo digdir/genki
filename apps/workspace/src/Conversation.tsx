@@ -1,5 +1,6 @@
 import { Alert, Button, Details, Paragraph, Spinner, Tag } from '@digdir/designsystemet-react';
 import { useFormat } from '@genai/i18n/react';
+import { Procedure } from '@genai/ui-blocks';
 import { useEffect, useId, useState } from 'react';
 import { AnswerText, sourceAnchor } from './AnswerText';
 import { failureCopy } from './failures';
@@ -110,6 +111,9 @@ const SourceItem = ({ source, id }: { source: Source; id: string }) => {
   );
 };
 
+/** Where «Vis de 38 som ble lest» and «Utdyp hva som mangler» lead is not designed yet. */
+const placeholder = () => undefined;
+
 const Answer = ({
   message,
   organisation,
@@ -130,8 +134,21 @@ const Answer = ({
     !message.failure &&
     !message.table &&
     (!!message.noAnswer || !message.text.trim());
+  const procedure = message.procedure?.steps.length ? message.procedure : undefined;
   return (
     <div className="answer" aria-busy={message.pending || undefined}>
+      {procedure ? (
+        <Procedure
+          steps={procedure.steps}
+          working={!!message.pending}
+          startedAt={procedure.startedAt}
+          {...(procedure.finishedAt ? { finishedAt: procedure.finishedAt } : {})}
+          {...(!message.pending && procedure.read !== undefined ? { read: procedure.read } : {})}
+          onShowRead={placeholder}
+          onExplainMissing={placeholder}
+          {...(!message.pending && message.sources.length ? { used: message.sources.length } : {})}
+        />
+      ) : null}
       {empty ? (
         <Paragraph data-size="sm" className="alert-title">
           {t('answer.noAnswer')}
@@ -141,7 +158,7 @@ const Answer = ({
           {t('answer.aiTag')}
         </Tag>
       ) : null}
-      {message.pending && !message.text ? (
+      {message.pending && !message.text && !procedure ? (
         <Spinner aria-label={t('answer.working')} data-size="sm" />
       ) : null}
       {message.table ? (

@@ -1,0 +1,271 @@
+{
+  "capturedOn": "2026-11-06",
+  "genki": {
+    "sha": "04b1fc7b1172f59e636033ca22244ed168ae6cdd",
+    "deployRun": 42196707383
+  },
+  "request": "GET /api/conversations?page_size=100 with a service key and X-User-Id",
+  "source": "The 37 questions of the 2026-11-03 sources capture, stored as KA stores a new thread: POST /api/conversations with the question as title",
+  "total": 37,
+  "conversations": [
+    {
+      "id": "QnDbqxCClDP3JY8PnU3nQ",
+      "topic": "Hva er oppskriften på fiskesuppe?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974646334
+    },
+    {
+      "id": "hNcX0zAUw00nj9eTsdQVd",
+      "topic": "What does DSB say about climate adaptation and risk?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974646211
+    },
+    {
+      "id": "huEMJWfYJqrVg1qCNxFci",
+      "topic": "Hva står det i notene til årsregnskapet om pensjonskostnader i Statsbygg?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974646086
+    },
+    {
+      "id": "MCnXrlj423Tadh2tZ8QjV",
+      "topic": "Vis nøkkeltallene fra årsregnskapet til Miljødirektoratet for 2022 i en tabell.",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645976
+    },
+    {
+      "id": "PB-DlE4YLZz6tGWZD-GUm",
+      "topic": "Hva er de vanligste årsakene til at statlige IT-prosjekter går over budsjett?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645854
+    },
+    {
+      "id": "V3qQ4akYI5nlNPp8ttHtk",
+      "topic": "Sammenlign hvordan Skatteetaten og NAV rapporterer om brukertilfredshet.",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645734
+    },
+    {
+      "id": "rzTV7DLGrJGGaMcM-X7XM",
+      "topic": "Hva er Nasjonal kommunikasjonsmyndighets samfunnsoppdrag?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645622
+    },
+    {
+      "id": "obfOOm5S6I8X5fhvrPMRP",
+      "topic": "Hvem leder Datatilsynet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645515
+    },
+    {
+      "id": "YKQ95k5xE6XH56IzyqjIG",
+      "topic": "Hvordan beskrev UDI saksbehandlingstidene i 2016?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645384
+    },
+    {
+      "id": "tAgO6yMlyBSW7YiyoC99z",
+      "topic": "Hva skal Arkivverket prioritere i 2026?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645253
+    },
+    {
+      "id": "l7YDYfO99F1vy4pDomNw-",
+      "topic": "Hva var Brønnøysundregistrenes viktigste resultater i 2019?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645142
+    },
+    {
+      "id": "3ezXqFhAG8nvP0p1rhApF",
+      "topic": "Hvilke mål for utslipp av klimagasser beskrives i meldingene til Stortinget?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974645033
+    },
+    {
+      "id": "bZwsVBc1BJtQHIU5uIzqy",
+      "topic": "Hva sier meldingene til Stortinget om kunstig intelligens i offentlig sektor?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974644803
+    },
+    {
+      "id": "yBIYTR1Ie1_5AeBRL7zrM",
+      "topic": "Hvilke oppgaver har styret etter instruksen for Norges forskningsråd?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974644188
+    },
+    {
+      "id": "97m5YpCJv2x6rm8tIKrEy",
+      "topic": "Hva sier virksomhetsinstruksen om ansvar for internkontroll og risikostyring?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974644067
+    },
+    {
+      "id": "p-1i8GvG0IWp5VQ64chsO",
+      "topic": "Hvilke tiltak inneholder strategien mot arbeidslivskriminalitet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643945
+    },
+    {
+      "id": "6eUvM4AUXqt8JlXWCQZYb",
+      "topic": "Hva er hovedmålene i strategien for digitalisering av offentlig sektor?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643824
+    },
+    {
+      "id": "hiGwcP0JEorDiRgqugjxn",
+      "topic": "Hva sier proposisjonene om investeringer i jernbane?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643712
+    },
+    {
+      "id": "PEUxYodMoc-WLAhN_w5LD",
+      "topic": "Hvordan er bevilgningen på et kapittel fordelt på postene i budsjettproposisjonen for 2024? Vis gjerne en tabell.",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643579
+    },
+    {
+      "id": "Y6REuLKMraFzzkihy-LY0",
+      "topic": "Hva foreslår regjeringen om studiestøtte i Prop. 1 S for Kunnskapsdepartementet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643464
+    },
+    {
+      "id": "IuzwLlFMIkhY-DidG8mpn",
+      "topic": "Hvilken metode ble brukt i evalueringen av politireformen?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643350
+    },
+    {
+      "id": "UXyARdSVJzdx0K_Wo5GbB",
+      "topic": "Hva sier evalueringene om digital veiledning?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643237
+    },
+    {
+      "id": "dUWcwR2AVCoYohSRnE5fz",
+      "topic": "Hvilke anbefalinger gir evalueringer av tilskuddsordninger på kulturfeltet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643121
+    },
+    {
+      "id": "7v5-c027Hk3rTFZSrxNhp",
+      "topic": "Hva fant evalueringen av medfinansieringsordningen for digitaliseringsprosjekter?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974643017
+    },
+    {
+      "id": "lp8QGyxJVw4m0E66VXrBv",
+      "topic": "Hvilke risikoer er rapportert i statusrapportene for 2025?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642912
+    },
+    {
+      "id": "eflQ-lx8CWO3lETcTo5d0",
+      "topic": "Hva sier statusrapportene om forsinkelser og kostnadsøkninger i digitaliseringsprosjekter?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642800
+    },
+    {
+      "id": "NovAxrcXsjgmhSozeyiW-",
+      "topic": "Hvilke budsjettfullmakter gis Helsedirektoratet i tildelingsbrevet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642517
+    },
+    {
+      "id": "fHG6NYBcTsm5Mr3K7DQvK",
+      "topic": "Hvilke frister står i styringskalenderen for Statens vegvesen for 2022?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642367
+    },
+    {
+      "id": "jQ-F68Pn1d22vGa8T6iEA",
+      "topic": "Hvilke rapporteringskrav stiller departementet til Mattilsynet i tildelingsbrevet for 2023?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642232
+    },
+    {
+      "id": "2fIxoZaNmVHTiulBezdVn",
+      "topic": "Hvor mye ble bevilget til Digitaliseringsdirektoratet på post 01 i tildelingsbrevet for 2025?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974642104
+    },
+    {
+      "id": "UfPs4vHZyd020MWHL3e4W",
+      "topic": "Hvilke styringsparametere har Skatteetaten i tildelingsbrevet for 2024?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641988
+    },
+    {
+      "id": "CLLo-xJBfOqHvw4SSvz3i",
+      "topic": "Hvilke vesentlige avvik fra planlagt måloppnåelse rapporterte Arbeids- og velferdsdirektoratet for 2024?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641716
+    },
+    {
+      "id": "ymnM1qqALC9bT28ZaSTk5",
+      "topic": "Hva skriver Kartverket i ledelseskommentaren til årsregnskapet?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641595
+    },
+    {
+      "id": "C_HyfcRXaCoLdPrBuDCVv",
+      "topic": "Hvordan rapporterer Politidirektoratet om likestilling og diskriminering i årsrapporten for 2021?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641473
+    },
+    {
+      "id": "HnuJcqpISy-0fFx4EJso-",
+      "topic": "Hva var Lånekassens driftsutgifter i 2022, og hvordan utviklet de seg fra året før?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641351
+    },
+    {
+      "id": "ULmtcgLhbyLwHp10-IRnP",
+      "topic": "Hvor mange årsverk hadde Statistisk sentralbyrå i 2023?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641219
+    },
+    {
+      "id": "EBF-BPyb_7dtdWB01cY71",
+      "topic": "Hva sier årsrapportene om sykefravær og arbeidsmiljø i statlige virksomheter?",
+      "serviceId": "kunnskapsassistenten",
+      "tags": ["corpus:kudos"],
+      "created": 1793974641016
+    }
+  ]
+}

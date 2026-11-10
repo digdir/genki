@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Approach · Components</title>
+    <meta
+      name="description"
+      content="Shows how the assistant works on a question: the steps it takes, what it read, and which filter the answer is based on. Working name, may be renamed before it is built."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <nav aria-label="Breadcrumbs">
+        <p class="crumbs">
+          <a href="index.html">Components</a> / <span aria-current="page">Approach</span>
+        </p>
+      </nav>
+
+      <article
+        class="component"
+        id="approach"
+        data-component="approach"
+        data-phase="building"
+        data-optional="true"
+        aria-labelledby="approach-title"
+      >
+        <div class="component-head">
+          <div>
+            <h1 id="approach-title">Approach</h1>
+            <div class="badges">
+              <span class="badge phase">Building</span><span class="badge">Optional</span
+              ><span class="badge">Main area or tools</span>
+            </div>
+            <p class="summary">
+              Shows how the assistant works on a question: the steps it takes, what it read, and
+              which filter the answer is based on. Working name, may be renamed before it is built.
+            </p>
+            <dl class="facts">
+              <dt>UI name</dt>
+              <dd>«Fremgangsmåte»</dd>
+              <dt>Sits in</dt>
+              <dd>A card above the answer, or the tools panel</dd>
+              <dt>Issue</dt>
+              <dd>
+                <a href="https://github.com/digdir/kunnskapsassistenten/issues/176"
+                  >kunnskapsassistenten#176</a
+                >
+              </dd>
+              <dt>Code</dt>
+              <dd><code>Procedure</code> in <code>packages/ui-blocks</code></dd>
+              <dt>Canvas</dt>
+              <dd>00-Fremgangsmåte (FM-1, FM-2, FM-3, FMA-0 to FMA-4)</dd>
+            </dl>
+          </div>
+          <svg class="stamp" viewBox="0 0 160 100" aria-hidden="true">
+            <rect class="s-panel" x="16" y="12" width="128" height="100" rx="10" />
+            <rect class="s-soft" x="26" y="20" width="108" height="72" rx="10" />
+            <rect class="s-bar" x="39" y="34" width="2" height="36" rx="1" />
+            <circle class="s-accent" cx="40" cy="34" r="5" />
+            <circle class="s-accent" cx="40" cy="52" r="5" />
+            <circle class="s-bar" cx="40" cy="70" r="5" />
+            <rect class="s-bar" x="52" y="31" width="64" height="6" rx="3" />
+            <rect class="s-bar" x="52" y="49" width="50" height="6" rx="3" />
+            <rect class="s-bar" x="52" y="67" width="58" height="6" rx="3" />
+          </svg>
+        </div>
+        <div class="component-body">
+          <div>
+            <h2>Use it when</h2>
+            <ul>
+              <li>Users need to see what the assistant did, and what the answer is based on.</li>
+              <li>The assistant has a filter that can change between questions.</li>
+            </ul>
+            <h2>Variants</h2>
+            <ul>
+              <li>
+                <strong>A, card above the answer:</strong> can be collapsed and expanded. A4 has the
+                filter for each answer inside the card.
+              </li>
+              <li><strong>B, in the tools panel:</strong> as one of the tools.</li>
+              <li><strong>What is missing:</strong> a section of its own (A3, A3b).</li>
+            </ul>
+          </div>
+          <div>
+            <h2>Related</h2>
+            <ul>
+              <li>
+                <a href="chat.html">Chat</a>: sits above the answer, or in the panel beside it
+              </li>
+              <li><a href="filter.html">Filter</a>: shows the filter used for each answer</li>
+              <li><a href="sources.html">Sources</a>: the steps show which sources were used</li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What we have learned</h2>
+            <ul>
+              <li>
+                Hypothesis: A4 works best. It allows for the filter changing, and the placement
+                feels natural.
+              </li>
+              <li>
+                Collapsed, the card is one line, for example «Leste 44 dokumenter, brukte 4». The
+                line says «filteret er endret» only when it has changed.
+              </li>
+              <li>
+                The filter choices are shown as identical chips without borders or emphasis, and
+                can't be clicked. Changes are made only in the filter.
+              </li>
+              <li>The source trail is a compact strip that can be opened step by step.</li>
+              <li>
+                Can be added later: a line saying what changed in the filter since the previous
+                answer, for example «+ Tilsynsrapport».
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What is built</h2>
+            <ul>
+              <li>
+                Variant A, the card above the answer: Designsystemet <code>Card</code> with
+                <code>Details</code> and a numbered <code>List</code>, the robot icon and
+                «Fremgangsmåte». No subtitle.
+              </li>
+              <li>
+                Open while the assistant works, closed when the answer is done. If the person closes
+                it while the assistant works, it stays closed. It can be opened again.
+              </li>
+              <li>
+                Each step is done, in progress or waiting. The status is always text: «· pågår» and
+                «· venter» are visible, «ferdig» is for screen readers. The step in progress has
+                <code>aria-current="step"</code>. A step that waits shows only its title.
+              </li>
+              <li>
+                One polite live region says «Steg 4 av 7: …» when the step in progress changes,
+                without reading the list again.
+              </li>
+              <li>
+                The bottom line counts seconds while it works («Har jobbet i 18 sekunder»), then
+                says what it read and used and how long it took.
+              </li>
+              <li>
+                A step can list documents with pages, link to everything it read, and say which
+                sources the answer used. The link is shown only when the app can open it.
+              </li>
+              <li>
+                The steps come from the platform, never from the component. The workspace asks for
+                <code>genai_steps</code>, shows a label as sent, and translates known tool names
+                (plan, search, read, rerank, write). Frames a person cannot read are left out, and
+                there is no card without steps.
+              </li>
+            </ul>
+          </div>
+          <div class="wide">
+            <h2>What the platform does not send yet</h2>
+            <ul>
+              <li>
+                Today only services that search with tools send steps a person can read, and only
+                the tool name. Services with a fixed retrieval flow send none, so they show no card.
+              </li>
+              <li>
+                Until the platform sends more, the workspace's example data shows the whole card,
+                with the text from the design, so it can be seen and tested in full.
+              </li>
+              <li>
+                «Vis de 38 som ble lest» and «Utdyp hva som mangler» are placeholders. Where they
+                lead is not designed yet.
+              </li>
+            </ul>
+            <h3>Proposed step frame</h3>
+            <p>
+              What the card needs in each <code>genai_step</code> frame, on top of
+              <code>tool</code> and <code>label</code>. The workspace reads these already
+              (<code>apps/workspace/src/procedure.ts</code>); the platform needs to send them.
+            </p>
+            <ul>
+              <li>
+                <code>plan</code>: the tool names of every step the run will take, in the first
+                frame, so the ones not reached show as waiting.
+              </li>
+              <li><code>description</code>: one or two sentences under the title.</li>
+              <li>
+                <code>documents</code>: <code>{ title, pages }</code> for the documents a step read
+                closely, the first few.
+              </li>
+              <li><code>documents-read</code>: how many the step has read so far.</li>
+              <li>
+                <code>documents-total</code>: how many documents the run reads from, for the line at
+                the bottom.
+              </li>
+              <li><code>sources-used</code>: the source numbers the answer used.</li>
+              <li>
+                <code>missing</code>: the step says what was not found. The tool name
+                <code>report_gaps</code> is reserved for this step.
+              </li>
+            </ul>
+          </div>
+          <div class="wide open-questions">
+            <h2>Open questions</h2>
+            <ul>
+              <li>Is the approach shown above the answer or inside it? The canvas shows both.</li>
+              <li>
+                <strong>Relevant later: «Det jeg ikke fant» has no data.</strong> The step and its
+                link «Utdyp hva som mangler» need the platform to say what it looked for and did not
+                find, and where it looked. No strategy sends this today, so the first version leaves
+                the step out. Built when the platform can send it.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <nav class="pager" aria-label="Other components">
+        <a class="prev" href="chat.html" rel="prev"><small>Previous</small>Chat</a>
+        <a class="next" href="footnotes.html" rel="next"><small>Next</small>Footnotes</a>
+      </nav>
+    </main>
+  </body>
+</html>

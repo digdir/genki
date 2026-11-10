@@ -1,0 +1,218 @@
+import { Card, Details, Link, List } from '@digdir/designsystemet-react';
+import { useFormat } from '@genai/i18n/react';
+import { RobotIcon } from '@navikt/aksel-icons';
+import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n.js';
+
+export type ProcedureStatus = 'done' | 'active' | 'waiting';
+
+export interface ProcedureDocument {
+  title: string;
+  /** Where in the document, for example the pages. */
+  detail?: string;
+}
+
+export interface ProcedureStep {
+  id: string;
+  /** As the platform sent it, or translated by the app. */
+  title: string;
+  description?: string;
+  status: ProcedureStatus;
+  documents?: readonly ProcedureDocument[];
+  /** How many documents the step read in all, when more than are listed. */
+  documentsRead?: number;
+  /** The source numbers the answer used, as in its footnotes. */
+  sourcesUsed?: readonly number[];
+  /** The step says what the assistant did not find, and can link to more about it. */
+  missing?: boolean;
+}
+
+export interface ProcedureProps {
+  steps: readonly ProcedureStep[];
+  /** True while the assistant works on the answer. */
+  working: boolean;
+  /** When the assistant started, in milliseconds since the epoch. */
+  startedAt: number;
+  finishedAt?: number;
+  /** Documents read in all, for the line at the bottom once the answer is done. */
+  read?: number;
+  /** Sources used in the answer. */
+  used?: number;
+  /** Shows the link to everything a step read. Where it leads is up to the app. */
+  onShowRead?: (stepId: string) => void;
+  /** Shows the link to more about what the assistant did not find. */
+  onExplainMissing?: (stepId: string) => void;
+}
+
+const useSeconds = (startedAt: number, finishedAt: number | undefined, working: boolean) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!working) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [working]);
+  return Math.max(0, Math.floor(((finishedAt ?? now) - startedAt) / 1000));
+};
+
+const StepBody = ({
+  step,
+  onShowRead: show,
+  onExplainMissing: explain,
+}: {
+  step: ProcedureStep;
+  onShowRead: ProcedureProps['onShowRead'];
+  onExplainMissing: ProcedureProps['onExplainMissing'];
+}) => {
+  const t = useT();
+  const f = useFormat();
+  const more = step.documentsRead ?? step.documents?.length ?? 0;
+  return (
+    <>
+      {step.description ? <p className="uib-step-description">{step.description}</p> : null}
+      {step.documents?.length ? (
+        <List.Unordered className="uib-step-documents">
+          {step.documents.map((d, i) => (
+            <List.Item key={`${d.title}-${i}`}>
+              {d.title}
+              {d.detail ? `, ${d.detail}` : ''}
+            </List.Item>
+          ))}
+        </List.Unordered>
+      ) : null}
+      {show && more ? (
+        <Link
+          href="#"
+          className="uib-step-link"
+          onClick={(event) => {
+            event.preventDefault();
+            show(step.id);
+          }}
+        >
+          {step.status === 'active'
+            ? t('procedure.showReadSoFar', { count: more })
+            : t('procedure.showRead', { count: more })}
+        </Link>
+      ) : null}
+      {step.missing && explain ? (
+        <Link
+          href="#"
+          className="uib-step-link"
+          onClick={(event) => {
+            event.preventDefault();
+            explain(step.id);
+          }}
+        >
+          {t('procedure.explainMissing')}
+        </Link>
+      ) : null}
+      {step.sourcesUsed?.length ? (
+        <p className="uib-step-description">
+          {t('procedure.usedInAnswer', {
+            sources: f.list(step.sourcesUsed.map(String)),
+          })}
+        </p>
+      ) : null}
+    </>
+  );
+};
+
+/** How the assistant worked on an answer, as a card above it. Open while it works, closed when it is done. */
+export const Procedure = ({
+  steps,
+  working,
+  startedAt,
+  finishedAt,
+  read,
+  used,
+  onShowRead,
+  onExplainMissing,
+}: ProcedureProps) => {
+  const t = useT();
+  const [open, setOpen] = useState(working);
+  const wasWorking = useRef(working);
+  useEffect(() => {
+    if (wasWorking.current && !working) setOpen(false);
+    wasWorking.current = working;
+  }, [working]);
+
+  const seconds = useSeconds(startedAt, finishedAt, working);
+  const activeIndex = steps.findIndex((s) => s.status === 'active');
+  const active = steps[activeIndex];
+  const knowsTotal = steps.some((s) => s.status === 'waiting');
+  const [announced, setAnnounced] = useState('');
+  useEffect(() => {
+    if (!active) return;
+    const n = activeIndex + 1;
+    setAnnounced(
+      knowsTotal
+        ? t('procedure.stepOf', { n, total: steps.length, title: active.title })
+        : t('procedure.step', { n, title: active.title }),
+    );
+  }, [active?.id, active?.title]);
+
+  const footer = working
+    ? t('procedure.workingFor', { count: seconds })
+    : [
+        read !== undefined
+          ? `${t('procedure.read', { count: read })}${used !== undefined ? `, ${t('procedure.used', { count: used })}` : ''}`
+          : used !== undefined
+            ? t('procedure.usedOnly', { count: used })
+            : undefined,
+      ]
+        .filter(Boolean)
+        .concat(
+          read !== undefined || used !== undefined
+            ? t('procedure.took', { count: seconds })
+            : t('procedure.tookOnly', { count: seconds }),
+        )
+        .join(' · ');
+
+  return (
+    <div className="uib-procedure">
+      <Card data-color="neutral" variant="default" className="uib-procedure-card">
+        <Details
+          aria-label={t('procedure.title')}
+          open={open}
+          onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
+        >
+          <Details.Summary>
+            <span className="uib-procedure-summary">
+              <RobotIcon aria-hidden fontSize="18px" />
+              {t('procedure.title')}
+            </span>
+          </Details.Summary>
+          <Details.Content>
+            <List.Ordered className="uib-procedure-steps">
+              {steps.map((step) => (
+                <List.Item
+                  key={step.id}
+                  data-status={step.status}
+                  aria-current={step.status === 'active' ? 'step' : undefined}
+                >
+                  <span className="uib-step-title">{step.title}</span>
+                  {step.status === 'done' ? (
+                    <span className="uib-visually-hidden"> ({t('procedure.done')})</span>
+                  ) : (
+                    <span className="uib-step-status"> · {t(`procedure.${step.status}`)}</span>
+                  )}
+                  {step.status === 'waiting' ? null : (
+                    <StepBody
+                      step={step}
+                      onShowRead={onShowRead}
+                      onExplainMissing={onExplainMissing}
+                    />
+                  )}
+                </List.Item>
+              ))}
+            </List.Ordered>
+            <p className="uib-procedure-footer">{footer}</p>
+          </Details.Content>
+        </Details>
+      </Card>
+      <p className="uib-visually-hidden" aria-live="polite">
+        {working ? announced : ''}
+      </p>
+    </div>
+  );
+};
