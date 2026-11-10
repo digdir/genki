@@ -1,4 +1,6 @@
 @import './approach/approach.css';
+@import './composer/composer.css';
+@import './welcome/welcome.css';
 
 .uib-visually-hidden {
   position: absolute;
